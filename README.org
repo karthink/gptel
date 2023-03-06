@@ -37,9 +37,9 @@ Installing the =markdown-mode= package is optional.
 
 Procure an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
 
-(Optional: Set =gptel-api-key= to the key or to a function that returns the key.)
+Optional: Set =gptel-api-key= to the key or to a function that returns the key (more secure).
 
-Run =M-x gptel= to start or switch to the ChatGPT buffer. (It will ask you for the key if you skipped the previous step.)
+Run =M-x gptel= to start or switch to the ChatGPT buffer. It will ask you for the key if you skipped the previous step.
 
 Run it with a prefix-arg (=C-u M-x gptel=) to start a new session.
 
@@ -49,7 +49,7 @@ That's it. You can go back and edit previous prompts and responses if you want.
 
 ** Why another ChatGPT client?
 
-Existing Emacs clients don't /reliably/ let me use it the simple way I can in the browser.  (They will get better, but I wanted something for now.)
+Existing Emacs clients don't /reliably/ let me use it the simple way I can in the browser.  They will get better, but I wanted something for now.
 
 Also, AI-assisted work is a new way to use Emacs.  It's not yet clear what the best Emacs interface to tools like it is.
 
@@ -60,7 +60,7 @@ Also, AI-assisted work is a new way to use Emacs.  It's not yet clear what the b
 - A refactoring tool in code buffers?
 - An =org-babel= interface?
 
-Maybe all of these, I don't know yet. As a start, I wanted to replicate the web browser usage pattern so I can build from there -- and don't need to switch to the browser every time. As a minimal functional interface, the code is very small right now at ~170 lines.
+Maybe all of these, I don't know yet. As a start, I wanted to replicate the web browser usage pattern so I can build from there -- and don't need to switch to the browser every time. The code is very minimal right now at ~150 lines.
 
 ** Will you add feature X?
 
