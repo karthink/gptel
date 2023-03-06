@@ -191,8 +191,10 @@ Ask for API-KEY if `gptel-api-key' is unset."
       (if-let* ((status (buffer-substring (line-beginning-position) (line-end-position)))
                 ((string-match "200 OK" status))
                 (response (progn (forward-paragraph)
-                                 (json-read))))
-          (map-nested-elt response '(:choices 0 :message :content))
+                                 (json-read)))
+                (content (map-nested-elt
+                          response '(:choices 0 :message :content))))
+          (string-trim content)
         (user-error "Chat failed with status: %S" status)))))
 
 (defvar gptel-playback-response t)
