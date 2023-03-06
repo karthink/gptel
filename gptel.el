@@ -81,6 +81,8 @@ key (more secure)."
                       (point-max)))
     (push (set-marker (make-marker) (point-max))
           gptel--prompt-markers))
+  (setf (nth 1 header-line-format)
+        (propertize " Waiting..." 'face 'warning))
   (let* ((gptel-buffer (current-buffer))
          (full-prompt
           (save-excursion
@@ -113,7 +115,9 @@ key (more secure)."
               (insert content-str)
               (push (set-marker (make-marker) (point))
                     gptel--prompt-markers)
-              (insert "\n\n" gptel-prompt-string))))
+              (insert "\n\n" gptel-prompt-string)
+              (setf (nth 1 header-line-format)
+                    (propertize " Ready" 'face 'success)))))
       (kill-buffer response-buffer))))
 
 (aio-defun gptel-get-response (prompts)
@@ -178,9 +182,11 @@ Ask for API-KEY if `gptel-api-key' is unset."
     (pop-to-buffer (current-buffer))
     (goto-char (point-max))
     (skip-chars-backward "\t\r\n")
-    (setq header-line-format
-          (concat (propertize " " 'display '(space :align-to 0))
-                  (format "ChatGPT session (%s)" (buffer-name))))
+    (or header-line-format
+      (setq header-line-format
+            (list (concat (propertize " " 'display '(space :align-to 0))
+                          (format "%s" (buffer-name)))
+                  (propertize " Ready" 'face 'success))))
     (message "Send your query with %s!"
              (substitute-command-keys "\\[gptel-send]"))))
 
