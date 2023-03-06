@@ -1,0 +1,70 @@
+#+title: GPTel: A simple ChatGPT client for Emacs
+
+GPTel is a simple, no-frills ChatGPT client for Emacs.
+
+[[file:img/gptel.png]]
+
+- Requires an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
+- No external dependencies, only Emacs. Also, it's async.
+- Interaction is in a Markdown (or text) buffer.
+- Supports conversations (not just one-off queries) and multiple independent sessions.
+- You can go back and edit your previous prompts, or even ChatGPT's previous responses when continuing a conversation. These will be fed back to ChatGPT.
+
+** Installation
+
+*** Package.el
+Clone this repository and run =M-x package-install-file=.
+
+Installing the =markdown-mode= package is optional.
+
+*** Straight
+#+begin_src emacs-lisp
+  (straight-use-package '(gptel :host github :repo "karthink/gptel"))
+#+end_src
+
+Installing the =markdown-mode= package is optional.
+
+*** Manual
+Install =emacs-aio=, (=M-x package-install⏎= =emacs-aio⏎=), then clone this repository and load this file:
+#+begin_src emacs-lisp
+(add-to-list 'load-path "/path/to/gptel/")
+(require 'gptel)
+#+end_src
+
+Installing the =markdown-mode= package is optional.
+
+** Usage
+
+Procure an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
+
+(Optional: Set =gptel-api-key= to the key or to a function that returns the key.)
+
+Run =M-x gptel= to start or switch to the ChatGPT buffer. (It will ask you for the key if you skipped the previous step.)
+
+Run it with a prefix-arg (=C-u M-x gptel=) to start a new session.
+
+In the gptel buffer, send your prompt with =M-x gptel-send=, bound to =C-c RET=.
+
+That's it. You can go back and edit previous prompts and responses if you want.
+
+** Why another ChatGPT client?
+
+Existing Emacs clients don't /reliably/ let me use it the simple way I can in the browser.  (They will get better, but I wanted something for now.)
+
+Also, AI-assisted work is a new way to use Emacs.  It's not yet clear what the best Emacs interface to tools like it is.
+
+- Should it be part of CAPF (=completions-at-point-functions=)?
+- A dispatch menu from anywhere that can act on selected regions?
+- A comint/shell-style REPL?
+- One-off queries in the minibuffer (like =shell-command=)?
+- A refactoring tool in code buffers?
+- An =org-babel= interface?
+
+Maybe all of these, I don't know yet. As a start, I wanted to replicate the web browser usage pattern so I can build from there -- and don't need to switch to the browser every time. As a minimal functional interface, the code is very small right now at ~170 lines.
+
+** Will you add feature X?
+
+Maybe, I'd like to experiment a bit first.
+
+- Support for Org Mode instead of Markdown, including source blocks etc, is planned.
+- I'm experimenting with using it in code buffers.
