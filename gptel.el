@@ -134,10 +134,12 @@ Return the response buffer."
             ;; :temperature 1.0
             ;; :top_p 1.0
             :messages [,@prompts]))))
-    (pcase-let ((`(,_ . ,buffer)
-                  (aio-await
-                   (aio-url-retrieve "https://api.openai.com/v1/chat/completions"))))
-      buffer)))
+    (let ((inhibit-message t)
+          (message-log-max nil))
+      (pcase-let ((`(,_ . ,buffer)
+                   (aio-await
+                    (aio-url-retrieve "https://api.openai.com/v1/chat/completions"))))
+        buffer))))
 
 ;;;###autoload
 (define-minor-mode gptel-mode
@@ -160,11 +162,17 @@ Ask for API-KEY if `gptel-api-key' is unset."
                          (read-string "Session name: " (generate-new-buffer-name gptel-default-session))
                        gptel-default-session)
                      (or gptel-api-key
-                         (read-string "OpenAI API key: "))))
+                         (setq gptel-api-key
+                               (read-passwd "OpenAI API key: ")))))
   (unless api-key
     (user-error "No API key available"))
   (with-current-buffer (get-buffer-create name)
-    (unless (eq major-mode gptel-default-mode) (funcall gptel-default-mode))
+    (cond ;Set major mode
+     ((eq major-mode gptel-default-mode))
+     ((eq gptel-default-mode 'text-mode)
+      (text-mode)
+      (visual-line-mode 1))
+     (t (funcall gptel-default-mode)))
     (unless gptel-mode (gptel-mode 1))
     (if (bobp) (insert gptel-prompt-string))
     (pop-to-buffer (current-buffer))
