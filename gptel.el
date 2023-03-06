@@ -1,4 +1,4 @@
-;;; gptel.el --- Interact with ChatGPT from Emacs      -*- lexical-binding: t; -*-
+;;; gptel.el --- A simple ChatGPT client for Emacs      -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
@@ -6,6 +6,7 @@
 ;; Version: 0.05
 ;; Package-Requires: ((emacs "27.1") (aio "1.0"))
 ;; Keywords: convenience
+;; URL: https://github.com/karthink/gptel
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -22,15 +23,18 @@
 
 ;;; Commentary:
 
-;; REQUIREMENTS:
+;; A ChatGPT client for Emacs.
+;;
+;; Requirements:
 ;; - You need an OpenAI API key. Set the variable `gptel-api-key' to the key or to
 ;;   a function of no arguments that returns the key.
 ;;
-;; - Install the package `emacs-aio' using `M-x package-install' or however you install packages.
+;; - If installing manually: Install the package `emacs-aio' using `M-x package-install'
+;;   or however you install packages.
 ;;
 ;; - Not required but recommended: Install `markdown-mode'.
 ;;
-;; USAGE:
+;; Usage:
 ;; - M-x gptel: Start a ChatGPT session
 ;; - C-u M-x gptel: Start another or multiple independent ChatGPT sessions
 ;;
@@ -48,38 +52,21 @@
 (require 'map)
 
 (defcustom gptel-api-key nil
-  "An OpenAI API key (string), or a function of no arguments that
-returns an API key."
+  "An OpenAI API key (string).
+
+Can also be a function of no arguments that returns an API
+key (more secure)."
+  :group 'gptel
   :type '(choice
           (string :tag "API key")
           (function :tag "Function that retuns the API key")))
 
-;;;###autoload
-(defun gptel (name &optional api-key)
-  "Switch to or start ChatGPT session with NAME.
-
-With a prefix arg, query for a (new) session name.
-
-Ask for API-KEY if `gptel-api-key' is unset."
-  (interactive (list (if current-prefix-arg
-                         (read-string "Session name: " (generate-new-buffer-name gptel-default-session))
-                       gptel-default-session)
-                     (or gptel-api-key
-                         (read-string "OpenAI API key: "))))
-  (unless gptel-api-key
-    (user-error "No API key available"))
-  (with-current-buffer (get-buffer-create name)
-    (unless (eq major-mode gptel-default-mode) (funcall gptel-default-mode))
-    (unless gptel-mode (gptel-mode 1))
-    (if (bobp) (insert gptel-prompt-string))
-    (pop-to-buffer (current-buffer))
-    (goto-char (point-max))
-    (skip-chars-backward "\t\r\n")
-    (setq header-line-format
-          (concat (propertize " " 'display '(space :align-to 0))
-                  (format "ChatGPT session (%s)" (buffer-name))))
-    (message "Send your query with %s!"
-             (substitute-command-keys "\\[gptel-send]"))))
+(defvar-local gptel--prompt-markers nil)
+(defvar gptel-default-session "*ChatGPT*")
+(defvar gptel-default-mode (if (featurep 'markdown-mode)
+                               'markdown-mode
+                             'text-mode))
+(defvar gptel-prompt-string "### ")
 
 (aio-defun gptel-send ()
   "Submit this prompt to ChatGPT."
@@ -126,7 +113,9 @@ Ask for API-KEY if `gptel-api-key' is unset."
       (kill-buffer response-buffer))))
 
 (aio-defun gptel-get-response (prompts)
-  ";;TODO:"
+  "Fetch response for PROMPTS from ChatGPT.
+
+Return the response buffer."
   (let* ((api-key
           (cond
            ((stringp gptel-api-key) gptel-api-key)
@@ -141,17 +130,10 @@ Ask for API-KEY if `gptel-api-key' is unset."
             ;; :temperature 1.0
             ;; :top_p 1.0
             :messages [,@prompts]))))
-    (pcase-let ((`(,status . ,buffer)
+    (pcase-let ((`(,_ . ,buffer)
                   (aio-await
                    (aio-url-retrieve "https://api.openai.com/v1/chat/completions"))))
       buffer)))
-
-(defvar-local gptel--prompt-markers nil)
-(defvar gptel-default-session "*ChatGPT*")
-(defvar gptel-default-mode (if (featurep 'markdown-mode)
-                               'markdown-mode
-                             'text-mode))
-(defvar gptel-prompt-string "### ")
 
 ;;;###autoload
 (define-minor-mode gptel-mode
@@ -162,6 +144,33 @@ Ask for API-KEY if `gptel-api-key' is unset."
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c RET") #'gptel-send)
     map))
+
+;;;###autoload
+(defun gptel (name &optional api-key)
+  "Switch to or start ChatGPT session with NAME.
+
+With a prefix arg, query for a (new) session name.
+
+Ask for API-KEY if `gptel-api-key' is unset."
+  (interactive (list (if current-prefix-arg
+                         (read-string "Session name: " (generate-new-buffer-name gptel-default-session))
+                       gptel-default-session)
+                     (or gptel-api-key
+                         (read-string "OpenAI API key: "))))
+  (unless api-key
+    (user-error "No API key available"))
+  (with-current-buffer (get-buffer-create name)
+    (unless (eq major-mode gptel-default-mode) (funcall gptel-default-mode))
+    (unless gptel-mode (gptel-mode 1))
+    (if (bobp) (insert gptel-prompt-string))
+    (pop-to-buffer (current-buffer))
+    (goto-char (point-max))
+    (skip-chars-backward "\t\r\n")
+    (setq header-line-format
+          (concat (propertize " " 'display '(space :align-to 0))
+                  (format "ChatGPT session (%s)" (buffer-name))))
+    (message "Send your query with %s!"
+             (substitute-command-keys "\\[gptel-send]"))))
 
 (defun gptel-parse-response (response-buffer)
   "Parse response in RESPONSE-BUFFER."
