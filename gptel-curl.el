@@ -4,6 +4,9 @@
 
 ;; Author: Karthik Chikmagalur;; <karthikchikmagalur@gmail.com>
 ;; Keywords: convenience
+;; Version: 0.05
+;; Keywords: convenience
+;; URL: https://github.com/karthink/gptel
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
