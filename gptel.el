@@ -117,7 +117,7 @@ When set to nil, it is inserted all at once.
          (response (aio-await
                     (funcall
                      (if (and gptel-use-curl (require 'gptel-curl nil t))
-                          #'gptel--curl-get-response #'gptel-get-response)
+                          #'gptel--curl-get-response #'gptel--get-response)
                      full-prompt)))
          (content-str (plist-get response :content))
          (status-str  (plist-get response :status)))
@@ -143,7 +143,7 @@ When set to nil, it is inserted all at once.
                 (propertize (format " Response Error: %s" status-str)
                             'face 'error)))))
 
-(aio-defun gptel-get-response (prompts)
+(aio-defun gptel--get-response (prompts)
   "Fetch response for PROMPTS from ChatGPT.
 
 Return the message received."
@@ -169,10 +169,10 @@ Return the message received."
                  (aio-await
                   (aio-url-retrieve "https://api.openai.com/v1/chat/completions"))))
       (prog1
-          (gptel-parse-response response-buffer)
+          (gptel--parse-response response-buffer)
         (kill-buffer response-buffer)))))
 
-(defun gptel-parse-response (response-buffer)
+(defun gptel--parse-response (response-buffer)
   "Parse response in RESPONSE-BUFFER."
   (when (buffer-live-p response-buffer)
     (with-current-buffer response-buffer
