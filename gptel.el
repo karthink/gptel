@@ -48,8 +48,11 @@
 
 ;;; Code:
 (declare-function markdown-mode "markdown-mode")
+(declare-function gptel--curl-get-response "gptel-curl")
+
 (eval-when-compile
-  (require 'subr-x))
+  (require 'subr-x)
+  (require 'cl-lib))
 
 (require 'aio)
 (require 'json)
@@ -64,6 +67,20 @@ key (more secure)."
   :type '(choice
           (string :tag "API key")
           (function :tag "Function that retuns the API key")))
+
+(defcustom gptel-playback nil
+  "Whether responses from ChatGPT be played back in chunks.
+
+When set to nil, it is inserted all at once.
+
+'tis a bit silly."
+  :group 'gptel
+  :type 'boolean)
+
+(defcustom gptel-use-curl (and (executable-find "curl") t)
+  "Whether gptel should prefer Curl when available."
+  :group 'gptel
+  :type 'boolean)
 
 (defvar-local gptel--prompt-markers nil)
 (defvar gptel-default-session "*ChatGPT*")
@@ -97,34 +114,42 @@ key (more secure)."
                      into prompts
                      do (setq role (if (equal role "user") "assistant" "user"))
                      finally return (nreverse prompts))))
-         (response-buffer (aio-await (gptel-get-response full-prompt)))
-         (json-object-type 'plist))
-    (unwind-protect
-        (when-let* ((content-str (gptel-parse-response response-buffer)))
-          (with-current-buffer gptel-buffer
-            (save-excursion
-              (message "Querying ChatGPT... done.")
-              (goto-char (point-max))
-              (display-buffer (current-buffer)
-                              '((display-buffer-reuse-window
-                                 display-buffer-use-some-window)))
-              (unless (bobp) (insert "\n\n"))
-              ;; (if gptel-playback-response
-              ;;     (aio-await (gptel--playback-print content-str))
-              ;;   (insert content-str))
-              (insert content-str)
-              (push (set-marker (make-marker) (point))
-                    gptel--prompt-markers)
-              (insert "\n\n" gptel-prompt-string)
-              (setf (nth 1 header-line-format)
-                    (propertize " Ready" 'face 'success)))))
-      (kill-buffer response-buffer))))
+         (response (aio-await
+                    (funcall
+                     (if (and gptel-use-curl (require 'gptel-curl nil t))
+                          #'gptel--curl-get-response #'gptel-get-response)
+                     full-prompt)))
+         (content-str (plist-get response :content))
+         (status-str  (plist-get response :status)))
+    (if content-str
+            (with-current-buffer gptel-buffer
+              (save-excursion
+                (message "Querying ChatGPT... done.")
+                (goto-char (point-max))
+                (display-buffer (current-buffer)
+                                '((display-buffer-reuse-window
+                                   display-buffer-use-some-window)))
+                (unless (bobp) (insert "\n\n"))
+                (if gptel-playback
+                    (gptel--playback (current-buffer) content-str (point))
+                  (insert content-str))
+                (push (set-marker (make-marker) (point))
+                      gptel--prompt-markers)
+                (insert "\n\n" gptel-prompt-string)
+                (unless gptel-playback
+                  (setf (nth 1 header-line-format)
+                        (propertize " Ready" 'face 'success)))))
+          (setf (nth 1 header-line-format)
+                (propertize (format " Response Error: %s" status-str)
+                            'face 'error)))))
 
 (aio-defun gptel-get-response (prompts)
   "Fetch response for PROMPTS from ChatGPT.
 
-Return the response buffer."
-  (let* ((api-key
+Return the message received."
+  (let* ((inhibit-message t)
+         (message-log-max nil)
+         (api-key
           (cond
            ((stringp gptel-api-key) gptel-api-key)
            ((functionp gptel-api-key) (funcall gptel-api-key))))
@@ -133,19 +158,34 @@ Return the response buffer."
          `(("Content-Type" . "application/json")
            ("Authorization" . ,(concat "Bearer " api-key))))
         (url-request-data
-         (json-encode
+         (encode-coding-string
+          (json-encode
           `(:model "gpt-3.5-turbo"
             ;; :temperature 1.0
             ;; :top_p 1.0
-            :messages [,@prompts]))))
-    (let ((inhibit-message t)
-          (message-log-max nil))
-      (pcase-let ((`(,_ . ,buffer)
-                   (aio-await
-                    (aio-url-retrieve "https://api.openai.com/v1/chat/completions"))))
-        buffer))))
+            :messages [,@prompts]))
+          'utf-8)))
+    (pcase-let ((`(,_ . ,response-buffer)
+                 (aio-await
+                  (aio-url-retrieve "https://api.openai.com/v1/chat/completions"))))
+      (prog1
+          (gptel-parse-response response-buffer)
+        (kill-buffer response-buffer)))))
 
-;;;###autoload
+(defun gptel-parse-response (response-buffer)
+  "Parse response in RESPONSE-BUFFER."
+  (when (buffer-live-p response-buffer)
+    (with-current-buffer response-buffer
+      (if-let* ((status (buffer-substring (line-beginning-position) (line-end-position)))
+                ((string-match-p "200 OK" status))
+                (response (progn (forward-paragraph)
+                                 (json-read)))
+                (content (map-nested-elt
+                          response '(:choices 0 :message :content))))
+          (list :content (string-trim content)
+                :status status)
+        (list :content nil :status status)))))
+
 (define-minor-mode gptel-mode
   "Minor mode for interacting with ChatGPT."
   :glboal nil
@@ -190,26 +230,38 @@ Ask for API-KEY if `gptel-api-key' is unset."
     (message "Send your query with %s!"
              (substitute-command-keys "\\[gptel-send]"))))
 
-(defun gptel-parse-response (response-buffer)
-  "Parse response in RESPONSE-BUFFER."
-  (when (buffer-live-p response-buffer)
-    (with-current-buffer response-buffer
-      (if-let* ((status (buffer-substring (line-beginning-position) (line-end-position)))
-                ((string-match "200 OK" status))
-                (response (progn (forward-paragraph)
-                                 (json-read)))
-                (content (map-nested-elt
-                          response '(:choices 0 :message :content))))
-          (string-trim content)
-        (user-error "Chat failed with status: %S" status)))))
+(defun gptel--playback (buf content-str start-pt)
+  "Playback CONTENT-STR in BUF.
 
-(defvar gptel-playback-response t)
-
-(aio-defun gptel--playback-print (response)
-  (when response
-    (dolist (line (split-string response "\n" nil))
-      (insert line "\n")
-      (aio-await (aio-sleep 0.3)))))
+Begin at START-PT."
+  (let ((handle (gensym "gptel-change-group-handle--"))
+        (playback-timer (gensym "gptel--playback-"))
+        (content-length (length content-str))
+        (idx 0) (pt (make-marker)))
+    (setf (symbol-value handle) (prepare-change-group buf))
+    (activate-change-group (symbol-value handle))
+    (setf (symbol-value playback-timer)
+          (run-at-time
+          0 0.15
+           (lambda ()
+             (with-current-buffer buf
+               (if (>= content-length idx)
+                   (progn
+                     (when (= idx 0) (set-marker pt start-pt))
+                     (goto-char pt)
+                     (insert-before-markers-and-inherit
+                      (cl-subseq
+                       content-str idx
+                       (min content-length (+ idx 16))))
+                     (setq idx (+ idx 16)))
+                 (when start-pt (goto-char (- start-pt 2)))
+                 (setf (nth 1 header-line-format)
+                      (propertize " Ready" 'face 'success))
+                 (force-mode-line-update)
+                 (accept-change-group (symbol-value handle))
+                 (undo-amalgamate-change-group (symbol-value handle))
+                 (cancel-timer (symbol-value playback-timer)))))))
+    nil))
 
 (provide 'gptel)
 ;;; gptel.el ends here
