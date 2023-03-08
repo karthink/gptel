@@ -60,7 +60,7 @@ Also, AI-assisted work is a new way to use Emacs.  It's not yet clear what the b
 - A refactoring tool in code buffers?
 - An =org-babel= interface?
 
-Maybe all of these, I don't know yet. As a start, I wanted to replicate the web browser usage pattern so I can build from there -- and don't need to switch to the browser every time. The code is very minimal right now at ~150 lines.
+Maybe all of these, I don't know yet. As a start, I wanted to replicate the web browser usage pattern so I can build from there -- and don't need to switch to the browser every time. The code is fairly simple right now.
 
 ** Will you add feature X?
 

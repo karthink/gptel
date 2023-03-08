@@ -1,4 +1,4 @@
-;;; gptel.el --- A simple ChatGPT client for Emacs      -*- lexical-binding: t; -*-
+;;; gptel.el --- A simple ChatGPT client      -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
