@@ -114,8 +114,9 @@ When set to nil, it is inserted all at once.
   (if (and arg (featurep 'gptel-transient))
       (call-interactively #'gptel-send-menu)
   (message "Querying ChatGPT...")
-  (setf (nth 1 header-line-format)
-        (propertize " Waiting..." 'face 'warning))
+  (and header-line-format
+    (setf (nth 1 header-line-format)
+          (propertize " Waiting..." 'face 'warning)))
   (let* ((gptel-buffer (current-buffer))
          (full-prompt (gptel--create-prompt))
          (response (aio-await
@@ -126,25 +127,26 @@ When set to nil, it is inserted all at once.
          (content-str (plist-get response :content))
          (status-str  (plist-get response :status)))
     (if content-str
-            (with-current-buffer gptel-buffer
-              (save-excursion
-                (put-text-property 0 (length content-str) 'gptel 'response content-str)
-                (message "Querying ChatGPT... done.")
-                (goto-char (point-max))
-                (display-buffer (current-buffer)
-                                '((display-buffer-reuse-window
-                                   display-buffer-use-some-window)))
-                (unless (bobp) (insert "\n\n"))
-                (if gptel-playback
-                    (gptel--playback (current-buffer) content-str (point))
-                  (insert content-str))
-                (insert "\n\n" gptel-prompt-string)
-                (unless gptel-playback
-                  (setf (nth 1 header-line-format)
-                        (propertize " Ready" 'face 'success)))))
-          (setf (nth 1 header-line-format)
-                (propertize (format " Response Error: %s" status-str)
-                            'face 'error))))))
+        (with-current-buffer gptel-buffer
+          (save-excursion
+            (put-text-property 0 (length content-str) 'gptel 'response content-str)
+            (message "Querying ChatGPT... done.")
+            (goto-char (point-max))
+            (display-buffer (current-buffer)
+                            '((display-buffer-reuse-window
+                               display-buffer-use-some-window)))
+            (unless (bobp) (insert "\n\n"))
+            (if gptel-playback
+                (gptel--playback (current-buffer) content-str (point))
+              (insert content-str))
+            (insert "\n\n" gptel-prompt-string)
+            (unless gptel-playback
+              (setf (nth 1 header-line-format)
+                    (propertize " Ready" 'face 'success)))))
+      (and header-line-format
+           (setf (nth 1 header-line-format)
+                 (propertize (format " Response Error: %s" status-str)
+                             'face 'error)))))))
 
 (defun gptel--create-prompt ()
   "Return a full conversation prompt from the contents of this buffer.
@@ -305,9 +307,10 @@ Begin at START-PT."
                        (min content-length (+ idx 16))))
                      (setq idx (+ idx 16)))
                  (when start-pt (goto-char (- start-pt 2)))
-                 (setf (nth 1 header-line-format)
-                      (propertize " Ready" 'face 'success))
-                 (force-mode-line-update)
+                 (and header-line-format
+                      (setf (nth 1 header-line-format)
+                            (propertize " Ready" 'face 'success))
+                      (force-mode-line-update))
                  (accept-change-group (symbol-value handle))
                  (undo-amalgamate-change-group (symbol-value handle))
                  (cancel-timer (symbol-value playback-timer)))))))
