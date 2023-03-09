@@ -90,6 +90,18 @@ When set to nil, it is inserted all at once.
 (defvar gptel-prompt-string "### ")
 
 (aio-defun gptel-send ()
+;; Model and interaction parameters
+(defvar-local gptel--system-message
+  "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
+(defvar gptel--system-message-alist
+  `((default . ,gptel--system-message)
+    (programming . "You are a large language model and a careful programmer. Respond only with code unless explicitly asked.")
+    (writing . "You are a large language model and a writing assistant. Respond concisely.")
+    (chat . "You are a large language model and a conversation partner. Respond concisely."))
+  "Prompt templates (directives).")
+(defvar-local gptel--max-tokens nil)
+(defvar-local gptel--model "gpt-3.5-turbo")
+(defvar-local gptel--temperature 1.0)
 (defvar-local gptel--num-messages-to-send nil)
 
 (defsubst gptel--numberize (val)
@@ -173,6 +185,16 @@ instead."
                      gptel--system-message))
               prompts)))))
 
+(defun gptel--request-data (prompts)
+  "JSON encode PROMPTS for sending to ChatGPT."
+  (let ((prompts-plist
+         `(:model ,gptel--model
+           :messages [,@prompts])))
+    (when gptel--temperature
+      (plist-put prompts-plist :temperature (gptel--numberize gptel--temperature)))
+    (when gptel--max-tokens
+      (plist-put prompts-plist :max_tokens (gptel--numberize gptel--max-tokens)))
+    prompts-plist))
 
 (aio-defun gptel--get-response (prompts)
   "Fetch response for PROMPTS from ChatGPT.
@@ -189,13 +211,7 @@ Return the message received."
          `(("Content-Type" . "application/json")
            ("Authorization" . ,(concat "Bearer " api-key))))
         (url-request-data
-         (encode-coding-string
-          (json-encode
-          `(:model "gpt-3.5-turbo"
-            ;; :temperature 1.0
-            ;; :top_p 1.0
-            :messages [,@prompts]))
-          'utf-8)))
+         (encode-coding-string (json-encode (gptel--request-data prompts)) 'utf-8)))
     (pcase-let ((`(,_ . ,response-buffer)
                  (aio-await
                   (aio-url-retrieve "https://api.openai.com/v1/chat/completions"))))

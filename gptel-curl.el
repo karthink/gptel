@@ -45,11 +45,7 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
           (list "--location" "--silent" "--compressed" "--disable"))
          (url "https://api.openai.com/v1/chat/completions")
          (data (encode-coding-string
-                (json-encode
-                 `(:model "gpt-3.5-turbo"
-                   ;; :temperature 1.0
-                   ;; :top_p 1.0
-                   :messages [,@prompts]))
+                (json-encode (gptel--request-data prompts))
                 'utf-8))
          (api-key
           (cond
