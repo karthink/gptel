@@ -3,7 +3,7 @@
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur
-;; Version: 0.05
+;; Version: 0.10
 ;; Package-Requires: ((emacs "27.1") (aio "1.0"))
 ;; Keywords: convenience
 ;; URL: https://github.com/karthink/gptel
@@ -49,6 +49,7 @@
 ;;; Code:
 (declare-function markdown-mode "markdown-mode")
 (declare-function gptel-curl-get-response "gptel-curl")
+(declare-function gptel-send-menu "gptel-transient")
 
 (eval-when-compile
   (require 'subr-x)
@@ -89,7 +90,6 @@ When set to nil, it is inserted all at once.
                              'text-mode))
 (defvar gptel-prompt-string "### ")
 
-(aio-defun gptel-send ()
 ;; Model and interaction parameters
 (defvar-local gptel--system-message
   "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
@@ -108,8 +108,11 @@ When set to nil, it is inserted all at once.
   "Ensure VAL is a number."
   (if (stringp val) (string-to-number val) val))
 
+(aio-defun gptel-send (&optional arg)
   "Submit this prompt to ChatGPT."
-  (interactive)
+  (interactive "P")
+  (if (and arg (featurep 'gptel-transient))
+      (call-interactively #'gptel-send-menu)
   (message "Querying ChatGPT...")
   (setf (nth 1 header-line-format)
         (propertize " Waiting..." 'face 'warning))
