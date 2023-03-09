@@ -4,9 +4,8 @@
 
 ;; Author: Karthik Chikmagalur;; <karthikchikmagalur@gmail.com>
 ;; Keywords: convenience
-;; Version: 0.05
-;; Keywords: convenience
-;; URL: https://github.com/karthink/gptel
+
+;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -27,13 +26,14 @@
 
 ;;; Code:
 
+(require 'gptel)
+
 (eval-when-compile
   (require 'subr-x))
 (require 'map)
 (require 'json)
 (require 'aio)
 
-(defvar gptel-api-key)
 (defvar gptel--curl-process-alist nil
   "Alist of active GPTel curl requests.")
 
@@ -69,7 +69,8 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
     (push (format "-d%s" data) args)
     (nreverse (cons url args))))
 
-(defun gptel--curl-get-response (prompts)
+;;;###autoload
+(defun gptel-curl-get-response (prompts)
   "Retrieve response to PROMPTS."
   (with-current-buffer (generate-new-buffer "*gptel-curl*")
     (let* ((token (md5 (format "%s%s%s%s"

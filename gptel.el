@@ -48,7 +48,7 @@
 
 ;;; Code:
 (declare-function markdown-mode "markdown-mode")
-(declare-function gptel--curl-get-response "gptel-curl")
+(declare-function gptel-curl-get-response "gptel-curl")
 
 (eval-when-compile
   (require 'subr-x)
@@ -105,8 +105,8 @@ When set to nil, it is inserted all at once.
          (full-prompt (gptel--create-prompt))
          (response (aio-await
                     (funcall
-                     (if (and gptel-use-curl (require 'gptel-curl nil t))
-                          #'gptel--curl-get-response #'gptel--get-response)
+                     (if gptel-use-curl
+                         #'gptel-curl-get-response #'gptel--get-response)
                      full-prompt)))
          (content-str (plist-get response :content))
          (status-str  (plist-get response :status)))
