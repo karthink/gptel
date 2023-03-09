@@ -57,6 +57,7 @@
 (require 'aio)
 (require 'json)
 (require 'map)
+(require 'text-property-search)
 
 (defcustom gptel-api-key nil
   "An OpenAI API key (string).
@@ -82,7 +83,6 @@ When set to nil, it is inserted all at once.
   :group 'gptel
   :type 'boolean)
 
-(defvar-local gptel--prompt-markers nil)
 (defvar gptel-default-session "*ChatGPT*")
 (defvar gptel-default-mode (if (featurep 'markdown-mode)
                                'markdown-mode
@@ -90,30 +90,19 @@ When set to nil, it is inserted all at once.
 (defvar gptel-prompt-string "### ")
 
 (aio-defun gptel-send ()
+(defvar-local gptel--num-messages-to-send nil)
+
+(defsubst gptel--numberize (val)
+  "Ensure VAL is a number."
+  (if (stringp val) (string-to-number val) val))
+
   "Submit this prompt to ChatGPT."
   (interactive)
   (message "Querying ChatGPT...")
-  (unless (and gptel--prompt-markers
-               (equal (marker-position (car gptel--prompt-markers))
-                      (point-max)))
-    (push (set-marker (make-marker) (point-max))
-          gptel--prompt-markers))
   (setf (nth 1 header-line-format)
         (propertize " Waiting..." 'face 'warning))
   (let* ((gptel-buffer (current-buffer))
-         (full-prompt
-          (save-excursion
-            (goto-char (point-min))
-            (cl-loop with role = "user"
-                     for (pm rm . _) on gptel--prompt-markers
-                     collect
-                     (list :role role
-                           :content
-                           (string-trim (buffer-substring-no-properties (or rm (point-min)) pm)
-                                        "[*# \t\n\r]+"))
-                     into prompts
-                     do (setq role (if (equal role "user") "assistant" "user"))
-                     finally return (nreverse prompts))))
+         (full-prompt (gptel--create-prompt))
          (response (aio-await
                     (funcall
                      (if (and gptel-use-curl (require 'gptel-curl nil t))
@@ -124,6 +113,7 @@ When set to nil, it is inserted all at once.
     (if content-str
             (with-current-buffer gptel-buffer
               (save-excursion
+                (put-text-property 0 (length content-str) 'gptel 'response content-str)
                 (message "Querying ChatGPT... done.")
                 (goto-char (point-max))
                 (display-buffer (current-buffer)
@@ -133,15 +123,56 @@ When set to nil, it is inserted all at once.
                 (if gptel-playback
                     (gptel--playback (current-buffer) content-str (point))
                   (insert content-str))
-                (push (set-marker (make-marker) (point))
-                      gptel--prompt-markers)
                 (insert "\n\n" gptel-prompt-string)
                 (unless gptel-playback
                   (setf (nth 1 header-line-format)
                         (propertize " Ready" 'face 'success)))))
           (setf (nth 1 header-line-format)
                 (propertize (format " Response Error: %s" status-str)
-                            'face 'error)))))
+                            'face 'error))))))
+
+(defun gptel--create-prompt ()
+  "Return a full conversation prompt from the contents of this buffer.
+
+If `gptel--num-messages-to-send' is set, limit to that many
+recent exchanges.
+
+If the region is active limit the prompt to the region contents
+instead."
+  (save-excursion
+    (save-restriction
+      (when (use-region-p)
+        (narrow-to-region (region-beginning) (region-end)))
+      (goto-char (point-max))
+      (let ((max-entries (and gptel--num-messages-to-send
+                              (* 2 (gptel--numberize
+                                    gptel--num-messages-to-send))))
+            (prop) (prompts))
+        (while (and
+                (or (not max-entries) (>= max-entries 0))
+                (setq prop (text-property-search-backward
+                            'gptel 'response
+                            (when (get-char-property (max (point-min) (1- (point)))
+                                                     'gptel)
+                              t))))
+          (push (list :role (if (prop-match-value prop) "assistant" "user")
+                      :content
+                      (string-trim
+                       (buffer-substring-no-properties (prop-match-beginning prop)
+                                                       (prop-match-end prop))
+                       "[*# \t\n\r]+"))
+                prompts)
+          (and max-entries (cl-decf max-entries)))
+        (cons (list :role "system"
+                    :content
+                    (concat
+                     (when (eq major-mode 'org-mode)
+                       (concat
+                        "In this conversation, format your responses as in an org-mode buffer in Emacs."
+                        " Do NOT use Markdown. I repeat, use org-mode markup and not markdown.\n"))
+                     gptel--system-message))
+              prompts)))))
+
 
 (aio-defun gptel--get-response (prompts)
   "Fetch response for PROMPTS from ChatGPT.
