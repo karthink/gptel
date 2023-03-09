@@ -34,10 +34,10 @@
 (require 'json)
 (require 'aio)
 
-(defvar gptel--curl-process-alist nil
+(defvar gptel-curl--process-alist nil
   "Alist of active GPTel curl requests.")
 
-(defun gptel--curl-get-args (prompts token)
+(defun gptel-curl--get-args (prompts token)
   "Produce list of arguments for calling Curl.
 
 PROMPTS is the data to send, TOKEN is a unique identifier."
@@ -72,36 +72,36 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
     (let* ((token (md5 (format "%s%s%s%s"
                                (random) (emacs-pid) (user-full-name)
                                (recent-keys))))
-           (args (gptel--curl-get-args prompts token))
+           (args (gptel-curl--get-args prompts token))
            (process (apply #'start-process "gptel-curl" (current-buffer)
                            "curl" args))
            (promise (aio-promise))
            (cb (lambda (result)
                  (aio-resolve promise (lambda () result))
                  (setf (alist-get process
-                                  gptel--curl-process-alist nil 'remove)
+                                  gptel-curl--process-alist nil 'remove)
                        nil))))
       (prog1 promise
         (set-process-query-on-exit-flag process nil)
-        (setf (alist-get process gptel--curl-process-alist)
+        (setf (alist-get process gptel-curl--process-alist)
               (list :callback cb :token token))
-        (set-process-sentinel process #'gptel--curl-sentinel)))))
+        (set-process-sentinel process #'gptel-curl--sentinel)))))
 
-(defun gptel--curl-sentinel (process status)
+(defun gptel-curl--sentinel (process status)
   "Process sentinel for GPTel curl requests.
 
 PROCESS and STATUS are process parameters."
   (let ((proc-buf (process-buffer process)))
     (if-let* ((ok-p (equal status "finished\n"))
-              (proc-info (alist-get process gptel--curl-process-alist))
+              (proc-info (alist-get process gptel-curl--process-alist))
               (proc-token (plist-get proc-info :token))
-              (content (gptel--curl-parse-response proc-buf proc-token)))
+              (content (gptel-curl--parse-response proc-buf proc-token)))
         (funcall (plist-get proc-info :callback) content)
       ;; Failed
       (funcall (plist-get proc-info :callback) nil))
     (kill-buffer proc-buf)))
 
-(defun gptel--curl-parse-response (buf token)
+(defun gptel-curl--parse-response (buf token)
   "Parse the buffer BUF with curl's response.
 
 TOKEN is used to disambiguate multiple requests in a single
