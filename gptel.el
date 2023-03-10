@@ -4,7 +4,7 @@
 
 ;; Author: Karthik Chikmagalur
 ;; Version: 0.10
-;; Package-Requires: ((emacs "27.1") (aio "1.0"))
+;; Package-Requires: ((emacs "27.1") (aio "1.0") (transient "0.3.7"))
 ;; Keywords: convenience
 ;; URL: https://github.com/karthink/gptel
 
