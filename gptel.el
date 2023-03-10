@@ -50,6 +50,7 @@
 (declare-function markdown-mode "markdown-mode")
 (declare-function gptel-curl-get-response "gptel-curl")
 (declare-function gptel-send-menu "gptel-transient")
+(declare-function pulse-momentary-highlight-region "pulse")
 
 (eval-when-compile
   (require 'subr-x)
@@ -138,7 +139,9 @@ When set to nil, it is inserted all at once.
             (unless (bobp) (insert "\n\n"))
             (if gptel-playback
                 (gptel--playback (current-buffer) content-str (point))
-              (insert content-str))
+              (let ((p (point)))
+                (insert content-str)
+                (pulse-momentary-highlight-region p (point))))
             (insert "\n\n" gptel-prompt-string)
             (unless gptel-playback
               (setf (nth 1 header-line-format)
