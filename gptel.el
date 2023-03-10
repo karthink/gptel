@@ -286,18 +286,23 @@ Return the message received."
     map))
 
 ;;;###autoload
-(defun gptel (name &optional api-key)
+(defun gptel (name &optional api-key initial)
   "Switch to or start ChatGPT session with NAME.
 
 With a prefix arg, query for a (new) session name.
 
-Ask for API-KEY if `gptel-api-key' is unset."
+Ask for API-KEY if `gptel-api-key' is unset.
+
+If region is active, use it as the INITIAL prompt."
   (interactive (list (if current-prefix-arg
                          (read-string "Session name: " (generate-new-buffer-name gptel-default-session))
                        gptel-default-session)
                      (or gptel-api-key
                          (setq gptel-api-key
-                               (read-passwd "OpenAI API key: ")))))
+                               (read-passwd "OpenAI API key: ")))
+                     (and (use-region-p)
+                          (buffer-substring (region-beginning)
+                                            (region-end)))))
   (unless api-key
     (user-error "No API key available"))
   (with-current-buffer (get-buffer-create name)
@@ -308,7 +313,7 @@ Ask for API-KEY if `gptel-api-key' is unset."
       (visual-line-mode 1))
      (t (funcall gptel-default-mode)))
     (unless gptel-mode (gptel-mode 1))
-    (if (bobp) (insert gptel-prompt-string))
+    (if (bobp) (insert (or initial gptel-prompt-string)))
     (pop-to-buffer (current-buffer))
     (goto-char (point-max))
     (skip-chars-backward "\t\r\n")

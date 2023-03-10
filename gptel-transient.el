@@ -25,6 +25,7 @@
 ;;
 
 ;;; Code:
+(eval-when-compile (require 'cl-lib))
 (require 'gptel)
 (require 'transient)
 
@@ -163,8 +164,35 @@ will get progressively longer!"
              (read-from-minibuffer "Set temperature (0.0-2.0, leave empty for default): "
               (number-to-string gptel--temperature))))
 
+(transient-define-suffix gptel--suffix-send-existing ()
+  "Send query in existing chat session."
+  :if (lambda () (use-region-p))
+  :key "E"
+  :description "Send in existing session"
+  (interactive)
+  (when-let* ((this (buffer-name))
+              (prompt (buffer-substring (region-beginning)
+                                       (region-end)))
+              (buf
+               (completing-read
+                "Send query in buffer: " (mapcar #'buffer-name (buffer-list))
+                (lambda (buf) (and (buffer-local-value 'gptel-mode (get-buffer buf))
+                              (not (equal this buf)))))))
+    (with-current-buffer buf
+      (goto-char (point-max))
+      (insert prompt)
+      (pop-to-buffer buf))))
+
+(transient-define-suffix gptel--suffix-send-new ()
+  "Send query in new session."
+  :if (lambda () (use-region-p))
+  :description "Send in new session"
+  :key "N"
+  (interactive)
+  (let ((current-prefix-arg t)) (call-interactively #'gptel)))
+
 (transient-define-suffix gptel--suffix-system-message ()
-  "Set Establishing message sent to ChatGPT."
+  "Set directives sent to ChatGPT."
   :transient nil
   :description "Set custom directives"
   :key "h"
