@@ -25,21 +25,26 @@
 ;;
 
 ;;; Code:
+(eval-when-compile (require 'cl-lib))
 (require 'gptel)
 (require 'transient)
 
 ;;;###autoload
 (transient-define-prefix gptel-send-menu ()
      "Change parameters of prompt to send ChatGPT."
-     ["Parameters"
-      (gptel--infix-max-tokens)
-      (gptel--infix-num-messages-to-send)
-      (gptel--infix-temperature)
-      (gptel--infix-model)]
-     [:description (lambda () (format "Actions (Current directive: %s)"
-                    (truncate-string-to-width gptel--system-message 25 nil nil t)))
-      ("h" "Set directives for chat" gptel-system-prompt)
-      ("RET" "Send prompt" gptel-send)])
+     [:description
+      (lambda () (format "Directive:  %s"
+                    (truncate-string-to-width gptel--system-message 75 nil nil t)))
+      ("h" "Set directives for chat" gptel-system-prompt)]
+     [["Parameters"
+       (gptel--infix-max-tokens)
+       (gptel--infix-num-messages-to-send)
+       (gptel--infix-temperature)
+       (gptel--infix-model)]
+      ["Send"
+       (gptel--suffix-send-existing)
+       (gptel--suffix-send-new)
+       ("RET" "Send prompt" gptel-send)]])
 
 (transient-define-prefix gptel-system-prompt ()
   "Change the system prompt to send ChatGPT."
@@ -75,7 +80,7 @@ include."
   :description "Number of past messages to send"
   :class 'transient-lisp-variable
   :variable 'gptel--num-messages-to-send
-  :key "N"
+  :key "n"
   :prompt "Number of past messages to send (leave empty for all): "
   :reader 'transient-read-number-N+)
 
@@ -118,8 +123,35 @@ will get progressively longer!"
              (read-from-minibuffer "Set temperature (0.0-2.0, leave empty for default): "
               (number-to-string gptel--temperature))))
 
+(transient-define-suffix gptel--suffix-send-existing ()
+  "Send query in existing chat session."
+  :if (lambda () (use-region-p))
+  :key "E"
+  :description "Send in existing session"
+  (interactive)
+  (when-let* ((this (buffer-name))
+              (prompt (buffer-substring (region-beginning)
+                                       (region-end)))
+              (buf
+               (completing-read
+                "Send query in buffer: " (mapcar #'buffer-name (buffer-list))
+                (lambda (buf) (and (buffer-local-value 'gptel-mode (get-buffer buf))
+                              (not (equal this buf)))))))
+    (with-current-buffer buf
+      (goto-char (point-max))
+      (insert prompt)
+      (pop-to-buffer buf))))
+
+(transient-define-suffix gptel--suffix-send-new ()
+  "Send query in new session."
+  :if (lambda () (use-region-p))
+  :description "Send in new session"
+  :key "N"
+  (interactive)
+  (let ((current-prefix-arg t)) (call-interactively #'gptel)))
+
 (transient-define-suffix gptel--suffix-system-message ()
-  "Set Establishing message sent to ChatGPT."
+  "Set directives sent to ChatGPT."
   :transient nil
   :description "Set custom directives"
   :key "h"
