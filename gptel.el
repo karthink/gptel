@@ -262,7 +262,10 @@ Ask for API-KEY if `gptel-api-key' is unset."
                                (read-passwd "OpenAI API key: ")))))
   (unless api-key
     (user-error "No API key available"))
-  (with-current-buffer (get-buffer-create name)
+  (gptel--ensure-buffer (get-buffer-create name)))
+
+(defun gptel--ensure-buffer (buffer)
+  (with-current-buffer buffer
     (cond ;Set major mode
      ((eq major-mode gptel-default-mode))
      ((eq gptel-default-mode 'text-mode)
@@ -275,12 +278,17 @@ Ask for API-KEY if `gptel-api-key' is unset."
     (goto-char (point-max))
     (skip-chars-backward "\t\r\n")
     (or header-line-format
-      (setq header-line-format
-            (list (concat (propertize " " 'display '(space :align-to 0))
-                          (format "%s" (buffer-name)))
-                  (propertize " Ready" 'face 'success))))
+        (setq header-line-format
+              (list (concat (propertize " " 'display '(space :align-to 0))
+                            (format "%s" (buffer-name)))
+                    (propertize " Ready" 'face 'success))))
     (message "Send your query with %s!"
              (substitute-command-keys "\\[gptel-send]"))))
+
+;;;###autoload
+(defun gptel-enable-current-buffer ()
+  (interactive)
+  (gptel--ensure-buffer (current-buffer)))
 
 (defun gptel--playback (buf content-str start-pt)
   "Playback CONTENT-STR in BUF.
