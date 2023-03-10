@@ -6,7 +6,7 @@ GPTel is a simple, no-frills ChatGPT client for Emacs.
 
 - Requires an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
 - No external dependencies, only Emacs. Also, it's async.
-- Interaction is in a Markdown (or text) buffer.
+- Interaction is in a Markdown, Org or text buffer.
 - Supports conversations (not just one-off queries) and multiple independent sessions.
 - You can go back and edit your previous prompts, or even ChatGPT's previous responses when continuing a conversation. These will be fed back to ChatGPT.
 
@@ -39,6 +39,8 @@ Procure an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
 
 Optional: Set =gptel-api-key= to the key or to a function that returns the key (more secure).
 
+*** In a dedicated buffer:
+
 Run =M-x gptel= to start or switch to the ChatGPT buffer. It will ask you for the key if you skipped the previous step.
 
 Run it with a prefix-arg (=C-u M-x gptel=) to start a new session.
@@ -46,6 +48,14 @@ Run it with a prefix-arg (=C-u M-x gptel=) to start a new session.
 In the gptel buffer, send your prompt with =M-x gptel-send=, bound to =C-c RET=.
 
 That's it. You can go back and edit previous prompts and responses if you want.
+
+The default mode is =markdown-mode= if available, else =text-mode=.  You can set =gptel-default-mode= to =org-mode= if desired.
+
+*** In any buffer:
+
+Select a region of text, call =M-x gptel-send=.
+
+The response will be inserted below your region.  You can select both the original prompt and the resposne and call =M-x gptel-send= again to continue the conversation.
 
 ** Why another ChatGPT client?
 
@@ -65,6 +75,3 @@ Maybe all of these, I don't know yet. As a start, I wanted to replicate the web 
 ** Will you add feature X?
 
 Maybe, I'd like to experiment a bit first.
-
-- Support for Org Mode instead of Markdown, including source blocks etc, is planned.
-- I'm experimenting with using it in code buffers.

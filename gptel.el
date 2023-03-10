@@ -85,6 +85,20 @@ When set to nil, it is inserted all at once.
   :group 'gptel
   :type 'boolean)
 
+(defcustom gptel-response-filter-functions
+  '(gptel--convert-org)
+  "Abnormal hook for transforming the response from ChatGPT.
+
+This is useful if you want to format the response in some way,
+such as filling paragraphs, adding annotations or recording
+information in the response like links.
+
+Each function in this hook receives two arguments, the response
+string to transform and the ChatGPT interaction buffer. It should
+return the transformed string."
+  :group 'gptel
+  :type 'hook)
+
 (defvar gptel-default-session "*ChatGPT*")
 (defvar gptel-default-mode (if (featurep 'markdown-mode)
                                'markdown-mode
@@ -130,6 +144,8 @@ When set to nil, it is inserted all at once.
          (status-str  (plist-get response :status)))
     (if content-str
         (with-current-buffer gptel-buffer
+          (setq content-str (gptel--transform-response
+                             content-str gptel-buffer))
           (save-excursion
             (put-text-property 0 (length content-str) 'gptel 'response content-str)
             (message "Querying ChatGPT... done.")
@@ -185,13 +201,7 @@ instead."
                 prompts)
           (and max-entries (cl-decf max-entries)))
         (cons (list :role "system"
-                    :content
-                    (concat
-                     (when (eq major-mode 'org-mode)
-                       (concat
-                        "In this conversation, format your responses as in an org-mode buffer in Emacs."
-                        " Do NOT use Markdown. I repeat, use org-mode markup and not markdown.\n"))
-                     gptel--system-message))
+                    :content gptel--system-message)
               prompts)))))
 
 (defun gptel--request-data (prompts)
@@ -205,7 +215,30 @@ instead."
       (plist-put prompts-plist :max_tokens (gptel--numberize gptel--max-tokens)))
     prompts-plist))
 
-(aio-defun gptel--get-response (prompts)
+;; TODO: Use `run-hook-wrapped' with an accumulator instead to handle
+;; buffer-local hooks, etc.
+(defun gptel--transform-response (content-str buffer)
+  (let ((filtered-str content-str))
+    (dolist (filter-func gptel-response-filter-functions filtered-str)
+      (condition-case nil
+          (when (functionp filter-func)
+            (setq filtered-str
+                  (funcall filter-func filtered-str buffer)))
+        (error
+         (display-warning '(gptel filter-functions)
+                          (format "Function %S returned an error"
+                                  filter-func)))))))
+
+(defun gptel--convert-org (content buffer)
+  "Transform CONTENT according to required major-mode.
+
+Currently only org-mode is handled.
+
+BUFFER is the interaction buffer for ChatGPT."
+  (pcase (buffer-local-value 'major-mode buffer)
+    ('org-mode (gptel--convert-markdown->org content))
+    (_ content)))
+
 (aio-defun gptel--url-get-response (prompts)
   "Fetch response for PROMPTS from ChatGPT.
 
@@ -286,6 +319,48 @@ Ask for API-KEY if `gptel-api-key' is unset."
                   (propertize " Ready" 'face 'success))))
     (message "Send your query with %s!"
              (substitute-command-keys "\\[gptel-send]"))))
+
+(defun gptel--convert-markdown->org (str)
+  "Convert string STR from markdown to org markup.
+
+This is a very basic converter that handles only a few markup
+elements."
+  (interactive)
+  (with-temp-buffer
+    (insert str)
+    (goto-char (point-min))
+    (while (re-search-forward "`\\|\\*\\{1,2\\}\\|_" nil t)
+      (pcase (match-string 0)
+        ("`" (if (looking-at "``")
+                 (progn (backward-char)
+                        (delete-char 3)
+                        (insert "#+begin_src ")
+                        (when (re-search-forward "^```" nil t)
+                          (replace-match "#+end_src")))
+               (replace-match "=")))
+        ("**" (cond
+               ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)")
+                (delete-char 1))
+               ((looking-back "\\(?:[[:word:]]\\|\s\\)\\*\\{2\\}"
+                              (max (- (point) 3) (point-min)))
+                (backward-delete-char 1))))
+        ((or "_" "*")
+         (if (save-match-data
+               (and (looking-back "\\(?:[[:space:]]\\|\s\\)\\(?:_\\|\\*\\)"
+                                  (max (- (point) 2) (point-min)))
+                    (not (looking-at "[[:space:]]\\|\s"))))
+             ;; Possible beginning of italics
+             (and
+              (save-excursion
+                (when (and (re-search-forward (regexp-quote (match-string 0)) nil t)
+                           (looking-at "[[:space]]\\|\s")
+                           (not (looking-back "\\(?:[[:space]]\\|\s\\)\\(?:_\\|\\*\\)"
+                                              (max (- (point) 2) (point-min)))))
+                  (backward-delete-char 1)
+                  (insert "/") t))
+              (progn (backward-delete-char 1)
+                     (insert "/")))))))
+    (buffer-string)))
 
 (defun gptel--playback (buf content-str start-pt)
   "Playback CONTENT-STR in BUF.
