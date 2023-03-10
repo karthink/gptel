@@ -96,7 +96,7 @@ When set to nil, it is inserted all at once.
   "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
 (defvar gptel--system-message-alist
   `((default . ,gptel--system-message)
-    (programming . "You are a large language model and a careful programmer. Respond only with code unless explicitly asked.")
+    (programming . "You are a large language model and a careful programmer. Provide code and only code as output without any additional text, prompt or note.")
     (writing . "You are a large language model and a writing assistant. Respond concisely.")
     (chat . "You are a large language model and a conversation partner. Respond concisely."))
   "Prompt templates (directives).")
@@ -117,13 +117,14 @@ When set to nil, it is inserted all at once.
   (message "Querying ChatGPT...")
   (and header-line-format
     (setf (nth 1 header-line-format)
-          (propertize " Waiting..." 'face 'warning)))
+          (propertize " Waiting..." 'face 'warning))
+    (force-mode-line-update))
   (let* ((gptel-buffer (current-buffer))
          (full-prompt (gptel--create-prompt))
          (response (aio-await
                     (funcall
                      (if gptel-use-curl
-                         #'gptel-curl-get-response #'gptel--get-response)
+                         #'gptel-curl-get-response #'gptel--url-get-response)
                      full-prompt)))
          (content-str (plist-get response :content))
          (status-str  (plist-get response :status)))
@@ -205,6 +206,7 @@ instead."
     prompts-plist))
 
 (aio-defun gptel--get-response (prompts)
+(aio-defun gptel--url-get-response (prompts)
   "Fetch response for PROMPTS from ChatGPT.
 
 Return the message received."
@@ -224,10 +226,10 @@ Return the message received."
                  (aio-await
                   (aio-url-retrieve "https://api.openai.com/v1/chat/completions"))))
       (prog1
-          (gptel--parse-response response-buffer)
+          (gptel--url-parse-response response-buffer)
         (kill-buffer response-buffer)))))
 
-(defun gptel--parse-response (response-buffer)
+(defun gptel--url-parse-response (response-buffer)
   "Parse response in RESPONSE-BUFFER."
   (when (buffer-live-p response-buffer)
     (with-current-buffer response-buffer
