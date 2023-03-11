@@ -50,7 +50,8 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
          (api-key
           (cond
            ((stringp gptel-api-key) gptel-api-key)
-           ((functionp gptel-api-key) (funcall gptel-api-key))))
+           ((functionp gptel-api-key) (funcall gptel-api-key))
+           (t (setq gptel-api-key (read-passwd "OpenAI API key: ")))))
          (headers
           `(("Content-Type" . "application/json")
             ("Authorization" . ,(concat "Bearer " api-key)))))

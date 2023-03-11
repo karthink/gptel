@@ -278,7 +278,8 @@ Return the message received."
          (api-key
           (cond
            ((stringp gptel-api-key) gptel-api-key)
-           ((functionp gptel-api-key) (funcall gptel-api-key))))
+           ((functionp gptel-api-key) (funcall gptel-api-key))
+           (t (setq gptel-api-key (read-passwd "OpenAI API key: ")))))
          (url-request-method "POST")
          (url-request-extra-headers
          `(("Content-Type" . "application/json")
