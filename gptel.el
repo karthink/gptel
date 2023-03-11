@@ -120,6 +120,7 @@ return the transformed string."
 (defvar-local gptel--num-messages-to-send nil)
 
 (defun gptel--update-header-line (msg face)
+  "Update header line with status MSG in FACE."
   (and header-line-format
     (setf (nth 1 header-line-format)
           (propertize msg 'face face))
@@ -129,6 +130,25 @@ return the transformed string."
   "Ensure VAL is a number."
   (if (stringp val) (string-to-number val) val))
 
+(defvar-local gptel--old-header-line nil)
+(define-minor-mode gptel-mode
+  "Minor mode for interacting with ChatGPT."
+  :glboal nil
+  :lighter " GPT"
+  :keymap
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c RET") #'gptel-send)
+    map)
+  (if gptel-mode
+      (setq gptel--old-header-line header-line-format
+            header-line-format
+            (list (concat (propertize " " 'display '(space :align-to 0))
+                          (format "%s" (buffer-name)))
+                  (propertize " Ready" 'face 'success)))
+    (setq header-line-format gptel--old-header-line)))
+
+;; TODO: Handle read-only buffers. Should we spawn a new buffer automatically?
+;; TODO: Handle multiple requests(#15). (Only one request from one buffer at a time?)
 (aio-defun gptel-send (&optional arg)
   "Submit this prompt to ChatGPT."
   (interactive "P")
@@ -224,6 +244,10 @@ there."
 ;; TODO: Use `run-hook-wrapped' with an accumulator instead to handle
 ;; buffer-local hooks, etc.
 (defun gptel--transform-response (content-str buffer)
+  "Filter CONTENT-STR through `gptel-response-filter-functions`.
+
+BUFFER is passed along with CONTENT-STR to each function in this
+hook."
   (let ((filtered-str content-str))
     (dolist (filter-func gptel-response-filter-functions filtered-str)
       (condition-case nil
@@ -238,7 +262,7 @@ there."
 (defun gptel--convert-org (content buffer)
   "Transform CONTENT according to required major-mode.
 
-Currently only org-mode is handled.
+Currently only `org-mode' is handled.
 
 BUFFER is the interaction buffer for ChatGPT."
   (pcase (buffer-local-value 'major-mode buffer)
@@ -282,15 +306,6 @@ Return the message received."
                 :status status)
         (list :content nil :status status)))))
 
-(define-minor-mode gptel-mode
-  "Minor mode for interacting with ChatGPT."
-  :glboal nil
-  :lighter " GPT"
-  :keymap
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-c RET") #'gptel-send)
-    map))
-
 ;;;###autoload
 (defun gptel (name &optional api-key initial)
   "Switch to or start ChatGPT session with NAME.
@@ -323,11 +338,6 @@ If region is active, use it as the INITIAL prompt."
     (pop-to-buffer (current-buffer))
     (goto-char (point-max))
     (skip-chars-backward "\t\r\n")
-    (or header-line-format
-      (setq header-line-format
-            (list (concat (propertize " " 'display '(space :align-to 0))
-                          (format "%s" (buffer-name)))
-                  (propertize " Ready" 'face 'success))))
     (message "Send your query with %s!"
              (substitute-command-keys "\\[gptel-send]"))))
 
