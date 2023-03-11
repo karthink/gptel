@@ -29,7 +29,7 @@
 (require 'gptel)
 (require 'transient)
 
-;;;###autoload
+;;;###autoload (autoload 'gptel-send-menu "gptel-transient" nil t)
 (transient-define-prefix gptel-send-menu ()
      "Change parameters of prompt to send ChatGPT."
      [:description
