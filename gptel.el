@@ -119,6 +119,12 @@ return the transformed string."
 (defvar-local gptel--temperature 1.0)
 (defvar-local gptel--num-messages-to-send nil)
 
+(defun gptel--update-header-line (msg face)
+  (and header-line-format
+    (setf (nth 1 header-line-format)
+          (propertize msg 'face face))
+    (force-mode-line-update)))
+
 (defsubst gptel--numberize (val)
   "Ensure VAL is a number."
   (if (stringp val) (string-to-number val) val))
@@ -129,12 +135,10 @@ return the transformed string."
   (if (and arg (require 'gptel-transient nil t))
       (call-interactively #'gptel-send-menu)
   (message "Querying ChatGPT...")
-  (and header-line-format
-    (setf (nth 1 header-line-format)
-          (propertize " Waiting..." 'face 'warning))
-    (force-mode-line-update))
-  (let* ((gptel-buffer (current-buffer))
-         (full-prompt (gptel--create-prompt))
+  (gptel--update-header-line " Waiting..." 'warning)
+  (let* ((response-pt (point-marker))
+         (gptel-buffer (current-buffer))
+         (full-prompt (gptel--create-prompt response-pt))
          (response (aio-await
                     (funcall
                      (if gptel-use-curl
@@ -149,38 +153,40 @@ return the transformed string."
           (save-excursion
             (put-text-property 0 (length content-str) 'gptel 'response content-str)
             (message "Querying ChatGPT... done.")
-            (goto-char (point-max))
+            (goto-char response-pt)
             (display-buffer (current-buffer)
                             '((display-buffer-reuse-window
                                display-buffer-use-some-window)))
-            (unless (bobp) (insert "\n\n"))
+            (unless (bobp) (insert-before-markers-and-inherit "\n\n"))
             (if gptel-playback
-                (gptel--playback (current-buffer) content-str (point))
+                (gptel--playback gptel-buffer content-str response-pt)
               (let ((p (point)))
                 (insert content-str)
-                (pulse-momentary-highlight-region p (point))))
-            (insert "\n\n" gptel-prompt-string)
-            (unless gptel-playback
-              (setf (nth 1 header-line-format)
-                    (propertize " Ready" 'face 'success)))))
-      (and header-line-format
-           (setf (nth 1 header-line-format)
-                 (propertize (format " Response Error: %s" status-str)
-                             'face 'error)))))))
+                (pulse-momentary-highlight-region p (point)))
+              (when gptel-mode
+                (insert "\n\n" gptel-prompt-string)
+                (gptel--update-header-line " Ready" 'success))))
+          (goto-char (- (point) 2)))
+      (gptel--update-header-line
+       (format " Response Error: %s" status-str) 'error)))))
 
-(defun gptel--create-prompt ()
+(defun gptel--create-prompt (&optional prompt-end)
   "Return a full conversation prompt from the contents of this buffer.
 
 If `gptel--num-messages-to-send' is set, limit to that many
 recent exchanges.
 
 If the region is active limit the prompt to the region contents
-instead."
+instead.
+
+If PROMPT-END (a marker) is provided, end the prompt contents
+there."
   (save-excursion
     (save-restriction
-      (when (use-region-p)
-        (narrow-to-region (region-beginning) (region-end)))
-      (goto-char (point-max))
+      (if (use-region-p)
+          (progn (narrow-to-region (region-beginning) (region-end))
+                 (goto-char (point-max)))
+        (goto-char (or prompt-end (point-max))))
       (let ((max-entries (and gptel--num-messages-to-send
                               (* 2 (gptel--numberize
                                     gptel--num-messages-to-send))))
@@ -374,7 +380,7 @@ Begin at START-PT."
   (let ((handle (gensym "gptel-change-group-handle--"))
         (playback-timer (gensym "gptel--playback-"))
         (content-length (length content-str))
-        (idx 0) (pt (make-marker)))
+        (idx 0) (pt (copy-marker start-pt t)))
     (setf (symbol-value handle) (prepare-change-group buf))
     (activate-change-group (symbol-value handle))
     (setf (symbol-value playback-timer)
@@ -384,18 +390,16 @@ Begin at START-PT."
              (with-current-buffer buf
                (if (>= content-length idx)
                    (progn
-                     (when (= idx 0) (set-marker pt start-pt))
                      (goto-char pt)
-                     (insert-before-markers-and-inherit
+                     (insert
                       (cl-subseq
                        content-str idx
                        (min content-length (+ idx 16))))
                      (setq idx (+ idx 16)))
-                 (when start-pt (goto-char (- start-pt 2)))
-                 (and header-line-format
-                      (setf (nth 1 header-line-format)
-                            (propertize " Ready" 'face 'success))
-                      (force-mode-line-update))
+                 (when gptel-mode
+                   (insert "\n\n" gptel-prompt-string)
+                   (gptel--update-header-line " Ready" 'success))
+                 (when start-pt (goto-char (marker-position start-pt)))
                  (accept-change-group (symbol-value handle))
                  (undo-amalgamate-change-group (symbol-value handle))
                  (cancel-timer (symbol-value playback-timer)))))))
