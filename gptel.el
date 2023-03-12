@@ -315,7 +315,8 @@ With a prefix arg, query for a (new) session name.
 
 Ask for API-KEY if `gptel-api-key' is unset.
 
-If region is active, use it as the INITIAL prompt."
+If region is active, use it as the INITIAL prompt. Returns the
+buffer created or switched to."
   (interactive (list (if current-prefix-arg
                          (read-string "Session name: " (generate-new-buffer-name gptel-default-session))
                        gptel-default-session)

@@ -37,7 +37,7 @@
                     (truncate-string-to-width
                      gptel--system-message (max (- (window-width) 14) 20) nil nil t)))
       ("h" "Set directives for chat" gptel-system-prompt)]
-     [["Parameters"
+     [["Session Parameters"
        (gptel--infix-max-tokens)
        (gptel--infix-num-messages-to-send)
        (gptel--infix-temperature)
@@ -147,7 +147,7 @@ will get progressively longer!"
   :description "GPT Model: "
   :class 'transient-lisp-variable
   :variable 'gptel--model
-  :key "M"
+  :key "m"
   :choices '("gpt-3.5-turbo-0301" "gpt-3.5-turbo")
   :reader (lambda (prompt &rest _)
             (completing-read
@@ -166,7 +166,7 @@ will get progressively longer!"
 
 (transient-define-suffix gptel--suffix-send-existing ()
   "Send query in existing chat session."
-  :if (lambda () (use-region-p))
+  :if #'use-region-p
   :key "E"
   :description "Send in existing session"
   (interactive)
@@ -181,15 +181,19 @@ will get progressively longer!"
     (with-current-buffer buf
       (goto-char (point-max))
       (insert prompt)
-      (pop-to-buffer buf))))
+      (gptel-send))
+    (pop-to-buffer buf)))
 
 (transient-define-suffix gptel--suffix-send-new ()
   "Send query in new session."
-  :if (lambda () (use-region-p))
+  :if #'use-region-p
   :description "Send in new session"
   :key "N"
   (interactive)
-  (let ((current-prefix-arg t)) (call-interactively #'gptel)))
+  (let* ((current-prefix-arg t)
+         (buf (call-interactively #'gptel)))
+    (and (bufferp buf)
+         (with-current-buffer buf (gptel-send)))))
 
 (transient-define-suffix gptel--suffix-system-message ()
   "Set directives sent to ChatGPT."
