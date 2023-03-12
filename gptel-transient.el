@@ -160,9 +160,9 @@ will get progressively longer!"
   :class 'transient-lisp-variable
   :variable 'gptel--temperature
   :key "t"
-  :reader '(lambda (_ initial history)
-             (read-from-minibuffer "Set temperature (0.0-2.0, leave empty for default): "
-              (number-to-string gptel--temperature))))
+  :reader (lambda (_ initial history)
+            (read-from-minibuffer "Set temperature (0.0-2.0, leave empty for default): "
+                                  (number-to-string gptel--temperature))))
 
 (transient-define-suffix gptel--suffix-send-existing ()
   "Send query in existing chat session."
@@ -215,9 +215,9 @@ will get progressively longer!"
        "# Example: You are a poet. Reply only in verse.\n\n")
       (set-marker msg-start (point))
       (insert (buffer-local-value 'gptel--system-message orig-buf))
-      (goto-char (line-beginning-position))
+      (beginning-of-line)
       (push-mark)
-      (goto-char (line-end-position))
+      (end-of-line)
       (activate-mark)
       (display-buffer (current-buffer)
                       `((display-buffer-below-selected)
