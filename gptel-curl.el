@@ -93,6 +93,9 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
 
 PROCESS and STATUS are process parameters."
   (let ((proc-buf (process-buffer process)))
+    (when gptel--debug
+      (with-current-buffer proc-buf
+        (clone-buffer "*gptel-error*" 'show)))
     (if-let* ((ok-p (equal status "finished\n"))
               (proc-info (alist-get process gptel-curl--process-alist))
               (proc-token (plist-get proc-info :token))

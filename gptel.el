@@ -114,6 +114,7 @@ return the transformed string."
     (writing . "You are a large language model and a writing assistant. Respond concisely.")
     (chat . "You are a large language model and a conversation partner. Respond concisely."))
   "Prompt templates (directives).")
+(defvar gptel--debug nil)
 (defvar-local gptel--max-tokens nil)
 (defvar-local gptel--model "gpt-3.5-turbo")
 (defvar-local gptel--temperature 1.0)
@@ -296,9 +297,13 @@ Return the message received."
 (defun gptel--url-parse-response (response-buffer)
   "Parse response in RESPONSE-BUFFER."
   (when (buffer-live-p response-buffer)
+    (when gptel--debug
+      (with-current-buffer response-buffer
+        (clone-buffer "*gptel-error*" 'show)))
     (with-current-buffer response-buffer
       (if-let* ((status (buffer-substring (line-beginning-position) (line-end-position)))
                 ((string-match-p "200 OK" status))
+                (json-object-type 'plist)
                 (response (progn (forward-paragraph)
                                  (json-read)))
                 (content (map-nested-elt
