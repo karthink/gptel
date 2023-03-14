@@ -157,7 +157,10 @@ return the transformed string."
       (call-interactively #'gptel-send-menu)
   (message "Querying ChatGPT...")
   (gptel--update-header-line " Waiting..." 'warning)
-  (let* ((response-pt (point-marker))
+  (let* ((response-pt
+          (if (use-region-p)
+              (set-marker (make-marker) (region-end))
+            (point-marker)))
          (gptel-buffer (current-buffer))
          (full-prompt (gptel--create-prompt response-pt))
          (response (aio-await
@@ -308,7 +311,7 @@ Return the message received."
                                  (json-read)))
                 (content (map-nested-elt
                           response '(:choices 0 :message :content))))
-          (list :content (string-trim content)
+          (list :content (string-trim (decode-coding-string content 'utf-8))
                 :status status)
         (list :content nil :status status)))))
 
