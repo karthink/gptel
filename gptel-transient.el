@@ -122,8 +122,8 @@ include."
   :class 'transient-lisp-variable
   :variable 'gptel--num-messages-to-send
   :key "n"
-  :prompt "Number of past messages to include (leave empty for all): "
-  :reader 'transient-read-number-N+)
+  :prompt "Number of past messages to include for context (leave empty for all): "
+  :reader 'transient-read-number-N0)
 
 (transient-define-infix gptel--infix-max-tokens ()
   "Max tokens per response.
