@@ -6,7 +6,8 @@ GPTel is a simple, no-frills ChatGPT client for Emacs.
 
 - Requires an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
 - No external dependencies, only Emacs. Also, it's async.
-- Interaction is in a Markdown, Org or text buffer.
+- Interact with ChatGPT from any buffer in Emacs.
+- ChatGPT's responses are in Markdown or Org markup (configurable).
 - Supports conversations (not just one-off queries) and multiple independent sessions.
 - You can go back and edit your previous prompts, or even ChatGPT's previous responses when continuing a conversation. These will be fed back to ChatGPT.
 
@@ -39,13 +40,15 @@ Procure an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
 
 Optional: Set =gptel-api-key= to the key or to a function that returns the key (more secure).
 
-*** In a dedicated buffer:
+*** In a dedicated chat buffer:
 
-Run =M-x gptel= to start or switch to the ChatGPT buffer. It will ask you for the key if you skipped the previous step.
+1. Run =M-x gptel= to start or switch to the ChatGPT buffer. It will ask you for the key if you skipped the previous step. Run it with a prefix-arg (=C-u M-x gptel=) to start a new session.
 
-Run it with a prefix-arg (=C-u M-x gptel=) to start a new session.
+2. In the gptel buffer, send your prompt with =M-x gptel-send=, bound to =C-c RET=.
 
-In the gptel buffer, send your prompt with =M-x gptel-send=, bound to =C-c RET=.
+3. Set chat parameters by calling =gptel-send= with a prefix argument (=C-u C-c RET=):
+
+[[https://user-images.githubusercontent.com/8607532/224946059-9b918810-ab8b-46a6-b917-549d50c908f2.png]]
 
 That's it. You can go back and edit previous prompts and responses if you want.
 
@@ -56,6 +59,10 @@ The default mode is =markdown-mode= if available, else =text-mode=.  You can set
 Select a region of text, call =M-x gptel-send=.
 
 The response will be inserted below your region.  You can select both the original prompt and the resposne and call =M-x gptel-send= again to continue the conversation.
+
+You can select a region and start a dedicated session, or set chat parameters by calling =M-x gptel-send= with a prefix-arg:
+
+[[https://user-images.githubusercontent.com/8607532/224949877-08c44cb4-7bff-4ffc-963a-16fef7a4271f.png]]
 
 ** Why another ChatGPT client?
 
