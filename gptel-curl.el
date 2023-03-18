@@ -93,7 +93,7 @@ PROCESS and STATUS are process parameters."
     (when gptel--debug
       (with-current-buffer proc-buf
         (clone-buffer "*gptel-error*" 'show)))
-    (if-let* (((equal status "finished\n"))
+    (if-let* (((eq (process-status process) 'exit))
               (proc-info (alist-get process gptel-curl--process-alist))
               (proc-token (plist-get proc-info :token))
               (response (gptel-curl--parse-response proc-buf proc-token)))
