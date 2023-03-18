@@ -160,7 +160,7 @@ will get progressively longer!"
   :class 'transient-lisp-variable
   :variable 'gptel--temperature
   :key "t"
-  :reader (lambda (_ initial history)
+  :reader (lambda (&rest _)
             (read-from-minibuffer "Set temperature (0.0-2.0, leave empty for default): "
                                   (number-to-string gptel--temperature))))
 
