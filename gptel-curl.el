@@ -46,15 +46,9 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
          (data (encode-coding-string
                 (json-encode (gptel--request-data prompts))
                 'utf-8))
-         (api-key
-          (cond
-           ((stringp gptel-api-key) gptel-api-key)
-           ((functionp gptel-api-key) (funcall gptel-api-key))
-           (t (setq gptel-api-key (read-passwd "OpenAI API key: ")))))
          (headers
           `(("Content-Type" . "application/json")
-            ("Authorization" . ,(concat "Bearer " api-key)))))
-
+            ("Authorization" . ,(concat "Bearer " (gptel--api-key))))))
     (push (format "-X%s" "POST") args)
     (push (format "-w(%s . %%{size_header})" token) args)
     ;; (push (format "--keepalive-time %s" 240) args)
