@@ -26,7 +26,7 @@ Installing the =markdown-mode= package is optional.
 Installing the =markdown-mode= package is optional.
 
 *** Manual
-Install =emacs-aio=, (=M-x package-install⏎= =emacs-aio⏎=), then clone this repository and load this file:
+Clone this repository and load this file:
 #+begin_src emacs-lisp
 (add-to-list 'load-path "/path/to/gptel/")
 (require 'gptel)
