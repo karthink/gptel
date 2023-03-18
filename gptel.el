@@ -58,7 +58,7 @@
 (require 'map)
 (require 'text-property-search)
 
-(defcustom gptel-api-key nil
+(defcustom gptel-api-key #'gptel-api-key-from-auth-source
   "An OpenAI API key (string).
 
 Can also be a function of no arguments that returns an API
@@ -66,7 +66,7 @@ key (more secure)."
   :group 'gptel
   :type '(choice
           (string :tag "API key")
-          (function :tag "Function that retuns the API key")))
+          (function :tag "Function that returns the API key")))
 
 (defcustom gptel-playback nil
   "Whether responses from ChatGPT be played back in chunks.
@@ -116,6 +116,23 @@ return the transformed string."
 (defvar-local gptel--model "gpt-3.5-turbo")
 (defvar-local gptel--temperature 1.0)
 (defvar-local gptel--num-messages-to-send nil)
+
+(defun gptel-api-key-from-auth-source (&optional host user)
+  "Lookup api key in the auth source.
+By default, \"openai.com\" is used as HOST and \"apikey\" as USER."
+  (if-let ((secret (plist-get (car (auth-source-search
+                                    :host (or host "openai.com")
+                                    :user (or user "apikey")))
+                              :secret)))
+      (if (functionp secret) (funcall secret) secret)
+    (user-error "No `gptel-api-key' found in the auth source")))
+
+(defun gptel--api-key ()
+  "Get api key from `gptel-api-key'."
+  (pcase gptel-api-key
+    ((pred stringp) gptel-api-key)
+    ((pred functionp) (funcall gptel-api-key))
+    (_ (error "`gptel-api-key' is not set"))))
 
 (defun gptel--update-header-line (msg face)
   "Update header line with status MSG in FACE."
@@ -290,15 +307,10 @@ INFO is a plist with the following keys:
 - :insert-marker (marker at which to insert the response)."
   (let* ((inhibit-message t)
          (message-log-max nil)
-         (api-key
-          (cond
-           ((stringp gptel-api-key) gptel-api-key)
-           ((functionp gptel-api-key) (funcall gptel-api-key))
-           (t (setq gptel-api-key (read-passwd "OpenAI API key: ")))))
          (url-request-method "POST")
          (url-request-extra-headers
          `(("Content-Type" . "application/json")
-           ("Authorization" . ,(concat "Bearer " api-key))))
+           ("Authorization" . ,(concat "Bearer " (gptel--api-key)))))
         (url-request-data
          (encode-coding-string
           (json-encode (gptel--request-data (plist-get info :prompt)))
@@ -426,7 +438,7 @@ Begin at START-PT."
                    (progn
                      (goto-char pt)
                      (insert
-                      (cl-subseq
+                      (seq-subseq
                        content-str idx
                        (min content-length (+ idx 16))))
                      (setq idx (+ idx 16)))
