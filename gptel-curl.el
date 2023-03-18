@@ -32,7 +32,6 @@
   (require 'subr-x))
 (require 'map)
 (require 'json)
-(require 'aio)
 
 (defvar gptel-curl--process-alist nil
   "Alist of active GPTel curl requests.")
@@ -67,26 +66,24 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
     (nreverse (cons url args))))
 
 ;;;###autoload
-(defun gptel-curl-get-response (prompts)
-  "Retrieve response to PROMPTS."
+(defun gptel-curl-get-response (info)
+  "Retrieve response to prompt in INFO.
+
+INFO is a plist with the following keys:
+- :prompt (the prompt being sent)
+- :gptel-buffer (the gptel buffer)
+- :insert-marker (marker at which to insert the response)."
   (with-current-buffer (generate-new-buffer "*gptel-curl*")
     (let* ((token (md5 (format "%s%s%s%s"
                                (random) (emacs-pid) (user-full-name)
                                (recent-keys))))
-           (args (gptel-curl--get-args prompts token))
+           (args (gptel-curl--get-args (plist-get info :prompt) token))
            (process (apply #'start-process "gptel-curl" (current-buffer)
-                           "curl" args))
-           (promise (aio-promise))
-           (cb (lambda (result)
-                 (aio-resolve promise (lambda () result))
-                 (setf (alist-get process
-                                  gptel-curl--process-alist nil 'remove)
-                       nil))))
-      (prog1 promise
-        (set-process-query-on-exit-flag process nil)
-        (setf (alist-get process gptel-curl--process-alist)
-              (list :callback cb :token token))
-        (set-process-sentinel process #'gptel-curl--sentinel)))))
+                           "curl" args)))
+      (set-process-query-on-exit-flag process nil)
+      (setf (alist-get process gptel-curl--process-alist)
+            (nconc (list :token token) info))
+      (set-process-sentinel process #'gptel-curl--sentinel))))
 
 (defun gptel-curl--sentinel (process status)
   "Process sentinel for GPTel curl requests.
@@ -96,13 +93,14 @@ PROCESS and STATUS are process parameters."
     (when gptel--debug
       (with-current-buffer proc-buf
         (clone-buffer "*gptel-error*" 'show)))
-    (if-let* ((ok-p (equal status "finished\n"))
+    (if-let* (((equal status "finished\n"))
               (proc-info (alist-get process gptel-curl--process-alist))
               (proc-token (plist-get proc-info :token))
-              (content (gptel-curl--parse-response proc-buf proc-token)))
-        (funcall (plist-get proc-info :callback) content)
+              (response (gptel-curl--parse-response proc-buf proc-token)))
+        (gptel--insert-response response proc-info)
       ;; Failed
-      (funcall (plist-get proc-info :callback) nil))
+      (gptel--insert-response (list :content nil :status status) proc-info))
+    (setf (alist-get process gptel-curl--process-alist nil 'remove) nil)
     (kill-buffer proc-buf)))
 
 (defun gptel-curl--parse-response (buf token)

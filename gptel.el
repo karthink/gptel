@@ -4,7 +4,7 @@
 
 ;; Author: Karthik Chikmagalur
 ;; Version: 0.10
-;; Package-Requires: ((emacs "27.1") (aio "1.0") (transient "0.3.7"))
+;; Package-Requires: ((emacs "27.1") (transient "0.3.7"))
 ;; Keywords: convenience
 ;; URL: https://github.com/karthink/gptel
 
@@ -33,9 +33,6 @@
 ;; - You need an OpenAI API key. Set the variable `gptel-api-key' to the key or to
 ;;   a function of no arguments that returns the key.
 ;;
-;; - If installing manually: Install the package `emacs-aio' using `M-x package-install'
-;;   or however you install packages.
-;;
 ;; - Not required but recommended: Install `markdown-mode'.
 ;;
 ;; Usage:
@@ -56,7 +53,7 @@
   (require 'subr-x)
   (require 'cl-lib))
 
-(require 'aio)
+(require 'url)
 (require 'json)
 (require 'map)
 (require 'text-property-search)
@@ -150,8 +147,13 @@ return the transformed string."
 
 ;; TODO: Handle read-only buffers. Should we spawn a new buffer automatically?
 ;; TODO: Handle multiple requests(#15). (Only one request from one buffer at a time?)
-(aio-defun gptel-send (&optional arg)
-  "Submit this prompt to ChatGPT."
+;; TODO: Since we capture a marker for the insertion location, `gptel-buffer' no
+;; longer needs to be recorded
+(defun gptel-send (&optional arg)
+  "Submit this prompt to ChatGPT.
+
+With prefix arg ARG activate a transient menu with more options
+instead."
   (interactive "P")
   (if (and arg (require 'gptel-transient nil t))
       (call-interactively #'gptel-send-menu)
@@ -162,14 +164,23 @@ return the transformed string."
               (set-marker (make-marker) (region-end))
             (point-marker)))
          (gptel-buffer (current-buffer))
-         (full-prompt (gptel--create-prompt response-pt))
-         (response (aio-await
-                    (funcall
-                     (if gptel-use-curl
-                         #'gptel-curl-get-response #'gptel--url-get-response)
-                     full-prompt)))
-         (content-str (plist-get response :content))
-         (status-str  (plist-get response :status)))
+         (full-prompt (gptel--create-prompt response-pt)))
+    (funcall
+     (if gptel-use-curl
+         #'gptel-curl-get-response #'gptel--url-get-response)
+     (list :prompt full-prompt
+           :gptel-buffer gptel-buffer
+           :insert-marker response-pt)))))
+
+(defun gptel--insert-response (response info)
+  "Insert RESPONSE from ChatGPT into the gptel buffer.
+
+INFO is a plist containing information relevant to this buffer.
+See `gptel--url-get-response' for details."
+  (let* ((content-str (plist-get response :content))
+         (status-str  (plist-get response :status))
+         (gptel-buffer (plist-get info :gptel-buffer))
+         (response-pt (plist-get info :insert-marker)))
     (if content-str
         (with-current-buffer gptel-buffer
           (setq content-str (gptel--transform-response
@@ -178,9 +189,6 @@ return the transformed string."
             (put-text-property 0 (length content-str) 'gptel 'response content-str)
             (message "Querying ChatGPT... done.")
             (goto-char response-pt)
-            (display-buffer (current-buffer)
-                            '((display-buffer-reuse-window
-                               display-buffer-use-some-window)))
             (unless (bobp) (insert-before-markers-and-inherit "\n\n"))
             (if gptel-playback
                 (gptel--playback gptel-buffer content-str response-pt)
@@ -192,7 +200,7 @@ return the transformed string."
                 (gptel--update-header-line " Ready" 'success))))
           (goto-char (- (point) 2)))
       (gptel--update-header-line
-       (format " Response Error: %s" status-str) 'error)))))
+       (format " Response Error: %s" status-str) 'error))))
 
 (defun gptel--create-prompt (&optional prompt-end)
   "Return a full conversation prompt from the contents of this buffer.
@@ -273,10 +281,13 @@ BUFFER is the interaction buffer for ChatGPT."
     ('org-mode (gptel--convert-markdown->org content))
     (_ content)))
 
-(aio-defun gptel--url-get-response (prompts)
-  "Fetch response for PROMPTS from ChatGPT.
+(defun gptel--url-get-response (info)
+  "Fetch response to prompt in INFO from ChatGPT.
 
-Return the message received."
+INFO is a plist with the following keys:
+- :prompt (the prompt being sent)
+- :gptel-buffer (the gptel buffer)
+- :insert-marker (marker at which to insert the response)."
   (let* ((inhibit-message t)
          (message-log-max nil)
          (api-key
@@ -289,13 +300,16 @@ Return the message received."
          `(("Content-Type" . "application/json")
            ("Authorization" . ,(concat "Bearer " api-key))))
         (url-request-data
-         (encode-coding-string (json-encode (gptel--request-data prompts)) 'utf-8)))
-    (pcase-let ((`(,_ . ,response-buffer)
-                 (aio-await
-                  (aio-url-retrieve "https://api.openai.com/v1/chat/completions"))))
-      (prog1
-          (gptel--url-parse-response response-buffer)
-        (kill-buffer response-buffer)))))
+         (encode-coding-string
+          (json-encode (gptel--request-data (plist-get info :prompt)))
+          'utf-8)))
+    (url-retrieve "https://api.openai.com/v1/chat/completions"
+                  (lambda (_)
+                    (let ((response
+                           (gptel--url-parse-response (current-buffer))))
+                      (gptel--insert-response response info)
+                      (kill-buffer)))
+                  nil t nil)))
 
 (defun gptel--url-parse-response (response-buffer)
   "Parse response in RESPONSE-BUFFER."
