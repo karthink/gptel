@@ -354,9 +354,10 @@ buffer created or switched to."
   (interactive (list (if current-prefix-arg
                          (read-string "Session name: " (generate-new-buffer-name gptel-default-session))
                        gptel-default-session)
-                     (or gptel-api-key
-                         (setq gptel-api-key
-                               (read-passwd "OpenAI API key: ")))
+                     (condition-case nil
+                         (gptel--api-key)
+                       ((error user-error)
+                        (read-passwd "OpenAI API key: ")))
                      (and (use-region-p)
                           (buffer-substring (region-beginning)
                                             (region-end)))))
