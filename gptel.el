@@ -27,7 +27,7 @@
 
 ;;; Commentary:
 
-;; A ChatGPT client for Emacs.
+;; A simple ChatGPT client for Emacs.
 ;;
 ;; Requirements:
 ;; - You need an OpenAI API key. Set the variable `gptel-api-key' to the key or to
@@ -36,12 +36,20 @@
 ;; - Not required but recommended: Install `markdown-mode'.
 ;;
 ;; Usage:
-;; - M-x gptel: Start a ChatGPT session
-;; - C-u M-x gptel: Start another or multiple independent ChatGPT sessions
+;; gptel can be used in any buffer or in a dedicated chat buffer.
 ;;
-;; - In the GPT session: Press `C-c RET' (control + c, followed by return) to send
-;;   your prompt.
-;; - To jump between prompts, use `C-c C-n' and `C-c C-p'.
+;; To use this in a dedicated buffer:
+;; - M-x gptel: Start a ChatGPT session
+;; - C-u M-x gptel: Start another session or multiple independent ChatGPT sessions
+;;
+;; - In the chat session: Press `C-c RET' (`gptel-send') to send
+;;   your prompt. Use a prefix argument (`C-u C-c RET') to set chat parameters.
+;;
+;; To use this in any buffer:
+;;
+;; - Select a region of text and call `gptel-send'. Call with a prefix argument
+;;   to set chat parameters.
+;; - You can select previous prompts and responses to continue the conversation.
 
 ;;; Code:
 (declare-function markdown-mode "markdown-mode")

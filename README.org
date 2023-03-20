@@ -1,5 +1,7 @@
 #+title: GPTel: A simple ChatGPT client for Emacs
 
+[[https://melpa.org/#/gptel][file:https://melpa.org/packages/gptel-badge.svg]]
+
 GPTel is a simple, no-frills ChatGPT client for Emacs.
 
 [[file:img/gptel.png]]
