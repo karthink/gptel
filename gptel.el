@@ -339,15 +339,33 @@ INFO is a plist with the following keys:
         (clone-buffer "*gptel-error*" 'show)))
     (with-current-buffer response-buffer
       (if-let* ((status (buffer-substring (line-beginning-position) (line-end-position)))
-                ((string-match-p "200 OK" status))
                 (json-object-type 'plist)
                 (response (progn (forward-paragraph)
-                                 (json-read)))
-                (content (map-nested-elt
-                          response '(:choices 0 :message :content))))
-          (list :content (string-trim (decode-coding-string content 'utf-8))
-                :status status)
-        (list :content nil :status status)))))
+                                 (condition-case nil
+                                         (json-read)
+                                       (json-readtable-error 'json-read-error)))))
+          (cond
+           ((string-match-p "200 OK" status)
+            (list :content (string-trim
+                            (decode-coding-string
+                             (content (map-nested-elt
+                                       response '(:choices 0 :message :content)))
+                             'utf-8))
+                  :status status))
+           ((plist-get response :error)
+            (let* ((error-plist (plist-get response :error))
+                   (error-msg (plist-get error-plist :message))
+                   (error-type (plist-get error-plist :type)))
+              (message "ChatGPT error: %s" error-msg)
+              (list :content nil :status (concat status ": " error-type))))
+           ((eq response 'json-read-error)
+            (message "ChatGPT error: Malformed JSON in response.")
+            (list :content nil :status (concat http-msg ": Malformed JSON in response.")))
+           (t (message "ChatGPT error: Could not parse HTTP response.")
+              (list :content nil :status (concat status ": Could not parse HTTP response."))))
+        (message "ChatGPT error: Could not parse HTTP response.")
+        (list :content nil
+              :status (concat status ": Could not parse HTTP response."))))))
 
 ;;;###autoload
 (defun gptel (name &optional api-key initial)

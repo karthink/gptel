@@ -121,17 +121,29 @@ buffer."
                             (match-string 1 http-msg))))
                     (json-object-type 'plist)
                     (response (progn (goto-char header-size)
-                                     (json-read)))
-                    (content (map-nested-elt
-                              response '(:choices 0 :message :content))))
+                                     (condition-case nil
+                                         (json-read)
+                                       (json-readtable-error 'json-read-error)))))
               (cond
-               ((not (equal http-status "200"))
-                (message "GPTChat request failed with code %s" http-status)
-                (list :content nil :status http-msg))
-               (content
-                (list :content (string-trim content) :status http-msg))
-               (t (message "Could not parse response from ChatGPT.")
-                  (list :content nil :status http-msg))))))))
+               ((equal http-status "200")
+                (list :content
+                      (string-trim
+                       (map-nested-elt response '(:choices 0 :message :content)))
+                      :status http-msg))
+                ((plist-get response :error)
+                 (let* ((error-plist (plist-get response :error))
+                        (error-msg (plist-get error-plist :message))
+                        (error-type (plist-get error-plist :type)))
+                   (message "ChatGPT error: %s" error-msg)
+                   (list :content nil :status (concat http-msg ": " error-type))))
+                ((eq response 'json-read-error)
+                 (message "ChatGPT error: Malformed JSON in response.")
+                 (list :content nil :status (concat http-msg ": Malformed JSON in response.")))
+                (t (message "ChatGPT error: Could not parse HTTP response.")
+                   (list :content nil :status (concat http-msg ": Could not parse HTTP response."))))
+            (message "ChatGPT error: Could not parse HTTP response.")
+            (list :content nil
+                  :status (concat http-msg ": Could not parse HTTP response.")))))))
 
 (provide 'gptel-curl)
 ;;; gptel-curl.el ends here
