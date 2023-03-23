@@ -348,8 +348,8 @@ INFO is a plist with the following keys:
            ((string-match-p "200 OK" status)
             (list :content (string-trim
                             (decode-coding-string
-                             (content (map-nested-elt
-                                       response '(:choices 0 :message :content)))
+                             (map-nested-elt
+                              response '(:choices 0 :message :content))
                              'utf-8))
                   :status status))
            ((plist-get response :error)
