@@ -108,7 +108,18 @@ return the transformed string."
 (defvar gptel-default-mode (if (featurep 'markdown-mode)
                                'markdown-mode
                              'text-mode))
-(defvar gptel-prompt-string "### ")
+
+;; TODO: Handle `prog-mode' using the `comment-start' variable
+(defcustom gptel-prompt-prefix-alist
+  '((markdown-mode . "### ")
+    (org-mode . "*** ")
+    (text-mode . "### "))
+  "String inserted after the response from ChatGPT.
+
+This is an alist mapping major modes to the prefix strings. This
+is only inserted in dedicated gptel buffers."
+  :group 'gptel
+  :type '(alist :key-type symbol :value-type string))
 
 ;; Model and interaction parameters
 (defvar-local gptel--system-message
@@ -152,6 +163,9 @@ By default, \"openai.com\" is used as HOST and \"apikey\" as USER."
 (defsubst gptel--numberize (val)
   "Ensure VAL is a number."
   (if (stringp val) (string-to-number val) val))
+
+(defun gptel-prompt-string ()
+  (or (alist-get major-mode gptel-prompt-prefix-alist) ""))
 
 (defvar-local gptel--old-header-line nil)
 (define-minor-mode gptel-mode
@@ -222,7 +236,7 @@ See `gptel--url-get-response' for details."
                 (insert content-str)
                 (pulse-momentary-highlight-region p (point)))
               (when gptel-mode
-                (insert "\n\n" gptel-prompt-string)
+                (insert "\n\n" (gptel-prompt-string))
                 (gptel--update-header-line " Ready" 'success))))
           (goto-char (- (point) 2)))
       (gptel--update-header-line
@@ -398,7 +412,7 @@ buffer created or switched to."
       (visual-line-mode 1))
      (t (funcall gptel-default-mode)))
     (unless gptel-mode (gptel-mode 1))
-    (if (bobp) (insert (or initial gptel-prompt-string)))
+    (if (bobp) (insert (or initial (gptel-prompt-string))))
     (pop-to-buffer (current-buffer))
     (goto-char (point-max))
     (skip-chars-backward "\t\r\n")
@@ -471,7 +485,7 @@ Begin at START-PT."
                        (min content-length (+ idx 16))))
                      (setq idx (+ idx 16)))
                  (when gptel-mode
-                   (insert "\n\n" gptel-prompt-string)
+                   (insert "\n\n" (gptel-prompt-string))
                    (gptel--update-header-line " Ready" 'success))
                  (when start-pt (goto-char (marker-position start-pt)))
                  (accept-change-group (symbol-value handle))
