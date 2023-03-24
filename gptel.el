@@ -174,6 +174,7 @@ By default, \"openai.com\" is used as HOST and \"apikey\" as USER."
 ;; TODO: Handle multiple requests(#15). (Only one request from one buffer at a time?)
 ;; TODO: Since we capture a marker for the insertion location, `gptel-buffer' no
 ;; longer needs to be recorded
+;;;###autoload
 (defun gptel-send (&optional arg)
   "Submit this prompt to ChatGPT.
 
