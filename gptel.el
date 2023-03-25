@@ -257,7 +257,6 @@ instead."
   (if (and arg (require 'gptel-transient nil t))
       (call-interactively #'gptel-send-menu)
   (message "Querying ChatGPT...")
-  (gptel--update-header-line " Waiting..." 'warning)
   (let* ((response-pt
           (if (use-region-p)
               (set-marker (make-marker) (region-end))
@@ -269,7 +268,8 @@ instead."
          #'gptel-curl-get-response #'gptel--url-get-response)
      (list :prompt full-prompt
            :gptel-buffer gptel-buffer
-           :insert-marker response-pt)))))
+           :insert-marker response-pt)))
+    (gptel--update-header-line " Waiting..." 'warning)))
 
 (defun gptel--insert-response (response info)
   "Insert RESPONSE from ChatGPT into the gptel buffer.
