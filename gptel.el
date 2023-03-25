@@ -124,17 +124,76 @@ is only inserted in dedicated gptel buffers."
 ;; Model and interaction parameters
 (defvar-local gptel--system-message
   "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
-(defvar gptel--system-message-alist
+
+(defcustom gptel-directives
   `((default . ,gptel--system-message)
     (programming . "You are a large language model and a careful programmer. Provide code and only code as output without any additional text, prompt or note.")
     (writing . "You are a large language model and a writing assistant. Respond concisely.")
     (chat . "You are a large language model and a conversation partner. Respond concisely."))
-  "Prompt templates (directives).")
-(defvar gptel--debug nil)
-(defvar-local gptel--max-tokens nil)
-(defvar-local gptel--model "gpt-3.5-turbo")
-(defvar-local gptel--temperature 1.0)
+  "System prompts (directives) for ChatGPT.
+
+These are system instructions sent at the beginning of each
+request to ChatGPT.
+
+Each entry in this alist maps a symbol naming the directive to
+the string that is sent. To set the directive for a chat session
+interactively call `gptel-send' with a prefix argument.
+
+Note: Currently the names (default, programming, writing and
+chat) are hard-coded and only their values may be customized.
+This will be fixed in an upcoming release."
+  :group 'gptel
+  :type '(alist :key-type symbol :value-type string))
+
+(defcustom gptel-max-tokens nil
+  "Max tokens per response.
+
+This is roughly the number of words in the response. 100-300 is a
+reasonable range for short answers, 400 or more for longer
+responses.
+
+To set the target token count for a chat session interactively
+call `gptel-send' with a prefix argument.
+
+If left unset, ChatGPT will target about 40% of the total token
+count of the conversation so far in each message, so messages
+will get progressively longer!"
+  :local t
+  :group 'gptel
+  :type '(choice (integer :tag "Specify Token count")
+                 (const :tag "Default" nil)))
+
+(defcustom gptel-model "gpt-3.5-turbo"
+  "GPT Model for chat.
+
+The current options are
+- \"gpt-3.5-turbo\"
+- \"gpt-3.5-turbo-0301\"
+- \"gpt-4\" (experimental)
+
+To set the model for a chat session interactively call
+`gptel-send' with a prefix argument."
+  :local t
+  :group 'gptel
+  :type '(choice
+          (const :tag "GPT 3.5 turbo" "gpt-3.5-turbo")
+          (const :tag "GPT 3.5 turbo 0301" "gpt-3.5-turbo-0301")
+          (const :tag "GPT 4 (experimental)" "gpt-4")))
+
+(defcustom gptel-temperature 1.0
+  "\"Temperature\" of ChatGPT response.
+
+This is a number between 0.0 and 2.0 that controls the randomness
+of the response, with 2.0 being the most random.
+
+To set the temperature for a chat session interactively call
+`gptel-send' with a prefix argument."
+  :local t
+  :group 'gptel
+  :type 'number)
+
 (defvar-local gptel--num-messages-to-send nil)
+(defvar gptel--debug nil)
 
 (defun gptel-api-key-from-auth-source (&optional host user)
   "Lookup api key in the auth source.
@@ -285,12 +344,12 @@ there."
 (defun gptel--request-data (prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
   (let ((prompts-plist
-         `(:model ,gptel--model
+         `(:model ,gptel-model
            :messages [,@prompts])))
-    (when gptel--temperature
-      (plist-put prompts-plist :temperature (gptel--numberize gptel--temperature)))
-    (when gptel--max-tokens
-      (plist-put prompts-plist :max_tokens (gptel--numberize gptel--max-tokens)))
+    (when gptel-temperature
+      (plist-put prompts-plist :temperature (gptel--numberize gptel-temperature)))
+    (when gptel-max-tokens
+      (plist-put prompts-plist :max_tokens (gptel--numberize gptel-max-tokens)))
     prompts-plist))
 
 ;; TODO: Use `run-hook-wrapped' with an accumulator instead to handle

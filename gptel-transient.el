@@ -57,8 +57,7 @@ You are a helpful assistant. Answer as concisely as possible.
 Reply only with shell commands and no prose.
 You are a poet. Reply only in verse.
 
-Customize `gptel--system-message-alist' for task-specific
-prompts."
+Customize `gptel-directives' for task-specific prompts."
   [:description
    (lambda () (format "Directive: %s"
                  (truncate-string-to-width gptel--system-message (max (- (window-width) 14) 20) nil nil t)))
@@ -68,22 +67,22 @@ prompts."
    ("p" "Programming"
     (lambda () (interactive)
       (setq gptel--system-message
-            (alist-get 'programming gptel--system-message-alist)))
+            (alist-get 'programming gptel-directives)))
     :transient t)
    ("d" "Default"
     (lambda () (interactive)
       (setq gptel--system-message
-            (alist-get 'default gptel--system-message-alist)))
+            (alist-get 'default gptel-directives)))
     :transient t)
    ("w" "Writing"
     (lambda () (interactive)
       (setq gptel--system-message
-            (alist-get 'writing gptel--system-message-alist)))
+            (alist-get 'writing gptel-directives)))
     :transient t)
    ("c" "Chat"
     (lambda () (interactive)
       (setq gptel--system-message
-            (alist-get 'chat gptel--system-message-alist)))
+            (alist-get 'chat gptel-directives)))
     :transient t)])
 
 ;; TODO: Switch to dynamic Transient menus (below) once there's a new Transient release
@@ -99,7 +98,7 @@ prompts."
 ;;   "Set up suffixes for system prompt."
 ;;   (transient-parse-suffixes
 ;;    'gptel-system-prompt
-;;    (cl-loop for (type . prompt) in gptel--system-message-alist
+;;    (cl-loop for (type . prompt) in gptel-directives
 ;;        for name = (symbol-name type)
 ;;        for key = (substring name 0 1)
 ;;        collect (list (key-description key) (capitalize name)
@@ -137,7 +136,7 @@ count of the conversation so far in each message, so messages
 will get progressively longer!"
   :description "Response length (tokens)"
   :class 'transient-lisp-variable
-  :variable 'gptel--max-tokens
+  :variable 'gptel-max-tokens
   :key "<"
   :prompt "Response length in tokens (leave empty: default, 80-200: short, 200-500: long): "
   :reader 'transient-read-number-N+)
@@ -146,7 +145,7 @@ will get progressively longer!"
   "AI Model for Chat."
   :description "GPT Model: "
   :class 'transient-lisp-variable
-  :variable 'gptel--model
+  :variable 'gptel-model
   :key "m"
   :choices '("gpt-3.5-turbo-0301" "gpt-3.5-turbo" "gpt-4")
   :reader (lambda (prompt &rest _)
@@ -158,11 +157,11 @@ will get progressively longer!"
   "Temperature of request."
   :description "Randomness (0 - 2.0)"
   :class 'transient-lisp-variable
-  :variable 'gptel--temperature
+  :variable 'gptel-temperature
   :key "t"
   :reader (lambda (&rest _)
             (read-from-minibuffer "Set temperature (0.0-2.0, leave empty for default): "
-                                  (number-to-string gptel--temperature))))
+                                  (number-to-string gptel-temperature))))
 
 (transient-define-suffix gptel--suffix-send-existing ()
   "Send query in existing chat session."
