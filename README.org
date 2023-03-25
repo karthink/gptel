@@ -35,6 +35,12 @@ Clone this repository and load this file:
 
 Installing the =markdown-mode= package is optional.
 
+*** Spacemacs
+After installation with =M-x package-install⏎= =gptel=
+
+Add =gptel= to =dotspacemacs-additional-packages=
+Add =(require 'gptel)= to =dotspacemacs/user-config=
+
 ** Usage
 
 Procure an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
