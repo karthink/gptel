@@ -375,7 +375,7 @@ INFO is a plist with the following keys:
               (list :content nil :status (concat status ": " error-type))))
            ((eq response 'json-read-error)
             (message "ChatGPT error: Malformed JSON in response.")
-            (list :content nil :status (concat http-msg ": Malformed JSON in response.")))
+            (list :content nil :status (concat status ": Malformed JSON in response.")))
            (t (message "ChatGPT error: Could not parse HTTP response.")
               (list :content nil :status (concat status ": Could not parse HTTP response."))))
         (message "ChatGPT error: Could not parse HTTP response.")
