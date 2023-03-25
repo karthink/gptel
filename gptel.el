@@ -398,7 +398,8 @@ buffer created or switched to."
                      (condition-case nil
                          (gptel--api-key)
                        ((error user-error)
-                        (read-passwd "OpenAI API key: ")))
+                        (setq gptel-api-key
+                              (read-passwd "OpenAI API key: "))))
                      (and (use-region-p)
                           (buffer-substring (region-beginning)
                                             (region-end)))))
