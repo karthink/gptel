@@ -19,27 +19,23 @@ GPTel is on MELPA. Install it with =M-x package-install⏎= =gptel=.
 
 (Optional: Install =markdown-mode=.)
 
-*** Straight
+**** Straight
 #+begin_src emacs-lisp
   (straight-use-package 'gptel)
 #+end_src
 
 Installing the =markdown-mode= package is optional.
 
-*** Manual
-Clone this repository and load this file:
-#+begin_src emacs-lisp
-(add-to-list 'load-path "/path/to/gptel/")
-(require 'gptel)
-#+end_src
+**** Manual
+Clone or download this repository and run =M-x package-install-file⏎= on the repository directory.
 
 Installing the =markdown-mode= package is optional.
 
-*** Spacemacs
+**** Spacemacs
 After installation with =M-x package-install⏎= =gptel=
 
-Add =gptel= to =dotspacemacs-additional-packages=
-Add =(require 'gptel)= to =dotspacemacs/user-config=
+- Add =gptel= to =dotspacemacs-additional-packages=
+- Add =(require 'gptel)= to =dotspacemacs/user-config=
 
 ** Usage
 
