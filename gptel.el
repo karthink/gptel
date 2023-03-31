@@ -417,16 +417,15 @@ INFO is a plist with the following keys:
       (if-let* ((status (buffer-substring (line-beginning-position) (line-end-position)))
                 (json-object-type 'plist)
                 (response (progn (forward-paragraph)
-                                 (condition-case nil
-                                         (json-read)
-                                       (json-readtable-error 'json-read-error)))))
+                                 (let ((json-str (decode-coding-string
+                                                  (buffer-substring-no-properties (point) (point-max))
+                                                  'utf-8)))
+                                   (condition-case nil
+                                       (json-read-from-string json-str)
+                                     (json-readtable-error 'json-read-error))))))
           (cond
            ((string-match-p "200 OK" status)
-            (list :content (string-trim
-                            (decode-coding-string
-                             (map-nested-elt
-                              response '(:choices 0 :message :content))
-                             'utf-8))
+            (list :content (string-trim (map-nested-elt response '(:choices 0 :message :content)))
                   :status status))
            ((plist-get response :error)
             (let* ((error-plist (plist-get response :error))
