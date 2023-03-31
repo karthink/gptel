@@ -202,7 +202,9 @@ By default, \"openai.com\" is used as HOST and \"apikey\" as USER."
                                     :host (or host "openai.com")
                                     :user (or user "apikey")))
                               :secret)))
-      (if (functionp secret) (funcall secret) secret)
+      (if (functionp secret)
+          (encode-coding-string (funcall secret) 'utf-8)
+        secret)
     (user-error "No `gptel-api-key' found in the auth source")))
 
 (defun gptel--api-key ()
