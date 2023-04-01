@@ -31,6 +31,19 @@ Clone or download this repository and run =M-x package-install-file⏎= on the r
 
 Installing the =markdown-mode= package is optional.
 
+**** Doom Emacs
+In =packages.el=
+#+begin_src emacs-lisp
+(package! gptel)
+#+end_src
+
+In =config.el=
+#+begin_src emacs-lisp
+(use-package! gptel
+ :config
+ (setq! gptel-api-key "your key"))
+#+end_src
+
 **** Spacemacs
 After installation with =M-x package-install⏎= =gptel=
 
