@@ -60,13 +60,16 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
     (nreverse (cons url args))))
 
 ;;;###autoload
-(defun gptel-curl-get-response (info)
+(defun gptel-curl-get-response (info &optional callback)
   "Retrieve response to prompt in INFO.
 
 INFO is a plist with the following keys:
 - :prompt (the prompt being sent)
 - :gptel-buffer (the gptel buffer)
-- :insert-marker (marker at which to insert the response)."
+- :insert-marker (marker at which to insert the response).
+
+Call CALLBACK with the response and INFO afterwards. If omitted
+the response is inserted into the current buffer after point."
   (with-current-buffer (generate-new-buffer "*gptel-curl*")
     (let* ((token (md5 (format "%s%s%s%s"
                                (random) (emacs-pid) (user-full-name)
@@ -76,7 +79,9 @@ INFO is a plist with the following keys:
                            "curl" args)))
       (set-process-query-on-exit-flag process nil)
       (setf (alist-get process gptel-curl--process-alist)
-            (nconc (list :token token) info))
+            (nconc (list :token token
+                         :callback (or callback #'gptel--insert-response))
+                   info))
       (set-process-sentinel process #'gptel-curl--sentinel))))
 
 (defun gptel-curl--sentinel (process status)
@@ -90,10 +95,11 @@ PROCESS and STATUS are process parameters."
     (if-let* (((eq (process-status process) 'exit))
               (proc-info (alist-get process gptel-curl--process-alist))
               (proc-token (plist-get proc-info :token))
+              (proc-callback (plist-get proc-info :callback))
               (response (gptel-curl--parse-response proc-buf proc-token)))
-        (gptel--insert-response response proc-info)
+        (funcall proc-callback response proc-info)
       ;; Failed
-      (gptel--insert-response (list :content nil :status status) proc-info))
+      (funcall proc-callback (list :content nil :status status) proc-info))
     (setf (alist-get process gptel-curl--process-alist nil 'remove) nil)
     (kill-buffer proc-buf)))
 

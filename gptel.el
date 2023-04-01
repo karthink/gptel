@@ -207,6 +207,7 @@ By default, \"openai.com\" is used as HOST and \"apikey\" as USER."
         secret)
     (user-error "No `gptel-api-key' found in the auth source")))
 
+;; FIXME Should we utf-8 encode the api-key here? 
 (defun gptel--api-key ()
   "Get api key from `gptel-api-key'."
   (pcase gptel-api-key
@@ -382,13 +383,16 @@ BUFFER is the interaction buffer for ChatGPT."
     ('org-mode (gptel--convert-markdown->org content))
     (_ content)))
 
-(defun gptel--url-get-response (info)
+(defun gptel--url-get-response (info &optional callback)
   "Fetch response to prompt in INFO from ChatGPT.
 
 INFO is a plist with the following keys:
 - :prompt (the prompt being sent)
 - :gptel-buffer (the gptel buffer)
-- :insert-marker (marker at which to insert the response)."
+- :insert-marker (marker at which to insert the response).
+
+Call CALLBACK with the response and INFO afterwards. If omitted
+the response is inserted into the current buffer after point."
   (let* ((inhibit-message t)
          (message-log-max nil)
          (url-request-method "POST")
@@ -403,7 +407,8 @@ INFO is a plist with the following keys:
                   (lambda (_)
                     (let ((response
                            (gptel--url-parse-response (current-buffer))))
-                      (gptel--insert-response response info)
+                      (funcall (or callback #'gptel--insert-response)
+                               response info)
                       (kill-buffer)))
                   nil t nil)))
 
