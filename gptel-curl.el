@@ -80,9 +80,116 @@ the response is inserted into the current buffer after point."
       (set-process-query-on-exit-flag process nil)
       (setf (alist-get process gptel-curl--process-alist)
             (nconc (list :token token
-                         :callback (or callback #'gptel--insert-response))
+                         :callback (or callback
+                                       (if gptel-playback
+                                           #'gptel--insert-response-stream
+                                         #'gptel--insert-response)))
                    info))
-      (set-process-sentinel process #'gptel-curl--sentinel))))
+      (if gptel-playback
+          (progn (set-process-sentinel process #'gptel-curl--cleanup-stream)
+                 (set-process-filter process #'gptel-curl--filter))
+        (set-process-sentinel process #'gptel-curl--sentinel)))))
+
+(defun gptel-curl--cleanup-stream (process status)
+  "Process sentinel for GPTel curl requests.
+
+PROCESS and STATUS are process parameters."
+  (let ((proc-buf (process-buffer process)))
+    (when gptel--debug
+      (with-current-buffer proc-buf
+        (clone-buffer "*gptel-error*" 'show)))
+    (let* ((info (alist-get process gptel-curl--process-alist))
+           (gptel-buffer (plist-get info :gptel-buffer))
+           (tracking-marker (plist-get info :tracking-marker))
+           (start-marker (plist-get info :insert-marker)))
+      (when start-marker (goto-char start-marker))
+      (pulse-momentary-highlight-region (+ start-marker 2) tracking-marker)
+      (when (equal (plist-get info :http-status) "200")
+        (with-current-buffer gptel-buffer
+          (gptel--update-header-line  " Ready" 'success)
+          (when gptel-mode
+            (save-excursion (goto-char tracking-marker)
+                            (insert "\n\n" (gptel-prompt-string)))))))
+    (setf (alist-get process gptel-curl--process-alist nil 'remove) nil)
+    (kill-buffer proc-buf)))
+
+(defun gptel--insert-response-stream (response info)
+  "Insert streaming RESPONSE from ChatGPT into the gptel buffer.
+
+INFO is a mutable plist containing information relevant to this buffer.
+See `gptel--url-get-response' for details."
+  (let ((content-str (plist-get response :content))
+        (status-str  (plist-get response :status))
+        (gptel-buffer (plist-get info :gptel-buffer))
+        (start-marker (plist-get info :insert-marker))
+        (tracking-marker (plist-get info :tracking-marker)))
+    (if content-str
+        (with-current-buffer gptel-buffer
+          (save-excursion
+            (unless tracking-marker
+              (gptel--update-header-line " Typing..." 'success)
+              (goto-char start-marker)
+              (insert "\n\n")
+              (setq tracking-marker (set-marker (make-marker) (point)))
+              (set-marker-insertion-type tracking-marker t)
+              (plist-put info :tracking-marker tracking-marker))
+            
+            (setq content-str (gptel--transform-response
+                               content-str gptel-buffer))
+            (put-text-property 0 (length content-str) 'gptel 'response content-str)
+            (goto-char tracking-marker)
+            (insert content-str)))
+      (gptel--update-header-line
+       (format " Response Error: %s" status-str) 'error))))
+
+(defun gptel-curl--filter (process output)
+  (let* ((content-strs)
+         (proc-info (alist-get process gptel-curl--process-alist)))
+    (with-current-buffer (process-buffer process)
+      ;; Insert output
+      (save-excursion
+        (goto-char (process-mark process))
+        (insert output)
+        (set-marker (process-mark process) (point)))
+      
+      ;; Find HTTP status
+      (unless (plist-get proc-info :http-status)
+        (save-excursion
+          (goto-char (point-min))
+          (when-let* (((not (= (line-end-position) (point-max))))
+                      (http-msg (buffer-substring (line-beginning-position)
+                                                  (line-end-position)))
+                      (http-status
+                       (save-match-data
+                         (and (string-match "HTTP/[.0-9]+ +\\([0-9]+\\)" http-msg)
+                              (match-string 1 http-msg)))))
+            (plist-put proc-info :http-status http-status)
+            (plist-put proc-info :http-msg http-msg)
+            (unless (equal http-status "200")
+              (message "%s" (concat (string-trim http-msg) ": Could not parse HTTP response."))))))
+      
+      (when-let ((http-msg (plist-get proc-info :http-msg))
+                 (http-status (plist-get proc-info :http-status)))
+        ;; Find data chunk(s) and run callback
+        (funcall (or (plist-get proc-info :callback)
+                     #'gptel--insert-response-stream)
+                 (if (equal http-status "200")
+                     (let* ((json-object-type 'plist)
+                            (response) (content-str))
+                       (condition-case nil
+                           (while (re-search-forward "^data:" nil t)
+                             (save-match-data
+                               (unless (looking-at " *\\[DONE\\]")
+                                 (when-let* ((response (json-read))
+                                             (delta (map-nested-elt
+                                                     response '(:choices 0 :delta)))
+                                             (content (plist-get delta :content)))
+                                   (push content content-strs)))))
+                         (error
+                          (goto-char (match-beginning 0))))
+                       (list :content (apply #'concat (nreverse content-strs)) :status  http-msg))
+                   (list :content nil :status http-msg))
+                 proc-info)))))
 
 (defun gptel-curl--sentinel (process status)
   "Process sentinel for GPTel curl requests.
