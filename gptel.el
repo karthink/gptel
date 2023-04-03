@@ -243,7 +243,29 @@ By default, \"openai.com\" is used as HOST and \"apikey\" as USER."
             header-line-format
             (list (concat (propertize " " 'display '(space :align-to 0))
                           (format "%s" (buffer-name)))
-                  (propertize " Ready" 'face 'success)))
+                  (propertize " Ready" 'face 'success)
+                  '(:eval
+                    (let* ((l1 (length gptel-model))
+                           (num-exchanges
+                            (if gptel--num-messages-to-send
+                                (format "[Send: %s exchanges]" gptel--num-messages-to-send)
+                              "[Send: buffer]"))
+                           (l2 (length num-exchanges)))
+                     (concat
+                      (propertize
+                       " " 'display `(space :align-to ,(max 1 (- (window-width) (+ 2 l1 l2)))))
+                      (propertize
+                       (button-buttonize num-exchanges
+                        (lambda (&rest _) (gptel-send-menu)))
+                       'mouse-face 'highlight
+                       'help-echo
+                       "Number of past exchanges to include with each request")
+                      " "
+                      (propertize
+                       (button-buttonize (concat "[" gptel-model "]")
+                            (lambda (&rest _) (gptel-send-menu)))
+                           'mouse-face 'highlight
+                           'help-echo "OpenAI GPT model in use"))))))
     (setq header-line-format gptel--old-header-line)))
 
 ;; TODO: Handle read-only buffers. Should we spawn a new buffer automatically?
