@@ -550,6 +550,58 @@ elements."
                      (insert "/")))))))
     (buffer-string)))
 
+(defun gptel--convert-playback-markdown->org ()
+  ""
+  (let ((in-src-block)
+        (temp-buf (generate-new-buffer-name "*gptel-temp*"))
+        (start-pt (make-marker)))
+    (lambda (str)
+      (let ((noop-p))
+        (with-current-buffer (get-buffer-create temp-buf)
+          (save-excursion (goto-char (point-max))
+                          (insert str))
+          (when (marker-position start-pt) (goto-char start-pt))
+          (save-excursion
+            (while (re-search-forward "`\\|\\*\\{1,2\\}\\|_" nil t)
+              (pcase (match-string 0)
+                ("`"
+                 (cond
+                  ((looking-at "``")
+                   (backward-char 1)
+                   (delete-char 3)
+                   (if in-src-block
+                       (progn (insert "#+end_src")
+                              (setq in-src-block nil))
+                     (insert "#+begin_src ")
+                     (setq in-src-block t)))
+                  ((looking-at "`\\|$")
+                   (setq noop-p t)
+                   (set-marker start-pt (1- (point)))
+                   (unless (eobp) (forward-char 1)))
+                  ((not in-src-block) (replace-match "="))))
+                ((and "**" (guard (not in-src-block)))
+                 (cond
+                  ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)")
+                   (delete-char 1))
+                  ((looking-back "\\(?:[[:word:]]\\|\s\\)\\*\\{2\\}"
+                                 (max (- (point) 3) (point-min)))
+                   (backward-delete-char 1))))
+                ((and (or "_" "*") (guard (not in-src-block)))
+                 (when (save-match-data
+                         (save-excursion
+                           (backward-char 2)
+                           (or
+                            (looking-at
+                             "[^[:space:][:punct:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
+                            (looking-at
+                             "\\(?:[[:space:][:punct:]]\\)\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))))
+                   (backward-delete-char 1)
+                   (insert "/"))))))
+          (if noop-p
+              (buffer-substring (point) start-pt)
+            (prog1 (buffer-substring (point) (point-max))
+                   (set-marker start-pt (point-max)))))))))
+
 (defun gptel--playback (buf content-str start-pt)
   "Playback CONTENT-STR in BUF.
 

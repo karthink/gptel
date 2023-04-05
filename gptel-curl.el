@@ -59,6 +59,8 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
     (push (format "-d%s" data) args)
     (nreverse (cons url args))))
 
+;;TODO: The :transformer argument here is an alternate implementation of
+;;`gptel-response-filter-functions'. The two need to be unified.
 ;;;###autoload
 (defun gptel-curl-get-response (info &optional callback)
   "Retrieve response to prompt in INFO.
@@ -83,7 +85,13 @@ the response is inserted into the current buffer after point."
                          :callback (or callback
                                        (if gptel-playback
                                            #'gptel--insert-response-stream
-                                         #'gptel--insert-response)))
+                                         #'gptel--insert-response))
+                         :transformer (when (or (eq gptel-default-mode 'org-mode)
+                                                (eq (buffer-local-value
+                                                     'major-mode
+                                                     (plist-get info :gptel-buffer))
+                                                    'org-mode))
+                                        (gptel--convert-playback-markdown->org)))
                    info))
       (if gptel-playback
           (progn (set-process-sentinel process #'gptel-curl--cleanup-stream)
@@ -122,7 +130,8 @@ See `gptel--url-get-response' for details."
         (status-str  (plist-get response :status))
         (gptel-buffer (plist-get info :gptel-buffer))
         (start-marker (plist-get info :insert-marker))
-        (tracking-marker (plist-get info :tracking-marker)))
+        (tracking-marker (plist-get info :tracking-marker))
+        (transformer (plist-get info :transformer)))
     (if content-str
         (with-current-buffer gptel-buffer
           (save-excursion
@@ -134,8 +143,9 @@ See `gptel--url-get-response' for details."
               (set-marker-insertion-type tracking-marker t)
               (plist-put info :tracking-marker tracking-marker))
             
-            (setq content-str (gptel--transform-response
-                               content-str gptel-buffer))
+            (when transformer
+              (setq content-str (funcall transformer content-str)))
+            
             (put-text-property 0 (length content-str) 'gptel 'response content-str)
             (goto-char tracking-marker)
             (insert content-str)))
