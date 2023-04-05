@@ -215,13 +215,6 @@ By default, \"openai.com\" is used as HOST and \"apikey\" as USER."
     ((pred functionp) (funcall gptel-api-key))
     (_ (error "`gptel-api-key' is not set"))))
 
-(defun gptel--update-header-line (msg face)
-  "Update header line with status MSG in FACE."
-  (and header-line-format
-    (setf (nth 1 header-line-format)
-          (propertize msg 'face face))
-    (force-mode-line-update)))
-
 (defsubst gptel--numberize (val)
   "Ensure VAL is a number."
   (if (stringp val) (string-to-number val) val))
@@ -267,6 +260,13 @@ By default, \"openai.com\" is used as HOST and \"apikey\" as USER."
                            'mouse-face 'highlight
                            'help-echo "OpenAI GPT model in use"))))))
     (setq header-line-format gptel--old-header-line)))
+
+(defun gptel--update-header-line (msg face)
+  "Update header line with status MSG in FACE."
+  (and gptel-mode (consp header-line-format)
+    (setf (nth 1 header-line-format)
+          (propertize msg 'face face))
+    (force-mode-line-update)))
 
 ;; TODO: Handle read-only buffers. Should we spawn a new buffer automatically?
 ;; TODO: Handle multiple requests(#15). (Only one request from one buffer at a time?)
