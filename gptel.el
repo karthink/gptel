@@ -76,14 +76,18 @@ key (more secure)."
           (string :tag "API key")
           (function :tag "Function that returns the API key")))
 
-(defcustom gptel-playback nil
-  "Whether responses from ChatGPT be played back in chunks.
+(defcustom gptel-stream nil
+  "Whether responses from ChatGPT be played back as they are received.
 
-When set to nil, it is inserted all at once.
+This option is ignored unless Curl is in use (see `gptel-use-curl').
+
+When set to nil, Emacs waits for the full response and inserts it
+all at once. This wait is asynchronous.
 
 'tis a bit silly."
   :group 'gptel
   :type 'boolean)
+(make-obsolete-variable 'gptel-playback 'gptel-stream "0.3.0")
 
 (defcustom gptel-use-curl (and (executable-find "curl") t)
   "Whether gptel should prefer Curl when available."
@@ -556,7 +560,7 @@ elements."
                      (insert "/")))))))
     (buffer-string)))
 
-(defun gptel--convert-playback-markdown->org ()
+(defun gptel--stream-convert-markdown->org ()
   "Return a Markdown to Org converter.
 
 This function parses a stream of Markdown text to Org

@@ -83,22 +83,22 @@ the response is inserted into the current buffer after point."
       (setf (alist-get process gptel-curl--process-alist)
             (nconc (list :token token
                          :callback (or callback
-                                       (if gptel-playback
-                                           #'gptel--insert-response-stream
+                                       (if gptel-stream
+                                           #'gptel-curl--stream-insert-response
                                          #'gptel--insert-response))
                          :transformer (when (or (eq gptel-default-mode 'org-mode)
                                                 (eq (buffer-local-value
                                                      'major-mode
                                                      (plist-get info :gptel-buffer))
                                                     'org-mode))
-                                        (gptel--convert-playback-markdown->org)))
+                                        (gptel--stream-convert-markdown->org)))
                    info))
-      (if gptel-playback
-          (progn (set-process-sentinel process #'gptel-curl--cleanup-stream)
-                 (set-process-filter process #'gptel-curl--filter))
+      (if gptel-stream
+          (progn (set-process-sentinel process #'gptel-curl--stream-cleanup)
+                 (set-process-filter process #'gptel-curl--stream-filter))
         (set-process-sentinel process #'gptel-curl--sentinel)))))
 
-(defun gptel-curl--cleanup-stream (process status)
+(defun gptel-curl--stream-cleanup (process status)
   "Process sentinel for GPTel curl requests.
 
 PROCESS and STATUS are process parameters."
@@ -152,7 +152,7 @@ See `gptel--url-get-response' for details."
       (gptel--update-header-line
        (format " Response Error: %s" status-str) 'error))))
 
-(defun gptel-curl--filter (process output)
+(defun gptel-curl--stream-filter (process output)
   (let* ((content-strs)
          (proc-info (alist-get process gptel-curl--process-alist)))
     (with-current-buffer (process-buffer process)
@@ -182,7 +182,7 @@ See `gptel--url-get-response' for details."
                  (http-status (plist-get proc-info :http-status)))
         ;; Find data chunk(s) and run callback
         (funcall (or (plist-get proc-info :callback)
-                     #'gptel--insert-response-stream)
+                     #'gptel-curl--stream-insert-response)
                  (if (equal http-status "200")
                      (let* ((json-object-type 'plist)
                             (response) (content-str))
