@@ -320,19 +320,17 @@ See `gptel--url-get-response' for details."
           (save-excursion
             (put-text-property 0 (length content-str) 'gptel 'response content-str)
             (message "Querying ChatGPT... done.")
-            (goto-char response-pt)
-            (unless (bobp) (insert-before-markers-and-inherit "\n\n"))
-            (if gptel-playback
-                (gptel--playback gptel-buffer content-str response-pt)
-              (let ((p (point)))
-                (insert content-str)
-                (pulse-momentary-highlight-region p (point)))
-              (when gptel-mode
+            (goto-char start-marker)
+            (unless (bobp) (insert "\n\n"))
+            (let ((p (point)))
+              (insert content-str)
+              (pulse-momentary-highlight-region p (point)))
+            (when gptel-mode
                 (insert "\n\n" (gptel-prompt-string))
                 (gptel--update-header-line " Ready" 'success))))
-          (goto-char (- (point) 2)))
       (gptel--update-header-line
-       (format " Response Error: %s" status-str) 'error))))
+       (format " Response Error: %s" status-str) 'error))
+    (run-hooks 'gptel-post-response-hook)))
 
 (defun gptel--create-prompt (&optional prompt-end)
   "Return a full conversation prompt from the contents of this buffer.
@@ -620,38 +618,6 @@ text stream."
               (buffer-substring (point) start-pt)
             (prog1 (buffer-substring (point) (point-max))
                    (set-marker start-pt (point-max)))))))))
-
-(defun gptel--playback (buf content-str start-pt)
-  "Playback CONTENT-STR in BUF.
-
-Begin at START-PT."
-  (let ((handle (gensym "gptel-change-group-handle--"))
-        (playback-timer (gensym "gptel--playback-"))
-        (content-length (length content-str))
-        (idx 0) (pt (copy-marker start-pt t)))
-    (setf (symbol-value handle) (prepare-change-group buf))
-    (activate-change-group (symbol-value handle))
-    (setf (symbol-value playback-timer)
-          (run-at-time
-          0 0.15
-           (lambda ()
-             (with-current-buffer buf
-               (if (>= content-length idx)
-                   (progn
-                     (goto-char pt)
-                     (insert
-                      (seq-subseq
-                       content-str idx
-                       (min content-length (+ idx 16))))
-                     (setq idx (+ idx 16)))
-                 (when gptel-mode
-                   (insert "\n\n" (gptel-prompt-string))
-                   (gptel--update-header-line " Ready" 'success))
-                 (when start-pt (goto-char (marker-position start-pt)))
-                 (accept-change-group (symbol-value handle))
-                 (undo-amalgamate-change-group (symbol-value handle))
-                 (cancel-timer (symbol-value playback-timer)))))))
-    nil))
 
 (provide 'gptel)
 ;;; gptel.el ends here
