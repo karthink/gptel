@@ -68,7 +68,7 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
 INFO is a plist with the following keys:
 - :prompt (the prompt being sent)
 - :gptel-buffer (the gptel buffer)
-- :insert-marker (marker at which to insert the response).
+- :start-marker (marker at which to insert the response).
 
 Call CALLBACK with the response and INFO afterwards. If omitted
 the response is inserted into the current buffer after point."
@@ -109,19 +109,19 @@ PROCESS and STATUS are process parameters."
     (let* ((info (alist-get process gptel-curl--process-alist))
            (gptel-buffer (plist-get info :gptel-buffer))
            (tracking-marker (plist-get info :tracking-marker))
-           (start-marker (plist-get info :insert-marker)))
-      (when start-marker (goto-char start-marker))
+           (start-marker (plist-get info :start-marker)))
       (pulse-momentary-highlight-region (+ start-marker 2) tracking-marker)
-      (when (equal (plist-get info :http-status) "200")
-        (with-current-buffer gptel-buffer
+      (with-current-buffer gptel-buffer
+        (when (equal (plist-get info :http-status) "200")
           (gptel--update-header-line  " Ready" 'success)
           (when gptel-mode
             (save-excursion (goto-char tracking-marker)
-                            (insert "\n\n" (gptel-prompt-string)))))))
+                            (insert "\n\n" (gptel-prompt-string)))))
+        (run-hooks 'gptel-post-response-hook)))
     (setf (alist-get process gptel-curl--process-alist nil 'remove) nil)
     (kill-buffer proc-buf)))
 
-(defun gptel--insert-response-stream (response info)
+(defun gptel-curl--stream-insert-response (response info)
   "Insert streaming RESPONSE from ChatGPT into the gptel buffer.
 
 INFO is a mutable plist containing information relevant to this buffer.
@@ -129,7 +129,7 @@ See `gptel--url-get-response' for details."
   (let ((content-str (plist-get response :content))
         (status-str  (plist-get response :status))
         (gptel-buffer (plist-get info :gptel-buffer))
-        (start-marker (plist-get info :insert-marker))
+        (start-marker (plist-get info :start-marker))
         (tracking-marker (plist-get info :tracking-marker))
         (transformer (plist-get info :transformer)))
     (if content-str

@@ -301,7 +301,7 @@ instead."
          #'gptel-curl-get-response #'gptel--url-get-response)
      (list :prompt full-prompt
            :gptel-buffer gptel-buffer
-           :insert-marker response-pt)))
+           :start-marker response-pt)))
     (gptel--update-header-line " Waiting..." 'warning)))
 
 (defun gptel--insert-response (response info)
@@ -312,7 +312,7 @@ See `gptel--url-get-response' for details."
   (let* ((content-str (plist-get response :content))
          (status-str  (plist-get response :status))
          (gptel-buffer (plist-get info :gptel-buffer))
-         (response-pt (plist-get info :insert-marker)))
+         (start-marker (plist-get info :start-marker)))
     (if content-str
         (with-current-buffer gptel-buffer
           (setq content-str (gptel--transform-response
@@ -420,7 +420,7 @@ BUFFER is the interaction buffer for ChatGPT."
 INFO is a plist with the following keys:
 - :prompt (the prompt being sent)
 - :gptel-buffer (the gptel buffer)
-- :insert-marker (marker at which to insert the response).
+- :start-marker (marker at which to insert the response).
 
 Call CALLBACK with the response and INFO afterwards. If omitted
 the response is inserted into the current buffer after point."
