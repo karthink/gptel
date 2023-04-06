@@ -104,6 +104,14 @@ return the transformed string."
   :group 'gptel
   :type 'hook)
 
+(defcustom gptel-post-response-hook nil
+  "Hook run after inserting ChatGPT's response into the current buffer.
+
+This hook is called in the buffer from which the prompt was sent
+to ChatGPT. Note: this hook runs even if the request fails."
+  :group 'gptel
+  :type 'hook)
+
 (defvar gptel-default-session "*ChatGPT*")
 (defvar gptel-default-mode (if (featurep 'markdown-mode)
                                'markdown-mode
@@ -551,10 +559,21 @@ elements."
     (buffer-string)))
 
 (defun gptel--convert-playback-markdown->org ()
-  ""
-  (let ((in-src-block)
-        (temp-buf (generate-new-buffer-name "*gptel-temp*"))
-        (start-pt (make-marker)))
+  "Return a Markdown to Org converter.
+
+This function parses a stream of Markdown text to Org
+continuously when it is called with successive chunks of the
+text stream."
+  (letrec ((in-src-block)
+           (temp-buf (generate-new-buffer-name "*gptel-temp*"))
+           (start-pt (make-marker))
+           (cleanup-fn
+            (lambda ()
+              (when (buffer-live-p (get-buffer temp-buf))
+                (set-marker start-pt nil)
+                (kill-buffer temp-buf))
+              (remove-hook 'gptel-post-response-hook cleanup-fn))))
+    (add-hook 'gptel-post-response-hook cleanup-fn)
     (lambda (str)
       (let ((noop-p))
         (with-current-buffer (get-buffer-create temp-buf)
