@@ -4,15 +4,19 @@
 
 GPTel is a simple, no-frills ChatGPT client for Emacs.
 
-[[file:img/gptel.png]]
+https://user-images.githubusercontent.com/8607532/230516812-86510a09-a2fb-4cbd-b53f-cc2522d05a13.mp4
+
+https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-ad3f-b66fa73c6e45.mp4
 
 - Requires an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
-- No external dependencies, only Emacs. Also, it's async.
+- Async and fast (streams responses).
 - Interact with ChatGPT from any buffer in Emacs.
 - ChatGPT's responses are in Markdown or Org markup (configurable).
 - Supports conversations (not just one-off queries) and multiple independent sessions.
 - You can go back and edit your previous prompts, or even ChatGPT's previous responses when continuing a conversation. These will be fed back to ChatGPT.
 
+GPTel uses Curl if available, but falls back to url-retrieve to work without external dependencies.
+  
 ** Installation
 
 GPTel is on MELPA. Install it with =M-x package-install⏎= =gptel=.
@@ -56,6 +60,16 @@ Procure an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
 
 Optional: Set =gptel-api-key= to the key or to a function that returns the key (more secure).
 
+*** In any buffer:
+
+1. Select a region of text and call =M-x gptel-send=. The response will be inserted below your region.
+   
+2. You can select both the original prompt and the response and call =M-x gptel-send= again to continue the conversation.
+
+3. Call =M-x gptel-send= with a prefix argument to set chat parameters (GPT model, directives etc) for this buffer, or to start a dedicated session from the selected region:
+
+[[https://user-images.githubusercontent.com/8607532/224949877-08c44cb4-7bff-4ffc-963a-16fef7a4271f.png]]
+
 *** In a dedicated chat buffer:
 
 1. Run =M-x gptel= to start or switch to the ChatGPT buffer. It will ask you for the key if you skipped the previous step. Run it with a prefix-arg (=C-u M-x gptel=) to start a new session.
@@ -69,16 +83,6 @@ Optional: Set =gptel-api-key= to the key or to a function that returns the key (
 That's it. You can go back and edit previous prompts and responses if you want.
 
 The default mode is =markdown-mode= if available, else =text-mode=.  You can set =gptel-default-mode= to =org-mode= if desired.
-
-*** In any buffer:
-
-1. Select a region of text and call =M-x gptel-send=. The response will be inserted below your region.
-   
-2. You can select both the original prompt and the response and call =M-x gptel-send= again to continue the conversation.
-
-3. Call =M-x gptel-send= with a prefix argument to set chat parameters (GPT model, directives etc) for this buffer, or to start a dedicated session from the selected region:
-
-[[https://user-images.githubusercontent.com/8607532/224949877-08c44cb4-7bff-4ffc-963a-16fef7a4271f.png]]
 
 ** Why another ChatGPT client?
 
