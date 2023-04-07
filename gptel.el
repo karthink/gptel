@@ -76,7 +76,7 @@ key (more secure)."
           (string :tag "API key")
           (function :tag "Function that returns the API key")))
 
-(defcustom gptel-stream nil
+(defcustom gptel-stream t
   "Whether responses from ChatGPT be played back as they are received.
 
 This option is ignored unless Curl is in use (see `gptel-use-curl').
