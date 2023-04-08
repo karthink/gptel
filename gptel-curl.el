@@ -109,15 +109,41 @@ PROCESS and STATUS are process parameters."
     (let* ((info (alist-get process gptel-curl--process-alist))
            (gptel-buffer (plist-get info :gptel-buffer))
            (tracking-marker (plist-get info :tracking-marker))
-           (start-marker (plist-get info :start-marker)))
-      (pulse-momentary-highlight-region (+ start-marker 2) tracking-marker)
-      (with-current-buffer gptel-buffer
-        (when (equal (plist-get info :http-status) "200")
-          (gptel--update-header-line  " Ready" 'success)
+           (start-marker (plist-get info :start-marker))
+           (http-status (plist-get info :http-status))
+           (http-msg (plist-get info :http-msg)))
+      (if (equal http-status "200")
+          ;; Finish handling response
+          (with-current-buffer gptel-buffer
+            (pulse-momentary-highlight-region (+ start-marker 2) tracking-marker)
+            (when gptel-mode
+              (gptel--update-header-line  " Ready" 'success)
+              (save-excursion (goto-char tracking-marker)
+                              (insert "\n\n" (gptel-prompt-string)))))
+        ;; Or Capture error message
+        (with-current-buffer proc-buf
+          (goto-char (point-max))
+          (search-backward (plist-get info :token))
+          (backward-char)
+          (pcase-let* ((`(,_ . ,header-size) (read (current-buffer)))
+                       (response (progn (goto-char header-size)
+                                        (condition-case nil (json-read)
+                                          (json-readtable-error 'json-read-error)))))
+            (cond
+             ((plist-get response :error)
+              (let* ((error-plist (plist-get response :error))
+                     (error-msg (plist-get error-plist :message))
+                     (error-type (plist-get error-plist :type)))
+                (message "ChatGPT error: %s" error-msg)
+                (setq http-msg (concat http-msg ": " (string-trim error-type)))))
+             ((eq response 'json-read-error)
+              (message "ChatGPT error (%s): Malformed JSON in response." http-msg))
+             (t (message "ChatGPT error (%s): Could not parse HTTP response." http-msg)))))
+        (with-current-buffer gptel-buffer
           (when gptel-mode
-            (save-excursion (goto-char tracking-marker)
-                            (insert "\n\n" (gptel-prompt-string)))))
-        (run-hooks 'gptel-post-response-hook)))
+            (gptel--update-header-line
+             (format " Response Error: %s" http-msg) 'error)))))
+    (run-hooks 'gptel-post-response-hook)
     (setf (alist-get process gptel-curl--process-alist nil 'remove) nil)
     (kill-buffer proc-buf)))
 
@@ -174,32 +200,29 @@ See `gptel--url-get-response' for details."
                          (and (string-match "HTTP/[.0-9]+ +\\([0-9]+\\)" http-msg)
                               (match-string 1 http-msg)))))
             (plist-put proc-info :http-status http-status)
-            (plist-put proc-info :http-msg http-msg)
-            (unless (equal http-status "200")
-              (message "%s" (concat (string-trim http-msg) ": Could not parse HTTP response."))))))
+            (plist-put proc-info :http-msg http-msg))))
       
       (when-let ((http-msg (plist-get proc-info :http-msg))
                  (http-status (plist-get proc-info :http-status)))
         ;; Find data chunk(s) and run callback
-        (funcall (or (plist-get proc-info :callback)
-                     #'gptel-curl--stream-insert-response)
-                 (if (equal http-status "200")
-                     (let* ((json-object-type 'plist)
-                            (response) (content-str))
-                       (condition-case nil
-                           (while (re-search-forward "^data:" nil t)
-                             (save-match-data
-                               (unless (looking-at " *\\[DONE\\]")
-                                 (when-let* ((response (json-read))
-                                             (delta (map-nested-elt
-                                                     response '(:choices 0 :delta)))
-                                             (content (plist-get delta :content)))
-                                   (push content content-strs)))))
-                         (error
-                          (goto-char (match-beginning 0))))
-                       (list :content (apply #'concat (nreverse content-strs)) :status  http-msg))
-                   (list :content nil :status http-msg))
-                 proc-info)))))
+        (when (equal http-status "200")
+          (funcall (or (plist-get proc-info :callback)
+                       #'gptel-curl--stream-insert-response)
+                   (let* ((json-object-type 'plist)
+                          (response) (content-str))
+                     (condition-case nil
+                         (while (re-search-forward "^data:" nil t)
+                           (save-match-data
+                             (unless (looking-at " *\\[DONE\\]")
+                               (when-let* ((response (json-read))
+                                           (delta (map-nested-elt
+                                                   response '(:choices 0 :delta)))
+                                           (content (plist-get delta :content)))
+                                 (push content content-strs)))))
+                       (error
+                        (goto-char (match-beginning 0))))
+                     (list :content (apply #'concat (nreverse content-strs)) :status  http-msg))
+                   proc-info))))))
 
 (defun gptel-curl--sentinel (process status)
   "Process sentinel for GPTel curl requests.
