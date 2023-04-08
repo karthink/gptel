@@ -126,6 +126,7 @@ PROCESS and STATUS are process parameters."
           (search-backward (plist-get info :token))
           (backward-char)
           (pcase-let* ((`(,_ . ,header-size) (read (current-buffer)))
+                       (json-object-type 'plist)
                        (response (progn (goto-char header-size)
                                         (condition-case nil (json-read)
                                           (json-readtable-error 'json-read-error)))))
@@ -134,8 +135,8 @@ PROCESS and STATUS are process parameters."
               (let* ((error-plist (plist-get response :error))
                      (error-msg (plist-get error-plist :message))
                      (error-type (plist-get error-plist :type)))
-                (message "ChatGPT error: %s" error-msg)
-                (setq http-msg (concat http-msg ": " (string-trim error-type)))))
+                (message "ChatGPT error: (%s) %s" http-msg error-msg)
+                (setq http-msg (concat "("  http-msg ") " (string-trim error-type)))))
              ((eq response 'json-read-error)
               (message "ChatGPT error (%s): Malformed JSON in response." http-msg))
              (t (message "ChatGPT error (%s): Could not parse HTTP response." http-msg)))))
@@ -200,7 +201,7 @@ See `gptel--url-get-response' for details."
                          (and (string-match "HTTP/[.0-9]+ +\\([0-9]+\\)" http-msg)
                               (match-string 1 http-msg)))))
             (plist-put proc-info :http-status http-status)
-            (plist-put proc-info :http-msg http-msg))))
+            (plist-put proc-info :http-msg (string-trim http-msg)))))
       
       (when-let ((http-msg (plist-get proc-info :http-msg))
                  (http-status (plist-get proc-info :http-status)))
@@ -259,8 +260,9 @@ buffer."
           ;;   (goto-char (point-min)))
           (goto-char (point-min))
 
-          (if-let* ((http-msg (buffer-substring (line-beginning-position)
-                                                (line-end-position)))
+          (if-let* ((http-msg (string-trim
+                               (buffer-substring (line-beginning-position)
+                                                 (line-end-position))))
                     (http-status
                      (save-match-data
                        (and (string-match "HTTP/[.0-9]+ +\\([0-9]+\\)" http-msg)
@@ -280,16 +282,16 @@ buffer."
                  (let* ((error-plist (plist-get response :error))
                         (error-msg (plist-get error-plist :message))
                         (error-type (plist-get error-plist :type)))
-                   (message "ChatGPT error: %s" error-msg)
-                   (list :content nil :status (concat http-msg ": " error-type))))
+                   (message "ChatGPT error: (%s) %s" http-msg error-msg)
+                   (list :content nil :status (concat "(" http-msg ") " (string-trim error-type)))))
                 ((eq response 'json-read-error)
-                 (message "ChatGPT error: Malformed JSON in response.")
-                 (list :content nil :status (concat http-msg ": Malformed JSON in response.")))
-                (t (message "ChatGPT error: Could not parse HTTP response.")
-                   (list :content nil :status (concat http-msg ": Could not parse HTTP response."))))
-            (message "ChatGPT error: Could not parse HTTP response.")
+                 (message "ChatGPT error: (%s) Malformed JSON in response." http-msg)
+                 (list :content nil :status (concat "(" http-msg ") Malformed JSON in response.")))
+                (t (message "ChatGPT error (%s): Could not parse HTTP response." http-msg)
+                   (list :content nil :status (concat "(" http-msg ") Could not parse HTTP response."))))
+            (message "ChatGPT error: (%s) Could not parse HTTP response." http-msg)
             (list :content nil
-                  :status (concat http-msg ": Could not parse HTTP response.")))))))
+                  :status (concat "(" http-msg ") Could not parse HTTP response.")))))))
 
 (provide 'gptel-curl)
 ;;; gptel-curl.el ends here

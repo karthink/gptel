@@ -317,24 +317,25 @@ See `gptel--url-get-response' for details."
          (status-str  (plist-get response :status))
          (gptel-buffer (plist-get info :gptel-buffer))
          (start-marker (plist-get info :start-marker)))
-    (if content-str
-        (with-current-buffer gptel-buffer
-          (setq content-str (gptel--transform-response
-                             content-str gptel-buffer))
-          (save-excursion
-            (put-text-property 0 (length content-str) 'gptel 'response content-str)
-            (message "Querying ChatGPT... done.")
-            (goto-char start-marker)
-            (unless (bobp) (insert "\n\n"))
-            (let ((p (point)))
-              (insert content-str)
-              (pulse-momentary-highlight-region p (point)))
-            (when gptel-mode
+    (with-current-buffer gptel-buffer
+      (if content-str
+          (progn
+            (setq content-str (gptel--transform-response
+                               content-str gptel-buffer))
+            (save-excursion
+              (put-text-property 0 (length content-str) 'gptel 'response content-str)
+              (message "Querying ChatGPT... done.")
+              (goto-char start-marker)
+              (unless (bobp) (insert "\n\n"))
+              (let ((p (point)))
+                (insert content-str)
+                (pulse-momentary-highlight-region p (point)))
+              (when gptel-mode
                 (insert "\n\n" (gptel-prompt-string))
                 (gptel--update-header-line " Ready" 'success))))
-      (gptel--update-header-line
-       (format " Response Error: %s" status-str) 'error))
-    (run-hooks 'gptel-post-response-hook)))
+        (gptel--update-header-line
+         (format " Response Error: %s" status-str) 'error))
+      (run-hooks 'gptel-post-response-hook))))
 
 (defun gptel--create-prompt (&optional prompt-end)
   "Return a full conversation prompt from the contents of this buffer.
@@ -452,7 +453,8 @@ the response is inserted into the current buffer after point."
       (with-current-buffer response-buffer
         (clone-buffer "*gptel-error*" 'show)))
     (with-current-buffer response-buffer
-      (if-let* ((status (buffer-substring (line-beginning-position) (line-end-position)))
+      (if-let* ((http-msg (string-trim (buffer-substring (line-beginning-position)
+                                                         (line-end-position))))
                 (json-object-type 'plist)
                 (response (progn (forward-paragraph)
                                  (let ((json-str (decode-coding-string
@@ -462,23 +464,23 @@ the response is inserted into the current buffer after point."
                                        (json-read-from-string json-str)
                                      (json-readtable-error 'json-read-error))))))
           (cond
-           ((string-match-p "200 OK" status)
+           ((string-match-p "200 OK" http-msg)
             (list :content (string-trim (map-nested-elt response '(:choices 0 :message :content)))
-                  :status status))
+                  :status http-msg))
            ((plist-get response :error)
             (let* ((error-plist (plist-get response :error))
                    (error-msg (plist-get error-plist :message))
                    (error-type (plist-get error-plist :type)))
-              (message "ChatGPT error: %s" error-msg)
-              (list :content nil :status (concat status ": " error-type))))
+              (message "ChatGPT error: (%s) %s" http-msg error-msg)
+              (list :content nil :status (concat "(" http-msg ") " error-type))))
            ((eq response 'json-read-error)
-            (message "ChatGPT error: Malformed JSON in response.")
-            (list :content nil :status (concat status ": Malformed JSON in response.")))
-           (t (message "ChatGPT error: Could not parse HTTP response.")
-              (list :content nil :status (concat status ": Could not parse HTTP response."))))
-        (message "ChatGPT error: Could not parse HTTP response.")
+            (message "ChatGPT error: (%s) Malformed JSON in response." http-msg)
+            (list :content nil :status (concat http-msg ": Malformed JSON in response.")))
+           (t (message "ChatGPT error: (%s) Could not parse HTTP response." http-msg)
+              (list :content nil :status (concat "(" http-msg ") Could not parse HTTP response."))))
+        (message "ChatGPT error: (%s) Could not parse HTTP response." http-msg)
         (list :content nil
-              :status (concat status ": Could not parse HTTP response."))))))
+              :status (concat "(" http-msg ") Could not parse HTTP response."))))))
 
 ;;;###autoload
 (defun gptel (name &optional api-key initial)
