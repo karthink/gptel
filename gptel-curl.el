@@ -110,7 +110,8 @@ PROCESS and STATUS are process parameters."
            (gptel-buffer (plist-get info :gptel-buffer))
            (tracking-marker (plist-get info :tracking-marker))
            (start-marker (plist-get info :start-marker)))
-      (pulse-momentary-highlight-region (+ start-marker 2) (or tracking-marker (line-end-position)))
+      (when tracking-marker
+        (pulse-momentary-highlight-region (+ start-marker 2) tracking-marker))
       (with-current-buffer gptel-buffer
         (when (equal (plist-get info :http-status) "200")
           (gptel--update-header-line  " Ready" 'success)
