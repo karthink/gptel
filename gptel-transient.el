@@ -117,7 +117,9 @@ You are a poet. Reply only in verse.
 Customize `gptel-directives' for task-specific prompts."
   [:description
    (lambda () (format "Directive: %s"
-                 (truncate-string-to-width gptel--system-message (max (- (window-width) 14) 20) nil nil t)))
+                 (truncate-string-to-width
+                  gptel--system-message
+                  (max (- (window-width) 14) 20) nil nil t)))
    :class transient-column
    :pad-keys t
    (gptel--suffix-system-message)
