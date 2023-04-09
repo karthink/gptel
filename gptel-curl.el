@@ -165,7 +165,8 @@ See `gptel--url-get-response' for details."
             (unless tracking-marker
               (gptel--update-header-line " Typing..." 'success)
               (goto-char start-marker)
-              (insert "\n\n")
+              (unless (plist-get info :in-place)
+                (insert "\n\n"))
               (setq tracking-marker (set-marker (make-marker) (point)))
               (set-marker-insertion-type tracking-marker t)
               (plist-put info :tracking-marker tracking-marker))

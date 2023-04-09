@@ -282,7 +282,8 @@ By default, \"openai.com\" is used as HOST and \"apikey\" as USER."
 (cl-defun gptel-request
     (&optional prompt &key callback
                (buffer (current-buffer))
-               position context
+               position context (stream nil)
+               (in-place nil)
                (system gptel--system-message))
   "Request a response from ChatGPT for PROMPT.
 
@@ -344,8 +345,18 @@ SYSTEM is the system message (chat directive) sent to ChatGPT. If
 omitted, the value of `gptel--system-message' for the current
 buffer is used.
 
+The following keywords are mainly for internal use:
+
+IN-PLACE is a boolean used by the default callback when inserting
+the response to determine if delimiters are needed between the
+prompt and the response.
+
+STREAM is a boolean that determines if the response should be
+streamed, as in `gptel-stream'. Do not set this if you are
+specifying a custom CALLBACK!
+
 Model parameters can be let-bound around calls to this function."
-  (let* ((gptel-stream nil)
+  (let* ((gptel-stream stream)
          (start-marker
           (cond
            ((null position)
@@ -366,6 +377,7 @@ Model parameters can be let-bound around calls to this function."
                      :buffer buffer
                      :position start-marker)))
     (when context (plist-put info :context context))
+    (when in-place (plist-put info :in-place in-place))
     (funcall
      (if gptel-use-curl
          #'gptel-curl-get-response #'gptel--url-get-response)
@@ -416,7 +428,8 @@ See `gptel--url-get-response' for details."
               (put-text-property 0 (length response) 'gptel 'response response)
               (message "Querying ChatGPT... done.")
               (goto-char start-marker)
-              (unless (bobp) (insert "\n\n"))
+              (unless (or (bobp) (plist-get info :in-place))
+                (insert "\n\n"))
               (let ((p (point)))
                 (insert response)
                 (pulse-momentary-highlight-region p (point)))
