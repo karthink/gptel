@@ -237,7 +237,6 @@ By default, \"openai.com\" is used as HOST and \"apikey\" as USER."
 (defvar-local gptel--old-header-line nil)
 (define-minor-mode gptel-mode
   "Minor mode for interacting with ChatGPT."
-  :glboal nil
   :lighter " GPT"
   :keymap
   (let ((map (make-sparse-keymap)))
