@@ -609,7 +609,8 @@ buffer created or switched to."
     (goto-char (point-max))
     (skip-chars-backward "\t\r\n")
     (message "Send your query with %s!"
-             (substitute-command-keys "\\[gptel-send]"))))
+             (substitute-command-keys "\\[gptel-send]"))
+    (current-buffer)))
 
 (defun gptel--convert-markdown->org (str)
   "Convert string STR from markdown to org markup.
