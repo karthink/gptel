@@ -63,12 +63,25 @@ Optional: Set =gptel-api-key= to the key or to a function that returns the key (
 *** In any buffer:
 
 1. Select a region of text and call =M-x gptel-send=. The response will be inserted below your region.
-   
+
 2. You can select both the original prompt and the response and call =M-x gptel-send= again to continue the conversation.
 
-3. Call =M-x gptel-send= with a prefix argument to set chat parameters (GPT model, directives etc) for this buffer, or to start a dedicated session from the selected region:
+3. Call =M-x gptel-send= with a prefix argument to
+- set chat parameters (GPT model, directives etc) for this buffer,
+- to read the prompt from elsewhere or redirect the response elsewhere,
+- or to replace the prompt with the response.
 
-[[https://user-images.githubusercontent.com/8607532/224949877-08c44cb4-7bff-4ffc-963a-16fef7a4271f.png]]
+[[https://user-images.githubusercontent.com/8607532/230770018-9ce87644-6c17-44af-bd39-8c899303dce1.png]]
+
+With a region selected, you can also rewrite prose or refactor code from here:
+
+*Code*:
+
+[[https://user-images.githubusercontent.com/8607532/230770162-1a5a496c-ee57-4a67-9c95-d45f238544ae.png]]
+
+*Prose*:
+
+[[https://user-images.githubusercontent.com/8607532/230770352-ee6f45a3-a083-4cf0-b13c-619f7710e9ba.png]]
 
 *** In a dedicated chat buffer:
 
