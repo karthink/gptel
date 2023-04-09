@@ -73,6 +73,8 @@ Or is it the other way around?"
     :if use-region-p
     ("r" gptel--refactor-or-rewrite gptel-rewrite-menu)]
 
+;; ** Prefix for setting the system prompt.
+
 (transient-define-prefix gptel-system-prompt ()
   "Change the system prompt to send ChatGPT.
 
@@ -111,6 +113,8 @@ Customize `gptel-directives' for task-specific prompts."
             (alist-get 'chat gptel-directives)))
     :transient t)])
 
+;; ** Prefix for rewriting/refactoring
+
 (transient-define-prefix gptel-rewrite-menu ()
   "Rewrite or refactor text region using ChatGPT."
   [:description
@@ -132,6 +136,7 @@ Customize `gptel-directives' for task-specific prompts."
   (unless gptel--rewrite-message
     (setq gptel--rewrite-message (gptel--rewrite-message)))
   (transient-setup 'gptel-rewrite-menu))
+
 ;; TODO: Switch to dynamic Transient menus (below) once there's a new Transient release
 ;; (transient-define-prefix gptel-system-prompt ()
 ;;   "Change the system prompt to send ChatGPT."
@@ -156,6 +161,10 @@ Customize `gptel-directives' for task-specific prompts."
 ;;        into prompt-suffixes
 ;;        finally return (cons (list 'gptel--suffix-system-message)
 ;;                             prompt-suffixes))))
+
+;; * Transient Infixes
+
+;; ** Infixes for model parameters
 
 (transient-define-infix gptel--infix-num-messages-to-send ()
   "Number of recent messages to send with each exchange.
@@ -240,6 +249,8 @@ will get progressively longer!"
          (buf (call-interactively #'gptel)))
     (and (bufferp buf)
          (with-current-buffer buf (gptel-send)))))
+;; ** Infix for the refactor/rewrite system message
+
 (transient-define-infix gptel--infix-rewrite-prompt ()
   "Chat directive (system message) to use for rewriting or refactoring."
   :description (lambda () (if (derived-mode-p 'prog-mode)
@@ -254,6 +265,10 @@ will get progressively longer!"
             (read-string
              prompt (gptel--rewrite-message) history)))
 
+;; * Transient Suffixes
+
+;; ** Suffix to send prompt
+;; ** Set system message
 (transient-define-suffix gptel--suffix-system-message ()
   "Set directives sent to ChatGPT."
   :transient nil
@@ -294,6 +309,8 @@ will get progressively longer!"
                            display-buffer-use-some-window)
                           (body-function . ,#'select-window)))
                        (call-interactively #'gptel-menu))))))
+
+;; ** Suffixes for rewriting/refactoring
 
 (transient-define-suffix gptel--suffix-rewrite ()
   "Rewrite or refactor region contents."
@@ -359,3 +376,8 @@ will get progressively longer!"
 
 (provide 'gptel-transient)
 ;;; gptel-transient.el ends here
+
+;; Local Variables:
+;; outline-regexp: "^;; \\*+"
+;; eval: (outline-minor-mode 1)
+;; End:
