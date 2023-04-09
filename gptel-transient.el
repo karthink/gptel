@@ -52,26 +52,49 @@ Or is it the other way around?"
 
 (define-obsolete-function-alias 'gptel-send-menu 'gptel-menu "0.3.2")
 
+;; FIXME: The `:incompatible' spec doesn't work if there's a `:description' below it. Bug?
 ;;;###autoload (autoload 'gptel-menu "gptel-transient" nil t)
 (transient-define-prefix gptel-menu ()
-     "Change parameters of prompt to send ChatGPT."
-     [:description
-      (lambda () (format "Directive:  %s"
-                    (truncate-string-to-width
-                     gptel--system-message (max (- (window-width) 14) 20) nil nil t)))
-      ("h" "Set directives for chat" gptel-system-prompt)]
-     [["Session Parameters"
-       (gptel--infix-max-tokens)
-       (gptel--infix-num-messages-to-send)
-       (gptel--infix-temperature)
-       (gptel--infix-model)]
-      ["Send"
-       (gptel--suffix-send-existing)
-       (gptel--suffix-send-new)
-       ("RET" "Send prompt" gptel-send)]])
+  "Change parameters of prompt to send ChatGPT."
+  ;; :incompatible '(("-m" "-n" "-k" "-e"))
+  [:description
+   (lambda () (format "Directive:  %s"
+                 (truncate-string-to-width
+                  gptel--system-message (max (- (window-width) 14) 20) nil nil t)))
+   ("h" "Set directives for chat" gptel-system-prompt)]
+  [["Session Parameters"
+    (gptel--infix-max-tokens)
+    (gptel--infix-num-messages-to-send)
+    (gptel--infix-temperature)
+    (gptel--infix-model)]
+   ["Prompt:"
+    ("-r" "From minibuffer instead" "-r")
+    ("-i" "Overwrite/Delete prompt" "-i")
+    "Response to:"
+    ("-m" "Minibuffer instead" "-m")
+    ("-n" "New session" "-n"
+     :class transient-option
+     :prompt "Name for new session: "
+     :reader
+     (lambda (prompt _ history)
+       (read-string
+        prompt (generate-new-buffer-name "*ChatGPT*") history)))
+    ("-e" "Existing session" "-e"
+     :class transient-option
+     :prompt "Existing session: "
+     :reader
+     (lambda (prompt _ history)
+       (completing-read
+        prompt (mapcar #'buffer-name (buffer-list))
+        (lambda (buf) (and (buffer-local-value 'gptel-mode (get-buffer buf))
+                      (not (equal (current-buffer) buf))))
+        t nil history)))
+    ("-k" "Kill-ring" "-k")]
    [:description gptel--refactor-or-rewrite
     :if use-region-p
     ("r" gptel--refactor-or-rewrite gptel-rewrite-menu)]
+   ["Send" (gptel--suffix-send)]])
+
 
 ;; ** Prefix for setting the system prompt.
 
@@ -219,36 +242,6 @@ will get progressively longer!"
             (read-from-minibuffer "Set temperature (0.0-2.0, leave empty for default): "
                                   (number-to-string gptel-temperature))))
 
-(transient-define-suffix gptel--suffix-send-existing ()
-  "Send query in existing chat session."
-  :if #'use-region-p
-  :key "E"
-  :description "Send in existing session"
-  (interactive)
-  (when-let* ((this (buffer-name))
-              (prompt (buffer-substring (region-beginning)
-                                       (region-end)))
-              (buf
-               (completing-read
-                "Send query in buffer: " (mapcar #'buffer-name (buffer-list))
-                (lambda (buf) (and (buffer-local-value 'gptel-mode (get-buffer buf))
-                              (not (equal this buf)))))))
-    (with-current-buffer buf
-      (goto-char (point-max))
-      (insert prompt)
-      (gptel-send))
-    (pop-to-buffer buf)))
-
-(transient-define-suffix gptel--suffix-send-new ()
-  "Send query in new session."
-  :if #'use-region-p
-  :description "Send in new session"
-  :key "N"
-  (interactive)
-  (let* ((current-prefix-arg t)
-         (buf (call-interactively #'gptel)))
-    (and (bufferp buf)
-         (with-current-buffer buf (gptel-send)))))
 ;; ** Infix for the refactor/rewrite system message
 
 (transient-define-infix gptel--infix-rewrite-prompt ()
@@ -268,6 +261,114 @@ will get progressively longer!"
 ;; * Transient Suffixes
 
 ;; ** Suffix to send prompt
+
+(transient-define-suffix gptel--suffix-send (args)
+  "Send ARGS."
+  :key "RET"
+  :description "Send prompt"
+  (interactive (list (transient-args transient-current-command)))
+  (let ((stream gptel-stream)
+        (in-place (and (member "-i" args) t))
+        (output-to-other-buffer-p)
+        (buffer) (position)
+        (callback) (buffer-name)
+        (prompt
+         (and (member "-r" args)
+              (read-string
+               "Ask ChatGPT: "
+               (apply #'buffer-substring-no-properties
+                      (if (use-region-p)
+                          (list (region-beginning) (region-end))
+                        (list (line-beginning-position) (line-end-position))))))))
+    (cond
+     ((member "-m" args)
+      (setq stream nil)
+      (setq callback
+            (lambda (resp info)
+              (if resp
+                  (message "ChatGPT response: %s" resp)
+                (message "ChatGPT response error: %s" (plist-get info :status))))))
+     ((member "-k" args)
+      (setq stream nil)
+      (setq callback
+            (lambda (resp info)
+              (if (not resp)
+                  (message "ChatGPT response error: %s" (plist-get info :status))
+                (kill-new resp)
+                (message "ChatGPT response: copied to kill-ring.")))))
+     ((setq buffer-name
+            (cl-some (lambda (s) (and (string-prefix-p "-n" s)
+                                 (substring s 2)))
+                     args))
+      (setq buffer
+            (gptel buffer-name
+                   (condition-case nil
+                       (gptel--api-key)
+                     ((error user-error)
+                      (setq gptel-api-key
+                            (read-passwd "OpenAI API key: "))))
+                   (or prompt
+                       (if (use-region-p)
+                           (buffer-substring-no-properties (region-beginning)
+                                                           (region-end))
+                         (buffer-substring-no-properties
+                          (save-excursion
+                            (text-property-search-backward
+                             'gptel 'response
+                             (when (get-char-property (max (point-min) (1- (point)))
+                                                      'gptel)
+                               t))
+                            (point))
+                          (point))))))
+      (setq position (with-current-buffer buffer (point)))
+      (setq output-to-other-buffer-p t))
+     ((setq buffer-name
+            (cl-some (lambda (s) (and (string-prefix-p "-e" s)
+                                 (substring s 2)))
+                     args))
+      (setq buffer (get-buffer buffer-name))
+      (setq output-to-other-buffer-p t)
+      (let ((reduced-prompt
+             (if (use-region-p)
+                 (buffer-substring-no-properties (region-beginning)
+                                                 (region-end))
+               (buffer-substring-no-properties
+                (save-excursion
+                  (text-property-search-backward
+                   'gptel 'response
+                   (when (get-char-property (max (point-min) (1- (point)))
+                                            'gptel)
+                     t))
+                  (point))
+                (point)))))
+        (with-current-buffer buffer
+          (goto-char (point-max))
+          (insert reduced-prompt)
+          (setq position (point))))))
+
+    (when in-place
+      (setq prompt (gptel--create-prompt (point)))
+      (let ((beg
+             (if (use-region-p)
+                 (region-beginning)
+               (save-excursion
+                 (text-property-search-backward
+                  'gptel 'response
+                  (when (get-char-property (max (point-min) (1- (point)))
+                                           'gptel)
+                    t))
+                 (point))))
+            (end (if (use-region-p) (region-end) (point))))
+        (kill-region beg end)))
+
+    (gptel-request
+     prompt
+     :buffer (or buffer (current-buffer))
+     :position position
+     :in-place (and in-place (not output-to-other-buffer-p))
+     :stream stream
+     :callback callback)))
+
 ;; ** Set system message
 (transient-define-suffix gptel--suffix-system-message ()
   "Set directives sent to ChatGPT."
