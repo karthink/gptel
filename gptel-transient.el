@@ -69,6 +69,18 @@ Or is it the other way around?"
        (gptel--suffix-send-existing)
        (gptel--suffix-send-new)
        ("RET" "Send prompt" gptel-send)]])
+   [:description gptel--refactor-or-rewrite
+    :if use-region-p
+    ("r"
+     ;;FIXME: Transient complains if I use `gptel--refactor-or-rewrite' here. It
+     ;;reads this function as a suffix instead of a function that returns the
+     ;;description.
+     (lambda () (if (derived-mode-p 'prog-mode)
+               "Refactor" "Rewrite"))
+     gptel-rewrite-menu)]
+   ["Send" (gptel--suffix-send)]])
+
+;; ** Prefix for setting the system prompt.
 
 (transient-define-prefix gptel-system-prompt ()
   "Change the system prompt to send ChatGPT.
@@ -108,6 +120,27 @@ Customize `gptel-directives' for task-specific prompts."
             (alist-get 'chat gptel-directives)))
     :transient t)])
 
+(transient-define-prefix gptel-rewrite-menu ()
+  "Rewrite or refactor text region using ChatGPT."
+  [:description
+   (lambda ()
+     (format "Directive:  %s"
+             (truncate-string-to-width
+              (or gptel--rewrite-message (gptel--rewrite-message))
+              (max (- (window-width) 14) 20) nil nil t)))
+   (gptel--infix-rewrite-prompt)]
+  [[:description "Diff Options"
+   ("-w" "Wordwise diff" "-w")]
+   [:description
+    (lambda () (if (derived-mode-p 'prog-mode)
+              "Refactor" "Rewrite"))
+    (gptel--suffix-rewrite)
+    (gptel--suffix-rewrite-and-replace)
+    (gptel--suffix-rewrite-and-ediff)]]
+  (interactive)
+  (unless gptel--rewrite-message
+    (setq gptel--rewrite-message (gptel--rewrite-message)))
+  (transient-setup 'gptel-rewrite-menu))
 ;; TODO: Switch to dynamic Transient menus (below) once there's a new Transient release
 ;; (transient-define-prefix gptel-system-prompt ()
 ;;   "Change the system prompt to send ChatGPT."
@@ -216,6 +249,19 @@ will get progressively longer!"
          (buf (call-interactively #'gptel)))
     (and (bufferp buf)
          (with-current-buffer buf (gptel-send)))))
+(transient-define-infix gptel--infix-rewrite-prompt ()
+  "Chat directive (system message) to use for rewriting or refactoring."
+  :description (lambda () (if (derived-mode-p 'prog-mode)
+                         "Set directives for refactor"
+                       "Set directives for rewrite"))
+  :format "%k %d"
+  :class 'transient-lisp-variable
+  :variable 'gptel--rewrite-message
+  :key "h"
+  :prompt "Set directive for rewrite: "
+  :reader (lambda (prompt _ history)
+            (read-string
+             prompt (gptel--rewrite-message) history)))
 
 (transient-define-suffix gptel--suffix-system-message ()
   "Set directives sent to ChatGPT."
@@ -257,6 +303,68 @@ will get progressively longer!"
                            display-buffer-use-some-window)
                           (body-function . ,#'select-window)))
                        (call-interactively #'gptel-menu))))))
+
+(transient-define-suffix gptel--suffix-rewrite ()
+  "Rewrite or refactor region contents."
+  :key "r"
+  :description #'gptel--refactor-or-rewrite
+  (interactive)
+  (let* ((prompt (buffer-substring-no-properties
+                  (region-beginning) (region-end)))
+         (stream gptel-stream)
+         (gptel--system-message gptel--rewrite-message))
+    (gptel-request prompt :stream stream)))
+
+(transient-define-suffix gptel--suffix-rewrite-and-replace ()
+  "Refactor region contents and replace it."
+  :key "R"
+  :description (lambda () (concat (gptel--refactor-or-rewrite) " in place"))
+  (interactive)
+  (let* ((prompt (buffer-substring-no-properties
+                  (region-beginning) (region-end)))
+         (stream gptel-stream)
+         (gptel--system-message gptel--rewrite-message))
+    (kill-region (region-beginning) (region-end))
+    (message "Original text saved to kill-ring.")
+    (gptel-request prompt :stream stream :in-place t)))
+
+(transient-define-suffix gptel--suffix-rewrite-and-ediff (args)
+  "Refactoring or rewrite region contents and run Ediff."
+  :key "E"
+  :description (lambda () (concat (gptel--refactor-or-rewrite) " and Ediff"))
+  (interactive (list (transient-args transient-current-command)))
+  (let* ((prompt (buffer-substring-no-properties
+                  (region-beginning) (region-end)))
+         (gptel--system-message gptel--rewrite-message))
+    (message "Waiting for response... ")
+    (gptel-request
+     prompt
+     :context (cons (region-beginning) (region-end))
+     :callback
+     (lambda (response info)
+       (if (not response)
+           (message "ChatGPT response error: %s" (plist-get info :status))
+         (let* ((gptel-buffer (plist-get info :buffer))
+                (gptel-bounds (plist-get info :context))
+                (buffer-mode
+                 (buffer-local-value 'major-mode gptel-buffer)))
+           (pcase-let ((`(,new-buf ,new-beg ,new-end)
+                        (with-current-buffer (get-buffer-create "*gptel-rewrite-Region.B-*")
+                          (erase-buffer)
+                          (funcall buffer-mode)
+                          (insert response)
+                          (goto-char (point-min))
+                          (list (current-buffer) (point-min) (point-max)))))
+             (require 'ediff)
+             (apply
+              #'ediff-regions-internal
+              (get-buffer (ediff-make-cloned-buffer gptel-buffer "-Region.A-"))
+              (car gptel-bounds) (cdr gptel-bounds)
+              new-buf new-beg new-end
+              nil
+              (if (transient-arg-value "-w" args)
+                  (list 'ediff-regions-wordwise 'word-wise nil)
+                (list 'ediff-regions-linewise nil nil))))))))))
 
 (provide 'gptel-transient)
 ;;; gptel-transient.el ends here
