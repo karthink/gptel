@@ -280,6 +280,98 @@ By default, \"openai.com\" is used as HOST and \"apikey\" as USER."
           (propertize msg 'face face))
     (force-mode-line-update)))
 
+(cl-defun gptel-request
+    (&optional prompt &key callback
+               (buffer (current-buffer))
+               position context
+               (system gptel--system-message))
+  "Request a response from ChatGPT for PROMPT.
+
+If PROMPT is
+- a string, it is used to create a full prompt suitable for
+  sending to ChatGPT.
+- nil but region is active, the region contents are used.
+- nil, the current buffer's contents up to (point) are used.
+  Previous responses from ChatGPT are identified as responses.
+- A list of plists, it is used as is.
+
+Keyword arguments:
+
+CALLBACK, if supplied, is a function of two arguments, called
+with the RESPONSE (a string) and INFO (a plist):
+
+(callback RESPONSE INFO)
+
+RESPONSE is nil if there was no response or an error.
+
+The INFO plist has (at least) the following keys:
+:prompt       - The full prompt that was sent with the request
+:position     - marker at the point the request was sent.
+:buffer       - The buffer current when the request was sent.
+:status       - Short string describing the result of the request
+
+Example of a callback that messages the user with the response
+and info:
+
+(lambda (response info)
+  (if response
+      (let ((posn (marker-position (plist-get info :position)))
+            (buf  (buffer-name (plist-get info :buffer))))
+        (message \"Response for request from %S at %d: %s\"
+                 buf posn response))
+    (message \"gptel-request failed with message: %s\"
+             (plist-get info :status))))
+
+Or, for just the response:
+
+(lambda (response _)
+  ;; Do something with response
+  (message (rot13-string response)))
+
+If CALLBACK is omitted, the response is inserted at the point the
+request was sent.
+
+BUFFER is the buffer the request belongs to. If omitted the
+current buffer is recorded.
+
+POSITION is a buffer position (integer or marker). If omitted,
+the value of (point) or (region-end) is recorded, depending on
+whether the region is active.
+
+CONTEXT is any additional data needed for the callback to run. It
+is included in the INFO argument to the callback.
+
+SYSTEM is the system message (chat directive) sent to ChatGPT. If
+omitted, the value of `gptel--system-message' for the current
+buffer is used.
+
+Model parameters can be let-bound around calls to this function."
+  (let* ((gptel-stream nil)
+         (start-marker
+          (cond
+           ((null position)
+            (if (use-region-p)
+                (set-marker (make-marker) (region-end))
+              (point-marker)))
+           ((markerp position) position)
+           ((integerp position)
+            (set-marker (make-marker) position buffer))))
+         (full-prompt
+         (cond
+          ((null prompt) (gptel--create-prompt start-marker))
+          ((stringp prompt)
+           `((:role "system" :content ,system)
+             (:role "user"   :content ,prompt)))
+          ((consp prompt) prompt)))
+         (info (list :prompt full-prompt
+                     :buffer buffer
+                     :position start-marker)))
+    (when context (plist-put info :context context))
+    (funcall
+     (if gptel-use-curl
+         #'gptel-curl-get-response #'gptel--url-get-response)
+     info callback)))
+
 ;; TODO: Handle read-only buffers. Should we spawn a new buffer automatically?
 ;; TODO: Handle multiple requests(#15). (Only one request from one buffer at a time?)
 ;; TODO: Since we capture a marker for the insertion location, `gptel-buffer' no
