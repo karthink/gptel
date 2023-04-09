@@ -29,8 +29,31 @@
 (require 'gptel)
 (require 'transient)
 
-;;;###autoload (autoload 'gptel-send-menu "gptel-transient" nil t)
-(transient-define-prefix gptel-send-menu ()
+(declare-function ediff-regions-internal "ediff")
+(declare-function ediff-make-cloned-buffer "ediff-utils")
+
+;; * Helper functions
+(defun gptel--refactor-or-rewrite ()
+  "Rewrite should be refactored into refactor.
+
+Or is it the other way around?"
+  (if (derived-mode-p 'prog-mode)
+      "Refactor" "Rewrite"))
+
+(defvar-local gptel--rewrite-message nil)
+(defun gptel--rewrite-message ()
+  "Set a generic refactor/rewrite message for the buffer."
+  (if (derived-mode-p 'prog-mode)
+      (format "You are a %s programmer. Refactor the following code. Generate only code, no explanation."
+              (substring (symbol-name major-mode) nil -5))
+    (format "You are a prose editor. Rewrite the following text to be more professional.")))
+
+;; * Transient Prefixes
+
+(define-obsolete-function-alias 'gptel-send-menu 'gptel-menu "0.3.2")
+
+;;;###autoload (autoload 'gptel-menu "gptel-transient" nil t)
+(transient-define-prefix gptel-menu ()
      "Change parameters of prompt to send ChatGPT."
      [:description
       (lambda () (format "Directive:  %s"
@@ -233,7 +256,7 @@ will get progressively longer!"
                         `((display-buffer-reuse-window
                            display-buffer-use-some-window)
                           (body-function . ,#'select-window)))
-                       (call-interactively #'gptel-send-menu))))))
+                       (call-interactively #'gptel-menu))))))
 
 (provide 'gptel-transient)
 ;;; gptel-transient.el ends here

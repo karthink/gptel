@@ -54,7 +54,7 @@
 ;;; Code:
 (declare-function markdown-mode "markdown-mode")
 (declare-function gptel-curl-get-response "gptel-curl")
-(declare-function gptel-send-menu "gptel-transient")
+(declare-function gptel-menu "gptel-transient")
 (declare-function pulse-momentary-highlight-region "pulse")
 
 (eval-when-compile
@@ -260,14 +260,14 @@ By default, \"openai.com\" is used as HOST and \"apikey\" as USER."
                        " " 'display `(space :align-to ,(max 1 (- (window-width) (+ 2 l1 l2)))))
                       (propertize
                        (button-buttonize num-exchanges
-                        (lambda (&rest _) (gptel-send-menu)))
+                        (lambda (&rest _) (gptel-menu)))
                        'mouse-face 'highlight
                        'help-echo
                        "Number of past exchanges to include with each request")
                       " "
                       (propertize
                        (button-buttonize (concat "[" gptel-model "]")
-                            (lambda (&rest _) (gptel-send-menu)))
+                            (lambda (&rest _) (gptel-menu)))
                            'mouse-face 'highlight
                            'help-echo "OpenAI GPT model in use"))))))
     (setq header-line-format gptel--old-header-line)))
@@ -395,7 +395,7 @@ With prefix arg ARG activate a transient menu with more options
 instead."
   (interactive "P")
   (if (and arg (require 'gptel-transient nil t))
-      (call-interactively #'gptel-send-menu)
+      (call-interactively #'gptel-menu)
   (message "Querying ChatGPT...")
   (let* ((response-pt
           (if (use-region-p)
