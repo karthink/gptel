@@ -618,11 +618,12 @@ buffer created or switched to."
      (t (funcall gptel-default-mode)))
     (unless gptel-mode (gptel-mode 1))
     (if (bobp) (insert (or initial (gptel-prompt-string))))
-    (pop-to-buffer (current-buffer))
     (goto-char (point-max))
     (skip-chars-backward "\t\r\n")
-    (message "Send your query with %s!"
-             (substitute-command-keys "\\[gptel-send]"))
+    (when (called-interactively-p 'gptel)
+      (pop-to-buffer (current-buffer))
+      (message "Send your query with %s!"
+               (substitute-command-keys "\\[gptel-send]")))
     (current-buffer)))
 
 (defun gptel--convert-markdown->org (str)

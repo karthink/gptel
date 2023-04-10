@@ -328,7 +328,9 @@ will get progressively longer!"
                                t))
                             (point))
                           (point))))))
-      (setq position (with-current-buffer buffer (point)))
+      (with-current-buffer buffer
+        (gptel--update-header-line " Waiting..." 'warning)
+        (setq position (point)))
       (setq output-to-other-buffer-p t))
      ((setq buffer-name
             (cl-some (lambda (s) (and (string-prefix-p "-e" s)
@@ -352,7 +354,9 @@ will get progressively longer!"
         (with-current-buffer buffer
           (goto-char (point-max))
           (insert reduced-prompt)
-          (setq position (point))))))
+          (setq position (point))
+          (when gptel-mode
+            (gptel--update-header-line " Waiting..." 'warning))))))
 
     (when in-place
       (setq prompt (gptel--create-prompt (point)))
@@ -375,7 +379,14 @@ will get progressively longer!"
      :position position
      :in-place (and in-place (not output-to-other-buffer-p))
      :stream stream
-     :callback callback)))
+     :callback callback)
+    (when output-to-other-buffer-p
+      (message (concat "Prompt sent to buffer: "
+                       (propertize buffer-name 'face 'help-key-binding)))
+      (display-buffer
+       buffer '((display-buffer-reuse-window
+                 display-buffer-pop-up-window)
+                (reusable-frames . visible))))))
 
 ;; ** Set system message
 (transient-define-suffix gptel--suffix-system-message ()
