@@ -69,7 +69,7 @@ Or is it the other way around?"
     (gptel--infix-model)]
    ["Prompt:"
     ("-r" "From minibuffer instead" "-r")
-    ("-i" "Overwrite/Delete prompt" "-i")
+    ("-i" "Replace/Delete prompt" "-i")
     "Response to:"
     ("-m" "Minibuffer instead" "-m")
     ("-n" "New session" "-n"
@@ -339,18 +339,19 @@ will get progressively longer!"
       (setq buffer (get-buffer buffer-name))
       (setq output-to-other-buffer-p t)
       (let ((reduced-prompt
-             (if (use-region-p)
-                 (buffer-substring-no-properties (region-beginning)
-                                                 (region-end))
-               (buffer-substring-no-properties
-                (save-excursion
-                  (text-property-search-backward
-                   'gptel 'response
-                   (when (get-char-property (max (point-min) (1- (point)))
-                                            'gptel)
-                     t))
-                  (point))
-                (point)))))
+             (or prompt
+                 (if (use-region-p)
+                     (buffer-substring-no-properties (region-beginning)
+                                                     (region-end))
+                   (buffer-substring-no-properties
+                    (save-excursion
+                      (text-property-search-backward
+                       'gptel 'response
+                       (when (get-char-property (max (point-min) (1- (point)))
+                                                'gptel)
+                         t))
+                      (point))
+                    (point))))))
         (with-current-buffer buffer
           (goto-char (point-max))
           (insert reduced-prompt)
