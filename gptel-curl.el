@@ -72,13 +72,13 @@ INFO is a plist with the following keys:
 
 Call CALLBACK with the response and INFO afterwards. If omitted
 the response is inserted into the current buffer after point."
-  (with-current-buffer (generate-new-buffer "*gptel-curl*")
-    (let* ((token (md5 (format "%s%s%s%s"
-                               (random) (emacs-pid) (user-full-name)
-                               (recent-keys))))
-           (args (gptel-curl--get-args (plist-get info :prompt) token))
-           (process (apply #'start-process "gptel-curl" (current-buffer)
-                           "curl" args)))
+  (let* ((token (md5 (format "%s%s%s%s"
+                             (random) (emacs-pid) (user-full-name)
+                             (recent-keys))))
+         (args (gptel-curl--get-args (plist-get info :prompt) token))
+         (process (apply #'start-process "gptel-curl"
+                         (generate-new-buffer "*gptel-curl*") "curl" args)))
+    (with-current-buffer (process-buffer process)
       (set-process-query-on-exit-flag process nil)
       (setf (alist-get process gptel-curl--process-alist)
             (nconc (list :token token
