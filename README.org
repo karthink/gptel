@@ -58,7 +58,13 @@ After installation with =M-x package-install⏎= =gptel=
 
 Procure an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
 
-Optional: Set =gptel-api-key= to the key or to a function that returns the key (more secure).
+Optional: Set =gptel-api-key= to the key. Alternatively, you may choose a more secure method such as:
+
+- Storing in =~/.authinfo=. By default, "openai.com" is used as HOST and "apikey" as USER.
+  #+begin_src authinfo
+machine openai.com login apikey password TOKEN
+  #+end_src
+- Setting it to a function that returns the key.
 
 *** In any buffer:
 
