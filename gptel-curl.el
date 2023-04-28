@@ -42,7 +42,7 @@
 PROMPTS is the data to send, TOKEN is a unique identifier."
   (let* ((args
           (list "--location" "--silent" "--compressed" "--disable"))
-         (url "https://api.openai.com/v1/chat/completions")
+         (url (concat gptel-openai-endpoint "/chat/completions"))
          (data (encode-coding-string
                 (json-encode (gptel--request-data prompts))
                 'utf-8))

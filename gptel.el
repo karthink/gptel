@@ -487,7 +487,7 @@ there."
   (let ((prompts-plist
          `(:model ,gptel-model
            :messages [,@prompts]
-           :stream ,(and gptel-stream gptel-use-curl))))
+           :stream ,(or (and gptel-stream gptel-use-curl) :json-false))))
     (when gptel-temperature
       (plist-put prompts-plist :temperature (gptel--numberize gptel-temperature)))
     (when gptel-max-tokens
@@ -522,6 +522,9 @@ BUFFER is the interaction buffer for ChatGPT."
     ('org-mode (gptel--convert-markdown->org content))
     (_ content)))
 
+(defcustom gptel-openai-endpoint "https://api.openai.com/v1"
+  "The OpenAI API endpoint URI, including the API version path element (string).")
+
 (defun gptel--url-get-response (info &optional callback)
   "Fetch response to prompt in INFO from ChatGPT.
 
@@ -542,7 +545,7 @@ the response is inserted into the current buffer after point."
          (encode-coding-string
           (json-encode (gptel--request-data (plist-get info :prompt)))
           'utf-8)))
-    (url-retrieve "https://api.openai.com/v1/chat/completions"
+    (url-retrieve (concat gptel-openai-endpoint "/chat/completions")
                   (lambda (_)
                     (pcase-let ((`(,response ,http-msg ,error)
                                  (gptel--url-parse-response (current-buffer))))

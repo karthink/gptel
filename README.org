@@ -114,6 +114,11 @@ If you want custom behavior, such as
 
 GPTel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki][wiki]] for examples.
 
+** Additional Configuration
+
+- You can override the OpenAI API endpoint by customizing ~gptel-openai-endpoint~.
+
+
 ** Why another ChatGPT client?
 
 Existing Emacs clients don't /reliably/ let me use it the simple way I can in the browser.  They will get better, but I wanted something for now.
