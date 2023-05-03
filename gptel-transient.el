@@ -279,7 +279,7 @@ will get progressively longer!"
         (in-place (and (member "-i" args) t))
         (output-to-other-buffer-p)
         (buffer) (position)
-        (callback) (buffer-name)
+        (callback) (gptel-buffer-name)
         (prompt
          (and (member "-r" args)
               (read-string
@@ -304,12 +304,12 @@ will get progressively longer!"
                   (message "ChatGPT response error: %s" (plist-get info :status))
                 (kill-new resp)
                 (message "ChatGPT response: copied to kill-ring.")))))
-     ((setq buffer-name
+     ((setq gptel-buffer-name
             (cl-some (lambda (s) (and (string-prefix-p "-n" s)
                                  (substring s 2)))
                      args))
       (setq buffer
-            (gptel buffer-name
+            (gptel gptel-buffer-name
                    (condition-case nil
                        (gptel--api-key)
                      ((error user-error)
@@ -332,11 +332,11 @@ will get progressively longer!"
         (gptel--update-header-line " Waiting..." 'warning)
         (setq position (point)))
       (setq output-to-other-buffer-p t))
-     ((setq buffer-name
+     ((setq gptel-buffer-name
             (cl-some (lambda (s) (and (string-prefix-p "-e" s)
                                  (substring s 2)))
                      args))
-      (setq buffer (get-buffer buffer-name))
+      (setq buffer (get-buffer gptel-buffer-name))
       (setq output-to-other-buffer-p t)
       (let ((reduced-prompt
              (or prompt
@@ -354,7 +354,10 @@ will get progressively longer!"
                     (point))))))
         (with-current-buffer buffer
           (goto-char (point-max))
-          (insert reduced-prompt)
+          (if (or buffer-read-only
+                  (get-char-property (point) 'read-only))
+              (setq prompt reduced-prompt)
+            (insert reduced-prompt))
           (setq position (point))
           (when gptel-mode
             (gptel--update-header-line " Waiting..." 'warning))))))
@@ -383,7 +386,7 @@ will get progressively longer!"
      :callback callback)
     (when output-to-other-buffer-p
       (message (concat "Prompt sent to buffer: "
-                       (propertize buffer-name 'face 'help-key-binding)))
+                       (propertize gptel-buffer-name 'face 'help-key-binding)))
       (display-buffer
        buffer '((display-buffer-reuse-window
                  display-buffer-pop-up-window)

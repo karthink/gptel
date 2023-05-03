@@ -383,10 +383,7 @@ Model parameters can be let-bound around calls to this function."
          #'gptel-curl-get-response #'gptel--url-get-response)
      info callback)))
 
-;; TODO: Handle read-only buffers. Should we spawn a new buffer automatically?
 ;; TODO: Handle multiple requests(#15). (Only one request from one buffer at a time?)
-;; TODO: Since we capture a marker for the insertion location, `gptel-buffer' no
-;; longer needs to be recorded
 ;;;###autoload
 (defun gptel-send (&optional arg)
   "Submit this prompt to ChatGPT.
@@ -419,6 +416,20 @@ See `gptel--url-get-response' for details."
   (let* ((status-str  (plist-get info :status))
          (gptel-buffer (plist-get info :buffer))
          (start-marker (plist-get info :position)))
+    ;; Handle read-only buffers
+    (when (with-current-buffer gptel-buffer
+            (or buffer-read-only
+                (get-char-property start-marker 'read-only)))
+      (message "Buffer is read only, displaying reply in buffer \"*ChatGPT response*\"")
+      (display-buffer
+       (with-current-buffer (get-buffer-create "*ChatGPT response*")
+         (goto-char (point-max))
+         (move-marker start-marker (point) (current-buffer))
+         (current-buffer))
+       '((display-buffer-reuse-window
+          display-buffer-pop-up-window)
+         (reusable-frames . visible))))
+    ;; Insert response and status message/error message
     (with-current-buffer gptel-buffer
       (if response
           (progn
@@ -426,16 +437,15 @@ See `gptel--url-get-response' for details."
                                response gptel-buffer))
             (save-excursion
               (put-text-property 0 (length response) 'gptel 'response response)
-              (message "Querying ChatGPT... done.")
-              (goto-char start-marker)
-              (unless (or (bobp) (plist-get info :in-place))
-                (insert "\n\n"))
-              (let ((p (point)))
-                (insert response)
-                (pulse-momentary-highlight-region p (point)))
-              (when gptel-mode
-                (insert "\n\n" (gptel-prompt-string))
-                (gptel--update-header-line " Ready" 'success))))
+              (with-current-buffer (marker-buffer start-marker)
+                (goto-char start-marker)
+                (unless (or (bobp) (plist-get info :in-place))
+                  (insert "\n\n"))
+                (let ((p (point)))
+                  (insert response)
+                  (pulse-momentary-highlight-region p (point)))
+                (when gptel-mode (insert "\n\n" (gptel-prompt-string))))
+              (when gptel-mode (gptel--update-header-line " Ready" 'success))))
         (gptel--update-header-line
          (format " Response Error: %s" status-str) 'error)
         (message "ChatGPT response error: (%s) %s"

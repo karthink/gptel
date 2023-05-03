@@ -114,13 +114,14 @@ PROCESS and STATUS are process parameters."
            (http-status (plist-get info :http-status))
            (http-msg (plist-get info :status)))
       (if (equal http-status "200")
-          ;; Finish handling response
-          (with-current-buffer gptel-buffer
-            (pulse-momentary-highlight-region (+ start-marker 2) tracking-marker)
-            (when gptel-mode
-              (gptel--update-header-line  " Ready" 'success)
-              (save-excursion (goto-char tracking-marker)
-                              (insert "\n\n" (gptel-prompt-string)))))
+          (progn
+            ;; Finish handling response
+            (with-current-buffer (marker-buffer start-marker)
+              (pulse-momentary-highlight-region (+ start-marker 2) tracking-marker)
+              (when gptel-mode (save-excursion (goto-char tracking-marker)
+                                               (insert "\n\n" (gptel-prompt-string)))))
+            (with-current-buffer gptel-buffer
+              (when gptel-mode (gptel--update-header-line  " Ready" 'success))))
         ;; Or Capture error message
         (with-current-buffer proc-buf
           (goto-char (point-max))
@@ -155,17 +156,16 @@ PROCESS and STATUS are process parameters."
 INFO is a mutable plist containing information relevant to this buffer.
 See `gptel--url-get-response' for details."
   (let ((status-str  (plist-get response :status))
-        (gptel-buffer (plist-get info :buffer))
         (start-marker (plist-get info :position))
         (tracking-marker (plist-get info :tracking-marker))
         (transformer (plist-get info :transformer)))
     (when response
-        (with-current-buffer gptel-buffer
+        (with-current-buffer (marker-buffer start-marker)
           (save-excursion
             (unless tracking-marker
               (gptel--update-header-line " Typing..." 'success)
               (goto-char start-marker)
-              (unless (plist-get info :in-place)
+              (unless (or (bobp) (plist-get info :in-place))
                 (insert "\n\n"))
               (setq tracking-marker (set-marker (make-marker) (point)))
               (set-marker-insertion-type tracking-marker t)
@@ -200,7 +200,20 @@ See `gptel--url-get-response' for details."
                          (and (string-match "HTTP/[.0-9]+ +\\([0-9]+\\)" http-msg)
                               (match-string 1 http-msg)))))
             (plist-put proc-info :http-status http-status)
-            (plist-put proc-info :status (string-trim http-msg)))))
+            (plist-put proc-info :status (string-trim http-msg))))
+        ;; Handle read-only gptel buffer
+        (when (with-current-buffer (plist-get proc-info :buffer)
+                (or buffer-read-only
+                    (get-char-property (plist-get proc-info :position) 'read-only)))
+          (message "Buffer is read only, displaying reply in buffer \"*ChatGPT response*\"")
+          (display-buffer
+           (with-current-buffer (get-buffer-create "*ChatGPT response*")
+             (goto-char (point-max))
+             (move-marker (plist-get proc-info :position) (point) (current-buffer))
+             (current-buffer))
+           '((display-buffer-reuse-window
+              display-buffer-pop-up-window)
+             (reusable-frames . visible)))))
       
       (when-let ((http-msg (plist-get proc-info :status))
                  (http-status (plist-get proc-info :http-status)))
