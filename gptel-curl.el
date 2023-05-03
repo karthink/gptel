@@ -145,8 +145,9 @@ PROCESS and STATUS are process parameters."
         (with-current-buffer gptel-buffer
           (when gptel-mode
             (gptel--update-header-line
-             (format " Response Error: %s" http-msg) 'error)))))
-    (run-hooks 'gptel-post-response-hook)
+             (format " Response Error: %s" http-msg) 'error))))
+      (with-current-buffer gptel-buffer
+        (run-hooks 'gptel-post-response-hook)))
     (setf (alist-get process gptel-curl--process-alist nil 'remove) nil)
     (kill-buffer proc-buf)))
 
