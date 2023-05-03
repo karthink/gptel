@@ -104,6 +104,25 @@ Or is it the other way around?"
 
 ;; ** Prefix for setting the system prompt.
 
+;; These helper functions are a temporary workaround to fix #45. Once dynamic
+;; transients are supported, we can do away with all this jank.
+(defun gptel--system-prompt-programming ()
+  (interactive)
+  (setq gptel--system-message
+        (alist-get 'programming gptel-directives)))
+(defun gptel--system-prompt-default ()
+  (interactive)
+  (setq gptel--system-message
+        (alist-get 'chat gptel-directives)))
+(defun gptel--system-prompt-writing ()
+  (interactive)
+  (setq gptel--system-message
+        (alist-get 'writing gptel-directives)))
+(defun gptel--system-prompt-chat ()
+  (interactive)
+  (setq gptel--system-message
+        (alist-get 'default gptel-directives)))
+
 (transient-define-prefix gptel-system-prompt ()
   "Change the system prompt to send ChatGPT.
 
@@ -123,26 +142,10 @@ Customize `gptel-directives' for task-specific prompts."
    :class transient-column
    :pad-keys t
    (gptel--suffix-system-message)
-   ("p" "Programming"
-    (lambda () (interactive)
-      (setq gptel--system-message
-            (alist-get 'programming gptel-directives)))
-    :transient t)
-   ("d" "Default"
-    (lambda () (interactive)
-      (setq gptel--system-message
-            (alist-get 'default gptel-directives)))
-    :transient t)
-   ("w" "Writing"
-    (lambda () (interactive)
-      (setq gptel--system-message
-            (alist-get 'writing gptel-directives)))
-    :transient t)
-   ("c" "Chat"
-    (lambda () (interactive)
-      (setq gptel--system-message
-            (alist-get 'chat gptel-directives)))
-    :transient t)])
+   ("p" "Programming" gptel--system-prompt-programming :transient t)
+   ("d" "Default" gptel--system-prompt-default :transient t)
+   ("w" "Writing" gptel--system-prompt-writing :transient t)
+   ("c" "Chat" gptel--system-prompt-chat :transient t)])
 
 ;; ** Prefix for rewriting/refactoring
 
