@@ -66,6 +66,9 @@
 (require 'map)
 (require 'text-property-search)
 
+(defgroup gptel nil
+  "Interact with ChatGPT from anywhere in Emacs.")
+
 (defcustom gptel-api-key #'gptel-api-key-from-auth-source
   "An OpenAI API key (string).
 
@@ -117,9 +120,15 @@ to ChatGPT. Note: this hook runs even if the request fails."
   :type 'hook)
 
 (defvar gptel-default-session "*ChatGPT*")
-(defvar gptel-default-mode (if (featurep 'markdown-mode)
+(defcustom gptel-default-mode (if (featurep 'markdown-mode)
                                'markdown-mode
-                             'text-mode))
+                             'text-mode)
+  "The default major mode for dedicated chat buffers.
+
+If `markdown-mode' is available, it is used. Otherwise gptel
+defaults to `text-mode'."
+  :group 'gptel
+  :type 'symbol)
 
 ;; TODO: Handle `prog-mode' using the `comment-start' variable
 (defcustom gptel-prompt-prefix-alist
