@@ -116,19 +116,40 @@ GPTel provides a general =gptel-request= function that accepts a custom prompt a
 
 ** Why another ChatGPT client?
 
-Existing Emacs clients don't /reliably/ let me use it the simple way I can in the browser.  They will get better, but I wanted something for now.
+Other Emacs clients for ChatGPT prescribe the format of the interaction (a comint shell, org-babel blocks, etc).  I wanted:
 
-Also, AI-assisted work is a new way to use Emacs.  It's not yet clear what the best Emacs interface to tools like it is.
-
-- Should it be part of CAPF (=completions-at-point-functions=)?
-- A dispatch menu from anywhere that can act on selected regions?
-- A comint/shell-style REPL?
-- One-off queries in the minibuffer (like =shell-command=)?
-- A refactoring tool in code buffers?
-- An =org-babel= interface?
-
-Maybe all of these, I don't know yet. As a start, I wanted to replicate the web browser usage pattern so I can build from there -- and don't need to switch to the browser every time. The code is fairly simple right now.
+1. Something that is as free-form as possible: query ChatGPT using any text in any buffer, and redirect the response as required.  Using a dedicated =gptel= buffer just adds some visual flair to the interaction.
+2. Integration with org-mode, not using a walled-off org-babel block, but as regular text.  This way ChatGPT can generate code blocks that I can run.
 
 ** Will you add feature X?
 
-Maybe, I'd like to experiment a bit first.
+Maybe, I'd like to experiment a bit more first.  Features added since the inception of this package include
+- Curl support (=gptel-use-curl=)
+- Streaming responses (=gptel-stream=)
+- Cancelling requests in progress (=gptel-abort=)
+- General API for writing your own commands (=gptel-request=, [[https://github.com/karthink/gptel/wiki][wiki]])
+- Dispatch menus using Transient (=gptel-send= with a prefix arg)
+- Specifying the conversation context size
+- GPT-4 support
+- Response redirection (to the echo area, another buffer, etc)
+- A built-in refactor/rewrite prompt
+
+Features being considered or in the pipeline:
+- Limiting conversation context to Org headings using properties (#58)
+- Stateless design (#17)
+
+** Alternatives
+
+Other Emacs clients for ChatGPT include
+
+- [[https://github.com/xenodium/chatgpt-shell][chatgpt-shell]]: comint-shell based interaction with ChatGPT.  Also supports DALL-E, executable code blocks in the responses, and more.
+- [[https://github.com/rksm/org-ai][org-ai]]: Interaction through special =#+begin_ai ... #+end_ai= Org-mode blocks.  Also supports DALL-E, querying ChatGPT with the contents of project files, and more.
+
+There are several more: [[https://github.com/CarlQLange/chatgpt-arcana.el][chatgpt-arcana]], [[https://github.com/MichaelBurge/leafy-mode][leafy-mode]], [[https://github.com/iwahbe/chat.el][chat.el]]
+
+** Acknowledgments
+
+- [[https://github.com/algal][Alexis Gallagher]] and [[https://github.com/d1egoaz][Diego Alvarez]] for fixing a nasty multi-byte bug with =url-retrieve=.
+- [[https://github.com/tarsius][Jonas Bernoulli]] for the Transient library.
+
+
