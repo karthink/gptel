@@ -98,6 +98,27 @@ the response is inserted into the current buffer after point."
                  (set-process-filter process #'gptel-curl--stream-filter))
         (set-process-sentinel process #'gptel-curl--sentinel)))))
 
+(defun gptel-abort (buf)
+  "Stop any active gptel process associated with the current buffer."
+  (interactive (list (current-buffer)))
+  (unless gptel-use-curl
+    (user-error "Cannot stop a `url-retrieve' request!"))
+  (if-let* ((proc-attrs
+            (cl-find-if
+             (lambda (proc-list)
+               (eq (plist-get (cdr proc-list) :buffer) buf))
+             gptel-curl--process-alist))
+            (proc (car proc-attrs)))
+      (progn
+        (setf (alist-get proc gptel-curl--process-alist nil 'remove) nil)
+        (set-process-sentinel proc #'ignore)
+        (delete-process proc)
+        (kill-buffer (process-buffer proc))
+        (with-current-buffer buf
+          (when gptel-mode (gptel--update-header-line  " Ready" 'success)))
+        (message "Stopped gptel request in buffer %S" (buffer-name buf)))
+    (message "No gptel request associated with buffer %S" (buffer-name buf))))
+
 ;; TODO: Separate user-messaging from this function
 (defun gptel-curl--stream-cleanup (process status)
   "Process sentinel for GPTel curl requests.
