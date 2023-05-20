@@ -4,7 +4,7 @@
 
 ;; Author: Karthik Chikmagalur
 ;; Version: 0.3.5
-;; Package-Requires: ((emacs "27.1") (transient "0.3.7"))
+;; Package-Requires: ((emacs "27.1") (transient "0.4.0"))
 ;; Keywords: convenience
 ;; URL: https://github.com/karthink/gptel
 
@@ -158,11 +158,7 @@ request to ChatGPT.
 
 Each entry in this alist maps a symbol naming the directive to
 the string that is sent. To set the directive for a chat session
-interactively call `gptel-send' with a prefix argument.
-
-Note: Currently the names (default, programming, writing and
-chat) are hard-coded and only their values may be customized.
-This will be fixed in an upcoming release."
+interactively call `gptel-send' with a prefix argument."
   :group 'gptel
   :type '(alist :key-type symbol :value-type string))
 

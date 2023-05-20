@@ -103,25 +103,28 @@ Or is it the other way around?"
 
 
 ;; ** Prefix for setting the system prompt.
-
-;; These helper functions are a temporary workaround to fix #45. Once dynamic
-;; transients are supported, we can do away with all this jank.
-(defun gptel--system-prompt-programming ()
-  (interactive)
-  (setq gptel--system-message
-        (alist-get 'programming gptel-directives)))
-(defun gptel--system-prompt-default ()
-  (interactive)
-  (setq gptel--system-message
-        (alist-get 'chat gptel-directives)))
-(defun gptel--system-prompt-writing ()
-  (interactive)
-  (setq gptel--system-message
-        (alist-get 'writing gptel-directives)))
-(defun gptel--system-prompt-chat ()
-  (interactive)
-  (setq gptel--system-message
-        (alist-get 'default gptel-directives)))
+(defun gptel-system-prompt--setup (_)
+  "Set up suffixes for system prompt."
+  (transient-parse-suffixes
+   'gptel-system-prompt
+   (cl-loop for (type . prompt) in gptel-directives
+       with taken
+       for name = (symbol-name type)
+       for key =
+       (let ((idx 0) pos)
+         (while (or (not pos) (member pos taken))
+           (setq pos (substring name idx (1+ idx)))
+           (cl-incf idx))
+         (push pos taken)
+         pos)
+       collect (list (key-description key) (capitalize name)
+                `(lambda () (interactive)
+                  (message "Directive: %s" ,prompt)
+                  (setq gptel--system-message ,prompt))
+                :transient t)
+       into prompt-suffixes
+       finally return (cons (list 'gptel--suffix-system-message)
+                            prompt-suffixes))))
 
 (transient-define-prefix gptel-system-prompt ()
   "Change the system prompt to send ChatGPT.
@@ -135,17 +138,12 @@ You are a poet. Reply only in verse.
 
 Customize `gptel-directives' for task-specific prompts."
   [:description
-   (lambda () (format "Directive: %s"
+   (lambda () (format "Current directive: %s"
                  (truncate-string-to-width
-                  gptel--system-message
-                  (max (- (window-width) 14) 20) nil nil t)))
+                  gptel--system-message 100 nil nil t)))
    :class transient-column
-   :pad-keys t
-   (gptel--suffix-system-message)
-   ("p" "Programming" gptel--system-prompt-programming :transient t)
-   ("d" "Default" gptel--system-prompt-default :transient t)
-   ("w" "Writing" gptel--system-prompt-writing :transient t)
-   ("c" "Chat" gptel--system-prompt-chat :transient t)])
+   :setup-children gptel-system-prompt--setup
+   :pad-keys t])
 
 ;; ** Prefix for rewriting/refactoring
 
@@ -170,31 +168,6 @@ Customize `gptel-directives' for task-specific prompts."
   (unless gptel--rewrite-message
     (setq gptel--rewrite-message (gptel--rewrite-message)))
   (transient-setup 'gptel-rewrite-menu))
-
-;; TODO: Switch to dynamic Transient menus (below) once there's a new Transient release
-;; (transient-define-prefix gptel-system-prompt ()
-;;   "Change the system prompt to send ChatGPT."
-;;   [:description (lambda () (format "Current directive: %s"
-;;                                 (truncate-string-to-width gptel--system-message 100 nil nil t)))
-;;    :class transient-column
-;;    :setup-children gptel-system-prompt--setup
-;;    :pad-keys t])
-
-;; (defun gptel-system-prompt--setup (_)
-;;   "Set up suffixes for system prompt."
-;;   (transient-parse-suffixes
-;;    'gptel-system-prompt
-;;    (cl-loop for (type . prompt) in gptel-directives
-;;        for name = (symbol-name type)
-;;        for key = (substring name 0 1)
-;;        collect (list (key-description key) (capitalize name)
-;;                 `(lambda () (interactive)
-;;                   (message "Directive: %s" ,prompt)
-;;                   (setq gptel--system-message ,prompt))
-;;                 :transient t)
-;;        into prompt-suffixes
-;;        finally return (cons (list 'gptel--suffix-system-message)
-;;                             prompt-suffixes))))
 
 ;; * Transient Infixes
 
