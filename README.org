@@ -60,9 +60,9 @@ Procure an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
 
 Optional: Set =gptel-api-key= to the key. Alternatively, you may choose a more secure method such as:
 
-- Storing in =~/.authinfo=. By default, "openai.com" is used as HOST and "apikey" as USER.
+- Storing in =~/.authinfo=. By default, "api.openai.com" is used as HOST and "apikey" as USER.
   #+begin_src authinfo
-machine openai.com login apikey password TOKEN
+machine api.openai.com login apikey password TOKEN
   #+end_src
 - Setting it to a function that returns the key.
 
@@ -113,6 +113,10 @@ If you want custom behavior, such as
 - sending the current line only, etc,
 
 GPTel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki][wiki]] for examples.
+
+** Additional Configuration
+
+- You can override the OpenAI API host by customizing =gptel-host=.
 
 ** Why another ChatGPT client?
 
