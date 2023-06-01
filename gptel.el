@@ -70,7 +70,7 @@
   "Interact with ChatGPT from anywhere in Emacs.")
 
 (defcustom gptel-host "api.openai.com"
-  "The API host."
+  "The API host queried by gptel."
   :group 'gptel
   :type 'string)
 
