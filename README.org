@@ -15,8 +15,11 @@ https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-a
 - Supports conversations and multiple independent sessions.
 - You can go back and edit your previous prompts, or even ChatGPT's previous responses when continuing a conversation. These will be fed back to ChatGPT.
 
-GPTel uses Curl if available, but falls back to =url-retrieve= to work without external dependencies.
-  
+GPTel uses Curl if available, but falls back to url-retrieve to work without external dependencies.
+
+** Breaking Changes
+1. =gptel-api-key-from-auth-source= search the API KEY using the =gptel-host=, i.e., "api.openai.com" instead of the original "openai.com". You need to update your =~/.authinfo=.
+
 ** Installation
 
 GPTel is on MELPA. Install it with =M-x package-install⏎= =gptel=.
@@ -116,7 +119,7 @@ GPTel provides a general =gptel-request= function that accepts a custom prompt a
 
 ** Additional Configuration
 
-- You can override the OpenAI API host by customizing =gptel-host=.
+- You can override the OpenAI API host by customizing =gptel-host=. This is useful for those who transform Azure API into OpenAI API format, utilize reverse proxy, or employ third-party proxy services for the OpenAI API.
 
 ** Why another ChatGPT client?
 
