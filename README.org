@@ -9,13 +9,13 @@ https://user-images.githubusercontent.com/8607532/230516812-86510a09-a2fb-4cbd-b
 https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-ad3f-b66fa73c6e45.mp4
 
 - Requires an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
-- Async and fast (streams responses).
-- Interact with ChatGPT from any buffer in Emacs.
-- ChatGPT's responses are in Markdown or Org markup (configurable).
-- Supports conversations (not just one-off queries) and multiple independent sessions.
+- It's async and fast, streams responses.
+- Interact with ChatGPT from anywhere in Emacs (any buffer, shell, minibuffer, wherever)
+- ChatGPT's responses are in Markdown or Org markup.
+- Supports conversations and multiple independent sessions.
 - You can go back and edit your previous prompts, or even ChatGPT's previous responses when continuing a conversation. These will be fed back to ChatGPT.
 
-GPTel uses Curl if available, but falls back to url-retrieve to work without external dependencies.
+GPTel uses Curl if available, but falls back to =url-retrieve= to work without external dependencies.
   
 ** Installation
 
