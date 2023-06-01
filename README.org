@@ -15,8 +15,11 @@ https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-a
 - Supports conversations and multiple independent sessions.
 - You can go back and edit your previous prompts, or even ChatGPT's previous responses when continuing a conversation. These will be fed back to ChatGPT.
 
-GPTel uses Curl if available, but falls back to =url-retrieve= to work without external dependencies.
-  
+GPTel uses Curl if available, but falls back to url-retrieve to work without external dependencies.
+
+** Breaking Changes
+1. =gptel-api-key-from-auth-source= search the API KEY using the =gptel-host=, i.e., "api.openai.com" instead of the original "openai.com". You need to update your =~/.authinfo=.
+
 ** Installation
 
 GPTel is on MELPA. Install it with =M-x package-install⏎= =gptel=.
@@ -60,9 +63,9 @@ Procure an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
 
 Optional: Set =gptel-api-key= to the key. Alternatively, you may choose a more secure method such as:
 
-- Storing in =~/.authinfo=. By default, "openai.com" is used as HOST and "apikey" as USER.
+- Storing in =~/.authinfo=. By default, "api.openai.com" is used as HOST and "apikey" as USER.
   #+begin_src authinfo
-machine openai.com login apikey password TOKEN
+machine api.openai.com login apikey password TOKEN
   #+end_src
 - Setting it to a function that returns the key.
 
@@ -113,6 +116,10 @@ If you want custom behavior, such as
 - sending the current line only, etc,
 
 GPTel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki][wiki]] for examples.
+
+** Additional Configuration
+
+- You can override the OpenAI API host by customizing =gptel-host=. This is useful for those who transform Azure API into OpenAI API format, utilize reverse proxy, or employ third-party proxy services for the OpenAI API.
 
 ** Why another ChatGPT client?
 

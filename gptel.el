@@ -69,6 +69,11 @@
 (defgroup gptel nil
   "Interact with ChatGPT from anywhere in Emacs.")
 
+(defcustom gptel-host "api.openai.com"
+  "The API host queried by gptel."
+  :group 'gptel
+  :type 'string)
+
 (defcustom gptel-api-key #'gptel-api-key-from-auth-source
   "An OpenAI API key (string).
 
@@ -214,9 +219,9 @@ To set the temperature for a chat session interactively call
 
 (defun gptel-api-key-from-auth-source (&optional host user)
   "Lookup api key in the auth source.
-By default, \"openai.com\" is used as HOST and \"apikey\" as USER."
+By default, `gptel-host' is used as HOST and \"apikey\" as USER."
   (if-let ((secret (plist-get (car (auth-source-search
-                                    :host (or host "openai.com")
+                                    :host (or host gptel-host)
                                     :user (or user "apikey")))
                               :secret)))
       (if (functionp secret)
@@ -557,7 +562,7 @@ the response is inserted into the current buffer after point."
          (encode-coding-string
           (json-encode (gptel--request-data (plist-get info :prompt)))
           'utf-8)))
-    (url-retrieve "https://api.openai.com/v1/chat/completions"
+    (url-retrieve (format "https://%s/v1/chat/completions" gptel-host)
                   (lambda (_)
                     (pcase-let ((`(,response ,http-msg ,error)
                                  (gptel--url-parse-response (current-buffer))))
