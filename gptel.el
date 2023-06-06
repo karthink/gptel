@@ -74,7 +74,7 @@
   :group 'gptel
   :type 'string)
 
-(defcustom gptel-proxy-path ""
+(defcustom gptel-proxy ""
   "Path to a proxy to use for gptel interactions.
 Passed to curl via --proxy arg, for example \"proxy.yourorg.com:80\"
 Leave it empty if you don't use a proxy."

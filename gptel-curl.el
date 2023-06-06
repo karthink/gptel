@@ -56,8 +56,8 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
            "-D-"
            (format "-d%s" data)
            url)
-     (when (not (string-empty-p gptel-proxy-path))
-       (list "--proxy" gptel-proxy-path
+     (when (not (string-empty-p gptel-proxy))
+       (list "--proxy" gptel-proxy
              "--proxy-negotiate"
              "--proxy-user" ":"))
      (cl-loop for (key . val) in headers
