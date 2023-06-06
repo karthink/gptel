@@ -36,6 +36,13 @@
 (defvar gptel-curl--process-alist nil
   "Alist of active GPTel curl requests.")
 
+(defcustom gptel-proxy-path ""
+  "Path to a proxy to use for gptel interactions.
+Passed to curl via --proxy arg, for example 'proxy.yourorg.com:80'
+Leave it empty if you don't use a proxy."
+  :group 'gptel
+  :type 'string)
+
 (defun gptel-curl--get-args (prompts token)
   "Produce list of arguments for calling Curl.
 
@@ -54,6 +61,12 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
     ;; (push (format "--keepalive-time %s" 240) args)
     (push (format "-m%s" 60) args)
     (push "-D-" args)
+    (when (not (string-empty-p gptel-proxy-path))
+      (push "--proxy" args)
+      (push (format "%s" gptel-proxy-path) args)
+      (push "--proxy-negotiate" args)
+      (push "--proxy-user" args)
+      (push ":" args))
     (pcase-dolist (`(,key . ,val) headers)
       (push (format "-H%s: %s" key val) args))
     (push (format "-d%s" data) args)
