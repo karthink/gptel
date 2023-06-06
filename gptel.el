@@ -74,6 +74,13 @@
   :group 'gptel
   :type 'string)
 
+(defcustom gptel-proxy ""
+  "Path to a proxy to use for gptel interactions.
+Passed to curl via --proxy arg, for example \"proxy.yourorg.com:80\"
+Leave it empty if you don't use a proxy."
+  :group 'gptel
+  :type 'string)
+
 (defcustom gptel-api-key #'gptel-api-key-from-auth-source
   "An OpenAI API key (string).
 

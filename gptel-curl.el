@@ -29,6 +29,7 @@
 (require 'gptel)
 
 (eval-when-compile
+  (require 'cl-lib)
   (require 'subr-x))
 (require 'map)
 (require 'json)
@@ -40,24 +41,27 @@
   "Produce list of arguments for calling Curl.
 
 PROMPTS is the data to send, TOKEN is a unique identifier."
-  (let* ((args
-          (list "--location" "--silent" "--compressed" "--disable"))
-         (url (format "https://%s/v1/chat/completions" gptel-host))
+  (let* ((url (format "https://%s/v1/chat/completions" gptel-host))
          (data (encode-coding-string
                 (json-encode (gptel--request-data prompts))
                 'utf-8))
          (headers
           `(("Content-Type" . "application/json")
             ("Authorization" . ,(concat "Bearer " (gptel--api-key))))))
-    (push (format "-X%s" "POST") args)
-    (push (format "-w(%s . %%{size_header})" token) args)
-    ;; (push (format "--keepalive-time %s" 240) args)
-    (push (format "-m%s" 60) args)
-    (push "-D-" args)
-    (pcase-dolist (`(,key . ,val) headers)
-      (push (format "-H%s: %s" key val) args))
-    (push (format "-d%s" data) args)
-    (nreverse (cons url args))))
+    (append
+     (list "--location" "--silent" "--compressed" "--disable"
+           (format "-X%s" "POST")
+           (format "-w(%s . %%{size_header})" token)
+           (format "-m%s" 60)
+           "-D-"
+           (format "-d%s" data))
+     (when (not (string-empty-p gptel-proxy))
+       (list "--proxy" gptel-proxy
+             "--proxy-negotiate"
+             "--proxy-user" ":"))
+     (cl-loop for (key . val) in headers
+              collect (format "-H%s: %s" key val))
+     (list url))))
 
 ;;TODO: The :transformer argument here is an alternate implementation of
 ;;`gptel-response-filter-functions'. The two need to be unified.
