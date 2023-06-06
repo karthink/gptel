@@ -54,14 +54,14 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
            (format "-w(%s . %%{size_header})" token)
            (format "-m%s" 60)
            "-D-"
-           (format "-d%s" data)
-           url)
+           (format "-d%s" data))
      (when (not (string-empty-p gptel-proxy))
        (list "--proxy" gptel-proxy
              "--proxy-negotiate"
              "--proxy-user" ":"))
      (cl-loop for (key . val) in headers
-              collect (format "-H%s: %s" key val)))))
+              collect (format "-H%s: %s" key val))
+     (list url))))
 
 ;;TODO: The :transformer argument here is an alternate implementation of
 ;;`gptel-response-filter-functions'. The two need to be unified.
