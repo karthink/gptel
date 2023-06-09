@@ -117,9 +117,18 @@ If you want custom behavior, such as
 
 GPTel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki][wiki]] for examples.
 
+*** Extensions using GPTel
+
+These are packages that depend on GPTel to provide additional functionality
+
+- [[https://github.com/kamushadenes/gptel-extensions.el][gptel-extensions]]: Extra utility functions for GPTel.
+- [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
+
 ** Additional Configuration
 
-- You can override the OpenAI API host by customizing =gptel-host=. This is useful for those who transform Azure API into OpenAI API format, utilize reverse proxy, or employ third-party proxy services for the OpenAI API.
+- =gptel-host=: Overrides the OpenAI API host.  This is useful for those who transform Azure API into OpenAI API format, utilize reverse proxy, or employ third-party proxy services for the OpenAI API.
+
+- =gptel-proxy=: Path to a proxy to use for GPTel interactions. This is passed to Curl via the =--proxy= argument.
 
 ** Why another ChatGPT client?
 
