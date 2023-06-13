@@ -17,8 +17,26 @@ https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-a
 
 GPTel uses Curl if available, but falls back to url-retrieve to work without external dependencies.
 
+** Contents :toc:
+  - [[#breaking-changes][Breaking Changes]]
+  - [[#installation][Installation]]
+      - [[#straight][Straight]]
+      - [[#manual][Manual]]
+      - [[#doom-emacs][Doom Emacs]]
+      - [[#spacemacs][Spacemacs]]
+  - [[#usage][Usage]]
+    - [[#in-any-buffer][In any buffer:]]
+    - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
+  - [[#using-it-your-way][Using it your way]]
+    - [[#extensions-using-gptel][Extensions using GPTel]]
+  - [[#additional-configuration][Additional Configuration]]
+  - [[#why-another-chatgpt-client][Why another ChatGPT client?]]
+  - [[#will-you-add-feature-x][Will you add feature X?]]
+  - [[#alternatives][Alternatives]]
+  - [[#acknowledgments][Acknowledgments]]
+
 ** Breaking Changes
-1. =gptel-api-key-from-auth-source= search the API KEY using the =gptel-host=, i.e., "api.openai.com" instead of the original "openai.com". You need to update your =~/.authinfo=.
+- =gptel-api-key-from-auth-source= now searches for the API key using the value of =gptel-host=, /i.e./ "api.openai.com" instead of the original "openai.com".  You need to update your =~/.authinfo=.
 
 ** Installation
 
@@ -169,3 +187,7 @@ There are several more: [[https://github.com/CarlQLange/chatgpt-arcana.el][chatg
 - [[https://github.com/tarsius][Jonas Bernoulli]] for the Transient library.
 
 
+
+# Local Variables:
+# toc-org-max-depth: 4
+# End:
