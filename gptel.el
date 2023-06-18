@@ -229,7 +229,8 @@ To set the temperature for a chat session interactively call
 By default, `gptel-host' is used as HOST and \"apikey\" as USER."
   (if-let ((secret (plist-get (car (auth-source-search
                                     :host (or host gptel-host)
-                                    :user (or user "apikey")))
+                                    :user (or user "apikey")
+                                    :require '(:secret)))
                               :secret)))
       (if (functionp secret)
           (encode-coding-string (funcall secret) 'utf-8)
