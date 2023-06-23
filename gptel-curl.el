@@ -124,10 +124,10 @@ the response is inserted into the current buffer after point."
     (message "No gptel request associated with buffer %S" (buffer-name buf))))
 
 ;; TODO: Separate user-messaging from this function
-(defun gptel-curl--stream-cleanup (process status)
+(defun gptel-curl--stream-cleanup (process _status)
   "Process sentinel for GPTel curl requests.
 
-PROCESS and STATUS are process parameters."
+PROCESS and _STATUS are process parameters."
   (let ((proc-buf (process-buffer process)))
     (when gptel--debug
       (with-current-buffer proc-buf
@@ -181,8 +181,7 @@ PROCESS and STATUS are process parameters."
 
 INFO is a mutable plist containing information relevant to this buffer.
 See `gptel--url-get-response' for details."
-  (let ((status-str  (plist-get response :status))
-        (start-marker (plist-get info :position))
+  (let ((start-marker (plist-get info :position))
         (tracking-marker (plist-get info :tracking-marker))
         (transformer (plist-get info :transformer)))
     (when response
@@ -205,8 +204,7 @@ See `gptel--url-get-response' for details."
             (insert response))))))
 
 (defun gptel-curl--stream-filter (process output)
-  (let* ((content-strs)
-         (proc-info (alist-get process gptel-curl--process-alist)))
+  (let* ((proc-info (alist-get process gptel-curl--process-alist)))
     (with-current-buffer (process-buffer process)
       ;; Insert output
       (save-excursion
@@ -248,7 +246,7 @@ See `gptel--url-get-response' for details."
           (funcall (or (plist-get proc-info :callback)
                        #'gptel-curl--stream-insert-response)
                    (let* ((json-object-type 'plist)
-                          (response) (content-str))
+                          (content-strs))
                      (condition-case nil
                          (while (re-search-forward "^data:" nil t)
                            (save-match-data
@@ -263,10 +261,10 @@ See `gptel--url-get-response' for details."
                      (apply #'concat (nreverse content-strs)))
                    proc-info))))))
 
-(defun gptel-curl--sentinel (process status)
+(defun gptel-curl--sentinel (process _status)
   "Process sentinel for GPTel curl requests.
 
-PROCESS and STATUS are process parameters."
+PROCESS and _STATUS are process parameters."
   (let ((proc-buf (process-buffer process)))
     (when gptel--debug
       (with-current-buffer proc-buf

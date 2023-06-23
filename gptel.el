@@ -67,7 +67,8 @@
 (require 'text-property-search)
 
 (defgroup gptel nil
-  "Interact with ChatGPT from anywhere in Emacs.")
+  "Interact with ChatGPT from anywhere in Emacs."
+  :group 'hypermedia)
 
 (defcustom gptel-host "api.openai.com"
   "The API host queried by gptel."
@@ -517,7 +518,7 @@ there."
   (let ((prompts-plist
          `(:model ,gptel-model
            :messages [,@prompts]
-           :stream ,(and gptel-stream gptel-use-curl))))
+           :stream ,(or (and gptel-stream gptel-use-curl) :json-false))))
     (when gptel-temperature
       (plist-put prompts-plist :temperature (gptel--numberize gptel-temperature)))
     (when gptel-max-tokens
