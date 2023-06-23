@@ -189,10 +189,9 @@ will get progressively longer!"
 
 The current options are
 - \"gpt-3.5-turbo\"
-- \"gpt-3.5-turbo-0301\"
-- \"gpt-3.5-turbo-0613\"
 - \"gpt-3.5-turbo-16k\"
 - \"gpt-4\" (experimental)
+- \"gpt-4-32k\" (experimental)
 
 To set the model for a chat session interactively call
 `gptel-send' with a prefix argument."
@@ -200,10 +199,9 @@ To set the model for a chat session interactively call
   :group 'gptel
   :type '(choice
           (const :tag "GPT 3.5 turbo" "gpt-3.5-turbo")
-          (const :tag "GPT 3.5 turbo 0301" "gpt-3.5-turbo-0301")
-          (const :tag "GPT 3.5 turbo 0613" "gpt-3.5-turbo-0613")
           (const :tag "GPT 3.5 turbo 16k" "gpt-3.5-turbo-16k")
-          (const :tag "GPT 4 (experimental)" "gpt-4")))
+          (const :tag "GPT 4 (experimental)" "gpt-4")
+          (const :tag "GPT 4 32k (experimental)" "gpt-4-32k")))
 
 (defcustom gptel-temperature 1.0
   "\"Temperature\" of ChatGPT response.
