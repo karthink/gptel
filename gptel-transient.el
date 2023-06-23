@@ -210,11 +210,11 @@ will get progressively longer!"
   :class 'transient-lisp-variable
   :variable 'gptel-model
   :key "m"
-  :choices '("gpt-3.5-turbo-0301" "gpt-3.5-turbo" "gpt-4")
+  :choices '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4" "gpt-4-32k")
   :reader (lambda (prompt &rest _)
             (completing-read
              prompt
-             '("gpt-3.5-turbo-0301" "gpt-3.5-turbo" "gpt-4"))))
+             '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4" "gpt-4-32k"))))
 
 (transient-define-infix gptel--infix-temperature ()
   "Temperature of request."
