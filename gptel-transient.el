@@ -48,6 +48,59 @@ Or is it the other way around?"
               (substring (symbol-name major-mode) nil -5))
     (format "You are a prose editor. Rewrite the following text to be more professional.")))
 
+(defvar gptel--crowdsourced-prompts-url
+  "https://github.com/f/awesome-chatgpt-prompts/raw/main/prompts.csv"
+  "URL for crowdsourced ChatGPT system prompts.")
+
+(defvar gptel--crowdsourced-prompts
+  (make-hash-table :test #'equal)
+  "Crowdsourced system prompts for ChatGPT.")
+
+(defun gptel--crowdsourced-prompts ()
+  "Acquire and read crowdsourced system prompts for ChatGPT.
+
+These are stored in the variable `gptel--crowdsourced-prompts',
+which see."
+  (when (hash-table-p gptel--crowdsourced-prompts)
+    (when (hash-table-empty-p gptel--crowdsourced-prompts)
+      (unless gptel-crowdsourced-prompts-file
+        (run-at-time 0 nil #'gptel-system-prompt)
+        (user-error "No crowdsourced prompts available"))
+      (unless (and (file-exists-p gptel-crowdsourced-prompts-file)
+                   (time-less-p
+                    (time-subtract (current-time) (days-to-time 14))
+                    (file-attribute-modification-time
+                     (file-attributes gptel-crowdsourced-prompts-file))))
+        (when (y-or-n-p
+               (concat
+                "Fetch crowdsourced system prompts from "
+                (propertize "https://github.com/f/awesome-chatgpt-prompts" 'face 'link)
+                "?"))
+          ;; Fetch file
+          (message "Fetching prompts...")
+          (if (url-copy-file gptel--crowdsourced-prompts-url
+                             gptel-crowdsourced-prompts-file
+                             'ok-if-already-exists)
+              (message "Fetching prompts... done.")
+            (message "Could not retrieve new prompts."))))
+      (if (not (file-readable-p gptel-crowdsourced-prompts-file))
+          (progn (message "No crowdsourced prompts available")
+                 (call-interactively #'gptel-system-prompt))
+        (with-temp-buffer
+          (insert-file-contents gptel-crowdsourced-prompts-file)
+          (goto-char (point-min))
+          (forward-line 1)
+          (while (not (eobp))
+            (when-let ((act (read (current-buffer))))
+              (forward-char)
+              (save-excursion
+                (while (re-search-forward "\"\"" (line-end-position) t)
+                  (replace-match "\\\\\"")))
+              (when-let ((prompt (read (current-buffer))))
+                (puthash act prompt gptel--crowdsourced-prompts)))
+            (forward-line 1)))))
+    gptel--crowdsourced-prompts))
+
 ;; * Transient Prefixes
 
 (define-obsolete-function-alias 'gptel-send-menu 'gptel-menu "0.3.2")
@@ -123,8 +176,12 @@ Or is it the other way around?"
                   (setq gptel--system-message ,prompt))
                 :transient t)
        into prompt-suffixes
-       finally return (cons (list 'gptel--suffix-system-message)
-                            prompt-suffixes))))
+       finally return
+       (nconc
+        (list (list 'gptel--suffix-system-message))
+        prompt-suffixes
+        (list (list "SPC" "Pick crowdsourced prompt"
+                    'gptel--read-crowdsourced-prompt))))))
 
 (transient-define-prefix gptel-system-prompt ()
   "Change the system prompt to send ChatGPT.
@@ -369,6 +426,35 @@ will get progressively longer!"
                 (reusable-frames . visible))))))
 
 ;; ** Set system message
+(defun gptel--read-crowdsourced-prompt ()
+  "Pick a crowdsourced system prompt for gptel.
+
+This uses the prompts in the variable
+`gptel--crowdsourced-prompts', which see."
+  (interactive)
+  (if (not (hash-table-empty-p (gptel--crowdsourced-prompts)))
+      (let ((choice
+             (completing-read
+              "Pick and edit prompt: "
+              (lambda (str pred action)
+                (if (eq action 'metadata)
+                    `(metadata
+                      (affixation-function .
+                       (lambda (cands)
+                         (mapcar
+                          (lambda (c)
+                            (list c ""
+                             (concat (propertize " " 'display '(space :align-to 22))
+                              " " (propertize (gethash c gptel--crowdsourced-prompts)
+                               'face 'completions-annotations))))
+                          cands))))
+                  (complete-with-action action gptel--crowdsourced-prompts str pred)))
+              nil t)))
+        (when-let ((prompt (gethash choice gptel--crowdsourced-prompts)))
+            (setq gptel--system-message prompt)
+            (gptel--suffix-system-message)))
+    (message "No prompts available.")))
+
 (transient-define-suffix gptel--suffix-system-message ()
   "Set directives sent to ChatGPT."
   :transient nil

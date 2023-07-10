@@ -155,6 +155,19 @@ is only inserted in dedicated gptel buffers."
   :group 'gptel
   :type '(alist :key-type symbol :value-type string))
 
+(defcustom gptel-crowdsourced-prompts-file
+  (let ((cache-dir (or (getenv "XDG_CACHE_HOME")
+                       (getenv "XDG_DATA_HOME")
+                       user-emacs-directory)))
+    (expand-file-name "gptel-crowdsourced-prompts.csv" cache-dir))
+  "File used to store crowdsourced system prompts.
+
+These are prompts cached from an online source (see
+`gptel--crowdsourced-prompts-url'), and can be set from the
+transient menu interface provided by `gptel-menu'."
+  :group 'gptel
+  :type 'file)
+
 ;; Model and interaction parameters
 (defvar-local gptel--system-message
   "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
