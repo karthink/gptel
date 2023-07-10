@@ -392,6 +392,7 @@ will get progressively longer!"
       (beginning-of-line)
       (push-mark)
       (end-of-line)
+      (exchange-point-and-mark)
       (activate-mark)
       (display-buffer (current-buffer)
                       `((display-buffer-below-selected)
