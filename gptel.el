@@ -402,7 +402,7 @@ Model parameters can be let-bound around calls to this function."
             (set-marker (make-marker) position buffer))))
          (full-prompt
          (cond
-          ((null prompt) (gptel--create-prompt start-marker))
+          ((null prompt) (gptel--create-prompt start-marker system))
           ((stringp prompt)
            `((:role "system" :content ,system)
              (:role "user"   :content ,prompt)))
@@ -486,7 +486,7 @@ See `gptel--url-get-response' for details."
                  status-str (plist-get info :error)))
       (run-hooks 'gptel-post-response-hook))))
 
-(defun gptel--create-prompt (&optional prompt-end)
+(defun gptel--create-prompt  (&optional prompt-end system)
   "Return a full conversation prompt from the contents of this buffer.
 
 If `gptel--num-messages-to-send' is set, limit to that many
@@ -523,7 +523,7 @@ there."
                 prompts)
           (and max-entries (cl-decf max-entries)))
         (cons (list :role "system"
-                    :content gptel--system-message)
+                    :content (or system gptel--system-message))
               prompts)))))
 
 (defun gptel--request-data (prompts)
