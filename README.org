@@ -85,6 +85,14 @@ Optional: Set =gptel-api-key= to the key. Alternatively, you may choose a more s
   #+begin_src authinfo
 machine api.openai.com login apikey password TOKEN
   #+end_src
+- Storing in any file and manually reading it
+  #+begin_src emacs-lisp
+(use-package! gptel
+  :config
+  (with-temp-buffer
+    (insert-file-contents "/file/containing/openai.token")
+    (setq! gptel-api-key (buffer-string))))
+  #+end_src
 - Setting it to a function that returns the key.
 
 *** In any buffer:
