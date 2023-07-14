@@ -253,17 +253,13 @@ By default, `gptel-host' is used as HOST and \"apikey\" as USER."
         secret)
     (user-error "No `gptel-api-key' found in the auth source")))
 
-;; FIXME Should we utf-8 encode the api-key here? 
+;; FIXME Should we utf-8 encode the api-key here?
 (defun gptel--api-key ()
   "Get api key from `gptel-api-key'."
   (pcase gptel-api-key
     ((pred stringp) gptel-api-key)
     ((pred functionp) (funcall gptel-api-key))
     (_ (error "`gptel-api-key' is not set"))))
-
-(defsubst gptel--numberize (val)
-  "Ensure VAL is a number."
-  (if (stringp val) (string-to-number val) val))
 
 (defun gptel-prompt-string ()
   (or (alist-get major-mode gptel-prompt-prefix-alist) ""))
@@ -402,7 +398,7 @@ Model parameters can be let-bound around calls to this function."
             (set-marker (make-marker) position buffer))))
          (full-prompt
          (cond
-          ((null prompt) 
+          ((null prompt)
            (let ((gptel--system-message system))
              (gptel--create-prompt start-marker)))
           ((stringp prompt)
@@ -506,8 +502,7 @@ there."
                  (goto-char (point-max)))
         (goto-char (or prompt-end (point-max))))
       (let ((max-entries (and gptel--num-messages-to-send
-                              (* 2 (gptel--numberize
-                                    gptel--num-messages-to-send))))
+                              (* 2 gptel--num-messages-to-send)))
             (prop) (prompts))
         (while (and
                 (or (not max-entries) (>= max-entries 0))
@@ -535,9 +530,9 @@ there."
            :messages [,@prompts]
            :stream ,(or (and gptel-stream gptel-use-curl) :json-false))))
     (when gptel-temperature
-      (plist-put prompts-plist :temperature (gptel--numberize gptel-temperature)))
+      (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-max-tokens
-      (plist-put prompts-plist :max_tokens (gptel--numberize gptel-max-tokens)))
+      (plist-put prompts-plist :max_tokens gptel-max-tokens))
     prompts-plist))
 
 ;; TODO: Use `run-hook-wrapped' with an accumulator instead to handle
