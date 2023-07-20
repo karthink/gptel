@@ -316,11 +316,11 @@ opening the file."
       (when (org-at-heading-p)
         (org-open-line 1))
       (org-entry-put (point-min) "GPTEL_MODEL" gptel-model)
-      (org-entry-put (point-min) "GPTEL_TEMPERATURE"
-                     (number-to-string gptel-temperature))
-      (unless (string= 
-               (default-value 'gptel--system-message)
-               gptel--system-message)
+      (unless (equal (default-value 'gptel-temperature) gptel-temperature)
+        (org-entry-put (point-min) "GPTEL_TEMPERATURE"
+                       (number-to-string gptel-temperature)))
+      (unless (string= (default-value 'gptel--system-message)
+                       gptel--system-message)
         (org-entry-put (point-min) "GPTEL_SYSTEM"
                        gptel--system-message))
       (when gptel-max-tokens
