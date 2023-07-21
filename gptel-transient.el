@@ -230,6 +230,10 @@ Customize `gptel-directives' for task-specific prompts."
 
 ;; ** Infixes for model parameters
 
+(defun gptel--transient-read-variable (prompt initial-input history)
+  "Read value from minibuffer and interpret the result as a Lisp object."
+  (read-from-minibuffer prompt initial-input read-expression-map t history))
+
 (transient-define-infix gptel--infix-num-messages-to-send ()
   "Number of recent messages to send with each exchange.
 
@@ -242,7 +246,7 @@ include."
   :variable 'gptel--num-messages-to-send
   :key "n"
   :prompt "Number of past messages to include for context (leave empty for all): "
-  :reader 'transient-read-number-N0)
+  :reader 'gptel--transient-read-variable)
 
 (transient-define-infix gptel--infix-max-tokens ()
   "Max tokens per response.
@@ -259,7 +263,7 @@ will get progressively longer!"
   :variable 'gptel-max-tokens
   :key "<"
   :prompt "Response length in tokens (leave empty: default, 80-200: short, 200-500: long): "
-  :reader 'transient-read-number-N+)
+  :reader 'gptel--transient-read-variable)
 
 (transient-define-infix gptel--infix-model ()
   "AI Model for Chat."
@@ -279,9 +283,8 @@ will get progressively longer!"
   :class 'transient-lisp-variable
   :variable 'gptel-temperature
   :key "t"
-  :reader (lambda (&rest _)
-            (read-from-minibuffer "Set temperature (0.0-2.0, leave empty for default): "
-                                  (number-to-string gptel-temperature))))
+  :prompt "Set temperature (0.0-2.0, leave empty for default): "
+  :reader 'gptel--transient-read-variable)
 
 ;; ** Infix for the refactor/rewrite system message
 
