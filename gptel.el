@@ -261,6 +261,10 @@ By default, `gptel-host' is used as HOST and \"apikey\" as USER."
     ((pred functionp) (funcall gptel-api-key))
     (_ (error "`gptel-api-key' is not set"))))
 
+(defsubst gptel--numberize (val)
+  "Ensure VAL is a number."
+  (if (stringp val) (string-to-number val) val))
+
 (defun gptel-prompt-string ()
   (or (alist-get major-mode gptel-prompt-prefix-alist) ""))
 
