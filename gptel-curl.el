@@ -90,11 +90,10 @@ the response is inserted into the current buffer after point."
                                        (if gptel-stream
                                            #'gptel-curl--stream-insert-response
                                          #'gptel--insert-response))
-                         :transformer (when (or (eq gptel-default-mode 'org-mode)
-                                                (eq (buffer-local-value
-                                                     'major-mode
-                                                     (plist-get info :buffer))
-                                                    'org-mode))
+                         :transformer (when (eq (buffer-local-value
+                                                 'major-mode
+                                                 (plist-get info :buffer))
+                                                'org-mode)
                                         (gptel--stream-convert-markdown->org)))
                    info))
       (if gptel-stream
