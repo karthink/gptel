@@ -134,6 +134,14 @@ return the transformed string."
   :group 'gptel
   :type 'hook)
 
+(defcustom gptel-pre-response-hook nil
+  "Hook run before inserting ChatGPT's response into the current buffer.
+
+This hook is called in the buffer from which the prompt was sent
+to ChatGPT. Note: this hook only runs if the request succeeds."
+  :group 'gptel
+  :type 'hook)
+
 (defcustom gptel-post-response-hook nil
   "Hook run after inserting ChatGPT's response into the current buffer.
 
@@ -569,6 +577,7 @@ See `gptel--url-get-response' for details."
               (put-text-property 0 (length response) 'gptel 'response response)
               (with-current-buffer (marker-buffer start-marker)
                 (goto-char start-marker)
+                (run-hooks 'gptel-pre-response-hook)
                 (unless (or (bobp) (plist-get info :in-place))
                   (insert "\n\n"))
                 (let ((p (point)))

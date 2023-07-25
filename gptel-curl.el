@@ -236,7 +236,12 @@ See `gptel--url-get-response' for details."
              (current-buffer))
            '((display-buffer-reuse-window
               display-buffer-pop-up-window)
-             (reusable-frames . visible)))))
+             (reusable-frames . visible))))
+        ;; Run pre-response hook
+        (when (and (equal (plist-get proc-info :http-status) "200")
+                   gptel-pre-response-hook)
+          (with-current-buffer (marker-buffer (plist-get proc-info :position))
+            (run-hooks 'gptel-pre-response-hook))))
       
       (when-let ((http-msg (plist-get proc-info :status))
                  (http-status (plist-get proc-info :http-status)))
