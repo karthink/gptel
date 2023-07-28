@@ -186,9 +186,34 @@ transient menu interface provided by `gptel-menu'."
   :group 'gptel
   :type 'file)
 
+;; FIXME This is convoluted, but it's not worth adding the `compat' dependency
+;; just for a couple of helper functions either.
+(cl-macrolet
+    ((gptel--compat
+      () (if (version< "28.1" emacs-version)
+             (macroexp-progn
+              `((defalias 'gptel--button-buttonize #'button-buttonize)
+                (defalias 'gptel--always #'always)))
+           (macroexp-progn
+            `((defun gptel--always (&rest _)
+               "Always return t." t)
+              (defun gptel--button-buttonize (string callback)
+               "Make STRING into a button and return it.
+When clicked, CALLBACK will be called."
+               (propertize string
+                'face 'button
+                'button t
+                'follow-link t
+                'category t
+                'button-data nil
+                'keymap button-map
+                'action callback)))))))
+  (gptel--compat))
+
 ;; Model and interaction parameters
 (defvar-local gptel--system-message
   "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
+(put 'gptel--system-message 'safe-local-variable #'gptel--always)
 
 (defcustom gptel-directives
   `((default . ,gptel--system-message)
@@ -204,6 +229,7 @@ Each entry in this alist maps a symbol naming the directive to
 the string that is sent. To set the directive for a chat session
 interactively call `gptel-send' with a prefix argument."
   :group 'gptel
+  :safe #'gptel--always
   :type '(alist :key-type symbol :value-type string))
 
 (defcustom gptel-max-tokens nil
@@ -220,6 +246,7 @@ If left unset, ChatGPT will target about 40% of the total token
 count of the conversation so far in each message, so messages
 will get progressively longer!"
   :local t
+  :safe #'gptel--always
   :group 'gptel
   :type '(choice (integer :tag "Specify Token count")
                  (const :tag "Default" nil)))
@@ -232,10 +259,11 @@ The current options are
 - \"gpt-3.5-turbo-16k\"
 - \"gpt-4\" (experimental)
 - \"gpt-4-32k\" (experimental)
-
+ 
 To set the model for a chat session interactively call
 `gptel-send' with a prefix argument."
   :local t
+  :safe #'gptel--always
   :group 'gptel
   :type '(choice
           (const :tag "GPT 3.5 turbo" "gpt-3.5-turbo")
@@ -252,10 +280,15 @@ of the response, with 2.0 being the most random.
 To set the temperature for a chat session interactively call
 `gptel-send' with a prefix argument."
   :local t
+  :safe #'gptel--always
   :group 'gptel
   :type 'number)
 
+(defvar-local gptel--bounds nil)
+(put 'gptel--bounds 'safe-local-variable #'gptel--always)
+
 (defvar-local gptel--num-messages-to-send nil)
+(put 'gptel--num-messages-to-send 'safe-local-variable #'gptel--always)
 (defvar gptel--debug nil)
 
 (defun gptel-api-key-from-auth-source (&optional host user)
@@ -302,14 +335,20 @@ Currently saving and restoring state is implemented only for
                            (read (org-entry-get (point-min) "GPTEL_BOUNDS"))))
                  (mapc (pcase-lambda (`(,beg . ,end))
                          (put-text-property beg end 'gptel 'response))
-                       bounds))
+                       bounds)
+                 (message "gptel chat restored."))
                (when-let ((model (org-entry-get (point-min) "GPTEL_MODEL")))
                  (setq-local gptel-model model))
                (when-let ((system (org-entry-get (point-min) "GPTEL_SYSTEM")))
                  (setq-local gptel--system-message system))
                (when-let ((temp (org-entry-get (point-min) "GPTEL_TEMPERATURE")))
                  (setq-local gptel-temperature (gptel--numberize temp))))
-           (error (message "Could not restore gptel state, sorry!"))))))))
+           (error (message "Could not restore gptel state, sorry!")))))
+      (_ (when gptel--bounds
+           (mapc (pcase-lambda (`(,beg . ,end))
+                         (put-text-property beg end 'gptel 'response))
+                 gptel--bounds)
+           (message "gptel chat restored."))))))
 
 (defun gptel--save-state ()
   "Write the gptel state to the buffer.
@@ -346,8 +385,17 @@ opening the file."
                                (> attempts 0))
                       (funcall write-bounds (1- attempts)))))))
         (funcall write-bounds 6))))
-    ('markdown-mode
-     (message "Saving gptel state is not implemented for `markdown-mode'."))))
+    (_ (save-excursion
+         (save-restriction
+           (add-file-local-variable 'gptel-model gptel-model)
+           (unless (equal (default-value 'gptel-temperature) gptel-temperature)
+             (add-file-local-variable 'gptel-temperature gptel-temperature))
+           (unless (string= (default-value 'gptel--system-message)
+                            gptel--system-message)
+             (add-file-local-variable 'gptel--system-message gptel--system-message))
+           (when gptel-max-tokens
+             (add-file-local-variable 'gptel-max-tokens gptel-max-tokens))
+           (add-file-local-variable 'gptel--bounds (gptel--get-bounds)))))))
 
 (defun gptel--get-bounds ()
   "Return the gptel response boundaries as an alist."
@@ -395,14 +443,14 @@ opening the file."
                         (propertize
                          " " 'display `(space :align-to ,(max 1 (- (window-width) (+ 2 l1 l2)))))
                         (propertize
-                         (button-buttonize num-exchanges
+                         (gptel--button-buttonize num-exchanges
                           (lambda (&rest _) (gptel-menu)))
                          'mouse-face 'highlight
                          'help-echo
                          "Number of past exchanges to include with each request")
                         " "
                         (propertize
-                         (button-buttonize (concat "[" gptel-model "]")
+                         (gptel--button-buttonize (concat "[" gptel-model "]")
                           (lambda (&rest _) (gptel-menu)))
                          'mouse-face 'highlight
                          'help-echo "OpenAI GPT model in use")))))))

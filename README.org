@@ -13,6 +13,7 @@ https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-a
 - Interact with ChatGPT from anywhere in Emacs (any buffer, shell, minibuffer, wherever)
 - ChatGPT's responses are in Markdown or Org markup.
 - Supports conversations and multiple independent sessions.
+- Save chats as regular Markdown/Org/Text files and resume them later.
 - You can go back and edit your previous prompts, or even ChatGPT's previous responses when continuing a conversation. These will be fed back to ChatGPT.
 
 GPTel uses Curl if available, but falls back to url-retrieve to work without external dependencies.
@@ -122,6 +123,8 @@ With a region selected, you can also rewrite prose or refactor code from here:
 
 That's it. You can go back and edit previous prompts and responses if you want.
 
+4. Save the chat to a file.  To resume, open the file and turn on =gptel-mode=.
+
 The default mode is =markdown-mode= if available, else =text-mode=.  You can set =gptel-default-mode= to =org-mode= if desired.
 
 ** Using it your way
@@ -167,10 +170,11 @@ Maybe, I'd like to experiment a bit more first.  Features added since the incept
 - GPT-4 support
 - Response redirection (to the echo area, another buffer, etc)
 - A built-in refactor/rewrite prompt
+- Limiting conversation context to Org headings using properties (#58)
+- Saving and restoring chats (#17)
 
 Features being considered or in the pipeline:
-- Limiting conversation context to Org headings using properties (#58)
-- Stateless design (#17)
+- Fully stateless design (#17)
 
 ** Alternatives
 
