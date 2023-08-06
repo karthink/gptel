@@ -331,11 +331,10 @@ Currently saving and restoring state is implemented only for
          (widen)
          (condition-case-unless-debug nil
              (progn
-               (when-let ((bounds
-                           (read (org-entry-get (point-min) "GPTEL_BOUNDS"))))
+               (when-let ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
                  (mapc (pcase-lambda (`(,beg . ,end))
                          (put-text-property beg end 'gptel 'response))
-                       bounds)
+                       (read bounds))
                  (message "gptel chat restored."))
                (when-let ((model (org-entry-get (point-min) "GPTEL_MODEL")))
                  (setq-local gptel-model model))
