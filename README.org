@@ -45,19 +45,25 @@ GPTel is on MELPA. Install it with =M-x package-install⏎= =gptel=.
 
 (Optional: Install =markdown-mode=.)
 
+#+html: <details><summary>
 **** Straight
+#+html: </summary>
 #+begin_src emacs-lisp
   (straight-use-package 'gptel)
 #+end_src
 
 Installing the =markdown-mode= package is optional.
-
+#+html: </details>
+#+html: <details><summary>
 **** Manual
+#+html: </summary>
 Clone or download this repository and run =M-x package-install-file⏎= on the repository directory.
 
 Installing the =markdown-mode= package is optional.
-
+#+html: </details>
+#+html: <details><summary>
 **** Doom Emacs
+#+html: </summary>
 In =packages.el=
 #+begin_src emacs-lisp
 (package! gptel)
@@ -69,12 +75,15 @@ In =config.el=
  :config
  (setq! gptel-api-key "your key"))
 #+end_src
-
+#+html: </details>
+#+html: <details><summary>
 **** Spacemacs
+#+html: </summary>
 After installation with =M-x package-install⏎= =gptel=
 
 - Add =gptel= to =dotspacemacs-additional-packages=
 - Add =(require 'gptel)= to =dotspacemacs/user-config=
+#+html: </details>
 
 ** Usage
 
