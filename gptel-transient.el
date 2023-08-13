@@ -114,7 +114,7 @@ which see."
    (lambda () (format "Directive:  %s"
                  (truncate-string-to-width
                   gptel--system-message (max (- (window-width) 14) 20) nil nil t)))
-   ("h" "Set directives for chat" gptel-system-prompt)]
+   ("h" "Set directives for chat" gptel-system-prompt :transient t)]
   [["Session Parameters"
     (gptel--infix-max-tokens)
     (gptel--infix-num-messages-to-send)
@@ -173,15 +173,14 @@ which see."
        collect (list (key-description key) (capitalize name)
                 `(lambda () (interactive)
                   (message "Directive: %s" ,prompt)
-                  (setq gptel--system-message ,prompt))
-                :transient t)
+                  (setq gptel--system-message ,prompt)))
        into prompt-suffixes
        finally return
        (nconc
         (list (list 'gptel--suffix-system-message))
         prompt-suffixes
         (list (list "SPC" "Pick crowdsourced prompt"
-                    'gptel--read-crowdsourced-prompt))))))
+                    'gptel--read-crowdsourced-prompt :transient nil))))))
 
 (transient-define-prefix gptel-system-prompt ()
   "Change the system prompt to send ChatGPT.
