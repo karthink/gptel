@@ -41,13 +41,17 @@
   "Produce list of arguments for calling Curl.
 
 PROMPTS is the data to send, TOKEN is a unique identifier."
-  (let* ((url (format "https://%s/v1/chat/completions" gptel-host))
+  (let* ((url (if gptel-use-azure-openai
+                  (format "https://%s/openai/deployments/%s/chat/completions?api-version=%s" gptel-host gptel-azure-openai-deployment gptel-azure-openai-api-version)
+                (format "https://%s/v1/chat/completions" gptel-host)))
          (data (encode-coding-string
                 (json-encode (gptel--request-data prompts))
                 'utf-8))
          (headers
-          `(("Content-Type" . "application/json")
-            ("Authorization" . ,(concat "Bearer " (gptel--api-key))))))
+	  `(("Content-Type" . "application/json")
+	    ,(if gptel-use-azure-openai
+		 `("api-key" . ,(gptel--api-key))
+	       `("Authorization" . ,(concat "Bearer " (gptel--api-key)))))))
     (append
      (list "--location" "--silent" "--compressed" "--disable"
            (format "-X%s" "POST")

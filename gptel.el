@@ -81,7 +81,7 @@
   :group 'hypermedia)
 
 (defcustom gptel-host "api.openai.com"
-  "The API host queried by gptel."
+  "The API host queried by gptel. For azure, set it to your-instance-name.openai.azure.com"
   :group 'gptel
   :type 'string)
 
@@ -101,6 +101,23 @@ key (more secure)."
   :type '(choice
           (string :tag "API key")
           (function :tag "Function that returns the API key")))
+
+;; Add customization variables for Azure-Openai
+
+(defcustom gptel-use-azure-openai nil
+  "If non-nil, use Azure-Openai's API instead of OpenAI."
+  :group 'gptel
+  :type 'boolean)
+
+(defcustom gptel-azure-openai-api-version "2023-03-15-preview"
+  "API version for Azure-Openai."
+  :group 'gptel
+  :type 'string)
+
+(defcustom gptel-azure-openai-deployment " Azure-Openai-Deployment-name"
+  "Deployment name for Azure-Openai API."
+  :group 'gptel
+  :type 'string)
 
 (defcustom gptel-stream t
   "Whether responses from ChatGPT be played back as they are received.
@@ -760,14 +777,19 @@ the response is inserted into the current buffer after point."
   (let* ((inhibit-message t)
          (message-log-max nil)
          (url-request-method "POST")
+         (url (if gptel-use-azure-openai
+                  (format "https://%s/openai/deployments/%s/chat/completions?api-version=%s" gptel-host gptel-azure-openai-deployment gptel-azure-openai-api-version)
+                (format "https://%s/v1/chat/completions" gptel-host)))
          (url-request-extra-headers
-         `(("Content-Type" . "application/json")
-           ("Authorization" . ,(concat "Bearer " (gptel--api-key)))))
+	  `(("Content-Type" . "application/json")
+	    ,(if gptel-use-azure-openai
+		 `("api-key" . ,(gptel--api-key))
+	       `("Authorization" . ,(concat "Bearer " (gptel--api-key))))))
         (url-request-data
          (encode-coding-string
           (json-encode (gptel--request-data (plist-get info :prompt)))
           'utf-8)))
-    (url-retrieve (format "https://%s/v1/chat/completions" gptel-host)
+    (url-retrieve url
                   (lambda (_)
                     (pcase-let ((`(,response ,http-msg ,error)
                                  (gptel--url-parse-response (current-buffer))))
