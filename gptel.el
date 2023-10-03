@@ -211,12 +211,8 @@ When clicked, CALLBACK will be called."
   (gptel--compat))
 
 ;; Model and interaction parameters
-(defvar-local gptel--system-message
-  "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
-(put 'gptel--system-message 'safe-local-variable #'gptel--always)
-
 (defcustom gptel-directives
-  `((default . ,gptel--system-message)
+  '((default . "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
     (programming . "You are a large language model and a careful programmer. Provide code and only code as output without any additional text, prompt or note.")
     (writing . "You are a large language model and a writing assistant. Respond concisely.")
     (chat . "You are a large language model and a conversation partner. Respond concisely."))
@@ -231,6 +227,9 @@ interactively call `gptel-send' with a prefix argument."
   :group 'gptel
   :safe #'gptel--always
   :type '(alist :key-type symbol :value-type string))
+
+(defvar-local gptel--system-message (alist-get 'default gptel-directives))
+(put 'gptel--system-message 'safe-local-variable #'gptel--always)
 
 (defcustom gptel-max-tokens nil
   "Max tokens per response.
