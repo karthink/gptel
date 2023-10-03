@@ -151,7 +151,7 @@ to ChatGPT. Note: this hook runs even if the request fails."
   :type 'hook)
 
 (defvar gptel-default-session "*ChatGPT*")
-(defcustom gptel-default-mode (if (featurep 'markdown-mode)
+(defcustom gptel-default-mode (if (fboundp 'markdown-mode)
                                'markdown-mode
                              'text-mode)
   "The default major mode for dedicated chat buffers.
