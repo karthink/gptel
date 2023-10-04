@@ -28,9 +28,45 @@
 (eval-when-compile (require 'cl-lib))
 (require 'gptel)
 (require 'transient)
+(require 'posframe)
 
 (declare-function ediff-regions-internal "ediff")
 (declare-function ediff-make-cloned-buffer "ediff-utils")
+
+(defconst gptel-posframe-buffer-name "*gptel-posframe*")
+
+;; 
+(defcustom gptel-posframe-parameters nil
+  "The frame parameters used by gptel-posframe."
+  :type 'string)
+
+
+(defcustom gptel-posframe-width 20
+  "The width of gptel-posframe."
+  :type 'number)
+
+(defcustom gptel-posframe-height 10
+  "The height of gptel-posframe."
+  :type 'number)
+
+(defcustom gptel-posframe-poshandler #'posframe-poshandler-point-1
+  "The posframe poshandler used by gptel-posframe."
+  :type 'function)
+
+(defcustom gptel-posframe-hidehandler #'posframe-hidehandler-when-buffer-switch
+  "The posframe poshandler used by gptel-posframe."
+  :type 'function)
+
+(defcustom gptel-posframe-border-width 2
+  "The border width used by gptel-posframe.
+When 0, no border is showed."
+  :type 'number)
+
+(defcustom gptel-posframe-border-color "white"
+  "The border width used by gptel-posframe.
+When 0, no border is showed."
+  :type 'color)
+
 
 ;; * Helper functions
 (defun gptel--refactor-or-rewrite ()
@@ -142,7 +178,8 @@ which see."
         (lambda (buf) (and (buffer-local-value 'gptel-mode (get-buffer buf))
                       (not (equal (current-buffer) buf))))
         t nil history)))
-    ("-k" "Kill-ring" "-k")]
+    ("-k" "Kill-ring" "-k")
+    ("-p" "Posframe" "-p")]
    [:description gptel--refactor-or-rewrite
     :if use-region-p
     ("r"
@@ -339,6 +376,50 @@ will get progressively longer!"
                   (message "ChatGPT response error: %s" (plist-get info :status))
                 (kill-new resp)
                 (message "ChatGPT response: copied to kill-ring.")))))
+	 ((member "-p" args)
+	  (setq stream nil)
+	  (defun gptel-posframe-render-auto-close-handler()
+		"Close *gptel-posframe*"
+		(interactive)
+		(posframe-delete gptel-posframe-buffer-name)
+		(remove-hook 'post-command-hook
+					 #'gptel-posframe-render-auto-close-handler))
+	  (define-keymap "q" '(posframe-delete gptel-posframe-buffer-name))
+	  (setq-local gptel-override-parameters
+		(if (get-buffer gptel-posframe-buffer-name)
+			(buffer-local-value 'gptel-posframe-parameters
+								(get-buffer gptel-posframe-buffer-name)
+
+								)
+		  nil
+		  )
+		)
+
+	  (setq callback
+			(lambda (resp info)
+			  (if (not resp)
+				  (message "ChatGPT response error: %s" (plist-get info :status))
+				;; show response in posframe
+				;; close the posframe when focus changed or hit q key
+				(posframe-show
+				 gptel-posframe-buffer-name
+				 :string resp
+				 :width gptel-posframe-width
+				 :height gptel-posframe-height
+				 :position (point)
+				 :poshandler gptel-posframe-poshandler
+				 :hidehandler gptel-posframe-hidehandler
+				 :border-width gptel-posframe-border-width
+				 :border-color gptel-posframe-border-color
+				 :override-parameters gptel-override-parameters
+				 )
+
+				(add-hook 'post-command-hook
+						  #'gptel-posframe-render-auto-close-handler)
+				)
+			  )
+			)
+	  )
      ((setq gptel-buffer-name
             (cl-some (lambda (s) (and (string-prefix-p "-n" s)
                                  (substring s 2)))
