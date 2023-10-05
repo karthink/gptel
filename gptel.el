@@ -85,6 +85,11 @@
   :group 'gptel
   :type 'string)
 
+(defcustom gptel-protocol "https"
+  "Protocol to query the API with."
+  :group 'gptel
+  :type 'string)
+
 (defcustom gptel-proxy ""
   "Path to a proxy to use for gptel interactions.
 Passed to curl via --proxy arg, for example \"proxy.yourorg.com:80\"
@@ -766,7 +771,8 @@ the response is inserted into the current buffer after point."
          (encode-coding-string
           (json-encode (gptel--request-data (plist-get info :prompt)))
           'utf-8)))
-    (url-retrieve (format "https://%s/v1/chat/completions" gptel-host)
+    (url-retrieve (format "%s://%s/v1/chat/completions"
+                          gptel-protocol gptel-host)
                   (lambda (_)
                     (pcase-let ((`(,response ,http-msg ,error)
                                  (gptel--url-parse-response (current-buffer))))

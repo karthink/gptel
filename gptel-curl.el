@@ -41,7 +41,7 @@
   "Produce list of arguments for calling Curl.
 
 PROMPTS is the data to send, TOKEN is a unique identifier."
-  (let* ((url (format "https://%s/v1/chat/completions" gptel-host))
+  (let* ((url (format "%s://%s/v1/chat/completions" gptel-protocol gptel-host))
          (data (encode-coding-string
                 (json-encode (gptel--request-data prompts))
                 'utf-8))
