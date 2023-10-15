@@ -258,7 +258,7 @@ The current options are
 - \"gpt-3.5-turbo-16k\"
 - \"gpt-4\" (experimental)
 - \"gpt-4-32k\" (experimental)
- 
+
 To set the model for a chat session interactively call
 `gptel-send' with a prefix argument."
   :local t
@@ -356,33 +356,34 @@ disk.  To restore a chat session, turn on `gptel-mode' after
 opening the file."
   (pcase major-mode
     ('org-mode
-     (org-with-wide-buffer
-      (goto-char (point-min))
-      (when (org-at-heading-p)
-        (org-open-line 1))
-      (org-entry-put (point-min) "GPTEL_MODEL" gptel-model)
-      (unless (equal (default-value 'gptel-temperature) gptel-temperature)
-        (org-entry-put (point-min) "GPTEL_TEMPERATURE"
-                       (number-to-string gptel-temperature)))
-      (unless (string= (default-value 'gptel--system-message)
-                       gptel--system-message)
-        (org-entry-put (point-min) "GPTEL_SYSTEM"
-                       gptel--system-message))
-      (when gptel-max-tokens
-        (org-entry-put
-         (point-min) "GPTEL_MAX_TOKENS" gptel-max-tokens))
-      ;; Save response boundaries
-      (letrec ((write-bounds
-                (lambda (attempts)
-                  (let* ((bounds (gptel--get-bounds))
-                         (offset (caar bounds))
-                         (offset-marker (set-marker (make-marker) offset)))
-                    (org-entry-put (point-min) "GPTEL_BOUNDS"
-                                   (prin1-to-string (gptel--get-bounds)))
-                    (when (and (not (= (marker-position offset-marker) offset))
-                               (> attempts 0))
-                      (funcall write-bounds (1- attempts)))))))
-        (funcall write-bounds 6))))
+     (save-excursion
+       (org-with-wide-buffer
+        (goto-char (point-min))
+        (when (org-at-heading-p)
+          (org-open-line 1))
+        (org-entry-put (point-min) "GPTEL_MODEL" gptel-model)
+        (unless (equal (default-value 'gptel-temperature) gptel-temperature)
+          (org-entry-put (point-min) "GPTEL_TEMPERATURE"
+                         (number-to-string gptel-temperature)))
+        (unless (string= (default-value 'gptel--system-message)
+                         gptel--system-message)
+          (org-entry-put (point-min) "GPTEL_SYSTEM"
+                         gptel--system-message))
+        (when gptel-max-tokens
+          (org-entry-put
+           (point-min) "GPTEL_MAX_TOKENS" gptel-max-tokens))
+        ;; Save response boundaries
+        (letrec ((write-bounds
+                  (lambda (attempts)
+                    (let* ((bounds (gptel--get-bounds))
+                           (offset (caar bounds))
+                           (offset-marker (set-marker (make-marker) offset)))
+                      (org-entry-put (point-min) "GPTEL_BOUNDS"
+                                     (prin1-to-string (gptel--get-bounds)))
+                      (when (and (not (= (marker-position offset-marker) offset))
+                                 (> attempts 0))
+                        (funcall write-bounds (1- attempts)))))))
+          (funcall write-bounds 6)))))
     (_ (save-excursion
          (save-restriction
            (add-file-local-variable 'gptel-model gptel-model)
