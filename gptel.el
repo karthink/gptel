@@ -66,6 +66,7 @@
 (declare-function org-property-values "org")
 (declare-function org-open-line "org")
 (declare-function org-at-heading-p "org")
+(declare-function org-get-heading "org")
 
 (eval-when-compile
   (require 'subr-x)
@@ -110,7 +111,7 @@ This option is ignored unless Curl is in use (see `gptel-use-curl').
 When set to nil, Emacs waits for the full response and inserts it
 all at once. This wait is asynchronous.
 
-'tis a bit silly."
+\='tis a bit silly."
   :group 'gptel
   :type 'boolean)
 (make-obsolete-variable 'gptel-playback 'gptel-stream "0.3.0")
@@ -648,7 +649,14 @@ current heading and the cursor position."
      (org-set-property
       "GPTEL_TOPIC"
       (completing-read "Set topic as: "
-                       (org-property-values "GPTEL_TOPIC"))))
+                       (org-property-values "GPTEL_TOPIC")
+                       nil nil (downcase
+                                (truncate-string-to-width
+                                 (substring-no-properties
+                                  (replace-regexp-in-string
+                                   "\\s-+" "-"
+                                   (org-get-heading)))
+                                 50)))))
     ('markdown-mode
      (message
       "Support for multiple topics per buffer is not implemented for `markdown-mode'."))))
