@@ -231,7 +231,9 @@ Customize `gptel-directives' for task-specific prompts."
 
 (defun gptel--transient-read-variable (prompt initial-input history)
   "Read value from minibuffer and interpret the result as a Lisp object."
-  (read-from-minibuffer prompt initial-input read-expression-map t history))
+  (condition-case nil
+      (read-from-minibuffer prompt initial-input read-expression-map t history)
+    ('error nil)))
 
 (transient-define-infix gptel--infix-num-messages-to-send ()
   "Number of recent messages to send with each exchange.
