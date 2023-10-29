@@ -169,12 +169,11 @@ You can pick this backend from the transient menu when using gptel (see usage), 
 
 Register a backend with
 #+begin_src emacs-lisp
-(defvar gptel--ollama
-  (gptel-make-ollama
-   "Ollama"                             ;Any name of your choosing
-   :host "localhost:11434"              ;Where it's running
-   :models '("mistral:latest")          ;Installed models
-   :stream t))                          ;Stream responses
+(gptel-make-ollama
+ "Ollama"                               ;Any name of your choosing
+ :host "localhost:11434"                ;Where it's running
+ :models '("mistral:latest")            ;Installed models
+ :stream t)                             ;Stream responses
 #+end_src
 These are the required parameters, refer to the documentation of =gptel-make-gpt4all= for more.
 

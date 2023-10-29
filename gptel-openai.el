@@ -166,7 +166,18 @@ alist, like:
 ((\"Content-Type\" . \"application/json\"))
 
 KEY (optional) is a variable whose value is the API key, or
-function that returns the key."
+function that returns the key.
+
+Example:
+-------
+
+(gptel-make-azure
+ \"Azure-1\"
+ :protocol \"https\"
+ :host \"YOUR_RESOURCE_NAME.openai.azure.com\"
+ :endpoint \"/openai/deployments/YOUR_DEPLOYMENT_NAME/completions?api-version=2023-05-15\"
+ :stream t
+ :models '(\"gpt-3.5-turbo\" \"gpt-4\"))"
   (let ((backend (gptel--make-openai
                   :name name
                   :host host
@@ -210,7 +221,16 @@ alist, like:
 
 KEY (optional) is a variable whose value is the API key, or
 function that returns the key. This is typically not required for
-local models like GPT4All.")
+local models like GPT4All.
+
+Example:
+-------
+
+(gptel-make-gpt4all
+ \"GPT4All\"
+ :protocol \"http\"
+ :host \"localhost:4891\"
+ :models '(\"mistral-7b-openorca.Q4_0.gguf\"))")
 
 (provide 'gptel-openai)
 ;;; gptel-backends.el ends here

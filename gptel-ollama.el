@@ -113,7 +113,16 @@ alist, like:
 
 KEY (optional) is a variable whose value is the API key, or
 function that returns the key. This is typically not required for
-local models like Ollama."
+local models like Ollama.
+
+Example:
+-------
+
+(gptel-make-ollama
+  \"Ollama\"
+  :host \"localhost:11434\"
+  :models '(\"mistral:latest\")
+  :stream t)"
   (let ((backend (gptel--make-ollama
                   :name name
                   :host host
