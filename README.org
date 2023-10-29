@@ -58,7 +58,10 @@ GPTel uses Curl if available, but falls back to url-retrieve to work without ext
   - [[#acknowledgments][Acknowledgments]]
 
 ** Breaking Changes
-- =gptel-api-key-from-auth-source= now searches for the API key using the value of =gptel-host=, /i.e./ "api.openai.com" instead of the original "openai.com".  You need to update your =~/.authinfo=.
+
+- The user option =gptel-host= is deprecated.  If the defaults don't work for you, use =gptel-make-openai= (which see) to customize server settings.
+
+- =gptel-api-key-from-auth-source= now searches for the API key using the host address for the active LLM backend, /i.e./ "api.openai.com" when using ChatGPT.  You may need to update your =~/.authinfo=.
 
 ** Installation
 
