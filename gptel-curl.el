@@ -199,7 +199,9 @@ See `gptel--url-get-response' for details."
             (when transformer
               (setq response (funcall transformer response)))
             
-            (put-text-property 0 (length response) 'gptel 'response response)
+            (add-text-properties
+             0 (length response) '(gptel response rear-nonsticky t)
+             response)
             (goto-char tracking-marker)
             (insert response))))))
 

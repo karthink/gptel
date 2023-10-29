@@ -624,7 +624,9 @@ See `gptel--url-get-response' for details."
             (setq response (gptel--transform-response
                                response gptel-buffer))
             (save-excursion
-              (put-text-property 0 (length response) 'gptel 'response response)
+              (add-text-properties
+               0 (length response) '(gptel response rear-nonsticky t)
+               response)
               (with-current-buffer (marker-buffer start-marker)
                 (goto-char start-marker)
                 (run-hooks 'gptel-pre-response-hook)
