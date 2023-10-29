@@ -185,6 +185,18 @@ You can pick this backend from the transient menu when using gptel (see usage), 
 #+html: </details>
 
 ** Usage
+
+|-------------------+-------------------------------------------------------------------------|
+| *Commands*          | Description                                                             |
+|-------------------+-------------------------------------------------------------------------|
+| =gptel=             | Create a new dedicated chat buffer. Not required, gptel works anywhere. |
+| =gptel-send=        | Send selection, or conversation up to =(point)=. Works anywhere in Emacs. |
+| =C-u= =gptel-send=    | Transient menu for preferenes, input/output redirection etc.            |
+| =gptel-menu=        | /(Same)/                                                                  |
+|-------------------+-------------------------------------------------------------------------|
+| =gptel-set-topic= | /(Org-mode only)/ Limit conversation context to an Org heading             |
+|-------------------+-------------------------------------------------------------------------|
+
 *** In any buffer:
 
 1. Select a region of text and call =M-x gptel-send=. The response will be inserted below your region.
@@ -249,7 +261,7 @@ These are packages that depend on GPTel to provide additional functionality
 :ID:       f885adac-58a3-4eba-a6b7-91e9e7a17829
 :END:
 
-#+begin_src emacs-lisp :exports none
+#+begin_src emacs-lisp :exports none :results list
 (let ((all))
   (mapatoms (lambda (sym)
               (when (and (string-match-p "^gptel-[^-]" (symbol-name sym))
@@ -258,10 +270,32 @@ These are packages that depend on GPTel to provide additional functionality
   all)
 #+end_src
 
-- =gptel-stream=: Stream responses (if the model supports streaming). Defaults to true.
+|---------------------------+---------------------------------------------------------------------|
+| *Connection options*        |                                                                     |
+|---------------------------+---------------------------------------------------------------------|
+| =gptel-use-curl=            | Use Curl (default), fallback to Emacs' built-in =url=.                |
+| =gptel-proxy=               | Proxy server for requests, passed to curl via =--proxy=.              |
+| =gptel-api-key=             | Variable/function that returns the API key for the active backend.  |
+|---------------------------+---------------------------------------------------------------------|
 
-- =gptel-proxy=: Path to a proxy to use for GPTel interactions. This is passed to Curl via the =--proxy= argument.
+|---------------------------+---------------------------------------------------------------------|
+| *LLM options*               | /(Note: not supported uniformly across LLMs)/                         |
+|---------------------------+---------------------------------------------------------------------|
+| =gptel-backend=             | Default LLM Backend.                                                |
+| =gptel-model=               | Default model to use (depends on the backend).                      |
+| =gptel-stream=              | Enable streaming responses (overrides backend-specific preference). |
+| =gptel-directives=          | Alist of system directives, can switch on the fly.                  |
+| =gptel-max-tokens=          | Maximum token count (in query + response).                          |
+| =gptel-temperature=         | Randomness in response text, 0 to 2.                                |
+|---------------------------+---------------------------------------------------------------------|
 
+|---------------------------+---------------------------------------------------------------------|
+| *Chat UI options*           |                                                                     |
+|---------------------------+---------------------------------------------------------------------|
+| =gptel-default-mode=        | Major mode for dedicated chat buffers.                              |
+| =gptel-prompt-prefix-alist= | Text demarcating queries and replies.                               |
+|---------------------------+---------------------------------------------------------------------|
+  
 ** Why another LLM client?
 
 Other Emacs clients for LLMs prescribe the format of the interaction (a comint shell, org-babel blocks, etc).  I wanted:
