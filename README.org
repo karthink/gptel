@@ -4,14 +4,14 @@
 
 GPTel is a simple Large Language Model chat client for Emacs, with support for multiple models/backends.
 
-| LLM Backend | Supports | Requires               |
-|-------------+----------+------------------------|
-| ChatGPT     | ✓       | [[https://platform.openai.com/account/api-keys][API key]]                |
-| Azure       | ✓       | Deployment and API key |
-| Ollama      | ✓       | An LLM running locally |
-| GPT4All     | ✓       | An LLM running locally |
-| PrivateGPT  | Planned  | -                      |
-| Llama.cpp   | Planned  | -                      |
+| LLM Backend | Supports | Requires                |
+|-------------+----------+-------------------------|
+| ChatGPT     | ✓       | [[https://platform.openai.com/account/api-keys][API key]]                 |
+| Azure       | ✓       | Deployment and API key  |
+| Ollama      | ✓       | [[https://ollama.ai/][Ollama running locally]]  |
+| GPT4All     | ✓       | [[https://gpt4all.io/index.html][GPT4All running locally]] |
+| PrivateGPT  | Planned  | -                       |
+| Llama.cpp   | Planned  | -                       |
 
 *General usage*:
 
@@ -58,6 +58,8 @@ GPTel uses Curl if available, but falls back to url-retrieve to work without ext
   - [[#acknowledgments][Acknowledgments]]
 
 ** Breaking Changes
+
+- Possible breakage, see #120: If streaming responses stop working for you after upgrading to v0.5, try reinstalling gptel and deleting its native comp eln cache in =native-comp-eln-load-path=.
 
 - The user option =gptel-host= is deprecated.  If the defaults don't work for you, use =gptel-make-openai= (which see) to customize server settings.
 
@@ -162,7 +164,14 @@ Register a backend with
 #+end_src
 These are the required parameters, refer to the documentation of =gptel-make-gpt4all= for more.
 
-You can pick this backend from the transient menu when using gptel (see usage), or set this as the default value of =gptel-backend=.
+You can pick this backend from the transient menu when using gptel (see usage), or set this as the default value of =gptel-backend=.  Additionally you may want to increase the response token size since GPT4All uses very short (often truncated) responses by default:
+
+#+begin_src emacs-lisp
+;; OPTIONAL configuration
+(setq-default gptel-model "mistral-7b-openorca.Q4_0.gguf" ;Pick your default model
+              gptel-backend (gptel-make-gpt4all "GPT4All" :protocol ...))
+(setq-default gptel-max-tokens 500)
+#+end_src
 
 #+html: </details>
 
@@ -180,17 +189,23 @@ Register a backend with
 #+end_src
 These are the required parameters, refer to the documentation of =gptel-make-gpt4all= for more.
 
-You can pick this backend from the transient menu when using gptel (see usage), or set this as the default value of =gptel-backend=.
+You can pick this backend from the transient menu when using gptel (see Usage), or set this as the default value of =gptel-backend=:
+
+#+begin_src emacs-lisp
+;; OPTIONAL configuration
+(setq-default gptel-model "mistral:latest" ;Pick your default model
+              gptel-backend (gptel-make-gpt4all "Ollama" :host ...))
+#+end_src
 
 #+html: </details>
 
 ** Usage
 
 |-------------------+-------------------------------------------------------------------------|
-| *Commands*          | Description                                                             |
+| *Command*          | Description                                                             |
 |-------------------+-------------------------------------------------------------------------|
-| =gptel=             | Create a new dedicated chat buffer. Not required, gptel works anywhere. |
-| =gptel-send=        | Send selection, or conversation up to =(point)=. Works anywhere in Emacs. |
+| =gptel=             | Create a new dedicated chat buffer. (Not required, gptel works anywhere.) |
+| =gptel-send=        | Send selection, or conversation up to =(point)=. (Works anywhere in Emacs.) |
 | =C-u= =gptel-send=    | Transient menu for preferenes, input/output redirection etc.            |
 | =gptel-menu=        | /(Same)/                                                                  |
 |-------------------+-------------------------------------------------------------------------|
