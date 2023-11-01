@@ -121,7 +121,7 @@ Example:
 (gptel-make-ollama
   \"Ollama\"
   :host \"localhost:11434\"
-  :models '(\"mistral:latest\")
+  :models \\='(\"mistral:latest\")
   :stream t)"
   (let ((backend (gptel--make-ollama
                   :name name

@@ -110,6 +110,7 @@
 (require 'json)
 (require 'map)
 (require 'text-property-search)
+(require 'cl-generic)
 (require 'gptel-openai)
 
 (defgroup gptel nil

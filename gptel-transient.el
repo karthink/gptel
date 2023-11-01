@@ -361,6 +361,7 @@ will get progressively longer!"
   (let ((stream gptel-stream)
         (in-place (and (member "i" args) t))
         (output-to-other-buffer-p)
+        (backend gptel-backend)
         (backend-name (gptel-backend-name gptel-backend))
         (buffer) (position)
         (callback) (gptel-buffer-name)
@@ -398,7 +399,10 @@ will get progressively longer!"
                        (gptel--get-api-key)
                      ((error user-error)
                       (setq gptel-api-key
-                            (read-passwd "OpenAI API key: "))))
+                            (read-passwd
+                             (format "%s API key: "
+                                     (gptel-backend-name
+                                      gptel-backend))))))
                    (or prompt
                        (if (use-region-p)
                            (buffer-substring-no-properties (region-beginning)
@@ -413,6 +417,7 @@ will get progressively longer!"
                             (point))
                           (point))))))
       (with-current-buffer buffer
+        (setq gptel-backend backend)
         (gptel--update-header-line " Waiting..." 'warning)
         (setq position (point)))
       (setq output-to-other-buffer-p t))
