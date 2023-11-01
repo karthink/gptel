@@ -24,6 +24,22 @@
 
 ;;; Code:
 (require 'cl-generic)
+(require 'map)
+
+(defvar gptel-model)
+(defvar gptel-stream)
+(defvar gptel-use-curl)
+(defvar gptel-backend)
+(defvar gptel-temperature)
+(defvar gptel-max-tokens)
+(defvar gptel--system-message)
+(defvar gptel--known-backends)
+(defvar json-object-type)
+
+(declare-function gptel--get-api-key "gptel")
+(declare-function prop-match-value "text-property-search")
+(declare-function text-property-search-backward "text-property-search")
+(declare-function json-read "json")
 
 ;;; Common backend struct for LLM support
 (cl-defstruct
@@ -174,10 +190,11 @@ Example:
 (gptel-make-azure
  \"Azure-1\"
  :protocol \"https\"
- :host \"YOUR_RESOURCE_NAME.openai.azure.com\"
- :endpoint \"/openai/deployments/YOUR_DEPLOYMENT_NAME/completions?api-version=2023-05-15\"
+ :host \"RESOURCE_NAME.openai.azure.com\"
+ :endpoint
+ \"/openai/deployments/DEPLOYMENT_NAME/completions?api-version=2023-05-15\"
  :stream t
- :models '(\"gpt-3.5-turbo\" \"gpt-4\"))"
+ :models \\='(\"gpt-3.5-turbo\" \"gpt-4\"))"
   (let ((backend (gptel--make-openai
                   :name name
                   :host host
@@ -230,7 +247,7 @@ Example:
  \"GPT4All\"
  :protocol \"http\"
  :host \"localhost:4891\"
- :models '(\"mistral-7b-openorca.Q4_0.gguf\"))")
+ :models \\='(\"mistral-7b-openorca.Q4_0.gguf\"))")
 
 (provide 'gptel-openai)
 ;;; gptel-backends.el ends here
