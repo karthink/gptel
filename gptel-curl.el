@@ -155,7 +155,7 @@ the response is inserted into the current buffer after point."
         (delete-process proc)
         (kill-buffer (process-buffer proc))
         (with-current-buffer buf
-          (when gptel-mode (gptel--update-header-line  " Ready" 'success)))
+          (when gptel-mode (gptel--update-status  " Ready" 'success)))
         (message "Stopped gptel request in buffer %S" (buffer-name buf)))
     (message "No gptel request associated with buffer %S" (buffer-name buf))))
 
@@ -185,7 +185,7 @@ PROCESS and _STATUS are process parameters."
               (when gptel-mode (save-excursion (goto-char tracking-marker)
                                                (insert "\n\n" (gptel-prompt-prefix-string)))))
             (with-current-buffer gptel-buffer
-              (when gptel-mode (gptel--update-header-line  " Ready" 'success))))
+              (when gptel-mode (gptel--update-status  " Ready" 'success))))
         ;; Or Capture error message
         (with-current-buffer proc-buf
           (goto-char (point-max))
@@ -210,7 +210,7 @@ PROCESS and _STATUS are process parameters."
              (t (message "ChatGPT error (%s): Could not parse HTTP response." http-msg)))))
         (with-current-buffer gptel-buffer
           (when gptel-mode
-            (gptel--update-header-line
+            (gptel--update-status
              (format " Response Error: %s" http-msg) 'error))))
       (with-current-buffer gptel-buffer
         (run-hooks 'gptel-post-response-hook)))
@@ -229,7 +229,7 @@ See `gptel--url-get-response' for details."
         (with-current-buffer (marker-buffer start-marker)
           (save-excursion
             (unless tracking-marker
-              (gptel--update-header-line " Typing..." 'success)
+              (gptel--update-status " Typing..." 'success)
               (goto-char start-marker)
               (unless (or (bobp) (plist-get info :in-place))
                 (insert "\n\n")

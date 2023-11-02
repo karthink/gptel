@@ -372,6 +372,15 @@ To set the model for a chat session interactively call
           (const :tag "GPT 4" "gpt-4")
           (const :tag "GPT 4 turbo (preview)" "gpt-4-1106-preview")))
 
+(defcustom gptel-update-destination "headerline"
+  "Where update messages appear."
+  :local t
+  :safe #'gptel--always
+  :group 'gptel
+  :type '(choice
+          (const :tag "Headerline" "headerline")
+          (const :tag "Minibufer" "minibuffer")))
+
 (defcustom gptel-temperature 1.0
   "\"Temperature\" of ChatGPT response.
 
@@ -621,6 +630,16 @@ opening the file."
           (propertize msg 'face face))
     (force-mode-line-update)))
 
+(defun gptel--update-status (msg face)
+  "Update status MSG in FACE."
+  (when gptel-mode
+    (if (string= gptel-update-destination "modeline")
+        (message (propertize msg 'face face))
+      (and (consp header-line-format)
+           (setf (nth 1 header-line-format)
+                 (propertize msg 'face face))
+           (force-mode-line-update)))))
+
 (cl-defun gptel-request
     (&optional prompt &key callback
                (buffer (current-buffer))
@@ -758,7 +777,7 @@ instead."
      (list :prompt full-prompt
            :buffer gptel-buffer
            :position response-pt)))
-    (gptel--update-header-line " Waiting..." 'warning)))
+    (gptel--update-status " Waiting..." 'warning)))
 
 (defun gptel--insert-response (response info)
   "Insert RESPONSE from ChatGPT into the gptel buffer.
@@ -802,8 +821,8 @@ See `gptel--url-get-response' for details."
                   (insert response)
                   (pulse-momentary-highlight-region p (point)))
                 (when gptel-mode (insert "\n\n" (gptel-prompt-prefix-string))))
-              (when gptel-mode (gptel--update-header-line " Ready" 'success))))
-        (gptel--update-header-line
+              (when gptel-mode (gptel--update-status " Ready" 'success))))
+        (gptel--update-status
          (format " Response Error: %s" status-str) 'error)
         (message "ChatGPT response error: (%s) %s"
                  status-str (plist-get info :error)))

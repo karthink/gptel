@@ -418,7 +418,7 @@ will get progressively longer!"
                           (gptel--at-word-end (point)))))))
       (with-current-buffer buffer
         (setq gptel-backend backend)
-        (gptel--update-header-line " Waiting..." 'warning)
+        (gptel--update-status " Waiting..." 'warning)
         (setq position (point)))
       (setq output-to-other-buffer-p t))
      ((setq gptel-buffer-name
@@ -449,7 +449,7 @@ will get progressively longer!"
             (insert reduced-prompt))
           (setq position (point))
           (when gptel-mode
-            (gptel--update-header-line " Waiting..." 'warning))))))
+            (gptel--update-status " Waiting..." 'warning))))))
 
     (when in-place
       (setq prompt (gptel--create-prompt (point)))
