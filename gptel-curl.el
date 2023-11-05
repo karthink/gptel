@@ -55,7 +55,7 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
      (list "--location" "--silent" "--compressed" "--disable"
            (format "-X%s" "POST")
            (format "-w(%s . %%{size_header})" token)
-           (format "-m%s" 60)
+           (format "-m%s" 300)
            "-D-"
            (format "-d%s" data))
      (when (not (string-empty-p gptel-proxy))
