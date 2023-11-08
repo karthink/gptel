@@ -855,7 +855,7 @@ the response is inserted into the current buffer after point."
     (url-retrieve (gptel-backend-url gptel-backend)
                   (lambda (_)
                     (pcase-let ((`(,response ,http-msg ,error)
-                                 (gptel--url-parse-response (current-buffer))))
+                                 (gptel--url-parse-response backend (current-buffer))))
                       (plist-put info :status http-msg)
                       (when error (plist-put info :error error))
                       (funcall (or callback #'gptel--insert-response)
@@ -873,7 +873,7 @@ RESPONSE is the parsed JSON of the response, as a plist.
 PROC-INFO is a plist with process information and other context.
 See `gptel-curl--get-response' for its contents.")
 
-(defun gptel--url-parse-response (response-buffer)
+(defun gptel--url-parse-response (backend response-buffer)
   "Parse response in RESPONSE-BUFFER."
   (when (buffer-live-p response-buffer)
     (when gptel--debug
@@ -892,14 +892,21 @@ See `gptel-curl--get-response' for its contents.")
                                      (json-readtable-error 'json-read-error))))))
           (cond
            ((string-match-p "200 OK" http-msg)
-            (list (string-trim (gptel--parse-response gptel-backend response
+            (list (string-trim (gptel--parse-response backend response
                                              '(:buffer response-buffer)))
                    http-msg))
            ((plist-get response :error)
-            (let* ((error-plist (plist-get response :error))
-                   (error-msg (plist-get error-plist :message))
-                   (error-type (plist-get error-plist :type)))
-              (list nil (concat "(" http-msg ") " error-type) error-msg)))
+            (let* ((error-data (plist-get response :error))
+                   (error-msg (plist-get error-data :message))
+                   (error-type (plist-get error-data :type))
+                   (backend-name (gptel-backend-name backend)))
+              (if (stringp error-data)
+                  (progn (message "%s error: (%s) %s" backend-name http-msg error-data)
+                         (setq error-msg (string-trim error-data)))
+                (when (stringp error-msg)
+                  (message "%s error: (%s) %s" backend-name http-msg (string-trim error-msg)))
+                (when error-type (setq http-msg (concat "("  http-msg ") " (string-trim error-type)))))
+              (list nil (concat "(" http-msg ") " (or error-msg "")))))
            ((eq response 'json-read-error)
             (list nil (concat "(" http-msg ") Malformed JSON in response.") "json-read-error"))
            (t (list nil (concat "(" http-msg ") Could not parse HTTP response.")
