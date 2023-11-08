@@ -543,8 +543,9 @@ This uses the prompts in the variable
       (local-set-key (kbd "C-c C-c")
                      (lambda ()
                        (interactive)
-                       (setf (buffer-local-value 'gptel--system-message orig-buf)
-                             (buffer-substring msg-start (point-max)))
+                       (with-current-buffer orig-buf
+                         (setq gptel--system-message
+                               (buffer-substring msg-start (point-max))))
                        (quit-window)
                        (display-buffer
                         orig-buf

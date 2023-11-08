@@ -109,7 +109,8 @@
 
 ;;;###autoload
 (cl-defun gptel-make-openai
-    (name &key header key models stream
+    (name &key header models stream
+          (key 'gptel-api-key)
           (host "api.openai.com")
           (protocol "https")
           (endpoint "/v1/chat/completions"))

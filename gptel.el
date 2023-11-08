@@ -134,10 +134,12 @@ Leave it empty if you don't use a proxy."
   :type 'string)
 
 (defcustom gptel-api-key #'gptel-api-key-from-auth-source
-  "An OpenAI API key (string).
+  "An API key (string) for the default LLM backend.
+
+OpenAI by default.
 
 Can also be a function of no arguments that returns an API
-key (more secure)."
+key (more secure) for the active backend."
   :group 'gptel
   :type '(choice
           (string :tag "API key")
@@ -337,7 +339,7 @@ with differing settings.")
   (gptel-make-openai
    "ChatGPT"
    :header (lambda () `(("Authorization" . ,(concat "Bearer " (gptel--get-api-key)))))
-   :key #'gptel--get-api-key
+   :key 'gptel-api-key
    :stream t
    :models '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4" "gpt-4-32k")))
 
@@ -371,12 +373,15 @@ and \"apikey\" as USER."
     (user-error "No `gptel-api-key' found in the auth source")))
 
 ;; FIXME Should we utf-8 encode the api-key here?
-(defun gptel--get-api-key ()
-  "Get api key from `gptel-api-key'."
-  (pcase gptel-api-key
-    ((pred stringp) gptel-api-key)
-    ((pred functionp) (funcall gptel-api-key))
-    (_ (error "`gptel-api-key' is not set"))))
+(defun gptel--get-api-key (&optional key)
+  "Get api key from KEY, or from `gptel-api-key'."
+  (when-let* ((key-sym (or key (gptel-backend-key gptel-backend))))
+    (cl-typecase key-sym
+      (function (funcall key-sym))
+      (string key-sym)
+      (symbol (gptel--get-api-key
+               (symbol-value key-sym)))
+      (t (error "`gptel-api-key' is not valid")))))
 
 (defsubst gptel--numberize (val)
   "Ensure VAL is a number."
@@ -519,7 +524,7 @@ opening the file."
                          (gptel--button-buttonize (concat "[" gptel-model "]")
                           (lambda (&rest _) (gptel-menu)))
                          'mouse-face 'highlight
-                         'help-echo "OpenAI GPT model in use")))))))
+                         'help-echo "GPT model in use")))))))
     (setq header-line-format gptel--old-header-line)))
 
 (defun gptel--update-header-line (msg face)
@@ -889,7 +894,7 @@ See `gptel-curl--get-response' for its contents.")
               "Could not parse HTTP response.")))))
 
 ;;;###autoload
-(defun gptel (name &optional api-key initial)
+(defun gptel (name &optional _ initial)
   "Switch to or start ChatGPT session with NAME.
 
 With a prefix arg, query for a (new) session name.
@@ -901,16 +906,20 @@ buffer created or switched to."
   (interactive (list (if current-prefix-arg
                          (read-string "Session name: " (generate-new-buffer-name gptel-default-session))
                        gptel-default-session)
-                     (condition-case nil
-                         (gptel--get-api-key)
-                       ((error user-error)
-                        (setq gptel-api-key
-                              (read-passwd "OpenAI API key: "))))
+                     (let ((backend (default-value 'gptel-backend)))
+                       (condition-case nil
+                           (gptel--get-api-key
+                            (gptel-backend-key backend))
+                         ((error user-error)
+                          (setq gptel-api-key
+                                (read-passwd
+                                 (format "%s API key: "
+                                         (gptel-backend-name backend)))))))
                      (and (use-region-p)
                           (buffer-substring (region-beginning)
                                             (region-end)))))
-  (unless api-key
-    (user-error "No API key available"))
+  ;; (unless api-key
+  ;;   (user-error "No API key available"))
   (with-current-buffer (get-buffer-create name)
     (cond ;Set major mode
      ((eq major-mode gptel-default-mode))
