@@ -76,20 +76,23 @@ Ollama models.")
     prompts-plist))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-ollama) &optional _max-entries)
-  (let ((prompts) (prop))
-    (setq prop (text-property-search-backward
-                'gptel 'response
-                (when (get-char-property (max (point-min) (1- (point)))
-                                         'gptel)
-                  t)))
-    (if (prop-match-value prop)
+  (let ((prompts)
+        (prop (text-property-search-backward
+               'gptel 'response
+               (when (get-char-property (max (point-min) (1- (point)))
+                                        'gptel)
+                 t))))
+    (if (and (prop-match-p prop)
+             (prop-match-value prop))
         (user-error "No user prompt found!")
       (setq prompts (list
                      :system gptel--system-message
                      :prompt
-                     (string-trim (buffer-substring-no-properties (prop-match-beginning prop)
-                                                                  (prop-match-end prop))
-                                  "[*# \t\n\r]+"))))))
+                     (if (prop-match-p prop)
+                         (string-trim (buffer-substring-no-properties (prop-match-beginning prop)
+                                                                      (prop-match-end prop))
+                                      "[*# \t\n\r]+")
+                       ""))))))
 
 ;;;###autoload
 (cl-defun gptel-make-ollama
