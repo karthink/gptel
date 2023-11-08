@@ -632,14 +632,18 @@ Model parameters can be let-bound around calls to this function."
            ((integerp position)
             (set-marker (make-marker) position buffer))))
          (full-prompt
-         (cond
-          ((null prompt)
-           (let ((gptel--system-message system))
-             (gptel--create-prompt start-marker)))
-          ((stringp prompt)
-           `((:role "system" :content ,system)
-             (:role "user"   :content ,prompt)))
-          ((consp prompt) prompt)))
+          (cond
+           ((null prompt)
+            (let ((gptel--system-message system))
+              (gptel--create-prompt start-marker)))
+           ((stringp prompt)
+            ;; FIXME Dear reader, welcome to Jank City:
+            (with-temp-buffer
+              (let ((gptel--system-message system)
+                    (gptel-backend (buffer-local-value 'gptel-backend buffer)))
+                (insert prompt)
+                (gptel--create-prompt))))
+           ((consp prompt) prompt)))
          (info (list :prompt full-prompt
                      :buffer buffer
                      :position start-marker)))
