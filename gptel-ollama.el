@@ -31,6 +31,12 @@
                             (:copier nil)
                             (:include gptel-backend)))
 
+(defvar-local gptel--ollama-context nil
+  "Context for ollama conversations.
+
+This variable holds the context array for conversations with
+Ollama models.")
+
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-ollama) info)
   ";TODO: "
   (when (bobp)
@@ -47,7 +53,7 @@
             (unless (eq done json-false)
               (with-current-buffer (plist-get info :buffer)
                 (setq gptel--ollama-context (map-elt content :context)))
-              (end-of-buffer))))
+              (goto-char (point-max)))))
       (error (forward-line 0)))
     (apply #'concat (nreverse content-strs))))
 
@@ -139,12 +145,6 @@ Example:
       (setf (alist-get name gptel--known-backends
                        nil nil #'equal)
                   backend))))
-
-(defvar-local gptel--ollama-context nil
-  "Context for ollama conversations.
-
-This variable holds the context array for conversations with
-Ollama models.")
 
 (provide 'gptel-ollama)
 ;;; gptel-ollama.el ends here

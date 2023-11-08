@@ -540,7 +540,11 @@ opening the file."
                position context
                (stream nil) (in-place nil)
                (system gptel--system-message))
-  "Request a response from ChatGPT for PROMPT.
+  "Request a response from the `gptel-backend' for PROMPT.
+
+Note: This function is not fully self-contained. Consider
+let-binding the parameters `gptel-backend' and `gptel-model'
+around calls to it as required.
 
 If PROMPT is
 - a string, it is used to create a full prompt suitable for
