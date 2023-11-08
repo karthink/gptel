@@ -415,7 +415,7 @@ will get progressively longer!"
                                                       'gptel)
                                t))
                             (point))
-                          (point))))))
+                          (gptel--at-word-end (point)))))))
       (with-current-buffer buffer
         (setq gptel-backend backend)
         (gptel--update-header-line " Waiting..." 'warning)
@@ -423,7 +423,7 @@ will get progressively longer!"
       (setq output-to-other-buffer-p t))
      ((setq gptel-buffer-name
             (cl-some (lambda (s) (and (string-prefix-p "e" s)
-                                 (substring s 2)))
+                                 (substring s 1)))
                      args))
       (setq buffer (get-buffer gptel-buffer-name))
       (setq output-to-other-buffer-p t)
@@ -440,7 +440,7 @@ will get progressively longer!"
                                                 'gptel)
                          t))
                       (point))
-                    (point))))))
+                    (gptel--at-word-end (point)))))))
         (with-current-buffer buffer
           (goto-char (point-max))
           (if (or buffer-read-only

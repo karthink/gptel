@@ -387,6 +387,12 @@ and \"apikey\" as USER."
   "Ensure VAL is a number."
   (if (stringp val) (string-to-number val) val))
 
+(defmacro gptel--at-word-end (&rest body)
+  "Execute BODY at end of the current word or punctuation."
+  `(save-excursion
+     (skip-syntax-forward "w.")
+     ,@body))
+
 (defun gptel-prompt-string ()
   (or (alist-get major-mode gptel-prompt-prefix-alist) ""))
 
@@ -621,7 +627,7 @@ Model parameters can be let-bound around calls to this function."
            ((null position)
             (if (use-region-p)
                 (set-marker (make-marker) (region-end))
-              (point-marker)))
+              (gptel--at-word-end (point-marker))))
            ((markerp position) position)
            ((integerp position)
             (set-marker (make-marker) position buffer))))
@@ -658,7 +664,7 @@ instead."
   (let* ((response-pt
           (if (use-region-p)
               (set-marker (make-marker) (region-end))
-            (point-marker)))
+            (gptel--at-word-end (point-marker))))
          (gptel-buffer (current-buffer))
          (full-prompt (gptel--create-prompt response-pt)))
     (funcall
