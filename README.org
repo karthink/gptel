@@ -1,20 +1,34 @@
-#+title: GPTel: A simple ChatGPT client for Emacs
+#+title: GPTel: A simple LLM client for Emacs
 
 [[https://melpa.org/#/gptel][file:https://melpa.org/packages/gptel-badge.svg]]
 
-GPTel is a simple, no-frills ChatGPT client for Emacs.
+GPTel is a simple Large Language Model chat client for Emacs, with support for multiple models/backends.
+
+| LLM Backend | Supports | Requires                |
+|-------------+----------+-------------------------|
+| ChatGPT     | ✓       | [[https://platform.openai.com/account/api-keys][API key]]                 |
+| Azure       | ✓       | Deployment and API key  |
+| Ollama      | ✓       | [[https://ollama.ai/][Ollama running locally]]  |
+| GPT4All     | ✓       | [[https://gpt4all.io/index.html][GPT4All running locally]] |
+| PrivateGPT  | Planned  | -                       |
+| Llama.cpp   | Planned  | -                       |
+
+*General usage*:
 
 https://user-images.githubusercontent.com/8607532/230516812-86510a09-a2fb-4cbd-b53f-cc2522d05a13.mp4
 
 https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-ad3f-b66fa73c6e45.mp4
 
-- Requires an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
+*Multi-LLM support demo*:
+
+https://github-production-user-asset-6210df.s3.amazonaws.com/8607532/278854024-ae1336c4-5b87-41f2-83e9-e415349d6a43.mp4
+
 - It's async and fast, streams responses.
-- Interact with ChatGPT from anywhere in Emacs (any buffer, shell, minibuffer, wherever)
-- ChatGPT's responses are in Markdown or Org markup.
+- Interact with LLMs from anywhere in Emacs (any buffer, shell, minibuffer, wherever)
+- LLM responses are in Markdown or Org markup.
 - Supports conversations and multiple independent sessions.
 - Save chats as regular Markdown/Org/Text files and resume them later.
-- You can go back and edit your previous prompts, or even ChatGPT's previous responses when continuing a conversation. These will be fed back to ChatGPT.
+- You can go back and edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.
 
 GPTel uses Curl if available, but falls back to url-retrieve to work without external dependencies.
 
@@ -25,23 +39,35 @@ GPTel uses Curl if available, but falls back to url-retrieve to work without ext
       - [[#manual][Manual]]
       - [[#doom-emacs][Doom Emacs]]
       - [[#spacemacs][Spacemacs]]
+  - [[#setup][Setup]]
+    - [[#chatgpt][ChatGPT]]
+    - [[#other-llm-backends][Other LLM backends]]
+      - [[#azure][Azure]]
+      - [[#gpt4all][GPT4All]]
+      - [[#ollama][Ollama]]
   - [[#usage][Usage]]
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
+      - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
   - [[#using-it-your-way][Using it your way]]
     - [[#extensions-using-gptel][Extensions using GPTel]]
   - [[#additional-configuration][Additional Configuration]]
-  - [[#why-another-chatgpt-client][Why another ChatGPT client?]]
+  - [[#why-another-llm-client][Why another LLM client?]]
   - [[#will-you-add-feature-x][Will you add feature X?]]
   - [[#alternatives][Alternatives]]
   - [[#acknowledgments][Acknowledgments]]
 
 ** Breaking Changes
-- =gptel-api-key-from-auth-source= now searches for the API key using the value of =gptel-host=, /i.e./ "api.openai.com" instead of the original "openai.com".  You need to update your =~/.authinfo=.
+
+- Possible breakage, see #120: If streaming responses stop working for you after upgrading to v0.5, try reinstalling gptel and deleting its native comp eln cache in =native-comp-eln-load-path=.
+
+- The user option =gptel-host= is deprecated.  If the defaults don't work for you, use =gptel-make-openai= (which see) to customize server settings.
+
+- =gptel-api-key-from-auth-source= now searches for the API key using the host address for the active LLM backend, /i.e./ "api.openai.com" when using ChatGPT.  You may need to update your =~/.authinfo=.
 
 ** Installation
 
-GPTel is on MELPA. Install it with =M-x package-install⏎= =gptel=.
+GPTel is on MELPA. Ensure that MELPA is in your list of sources, then install gptel with =M-x package-install⏎= =gptel=.
 
 (Optional: Install =markdown-mode=.)
 
@@ -84,9 +110,8 @@ After installation with =M-x package-install⏎= =gptel=
 - Add =gptel= to =dotspacemacs-additional-packages=
 - Add =(require 'gptel)= to =dotspacemacs/user-config=
 #+html: </details>
-
-** Usage
-
+** Setup
+*** ChatGPT
 Procure an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
 
 Optional: Set =gptel-api-key= to the key. Alternatively, you may choose a more secure method such as:
@@ -96,6 +121,96 @@ Optional: Set =gptel-api-key= to the key. Alternatively, you may choose a more s
 machine api.openai.com login apikey password TOKEN
   #+end_src
 - Setting it to a function that returns the key.
+
+*** Other LLM backends
+#+html: <details><summary>
+**** Azure
+#+html: </summary>
+
+Register a backend with
+#+begin_src emacs-lisp
+(gptel-make-azure
+ "Azure-1"                              ;Name, whatever you'd like
+ :protocol "https"                      ;optional -- https is the default
+ :host "YOUR_RESOURCE_NAME.openai.azure.com"
+ :endpoint "/openai/deployments/YOUR_DEPLOYMENT_NAME/completions?api-version=2023-05-15" ;or equivalent
+ :stream t                              ;Enable streaming responses
+ :models '("gpt-3.5-turbo" "gpt-4"))
+#+end_src
+Refer to the documentation of =gptel-make-azure= to set more parameters.
+
+You can pick this backend from the transient menu when using gptel. (See usage)
+
+If you want it to be the default, set it as the default value of =gptel-backend=:
+#+begin_src emacs-lisp
+(setq-default gptel-backend
+              (gptel-make-azure
+               "Azure-1"
+               ...))
+#+end_src
+#+html: </details>
+
+#+html: <details><summary>
+**** GPT4All
+#+html: </summary>
+
+Register a backend with
+#+begin_src emacs-lisp
+(gptel-make-gpt4all
+ "GPT4All"                              ;Name of your choosing
+ :protocol "http"                       
+ :host "localhost:4891"                 ;Where it's running
+ :models '("mistral-7b-openorca.Q4_0.gguf")) ;Available models
+#+end_src
+These are the required parameters, refer to the documentation of =gptel-make-gpt4all= for more.
+
+You can pick this backend from the transient menu when using gptel (see usage), or set this as the default value of =gptel-backend=.  Additionally you may want to increase the response token size since GPT4All uses very short (often truncated) responses by default:
+
+#+begin_src emacs-lisp
+;; OPTIONAL configuration
+(setq-default gptel-model "mistral-7b-openorca.Q4_0.gguf" ;Pick your default model
+              gptel-backend (gptel-make-gpt4all "GPT4All" :protocol ...))
+(setq-default gptel-max-tokens 500)
+#+end_src
+
+#+html: </details>
+
+#+html: <details><summary>
+**** Ollama
+#+html: </summary>
+
+Register a backend with
+#+begin_src emacs-lisp
+(gptel-make-ollama
+ "Ollama"                               ;Any name of your choosing
+ :host "localhost:11434"                ;Where it's running
+ :models '("mistral:latest")            ;Installed models
+ :stream t)                             ;Stream responses
+#+end_src
+These are the required parameters, refer to the documentation of =gptel-make-ollama= for more.
+
+You can pick this backend from the transient menu when using gptel (see Usage), or set this as the default value of =gptel-backend=:
+
+#+begin_src emacs-lisp
+;; OPTIONAL configuration
+(setq-default gptel-model "mistral:latest" ;Pick your default model
+              gptel-backend (gptel-make-ollama "Ollama" :host ...))
+#+end_src
+
+#+html: </details>
+
+** Usage
+
+|-------------------+-------------------------------------------------------------------------|
+| *Command*          | Description                                                             |
+|-------------------+-------------------------------------------------------------------------|
+| =gptel=             | Create a new dedicated chat buffer. (Not required, gptel works anywhere.) |
+| =gptel-send=        | Send selection, or conversation up to =(point)=. (Works anywhere in Emacs.) |
+| =C-u= =gptel-send=    | Transient menu for preferenes, input/output redirection etc.            |
+| =gptel-menu=        | /(Same)/                                                                  |
+|-------------------+-------------------------------------------------------------------------|
+| =gptel-set-topic= | /(Org-mode only)/ Limit conversation context to an Org heading             |
+|-------------------+-------------------------------------------------------------------------|
 
 *** In any buffer:
 
@@ -122,11 +237,11 @@ With a region selected, you can also rewrite prose or refactor code from here:
 
 *** In a dedicated chat buffer:
 
-1. Run =M-x gptel= to start or switch to the ChatGPT buffer. It will ask you for the key if you skipped the previous step. Run it with a prefix-arg (=C-u M-x gptel=) to start a new session.
+1. Run =M-x gptel= to start or switch to the chat buffer. It will ask you for the key if you skipped the previous step. Run it with a prefix-arg (=C-u M-x gptel=) to start a new session.
 
 2. In the gptel buffer, send your prompt with =M-x gptel-send=, bound to =C-c RET=.
 
-3. Set chat parameters (GPT model, directives etc) for the session by calling =gptel-send= with a prefix argument (=C-u C-c RET=):
+3. Set chat parameters (LLM provider, model, directives etc) for the session by calling =gptel-send= with a prefix argument (=C-u C-c RET=):
 
 [[https://user-images.githubusercontent.com/8607532/224946059-9b918810-ab8b-46a6-b917-549d50c908f2.png]]
 
@@ -157,17 +272,51 @@ These are packages that depend on GPTel to provide additional functionality
 - [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
 
 ** Additional Configuration
+:PROPERTIES:
+:ID:       f885adac-58a3-4eba-a6b7-91e9e7a17829
+:END:
 
-- =gptel-host=: Overrides the OpenAI API host.  This is useful for those who transform Azure API into OpenAI API format, utilize reverse proxy, or employ third-party proxy services for the OpenAI API.
+#+begin_src emacs-lisp :exports none :results list
+(let ((all))
+  (mapatoms (lambda (sym)
+              (when (and (string-match-p "^gptel-[^-]" (symbol-name sym))
+                         (get sym 'variable-documentation))
+                (push sym all))))
+  all)
+#+end_src
 
-- =gptel-proxy=: Path to a proxy to use for GPTel interactions. This is passed to Curl via the =--proxy= argument.
+|---------------------------+---------------------------------------------------------------------|
+| *Connection options*        |                                                                     |
+|---------------------------+---------------------------------------------------------------------|
+| =gptel-use-curl=            | Use Curl (default), fallback to Emacs' built-in =url=.                |
+| =gptel-proxy=               | Proxy server for requests, passed to curl via =--proxy=.              |
+| =gptel-api-key=             | Variable/function that returns the API key for the active backend.  |
+|---------------------------+---------------------------------------------------------------------|
 
-** Why another ChatGPT client?
+|---------------------------+---------------------------------------------------------------------|
+| *LLM options*               | /(Note: not supported uniformly across LLMs)/                         |
+|---------------------------+---------------------------------------------------------------------|
+| =gptel-backend=             | Default LLM Backend.                                                |
+| =gptel-model=               | Default model to use (depends on the backend).                      |
+| =gptel-stream=              | Enable streaming responses (overrides backend-specific preference). |
+| =gptel-directives=          | Alist of system directives, can switch on the fly.                  |
+| =gptel-max-tokens=          | Maximum token count (in query + response).                          |
+| =gptel-temperature=         | Randomness in response text, 0 to 2.                                |
+|---------------------------+---------------------------------------------------------------------|
 
-Other Emacs clients for ChatGPT prescribe the format of the interaction (a comint shell, org-babel blocks, etc).  I wanted:
+|---------------------------+---------------------------------------------------------------------|
+| *Chat UI options*           |                                                                     |
+|---------------------------+---------------------------------------------------------------------|
+| =gptel-default-mode=        | Major mode for dedicated chat buffers.                              |
+| =gptel-prompt-prefix-alist= | Text demarcating queries and replies.                               |
+|---------------------------+---------------------------------------------------------------------|
+  
+** Why another LLM client?
 
-1. Something that is as free-form as possible: query ChatGPT using any text in any buffer, and redirect the response as required.  Using a dedicated =gptel= buffer just adds some visual flair to the interaction.
-2. Integration with org-mode, not using a walled-off org-babel block, but as regular text.  This way ChatGPT can generate code blocks that I can run.
+Other Emacs clients for LLMs prescribe the format of the interaction (a comint shell, org-babel blocks, etc).  I wanted:
+
+1. Something that is as free-form as possible: query the model using any text in any buffer, and redirect the response as required.  Using a dedicated =gptel= buffer just adds some visual flair to the interaction.
+2. Integration with org-mode, not using a walled-off org-babel block, but as regular text.  This way the model can generate code blocks that I can run.
 
 ** Will you add feature X?
 
@@ -183,13 +332,14 @@ Maybe, I'd like to experiment a bit more first.  Features added since the incept
 - A built-in refactor/rewrite prompt
 - Limiting conversation context to Org headings using properties (#58)
 - Saving and restoring chats (#17)
+- Support for local LLMs.
 
 Features being considered or in the pipeline:
 - Fully stateless design (#17)
 
 ** Alternatives
 
-Other Emacs clients for ChatGPT include
+Other Emacs clients for LLMs include
 
 - [[https://github.com/xenodium/chatgpt-shell][chatgpt-shell]]: comint-shell based interaction with ChatGPT.  Also supports DALL-E, executable code blocks in the responses, and more.
 - [[https://github.com/rksm/org-ai][org-ai]]: Interaction through special =#+begin_ai ... #+end_ai= Org-mode blocks.  Also supports DALL-E, querying ChatGPT with the contents of project files, and more.

@@ -116,23 +116,24 @@ which see."
                   gptel--system-message (max (- (window-width) 14) 20) nil nil t)))
    ("h" "Set directives for chat" gptel-system-prompt :transient t)]
   [["Session Parameters"
+    (gptel--infix-provider)
+    ;; (gptel--infix-model)
     (gptel--infix-max-tokens)
     (gptel--infix-num-messages-to-send)
-    (gptel--infix-temperature)
-    (gptel--infix-model)]
+    (gptel--infix-temperature)]
    ["Prompt:"
-    ("-r" "From minibuffer instead" "-r")
-    ("-i" "Replace/Delete prompt" "-i")
+    ("p" "From minibuffer instead" "p")
+    ("i" "Replace/Delete prompt" "i")
     "Response to:"
-    ("-m" "Minibuffer instead" "-m")
-    ("-n" "New session" "-n"
+    ("m" "Minibuffer instead" "m")
+    ("n" "New session" "n"
      :class transient-option
      :prompt "Name for new session: "
      :reader
      (lambda (prompt _ history)
        (read-string
         prompt (generate-new-buffer-name "*ChatGPT*") history)))
-    ("-e" "Existing session" "-e"
+    ("e" "Existing session" "e"
      :class transient-option
      :prompt "Existing session: "
      :reader
@@ -142,7 +143,7 @@ which see."
         (lambda (buf) (and (buffer-local-value 'gptel-mode (get-buffer buf))
                       (not (equal (current-buffer) buf))))
         t nil history)))
-    ("-k" "Kill-ring" "-k")]
+    ("k" "Kill-ring" "k")]
    [:description gptel--refactor-or-rewrite
     :if use-region-p
     ("r"
@@ -231,7 +232,9 @@ Customize `gptel-directives' for task-specific prompts."
 
 (defun gptel--transient-read-variable (prompt initial-input history)
   "Read value from minibuffer and interpret the result as a Lisp object."
-  (read-from-minibuffer prompt initial-input read-expression-map t history))
+  (condition-case nil
+      (read-from-minibuffer prompt initial-input read-expression-map t history)
+    ('error nil)))
 
 (transient-define-infix gptel--infix-num-messages-to-send ()
   "Number of recent messages to send with each exchange.
@@ -243,7 +246,7 @@ include."
   :description "Number of past messages to send"
   :class 'transient-lisp-variable
   :variable 'gptel--num-messages-to-send
-  :key "n"
+  :key "-n"
   :prompt "Number of past messages to include for context (leave empty for all): "
   :reader 'gptel--transient-read-variable)
 
@@ -260,16 +263,61 @@ will get progressively longer!"
   :description "Response length (tokens)"
   :class 'transient-lisp-variable
   :variable 'gptel-max-tokens
-  :key "<"
+  :key "-c"
   :prompt "Response length in tokens (leave empty: default, 80-200: short, 200-500: long): "
   :reader 'gptel--transient-read-variable)
+
+(defclass gptel-provider-variable (transient-lisp-variable)
+  ((model       :initarg :model)
+   (model-value :initarg :model-value)
+   (always-read :initform t)
+   (set-value :initarg :set-value :initform #'set))
+  "Class used for gptel-backends.")
+
+(cl-defmethod transient-format-value ((obj gptel-provider-variable))
+  (propertize (concat (gptel-backend-name (oref obj value)) ":"
+                      (buffer-local-value (oref obj model) transient--original-buffer))
+              'face 'transient-value))
+
+(cl-defmethod transient-infix-set ((obj gptel-provider-variable) value)
+  (pcase-let ((`(,backend-value ,model-value) value))
+    (funcall (oref obj set-value)
+             (oref obj variable)
+             (oset obj value backend-value))
+    (funcall (oref obj set-value)
+             (oref obj model)
+             (oset obj model-value model-value))))
+
+(transient-define-infix gptel--infix-provider ()
+  "AI Provider for Chat."
+  :description "GPT Model: "
+  :class 'gptel-provider-variable
+  :prompt "Model provider: "
+  :variable 'gptel-backend
+  :model 'gptel-model
+  :key "-m"
+  :reader (lambda (prompt &rest _)
+            (let* ((backend-name 
+                    (if (<= (length gptel--known-backends) 1)
+                        (caar gptel--known-backends)
+                      (completing-read
+                       prompt
+                       (mapcar #'car gptel--known-backends))))
+                   (backend (alist-get backend-name gptel--known-backends
+                                nil nil #'equal))
+                   (backend-models (gptel-backend-models backend))
+                   (model-name (if (= (length backend-models) 1)
+                                   (car backend-models)
+                                 (completing-read
+                                  "Model: " backend-models))))
+              (list backend model-name))))
 
 (transient-define-infix gptel--infix-model ()
   "AI Model for Chat."
   :description "GPT Model: "
   :class 'transient-lisp-variable
   :variable 'gptel-model
-  :key "m"
+  :key "-m"
   :choices '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4" "gpt-4-32k")
   :reader (lambda (prompt &rest _)
             (completing-read
@@ -281,7 +329,7 @@ will get progressively longer!"
   :description "Randomness (0 - 2.0)"
   :class 'transient-lisp-variable
   :variable 'gptel-temperature
-  :key "t"
+  :key "-t"
   :prompt "Set temperature (0.0-2.0, leave empty for default): "
   :reader 'gptel--transient-read-variable)
 
@@ -311,45 +359,50 @@ will get progressively longer!"
   :description "Send prompt"
   (interactive (list (transient-args transient-current-command)))
   (let ((stream gptel-stream)
-        (in-place (and (member "-i" args) t))
+        (in-place (and (member "i" args) t))
         (output-to-other-buffer-p)
+        (backend gptel-backend)
+        (backend-name (gptel-backend-name gptel-backend))
         (buffer) (position)
         (callback) (gptel-buffer-name)
         (prompt
-         (and (member "-r" args)
+         (and (member "p" args)
               (read-string
-               "Ask ChatGPT: "
+               (format "Ask %s: " (gptel-backend-name gptel-backend))
                (apply #'buffer-substring-no-properties
                       (if (use-region-p)
                           (list (region-beginning) (region-end))
                         (list (line-beginning-position) (line-end-position))))))))
     (cond
-     ((member "-m" args)
+     ((member "m" args)
       (setq stream nil)
       (setq callback
             (lambda (resp info)
               (if resp
-                  (message "ChatGPT response: %s" resp)
-                (message "ChatGPT response error: %s" (plist-get info :status))))))
-     ((member "-k" args)
+                  (message "%s response: %s" backend-name resp)
+                (message "%s response error: %s" backend-name (plist-get info :status))))))
+     ((member "k" args)
       (setq stream nil)
       (setq callback
             (lambda (resp info)
               (if (not resp)
-                  (message "ChatGPT response error: %s" (plist-get info :status))
+                  (message "%s response error: %s" backend-name (plist-get info :status))
                 (kill-new resp)
-                (message "ChatGPT response: copied to kill-ring.")))))
+                (message "%s response: copied to kill-ring." backend-name)))))
      ((setq gptel-buffer-name
-            (cl-some (lambda (s) (and (string-prefix-p "-n" s)
-                                 (substring s 2)))
+            (cl-some (lambda (s) (and (string-prefix-p "n" s)
+                                 (substring s 1)))
                      args))
       (setq buffer
             (gptel gptel-buffer-name
                    (condition-case nil
-                       (gptel--api-key)
+                       (gptel--get-api-key)
                      ((error user-error)
                       (setq gptel-api-key
-                            (read-passwd "OpenAI API key: "))))
+                            (read-passwd
+                             (format "%s API key: "
+                                     (gptel-backend-name
+                                      gptel-backend))))))
                    (or prompt
                        (if (use-region-p)
                            (buffer-substring-no-properties (region-beginning)
@@ -362,14 +415,15 @@ will get progressively longer!"
                                                       'gptel)
                                t))
                             (point))
-                          (point))))))
+                          (gptel--at-word-end (point)))))))
       (with-current-buffer buffer
+        (setq gptel-backend backend)
         (gptel--update-header-line " Waiting..." 'warning)
         (setq position (point)))
       (setq output-to-other-buffer-p t))
      ((setq gptel-buffer-name
-            (cl-some (lambda (s) (and (string-prefix-p "-e" s)
-                                 (substring s 2)))
+            (cl-some (lambda (s) (and (string-prefix-p "e" s)
+                                 (substring s 1)))
                      args))
       (setq buffer (get-buffer gptel-buffer-name))
       (setq output-to-other-buffer-p t)
@@ -386,7 +440,7 @@ will get progressively longer!"
                                                 'gptel)
                          t))
                       (point))
-                    (point))))))
+                    (gptel--at-word-end (point)))))))
         (with-current-buffer buffer
           (goto-char (point-max))
           (if (or buffer-read-only
@@ -489,8 +543,9 @@ This uses the prompts in the variable
       (local-set-key (kbd "C-c C-c")
                      (lambda ()
                        (interactive)
-                       (setf (buffer-local-value 'gptel--system-message orig-buf)
-                             (buffer-substring msg-start (point-max)))
+                       (with-current-buffer orig-buf
+                         (setq gptel--system-message
+                               (buffer-substring msg-start (point-max))))
                        (quit-window)
                        (display-buffer
                         orig-buf

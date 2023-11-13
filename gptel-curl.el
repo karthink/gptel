@@ -41,19 +41,23 @@
   "Produce list of arguments for calling Curl.
 
 PROMPTS is the data to send, TOKEN is a unique identifier."
-  (let* ((url (format "https://%s/v1/chat/completions" gptel-host))
+  (let* ((url (gptel-backend-url gptel-backend))
          (data (encode-coding-string
-                (json-encode (gptel--request-data prompts))
+                (json-encode (gptel--request-data gptel-backend prompts))
                 'utf-8))
          (headers
-          `(("Content-Type" . "application/json")
-            ("Authorization" . ,(concat "Bearer " (gptel--api-key)))))
+          (append '(("Content-Type" . "application/json"))
+                  (when-let ((backend-header
+                              (gptel-backend-header gptel-backend)))
+                    (if (functionp backend-header)
+                        (funcall backend-header)
+                      backend-header))))
          (data-file (make-temp-file "gptel-curl-data" nil ".json" data)))
     (append
      (list "--location" "--silent" "--compressed" "--disable"
            (format "-X%s" "POST")
            (format "-w(%s . %%{size_header})" token)
-           (format "-m%s" 60)
+           (format "-m%s" 300)
            "-D-"
            "--data-binary" (format "@%s" data-file))
      (when (not (string-empty-p gptel-proxy))
@@ -63,6 +67,7 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
      (cl-loop for (key . val) in headers
               collect (format "-H%s: %s" key val))
      (list url))))
+
 
 ;;TODO: The :transformer argument here is an alternate implementation of
 ;;`gptel-response-filter-functions'. The two need to be unified.
@@ -81,14 +86,33 @@ the response is inserted into the current buffer after point."
                              (random) (emacs-pid) (user-full-name)
                              (recent-keys))))
          (args (gptel-curl--get-args (plist-get info :prompt) token))
+         (stream (and gptel-stream (gptel-backend-stream gptel-backend)))
          (process (apply #'start-process "gptel-curl"
                          (generate-new-buffer "*gptel-curl*") "curl" args)))
+    (when gptel--debug
+      (message "%S" args))
     (with-current-buffer (process-buffer process)
       (set-process-query-on-exit-flag process nil)
       (setf (alist-get process gptel-curl--process-alist)
             (nconc (list :token token
+                         ;; FIXME `aref' breaks `cl-struct' abstraction boundary
+                         ;; FIXME `cl--generic-method' is an internal `cl-struct'
+                         :parser (cl--generic-method-function
+                                  (if stream
+                                      (cl-find-method
+                                       'gptel-curl--parse-stream nil
+                                       (list
+                                        (aref (buffer-local-value
+                                               'gptel-backend (plist-get info :buffer))
+                                              0) t))
+                                    (cl-find-method
+                                     'gptel--parse-response nil
+                                     (list
+                                      (aref (buffer-local-value
+                                             'gptel-backend (plist-get info :buffer))
+                                            0) t t))))
                          :callback (or callback
-                                       (if gptel-stream
+                                       (if stream
                                            #'gptel-curl--stream-insert-response
                                          #'gptel--insert-response))
                          :transformer (when (eq (buffer-local-value
@@ -97,7 +121,7 @@ the response is inserted into the current buffer after point."
                                                 'org-mode)
                                         (gptel--stream-convert-markdown->org)))
                    info))
-      (if gptel-stream
+      (if stream
           (progn (set-process-sentinel process #'gptel-curl--stream-cleanup)
                  (set-process-filter process #'gptel-curl--stream-filter))
         (set-process-sentinel process #'gptel-curl--sentinel)))))
@@ -134,6 +158,9 @@ PROCESS and _STATUS are process parameters."
         (clone-buffer "*gptel-error*" 'show)))
     (let* ((info (alist-get process gptel-curl--process-alist))
            (gptel-buffer (plist-get info :buffer))
+           (backend-name
+            (gptel-backend-name
+             (buffer-local-value 'gptel-backend gptel-buffer)))
            (tracking-marker (plist-get info :tracking-marker))
            (start-marker (plist-get info :position))
            (http-status (plist-get info :http-status))
@@ -156,14 +183,16 @@ PROCESS and _STATUS are process parameters."
                        (json-object-type 'plist)
                        (response (progn (goto-char header-size)
                                         (condition-case nil (json-read)
-                                          (json-readtable-error 'json-read-error)))))
+                                          (json-readtable-error 'json-read-error))))
+                       (error-data (plist-get response :error)))
             (cond
-             ((plist-get response :error)
-              (let* ((error-plist (plist-get response :error))
-                     (error-msg (plist-get error-plist :message))
-                     (error-type (plist-get error-plist :type)))
-                (message "ChatGPT error: (%s) %s" http-msg error-msg)
-                (setq http-msg (concat "("  http-msg ") " (string-trim error-type)))))
+             (error-data
+              (if (stringp error-data)
+                  (message "%s error: (%s) %s" backend-name http-msg error-data)
+                (when-let ((error-msg (plist-get error-data :message)))
+                    (message "%s error: (%s) %s" backend-name http-msg error-msg))
+                (when-let ((error-type (plist-get error-data :type)))
+                    (setq http-msg (concat "("  http-msg ") " (string-trim error-type))))))
              ((eq response 'json-read-error)
               (message "ChatGPT error (%s): Malformed JSON in response." http-msg))
              (t (message "ChatGPT error (%s): Could not parse HTTP response." http-msg)))))
@@ -199,7 +228,9 @@ See `gptel--url-get-response' for details."
             (when transformer
               (setq response (funcall transformer response)))
             
-            (put-text-property 0 (length response) 'gptel 'response response)
+            (add-text-properties
+             0 (length response) '(gptel response rear-nonsticky t)
+             response)
             (goto-char tracking-marker)
             (insert response))))))
 
@@ -250,21 +281,20 @@ See `gptel--url-get-response' for details."
         (when (equal http-status "200")
           (funcall (or (plist-get proc-info :callback)
                        #'gptel-curl--stream-insert-response)
-                   (let* ((json-object-type 'plist)
-                          (content-strs))
-                     (condition-case nil
-                         (while (re-search-forward "^data:" nil t)
-                           (save-match-data
-                             (unless (looking-at " *\\[DONE\\]")
-                               (when-let* ((response (json-read))
-                                           (delta (map-nested-elt
-                                                   response '(:choices 0 :delta)))
-                                           (content (plist-get delta :content)))
-                                 (push content content-strs)))))
-                       (error
-                        (goto-char (match-beginning 0))))
-                     (apply #'concat (nreverse content-strs)))
+                   (funcall (plist-get proc-info :parser) nil proc-info)
                    proc-info))))))
+
+(cl-defgeneric gptel-curl--parse-stream (backend proc-info)
+  "Stream parser for gptel-curl.
+
+Implementations of this function run as part of the process
+filter for the active query, and return partial responses from
+the LLM.
+
+BACKEND is the LLM backend in use.
+
+PROC-INFO is a plist with process information and other context.
+See `gptel-curl--get-response' for its contents.")
 
 (defun gptel-curl--sentinel (process _status)
   "Process sentinel for GPTel curl requests.
@@ -276,61 +306,67 @@ PROCESS and _STATUS are process parameters."
         (clone-buffer "*gptel-error*" 'show)))
     (when-let* (((eq (process-status process) 'exit))
                 (proc-info (alist-get process gptel-curl--process-alist))
-                (proc-token (plist-get proc-info :token))
                 (proc-callback (plist-get proc-info :callback)))
       (pcase-let ((`(,response ,http-msg ,error)
-                   (gptel-curl--parse-response proc-buf proc-token)))
+                   (with-current-buffer proc-buf
+                     (gptel-curl--parse-response proc-info))))
         (plist-put proc-info :status http-msg)
         (when error (plist-put proc-info :error error))
         (funcall proc-callback response proc-info)))
     (setf (alist-get process gptel-curl--process-alist nil 'remove) nil)
     (kill-buffer proc-buf)))
 
-(defun gptel-curl--parse-response (buf token)
+(defun gptel-curl--parse-response (proc-info)
   "Parse the buffer BUF with curl's response.
 
 TOKEN is used to disambiguate multiple requests in a single
 buffer."
-  (with-current-buffer buf
-    (progn
-      (goto-char (point-max))
-      (search-backward token)
-      (backward-char)
-      (pcase-let* ((`(,_ . ,header-size) (read (current-buffer))))
-          ;; (if (search-backward token nil t)
-          ;;     (search-forward ")" nil t)
-          ;;   (goto-char (point-min)))
-          (goto-char (point-min))
+  (let ((token (plist-get proc-info :token))
+        (parser (plist-get proc-info :parser)))
+    (goto-char (point-max))
+    (search-backward token)
+    (backward-char)
+    (pcase-let* ((`(,_ . ,header-size) (read (current-buffer))))
+      (goto-char (point-min))
 
-          (if-let* ((http-msg (string-trim
-                               (buffer-substring (line-beginning-position)
-                                                 (line-end-position))))
-                    (http-status
-                     (save-match-data
-                       (and (string-match "HTTP/[.0-9]+ +\\([0-9]+\\)" http-msg)
-                            (match-string 1 http-msg))))
-                    (json-object-type 'plist)
-                    (response (progn (goto-char header-size)
-                                     (condition-case nil
-                                         (json-read)
-                                       (json-readtable-error 'json-read-error)))))
-              (cond
-               ((equal http-status "200")
-                (list (string-trim
-                       (map-nested-elt response '(:choices 0 :message :content)))
-                      http-msg))
-                ((plist-get response :error)
-                 (let* ((error-plist (plist-get response :error))
-                        (error-msg (plist-get error-plist :message))
-                        (error-type (plist-get error-plist :type)))
-                   (list nil (concat "(" http-msg ") " (string-trim error-type)) error-msg)))
-                ((eq response 'json-read-error)
-                 (list nil (concat "(" http-msg ") Malformed JSON in response.")
-                       "Malformed JSON in response"))
-                (t (list nil (concat "(" http-msg ") Could not parse HTTP response.")
-                         "Could not parse HTTP response.")))
-            (list nil (concat "(" http-msg ") Could not parse HTTP response.")
-                  "Could not parse HTTP response."))))))
+      (if-let* ((http-msg (string-trim
+                           (buffer-substring (line-beginning-position)
+                                             (line-end-position))))
+                (http-status
+                 (save-match-data
+                   (and (string-match "HTTP/[.0-9]+ +\\([0-9]+\\)" http-msg)
+                        (match-string 1 http-msg))))
+                (json-object-type 'plist)
+                (response (progn (goto-char header-size)
+                                 (condition-case nil
+                                     (json-read)
+                                   (json-readtable-error 'json-read-error)))))
+          (cond
+           ((equal http-status "200")
+            (list (string-trim
+                   (funcall parser nil response proc-info))
+                  http-msg))
+           ((plist-get response :error)
+            (let* ((error-data (plist-get response :error))
+                   (error-msg (plist-get error-data :message))
+                   (error-type (plist-get error-data :type))
+                   (backend-name
+                    (gptel-backend-name
+                     (buffer-local-value 'gptel-backend (plist-get proc-info :buffer)))))
+              (if (stringp error-data)
+                  (progn (message "%s error: (%s) %s" backend-name http-msg error-data)
+                         (setq error-msg (string-trim error-data)))
+                (when (stringp error-msg)
+                  (message "%s error: (%s) %s" backend-name http-msg (string-trim error-msg)))
+                (when error-type (setq http-msg (concat "("  http-msg ") " (string-trim error-type)))))
+              (list nil (concat "(" http-msg ") " (or error-msg "")))))
+           ((eq response 'json-read-error)
+            (list nil (concat "(" http-msg ") Malformed JSON in response.")
+                  "Malformed JSON in response"))
+           (t (list nil (concat "(" http-msg ") Could not parse HTTP response.")
+                    "Could not parse HTTP response.")))
+        (list nil (concat "(" http-msg ") Could not parse HTTP response.")
+              "Could not parse HTTP response.")))))
 
 (provide 'gptel-curl)
 ;;; gptel-curl.el ends here
