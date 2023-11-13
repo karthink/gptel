@@ -47,8 +47,7 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
                 'utf-8))
          (headers
           (append '(("Content-Type" . "application/json"))
-                  (when-let ((backend-header
-                              (gptel-backend-header gptel-backend)))
+                  (when-let ((backend-header (gptel-backend-header gptel-backend)))
                     (if (functionp backend-header)
                         (funcall backend-header)
                       backend-header))))
@@ -67,7 +66,6 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
      (cl-loop for (key . val) in headers
               collect (format "-H%s: %s" key val))
      (list url))))
-
 
 ;;TODO: The :transformer argument here is an alternate implementation of
 ;;`gptel-response-filter-functions'. The two need to be unified.
