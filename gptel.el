@@ -840,6 +840,7 @@ Call CALLBACK with the response and INFO afterwards. If omitted
 the response is inserted into the current buffer after point."
   (let* ((inhibit-message t)
          (message-log-max nil)
+         (backend gptel-backend)
          (url-request-method "POST")
          (url-request-extra-headers
           (append '(("Content-Type" . "application/json"))
