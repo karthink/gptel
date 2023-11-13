@@ -47,14 +47,15 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
                 'utf-8))
          (headers
           `(("Content-Type" . "application/json")
-            ("Authorization" . ,(concat "Bearer " (gptel--api-key))))))
+            ("Authorization" . ,(concat "Bearer " (gptel--api-key)))))
+         (data-file (make-temp-file "gptel-curl-data" nil ".json" data)))
     (append
      (list "--location" "--silent" "--compressed" "--disable"
            (format "-X%s" "POST")
            (format "-w(%s . %%{size_header})" token)
            (format "-m%s" 60)
            "-D-"
-           (format "-d%s" data))
+           "--data-binary" (format "@%s" data-file))
      (when (not (string-empty-p gptel-proxy))
        (list "--proxy" gptel-proxy
              "--proxy-negotiate"
