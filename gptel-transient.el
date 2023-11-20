@@ -525,7 +525,9 @@ This uses the prompts in the variable
       (insert
        "# Insert your system message below and press "
        (propertize "C-c C-c" 'face 'help-key-binding)
-       " when ready.\n"
+       " when ready, or "
+       (propertize "C-c C-k" 'face 'help-key-binding)
+       " to abort.\n"
        "# Example: You are a helpful assistant. Answer as concisely as possible.\n"
        "# Example: Reply only with shell commands and no prose.\n"
        "# Example: You are a poet. Reply only in verse.\n\n")
@@ -540,19 +542,25 @@ This uses the prompts in the variable
                       `((display-buffer-below-selected)
                         (body-function . ,#'select-window)
                         (window-height . ,#'fit-window-to-buffer)))
-      (local-set-key (kbd "C-c C-c")
-                     (lambda ()
-                       (interactive)
-                       (with-current-buffer orig-buf
-                         (setq gptel--system-message
-                               (buffer-substring msg-start (point-max))))
-                       (quit-window)
-                       (display-buffer
-                        orig-buf
-                        `((display-buffer-reuse-window
-                           display-buffer-use-some-window)
-                          (body-function . ,#'select-window)))
-                       (call-interactively #'gptel-menu))))))
+      (let ((quit-to-menu
+             (lambda ()
+               (interactive)
+               (quit-window)
+               (display-buffer
+                orig-buf
+                `((display-buffer-reuse-window
+                   display-buffer-use-some-window)
+                  (body-function . ,#'select-window)))
+               (call-interactively #'gptel-menu))))
+        (local-set-key (kbd "C-c C-c")
+                       (lambda ()
+                         (interactive)
+                         (let ((system-message
+                                (buffer-substring msg-start (point-max))))
+                           (with-current-buffer orig-buf
+                             (setq gptel--system-message system-message)))
+                         (funcall quit-to-menu)))
+        (local-set-key (kbd "C-c C-k") quit-to-menu)))))
 
 ;; ** Suffixes for rewriting/refactoring
 
