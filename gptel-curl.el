@@ -106,9 +106,9 @@ the response is inserted into the current buffer after point."
          (args (gptel-curl--get-args (plist-get info :prompt) token))
          (stream (and gptel-stream (gptel-backend-stream gptel-backend)))
          (process (apply #'start-process "gptel-curl"
-                         (generate-new-buffer "*gptel-curl*") "curl" args)))
+                         (generate-new-buffer "*gptel-curl*") gptel-curl-path args)))
     (when (eq gptel-log-level 'debug)
-      (gptel--log (json-encode (cons "curl" args))
+      (gptel--log (json-encode (cons gptel-curl-path args))
                   "request Curl command"))
     (with-current-buffer (process-buffer process)
       (set-process-query-on-exit-flag process nil)
