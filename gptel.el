@@ -956,7 +956,8 @@ buffer created or switched to."
     (when (called-interactively-p 'gptel)
       (pop-to-buffer (current-buffer))
       (message "Send your query with %s!"
-               (substitute-command-keys "\\[gptel-send]")))
+               (substitute-command-keys "\\[gptel-send]"))
+      (goto-char (point-max)))
     (current-buffer)))
 
 (defun gptel--convert-markdown->org (str)
