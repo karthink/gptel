@@ -89,9 +89,11 @@ Ollama models.")
                      :system gptel--system-message
                      :prompt
                      (if (prop-match-p prop)
-                         (string-trim (buffer-substring-no-properties (prop-match-beginning prop)
-                                                                      (prop-match-end prop))
-                                      "[*# \t\n\r]+")
+                         (string-trim
+                          (buffer-substring-no-properties (prop-match-beginning prop)
+                                                          (prop-match-end prop))
+                          (format "[\t\r\n ]*%s[\t\r\n ]*" (regexp-quote (gptel-prompt-prefix-string)))
+                          (format "[\t\r\n ]*%s[\t\r\n ]*" (regexp-quote (gptel-response-prefix-string))))
                        ""))))))
 
 ;;;###autoload

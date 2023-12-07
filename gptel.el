@@ -206,13 +206,24 @@ defaults to `text-mode'."
 
 ;; TODO: Handle `prog-mode' using the `comment-start' variable
 (defcustom gptel-prompt-prefix-alist
-  '((markdown-mode . "### ")
-    (org-mode . "*** ")
-    (text-mode . "### "))
+  '((markdown-mode . "## ")
+    (org-mode . "** ")
+    (text-mode . "## "))
   "String inserted after the response from ChatGPT.
 
-This is an alist mapping major modes to the prefix strings. This
+This is an alist mapping major modes to the prefix strings.  This
 is only inserted in dedicated gptel buffers."
+  :group 'gptel
+  :type '(alist :key-type symbol :value-type string))
+
+(defcustom gptel-response-prefix-alist
+  '((markdown-mode . "")
+    (org-mode . "")
+    (text-mode . ""))
+  "String inserted after the response from ChatGPT.
+
+This is an alist mapping major modes to the reply prefix strings.  This
+is only inserted in dedicated gptel buffers before the AI's response."
   :group 'gptel
   :type '(alist :key-type symbol :value-type string))
 
@@ -393,8 +404,11 @@ and \"apikey\" as USER."
      (skip-syntax-forward "w.")
      ,@body))
 
-(defun gptel-prompt-string ()
+(defun gptel-prompt-prefix-string ()
   (or (alist-get major-mode gptel-prompt-prefix-alist) ""))
+
+(defun gptel-response-prefix-string ()
+  (or (alist-get major-mode gptel-response-prefix-alist) ""))
 
 (defun gptel--restore-state ()
   "Restore gptel state when turning on `gptel-mode'.
@@ -714,11 +728,13 @@ See `gptel--url-get-response' for details."
                 (goto-char start-marker)
                 (run-hooks 'gptel-pre-response-hook)
                 (unless (or (bobp) (plist-get info :in-place))
-                  (insert "\n\n"))
+                  (insert "\n\n")
+                  (when gptel-mode
+                    (insert (gptel-response-prefix-string))))
                 (let ((p (point)))
                   (insert response)
                   (pulse-momentary-highlight-region p (point)))
-                (when gptel-mode (insert "\n\n" (gptel-prompt-string))))
+                (when gptel-mode (insert "\n\n" (gptel-prompt-prefix-string))))
               (when gptel-mode (gptel--update-header-line " Ready" 'success))))
         (gptel--update-header-line
          (format " Response Error: %s" status-str) 'error)
@@ -782,7 +798,8 @@ there."
        (t (goto-char (or prompt-end (point-max)))))
       (let ((max-entries (and gptel--num-messages-to-send
                               (* 2 gptel--num-messages-to-send))))
-        (gptel--parse-buffer gptel-backend max-entries)))))
+        (let ((prompt (gptel--parse-buffer gptel-backend max-entries)))
+             (print prompt))))))
 
 (cl-defgeneric gptel--parse-buffer (backend max-entries)
   "Parse the current buffer backwards from point and return a list
@@ -915,6 +932,7 @@ See `gptel-curl--get-response' for its contents.")
         (list nil (concat "(" http-msg ") Could not parse HTTP response.")
               "Could not parse HTTP response.")))))
 
+(defvar gptel--prefix-chars-to-skip "\t\r\n")
 ;;;###autoload
 (defun gptel (name &optional _ initial)
   "Switch to or start ChatGPT session with NAME.
@@ -950,14 +968,13 @@ buffer created or switched to."
       (visual-line-mode 1))
      (t (funcall gptel-default-mode)))
     (unless gptel-mode (gptel-mode 1))
-    (if (bobp) (insert (or initial (gptel-prompt-string))))
+    (if (bobp) (insert (or initial (gptel-prompt-prefix-string))))
     (goto-char (point-max))
-    (skip-chars-backward "\t\r\n")
+    (skip-chars-backward gptel--prefix-chars-to-skip)
     (when (called-interactively-p 'gptel)
       (pop-to-buffer (current-buffer))
       (message "Send your query with %s!"
-               (substitute-command-keys "\\[gptel-send]"))
-      (goto-char (point-max)))
+               (substitute-command-keys "\\[gptel-send]")))
     (current-buffer)))
 
 (defun gptel--convert-markdown->org (str)
