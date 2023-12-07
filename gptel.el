@@ -798,8 +798,8 @@ there."
        (t (goto-char (or prompt-end (point-max)))))
       (let ((max-entries (and gptel--num-messages-to-send
                               (* 2 gptel--num-messages-to-send))))
-        (let ((prompt (gptel--parse-buffer gptel-backend max-entries)))
-             (print prompt))))))
+        (gptel--parse-buffer gptel-backend max-entries)))))
+
 
 (cl-defgeneric gptel--parse-buffer (backend max-entries)
   "Parse the current buffer backwards from point and return a list
