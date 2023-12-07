@@ -206,9 +206,9 @@ defaults to `text-mode'."
 
 ;; TODO: Handle `prog-mode' using the `comment-start' variable
 (defcustom gptel-prompt-prefix-alist
-  '((markdown-mode . "## ")
-    (org-mode . "** ")
-    (text-mode . "## "))
+  '((markdown-mode . "### ")
+    (org-mode . "*** ")
+    (text-mode . "### "))
   "String inserted after the response from ChatGPT.
 
 This is an alist mapping major modes to the prefix strings.  This
