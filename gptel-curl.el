@@ -168,13 +168,7 @@ PROCESS and _STATUS are process parameters."
             (with-current-buffer (marker-buffer start-marker)
               (pulse-momentary-highlight-region (+ start-marker 2) tracking-marker)
               (when gptel-mode (save-excursion (goto-char tracking-marker)
-                                               (insert "\n\n" (gptel-prompt-prefix-string))
-                                               ;; Go to point right after the two newlines that
-                                               ;; were inserted right after the user prompt.
-                                               (goto-char (+ 2 start-marker))
-                                               ;; Put prefix on AI response after the AI
-                                               ;; response has been fully received.
-                                               (insert (gptel-response-prefix-string)))))
+                                               (insert "\n\n" (gptel-prompt-prefix-string)))))
             (with-current-buffer gptel-buffer
               (when gptel-mode (gptel--update-header-line  " Ready" 'success))))
         ;; Or Capture error message
@@ -223,7 +217,11 @@ See `gptel--url-get-response' for details."
               (gptel--update-header-line " Typing..." 'success)
               (goto-char start-marker)
               (unless (or (bobp) (plist-get info :in-place))
-                (insert "\n\n"))
+                (insert "\n\n")
+                (when gptel-mode
+                  ;; Put prefix on AI response after the AI
+                  ;; response has been fully received.
+                  (insert (gptel-response-prefix-string))))
               (setq tracking-marker (set-marker (make-marker) (point)))
               (set-marker-insertion-type tracking-marker t)
               (plist-put info :tracking-marker tracking-marker))
