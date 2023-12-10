@@ -219,8 +219,7 @@ See `gptel--url-get-response' for details."
               (unless (or (bobp) (plist-get info :in-place))
                 (insert "\n\n")
                 (when gptel-mode
-                  ;; Put prefix on AI response after the AI
-                  ;; response has been fully received.
+                  ;; Put prefix before AI response.
                   (insert (gptel-response-prefix-string))))
               (setq tracking-marker (set-marker (make-marker) (point)))
               (set-marker-insertion-type tracking-marker t)
