@@ -34,6 +34,14 @@
 (require 'map)
 (require 'json)
 
+(defconst gptel-curl--common-args
+  (if (memq system-type '(windows-nt ms-dos))
+      '("--disable" "--location" "--silent" "-XPOST"
+        "-m300" "-D-")
+    '("--disable" "--location" "--silent" "--compressed"
+      "-XPOST" "-m300" "-D-"))
+  "Arguments always passed to Curl for gptel queries.")
+
 (defvar gptel-curl--process-alist nil
   "Alist of active GPTel curl requests.")
 
@@ -52,11 +60,8 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
                         (funcall backend-header)
                       backend-header)))))
     (append
-     (list "--location" "--silent" "--compressed" "--disable"
-           (format "-X%s" "POST")
-           (format "-w(%s . %%{size_header})" token)
-           (format "-m%s" 300)
-           "-D-"
+     gptel-curl--common-args
+     (list (format "-w(%s . %%{size_header})" token)
            (format "-d%s" data))
      (when (not (string-empty-p gptel-proxy))
        (list "--proxy" gptel-proxy
