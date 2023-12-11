@@ -163,7 +163,7 @@ all at once. This wait is asynchronous.
   :group 'gptel
   :type 'boolean)
 
-(defcustom gptel-curl-args-file-threshold 130000
+(defcustom gptel-curl-file-size-threshold 130000
   "Size threshold for using file input with Curl.
 
 Specifies the size threshold for when to use a temporary file to pass data to

@@ -62,7 +62,7 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
     (append
      gptel-curl--common-args
      (list (format "-w(%s . %%{size_header})" token))
-     (if (length> data gptel-curl-args-file-threshold)
+     (if (length> data gptel-curl-file-size-threshold)
          (list "--data-binary"
                (format "@%s" (make-temp-file "gptel-curl-data" nil ".json" data)))
        (list (format "-d%s" data)))
