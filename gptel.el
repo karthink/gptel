@@ -800,7 +800,6 @@ there."
                               (* 2 gptel--num-messages-to-send))))
         (gptel--parse-buffer gptel-backend max-entries)))))
 
-
 (cl-defgeneric gptel--parse-buffer (backend max-entries)
   "Parse the current buffer backwards from point and return a list
 of prompts.
@@ -932,7 +931,6 @@ See `gptel-curl--get-response' for its contents.")
         (list nil (concat "(" http-msg ") Could not parse HTTP response.")
               "Could not parse HTTP response.")))))
 
-(defvar gptel--prefix-chars-to-skip "\t\r\n")
 ;;;###autoload
 (defun gptel (name &optional _ initial)
   "Switch to or start ChatGPT session with NAME.
@@ -968,9 +966,9 @@ buffer created or switched to."
       (visual-line-mode 1))
      (t (funcall gptel-default-mode)))
     (unless gptel-mode (gptel-mode 1))
+    (skip-chars-backward "\t\r\n")
     (if (bobp) (insert (or initial (gptel-prompt-prefix-string))))
     (goto-char (point-max))
-    (skip-chars-backward gptel--prefix-chars-to-skip)
     (when (called-interactively-p 'gptel)
       (pop-to-buffer (current-buffer))
       (message "Send your query with %s!"
