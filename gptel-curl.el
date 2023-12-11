@@ -62,10 +62,17 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
     (append
      gptel-curl--common-args
      (list (format "-w(%s . %%{size_header})" token))
-     (if (length> data gptel-curl-file-size-threshold)
+     (if (length< data gptel-curl-file-size-threshold)
+         (list (format "-d%s" data))
+       (letrec
+           ((temp-filename (make-temp-file "gptel-curl-data" nil ".json" data))
+            (cleanup-fn (lambda ()
+                          (when (file-exists-p temp-filename)
+                            (delete-file temp-filename)
+                            (remove-hook 'gptel-post-response-hook cleanup-fn)))))
+         (add-hook 'gptel-post-response-hook cleanup-fn)
          (list "--data-binary"
-               (format "@%s" (make-temp-file "gptel-curl-data" nil ".json" data)))
-       (list (format "-d%s" data)))
+               (format "@%s" temp-filename))))
      (when (not (string-empty-p gptel-proxy))
        (list "--proxy" gptel-proxy
              "--proxy-negotiate"
