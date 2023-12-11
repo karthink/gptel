@@ -966,9 +966,9 @@ buffer created or switched to."
       (visual-line-mode 1))
      (t (funcall gptel-default-mode)))
     (unless gptel-mode (gptel-mode 1))
+    (goto-char (point-max))
     (skip-chars-backward "\t\r\n")
     (if (bobp) (insert (or initial (gptel-prompt-prefix-string))))
-    (goto-char (point-max))
     (when (called-interactively-p 'gptel)
       (pop-to-buffer (current-buffer))
       (message "Send your query with %s!"
