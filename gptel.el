@@ -228,7 +228,10 @@ defaults to `text-mode'."
   '((markdown-mode . "### ")
     (org-mode . "*** ")
     (text-mode . "### "))
-  "String inserted after the response from ChatGPT.
+  "String used as a prefix to the query being sent to the LLM.
+
+This is meant for the user to distinguish between queries and
+responses, and is removed from the query before it is sent.
 
 This is an alist mapping major modes to the prefix strings.  This
 is only inserted in dedicated gptel buffers."
@@ -239,7 +242,10 @@ is only inserted in dedicated gptel buffers."
   '((markdown-mode . "")
     (org-mode . "")
     (text-mode . ""))
-  "String inserted after the response from ChatGPT.
+  "String inserted before the response from the LLM.
+
+This is meant for the user to distinguish between queries and
+responses.
 
 This is an alist mapping major modes to the reply prefix strings.  This
 is only inserted in dedicated gptel buffers before the AI's response."

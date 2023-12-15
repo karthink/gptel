@@ -305,13 +305,14 @@ These are packages that depend on GPTel to provide additional functionality
 | =gptel-temperature=         | Randomness in response text, 0 to 2.                                |
 |---------------------------+---------------------------------------------------------------------|
 
-|---------------------------+---------------------------------------------------------------------|
-| *Chat UI options*           |                                                                     |
-|---------------------------+---------------------------------------------------------------------|
-| =gptel-default-mode=        | Major mode for dedicated chat buffers.                              |
-| =gptel-prompt-prefix-alist= | Text demarcating queries and replies.                               |
-|---------------------------+---------------------------------------------------------------------|
-  
+|-----------------------------+----------------------------------------|
+| *Chat UI options*             |                                        |
+|-----------------------------+----------------------------------------|
+| =gptel-default-mode=          | Major mode for dedicated chat buffers. |
+| =gptel-prompt-prefix-alist= | Text inserted before queries.          |
+| =gptel-response-prefix-alist= | Text inserted before responses.        |
+|-----------------------------+----------------------------------------|
+
 ** Why another LLM client?
 
 Other Emacs clients for LLMs prescribe the format of the interaction (a comint shell, org-babel blocks, etc).  I wanted:
