@@ -230,8 +230,19 @@ defaults to `text-mode'."
     (text-mode . "### "))
   "String inserted after the response from ChatGPT.
 
-This is an alist mapping major modes to the prefix strings. This
+This is an alist mapping major modes to the prefix strings.  This
 is only inserted in dedicated gptel buffers."
+  :group 'gptel
+  :type '(alist :key-type symbol :value-type string))
+
+(defcustom gptel-response-prefix-alist
+  '((markdown-mode . "")
+    (org-mode . "")
+    (text-mode . ""))
+  "String inserted after the response from ChatGPT.
+
+This is an alist mapping major modes to the reply prefix strings.  This
+is only inserted in dedicated gptel buffers before the AI's response."
   :group 'gptel
   :type '(alist :key-type symbol :value-type string))
 
@@ -412,8 +423,11 @@ and \"apikey\" as USER."
      (skip-syntax-forward "w.")
      ,@body))
 
-(defun gptel-prompt-string ()
+(defun gptel-prompt-prefix-string ()
   (or (alist-get major-mode gptel-prompt-prefix-alist) ""))
+
+(defun gptel-response-prefix-string ()
+  (or (alist-get major-mode gptel-response-prefix-alist) ""))
 
 (defun gptel--restore-state ()
   "Restore gptel state when turning on `gptel-mode'.
@@ -733,11 +747,13 @@ See `gptel--url-get-response' for details."
                 (goto-char start-marker)
                 (run-hooks 'gptel-pre-response-hook)
                 (unless (or (bobp) (plist-get info :in-place))
-                  (insert "\n\n"))
+                  (insert "\n\n")
+                  (when gptel-mode
+                    (insert (gptel-response-prefix-string))))
                 (let ((p (point)))
                   (insert response)
                   (pulse-momentary-highlight-region p (point)))
-                (when gptel-mode (insert "\n\n" (gptel-prompt-string))))
+                (when gptel-mode (insert "\n\n" (gptel-prompt-prefix-string))))
               (when gptel-mode (gptel--update-header-line " Ready" 'success))))
         (gptel--update-header-line
          (format " Response Error: %s" status-str) 'error)
@@ -969,9 +985,9 @@ buffer created or switched to."
       (visual-line-mode 1))
      (t (funcall gptel-default-mode)))
     (unless gptel-mode (gptel-mode 1))
-    (if (bobp) (insert (or initial (gptel-prompt-string))))
     (goto-char (point-max))
     (skip-chars-backward "\t\r\n")
+    (if (bobp) (insert (or initial (gptel-prompt-prefix-string))))
     (when (called-interactively-p 'gptel)
       (pop-to-buffer (current-buffer))
       (message "Send your query with %s!"
