@@ -133,8 +133,9 @@ Register a backend with
  "Azure-1"                              ;Name, whatever you'd like
  :protocol "https"                      ;optional -- https is the default
  :host "YOUR_RESOURCE_NAME.openai.azure.com"
- :endpoint "/openai/deployments/YOUR_DEPLOYMENT_NAME/completions?api-version=2023-05-15" ;or equivalent
+ :endpoint "/openai/deployments/YOUR_DEPLOYMENT_NAME/chat/completions?api-version=2023-05-15" ;or equivalent
  :stream t                              ;Enable streaming responses
+ :key #'gptel-api-key
  :models '("gpt-3.5-turbo" "gpt-4"))
 #+end_src
 Refer to the documentation of =gptel-make-azure= to set more parameters.
