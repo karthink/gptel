@@ -520,24 +520,29 @@ This uses the prompts in the variable
   (let ((orig-buf (current-buffer))
         (msg-start (make-marker)))
     (with-current-buffer (get-buffer-create "*gptel-system*")
-      (erase-buffer)
-      (text-mode)
-      (insert
-       "# Insert your system message below and press "
-       (propertize "C-c C-c" 'face 'help-key-binding)
-       " when ready, or "
-       (propertize "C-c C-k" 'face 'help-key-binding)
-       " to abort.\n"
-       "# Example: You are a helpful assistant. Answer as concisely as possible.\n"
-       "# Example: Reply only with shell commands and no prose.\n"
-       "# Example: You are a poet. Reply only in verse.\n\n")
-      (set-marker msg-start (point))
-      (insert (buffer-local-value 'gptel--system-message orig-buf))
-      (beginning-of-line)
-      (push-mark)
-      (end-of-line)
-      (exchange-point-and-mark)
-      (activate-mark)
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (text-mode)
+        (insert
+         "# Insert your system message below and press "
+         (propertize "C-c C-c" 'face 'help-key-binding)
+         " when ready, or "
+         (propertize "C-c C-k" 'face 'help-key-binding)
+         " to abort.\n"
+         "# Example: You are a helpful assistant. Answer as concisely as possible.\n"
+         "# Example: Reply only with shell commands and no prose.\n"
+         "# Example: You are a poet. Reply only in verse.\n")
+        (add-text-properties
+         (point-min) (point)
+         (list 'read-only t 'face 'font-lock-comment-face))
+        (insert "\n")
+        ;; TODO: make-separator-line requires Emacs 28.1+.
+        ;; (insert (propertize (make-separator-line) 'rear-nonsticky t))
+        (set-marker msg-start (point))
+        (insert (buffer-local-value 'gptel--system-message orig-buf))
+        (push-mark)
+        (beginning-of-line)
+        (activate-mark))
       (display-buffer (current-buffer)
                       `((display-buffer-below-selected)
                         (body-function . ,#'select-window)
@@ -545,6 +550,8 @@ This uses the prompts in the variable
       (let ((quit-to-menu
              (lambda ()
                (interactive)
+               (local-unset-key (kbd "C-c C-c"))
+               (local-unset-key (kbd "C-c C-k"))
                (quit-window)
                (display-buffer
                 orig-buf
