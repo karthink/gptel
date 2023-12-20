@@ -37,9 +37,9 @@
 (defconst gptel-curl--common-args
   (if (memq system-type '(windows-nt ms-dos))
       '("--disable" "--location" "--silent" "-XPOST"
-        "-m300" "-D-")
+        "-y300" "-Y1" "-D-")
     '("--disable" "--location" "--silent" "--compressed"
-      "-XPOST" "-m300" "-D-"))
+      "-XPOST" "-y300" "-Y1" "-D-"))
   "Arguments always passed to Curl for gptel queries.")
 
 (defvar gptel-curl--process-alist nil
