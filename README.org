@@ -202,26 +202,25 @@ You can pick this backend from the transient menu when using gptel (see Usage), 
 
 #+html: </details>
 
+#+html: <details><summary>
 **** Gemini
 #+html: </summary>
 
 Register a backend with
 #+begin_src emacs-lisp
+;; :key can be a function that returns the API key.
 (gptel-make-gemini
  "Gemini"
  :key "YOUR_GEMINI_API_KEY"
- :host "generativelanguage.googleapis.com"
- :protocol "https"
- :endpoint "/v1beta/models/gemini-pro:generateContent"
- )
+ :stream t)
 #+end_src
-These are the required parameters, refer to the documentation of =gptel-make-gemini= for more. Currently stream is not functional.
+These are the required parameters, refer to the documentation of =gptel-make-gemini= for more.
 
 You can pick this backend from the transient menu when using gptel (see Usage), or set this as the default value of =gptel-backend=:
 
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default gptel-model "Gemini-Pro" ;Pick your default model
+(setq-default gptel-model "gemini-pro" ;Pick your default model
               gptel-backend (gptel-make-gemini "Gemini" :host ...))
 #+end_src
 

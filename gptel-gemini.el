@@ -25,6 +25,7 @@
 ;;; Code:
 (require 'gptel)
 (require 'cl-generic)
+(require 'map)
 
 ;;; Gemini
 (cl-defstruct
@@ -32,14 +33,42 @@
                   (:copier nil)
                   (:include gptel-backend)))
 
+(cl-defmethod gptel-curl--parse-stream ((_backend gptel-gemini) _info)
+  (let* ((json-object-type 'plist)
+         (content-strs))
+    (condition-case nil
+        ;; while-let is Emacs 29.1+ only
+        (while (prog1 (search-forward "{" nil t)
+                 (backward-char 1))
+          (save-match-data
+            (when-let*
+                ((response (json-read))
+                 (text (map-nested-elt
+                        response '(:candidates 0 :content :parts 0 :text))))
+              (push text content-strs))))
+      (error
+       (goto-char (match-beginning 0))))
+    (apply #'concat (nreverse content-strs))))
+
 (cl-defmethod gptel--parse-response ((_backend gptel-gemini) response _info)
   (map-nested-elt response '(:candidates 0 :content :parts 0 :text)))
 
 (cl-defmethod gptel--request-data ((_backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
   (let ((prompts-plist
-         `(:contents [,@prompts]
-           )))
+         `(:contents [,@prompts]))
+        params)
+    (when gptel-temperature
+      (setq params
+            (plist-put params
+                       :temperature (max temperature 1.0))))
+    (when gptel-max-tokens
+      (setq params
+            (plist-put params
+                       :maxOutputTokens gptel-max-tokens)))
+    (when params
+      (plist-put prompts-plist
+                 :generationConfig params))
     prompts-plist))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-gemini) &optional max-entries)
@@ -56,8 +85,10 @@
                   (list :text (string-trim
                                (buffer-substring-no-properties (prop-match-beginning prop)
                                                                (prop-match-end prop))
-                               (format "[\t\r\n ]*%s[\t\r\n ]*" (regexp-quote (gptel-prompt-prefix-string)))
-                               (format "[\t\r\n ]*%s[\t\r\n ]*" (regexp-quote (gptel-response-prefix-string)))))
+                               (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                                       (regexp-quote (gptel-prompt-prefix-string)))
+                               (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                                       (regexp-quote (gptel-response-prefix-string)))))
                   )
             prompts)
       (and max-entries (cl-decf max-entries)))
@@ -65,27 +96,30 @@
 
 ;;;###autoload
 (cl-defun gptel-make-gemini
-    (name &key header key
+    (name &key header key stream
           (host "generativelanguage.googleapis.com")
           (protocol "https")
-          (models "gemini-pro")
-          (endpoint "/v1beta/models/gemini-pro:generateContent"))
+          (models '("gemini-pro"))
+          (endpoint "/v1beta/models/gemini-pro:"))
 
   "Register a Gemini backend for gptel with NAME.
 
 Keyword arguments:
 
-HOST (optional) is the API host, typically \"generativelanguage.googleapis.com\".
+HOST (optional) is the API host, defaults to
+\"generativelanguage.googleapis.com\".
 
-MODELS is a list of available model names.
+MODELS is a list of available model names.  Currently only
+\"gemini-pro\" is available.
 
 STREAM is a boolean to toggle streaming responses, defaults to
 false.
 
-PROTOCOL (optional) specifies the protocol, https by default.
+PROTOCOL (optional) specifies the protocol, \"https\" by default.
 
 ENDPOINT (optional) is the API endpoint for completions, defaults to
-\"/v1beta/models/gemini-pro:generateContent\".
+\"/v1beta/models/gemini-pro:streamGenerateContent\" if STREAM is true and
+\"/v1beta/models/gemini-pro:generateContent\" otherwise.
 
 HEADER (optional) is for additional headers to send with each
 request. It should be an alist or a function that retuns an
@@ -101,10 +135,20 @@ function that returns the key."
                   :models models
                   :protocol protocol
                   :endpoint endpoint
-                  :stream nil
-                  :url (if protocol
-                           (concat protocol "://" host endpoint "?key=" key)
-                         (concat host endpoint "?key=" key)))))
+                  :stream stream
+                  :url
+                  (let ((key (cond
+                              ((functionp key) (funcall key))
+                              ((symbolp key) (symbol-value key))
+                              ((stringp key) key)
+                              (t (user-error "gptel-make-gemini: arg :key is malformed")))))
+                    (if protocol
+                        (concat protocol "://" host endpoint
+                                (if stream
+                                    "streamGenerateContent"
+                                  "generateContent")
+                                "?key=" key)
+                      (concat host endpoint "?key=" key))))))
     (prog1 backend
       (setf (alist-get name gptel--known-backends
                        nil nil #'equal)
