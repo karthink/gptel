@@ -40,6 +40,8 @@
 (declare-function prop-match-value "text-property-search")
 (declare-function text-property-search-backward "text-property-search")
 (declare-function json-read "json")
+(declare-function gptel-prompt-prefix-string "gptel")
+(declare-function gptel-response-prefix-string "gptel")
 
 ;;; Common backend struct for LLM support
 (cl-defstruct
@@ -100,8 +102,10 @@
                   (string-trim
                    (buffer-substring-no-properties (prop-match-beginning prop)
                                                    (prop-match-end prop))
-                   (format "[\t\r\n ]*%s[\t\r\n ]*" (regexp-quote (gptel-prompt-prefix-string)))
-                   (format "[\t\r\n ]*%s[\t\r\n ]*" (regexp-quote (gptel-response-prefix-string)))))
+                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                           (regexp-quote (gptel-prompt-prefix-string)))
+                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                           (regexp-quote (gptel-response-prefix-string)))))
             prompts)
       (and max-entries (cl-decf max-entries)))
     (cons (list :role "system"

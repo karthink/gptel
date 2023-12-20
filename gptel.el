@@ -41,13 +41,14 @@
 ;;  - You can go back and edit your previous prompts or LLM responses when
 ;;    continuing a conversation. These will be fed back to the model.
 ;;
-;; Requirements for ChatGPT/Azure:
+;; Requirements for ChatGPT, Azure or Gemini:
 ;;
-;; - You need an OpenAI API key. Set the variable `gptel-api-key' to the key or
-;;   to a function of no arguments that returns the key. (It tries to use
+;; - You need an appropriate API key. Set the variable `gptel-api-key' to the
+;;   key or to a function of no arguments that returns the key. (It tries to use
 ;;   `auth-source' by default)
 ;;
 ;; - For Azure: define a gptel-backend with `gptel-make-azure', which see.
+;; - For Gemini: define a gptel-backend with `gptel-make-gemini', which see.
 ;;
 ;; For local models using Ollama or GPT4All:
 ;;
@@ -72,15 +73,20 @@
 ;;   model, or choose to redirect the input or output elsewhere (such as to the
 ;;   kill ring).
 ;;
-;; - If using `org-mode': You can save this buffer to a file. When opening this
-;;   file, turning on `gptel-mode' will allow resuming the conversation.
+;; - You can save this buffer to a file. When opening this file, turning on
+;;   `gptel-mode' will allow resuming the conversation.
 ;;
 ;; To use this in any buffer:
 ;;
-;; - Select a region of text and call `gptel-send'. Call with a prefix argument
-;;   to access the menu. The contents of the buffer up to (point) are used
-;;   if no region is selected.
-;; - You can select previous prompts and responses to continue the conversation.
+;; - Call `gptel-send' to send the text up to the cursor.  Select a region to
+;;   send only the region.
+;;
+;; - You can select previous prompts and responses to
+;;   continue the conversation.
+;;
+;; - Call `gptel-send' with a prefix argument to access a menu where you can set
+;;   your backend, model and other parameters, or to redirect the
+;;   prompt/response.
 ;;
 ;; Finally, gptel offers a general purpose API for writing LLM ineractions
 ;; that suit how you work, see `gptel-request'.

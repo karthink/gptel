@@ -27,6 +27,10 @@
 (require 'cl-generic)
 (require 'map)
 
+(declare-function prop-match-value "text-property-search")
+(declare-function text-property-search-backward "text-property-search")
+(declare-function json-read "json")
+
 ;;; Gemini
 (cl-defstruct
     (gptel-gemini (:constructor gptel--make-gemini)
@@ -61,7 +65,7 @@
     (when gptel-temperature
       (setq params
             (plist-put params
-                       :temperature (max temperature 1.0))))
+                       :temperature (max gptel-temperature 1.0))))
     (when gptel-max-tokens
       (setq params
             (plist-put params
@@ -88,8 +92,7 @@
                                (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
                                        (regexp-quote (gptel-prompt-prefix-string)))
                                (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                                       (regexp-quote (gptel-response-prefix-string)))))
-                  )
+                                       (regexp-quote (gptel-response-prefix-string))))))
             prompts)
       (and max-entries (cl-decf max-entries)))
     prompts))

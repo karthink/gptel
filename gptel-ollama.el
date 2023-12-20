@@ -20,7 +20,7 @@
 
 ;;; Commentary:
 
-;; This file adds support for the Ollama LLM API to gptel 
+;; This file adds support for the Ollama LLM API to gptel
 
 ;;; Code:
 (require 'gptel)
@@ -92,9 +92,12 @@ Ollama models.")
                          (string-trim
                           (buffer-substring-no-properties (prop-match-beginning prop)
                                                           (prop-match-end prop))
-                          (format "[\t\r\n ]*%s[\t\r\n ]*" (regexp-quote (gptel-prompt-prefix-string)))
-                          (format "[\t\r\n ]*%s[\t\r\n ]*" (regexp-quote (gptel-response-prefix-string))))
-                       ""))))))
+                          (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                                  (regexp-quote (gptel-prompt-prefix-string)))
+                          (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                                  (regexp-quote (gptel-response-prefix-string))))
+                       "")))
+      prompts)))
 
 ;;;###autoload
 (cl-defun gptel-make-ollama
@@ -118,13 +121,13 @@ ENDPOINT (optional) is the API endpoint for completions, defaults to
 \"/api/generate\".
 
 HEADER (optional) is for additional headers to send with each
-request. It should be an alist or a function that retuns an
+request.  It should be an alist or a function that retuns an
 alist, like:
 ((\"Content-Type\" . \"application/json\"))
 
 KEY (optional) is a variable whose value is the API key, or
-function that returns the key. This is typically not required for
-local models like Ollama.
+function that returns the key.  This is typically not required
+for local models like Ollama.
 
 Example:
 -------
