@@ -295,11 +295,12 @@ See `gptel--url-get-response' for details."
       (when-let ((http-msg (plist-get proc-info :status))
                  (http-status (plist-get proc-info :http-status)))
         ;; Find data chunk(s) and run callback
-        (when (equal http-status "200")
+        (when-let ((_ (equal http-status "200"))
+                   (response (funcall (plist-get proc-info :parser) nil proc-info))
+                   (_ (not (equal response ""))))
           (funcall (or (plist-get proc-info :callback)
                        #'gptel-curl--stream-insert-response)
-                   (funcall (plist-get proc-info :parser) nil proc-info)
-                   proc-info))))))
+                   response proc-info))))))
 
 (cl-defgeneric gptel-curl--parse-stream (backend proc-info)
   "Stream parser for gptel-curl.
@@ -314,7 +315,7 @@ PROC-INFO is a plist with process information and other context.
 See `gptel-curl--get-response' for its contents.")
 
 (defun gptel-curl--sentinel (process _status)
-  "Process sentinel for GPTel curl requests.
+  "Process sentinel for gptel curl requests.
 
 PROCESS and _STATUS are process parameters."
   (let ((proc-buf (process-buffer process)))
