@@ -211,10 +211,27 @@ to ChatGPT. Note: this hook only runs if the request succeeds."
   :type 'hook)
 
 (defcustom gptel-post-response-hook nil
-  "Hook run after inserting ChatGPT's response into the current buffer.
+  "Hook run after inserting the LLM response into the current buffer.
 
 This hook is called in the buffer from which the prompt was sent
-to ChatGPT. Note: this hook runs even if the request fails."
+to the LLM, and after the full response has been inserted. Note:
+this hook runs even if the request fails."
+  :group 'gptel
+  :type 'hook)
+
+;; (defcustom gptel-pre-stream-insert-hook nil
+;;   "Hook run before each insertion of the LLM's streaming response.
+
+;; This hook is called in the buffer from which the prompt was sent
+;; to the LLM, immediately before text insertion."
+;;   :group 'gptel
+;;   :type 'hook)
+
+(defcustom gptel-post-stream-hook nil
+  "Hook run after each insertion of the LLM's streaming response.
+
+This hook is called in the buffer from which the prompt was sent
+to the LLM, and after a text insertion."
   :group 'gptel
   :type 'hook)
 
@@ -428,6 +445,25 @@ and \"apikey\" as USER."
 (defsubst gptel--numberize (val)
   "Ensure VAL is a number."
   (if (stringp val) (string-to-number val) val))
+
+(defun gptel-auto-scroll ()
+  "Scroll window if LLM response continues below viewport.
+
+Note: This will move the cursor."
+  (when (and (window-live-p (get-buffer-window (current-buffer)))
+             (not (pos-visible-in-window-p)))
+    (scroll-up-command)))
+
+(defun gptel-end-of-response (&optional arg)
+  "Move point to the end of the LLM response ARG times."
+  (interactive "p")
+  (dotimes (if arg (abs arg) 1)
+    (text-property-search-forward 'gptel 'response t)
+    (when (looking-at (concat "\n\\{1,2\\}"
+                              (regexp-quote
+                               (gptel-prompt-prefix-string))
+                              "?"))
+      (goto-char (match-end 0)))))
 
 (defmacro gptel--at-word-end (&rest body)
   "Execute BODY at end of the current word or punctuation."

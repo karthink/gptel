@@ -34,7 +34,6 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/8607532/278854024-a
 GPTel uses Curl if available, but falls back to url-retrieve to work without external dependencies.
 
 ** Contents :toc:
-  - [[#breaking-changes][Breaking Changes]]
   - [[#installation][Installation]]
       - [[#straight][Straight]]
       - [[#manual][Manual]]
@@ -51,21 +50,17 @@ GPTel uses Curl if available, but falls back to url-retrieve to work without ext
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
       - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
-  - [[#using-it-your-way][Using it your way]]
-    - [[#extensions-using-gptel][Extensions using GPTel]]
+  - [[#faq][FAQ]]
+    - [[#i-want-the-window-to-scroll-automatically-as-the-response-is-inserted][I want the window to scroll automatically as the response is inserted]]
+    - [[#i-want-the-cursor-to-move-to-the-next-prompt-after-the-response-is-inserted][I want the cursor to move to the next prompt after the response is inserted]]
+    - [[#i-want-to-change-the-prefix-before-the-prompt-and-response][I want to change the prefix before the prompt and response]]
+    - [[#why-another-llm-client][Why another LLM client?]]
   - [[#additional-configuration][Additional Configuration]]
-  - [[#why-another-llm-client][Why another LLM client?]]
-  - [[#will-you-add-feature-x][Will you add feature X?]]
+  - [[#the-gptel-api][The gptel API]]
+    - [[#extensions-using-gptel][Extensions using GPTel]]
   - [[#alternatives][Alternatives]]
+  - [[#breaking-changes][Breaking Changes]]
   - [[#acknowledgments][Acknowledgments]]
-
-** Breaking Changes
-
-- Possible breakage, see #120: If streaming responses stop working for you after upgrading to v0.5, try reinstalling gptel and deleting its native comp eln cache in =native-comp-eln-load-path=.
-
-- The user option =gptel-host= is deprecated.  If the defaults don't work for you, use =gptel-make-openai= (which see) to customize server settings.
-
-- =gptel-api-key-from-auth-source= now searches for the API key using the host address for the active LLM backend, /i.e./ "api.openai.com" when using ChatGPT.  You may need to update your =~/.authinfo=.
 
 ** Installation
 
@@ -231,8 +226,8 @@ You can pick this backend from the transient menu when using gptel (see Usage), 
 |-------------------+-------------------------------------------------------------------------|
 | *Command*          | Description                                                             |
 |-------------------+-------------------------------------------------------------------------|
-| =gptel=             | Create a new dedicated chat buffer. (Not required, gptel works anywhere.) |
-| =gptel-send=        | Send selection, or conversation up to =(point)=. (Works anywhere in Emacs.) |
+| =gptel-send=        | Send conversation up to =(point)=, or selection if region is active.  Works anywhere in Emacs. |
+| =gptel=             | Create a new dedicated chat buffer.  Not required to use gptel. |
 | =C-u= =gptel-send=    | Transient menu for preferenes, input/output redirection etc.            |
 | =gptel-menu=        | /(Same)/                                                                  |
 |-------------------+-------------------------------------------------------------------------|
@@ -241,9 +236,9 @@ You can pick this backend from the transient menu when using gptel (see Usage), 
 
 *** In any buffer:
 
-1. Select a region of text and call =M-x gptel-send=. The response will be inserted below your region.
+1. Call =M-x gptel-send= to send the text up to the cursor. The response will be inserted below.  Continue the conversation by typing below the response.
 
-2. You can select both the original prompt and the response and call =M-x gptel-send= again to continue the conversation.
+2. If a region is selected, the conversation will be limited to its contents.
 
 3. Call =M-x gptel-send= with a prefix argument to
 - set chat parameters (GPT model, directives etc) for this buffer,
@@ -280,23 +275,35 @@ The default mode is =markdown-mode= if available, else =text-mode=.  You can set
 
 Saving the file will save the state of the conversation as well.  To resume the chat, open the file and turn on =gptel-mode= before editing the buffer.  
 
-** Using it your way
+** FAQ
+*** I want the window to scroll automatically as the response is inserted
 
-GPTel's default usage pattern is simple, and will stay this way: Read input in any buffer and insert the response below it.
+To be minimally annoying, GPTel does not move the cursor by default.  Add the following to your configuration to enable auto-scrolling.
 
-If you want custom behavior, such as
-- reading input from or output to the echo area,
-- or in pop-up windows,
-- sending the current line only, etc,
+#+begin_src emacs-lisp
+(add-hook 'gptel-post-stream-hook 'gptel-auto-scroll)
+#+end_src
 
-GPTel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki][wiki]] for examples.
+*** I want the cursor to move to the next prompt after the response is inserted
 
-*** Extensions using GPTel
+To be minimally annoying, GPTel does not move the cursor by default.  Add the following to your configuration to move the cursor:
 
-These are packages that depend on GPTel to provide additional functionality
+#+begin_src emacs-lisp
+(add-hook 'gptel-post-response-hook 'gptel-end-of-response)
+#+end_src
 
-- [[https://github.com/kamushadenes/gptel-extensions.el][gptel-extensions]]: Extra utility functions for GPTel.
-- [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
+You can also call =gptel-end-of-response= as a command at any time.
+
+*** I want to change the prefix before the prompt and response
+
+Customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=.  You can set a different pair for each major-mode.
+
+*** Why another LLM client?
+
+Other Emacs clients for LLMs prescribe the format of the interaction (a comint shell, org-babel blocks, etc).  I wanted:
+
+1. Something that is as free-form as possible: query the model using any text in any buffer, and redirect the response as required.  Using a dedicated =gptel= buffer just adds some visual flair to the interaction.
+2. Integration with org-mode, not using a walled-off org-babel block, but as regular text.  This way the model can generate code blocks that I can run.
 
 ** Additional Configuration
 :PROPERTIES:
@@ -335,18 +342,11 @@ These are packages that depend on GPTel to provide additional functionality
 | *Chat UI options*             |                                        |
 |-----------------------------+----------------------------------------|
 | =gptel-default-mode=          | Major mode for dedicated chat buffers. |
-| =gptel-prompt-prefix-alist= | Text inserted before queries.          |
+| =gptel-prompt-prefix-alist=   | Text inserted before queries.          |
 | =gptel-response-prefix-alist= | Text inserted before responses.        |
 |-----------------------------+----------------------------------------|
 
-** Why another LLM client?
-
-Other Emacs clients for LLMs prescribe the format of the interaction (a comint shell, org-babel blocks, etc).  I wanted:
-
-1. Something that is as free-form as possible: query the model using any text in any buffer, and redirect the response as required.  Using a dedicated =gptel= buffer just adds some visual flair to the interaction.
-2. Integration with org-mode, not using a walled-off org-babel block, but as regular text.  This way the model can generate code blocks that I can run.
-
-** Will you add feature X?
+** COMMENT Will you add feature X?
 
 Maybe, I'd like to experiment a bit more first.  Features added since the inception of this package include
 - Curl support (=gptel-use-curl=)
@@ -365,6 +365,19 @@ Maybe, I'd like to experiment a bit more first.  Features added since the incept
 Features being considered or in the pipeline:
 - Fully stateless design (#17)
 
+** The gptel API
+
+GPTel's default usage pattern is simple, and will stay this way: Read input in any buffer and insert the response below it.  Some custom behavior is possible with the transient menu (=C-u M-x gptel-send=).
+
+For more programmable usage, gptel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki][wiki]] for examples.
+
+*** Extensions using GPTel
+
+These are packages that depend on GPTel to provide additional functionality
+
+- [[https://github.com/kamushadenes/gptel-extensions.el][gptel-extensions]]: Extra utility functions for GPTel.
+- [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
+
 ** Alternatives
 
 Other Emacs clients for LLMs include
@@ -374,13 +387,21 @@ Other Emacs clients for LLMs include
 
 There are several more: [[https://github.com/CarlQLange/chatgpt-arcana.el][chatgpt-arcana]], [[https://github.com/MichaelBurge/leafy-mode][leafy-mode]], [[https://github.com/iwahbe/chat.el][chat.el]]
 
+** Breaking Changes
+
+- Possible breakage, see #120: If streaming responses stop working for you after upgrading to v0.5, try reinstalling gptel and deleting its native comp eln cache in =native-comp-eln-load-path=.
+
+- The user option =gptel-host= is deprecated.  If the defaults don't work for you, use =gptel-make-openai= (which see) to customize server settings.
+
+- =gptel-api-key-from-auth-source= now searches for the API key using the host address for the active LLM backend, /i.e./ "api.openai.com" when using ChatGPT.  You may need to update your =~/.authinfo=.
+
 ** Acknowledgments
 
 - [[https://github.com/algal][Alexis Gallagher]] and [[https://github.com/d1egoaz][Diego Alvarez]] for fixing a nasty multi-byte bug with =url-retrieve=.
 - [[https://github.com/tarsius][Jonas Bernoulli]] for the Transient library.
 
 
-
 # Local Variables:
 # toc-org-max-depth: 4
+# eval: (and (fboundp 'toc-org-mode) (toc-org-mode 1))
 # End:

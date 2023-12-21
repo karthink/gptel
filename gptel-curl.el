@@ -247,7 +247,9 @@ See `gptel--url-get-response' for details."
              0 (length response) '(gptel response rear-nonsticky t)
              response)
             (goto-char tracking-marker)
-            (insert response))))))
+            ;; (run-hooks 'gptel-pre-stream-hook)
+            (insert response)
+            (run-hooks 'gptel-post-stream-hook))))))
 
 (defun gptel-curl--stream-filter (process output)
   (let* ((proc-info (alist-get process gptel-curl--process-alist)))
