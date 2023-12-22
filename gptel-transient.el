@@ -362,6 +362,7 @@ will get progressively longer!"
         (in-place (and (member "i" args) t))
         (output-to-other-buffer-p)
         (backend gptel-backend)
+        (model gptel-model)
         (backend-name (gptel-backend-name gptel-backend))
         (buffer) (position)
         (callback) (gptel-buffer-name)
@@ -418,6 +419,7 @@ will get progressively longer!"
                           (gptel--at-word-end (point)))))))
       (with-current-buffer buffer
         (setq gptel-backend backend)
+        (setq gptel-model model)
         (gptel--update-status " Waiting..." 'warning)
         (setq position (point)))
       (setq output-to-other-buffer-p t))
