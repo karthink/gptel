@@ -275,6 +275,14 @@ is only inserted in dedicated gptel buffers before the AI's response."
   :group 'gptel
   :type '(alist :key-type symbol :value-type string))
 
+(defcustom gptel-use-header-line t
+  "Whether gptel-mode should use the header-line for status information.
+
+When set to nil, use the mode line for (minimal) status
+information and the echo area for messages."
+  :type 'boolean
+  :group 'gptel)
+
 (defcustom gptel-crowdsourced-prompts-file
   (let ((cache-dir (or (getenv "XDG_CACHE_HOME")
                        (getenv "XDG_DATA_HOME")
@@ -372,15 +380,6 @@ To set the model for a chat session interactively call
           (const :tag "GPT 4" "gpt-4")
           (const :tag "GPT 4 turbo (preview)" "gpt-4-1106-preview")))
 
-(defcustom gptel-update-destination "headerline"
-  "Where update messages appear."
-  :local t
-  :safe #'gptel--always
-  :group 'gptel
-  :type '(choice
-          (const :tag "Headerline" "headerline")
-          (const :tag "Minibufer" "minibuffer")))
-
 (defcustom gptel-temperature 1.0
   "\"Temperature\" of ChatGPT response.
 
@@ -447,8 +446,10 @@ and \"apikey\" as USER."
     (cl-typecase key-sym
       (function (funcall key-sym))
       (string key-sym)
-      (symbol (gptel--get-api-key
-               (symbol-value key-sym)))
+      (symbol (if-let ((val (symbol-value key-sym)))
+                  (gptel--get-api-key
+                   (symbol-value key-sym))
+                (error "`gptel-api-key' is not valid")))
       (t (error "`gptel-api-key' is not valid")))))
 
 (defsubst gptel--numberize (val)
@@ -594,51 +595,58 @@ opening the file."
           (user-error (format "`gptel-mode' is not supported in `%s'." major-mode)))
         (add-hook 'before-save-hook #'gptel--save-state nil t)
         (gptel--restore-state)
-        (setq gptel--old-header-line header-line-format
-              header-line-format
-              (list '(:eval (concat (propertize " " 'display '(space :align-to 0))
-                                    (format "%s" (gptel-backend-name gptel-backend))))
-                    (propertize " Ready" 'face 'success)
-                    '(:eval
-                      (let* ((l1 (length gptel-model))
-                             (num-exchanges
-                              (if gptel--num-messages-to-send
-                                  (format "[Send: %s exchanges]" gptel--num-messages-to-send)
-                                "[Send: buffer]"))
-                             (l2 (length num-exchanges)))
-                       (concat
-                        (propertize
-                         " " 'display `(space :align-to ,(max 1 (- (window-width) (+ 2 l1 l2)))))
-                        (propertize
-                         (gptel--button-buttonize num-exchanges
-                          (lambda (&rest _) (gptel-menu)))
-                         'mouse-face 'highlight
-                         'help-echo
-                         "Number of past exchanges to include with each request")
-                        " "
-                        (propertize
-                         (gptel--button-buttonize (concat "[" gptel-model "]")
-                          (lambda (&rest _) (gptel-menu)))
-                         'mouse-face 'highlight
-                         'help-echo "GPT model in use")))))))
-    (setq header-line-format gptel--old-header-line)))
+        (if gptel-use-header-line
+          (setq gptel--old-header-line header-line-format
+                header-line-format
+                (list '(:eval (concat (propertize " " 'display '(space :align-to 0))
+                               (format "%s" (gptel-backend-name gptel-backend))))
+                      (propertize " Ready" 'face 'success)
+                      '(:eval
+                        (let* ((l1 (length gptel-model))
+                               (num-exchanges
+                                (if gptel--num-messages-to-send
+                                    (format "[Send: %s exchanges]" gptel--num-messages-to-send)
+                                  "[Send: buffer]"))
+                               (l2 (length num-exchanges)))
+                         (concat
+                          (propertize
+                           " " 'display `(space :align-to ,(max 1 (- (window-width) (+ 2 l1 l2)))))
+                          (propertize
+                           (gptel--button-buttonize num-exchanges
+                            (lambda (&rest _) (gptel-menu)))
+                           'mouse-face 'highlight
+                           'help-echo
+                           "Number of past exchanges to include with each request")
+                          " "
+                          (propertize
+                           (gptel--button-buttonize (concat "[" gptel-model "]")
+                            (lambda (&rest _) (gptel-menu)))
+                           'mouse-face 'highlight
+                           'help-echo "GPT model in use"))))))
+          (setq mode-line-process
+                '(:eval (concat " "
+                         (gptel--button-buttonize gptel-model
+                            (lambda (&rest _) (gptel-menu))))))))
+    (if gptel-use-header-line
+        (setq header-line-format gptel--old-header-line
+              gptel--old-header-line nil)
+      (setq mode-line-process nil))))
 
-(defun gptel--update-header-line (msg face)
-  "Update header line with status MSG in FACE."
-  (and gptel-mode (consp header-line-format)
-    (setf (nth 1 header-line-format)
-          (propertize msg 'face face))
-    (force-mode-line-update)))
-
-(defun gptel--update-status (msg face)
+(defun gptel--update-status (&optional msg face)
   "Update status MSG in FACE."
   (when gptel-mode
-    (if (string= gptel-update-destination "modeline")
-        (message (propertize msg 'face face))
-      (and (consp header-line-format)
+    (if gptel-use-header-line
+        (and (consp header-line-format)
            (setf (nth 1 header-line-format)
-                 (propertize msg 'face face))
-           (force-mode-line-update)))))
+                 (propertize msg 'face face)))
+      (if (member msg '(" Typing..." " Waiting..."))
+          (setq mode-line-process (propertize msg 'face face))
+        (setq mode-line-process
+              '(:eval (concat " "
+                       (gptel--button-buttonize gptel-model
+                            (lambda (&rest _) (gptel-menu))))))
+        (message (propertize msg 'face face))))
+    (force-mode-line-update)))
 
 (cl-defun gptel-request
     (&optional prompt &key callback

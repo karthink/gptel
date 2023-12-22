@@ -344,7 +344,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-default-mode=          | Major mode for dedicated chat buffers. |
 | =gptel-prompt-prefix-alist=   | Text inserted before queries.          |
 | =gptel-response-prefix-alist= | Text inserted before responses.        |
-| =gptel-update-destination=  | Display status messages in headerline (default) or minibuffer       |
+| =gptel-use-header-line= | Display status messages in header-line (default) or minibuffer      |
 |-----------------------------+----------------------------------------|
 
 ** COMMENT Will you add feature X?
