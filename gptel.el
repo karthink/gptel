@@ -979,16 +979,17 @@ the response is inserted into the current buffer after point."
          (url-request-method "POST")
          (url-request-extra-headers
           (append '(("Content-Type" . "application/json"))
-                  (when-let ((backend-header (gptel-backend-header gptel-backend)))
-                    (if (functionp backend-header)
-                        (funcall backend-header)
-                      backend-header))))
+                  (when-let ((header (gptel-backend-header gptel-backend)))
+                    (if (functionp header)
+                        (funcall header) header))))
         (url-request-data
          (encode-coding-string
           (json-encode (gptel--request-data
                         gptel-backend (plist-get info :prompt)))
           'utf-8)))
-    (url-retrieve (gptel-backend-url gptel-backend)
+    (url-retrieve (let ((backend-url (gptel-backend-url gptel-backend)))
+                    (if (functionp backend-url)
+                        (funcall backend-url) backend-url))
                   (lambda (_)
                     (pcase-let ((`(,response ,http-msg ,error)
                                  (gptel--url-parse-response backend (current-buffer))))

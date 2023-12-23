@@ -139,19 +139,14 @@ function that returns the key."
                   :protocol protocol
                   :endpoint endpoint
                   :stream stream
+                  :key key
                   :url
-                  (let ((key (cond
-                              ((functionp key) (funcall key))
-                              ((symbolp key) (symbol-value key))
-                              ((stringp key) key)
-                              (t (user-error "gptel-make-gemini: arg :key is malformed")))))
-                    (if protocol
-                        (concat protocol "://" host endpoint
-                                (if stream
-                                    "streamGenerateContent"
-                                  "generateContent")
-                                "?key=" key)
-                      (concat host endpoint "?key=" key))))))
+                  (lambda ()
+                    (concat protocol "://" host endpoint
+                            (if gptel-stream
+                                "streamGenerateContent"
+                              "generateContent")
+                            "?key=" (gptel--get-api-key))))))
     (prog1 backend
       (setf (alist-get name gptel--known-backends
                        nil nil #'equal)

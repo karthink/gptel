@@ -49,16 +49,17 @@
   "Produce list of arguments for calling Curl.
 
 PROMPTS is the data to send, TOKEN is a unique identifier."
-  (let* ((url (gptel-backend-url gptel-backend))
+  (let* ((url (let ((backend-url (gptel-backend-url gptel-backend)))
+                    (if (functionp backend-url)
+                        (funcall backend-url) backend-url)))
          (data (encode-coding-string
                 (json-encode (gptel--request-data gptel-backend prompts))
                 'utf-8))
          (headers
           (append '(("Content-Type" . "application/json"))
-                  (when-let ((backend-header (gptel-backend-header gptel-backend)))
-                    (if (functionp backend-header)
-                        (funcall backend-header)
-                      backend-header)))))
+                  (when-let ((header (gptel-backend-header gptel-backend)))
+                    (if (functionp header)
+                        (funcall header) header)))))
     (append
      gptel-curl--common-args
      (list (format "-w(%s . %%{size_header})" token))
