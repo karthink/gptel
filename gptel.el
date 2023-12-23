@@ -487,11 +487,29 @@ Note: This will move the cursor."
 (defun gptel-response-prefix-string ()
   (or (alist-get major-mode gptel-response-prefix-alist) ""))
 
-(defun gptel--restore-state ()
-  "Restore gptel state when turning on `gptel-mode'.
+(defvar-local gptel--backend-name nil
+  "Store to persist backend name across Emacs sessions.
 
-Currently saving and restoring state is implemented only for
-`org-mode' buffers."
+Note: Changing this variable does not affect gptel\\='s behavior
+in any way.")
+(put 'gptel--backend-name 'safe-local-variable #'gptel--always)
+
+(defun gptel--restore-backend (name)
+  "Activate gptel backend with NAME in current buffer.
+
+If no backend with this name exists, inform the user.  Intended
+for when gptel restores chat metadata."
+  (when name
+    (if-let ((backend (alist-get name gptel--known-backends
+                                 nil nil #'equal)))
+        (setq-local gptel-backend backend)
+      (message
+       (substitute-command-keys
+        "Could not activate gptel backend \"%s\"!  Switch backends with \\[universal-argument] \\[gptel-send] before using gptel.")
+       name))))
+
+(defun gptel--restore-state ()
+  "Restore gptel state when turning on `gptel-mode'."
   (when (buffer-file-name)
     (pcase major-mode
       ('org-mode
@@ -507,6 +525,7 @@ Currently saving and restoring state is implemented only for
                  (message "gptel chat restored."))
                (when-let ((model (org-entry-get (point-min) "GPTEL_MODEL")))
                  (setq-local gptel-model model))
+               (gptel--restore-backend (org-entry-get (point-min) "GPTEL_BACKEND"))
                (when-let ((system (org-entry-get (point-min) "GPTEL_SYSTEM")))
                  (setq-local gptel--system-message system))
                (when-let ((temp (org-entry-get (point-min) "GPTEL_TEMPERATURE")))
@@ -516,14 +535,15 @@ Currently saving and restoring state is implemented only for
            (mapc (pcase-lambda (`(,beg . ,end))
                          (put-text-property beg end 'gptel 'response))
                  gptel--bounds)
-           (message "gptel chat restored."))))))
+           (message "gptel chat restored."))
+         (gptel--restore-backend gptel--backend-name)))))
 
 (defun gptel--save-state ()
   "Write the gptel state to the buffer.
 
-This enables saving the chat session when writing the buffer to
-disk.  To restore a chat session, turn on `gptel-mode' after
-opening the file."
+This saves chat metadata when writing the buffer to disk.  To
+restore a chat session, turn on `gptel-mode' after opening the
+file."
   (pcase major-mode
     ('org-mode
      (org-with-wide-buffer
@@ -531,6 +551,7 @@ opening the file."
       (when (org-at-heading-p)
         (org-open-line 1))
       (org-entry-put (point-min) "GPTEL_MODEL" gptel-model)
+      (org-entry-put (point-min) "GPTEL_BACKEND" (gptel-backend-name gptel-backend))
       (unless (equal (default-value 'gptel-temperature) gptel-temperature)
         (org-entry-put (point-min) "GPTEL_TEMPERATURE"
                        (number-to-string gptel-temperature)))
@@ -556,6 +577,8 @@ opening the file."
     (_ (save-excursion
          (save-restriction
            (add-file-local-variable 'gptel-model gptel-model)
+           (add-file-local-variable 'gptel--backend-name
+                                    (gptel-backend-name gptel-backend))
            (unless (equal (default-value 'gptel-temperature) gptel-temperature)
              (add-file-local-variable 'gptel-temperature gptel-temperature))
            (unless (string= (default-value 'gptel--system-message)
