@@ -1052,7 +1052,7 @@ See `gptel-curl--get-response' for its contents.")
               "Could not parse HTTP response.")))))
 
 ;;;###autoload
-(defun gptel (name &optional _ initial)
+(defun gptel (name &optional _ initial interactivep)
   "Switch to or start ChatGPT session with NAME.
 
 With a prefix arg, query for a (new) session name.
@@ -1060,7 +1060,9 @@ With a prefix arg, query for a (new) session name.
 Ask for API-KEY if `gptel-api-key' is unset.
 
 If region is active, use it as the INITIAL prompt.  Returns the
-buffer created or switched to."
+buffer created or switched to.
+
+INTERACTIVEP is t when gptel is called interactively."
   (interactive (list (if current-prefix-arg
                          (read-string "Session name: " (generate-new-buffer-name gptel-default-session))
                        gptel-default-session)
@@ -1075,9 +1077,8 @@ buffer created or switched to."
                                          (gptel-backend-name backend)))))))
                      (and (use-region-p)
                           (buffer-substring (region-beginning)
-                                            (region-end)))))
-  ;; (unless api-key
-  ;;   (user-error "No API key available"))
+                                            (region-end)))
+                     t))
   (with-current-buffer (get-buffer-create name)
     (cond ;Set major mode
      ((eq major-mode gptel-default-mode))
@@ -1089,7 +1090,7 @@ buffer created or switched to."
     (goto-char (point-max))
     (skip-chars-backward "\t\r\n")
     (if (bobp) (insert (or initial (gptel-prompt-prefix-string))))
-    (when (called-interactively-p 'gptel)
+    (when interactivep
       (pop-to-buffer (current-buffer))
       (message "Send your query with %s!"
                (substitute-command-keys "\\[gptel-send]")))
