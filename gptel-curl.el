@@ -92,7 +92,7 @@ INFO is a plist with the following keys:
 - :buffer (the gptel buffer)
 - :position (marker at which to insert the response).
 
-Call CALLBACK with the response and INFO afterwards. If omitted
+Call CALLBACK with the response and INFO afterwards.  If omitted
 the response is inserted into the current buffer after point."
   (let* ((token (md5 (format "%s%s%s%s"
                              (random) (emacs-pid) (user-full-name)
@@ -139,7 +139,7 @@ the response is inserted into the current buffer after point."
         (set-process-sentinel process #'gptel-curl--sentinel)))))
 
 (defun gptel-abort (buf)
-  "Stop any active gptel process associated with the current buffer."
+  "Stop any active gptel process associated with buffer BUF."
   (interactive (list (current-buffer)))
   (unless gptel-use-curl
     (user-error "Cannot stop a `url-retrieve' request!"))
@@ -295,9 +295,9 @@ See `gptel--url-get-response' for details."
       (when-let ((http-msg (plist-get proc-info :status))
                  (http-status (plist-get proc-info :http-status)))
         ;; Find data chunk(s) and run callback
-        (when-let ((_ (equal http-status "200"))
+        (when-let (((equal http-status "200"))
                    (response (funcall (plist-get proc-info :parser) nil proc-info))
-                   (_ (not (equal response ""))))
+                   ((not (equal response ""))))
           (funcall (or (plist-get proc-info :callback)
                        #'gptel-curl--stream-insert-response)
                    response proc-info))))))
@@ -337,8 +337,7 @@ PROCESS and _STATUS are process parameters."
 (defun gptel-curl--parse-response (proc-info)
   "Parse the buffer BUF with curl's response.
 
-TOKEN is used to disambiguate multiple requests in a single
-buffer."
+PROC-INFO is a plist with contextual information."
   (let ((token (plist-get proc-info :token))
         (parser (plist-get proc-info :parser)))
     (goto-char (point-max))

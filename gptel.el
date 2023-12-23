@@ -29,7 +29,8 @@
 
 ;; gptel is a simple Large Language Model chat client, with support for multiple models/backends.
 ;;
-;; gptel supports ChatGPT, Azure, and local models using Ollama and GPT4All.
+;; gptel supports ChatGPT, Azure, Gemini and local models using Ollama and
+;; GPT4All.
 ;;
 ;;  Features:
 ;;  - It’s async and fast, streams responses.
@@ -39,13 +40,13 @@
 ;;  - Supports conversations and multiple independent sessions.
 ;;  - Save chats as regular Markdown/Org/Text files and resume them later.
 ;;  - You can go back and edit your previous prompts or LLM responses when
-;;    continuing a conversation. These will be fed back to the model.
+;;    continuing a conversation.  These will be fed back to the model.
 ;;
 ;; Requirements for ChatGPT, Azure or Gemini:
 ;;
-;; - You need an appropriate API key. Set the variable `gptel-api-key' to the
-;;   key or to a function of no arguments that returns the key. (It tries to use
-;;   `auth-source' by default)
+;; - You need an appropriate API key.  Set the variable `gptel-api-key' to the
+;;   key or to a function of no arguments that returns the key.  (It tries to
+;;   use `auth-source' by default)
 ;;
 ;; - For Azure: define a gptel-backend with `gptel-make-azure', which see.
 ;; - For Gemini: define a gptel-backend with `gptel-make-gemini', which see.
@@ -58,9 +59,9 @@
 ;;
 ;; Usage:
 ;;
-;; gptel can be used in any buffer or in a dedicated chat buffer. The
+;; gptel can be used in any buffer or in a dedicated chat buffer.  The
 ;; interaction model is simple: Type in a query and the response will be
-;; inserted below. You can continue the conversation by typing below the
+;; inserted below.  You can continue the conversation by typing below the
 ;; response.
 ;;
 ;; To use this in a dedicated buffer:
@@ -68,12 +69,12 @@
 ;; - C-u M-x gptel: Start another session or multiple independent ChatGPT sessions
 ;;
 ;; - In the chat session: Press `C-c RET' (`gptel-send') to send your prompt.
-;;   Use a prefix argument (`C-u C-c RET') to access a menu. In this menu you
+;;   Use a prefix argument (`C-u C-c RET') to access a menu.  In this menu you
 ;;   can set chat parameters like the system directives, active backend or
 ;;   model, or choose to redirect the input or output elsewhere (such as to the
 ;;   kill ring).
 ;;
-;; - You can save this buffer to a file. When opening this file, turning on
+;; - You can save this buffer to a file.  When opening this file, turning on
 ;;   `gptel-mode' will allow resuming the conversation.
 ;;
 ;; To use this in any buffer:
@@ -157,7 +158,7 @@ key (more secure) for the active backend."
 This option is ignored unless Curl is in use (see `gptel-use-curl').
 
 When set to nil, Emacs waits for the full response and inserts it
-all at once. This wait is asynchronous.
+all at once.  This wait is asynchronous.
 
 \='tis a bit silly."
   :group 'gptel
@@ -173,9 +174,9 @@ all at once. This wait is asynchronous.
   "Size threshold for using file input with Curl.
 
 Specifies the size threshold for when to use a temporary file to pass data to
-Curl in GPTel queries. If the size of the data to be sent exceeds this
+Curl in GPTel queries.  If the size of the data to be sent exceeds this
 threshold, the data is written to a temporary file and passed to Curl using the
-`--data-binary' option with a file reference. Otherwise, the data is passed
+`--data-binary' option with a file reference.  Otherwise, the data is passed
 directly as a command-line argument.
 
 The value is an integer representing the number of bytes.
@@ -197,8 +198,8 @@ such as filling paragraphs, adding annotations or recording
 information in the response like links.
 
 Each function in this hook receives two arguments, the response
-string to transform and the ChatGPT interaction buffer. It should
-return the transformed string."
+string to transform and the ChatGPT interaction buffer.  It
+should return the transformed string."
   :group 'gptel
   :type 'hook)
 
@@ -206,7 +207,7 @@ return the transformed string."
   "Hook run before inserting ChatGPT's response into the current buffer.
 
 This hook is called in the buffer from which the prompt was sent
-to ChatGPT. Note: this hook only runs if the request succeeds."
+to ChatGPT.  Note: this hook only runs if the request succeeds."
   :group 'gptel
   :type 'hook)
 
@@ -214,7 +215,7 @@ to ChatGPT. Note: this hook only runs if the request succeeds."
   "Hook run after inserting the LLM response into the current buffer.
 
 This hook is called in the buffer from which the prompt was sent
-to the LLM, and after the full response has been inserted. Note:
+to the LLM, and after the full response has been inserted.  Note:
 this hook runs even if the request fails."
   :group 'gptel
   :type 'hook)
@@ -241,7 +242,7 @@ to the LLM, and after a text insertion."
                              'text-mode)
   "The default major mode for dedicated chat buffers.
 
-If `markdown-mode' is available, it is used. Otherwise gptel
+If `markdown-mode' is available, it is used.  Otherwise gptel
 defaults to `text-mode'."
   :group 'gptel
   :type 'symbol)
@@ -276,7 +277,8 @@ is only inserted in dedicated gptel buffers before the AI's response."
   :type '(alist :key-type symbol :value-type string))
 
 (defcustom gptel-use-header-line t
-  "Whether gptel-mode should use the header-line for status information.
+  "Whether `gptel-mode' should use header-line for status
+information.
 
 When set to nil, use the mode line for (minimal) status
 information and the echo area for messages."
@@ -332,7 +334,7 @@ These are system instructions sent at the beginning of each
 request to ChatGPT.
 
 Each entry in this alist maps a symbol naming the directive to
-the string that is sent. To set the directive for a chat session
+the string that is sent.  To set the directive for a chat session
 interactively call `gptel-send' with a prefix argument."
   :group 'gptel
   :safe #'gptel--always
@@ -344,7 +346,7 @@ interactively call `gptel-send' with a prefix argument."
 (defcustom gptel-max-tokens nil
   "Max tokens per response.
 
-This is roughly the number of words in the response. 100-300 is a
+This is roughly the number of words in the response.  100-300 is a
 reasonable range for short answers, 400 or more for longer
 responses.
 
@@ -679,7 +681,7 @@ file."
                (system gptel--system-message))
   "Request a response from the `gptel-backend' for PROMPT.
 
-Note: This function is not fully self-contained. Consider
+Note: This function is not fully self-contained.  Consider
 let-binding the parameters `gptel-backend' and `gptel-model'
 around calls to it as required.
 
@@ -696,7 +698,7 @@ Keyword arguments:
 CALLBACK, if supplied, is a function of two arguments, called
 with the RESPONSE (a string) and INFO (a plist):
 
-(callback RESPONSE INFO)
+ (callback RESPONSE INFO)
 
 RESPONSE is nil if there was no response or an error.
 
@@ -709,7 +711,7 @@ The INFO plist has (at least) the following keys:
 Example of a callback that messages the user with the response
 and info:
 
-(lambda (response info)
+ (lambda (response info)
   (if response
       (let ((posn (marker-position (plist-get info :position)))
             (buf  (buffer-name (plist-get info :buffer))))
@@ -720,7 +722,7 @@ and info:
 
 Or, for just the response:
 
-(lambda (response _)
+ (lambda (response _)
   ;; Do something with response
   (message (rot13-string response)))
 
@@ -969,7 +971,7 @@ INFO is a plist with the following keys:
 - :buffer (the gptel buffer)
 - :position (marker at which to insert the response).
 
-Call CALLBACK with the response and INFO afterwards. If omitted
+Call CALLBACK with the response and INFO afterwards.  If omitted
 the response is inserted into the current buffer after point."
   (let* ((inhibit-message t)
          (message-log-max nil)
@@ -1008,7 +1010,7 @@ PROC-INFO is a plist with process information and other context.
 See `gptel-curl--get-response' for its contents.")
 
 (defun gptel--url-parse-response (backend response-buffer)
-  "Parse response in RESPONSE-BUFFER."
+  "Parse response from BACKEND in RESPONSE-BUFFER."
   (when (buffer-live-p response-buffer)
     (when gptel--debug
       (with-current-buffer response-buffer
@@ -1056,7 +1058,7 @@ With a prefix arg, query for a (new) session name.
 
 Ask for API-KEY if `gptel-api-key' is unset.
 
-If region is active, use it as the INITIAL prompt. Returns the
+If region is active, use it as the INITIAL prompt.  Returns the
 buffer created or switched to."
   (interactive (list (if current-prefix-arg
                          (read-string "Session name: " (generate-new-buffer-name gptel-default-session))

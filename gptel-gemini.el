@@ -115,7 +115,7 @@ HOST (optional) is the API host, defaults to
 MODELS is a list of available model names.  Currently only
 \"gemini-pro\" is available.
 
-STREAM is a boolean to toggle streaming responses, defaults to
+STREAM is a boolean to enable streaming responses, defaults to
 false.
 
 PROTOCOL (optional) specifies the protocol, \"https\" by default.
