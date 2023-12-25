@@ -171,17 +171,24 @@ which see."
            (cl-incf idx))
          (push pos taken)
          pos)
+       ;; The explicit declaration ":transient transient--do-return" here
+       ;; appears to be required for Transient v0.5 and up.  Without it, these
+       ;; are treated as suffixes when invoking `gptel-system-prompt' directly,
+       ;; and infixes when going through `gptel-menu'.
+       ;; TODO: Raise an issue with Transient.
        collect (list (key-description key) (capitalize name)
                 `(lambda () (interactive)
                   (message "Directive: %s" ,prompt)
-                  (setq gptel--system-message ,prompt)))
+                  (setq gptel--system-message ,prompt))
+		:transient 'transient--do-return)
        into prompt-suffixes
        finally return
        (nconc
         (list (list 'gptel--suffix-system-message))
         prompt-suffixes
         (list (list "SPC" "Pick crowdsourced prompt"
-                    'gptel--read-crowdsourced-prompt :transient nil))))))
+                    'gptel--read-crowdsourced-prompt
+		    :transient nil))))))
 
 (transient-define-prefix gptel-system-prompt ()
   "Change the system prompt to send ChatGPT.
