@@ -462,14 +462,18 @@ and \"apikey\" as USER."
   "Scroll window if LLM response continues below viewport.
 
 Note: This will move the cursor."
-  (when (and (window-live-p (get-buffer-window (current-buffer)))
-             (not (pos-visible-in-window-p)))
-    (scroll-up-command)))
+  (when-let* ((win (get-buffer-window (current-buffer) 'visible))
+              ((not (pos-visible-in-window-p (point) win)))
+              (scroll-error-top-bottom t))
+    (condition-case nil
+        (with-selected-window win
+          (scroll-up-command))
+      (error nil))))
 
 (defun gptel-end-of-response (&optional arg)
   "Move point to the end of the LLM response ARG times."
   (interactive "p")
-  (dotimes (if arg (abs arg) 1)
+  (dotimes (_ (if arg (abs arg) 1))
     (text-property-search-forward 'gptel 'response t)
     (when (looking-at (concat "\n\\{1,2\\}"
                               (regexp-quote
