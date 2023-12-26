@@ -188,7 +188,10 @@ which see."
         prompt-suffixes
         (list (list "SPC" "Pick crowdsourced prompt"
                     'gptel--read-crowdsourced-prompt
-		    :transient nil))))))
+		    ;; NOTE: Quitting the completing read when picking a
+		    ;; crowdsourced prompt will cause the transient to exit
+		    ;; instead of returning to the system prompt menu.
+                    :transient 'transient--do-exit))))))
 
 (transient-define-prefix gptel-system-prompt ()
   "Change the system prompt to send ChatGPT.
@@ -522,7 +525,7 @@ This uses the prompts in the variable
 
 (transient-define-suffix gptel--suffix-system-message ()
   "Set directives sent to ChatGPT."
-  :transient nil
+  :transient 'transient--do-exit
   :description "Set custom directives"
   :key "h"
   (interactive)
