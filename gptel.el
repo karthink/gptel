@@ -1,4 +1,4 @@
-;;; gptel.el --- A simple multi-LLM client      -*- lexical-binding: t; -*-
+;;; gptel.el --- Interact with ChatGPT or other LLMs     -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
