@@ -14,7 +14,7 @@ GPTel is a simple Large Language Model chat client for Emacs, with support for m
 | PrivateGPT  | Planned  | -                       |
 | Llama.cpp   | Planned  | -                       |
 
-*General usage*:
+*General usage*: ([[https://www.youtube.com/watch?v=bsRnh_brggM][YouTube Demo]])
 
 https://user-images.githubusercontent.com/8607532/230516812-86510a09-a2fb-4cbd-b53f-cc2522d05a13.mp4
 
@@ -223,6 +223,8 @@ You can pick this backend from the transient menu when using gptel (see Usage), 
 
 ** Usage
 
+(This is also a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel.)
+
 |-------------------+-------------------------------------------------------------------------|
 | *Command*          | Description                                                             |
 |-------------------+-------------------------------------------------------------------------|
@@ -327,16 +329,16 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-api-key=             | Variable/function that returns the API key for the active backend.  |
 |---------------------------+---------------------------------------------------------------------|
 
-|---------------------------+---------------------------------------------------------------------|
-| *LLM options*               | /(Note: not supported uniformly across LLMs)/                         |
-|---------------------------+---------------------------------------------------------------------|
-| =gptel-backend=             | Default LLM Backend.                                                |
-| =gptel-model=               | Default model to use (depends on the backend).                      |
-| =gptel-stream=              | Enable streaming responses (overrides backend-specific preference). |
-| =gptel-directives=          | Alist of system directives, can switch on the fly.                  |
-| =gptel-max-tokens=          | Maximum token count (in query + response).                          |
-| =gptel-temperature=         | Randomness in response text, 0 to 2.                                |
-|---------------------------+---------------------------------------------------------------------|
+|-------------------+---------------------------------------------------------|
+| *LLM options*       | /(Note: not supported uniformly across LLMs)/             |
+|-------------------+---------------------------------------------------------|
+| =gptel-backend=     | Default LLM Backend.                                    |
+| =gptel-model=       | Default model to use, depends on the backend.           |
+| =gptel-stream=      | Enable streaming responses, if the backend supports it. |
+| =gptel-directives=  | Alist of system directives, can switch on the fly.      |
+| =gptel-max-tokens=  | Maximum token count (in query + response).              |
+| =gptel-temperature= | Randomness in response text, 0 to 2.                    |
+|-------------------+---------------------------------------------------------|
 
 |-----------------------------+----------------------------------------|
 | *Chat UI options*             |                                        |
