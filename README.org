@@ -133,8 +133,10 @@ Register a backend with
  :endpoint "/openai/deployments/YOUR_DEPLOYMENT_NAME/chat/completions?api-version=2023-05-15" ;or equivalent
  :stream t                              ;Enable streaming responses
  :key #'gptel-api-key
- :models '("gpt-3.5-turbo" "gpt-4"))
+ :models '("gpt-3.5-turbo"))
 #+end_src
+Since only one model is supported per deployment, additional backends need to be added for each model.
+
 Refer to the documentation of =gptel-make-azure= to set more parameters.
 
 You can pick this backend from the transient menu when using gptel. (See usage)
