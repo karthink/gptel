@@ -794,10 +794,19 @@ Model parameters can be let-bound around calls to this function."
 ;; TODO: Handle multiple requests(#15). (Only one request from one buffer at a time?)
 ;;;###autoload
 (defun gptel-send (&optional arg)
-  "Submit this prompt to ChatGPT.
+  "Submit this prompt to the current LLM backend.
 
-With prefix arg ARG activate a transient menu with more options
-instead."
+By default, the contents of the buffer up to the cursor position
+are sent.  If the region is active, its contents are sent
+instead.
+
+The response from the LLM is inserted below the cursor position
+at the time of sending.  To change this behavior or model
+parameters, use prefix arg ARG activate a transient menu with
+more options instead.
+
+This command is asynchronous, you can continue to use Emacs while
+waiting for the response."
   (interactive "P")
   (if (and arg (require 'gptel-transient nil t))
       (call-interactively #'gptel-menu)
