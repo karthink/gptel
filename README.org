@@ -118,6 +118,9 @@ Optional: Set =gptel-api-key= to the key. Alternatively, you may choose a more s
 machine api.openai.com login apikey password TOKEN
   #+end_src
 - Setting it to a function that returns the key.
+  #+begin_src elisp
+  (setq gptel-api-key (auth-source-pick-first-password :host "api.openai.com"))
+  #+end_src
 
 *** Other LLM backends
 #+html: <details><summary>
