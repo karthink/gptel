@@ -26,6 +26,7 @@
 (require 'gptel)
 (require 'cl-generic)
 (require 'map)
+(require 'cl-macs)
 
 (declare-function prop-match-value "text-property-search")
 (declare-function text-property-search-backward "text-property-search")
@@ -95,6 +96,10 @@
                                        (regexp-quote (gptel-response-prefix-string))))))
             prompts)
       (and max-entries (cl-decf max-entries)))
+    (cl-callf (lambda (msg) (concat gptel--system-message "\n\n" msg))
+        (thread-first (car prompts)
+                      (plist-get :parts)
+                      (plist-get :text)))
     prompts))
 
 ;;;###autoload
