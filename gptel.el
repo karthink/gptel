@@ -4,7 +4,7 @@
 
 ;; Author: Karthik Chikmagalur
 ;; Version: 0.5.5
-;; Package-Requires: ((emacs "27.1") (transient "0.4.0"))
+;; Package-Requires: ((emacs "27.1") (transient "0.4.0") (compat "29.1.4.1"))
 ;; Keywords: convenience
 ;; URL: https://github.com/karthink/gptel
 
@@ -112,7 +112,7 @@
 (eval-when-compile
   (require 'subr-x)
   (require 'cl-lib))
-
+(require 'compat)
 (require 'url)
 (require 'json)
 (require 'map)
@@ -298,29 +298,30 @@ transient menu interface provided by `gptel-menu'."
   :group 'gptel
   :type 'file)
 
-;; FIXME This is convoluted, but it's not worth adding the `compat' dependency
+;; NOTE now testing compat.
+;; This is convoluted, but it's not worth adding the `compat' dependency
 ;; just for a couple of helper functions either.
-(cl-macrolet
-    ((gptel--compat
-      () (if (version< "28.1" emacs-version)
-             (macroexp-progn
-              `((defalias 'gptel--button-buttonize #'button-buttonize)
-                (defalias 'gptel--always #'always)))
-           (macroexp-progn
-            `((defun gptel--always (&rest _)
-               "Always return t." t)
-              (defun gptel--button-buttonize (string callback)
-               "Make STRING into a button and return it.
-When clicked, CALLBACK will be called."
-               (propertize string
-                'face 'button
-                'button t
-                'follow-link t
-                'category t
-                'button-data nil
-                'keymap button-map
-                'action callback)))))))
-  (gptel--compat))
+;; (cl-macrolet
+;;     ((gptel--compat
+;;       () (if (version< "28.1" emacs-version)
+;;              (macroexp-progn
+;;               `((defalias 'gptel--button-buttonize #'button-buttonize)
+;;                 (defalias 'gptel--always #'always)))
+;;            (macroexp-progn
+;;             `((defun gptel--always (&rest _)
+;;                "Always return t." t)
+;;               (defun gptel--button-buttonize (string callback)
+;;                "Make STRING into a button and return it.
+;; When clicked, CALLBACK will be called."
+;;                (propertize string
+;;                 'face 'button
+;;                 'button t
+;;                 'follow-link t
+;;                 'category t
+;;                 'button-data nil
+;;                 'keymap button-map
+;;                 'action callback)))))))
+;;   (gptel--compat))
 
 ;; Model and interaction parameters
 (defcustom gptel-directives
@@ -337,11 +338,11 @@ Each entry in this alist maps a symbol naming the directive to
 the string that is sent.  To set the directive for a chat session
 interactively call `gptel-send' with a prefix argument."
   :group 'gptel
-  :safe #'gptel--always
+  :safe #'always
   :type '(alist :key-type symbol :value-type string))
 
 (defvar-local gptel--system-message (alist-get 'default gptel-directives))
-(put 'gptel--system-message 'safe-local-variable #'gptel--always)
+(put 'gptel--system-message 'safe-local-variable #'always)
 
 (defcustom gptel-max-tokens nil
   "Max tokens per response.
@@ -357,7 +358,7 @@ If left unset, ChatGPT will target about 40% of the total token
 count of the conversation so far in each message, so messages
 will get progressively longer!"
   :local t
-  :safe #'gptel--always
+  :safe #'always
   :group 'gptel
   :type '(choice (integer :tag "Specify Token count")
                  (const :tag "Default" nil)))
@@ -374,7 +375,7 @@ The current options for ChatGPT are
 To set the model for a chat session interactively call
 `gptel-send' with a prefix argument."
   :local t
-  :safe #'gptel--always
+  :safe #'always
   :group 'gptel
   :type '(choice
           (const :tag "GPT 3.5 turbo" "gpt-3.5-turbo")
@@ -391,7 +392,7 @@ of the response, with 2.0 being the most random.
 To set the temperature for a chat session interactively call
 `gptel-send' with a prefix argument."
   :local t
-  :safe #'gptel--always
+  :safe #'always
   :group 'gptel
   :type 'number)
 
@@ -415,10 +416,10 @@ with differing settings.")
 (defvar-local gptel-backend gptel--openai)
 
 (defvar-local gptel--bounds nil)
-(put 'gptel--bounds 'safe-local-variable #'gptel--always)
+(put 'gptel--bounds 'safe-local-variable #'always)
 
 (defvar-local gptel--num-messages-to-send nil)
-(put 'gptel--num-messages-to-send 'safe-local-variable #'gptel--always)
+(put 'gptel--num-messages-to-send 'safe-local-variable #'always)
 
 (defvar gptel--debug nil
   "Enable printing debug messages.
@@ -498,7 +499,7 @@ Note: This will move the cursor."
 
 Note: Changing this variable does not affect gptel\\='s behavior
 in any way.")
-(put 'gptel--backend-name 'safe-local-variable #'gptel--always)
+(put 'gptel--backend-name 'safe-local-variable #'always)
 
 (defun gptel--restore-backend (name)
   "Activate gptel backend with NAME in current buffer.
@@ -641,20 +642,20 @@ file."
                           (propertize
                            " " 'display `(space :align-to ,(max 1 (- (window-width) (+ 2 l1 l2)))))
                           (propertize
-                           (gptel--button-buttonize num-exchanges
+                           (buttonize num-exchanges
                             (lambda (&rest _) (gptel-menu)))
                            'mouse-face 'highlight
                            'help-echo
                            "Number of past exchanges to include with each request")
                           " "
                           (propertize
-                           (gptel--button-buttonize (concat "[" gptel-model "]")
+                           (buttonize (concat "[" gptel-model "]")
                             (lambda (&rest _) (gptel-menu)))
                            'mouse-face 'highlight
                            'help-echo "GPT model in use"))))))
           (setq mode-line-process
                 '(:eval (concat " "
-                         (gptel--button-buttonize gptel-model
+                         (buttonize gptel-model
                             (lambda (&rest _) (gptel-menu))))))))
     (if gptel-use-header-line
         (setq header-line-format gptel--old-header-line
@@ -672,7 +673,7 @@ file."
           (setq mode-line-process (propertize msg 'face face))
         (setq mode-line-process
               '(:eval (concat " "
-                       (gptel--button-buttonize gptel-model
+                       (buttonize gptel-model
                             (lambda (&rest _) (gptel-menu))))))
         (message (propertize msg 'face face))))
     (force-mode-line-update)))
