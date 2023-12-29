@@ -535,19 +535,20 @@ This uses the prompts in the variable
       (let ((inhibit-read-only t))
         (erase-buffer)
         (text-mode)
+        (setq header-line-format
+              (concat
+               "Edit your system message below and press "
+               (propertize "C-c C-c" 'face 'help-key-binding)
+               " when ready, or "
+               (propertize "C-c C-k" 'face 'help-key-binding)
+               " to abort."))
         (insert
-         "# Insert your system message below and press "
-         (propertize "C-c C-c" 'face 'help-key-binding)
-         " when ready, or "
-         (propertize "C-c C-k" 'face 'help-key-binding)
-         " to abort.\n"
          "# Example: You are a helpful assistant. Answer as concisely as possible.\n"
          "# Example: Reply only with shell commands and no prose.\n"
-         "# Example: You are a poet. Reply only in verse.\n")
+         "# Example: You are a poet. Reply only in verse.\n\n")
         (add-text-properties
-         (point-min) (point)
+         (point-min) (1- (point))
          (list 'read-only t 'face 'font-lock-comment-face))
-        (insert "\n")
         ;; TODO: make-separator-line requires Emacs 28.1+.
         ;; (insert (propertize (make-separator-line) 'rear-nonsticky t))
         (set-marker msg-start (point))
