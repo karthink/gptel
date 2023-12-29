@@ -520,7 +520,7 @@ This uses the prompts in the variable
               nil t)))
         (when-let ((prompt (gethash choice gptel--crowdsourced-prompts)))
             (setq gptel--system-message prompt)
-            (gptel--suffix-system-message)))
+            (call-interactively #'gptel--suffix-system-message)))
     (message "No prompts available.")))
 
 (transient-define-suffix gptel--suffix-system-message ()

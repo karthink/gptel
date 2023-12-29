@@ -3,7 +3,6 @@
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthikchikmagalur@gmail.com>
-;; Keywords:
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -26,7 +25,7 @@
 (require 'gptel)
 (require 'cl-generic)
 (require 'map)
-(require 'cl-macs)
+(eval-when-compile (require 'cl-lib))
 
 (declare-function prop-match-value "text-property-search")
 (declare-function text-property-search-backward "text-property-search")
