@@ -179,7 +179,8 @@ which see."
        collect (list (key-description key) (capitalize name)
                 `(lambda () (interactive)
                   (message "Directive: %s" ,prompt)
-                  (setq gptel--system-message ,prompt))
+                  (setq gptel--system-message ,prompt)
+                  (when gptel-mode (gptel--show-directive)))
 		:transient 'transient--do-return)
        into prompt-suffixes
        finally return
@@ -578,7 +579,8 @@ This uses the prompts in the variable
                          (let ((system-message
                                 (buffer-substring msg-start (point-max))))
                            (with-current-buffer orig-buf
-                             (setq gptel--system-message system-message)))
+                             (setq gptel--system-message system-message)
+                             (when gptel-mode (gptel--show-directive))))
                          (funcall quit-to-menu)))
         (local-set-key (kbd "C-c C-k") quit-to-menu)))))
 

@@ -285,6 +285,12 @@ information and the echo area for messages."
   :type 'boolean
   :group 'gptel)
 
+(defcustom gptel-show-directive nil
+  "Whether `gptel-mode' should display the active system
+directive/prompt at the top of chat buffers."
+  :type 'boolean
+  :group 'gptel)
+
 (defcustom gptel-crowdsourced-prompts-file
   (let ((cache-dir (or (getenv "XDG_CACHE_HOME")
                        (getenv "XDG_DATA_HOME")
@@ -609,6 +615,8 @@ file."
                 bounds))
         bounds))))
 
+(defvar-local gptel--directive-overlay nil
+  "The overlay showing the directive in gptel chat buffers.")
 (defvar-local gptel--old-header-line nil)
 ;;;###autoload
 (define-minor-mode gptel-mode
@@ -625,6 +633,7 @@ file."
           (user-error (format "`gptel-mode' is not supported in `%s'." major-mode)))
         (add-hook 'before-save-hook #'gptel--save-state nil t)
         (gptel--restore-state)
+        (gptel--show-directive)
         (if gptel-use-header-line
           (setq gptel--old-header-line header-line-format
                 header-line-format
@@ -657,6 +666,7 @@ file."
                 '(:eval (concat " "
                          (buttonize gptel-model
                             (lambda (&rest _) (gptel-menu))))))))
+    (gptel--show-directive)
     (if gptel-use-header-line
         (setq header-line-format gptel--old-header-line
               gptel--old-header-line nil)
@@ -677,6 +687,27 @@ file."
                             (lambda (&rest _) (gptel-menu))))))
         (message (propertize msg 'face face))))
     (force-mode-line-update)))
+
+(defun gptel--show-directive ()
+  "Show or update directive at the top of chat buffers."
+  (when gptel-show-directive
+    (if (not gptel-mode)
+        (when (overlayp gptel--directive-overlay)
+          (delete-overlay gptel--directive-overlay)
+          (setq gptel--directive-overlay nil))
+      (unless (overlayp gptel--directive-overlay)
+        (setq gptel--directive-overlay (make-overlay 0 0))
+        (overlay-put gptel--directive-overlay 'evaporate nil))
+      (overlay-put
+       gptel--directive-overlay 'before-string
+       (concat (propertize
+                (buttonize
+                 (string-trim-right gptel--system-message)
+                 (lambda (&rest _) (call-interactively #'gptel-system-prompt))
+                 nil "Current gptel directive, click to set.")
+                'face 'shadow)
+               "\n"
+               (make-separator-line))))))
 
 (cl-defun gptel-request
     (&optional prompt &key callback
