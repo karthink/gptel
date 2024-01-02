@@ -366,6 +366,9 @@ will get progressively longer!"
 (defcustom gptel-model "gpt-3.5-turbo"
   "GPT Model for chat.
 
+The name of the model as a string.  This is the name as expected
+by the LLM provider's API.
+
 The current options for ChatGPT are
 - \"gpt-3.5-turbo\"
 - \"gpt-3.5-turbo-16k\"
@@ -378,6 +381,7 @@ To set the model for a chat session interactively call
   :safe #'always
   :group 'gptel
   :type '(choice
+          (string :tag "Specify model name")
           (const :tag "GPT 3.5 turbo" "gpt-3.5-turbo")
           (const :tag "GPT 3.5 turbo 16k" "gpt-3.5-turbo-16k")
           (const :tag "GPT 4" "gpt-4")
