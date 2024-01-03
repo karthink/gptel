@@ -613,9 +613,17 @@ This uses the prompts in the variable
   :key "E"
   :description (lambda () (concat (gptel--refactor-or-rewrite) " and Ediff"))
   (interactive (list (transient-args transient-current-command)))
-  (let* ((prompt (buffer-substring-no-properties
+  (letrec ((prompt (buffer-substring-no-properties
                   (region-beginning) (region-end)))
-         (gptel--system-message gptel--rewrite-message))
+           (gptel--system-message gptel--rewrite-message)
+           ;; TODO: Technically we should save the window config at the time
+           ;; `ediff-setup-hook' runs, but this will do for now.
+           (cwc (current-window-configuration))
+           (gptel--ediff-restore
+            (lambda ()
+              (when (window-configuration-p cwc)
+                (set-window-configuration cwc))
+              (remove-hook 'ediff-quit-hook gptel--ediff-restore))))
     (message "Waiting for response... ")
     (gptel-request
      prompt
@@ -630,12 +638,14 @@ This uses the prompts in the variable
                  (buffer-local-value 'major-mode gptel-buffer)))
            (pcase-let ((`(,new-buf ,new-beg ,new-end)
                         (with-current-buffer (get-buffer-create "*gptel-rewrite-Region.B-*")
-                          (erase-buffer)
-                          (funcall buffer-mode)
-                          (insert response)
-                          (goto-char (point-min))
-                          (list (current-buffer) (point-min) (point-max)))))
+                          (let ((inhibit-read-only t))
+                            (erase-buffer)
+                            (funcall buffer-mode)
+                            (insert response)
+                            (goto-char (point-min))
+                            (list (current-buffer) (point-min) (point-max))))))
              (require 'ediff)
+             (add-hook 'ediff-quit-hook gptel--ediff-restore)
              (apply
               #'ediff-regions-internal
               (get-buffer (ediff-make-cloned-buffer gptel-buffer "-Region.A-"))
