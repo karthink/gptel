@@ -257,7 +257,7 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 |-------------------+-------------------------------------------------------------------------|
 | =gptel-send=        | Send conversation up to =(point)=, or selection if region is active.  Works anywhere in Emacs. |
 | =gptel=             | Create a new dedicated chat buffer.  Not required to use gptel. |
-| =C-u= =gptel-send=    | Transient menu for preferenes, input/output redirection etc.            |
+| =C-u= =gptel-send=    | Transient menu for preferences, input/output redirection etc.            |
 | =gptel-menu=        | /(Same)/                                                                  |
 |-------------------+-------------------------------------------------------------------------|
 | =gptel-set-topic= | /(Org-mode only)/ Limit conversation context to an Org heading             |
