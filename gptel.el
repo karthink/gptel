@@ -417,7 +417,30 @@ with differing settings.")
    :stream t
    :models '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4" "gpt-4-1106-preview")))
 
-(defvar-local gptel-backend gptel--openai)
+(defcustom gptel-backend gptel--openai
+  "LLM backend to use.
+
+This is the default \"backend\", an object of type
+`gptel-backend' containing connection, authentication and model
+information.
+
+A backend for ChatGPT is pre-defined by gptel.  Backends for
+other LLM providers (local or remote) may be constructed using
+one of the available backend creation functions:
+- `gptel-make-openai'
+- `gptel-make-azure'
+- `gptel-make-ollama'
+- `gptel-make-gpt4all'
+- `gptel-make-gemini'
+See their documentation for more information and the package
+README for examples."
+  :local t
+  :safe #'always
+  :group 'gptel
+  :type `(choice
+          (const :tag "ChatGPT" ,gptel--openai)
+          (restricted-sexp :match-alternatives (gptel-backend-p 'nil)
+           :tag "Other backend")))
 
 (defvar-local gptel--bounds nil)
 (put 'gptel--bounds 'safe-local-variable #'always)

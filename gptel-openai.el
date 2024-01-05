@@ -118,7 +118,7 @@
           (host "api.openai.com")
           (protocol "https")
           (endpoint "/v1/chat/completions"))
-  "Register a ChatGPT backend for gptel with NAME.
+  "Register an OpenAI API-compatible backend for gptel with NAME.
 
 Keyword arguments:
 
