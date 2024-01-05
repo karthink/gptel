@@ -237,6 +237,7 @@ Register a backend with
  :stream t                            ;Stream responses
  :protocol "http"
  :host "localhost:8000"               ;Llama.cpp server location, typically localhost:8080 for Llamafile
+ :key nil                             ;No key needed
  :models '("test"))                   ;Any names, doesn't matter for Llama
 #+end_src
 These are the required parameters, refer to the documentation of =gptel-make-openai= for more.
