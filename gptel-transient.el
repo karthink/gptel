@@ -132,7 +132,9 @@ which see."
      :reader
      (lambda (prompt _ history)
        (read-string
-        prompt (generate-new-buffer-name "*ChatGPT*") history)))
+        prompt (generate-new-buffer-name
+                (concat "*" (gptel-backend-name gptel-backend) "*"))
+        history)))
     ("e" "Existing session" "e"
      :class transient-option
      :prompt "Existing session: "
