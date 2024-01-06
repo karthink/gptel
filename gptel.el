@@ -236,7 +236,6 @@ to the LLM, and after a text insertion."
   :group 'gptel
   :type 'hook)
 
-(defvar gptel-default-session "*ChatGPT*")
 (defcustom gptel-default-mode (if (fboundp 'markdown-mode)
                                'markdown-mode
                              'text-mode)
@@ -1104,22 +1103,26 @@ If region is active, use it as the INITIAL prompt.  Returns the
 buffer created or switched to.
 
 INTERACTIVEP is t when gptel is called interactively."
-  (interactive (list (if current-prefix-arg
-                         (read-string "Session name: " (generate-new-buffer-name gptel-default-session))
-                       gptel-default-session)
-                     (let ((backend (default-value 'gptel-backend)))
-                       (condition-case nil
-                           (gptel--get-api-key
-                            (gptel-backend-key backend))
-                         ((error user-error)
-                          (setq gptel-api-key
-                                (read-passwd
-                                 (format "%s API key: "
-                                         (gptel-backend-name backend)))))))
-                     (and (use-region-p)
-                          (buffer-substring (region-beginning)
-                                            (region-end)))
-                     t))
+  (interactive
+   (let* ((backend (default-value 'gptel-backend))
+          (backend-name
+           (format "*%s*" (gptel-backend-name backend))))
+     (list (if current-prefix-arg
+               (read-string "Session name: "
+                            (generate-new-buffer-name
+                             backend-name))
+             backend-name)
+           (condition-case nil
+               (gptel--get-api-key
+                (gptel-backend-key backend))
+             ((error user-error)
+              (setq gptel-api-key
+                    (read-passwd
+                     (format "%s API key: " backend-name)))))
+           (and (use-region-p)
+                (buffer-substring (region-beginning)
+                                  (region-end)))
+           t)))
   (with-current-buffer (get-buffer-create name)
     (cond ;Set major mode
      ((eq major-mode gptel-default-mode))
