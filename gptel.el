@@ -399,6 +399,19 @@ To set the temperature for a chat session interactively call
   :group 'gptel
   :type 'number)
 
+(defcustom gptel-rewrite-message
+  (lambda ()
+    (if (derived-mode-p 'prog-mode)
+        (format "You are a %s programmer. Refactor the following code. Generate only code, no explanation."
+                (substring (symbol-name major-mode) 0 -5))
+      (format "You are a prose editor. Rewrite the following text to be more professional.")))
+  "Function to generate a rewrite message for the current buffer."
+  :type 'function
+  :group 'gptel
+  :set (lambda (variable value)
+         (set-default variable value)
+         (setq gptel--rewrite-message nil)))
+
 (defvar gptel--known-backends nil
   "Alist of LLM backends known to gptel.
 

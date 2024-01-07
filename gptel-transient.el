@@ -220,7 +220,7 @@ Customize `gptel-directives' for task-specific prompts."
    (lambda ()
      (format "Directive:  %s"
              (truncate-string-to-width
-              (or gptel--rewrite-message (gptel--rewrite-message))
+              (or gptel--rewrite-message (funcall gptel-rewrite-message))
               (max (- (window-width) 14) 20) nil nil t)))
    (gptel--infix-rewrite-prompt)]
   [[:description "Diff Options"
@@ -233,7 +233,7 @@ Customize `gptel-directives' for task-specific prompts."
     (gptel--suffix-rewrite-and-ediff)]]
   (interactive)
   (unless gptel--rewrite-message
-    (setq gptel--rewrite-message (gptel--rewrite-message)))
+    (setq gptel--rewrite-message (funcall gptel-rewrite-message)))
   (transient-setup 'gptel-rewrite-menu))
 
 ;; * Transient Infixes
@@ -357,7 +357,7 @@ will get progressively longer!"
   :prompt "Set directive for rewrite: "
   :reader (lambda (prompt _ history)
             (read-string
-             prompt (gptel--rewrite-message) history)))
+             prompt (funcall gptel-rewrite-message) history)))
 
 ;; * Transient Suffixes
 
