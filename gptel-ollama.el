@@ -101,14 +101,15 @@ Ollama models.")
 
 ;;;###autoload
 (cl-defun gptel-make-ollama
-    (name &key host header key models stream
+    (name &key header key models stream
+          (host "localhost:11434")
           (protocol "http")
           (endpoint "/api/generate"))
   "Register an Ollama backend for gptel with NAME.
 
 Keyword arguments:
 
-HOST is where Ollama runs (with port), typically localhost:11434
+HOST is where Ollama runs (with port), defaults to localhost:11434
 
 MODELS is a list of available model names.
 
