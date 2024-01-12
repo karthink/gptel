@@ -123,6 +123,7 @@ which see."
     (gptel--infix-temperature)]
    ["Prompt:"
     ("p" "From minibuffer instead" "p")
+    ("y" "From kill-ring instead" "y")
     ("i" "Replace/Delete prompt" "i")
     "Response to:"
     ("m" "Minibuffer instead" "m")
@@ -377,13 +378,20 @@ will get progressively longer!"
         (buffer) (position)
         (callback) (gptel-buffer-name)
         (prompt
-         (and (member "p" args)
-              (read-string
-               (format "Ask %s: " (gptel-backend-name gptel-backend))
-               (apply #'buffer-substring-no-properties
-                      (if (use-region-p)
-                          (list (region-beginning) (region-end))
-                        (list (line-beginning-position) (line-end-position))))))))
+         (cond
+          ((member "p" args)
+           (read-string
+            (format "Ask %s: " (gptel-backend-name gptel-backend))
+            (apply #'buffer-substring-no-properties
+                   (if (use-region-p)
+                       (list (region-beginning) (region-end))
+                     (list (line-beginning-position) (line-end-position))))))
+          ((member "y" args)
+           (unless (car-safe kill-ring)
+             (user-error "`kill-ring' is empty!  Nothing to send."))
+           (if current-prefix-arg
+               (read-from-kill-ring "Prompt from kill-ring: ")
+             (current-kill 0))))))
     (cond
      ((member "m" args)
       (setq stream nil)
