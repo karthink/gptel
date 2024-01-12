@@ -166,6 +166,7 @@ which see."
    'gptel-system-prompt
    (cl-loop for (type . prompt) in gptel-directives
        with taken
+       with width = (window-width)
        for name = (symbol-name type)
        for key =
        (let ((idx 0) pos)
@@ -179,11 +180,21 @@ which see."
        ;; are treated as suffixes when invoking `gptel-system-prompt' directly,
        ;; and infixes when going through `gptel-menu'.
        ;; TODO: Raise an issue with Transient.
-       collect (list (key-description key) (capitalize name)
-                `(lambda () (interactive)
-                  (message "Directive: %s" ,prompt)
-                  (setq gptel--system-message ,prompt))
-		:transient 'transient--do-return)
+       collect (list (key-description key)
+                     (concat (capitalize name) " "
+                             (propertize " " 'display '(space :align-to 20))
+                             (propertize
+                              (concat
+                               "("
+                               (string-replace
+                                "\n" " "
+                                (truncate-string-to-width prompt (- width 30) nil nil t))
+                               ")")
+                              'face 'shadow))
+                     `(lambda () (interactive)
+                        (message "Directive: %s" ,prompt)
+                        (setq gptel--system-message ,prompt))
+		     :transient 'transient--do-return)
        into prompt-suffixes
        finally return
        (nconc
