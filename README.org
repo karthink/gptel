@@ -319,7 +319,7 @@ To be minimally annoying, GPTel does not move the cursor by default.  Add the fo
 To be minimally annoying, GPTel does not move the cursor by default.  Add the following to your configuration to move the cursor:
 
 #+begin_src emacs-lisp
-(add-hook 'gptel-post-response-hook 'gptel-end-of-response)
+(add-hook 'gptel-post-response-functions 'gptel-end-of-response)
 #+end_src
 
 You can also call =gptel-end-of-response= as a command at any time.
@@ -419,6 +419,8 @@ Other Emacs clients for LLMs include
 There are several more: [[https://github.com/CarlQLange/chatgpt-arcana.el][chatgpt-arcana]], [[https://github.com/MichaelBurge/leafy-mode][leafy-mode]], [[https://github.com/iwahbe/chat.el][chat.el]]
 
 ** Breaking Changes
+
+- =gptel-post-response-hook= has been renamed to =gptel-post-response-functions=, and functions in this hook are now called with two arguments: the start and end buffer positions of the response.  This should make it easy to act on the response text without having to locate it first.
 
 - Possible breakage, see #120: If streaming responses stop working for you after upgrading to v0.5, try reinstalling gptel and deleting its native comp eln cache in =native-comp-eln-load-path=.
 

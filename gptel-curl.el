@@ -67,11 +67,11 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
          (list (format "-d%s" data))
        (letrec
            ((temp-filename (make-temp-file "gptel-curl-data" nil ".json" data))
-            (cleanup-fn (lambda ()
+            (cleanup-fn (lambda (&rest _)
                           (when (file-exists-p temp-filename)
                             (delete-file temp-filename)
-                            (remove-hook 'gptel-post-response-hook cleanup-fn)))))
-         (add-hook 'gptel-post-response-hook cleanup-fn)
+                            (remove-hook 'gptel-post-response-functions cleanup-fn)))))
+         (add-hook 'gptel-post-response-functions cleanup-fn)
          (list "--data-binary"
                (format "@%s" temp-filename))))
      (when (not (string-empty-p gptel-proxy))
@@ -177,12 +177,15 @@ PROCESS and _STATUS are process parameters."
            (tracking-marker (plist-get info :tracking-marker))
            (start-marker (plist-get info :position))
            (http-status (plist-get info :http-status))
-           (http-msg (plist-get info :status)))
+           (http-msg (plist-get info :status))
+           response-beg response-end)
       (if (equal http-status "200")
           (progn
             ;; Finish handling response
             (with-current-buffer (marker-buffer start-marker)
-              (pulse-momentary-highlight-region (+ start-marker 2) tracking-marker)
+              (setq response-beg (+ start-marker 2)
+                    response-end (marker-position tracking-marker))
+              (pulse-momentary-highlight-region response-beg tracking-marker)
               (when gptel-mode (save-excursion (goto-char tracking-marker)
                                                (insert "\n\n" (gptel-prompt-prefix-string)))))
             (with-current-buffer gptel-buffer
@@ -214,7 +217,7 @@ PROCESS and _STATUS are process parameters."
             (gptel--update-status
              (format " Response Error: %s" http-msg) 'error))))
       (with-current-buffer gptel-buffer
-        (run-hooks 'gptel-post-response-hook)))
+        (run-hook-with-args 'gptel-post-response-functions response-beg response-end)))
     (setf (alist-get process gptel-curl--process-alist nil 'remove) nil)
     (kill-buffer proc-buf)))
 
