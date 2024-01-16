@@ -4,17 +4,18 @@
 
 GPTel is a simple Large Language Model chat client for Emacs, with support for multiple models and backends.
 
-| LLM Backend  | Supports | Requires                  |
-|--------------+----------+---------------------------|
-| ChatGPT      | ✓      | [[https://platform.openai.com/account/api-keys][API key]]                   |
-| Azure        | ✓      | Deployment and API key    |
-| Ollama       | ✓      | [[https://ollama.ai/][Ollama running locally]]    |
-| GPT4All      | ✓      | [[https://gpt4all.io/index.html][GPT4All running locally]]   |
-| Gemini       | ✓      | [[https://makersuite.google.com/app/apikey][API key]]                   |
-| Llama.cpp    | ✓      | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]] |
-| Llamafile    | ✓      | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]    |
-| Kagi FastGPT | ✓      | [[https://kagi.com/settings?p=api][API key]]                   |
-| PrivateGPT   | Planned  | -                         |
+| LLM Backend     | Supports | Requires                  |
+|-----------------+----------+---------------------------|
+| ChatGPT         | ✓      | [[https://platform.openai.com/account/api-keys][API key]]                   |
+| Azure           | ✓      | Deployment and API key    |
+| Ollama          | ✓      | [[https://ollama.ai/][Ollama running locally]]    |
+| GPT4All         | ✓      | [[https://gpt4all.io/index.html][GPT4All running locally]]   |
+| Gemini          | ✓      | [[https://makersuite.google.com/app/apikey][API key]]                   |
+| Llama.cpp       | ✓      | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]] |
+| Llamafile       | ✓      | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]    |
+| Kagi FastGPT    | ✓      | [[https://kagi.com/settings?p=api][API key]]                   |
+| Kagi Summarizer | ✓      | [[https://kagi.com/settings?p=api][API key]]                   |
+| PrivateGPT      | Planned  | -                         |
 
 *General usage*: ([[https://www.youtube.com/watch?v=bsRnh_brggM][YouTube Demo]])
 
@@ -49,7 +50,7 @@ GPTel uses Curl if available, but falls back to url-retrieve to work without ext
       - [[#ollama][Ollama]]
       - [[#gemini][Gemini]]
       - [[#llamacpp-or-llamafile][Llama.cpp or Llamafile]]
-      - [[#kagi-fastgpt][Kagi FastGPT]]
+      - [[#kagi-fastgpt--summarizer][Kagi (FastGPT & Summarizer)]]
   - [[#usage][Usage]]
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
@@ -252,27 +253,32 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 #+html: </details>
 #+html: <details><summary>
-**** Kagi FastGPT
+**** Kagi (FastGPT & Summarizer)
 #+html: </summary>
 
-*NOTE*: Kagi's FastGPT model does not support multi-turn conversations, interactions are "one-shot".  It also does not support streaming responses.
+Kagi's FastGPT model and the Universal Summarizer are both supported.  A couple of notes:
+
+1. Universal Summarizer: If there is a URL at point, the summarizer will summarize the contents of the URL.  Otherwise the context sent to the model is the same as always: the buffer text upto point, or the contents of the region if the region is active.
+
+2. Kagi models do not support multi-turn conversations, interactions are "one-shot".  They also do not support streaming responses.
 
 Register a backend with
 #+begin_src emacs-lisp
-;; :key can be a function that returns the API key
 (gptel-make-kagi
- "Kagi"                                 ;Name of your choice
- :key "YOUR_KAGI_API_KEY")
+ "Kagi" ;any name
+ :key "YOUR_KAGI_API_KEY") ;:key can be a function
 #+end_src
 These are the required parameters, refer to the documentation of =gptel-make-kagi= for more.
 
-You can pick this backend from the transient menu when using gptel (see Usage), or set this as the default value of =gptel-backend=:
+You can pick this backend and the model (fastgpt/summarizer) from the transient menu when using gptel.  Alternatively you can set this as the default value of =gptel-backend=:
 
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default gptel-model "fastgpt" ;only supported Kagi model
+(setq-default gptel-model "fastgpt"
               gptel-backend (gptel-make-kagi "Kagi" :key ...))
 #+end_src
+
+The alternatives to =fastgpt= include =summarize:cecil=, =summarize:agnes=, =summarize:daphne= and =summarize:muriel=.  The difference between the summarizer engines is [[https://help.kagi.com/kagi/api/summarizer.html#summarization-engines][documented here]].
 
 #+html: </details>
 

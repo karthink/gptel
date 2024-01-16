@@ -69,42 +69,65 @@
 
 (cl-defmethod gptel--request-data ((_backend gptel-kagi) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
-  `(,@prompts :web_search t :cache t))
+  (pcase-exhaustive gptel-model
+    ("fastgpt"
+     `(,@prompts :web_search t :cache t))
+    ((and model (guard (string-prefix-p "summarize" model)))
+     `(,@prompts :engine ,(substring model 10)))))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-kagi) &optional _max-entries)
-  (let ((prompts)
+  (let ((url (or (thing-at-point 'url)
+                 (get-text-property (point) 'shr-url)
+                 (get-text-property (point) 'image-url)))
+        ;; (filename (thing-at-point 'existing-filename)) ;no file upload support yet
         (prop (text-property-search-backward
                'gptel 'response
                (when (get-char-property (max (point-min) (1- (point)))
                                         'gptel)
                  t))))
-    (if (and (prop-match-p prop)
-             (prop-match-value prop))
-        (user-error "No user prompt found!")
-      (setq prompts (list
-                     :query
-                     (if (prop-match-p prop)
-                         (concat
-                          ;; Fake a system message by including it in the prompt
-                          gptel--system-message "\n\n"
-                          (string-trim
-                           (buffer-substring-no-properties (prop-match-beginning prop)
-                                                           (prop-match-end prop))
-                           (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                                   (regexp-quote (gptel-prompt-prefix-string)))
-                           (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                                   (regexp-quote (gptel-response-prefix-string)))))
-                       "")))
-      prompts)))
+    (if (and url (string-prefix-p "summarize" gptel-model))
+        (list :url url)
+      (if (and (prop-match-p prop)
+               (prop-match-value prop))
+          (user-error "No user prompt found!")
+        (let ((prompts
+               (string-trim
+                (buffer-substring-no-properties (prop-match-beginning prop)
+                                                (prop-match-end prop))
+                (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                        (regexp-quote (gptel-prompt-prefix-string)))
+                (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                        (regexp-quote (gptel-response-prefix-string))))))
+          (pcase-exhaustive gptel-model
+            ("fastgpt"
+             (setq prompts (list
+                            :query
+                            (if (prop-match-p prop)
+                                (concat
+                                 ;; Fake a system message by including it in the prompt
+                                 gptel--system-message "\n\n" prompts)
+                              ""))))
+            ((and model (guard (string-prefix-p "summarize" model)))
+             ;; If the entire contents of the prompt looks like a url, send the url
+             ;; Else send the text of the region
+             (setq prompts
+                   (if-let (((prop-match-p prop))
+                            (engine (substring model 10)))
+                       ;; It's a region of text
+                       (list :text prompts)
+                     ""))))
+          prompts)))))
 
 ;;;###autoload
 (cl-defun gptel-make-kagi
     (name &key stream key
           (host "kagi.com")
           (header (lambda () `(("Authorization" . ,(concat "Bot " (gptel--get-api-key))))))
-          (models '("fastgpt"))
+          (models '("fastgpt"
+                    "summarize:cecil" "summarize:agnes"
+                    "summarize:daphne" "summarize:muriel"))
           (protocol "https")
-          (endpoint "/api/v0/fastgpt"))
+          (endpoint "/api/v0/"))
   "Register a Kagi FastGPT backend for gptel with NAME.
 
 Keyword arguments:
@@ -142,9 +165,11 @@ Example:
                   :models models
                   :protocol protocol
                   :endpoint endpoint
-                  :url (if protocol
-                           (concat protocol "://" host endpoint)
-                         (concat host endpoint)))))
+                  :url
+                  (lambda ()
+                    (concat protocol "://" host endpoint
+                            (if (equal gptel-model "fastgpt")
+                                "fastgpt" "summarize"))))))
     (prog1 backend
       (setf (alist-get name gptel--known-backends
                        nil nil #'equal)
