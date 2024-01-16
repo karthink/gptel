@@ -33,6 +33,7 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/8607532/278854024-a
 - Supports conversations and multiple independent sessions.
 - Save chats as regular Markdown/Org/Text files and resume them later.
 - You can go back and edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.
+- Don't like gptel's workflow? Use it to create your own for any supported model/backend with a [[https://github.com/karthink/gptel/wiki#defining-custom-gptel-commands][simple API]].
 
 GPTel uses Curl if available, but falls back to url-retrieve to work without external dependencies.
 
@@ -56,10 +57,11 @@ GPTel uses Curl if available, but falls back to url-retrieve to work without ext
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
       - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
   - [[#faq][FAQ]]
-    - [[#i-want-the-window-to-scroll-automatically-as-the-response-is-inserted][I want the window to scroll automatically as the response is inserted]]
-    - [[#i-want-the-cursor-to-move-to-the-next-prompt-after-the-response-is-inserted][I want the cursor to move to the next prompt after the response is inserted]]
-    - [[#i-want-to-change-the-prefix-before-the-prompt-and-response][I want to change the prefix before the prompt and response]]
-    - [[#why-another-llm-client][Why another LLM client?]]
+      - [[#i-want-the-window-to-scroll-automatically-as-the-response-is-inserted][I want the window to scroll automatically as the response is inserted]]
+      - [[#i-want-the-cursor-to-move-to-the-next-prompt-after-the-response-is-inserted][I want the cursor to move to the next prompt after the response is inserted]]
+      - [[#i-want-to-change-the-prefix-before-the-prompt-and-response][I want to change the prefix before the prompt and response]]
+      - [[#doom-emacs-sending-a-query-from-the-gptel-menu-fails-because-of-a-key-conflict-with-org-mode][(Doom Emacs) Sending a query from the gptel menu fails because of a key conflict with Org mode]]
+      - [[#why-another-llm-client][Why another LLM client?]]
   - [[#additional-configuration][Additional Configuration]]
   - [[#the-gptel-api][The gptel API]]
     - [[#extensions-using-gptel][Extensions using GPTel]]
@@ -339,7 +341,9 @@ The default mode is =markdown-mode= if available, else =text-mode=.  You can set
 Saving the file will save the state of the conversation as well.  To resume the chat, open the file and turn on =gptel-mode= before editing the buffer.  
 
 ** FAQ
-*** I want the window to scroll automatically as the response is inserted
+#+html: <details><summary>
+**** I want the window to scroll automatically as the response is inserted
+#+html: </summary>
 
 To be minimally annoying, GPTel does not move the cursor by default.  Add the following to your configuration to enable auto-scrolling.
 
@@ -347,7 +351,10 @@ To be minimally annoying, GPTel does not move the cursor by default.  Add the fo
 (add-hook 'gptel-post-stream-hook 'gptel-auto-scroll)
 #+end_src
 
-*** I want the cursor to move to the next prompt after the response is inserted
+#+html: </details>
+#+html: <details><summary>
+**** I want the cursor to move to the next prompt after the response is inserted
+#+html: </summary>
 
 To be minimally annoying, GPTel does not move the cursor by default.  Add the following to your configuration to move the cursor:
 
@@ -357,16 +364,41 @@ To be minimally annoying, GPTel does not move the cursor by default.  Add the fo
 
 You can also call =gptel-end-of-response= as a command at any time.
 
-*** I want to change the prefix before the prompt and response
+
+#+html: </details>
+#+html: <details><summary>
+**** I want to change the prefix before the prompt and response
+#+html: </summary>
 
 Customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=.  You can set a different pair for each major-mode.
 
-*** Why another LLM client?
+
+#+html: </details>
+
+#+html: <details><summary>
+**** (Doom Emacs) Sending a query from the gptel menu fails because of a key conflict with Org mode 
+#+html: </summary>
+
+Doom binds ~RET~ in Org mode to =+org/dwim-at-point=, which appears to conflict with gptel's transient menu bindings for some reason.
+
+Two solutions:
+- Press ~C-m~ instead of the return key.
+- Change the send key from return to a key of your choice:
+  #+begin_src emacs-lisp
+  (transient-suffix-put 'gptel-menu (kbd "RET") :key "<f8>")
+  #+end_src
+
+#+html: </details>
+#+html: <details><summary>
+**** Why another LLM client?
+#+html: </summary>
 
 Other Emacs clients for LLMs prescribe the format of the interaction (a comint shell, org-babel blocks, etc).  I wanted:
 
 1. Something that is as free-form as possible: query the model using any text in any buffer, and redirect the response as required.  Using a dedicated =gptel= buffer just adds some visual flair to the interaction.
 2. Integration with org-mode, not using a walled-off org-babel block, but as regular text.  This way the model can generate code blocks that I can run.
+
+#+html: </details>
 
 ** Additional Configuration
 :PROPERTIES:
