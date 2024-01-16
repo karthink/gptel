@@ -889,6 +889,7 @@ See `gptel--url-get-response' for details."
       (message "Buffer is read only, displaying reply in buffer \"*ChatGPT response*\"")
       (display-buffer
        (with-current-buffer (get-buffer-create "*ChatGPT response*")
+         (visual-line-mode 1)
          (goto-char (point-max))
          (move-marker start-marker (point) (current-buffer))
          (current-buffer))
