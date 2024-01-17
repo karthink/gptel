@@ -1212,7 +1212,7 @@ elements."
 This function parses a stream of Markdown text to Org
 continuously when it is called with successive chunks of the
 text stream."
-  (letrec ((in-src-block)
+  (letrec ((in-src-block nil)           ;explicit nil to address BUG #183
            (temp-buf (generate-new-buffer-name "*gptel-temp*"))
            (start-pt (make-marker))
            (cleanup-fn
