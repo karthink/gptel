@@ -420,7 +420,9 @@ will get progressively longer!"
               (if (not resp)
                   (message "%s response error: %s" backend-name (plist-get info :status))
                 (kill-new resp)
-                (message "%s response: copied to kill-ring." backend-name)))))
+                (message "%s response: \"%s\" copied to kill-ring."
+                         backend-name
+                         (truncate-string-to-width resp 30))))))
      ((setq gptel-buffer-name
             (cl-some (lambda (s) (and (string-prefix-p "n" s)
                                  (substring s 1)))
