@@ -25,7 +25,7 @@
 ;;
 
 ;;; Code:
-(eval-when-compile (require 'cl-lib))
+(require 'cl-lib)
 (require 'gptel)
 (require 'transient)
 
@@ -256,9 +256,8 @@ Customize `gptel-directives' for task-specific prompts."
 
 (defun gptel--transient-read-variable (prompt initial-input history)
   "Read value from minibuffer and interpret the result as a Lisp object."
-  (condition-case nil
-      (read-from-minibuffer prompt initial-input read-expression-map t history)
-    ('error nil)))
+  (ignore-errors
+    (read-from-minibuffer prompt initial-input read-expression-map t history)))
 
 (transient-define-infix gptel--infix-num-messages-to-send ()
   "Number of recent messages to send with each exchange.
