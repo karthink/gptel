@@ -156,8 +156,10 @@ which see."
      (lambda () (if (derived-mode-p 'prog-mode)
                "Refactor" "Rewrite"))
      gptel-rewrite-menu)]
-   ["Send" (gptel--suffix-send)]])
-
+   ["Send" (gptel--suffix-send)]]
+  (interactive)
+  (gptel--sanitize-model)
+  (transient-setup 'gptel-menu))
 
 ;; ** Prefix for setting the system prompt.
 (defun gptel-system-prompt--setup (_)
