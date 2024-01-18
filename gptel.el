@@ -120,7 +120,7 @@
 (eval-when-compile
   (require 'subr-x)
   (require 'cl-lib))
-(require 'compat)
+(require 'compat nil t)
 (require 'url)
 (require 'json)
 (require 'map)

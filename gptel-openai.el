@@ -23,6 +23,8 @@
 
 ;;; Code:
 (require 'cl-generic)
+(eval-when-compile
+  (require 'cl-lib))
 (require 'map)
 
 (defvar gptel-model)
