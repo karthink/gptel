@@ -115,7 +115,10 @@
 
 ;;;###autoload
 (cl-defun gptel-make-openai
-    (name &key header models stream key
+    (name &key models stream key
+          (header
+           (lambda () (when-let (key (gptel--get-api-key))
+                   `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.openai.com")
           (protocol "https")
           (endpoint "/v1/chat/completions"))

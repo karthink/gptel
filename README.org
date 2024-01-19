@@ -15,7 +15,8 @@ GPTel is a simple Large Language Model chat client for Emacs, with support for m
 | Llamafile       | ✓      | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]    |
 | Kagi FastGPT    | ✓      | [[https://kagi.com/settings?p=api][API key]]                   |
 | Kagi Summarizer | ✓      | [[https://kagi.com/settings?p=api][API key]]                   |
-| PrivateGPT      | Planned  | -                         |
+| together.ai     | ✓      | [[https://api.together.xyz/settings/api-keys][API key]]                   |
+| Anyscale        | ✓      | [[https://docs.endpoints.anyscale.com/][API key]]                   |
 
 *General usage*: ([[https://www.youtube.com/watch?v=bsRnh_brggM][YouTube Demo]])
 
@@ -52,6 +53,8 @@ GPTel uses Curl if available, but falls back to url-retrieve to work without ext
       - [[#gemini][Gemini]]
       - [[#llamacpp-or-llamafile][Llama.cpp or Llamafile]]
       - [[#kagi-fastgpt--summarizer][Kagi (FastGPT & Summarizer)]]
+      - [[#togetherai][together.ai]]
+      - [[#anyscale][Anyscale]]
   - [[#usage][Usage]]
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
@@ -133,14 +136,13 @@ machine api.openai.com login apikey password TOKEN
 
 Register a backend with
 #+begin_src emacs-lisp
-(gptel-make-azure
- "Azure-1"                              ;Name, whatever you'd like
- :protocol "https"                      ;optional -- https is the default
- :host "YOUR_RESOURCE_NAME.openai.azure.com"
- :endpoint "/openai/deployments/YOUR_DEPLOYMENT_NAME/chat/completions?api-version=2023-05-15" ;or equivalent
- :stream t                              ;Enable streaming responses
- :key #'gptel-api-key
- :models '("gpt-3.5-turbo" "gpt-4"))
+(gptel-make-azure "Azure-1"             ;Name, whatever you'd like
+  :protocol "https"                     ;Optional -- https is the default
+  :host "YOUR_RESOURCE_NAME.openai.azure.com"
+  :endpoint "/openai/deployments/YOUR_DEPLOYMENT_NAME/chat/completions?api-version=2023-05-15" ;or equivalent
+  :stream t                             ;Enable streaming responses
+  :key #'gptel-api-key
+  :models '("gpt-3.5-turbo" "gpt-4"))
 #+end_src
 Refer to the documentation of =gptel-make-azure= to set more parameters.
 
@@ -148,10 +150,8 @@ You can pick this backend from the menu when using gptel. (see [[#usage][Usage]]
 
 If you want it to be the default, set it as the default value of =gptel-backend=:
 #+begin_src emacs-lisp
-(setq-default gptel-backend
-              (gptel-make-azure
-               "Azure-1"
-               ...))
+(setq-default gptel-backend (gptel-make-azure "Azure-1" ...)
+              gptel-model "gpt-3.5-turbo")
 #+end_src
 #+html: </details>
 
@@ -161,8 +161,7 @@ If you want it to be the default, set it as the default value of =gptel-backend=
 
 Register a backend with
 #+begin_src emacs-lisp
-(gptel-make-gpt4all
- "GPT4All"                              ;Name of your choosing
+(gptel-make-gpt4all "GPT4All"           ;Name of your choosing
  :protocol "http"                       
  :host "localhost:4891"                 ;Where it's running
  :models '("mistral-7b-openorca.Q4_0.gguf")) ;Available models
@@ -186,11 +185,10 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 Register a backend with
 #+begin_src emacs-lisp
-(gptel-make-ollama
- "Ollama"                               ;Any name of your choosing
- :host "localhost:11434"                ;Where it's running
- :models '("mistral:latest")            ;Installed models
- :stream t)                             ;Stream responses
+(gptel-make-ollama "Ollama"             ;Any name of your choosing
+  :host "localhost:11434"               ;Where it's running
+  :stream t                             ;Stream responses
+  :models '("mistral:latest"))          ;List of models
 #+end_src
 These are the required parameters, refer to the documentation of =gptel-make-ollama= for more.
 
@@ -211,10 +209,9 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 Register a backend with
 #+begin_src emacs-lisp
 ;; :key can be a function that returns the API key.
-(gptel-make-gemini
- "Gemini"
- :key "YOUR_GEMINI_API_KEY"
- :stream t)
+(gptel-make-gemini "Gemini"
+  :key "YOUR_GEMINI_API_KEY"
+  :stream t)
 #+end_src
 These are the required parameters, refer to the documentation of =gptel-make-gemini= for more.
 
@@ -237,18 +234,18 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 Register a backend with
 #+begin_src emacs-lisp
-(gptel-make-openai                    ;Not a typo, same API as OpenAI
- "llama-cpp"                          ;Any name
- :stream t                            ;Stream responses
- :protocol "http"
- :host "localhost:8000"               ;Llama.cpp server location, typically localhost:8080 for Llamafile
- :key nil                             ;No key needed
- :models '("test"))                   ;Any names, doesn't matter for Llama
+;; Llama.cpp offers an OpenAI compatible API
+(gptel-make-openai "llama-cpp"          ;Any name
+  :stream t                             ;Stream responses
+  :protocol "http"
+  :host "localhost:8000"                ;Llama.cpp server location
+  :models '("test"))                    ;Any names, doesn't matter for Llama
 #+end_src
 These are the required parameters, refer to the documentation of =gptel-make-openai= for more.
 
 You can pick this backend from the menu when using gptel (see [[#usage][Usage]]), or set this as the default value of =gptel-backend=:
 #+begin_src emacs-lisp
+;; OPTIONAL configuration
 (setq-default gptel-backend (gptel-make-openai "llama-cpp" ...)
               gptel-model   "test")
 #+end_src
@@ -266,9 +263,8 @@ Kagi's FastGPT model and the Universal Summarizer are both supported.  A couple 
 
 Register a backend with
 #+begin_src emacs-lisp
-(gptel-make-kagi
- "Kagi" ;any name
- :key "YOUR_KAGI_API_KEY") ;:key can be a function
+(gptel-make-kagi "Kagi"                    ;any name
+  :key "YOUR_KAGI_API_KEY")                ;can be a function that returns the key
 #+end_src
 These are the required parameters, refer to the documentation of =gptel-make-kagi= for more.
 
@@ -281,6 +277,53 @@ You can pick this backend and the model (fastgpt/summarizer) from the transient 
 #+end_src
 
 The alternatives to =fastgpt= include =summarize:cecil=, =summarize:agnes=, =summarize:daphne= and =summarize:muriel=.  The difference between the summarizer engines is [[https://help.kagi.com/kagi/api/summarizer.html#summarization-engines][documented here]].
+
+#+html: </details>
+#+html: <details><summary>
+**** together.ai
+#+html: </summary>
+
+Register a backend with
+#+begin_src emacs-lisp
+;; Together.ai offers an OpenAI compatible API
+(gptel-make-openai "TogetherAI"         ;Any name you want
+  :host "api.together.xyz"
+  :key "your-api-key"                   ;can be a function that returns the key
+  :stream t
+  :models '(;; has many more, check together.ai
+            "mistralai/Mixtral-8x7B-Instruct-v0.1"
+            "codellama/CodeLlama-13b-Instruct-hf"
+            "codellama/CodeLlama-34b-Instruct-hf"))
+#+end_src
+
+You can pick this backend from the menu when using gptel (see [[#usage][Usage]]), or set this as the default value of =gptel-backend=:
+#+begin_src emacs-lisp
+;; OPTIONAL configuration
+(setq-default gptel-backend (gptel-make-openai "TogetherAI" ...)
+              gptel-model   "mistralai/Mixtral-8x7B-Instruct-v0.1")
+#+end_src
+
+#+html: </details>
+#+html: <details><summary>
+**** Anyscale
+#+html: </summary>
+
+Register a backend with
+#+begin_src emacs-lisp
+;; Anyscale offers an OpenAI compatible API
+(gptel-make-openai "Anyscale"           ;Any name you want
+  :host "api.endpoints.anyscale.com"
+  :key "your-api-key"                   ;can be a function that returns the key
+  :models '(;; has many more, check anyscale
+            "mistralai/Mixtral-8x7B-Instruct-v0.1"))
+#+end_src
+
+You can pick this backend from the menu when using gptel (see [[#usage][Usage]]), or set this as the default value of =gptel-backend=:
+#+begin_src emacs-lisp
+;; OPTIONAL configuration
+(setq-default gptel-backend (gptel-make-openai "Anyscale" ...)
+              gptel-model   "mistralai/Mixtral-8x7B-Instruct-v0.1")
+#+end_src
 
 #+html: </details>
 

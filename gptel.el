@@ -431,10 +431,10 @@ with differing settings.")
 (defvar gptel--openai
   (gptel-make-openai
    "ChatGPT"
-   :header (lambda () `(("Authorization" . ,(concat "Bearer " (gptel--get-api-key)))))
    :key 'gptel-api-key
    :stream t
-   :models '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4" "gpt-4-1106-preview")))
+   :models '("gpt-3.5-turbo" "gpt-3.5-turbo-16k"
+             "gpt-4" "gpt-4-1106-preview")))
 
 (defcustom gptel-backend gptel--openai
   "LLM backend to use.
