@@ -138,6 +138,7 @@ Example:
   :host \"localhost:11434\"
   :models \\='(\"mistral:latest\")
   :stream t)"
+  (declare (indent 1))
   (let ((backend (gptel--make-ollama
                   :name name
                   :host host

@@ -156,6 +156,7 @@ Example:
 -------
 
 (gptel-make-kagi \"Kagi\" :key my-kagi-key)"
+  (declare (indent 1))
   stream                                ;Silence byte-compiler
   (let ((backend (gptel--make-kagi
                   :name name

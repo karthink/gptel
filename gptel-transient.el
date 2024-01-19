@@ -257,7 +257,10 @@ Customize `gptel-directives' for task-specific prompts."
 ;; ** Infixes for model parameters
 
 (defun gptel--transient-read-variable (prompt initial-input history)
-  "Read value from minibuffer and interpret the result as a Lisp object."
+  "Read value from minibuffer and interpret the result as a Lisp object.
+
+PROMPT, INITIAL-INPUT and HISTORY are as in the Transient reader
+documention."
   (ignore-errors
     (read-from-minibuffer prompt initial-input read-expression-map t history)))
 
@@ -322,7 +325,7 @@ will get progressively longer!"
   :model 'gptel-model
   :key "-m"
   :reader (lambda (prompt &rest _)
-            (let* ((backend-name 
+            (let* ((backend-name
                     (if (<= (length gptel--known-backends) 1)
                         (caar gptel--known-backends)
                       (completing-read
@@ -402,7 +405,7 @@ will get progressively longer!"
                      (list (line-beginning-position) (line-end-position))))))
           ((member "y" args)
            (unless (car-safe kill-ring)
-             (user-error "`kill-ring' is empty!  Nothing to send."))
+             (user-error "`kill-ring' is empty!  Nothing to send"))
            (if current-prefix-arg
                (read-from-kill-ring "Prompt from kill-ring: ")
              (current-kill 0))))))

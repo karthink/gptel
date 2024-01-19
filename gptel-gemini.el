@@ -135,6 +135,7 @@ alist, like:
 
 KEY (optional) is a variable whose value is the API key, or
 function that returns the key."
+  (declare (indent 1))
   (let ((backend (gptel--make-gemini
                   :name name
                   :host host

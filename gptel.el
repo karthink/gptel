@@ -297,8 +297,7 @@ is only inserted in dedicated gptel buffers before the AI's response."
   :type '(alist :key-type symbol :value-type string))
 
 (defcustom gptel-use-header-line t
-  "Whether `gptel-mode' should use header-line for status
-information.
+  "Whether `gptel-mode' should use header-line for status information.
 
 When set to nil, use the mode line for (minimal) status
 information and the echo area for messages."
@@ -806,6 +805,7 @@ streamed, as in `gptel-stream'. Do not set this if you are
 specifying a custom CALLBACK!
 
 Model parameters can be let-bound around calls to this function."
+  (declare (indent 1))
   (let* ((gptel-stream stream)
          (start-marker
           (cond
@@ -985,8 +985,7 @@ there."
         (gptel--parse-buffer gptel-backend max-entries)))))
 
 (cl-defgeneric gptel--parse-buffer (backend max-entries)
-  "Parse the current buffer backwards from point and return a list
-of prompts.
+  "Parse current buffer backwards from point and return a list of prompts.
 
 BACKEND is the LLM backend in use.
 
