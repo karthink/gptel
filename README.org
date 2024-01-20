@@ -62,13 +62,13 @@ GPTel uses Curl if available, but falls back to url-retrieve to work without ext
   - [[#faq][FAQ]]
       - [[#i-want-the-window-to-scroll-automatically-as-the-response-is-inserted][I want the window to scroll automatically as the response is inserted]]
       - [[#i-want-the-cursor-to-move-to-the-next-prompt-after-the-response-is-inserted][I want the cursor to move to the next prompt after the response is inserted]]
-      - [[#i-want-to-change-the-prefix-before-the-prompt-and-response][I want to change the prefix before the prompt and response]]
+      - [[#i-want-to-change-the-formatting-of-the-prompt-and-llm-response][I want to change the formatting of the prompt and LLM response]]
+      - [[#i-want-to-use-gptel-in-a-way-thats-not-supported-by-gptel-send-or-the-options-menu][I want to use gptel in a way that's not supported by =gptel-send= or the options menu]]
       - [[#doom-emacs-sending-a-query-from-the-gptel-menu-fails-because-of-a-key-conflict-with-org-mode][(Doom Emacs) Sending a query from the gptel menu fails because of a key conflict with Org mode]]
       - [[#why-another-llm-client][Why another LLM client?]]
   - [[#additional-configuration][Additional Configuration]]
-  - [[#the-gptel-api][The gptel API]]
-    - [[#extensions-using-gptel][Extensions using GPTel]]
   - [[#alternatives][Alternatives]]
+    - [[#extensions-using-gptel][Extensions using GPTel]]
   - [[#breaking-changes][Breaking Changes]]
   - [[#acknowledgments][Acknowledgments]]
 
@@ -108,6 +108,8 @@ In =config.el=
  :config
  (setq! gptel-api-key "your key"))
 #+end_src
+"your key" can be the API key itself, or (safer) a function that returns the key.  Setting =gptel-api-key= is optional, you will be asked for a key if it's not found.
+
 #+html: </details>
 #+html: <details><summary>
 **** Spacemacs
@@ -410,14 +412,23 @@ You can also call =gptel-end-of-response= as a command at any time.
 
 #+html: </details>
 #+html: <details><summary>
-**** I want to change the prefix before the prompt and response
+**** I want to change the formatting of the prompt and LLM response
 #+html: </summary>
 
-Customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=.  You can set a different pair for each major-mode.
+For dedicated chat buffers: customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=.  You can set a different pair for each major-mode.
 
+Anywhere in Emacs: Use =gptel-pre-response-hook= and =gptel-post-response-functions=, which see.
 
 #+html: </details>
+#+html: <details><summary>
+**** I want to use gptel in a way that's not supported by =gptel-send= or the options menu
+#+html: </summary>
 
+GPTel's default usage pattern is simple, and will stay this way: Read input in any buffer and insert the response below it.  Some custom behavior is possible with the transient menu (=C-u M-x gptel-send=).
+
+For more programmable usage, gptel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki][wiki]] for examples.
+
+#+html: </details>
 #+html: <details><summary>
 **** (Doom Emacs) Sending a query from the gptel menu fails because of a key conflict with Org mode 
 #+html: </summary>
@@ -504,19 +515,6 @@ Maybe, I'd like to experiment a bit more first.  Features added since the incept
 Features being considered or in the pipeline:
 - Fully stateless design (#17)
 
-** The gptel API
-
-GPTel's default usage pattern is simple, and will stay this way: Read input in any buffer and insert the response below it.  Some custom behavior is possible with the transient menu (=C-u M-x gptel-send=).
-
-For more programmable usage, gptel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki][wiki]] for examples.
-
-*** Extensions using GPTel
-
-These are packages that depend on GPTel to provide additional functionality
-
-- [[https://github.com/kamushadenes/gptel-extensions.el][gptel-extensions]]: Extra utility functions for GPTel.
-- [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
-
 ** Alternatives
 
 Other Emacs clients for LLMs include
@@ -525,6 +523,13 @@ Other Emacs clients for LLMs include
 - [[https://github.com/rksm/org-ai][org-ai]]: Interaction through special =#+begin_ai ... #+end_ai= Org-mode blocks.  Also supports DALL-E, querying ChatGPT with the contents of project files, and more.
 
 There are several more: [[https://github.com/CarlQLange/chatgpt-arcana.el][chatgpt-arcana]], [[https://github.com/MichaelBurge/leafy-mode][leafy-mode]], [[https://github.com/iwahbe/chat.el][chat.el]]
+
+*** Extensions using GPTel
+
+These are packages that depend on GPTel to provide additional functionality
+
+- [[https://github.com/kamushadenes/gptel-extensions.el][gptel-extensions]]: Extra utility functions for GPTel.
+- [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
 
 ** Breaking Changes
 
