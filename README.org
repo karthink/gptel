@@ -63,6 +63,7 @@ GPTel uses Curl if available, but falls back to url-retrieve to work without ext
       - [[#i-want-the-window-to-scroll-automatically-as-the-response-is-inserted][I want the window to scroll automatically as the response is inserted]]
       - [[#i-want-the-cursor-to-move-to-the-next-prompt-after-the-response-is-inserted][I want the cursor to move to the next prompt after the response is inserted]]
       - [[#i-want-to-change-the-formatting-of-the-prompt-and-llm-response][I want to change the formatting of the prompt and LLM response]]
+      - [[#i-want-the-transient-menu-options-to-be-saved-so-i-only-need-to-set-them-once][I want the transient menu options to be saved so I only need to set them once]]
       - [[#i-want-to-use-gptel-in-a-way-thats-not-supported-by-gptel-send-or-the-options-menu][I want to use gptel in a way that's not supported by =gptel-send= or the options menu]]
       - [[#doom-emacs-sending-a-query-from-the-gptel-menu-fails-because-of-a-key-conflict-with-org-mode][(Doom Emacs) Sending a query from the gptel menu fails because of a key conflict with Org mode]]
       - [[#why-another-llm-client][Why another LLM client?]]
@@ -418,6 +419,30 @@ You can also call =gptel-end-of-response= as a command at any time.
 For dedicated chat buffers: customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=.  You can set a different pair for each major-mode.
 
 Anywhere in Emacs: Use =gptel-pre-response-hook= and =gptel-post-response-functions=, which see.
+
+#+html: </details>
+#+html: <details><summary>
+**** I want the transient menu options to be saved so I only need to set them once
+#+html: </summary>
+
+Any model options you set are saved for the current buffer.  But the redirection options in the menu are set for the next query only:
+
+https://github.com/karthink/gptel/assets/8607532/2ecc6be9-aa52-4287-a739-ba06e1369ec2
+
+You can make them persistent across this Emacs session by pressing ~C-x C-s~:
+
+https://github.com/karthink/gptel/assets/8607532/b8bcb6ad-c974-41e1-9336-fdba0098a2fe
+
+(You can also cycle through presets you've saved with ~C-x p~ and ~C-x n~.)
+
+Now these will be enabled whenever you send a query from the transient menu.  If you want to use these options without invoking the transient menu, you can use a keyboard macro:
+
+#+begin_src emacs-lisp
+;; Replace with your key to invoke the transient menu:
+(keymap-global-set "<f6>" "C-u C-c <return> <return>")
+#+end_src
+
+See [[https://github.com/karthink/gptel/issues/94#issuecomment-1657093458][this comment by Tianshu Wang]] for an Elisp solution.
 
 #+html: </details>
 #+html: <details><summary>
