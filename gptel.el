@@ -755,8 +755,10 @@ RESPONSE is nil if there was no response or an error.
 
 The INFO plist has (at least) the following keys:
 :prompt       - The full prompt that was sent with the request
-:position     - marker at the point the request was sent.
-:buffer       - The buffer current when the request was sent.
+:position     - marker at the point the request was sent, unless
+                POSITION is specified.
+:buffer       - The buffer current when the request was sent,
+                unless BUFFER is specified.
 :status       - Short string describing the result of the request
 
 Example of a callback that messages the user with the response
@@ -780,12 +782,15 @@ Or, for just the response:
 If CALLBACK is omitted, the response is inserted at the point the
 request was sent.
 
-BUFFER is the buffer the request belongs to. If omitted the
-current buffer is recorded.
+BUFFER and POSITION are the buffer and position (integer or
+marker) at which the response is inserted.  If a CALLBACK is
+specified, no response is inserted and these arguments are
+ignored, but they are still available in the INFO plist passed
+to CALLBACK for you to use.
 
-POSITION is a buffer position (integer or marker). If omitted,
-the value of (point) or (region-end) is recorded, depending on
-whether the region is active.
+BUFFER defaults to the current buffer, and POSITION to the value
+of (point) or (region-end), depending on whether the region is
+active.
 
 CONTEXT is any additional data needed for the callback to run. It
 is included in the INFO argument to the callback.
