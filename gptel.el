@@ -580,7 +580,7 @@ for when gptel restores chat metadata."
                  (setq-local gptel-model model))
                (gptel--restore-backend (org-entry-get (point-min) "GPTEL_BACKEND"))
                (when-let ((system (org-entry-get (point-min) "GPTEL_SYSTEM")))
-                 (setq-local gptel--system-message system))
+                 (setq-local gptel--system-message (string-replace "\\n" "\n" system)))
                (when-let ((temp (org-entry-get (point-min) "GPTEL_TEMPERATURE")))
                  (setq-local gptel-temperature (gptel--numberize temp))))
            (error (message "Could not restore gptel state, sorry!")))))
@@ -611,7 +611,7 @@ file."
       (unless (string= (default-value 'gptel--system-message)
                        gptel--system-message)
         (org-entry-put (point-min) "GPTEL_SYSTEM"
-                       gptel--system-message))
+                       (string-replace "\n" "\\n" gptel--system-message)))
       (when gptel-max-tokens
         (org-entry-put
          (point-min) "GPTEL_MAX_TOKENS" gptel-max-tokens))
@@ -627,19 +627,20 @@ file."
                                (> attempts 0))
                       (funcall write-bounds (1- attempts)))))))
         (funcall write-bounds 6))))
-    (_ (save-excursion
-         (save-restriction
-           (add-file-local-variable 'gptel-model gptel-model)
-           (add-file-local-variable 'gptel--backend-name
-                                    (gptel-backend-name gptel-backend))
-           (unless (equal (default-value 'gptel-temperature) gptel-temperature)
-             (add-file-local-variable 'gptel-temperature gptel-temperature))
-           (unless (string= (default-value 'gptel--system-message)
-                            gptel--system-message)
-             (add-file-local-variable 'gptel--system-message gptel--system-message))
-           (when gptel-max-tokens
-             (add-file-local-variable 'gptel-max-tokens gptel-max-tokens))
-           (add-file-local-variable 'gptel--bounds (gptel--get-bounds)))))))
+    (_ (let ((print-escape-newlines t))
+         (save-excursion
+           (save-restriction
+             (add-file-local-variable 'gptel-model gptel-model)
+             (add-file-local-variable 'gptel--backend-name
+                                      (gptel-backend-name gptel-backend))
+             (unless (equal (default-value 'gptel-temperature) gptel-temperature)
+               (add-file-local-variable 'gptel-temperature gptel-temperature))
+             (unless (string= (default-value 'gptel--system-message)
+                              gptel--system-message)
+               (add-file-local-variable 'gptel--system-message gptel--system-message))
+             (when gptel-max-tokens
+               (add-file-local-variable 'gptel-max-tokens gptel-max-tokens))
+             (add-file-local-variable 'gptel--bounds (gptel--get-bounds))))))))
 
 (defun gptel--get-bounds ()
   "Return the gptel response boundaries as an alist."
