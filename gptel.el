@@ -1212,7 +1212,7 @@ elements."
                ((looking-back "\\(?:[[:word:]]\\|\s\\)\\*\\{2\\}"
                               (max (- (point) 3) (point-min)))
                 (backward-delete-char 1))))
-        ((or "_" "*")
+        ("*"
          (if (save-match-data
                (and (looking-back "\\(?:[[:space:]]\\|\s\\)\\(?:_\\|\\*\\)"
                                   (max (- (point) 2) (point-min)))
@@ -1277,7 +1277,7 @@ text stream."
                   ((looking-back "\\(?:[[:word:]]\\|\s\\)\\*\\{2\\}"
                                  (max (- (point) 3) (point-min)))
                    (backward-delete-char 1))))
-                ((and (or "_" "*") (guard (not in-src-block)))
+                ((and "*" (guard (not in-src-block)))
                  (when (save-match-data
                          (save-excursion
                            (backward-char 2)
