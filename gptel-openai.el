@@ -49,7 +49,8 @@
     (gptel-backend (:constructor gptel--make-backend)
                    (:copier gptel--copy-backend))
   name host header protocol stream
-  endpoint key models url)
+  endpoint key models url
+  client-certificate client-private-key)
 
 ;;; OpenAI (ChatGPT)
 (cl-defstruct (gptel-openai (:constructor gptel--make-openai)

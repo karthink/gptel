@@ -78,6 +78,10 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
          (add-hook 'gptel-post-response-functions cleanup-fn)
          (list "--data-binary"
                (format "@%s" temp-filename))))
+     (when-let (certificate (gptel-backend-client-certificate gptel-backend))
+       (list "--cert" certificate))
+     (when-let (key (gptel-backend-client-private-key gptel-backend))
+       (list "--key" key))
      (when (not (string-empty-p gptel-proxy))
        (list "--proxy" gptel-proxy
              "--proxy-negotiate"
@@ -265,10 +269,10 @@ See `gptel--url-get-response' for details."
               (setq tracking-marker (set-marker (make-marker) (point)))
               (set-marker-insertion-type tracking-marker t)
               (plist-put info :tracking-marker tracking-marker))
-            
+
             (when transformer
               (setq response (funcall transformer response)))
-            
+
             (add-text-properties
              0 (length response) '(gptel response rear-nonsticky t)
              response)
@@ -285,7 +289,7 @@ See `gptel--url-get-response' for details."
         (goto-char (process-mark process))
         (insert output)
         (set-marker (process-mark process) (point)))
-      
+
       ;; Find HTTP status
       (unless (plist-get proc-info :http-status)
         (save-excursion
@@ -318,7 +322,7 @@ See `gptel--url-get-response' for details."
                    gptel-pre-response-hook)
           (with-current-buffer (marker-buffer (plist-get proc-info :position))
             (run-hooks 'gptel-pre-response-hook))))
-      
+
       (when-let ((http-msg (plist-get proc-info :status))
                  (http-status (plist-get proc-info :http-status)))
         ;; Find data chunk(s) and run callback
