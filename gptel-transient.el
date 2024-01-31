@@ -583,9 +583,9 @@ This uses the prompts in the variable
         ;; TODO: make-separator-line requires Emacs 28.1+.
         ;; (insert (propertize (make-separator-line) 'rear-nonsticky t))
         (set-marker msg-start (point))
-        (insert (buffer-local-value 'gptel--system-message orig-buf))
-        (push-mark)
-        (beginning-of-line)
+        (save-excursion
+          (insert (buffer-local-value 'gptel--system-message orig-buf))
+          (push-mark nil 'nomsg))
         (activate-mark))
       (display-buffer (current-buffer)
                       `((display-buffer-below-selected)
