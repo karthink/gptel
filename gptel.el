@@ -404,7 +404,9 @@ To set the model for a chat session interactively call
           (const :tag "GPT 3.5 turbo" "gpt-3.5-turbo")
           (const :tag "GPT 3.5 turbo 16k" "gpt-3.5-turbo-16k")
           (const :tag "GPT 4" "gpt-4")
-          (const :tag "GPT 4 turbo (preview)" "gpt-4-1106-preview")))
+          (const :tag "GPT 4 turbo (preview)" "gpt-4-turbo-preview")
+          (const :tag "GPT 4 32k" "gpt-4-32k")
+          (const :tag "GPT 4 1106 (preview)" "gpt-4-1106-preview")))
 
 (defcustom gptel-temperature 1.0
   "\"Temperature\" of ChatGPT response.
@@ -433,8 +435,8 @@ with differing settings.")
    "ChatGPT"
    :key 'gptel-api-key
    :stream t
-   :models '("gpt-3.5-turbo" "gpt-3.5-turbo-16k"
-             "gpt-4" "gpt-4-1106-preview")))
+   :models '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4"
+             "gpt-4-turbo-preview" "gpt-4-32k" "gpt-4-1106-preview")))
 
 (defcustom gptel-backend gptel--openai
   "LLM backend to use.
