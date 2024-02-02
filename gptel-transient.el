@@ -78,11 +78,13 @@ which see."
                 "?"))
           ;; Fetch file
           (message "Fetching prompts...")
-          (if (url-copy-file gptel--crowdsourced-prompts-url
-                             gptel-crowdsourced-prompts-file
-                             'ok-if-already-exists)
-              (message "Fetching prompts... done.")
-            (message "Could not retrieve new prompts."))))
+          (let ((dir (file-name-directory gptel-crowdsourced-prompts-file)))
+            (unless (file-exists-p dir) (mkdir dir 'create-parents))
+            (if (url-copy-file gptel--crowdsourced-prompts-url
+                               gptel-crowdsourced-prompts-file
+                               'ok-if-already-exists)
+		(message "Fetching prompts... done.")
+              (message "Could not retrieve new prompts.")))))
       (if (not (file-readable-p gptel-crowdsourced-prompts-file))
           (progn (message "No crowdsourced prompts available")
                  (call-interactively #'gptel-system-prompt))
