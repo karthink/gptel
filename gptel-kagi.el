@@ -68,7 +68,7 @@
         (concat output references)))
 
 (cl-defmethod gptel--request-data ((_backend gptel-kagi) prompts)
-  "JSON encode PROMPTS for sending to ChatGPT."
+  "JSON encode PROMPTS for Kagi."
   (pcase-exhaustive gptel-model
     ("fastgpt"
      `(,@prompts :web_search t :cache t))

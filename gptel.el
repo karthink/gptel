@@ -3,7 +3,7 @@
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur
-;; Version: 0.6.0
+;; Version: 0.6.5
 ;; Package-Requires: ((emacs "27.1") (transient "0.4.0") (compat "29.1.4.1"))
 ;; Keywords: convenience
 ;; URL: https://github.com/karthink/gptel
@@ -30,7 +30,7 @@
 ;; gptel is a simple Large Language Model chat client, with support for multiple models/backends.
 ;;
 ;; gptel supports
-;; - The services ChatGPT, Azure, Gemini, and Kagi (FastGPT & Summarizer)
+;; - The services ChatGPT, Azure, Gemini, Anyscale, Together.ai and Kagi (FastGPT & Summarizer)
 ;; - Local models via Ollama, Llama.cpp, Llamafiles or GPT4All
 ;;
 ;;  Additionally, any LLM service (local or remote) that provides an
@@ -72,19 +72,6 @@
 ;; inserted below.  You can continue the conversation by typing below the
 ;; response.
 ;;
-;; To use this in a dedicated buffer:
-;; - M-x gptel: Start a ChatGPT session
-;; - C-u M-x gptel: Start another session or multiple independent ChatGPT sessions
-;;
-;; - In the chat session: Press `C-c RET' (`gptel-send') to send your prompt.
-;;   Use a prefix argument (`C-u C-c RET') to access a menu.  In this menu you
-;;   can set chat parameters like the system directives, active backend or
-;;   model, or choose to redirect the input or output elsewhere (such as to the
-;;   kill ring).
-;;
-;; - You can save this buffer to a file.  When opening this file, turning on
-;;   `gptel-mode' will allow resuming the conversation.
-;;
 ;; To use this in any buffer:
 ;;
 ;; - Call `gptel-send' to send the text up to the cursor.  Select a region to
@@ -96,6 +83,19 @@
 ;; - Call `gptel-send' with a prefix argument to access a menu where you can set
 ;;   your backend, model and other parameters, or to redirect the
 ;;   prompt/response.
+;;
+;; To use this in a dedicated buffer:
+;; - M-x gptel: Start a chat session
+;; - C-u M-x gptel: Start another session or multiple independent chat sessions
+;;
+;; - In the chat session: Press `C-c RET' (`gptel-send') to send your prompt.
+;;   Use a prefix argument (`C-u C-c RET') to access a menu.  In this menu you
+;;   can set chat parameters like the system directives, active backend or
+;;   model, or choose to redirect the input or output elsewhere (such as to the
+;;   kill ring).
+;;
+;; - You can save this buffer to a file.  When opening this file, turning on
+;;   `gptel-mode' will allow resuming the conversation.
 ;;
 ;; Finally, gptel offers a general purpose API for writing LLM ineractions
 ;; that suit how you work, see `gptel-request'.
@@ -129,7 +129,7 @@
 (require 'gptel-openai)
 
 (defgroup gptel nil
-  "Interact with ChatGPT from anywhere in Emacs."
+  "Interact with LLMs from anywhere in Emacs."
   :group 'hypermedia)
 
 ;; (defcustom gptel-host "api.openai.com"
@@ -161,9 +161,11 @@ key (more secure) for the active backend."
           (function :tag "Function that returns the API key")))
 
 (defcustom gptel-stream t
-  "Whether responses from ChatGPT be played back as they are received.
+  "Stream responses from the LLM as they are received.
 
-This option is ignored unless Curl is in use (see `gptel-use-curl').
+This option is ignored unless
+- the LLM backend supports streaming, and
+- Curl is in use (see `gptel-use-curl')
 
 When set to nil, Emacs waits for the full response and inserts it
 all at once.  This wait is asynchronous.
@@ -199,14 +201,14 @@ if the command-line argument size is limited by the operating system."
 
 (defcustom gptel-response-filter-functions
   '(gptel--convert-org)
-  "Abnormal hook for transforming the response from ChatGPT.
+  "Abnormal hook for transforming the response from an LLM.
 
 This is used to format the response in some way, such as filling
 paragraphs, adding annotations or recording information in the
 response like links.
 
 Each function in this hook receives two arguments, the response
-string to transform and the ChatGPT interaction buffer.  It
+string to transform and the LLM interaction buffer.  It
 should return the transformed string.
 
 NOTE: This is only used for non-streaming responses.  To
@@ -216,10 +218,12 @@ transform streaming responses, use `gptel-post-stream-hook' and
   :type 'hook)
 
 (defcustom gptel-pre-response-hook nil
-  "Hook run before inserting ChatGPT's response into the current buffer.
+  "Hook run before inserting the LLM response into the current buffer.
 
-This hook is called in the buffer from which the prompt was sent
-to ChatGPT.  Note: this hook only runs if the request succeeds."
+This hook is called in the buffer where the LLM response will be
+inserted.
+
+Note: this hook only runs if the request succeeds."
   :group 'gptel
   :type 'hook)
 
@@ -317,41 +321,16 @@ transient menu interface provided by `gptel-menu'."
   :group 'gptel
   :type 'file)
 
-;; NOTE now testing compat.
-;; This is convoluted, but it's not worth adding the `compat' dependency
-;; just for a couple of helper functions either.
-;; (cl-macrolet
-;;     ((gptel--compat
-;;       () (if (version< "28.1" emacs-version)
-;;              (macroexp-progn
-;;               `((defalias 'gptel--button-buttonize #'button-buttonize)
-;;                 (defalias 'gptel--always #'always)))
-;;            (macroexp-progn
-;;             `((defun gptel--always (&rest _)
-;;                "Always return t." t)
-;;               (defun gptel--button-buttonize (string callback)
-;;                "Make STRING into a button and return it.
-;; When clicked, CALLBACK will be called."
-;;                (propertize string
-;;                 'face 'button
-;;                 'button t
-;;                 'follow-link t
-;;                 'category t
-;;                 'button-data nil
-;;                 'keymap button-map
-;;                 'action callback)))))))
-;;   (gptel--compat))
-
 ;; Model and interaction parameters
 (defcustom gptel-directives
   '((default . "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
     (programming . "You are a large language model and a careful programmer. Provide code and only code as output without any additional text, prompt or note.")
     (writing . "You are a large language model and a writing assistant. Respond concisely.")
     (chat . "You are a large language model and a conversation partner. Respond concisely."))
-  "System prompts (directives) for ChatGPT.
+  "System prompts (directives) for the LLM.
 
 These are system instructions sent at the beginning of each
-request to ChatGPT.
+request to the LLM.
 
 Each entry in this alist maps a symbol naming the directive to
 the string that is sent.  To set the directive for a chat session
@@ -371,11 +350,7 @@ reasonable range for short answers, 400 or more for longer
 responses.
 
 To set the target token count for a chat session interactively
-call `gptel-send' with a prefix argument.
-
-If left unset, ChatGPT will target about 40% of the total token
-count of the conversation so far in each message, so messages
-will get progressively longer!"
+call `gptel-send' with a prefix argument."
   :local t
   :safe #'always
   :group 'gptel
@@ -409,7 +384,7 @@ To set the model for a chat session interactively call
           (const :tag "GPT 4 1106 (preview)" "gpt-4-1106-preview")))
 
 (defcustom gptel-temperature 1.0
-  "\"Temperature\" of ChatGPT response.
+  "\"Temperature\" of the LLM response.
 
 This is a number between 0.0 and 2.0 that controls the randomness
 of the response, with 2.0 being the most random.
@@ -676,7 +651,7 @@ file."
 (defvar-local gptel--old-header-line nil)
 ;;;###autoload
 (define-minor-mode gptel-mode
-  "Minor mode for interacting with ChatGPT."
+  "Minor mode for interacting with LLMs."
   :lighter " GPT"
   :keymap
   (let ((map (make-sparse-keymap)))
@@ -756,10 +731,10 @@ around calls to it as required.
 
 If PROMPT is
 - a string, it is used to create a full prompt suitable for
-  sending to ChatGPT.
+  sending to the LLM.
 - nil but region is active, the region contents are used.
 - nil, the current buffer's contents up to (point) are used.
-  Previous responses from ChatGPT are identified as responses.
+  Previous responses from the LLM are identified as responses.
 - A list of plists, it is used as is.
 
 Keyword arguments:
@@ -813,7 +788,7 @@ active.
 CONTEXT is any additional data needed for the callback to run. It
 is included in the INFO argument to the callback.
 
-SYSTEM is the system message (chat directive) sent to ChatGPT. If
+SYSTEM is the system message (chat directive) sent to the LLM. If
 omitted, the value of `gptel--system-message' for the current
 buffer is used.
 
@@ -898,7 +873,7 @@ waiting for the response."
     (gptel--update-status " Waiting..." 'warning)))
 
 (defun gptel--insert-response (response info)
-  "Insert RESPONSE from ChatGPT into the gptel buffer.
+  "Insert the LLM RESPONSE into the gptel buffer.
 
 INFO is a plist containing information relevant to this buffer.
 See `gptel--url-get-response' for details."
@@ -910,9 +885,9 @@ See `gptel--url-get-response' for details."
     (when (with-current-buffer gptel-buffer
             (or buffer-read-only
                 (get-char-property start-marker 'read-only)))
-      (message "Buffer is read only, displaying reply in buffer \"*ChatGPT response*\"")
+      (message "Buffer is read only, displaying reply in buffer \"*LLM response*\"")
       (display-buffer
-       (with-current-buffer (get-buffer-create "*ChatGPT response*")
+       (with-current-buffer (get-buffer-create "*LLM response*")
          (visual-line-mode 1)
          (goto-char (point-max))
          (move-marker start-marker (point) (current-buffer))
@@ -945,14 +920,14 @@ See `gptel--url-get-response' for details."
               (when gptel-mode (gptel--update-status " Ready" 'success))))
         (gptel--update-status
          (format " Response Error: %s" status-str) 'error)
-        (message "ChatGPT response error: (%s) %s"
+        (message "gptel response error: (%s) %s"
                  status-str (plist-get info :error)))
       (run-hook-with-args 'gptel-post-response-functions response-beg response-end))))
 
 (defun gptel-set-topic ()
   "Set a topic and limit this conversation to the current heading.
 
-This limits the context sent to ChatGPT to the text between the
+This limits the context sent to the LLM to the text between the
 current heading and the cursor position."
   (interactive)
   (pcase major-mode
@@ -1061,13 +1036,13 @@ hook."
 
 Currently only `org-mode' is handled.
 
-BUFFER is the interaction buffer for ChatGPT."
+BUFFER is the LLM interaction buffer."
   (pcase (buffer-local-value 'major-mode buffer)
     ('org-mode (gptel--convert-markdown->org content))
     (_ content)))
 
 (defun gptel--url-get-response (info &optional callback)
-  "Fetch response to prompt in INFO from ChatGPT.
+  "Fetch response to prompt in INFO from the LLM.
 
 INFO is a plist with the following keys:
 - :prompt (the prompt being sent)
@@ -1186,7 +1161,7 @@ If SHOOSH is true, don't issue a warning."
 
 ;;;###autoload
 (defun gptel (name &optional _ initial interactivep)
-  "Switch to or start ChatGPT session with NAME.
+  "Switch to or start a chat session with NAME.
 
 With a prefix arg, query for a (new) session name.
 

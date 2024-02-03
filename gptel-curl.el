@@ -232,8 +232,8 @@ PROCESS and _STATUS are process parameters."
                 (when-let ((error-type (plist-get error-data :type)))
                     (setq http-msg (concat "("  http-msg ") " (string-trim error-type))))))
              ((eq response 'json-read-error)
-              (message "ChatGPT error (%s): Malformed JSON in response." http-msg))
-             (t (message "ChatGPT error (%s): Could not parse HTTP response." http-msg)))))
+              (message "%s error (%s): Malformed JSON in response." backend-name http-msg))
+             (t (message "%s error (%s): Could not parse HTTP response." backend-name http-msg)))))
         (with-current-buffer gptel-buffer
           (when gptel-mode
             (gptel--update-status
@@ -244,7 +244,7 @@ PROCESS and _STATUS are process parameters."
     (kill-buffer proc-buf)))
 
 (defun gptel-curl--stream-insert-response (response info)
-  "Insert streaming RESPONSE from ChatGPT into the gptel buffer.
+  "Insert streaming RESPONSE from an LLM into the gptel buffer.
 
 INFO is a mutable plist containing information relevant to this buffer.
 See `gptel--url-get-response' for details."
@@ -303,9 +303,9 @@ See `gptel--url-get-response' for details."
         (when (with-current-buffer (plist-get proc-info :buffer)
                 (or buffer-read-only
                     (get-char-property (plist-get proc-info :position) 'read-only)))
-          (message "Buffer is read only, displaying reply in buffer \"*ChatGPT response*\"")
+          (message "Buffer is read only, displaying reply in buffer \"*LLM response*\"")
           (display-buffer
-           (with-current-buffer (get-buffer-create "*ChatGPT response*")
+           (with-current-buffer (get-buffer-create "*LLM response*")
              (visual-line-mode 1)
              (goto-char (point-max))
              (move-marker (plist-get proc-info :position) (point) (current-buffer))

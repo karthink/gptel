@@ -50,14 +50,14 @@ Or is it the other way around?"
 
 (defvar gptel--crowdsourced-prompts-url
   "https://github.com/f/awesome-chatgpt-prompts/raw/main/prompts.csv"
-  "URL for crowdsourced ChatGPT system prompts.")
+  "URL for crowdsourced LLM system prompts.")
 
 (defvar gptel--crowdsourced-prompts
   (make-hash-table :test #'equal)
-  "Crowdsourced system prompts for ChatGPT.")
+  "Crowdsourced LLM system prompts.")
 
 (defun gptel--crowdsourced-prompts ()
-  "Acquire and read crowdsourced system prompts for ChatGPT.
+  "Acquire and read crowdsourced LLM system prompts.
 
 These are stored in the variable `gptel--crowdsourced-prompts',
 which see."
@@ -110,7 +110,7 @@ which see."
 ;; BUG: The `:incompatible' spec doesn't work if there's a `:description' below it.
 ;;;###autoload (autoload 'gptel-menu "gptel-transient" nil t)
 (transient-define-prefix gptel-menu ()
-  "Change parameters of prompt to send ChatGPT."
+  "Change parameters of prompt to send to the LLM."
   ;; :incompatible '(("-m" "-n" "-k" "-e"))
   [:description
    (lambda () (format "Directive:  %s"
@@ -212,7 +212,7 @@ which see."
                     :transient 'transient--do-exit))))))
 
 (transient-define-prefix gptel-system-prompt ()
-  "Change the system prompt to send ChatGPT.
+  "Change the LLM system prompt.
 
 The \"system\" prompt establishes directives for the chat
 session. Some examples of system prompts are:
@@ -233,7 +233,7 @@ Customize `gptel-directives' for task-specific prompts."
 ;; ** Prefix for rewriting/refactoring
 
 (transient-define-prefix gptel-rewrite-menu ()
-  "Rewrite or refactor text region using ChatGPT."
+  "Rewrite or refactor text region using an LLM."
   [:description
    (lambda ()
      (format "Directive:  %s"
@@ -285,11 +285,7 @@ include."
 
 This is roughly the number of words in the response. 100-300 is a
 reasonable range for short answers, 400 or more for longer
-responses.
-
-If left unset, ChatGPT will target about 40% of the total token
-count of the conversation so far in each message, so messages
-will get progressively longer!"
+responses."
   :description "Response length (tokens)"
   :class 'transient-lisp-variable
   :variable 'gptel-max-tokens
@@ -557,7 +553,7 @@ This uses the prompts in the variable
     (message "No prompts available.")))
 
 (transient-define-suffix gptel--suffix-system-message ()
-  "Set directives sent to ChatGPT."
+  "Edit LLM directives."
   :transient 'transient--do-exit
   :description "Set custom directives"
   :key "h"

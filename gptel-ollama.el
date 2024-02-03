@@ -64,7 +64,7 @@ Ollama models.")
   (map-elt response :response))
 
 (cl-defmethod gptel--request-data ((_backend gptel-ollama) prompts)
-  "JSON encode PROMPTS for sending to ChatGPT."
+  "JSON encode PROMPTS for Ollama."
   (let ((prompts-plist
          `(:model ,gptel-model
            ,@prompts
