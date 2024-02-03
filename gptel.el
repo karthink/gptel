@@ -469,10 +469,25 @@ README for examples."
 (defvar-local gptel--num-messages-to-send nil)
 (put 'gptel--num-messages-to-send 'safe-local-variable #'always)
 
-(defvar gptel--debug nil
-  "Enable printing debug messages.
+(defcustom gptel-log-level nil
+  "Logging level for gptel.
 
-Also shows the response buffer when making requests.")
+This is one of nil or the symbols info and debug:
+
+nil: Don't log responses
+info: Log request and response bodies
+debug: Log request/response bodies, headers and all other
+       connection settings.
+
+When non-nil, information is logged to `gptel--log-buffer-name',
+which see."
+  :group 'gptel
+  :type '(choice
+          (const :tag "No logging" nil)
+          (const :tag "Limited" info)
+          (const :tag "Full" debug)))
+(make-obsolete-variable
+ 'gptel--debug 'gptel-log-level "0.6.5")
 
 (defun gptel-api-key-from-auth-source (&optional host user)
   "Lookup api key in the auth source.
@@ -1007,6 +1022,22 @@ BACKEND is the LLM backend in use.
 
 PROMPTS is the plist of previous user queries and LLM responses.")
 
+(defconst gptel--log-buffer-name "*gptel-log*"
+  "Log buffer for gptel.")
+
+(defun gptel--log (data &optional type no-json)
+  "Log DATA to `gptel--log-buffer-name'.
+
+TYPE is a label for data being logged.  DATA is assumed to be
+Valid JSON unless NO-JSON is t."
+  (with-current-buffer (get-buffer-create gptel--log-buffer-name)
+    (let ((p (goto-char (point-max))))
+      (unless (bobp) (insert "\n"))
+      (insert (format "{\"gptel\": \"%s\", " (or type "none"))
+              (format-time-string "\"timestamp\": \"%Y-%m-%d %H:%M:%S\"}\n")
+              data)
+      (unless no-json (ignore-errors (json-pretty-print p (point)))))))
+
 ;; TODO: Use `run-hook-wrapped' with an accumulator instead to handle
 ;; buffer-local hooks, etc.
 (defun gptel--transform-response (content-str buffer)
@@ -1059,6 +1090,10 @@ the response is inserted into the current buffer after point."
           (json-encode (gptel--request-data
                         gptel-backend (plist-get info :prompt)))
           'utf-8)))
+    (when gptel-log-level               ;logging
+      (when (eq gptel-log-level 'debug)
+        (gptel--log (json-encode url-request-extra-headers) "request headers"))
+      (gptel--log url-request-data "request body"))
     (url-retrieve (let ((backend-url (gptel-backend-url gptel-backend)))
                     (if (functionp backend-url)
                         (funcall backend-url) backend-url))
@@ -1082,6 +1117,8 @@ RESPONSE is the parsed JSON of the response, as a plist.
 PROC-INFO is a plist with process information and other context.
 See `gptel-curl--get-response' for its contents.")
 
+(defvar url-http-end-of-headers)
+(defvar url-http-response-status)
 (defun gptel--url-parse-response (backend response-buffer)
   "Parse response from BACKEND in RESPONSE-BUFFER."
   (when (buffer-live-p response-buffer)
@@ -1089,10 +1126,18 @@ See `gptel-curl--get-response' for its contents.")
       (with-current-buffer response-buffer
         (clone-buffer "*gptel-error*" 'show)))
     (with-current-buffer response-buffer
+      (when gptel-log-level             ;logging
+        (save-excursion
+          (goto-char url-http-end-of-headers)
+          (when (eq gptel-log-level 'debug)
+            (gptel--log (json-encode (buffer-substring-no-properties (point-min) (point)))
+                        "response headers"))
+          (gptel--log (buffer-substring-no-properties (point) (point-max))
+                      "response body")))
       (if-let* ((http-msg (string-trim (buffer-substring (line-beginning-position)
                                                          (line-end-position))))
                 (json-object-type 'plist)
-                (response (progn (forward-paragraph)
+                (response (progn (goto-char url-http-end-of-headers)
                                  (let ((json-str (decode-coding-string
                                                   (buffer-substring-no-properties (point) (point-max))
                                                   'utf-8)))
@@ -1100,7 +1145,7 @@ See `gptel-curl--get-response' for its contents.")
                                        (json-read-from-string json-str)
                                      (json-readtable-error 'json-read-error))))))
           (cond
-           ((string-match-p "200 OK" http-msg)
+           ((or (= url-http-response-status 200) (string-match-p "200 OK" http-msg))
             (list (string-trim (gptel--parse-response backend response
                                              '(:buffer response-buffer)))
                    http-msg))

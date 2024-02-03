@@ -60,6 +60,10 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
                   (when-let ((header (gptel-backend-header gptel-backend)))
                     (if (functionp header)
                         (funcall header) header)))))
+    (when gptel-log-level
+      (when (eq gptel-log-level 'debug)
+        (gptel--log (json-encode headers) "request headers"))
+      (gptel--log data "request body"))
     (append
      gptel-curl--common-args
      (list (format "-w(%s . %%{size_header})" token))
@@ -102,8 +106,9 @@ the response is inserted into the current buffer after point."
          (stream (and gptel-stream (gptel-backend-stream gptel-backend)))
          (process (apply #'start-process "gptel-curl"
                          (generate-new-buffer "*gptel-curl*") "curl" args)))
-    (when gptel--debug
-      (message "%S" args))
+    (when (eq gptel-log-level 'debug)
+      (gptel--log (json-encode (cons "curl" args))
+                  "request Curl command"))
     (with-current-buffer (process-buffer process)
       (set-process-query-on-exit-flag process nil)
       (setf (alist-get process gptel-curl--process-alist)
@@ -139,6 +144,25 @@ the response is inserted into the current buffer after point."
                  (set-process-filter process #'gptel-curl--stream-filter))
         (set-process-sentinel process #'gptel-curl--sentinel)))))
 
+(defun gptel-curl--log-response (proc-buf proc-info)
+  "Parse response buffer PROC-BUF and log response.
+
+PROC-INFO is the plist containing process metadata."
+  (with-current-buffer proc-buf
+    (save-excursion
+      (goto-char (point-min))
+      (when (re-search-forward "?\n?\n" nil t)
+        (when (eq gptel-log-level 'debug)
+          (gptel--log (json-encode-string
+                       (buffer-substring-no-properties
+                        (point-min) (1- (point))))
+                      "response headers"))
+        (let ((p (point)))
+          (when (search-forward (plist-get proc-info :token) nil t)
+            (goto-char (1- (match-beginning 0)))
+            (gptel--log (buffer-substring-no-properties p (point))
+                        "response body")))))))
+
 (defun gptel-abort (buf)
   "Stop any active gptel process associated with buffer BUF."
   (interactive (list (current-buffer)))
@@ -166,9 +190,6 @@ the response is inserted into the current buffer after point."
 
 PROCESS and _STATUS are process parameters."
   (let ((proc-buf (process-buffer process)))
-    (when gptel--debug
-      (with-current-buffer proc-buf
-        (clone-buffer "*gptel-error*" 'show)))
     (let* ((info (alist-get process gptel-curl--process-alist))
            (gptel-buffer (plist-get info :buffer))
            (backend-name
@@ -179,6 +200,7 @@ PROCESS and _STATUS are process parameters."
            (http-status (plist-get info :http-status))
            (http-msg (plist-get info :status))
            response-beg response-end)
+      (when gptel-log-level (gptel-curl--log-response proc-buf info)) ;logging
       (if (equal http-status "200")
           (progn
             ;; Finish handling response
@@ -330,6 +352,7 @@ PROCESS and _STATUS are process parameters."
     (when-let* (((eq (process-status process) 'exit))
                 (proc-info (alist-get process gptel-curl--process-alist))
                 (proc-callback (plist-get proc-info :callback)))
+      (when gptel-log-level (gptel-curl--log-response proc-buf proc-info)) ;logging
       (pcase-let ((`(,response ,http-msg ,error)
                    (with-current-buffer proc-buf
                      (gptel-curl--parse-response proc-info))))
