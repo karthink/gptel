@@ -66,6 +66,7 @@ GPTel uses Curl if available, but falls back to url-retrieve to work without ext
       - [[#i-want-the-transient-menu-options-to-be-saved-so-i-only-need-to-set-them-once][I want the transient menu options to be saved so I only need to set them once]]
       - [[#i-want-to-use-gptel-in-a-way-thats-not-supported-by-gptel-send-or-the-options-menu][I want to use gptel in a way that's not supported by =gptel-send= or the options menu]]
       - [[#doom-emacs-sending-a-query-from-the-gptel-menu-fails-because-of-a-key-conflict-with-org-mode][(Doom Emacs) Sending a query from the gptel menu fails because of a key conflict with Org mode]]
+      - [[#chatgpt-i-get-the-error-http2-429-you-exceeded-your-current-quota][(ChatGPT) I get the error "(HTTP/2 429) You exceeded your current quota"]]
       - [[#why-another-llm-client][Why another LLM client?]]
   - [[#additional-configuration][Additional Configuration]]
   - [[#alternatives][Alternatives]]
@@ -466,6 +467,17 @@ Two solutions:
   #+begin_src emacs-lisp
   (transient-suffix-put 'gptel-menu (kbd "RET") :key "<f8>")
   #+end_src
+
+#+html: </details>
+#+html: <details><summary>
+**** (ChatGPT) I get the error "(HTTP/2 429) You exceeded your current quota"
+#+html:</summary>
+
+#+begin_quote
+(HTTP/2 429) You exceeded your current quota, please check your plan and billing details.
+#+end_quote
+
+Using the ChatGPT (or any OpenAI) API requires [[https://platform.openai.com/account/billing/overview][adding credit to your account]].
 
 #+html: </details>
 #+html: <details><summary>
