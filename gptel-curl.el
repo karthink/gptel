@@ -346,9 +346,6 @@ See `gptel-curl--get-response' for its contents.")
 
 PROCESS and _STATUS are process parameters."
   (let ((proc-buf (process-buffer process)))
-    (when gptel--debug
-      (with-current-buffer proc-buf
-        (clone-buffer "*gptel-error*" 'show)))
     (when-let* (((eq (process-status process) 'exit))
                 (proc-info (alist-get process gptel-curl--process-alist))
                 (proc-callback (plist-get proc-info :callback)))

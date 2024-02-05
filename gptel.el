@@ -1134,9 +1134,6 @@ See `gptel-curl--get-response' for its contents.")
 (defun gptel--url-parse-response (backend response-buffer)
   "Parse response from BACKEND in RESPONSE-BUFFER."
   (when (buffer-live-p response-buffer)
-    (when gptel--debug
-      (with-current-buffer response-buffer
-        (clone-buffer "*gptel-error*" 'show)))
     (with-current-buffer response-buffer
       (when gptel-log-level             ;logging
         (save-excursion
