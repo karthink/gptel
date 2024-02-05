@@ -1352,5 +1352,116 @@ text stream."
             (prog1 (buffer-substring (point) (point-max))
                    (set-marker start-pt (point-max)))))))))
 
+
+;; Response tweaking commands
+
+(defun gptel--attach-response-history (history &optional buf)
+  "Attach HISTORY to the next gptel response in buffer BUF.
+
+HISTORY is a list of strings typically containing text replaced
+by gptel.  BUF is the current buffer if not specified.
+
+This is used to maintain variants of prompts or responses to diff
+against if required."
+  (with-current-buffer (or buf (current-buffer))
+    (letrec ((gptel--attach-after
+              (lambda (b e)
+                (put-text-property b e 'gptel-history
+                                   (append (ensure-list history)
+                                           (get-char-property (1- e) 'gptel-history)))
+                (remove-hook 'gptel-post-response-functions
+                             gptel--attach-after 'local))))
+      (add-hook 'gptel-post-response-functions gptel--attach-after
+                nil 'local))))
+
+(defun gptel--ediff (&optional arg bounds-func)
+  "Ediff response at point against previous gptel responses.
+
+If prefix ARG is non-nil, select the previous response to ediff
+against interactively.
+
+If specified, use BOUNDS-FUNC to compute the bounds of the
+response at point.  This can be used to include additional
+context for the ediff session."
+  (interactive "P")
+  (when (gptel--at-response-history-p)
+    (pcase-let* ((`(,beg . ,end) (funcall (or bounds-func #'gptel--get-bounds)))
+                 (prev-response
+                  (if arg
+                      (completing-read "Choose response variant to diff against: "
+                                       (get-char-property (point) 'gptel-history)
+                                       nil t)
+                    (car-safe (get-char-property (point) 'gptel-history))))
+                 (buffer-mode major-mode)
+                 (bufname (buffer-name))
+                 (`(,new-buf ,new-beg ,new-end)
+                  (with-current-buffer
+                      (get-buffer-create (concat bufname "-PREVIOUS-*"))
+                    (let ((inhibit-read-only t))
+                      (erase-buffer)
+                      (delay-mode-hooks (funcall buffer-mode))
+                      (insert prev-response)
+                      (goto-char (point-min))
+                      (list (current-buffer) (point-min) (point-max))))))
+      (unless prev-response (user-error "gptel response is additive: no changes to ediff"))
+      (require 'ediff)
+      (letrec ((cwc (current-window-configuration))
+               (gptel--ediff-restore
+                (lambda ()
+                  (when (window-configuration-p cwc)
+                    (set-window-configuration cwc))
+                  (kill-buffer (get-buffer (concat bufname "-PREVIOUS-*")))
+                  (kill-buffer (get-buffer (concat bufname "-CURRENT-*")))
+                  (remove-hook 'ediff-quit-hook gptel--ediff-restore))))
+        (add-hook 'ediff-quit-hook gptel--ediff-restore)
+        (apply
+         #'ediff-regions-internal
+         (get-buffer (ediff-make-cloned-buffer (current-buffer) "-CURRENT-*"))
+         beg end new-buf new-beg new-end
+         nil
+         (list 'ediff-regions-wordwise 'word-wise nil)
+         ;; (if (transient-arg-value "-w" args)
+         ;;     (list 'ediff-regions-wordwise 'word-wise nil)
+         ;;   (list 'ediff-regions-linewise nil nil))
+         )))))
+
+(defun gptel--mark-response ()
+  "Mark gptel response at point, if any."
+  (interactive)
+  (unless (gptel--in-response-p) (user-error "No gptel response at point"))
+  (pcase-let* ((`(,beg . ,end) (gptel--get-bounds)))
+    (goto-char beg) (push-mark) (goto-char end) (activate-mark)))
+
+(defun gptel--previous-variant (&optional arg)
+  "Switch to previous gptel-response at this point, if it exists."
+  (interactive "p")
+  (pcase-let* ((`(,beg . ,end) (gptel--get-bounds))
+               (history (get-char-property (point) 'gptel-history))
+               (alt-response (car-safe history))
+               (offset))
+    (unless (and history alt-response)
+      (user-error "No variant responses available"))
+    (if (> arg 0)
+        (setq history (append (cdr history)
+                              (list (buffer-substring-no-properties beg end))))
+      (setq
+       alt-response (car (last history))
+       history (cons (buffer-substring-no-properties beg end)
+                     (nbutlast history))))
+    (add-text-properties
+             0 (length alt-response)
+             `(gptel response rear-nonsticky t gptel-history ,history)
+             alt-response)
+    (setq offset (min (- (point) beg) (1- (length alt-response))))
+    (delete-region beg end)
+    (insert alt-response)
+    (goto-char (+ beg offset))
+    (pulse-momentary-highlight-region beg (+ beg (length alt-response)))))
+
+(defun gptel--next-variant (&optional arg)
+  "Switch to next gptel-response at this point, if it exists."
+  (interactive "p")
+  (gptel--previous-variant (- arg)))
+
 (provide 'gptel)
 ;;; gptel.el ends here

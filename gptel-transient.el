@@ -126,11 +126,12 @@ which see."
     (gptel--infix-max-tokens)
     (gptel--infix-num-messages-to-send)
     (gptel--infix-temperature)]
-   ["Prompt:"
-    ("p" "From minibuffer instead" "p")
-    ("y" "From kill-ring instead" "y")
-    ("i" "Replace/Delete prompt" "i")
-    "Response to:"
+   ["Prompt from"
+    ("p" "Minibuffer instead" "p")
+    ("y" "Kill-ring instead" "y")
+    ""
+    ("i" "Replace/Delete prompt" "i")]
+    ["Response to"
     ("m" "Minibuffer instead" "m")
     ("g" "gptel session" "g"
      :class transient-option
@@ -151,7 +152,10 @@ which see."
      :reader
      (lambda (prompt _ _history)
        (read-buffer prompt (buffer-name (other-buffer)) nil)))
-    ("k" "Kill-ring" "k")]
+    ("k" "Kill-ring" "k")]]
+  [["Send"
+    (gptel--suffix-send)
+    ("M-RET" "Regenerate" gptel--regenerate :if gptel--in-response-p)]
    [:description gptel--refactor-or-rewrite
     :if use-region-p
     ("r"
@@ -161,7 +165,16 @@ which see."
      (lambda () (if (derived-mode-p 'prog-mode)
                "Refactor" "Rewrite"))
      gptel-rewrite-menu)]
-   ["Send" (gptel--suffix-send)]]
+   ["Tweak Response" :if gptel--in-response-p :pad-keys t
+    ("SPC" "Mark" gptel--mark-response)
+    ("P" "Previous variant" gptel--previous-variant
+     :if gptel--at-response-history-p
+     :transient t)
+    ("N" "Next variant" gptel--previous-variant
+     :if gptel--at-response-history-p
+     :transient t)
+    ("E" "Ediff previous" gptel--ediff
+     :if gptel--at-response-history-p)]]
   (interactive)
   (gptel--sanitize-model)
   (transient-setup 'gptel-menu))
@@ -510,6 +523,10 @@ responses."
                     t))
                  (point))))
             (end (if (use-region-p) (region-end) (point))))
+        (unless output-to-other-buffer-p
+          ;; store the killed text in gptel-history
+          (gptel--attach-response-history
+           (list (buffer-substring-no-properties beg end))))
         (kill-region beg end)))
 
     (gptel-request
@@ -526,6 +543,30 @@ responses."
        buffer '((display-buffer-reuse-window
                  display-buffer-pop-up-window)
                 (reusable-frames . visible))))))
+
+;; ** Suffix to regenerate response
+
+(defun gptel--regenerate ()
+  "Regenerate gptel response at point."
+  (interactive)
+  (when (gptel--in-response-p)
+    (pcase-let* ((`(,beg . ,end) (gptel--get-bounds))
+                 (history (get-char-property (point) 'gptel-history))
+                 (prev-responses (cons (buffer-substring-no-properties beg end)
+                                       history)))
+      (when gptel-mode                  ;Remove prefix/suffix
+        (save-excursion
+          (goto-char beg)
+          (when (looking-back (concat "\n+" (regexp-quote (gptel-response-prefix-string)))
+                              (point-min) 'greedy)
+            (setq beg (match-beginning 0)))
+          (goto-char end)
+          (when (looking-at
+                 (concat "\n+" (regexp-quote (gptel-prompt-prefix-string))))
+            (setq end (match-end 0)))))
+      (delete-region beg end)
+      (gptel--attach-response-history prev-responses)
+      (call-interactively #'gptel--suffix-send))))
 
 ;; ** Set system message
 (defun gptel--read-crowdsourced-prompt ()
