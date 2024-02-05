@@ -32,7 +32,9 @@
 (declare-function ediff-regions-internal "ediff")
 (declare-function ediff-make-cloned-buffer "ediff-utils")
 
+
 ;; * Helper functions
+
 (defun gptel--refactor-or-rewrite ()
   "Rewrite should be refactored into refactor.
 
@@ -103,6 +105,7 @@ which see."
             (forward-line 1)))))
     gptel--crowdsourced-prompts))
 
+
 ;; * Transient Prefixes
 
 (define-obsolete-function-alias 'gptel-send-menu 'gptel-menu "0.3.2")
@@ -254,6 +257,7 @@ Customize `gptel-directives' for task-specific prompts."
     (setq gptel--rewrite-message (gptel--rewrite-message)))
   (transient-setup 'gptel-rewrite-menu))
 
+
 ;; * Transient Infixes
 
 ;; ** Infixes for model parameters
@@ -375,6 +379,7 @@ responses."
             (read-string
              prompt (gptel--rewrite-message) history)))
 
+
 ;; * Transient Suffixes
 
 ;; ** Suffix to send prompt

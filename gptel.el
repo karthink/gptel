@@ -128,6 +128,9 @@
 (require 'cl-generic)
 (require 'gptel-openai)
 
+
+;; User options
+
 (defgroup gptel nil
   "Interact with LLMs from anywhere in Emacs."
   :group 'hypermedia)
@@ -464,6 +467,11 @@ which see."
 (make-obsolete-variable
  'gptel--debug 'gptel-log-level "0.6.5")
 
+(defvar-local gptel--old-header-line nil)
+
+
+;; Utility functions
+
 (defun gptel-api-key-from-auth-source (&optional host user)
   "Lookup api key in the auth source.
 By default, the LLM host for the active backend is used as HOST,
@@ -539,6 +547,61 @@ Note: Changing this variable does not affect gptel\\='s behavior
 in any way.")
 (put 'gptel--backend-name 'safe-local-variable #'always)
 
+(defun gptel--get-buffer-bounds ()
+  "Return the gptel response boundaries in the buffer as an alist."
+  (save-excursion
+    (save-restriction
+      (widen)
+      (goto-char (point-max))
+      (let ((prop) (bounds))
+        (while (setq prop (text-property-search-backward
+                           'gptel 'response t))
+          (push (cons (prop-match-beginning prop)
+                      (prop-match-end prop))
+                bounds))
+        bounds))))
+
+(defun gptel--get-bounds ()
+  "Return the gptel response boundaries around point."
+  (let (prop)
+    (save-excursion
+      (when (text-property-search-backward
+             'gptel 'response t)
+        (when (setq prop (text-property-search-forward
+                          'gptel 'response t))
+          (cons (prop-match-beginning prop)
+                      (prop-match-end prop)))))))
+
+(defun gptel--in-response-p (&optional pt)
+  "Check if position PT is inside a gptel response."
+  (get-char-property (or pt (point)) 'gptel))
+
+(defun gptel--at-response-history-p (&optional pt)
+  "Check if gptel response at position PT has variants."
+  (get-char-property (or pt (point)) 'gptel-history))
+
+
+;; Logging
+
+(defconst gptel--log-buffer-name "*gptel-log*"
+  "Log buffer for gptel.")
+
+(defun gptel--log (data &optional type no-json)
+  "Log DATA to `gptel--log-buffer-name'.
+
+TYPE is a label for data being logged.  DATA is assumed to be
+Valid JSON unless NO-JSON is t."
+  (with-current-buffer (get-buffer-create gptel--log-buffer-name)
+    (let ((p (goto-char (point-max))))
+      (unless (bobp) (insert "\n"))
+      (insert (format "{\"gptel\": \"%s\", " (or type "none"))
+              (format-time-string "\"timestamp\": \"%Y-%m-%d %H:%M:%S\"}\n")
+              data)
+      (unless no-json (ignore-errors (json-pretty-print p (point)))))))
+
+
+;; Saving and restoring state
+
 (defun gptel--restore-backend (name)
   "Activate gptel backend with NAME in current buffer.
 
@@ -610,11 +673,11 @@ file."
       ;; Save response boundaries
       (letrec ((write-bounds
                 (lambda (attempts)
-                  (let* ((bounds (gptel--get-bounds))
+                  (let* ((bounds (gptel--get-buffer-bounds))
                          (offset (caar bounds))
                          (offset-marker (set-marker (make-marker) offset)))
                     (org-entry-put (point-min) "GPTEL_BOUNDS"
-                                   (prin1-to-string (gptel--get-bounds)))
+                                   (prin1-to-string (gptel--get-buffer-bounds)))
                     (when (and (not (= (marker-position offset-marker) offset))
                                (> attempts 0))
                       (funcall write-bounds (1- attempts)))))))
@@ -632,23 +695,11 @@ file."
                (add-file-local-variable 'gptel--system-message gptel--system-message))
              (when gptel-max-tokens
                (add-file-local-variable 'gptel-max-tokens gptel-max-tokens))
-             (add-file-local-variable 'gptel--bounds (gptel--get-bounds))))))))
+             (add-file-local-variable 'gptel--bounds (gptel--get-buffer-bounds))))))))
 
-(defun gptel--get-bounds ()
-  "Return the gptel response boundaries as an alist."
-  (save-excursion
-    (save-restriction
-      (widen)
-      (goto-char (point-max))
-      (let ((prop) (bounds))
-        (while (setq prop (text-property-search-backward
-                           'gptel 'response t))
-          (push (cons (prop-match-beginning prop)
-                      (prop-match-end prop))
-                bounds))
-        bounds))))
+
+;; Minor mode and UI
 
-(defvar-local gptel--old-header-line nil)
 ;;;###autoload
 (define-minor-mode gptel-mode
   "Minor mode for interacting with LLMs."
@@ -717,6 +768,8 @@ file."
         (message (propertize msg 'face face))))
     (force-mode-line-update)))
 
+
+;; Send queries, handle responses
 (cl-defun gptel-request
     (&optional prompt &key callback
                (buffer (current-buffer))
@@ -996,22 +1049,6 @@ contexbt.")
 BACKEND is the LLM backend in use.
 
 PROMPTS is the plist of previous user queries and LLM responses.")
-
-(defconst gptel--log-buffer-name "*gptel-log*"
-  "Log buffer for gptel.")
-
-(defun gptel--log (data &optional type no-json)
-  "Log DATA to `gptel--log-buffer-name'.
-
-TYPE is a label for data being logged.  DATA is assumed to be
-Valid JSON unless NO-JSON is t."
-  (with-current-buffer (get-buffer-create gptel--log-buffer-name)
-    (let ((p (goto-char (point-max))))
-      (unless (bobp) (insert "\n"))
-      (insert (format "{\"gptel\": \"%s\", " (or type "none"))
-              (format-time-string "\"timestamp\": \"%Y-%m-%d %H:%M:%S\"}\n")
-              data)
-      (unless no-json (ignore-errors (json-pretty-print p (point)))))))
 
 ;; TODO: Use `run-hook-wrapped' with an accumulator instead to handle
 ;; buffer-local hooks, etc.
