@@ -95,10 +95,23 @@
                                 :properties (list
                                              :term (list
                                                     :type "string"
-                                                    :description "term to say")
-                                             :unit (list
-                                                    :type "string"))
-                                :required ["describe"])))))
+                                                    :description "term to say"))
+                                :required ["term"])))
+       (list
+        :type "function"
+        :function (list
+                   :name "create-file"
+                   :description "Create a new file"
+                   :parameters (list
+                                :type "object"
+                                :properties (list
+                                             :filename (list
+                                                        :type "string"
+                                                        :description "local path to file including file extension")
+                                             :contents (list
+                                                        :type "string"
+                                                        :description "file contents")))
+                   :required ["filename" "contents"]))))
 
 (cl-defmethod gptel--request-data ((_backend gptel-openai) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
