@@ -33,6 +33,7 @@
 (defvar gptel-backend)
 (defvar gptel-temperature)
 (defvar gptel-max-tokens)
+(defvar gptel-callable-functions)
 (defvar gptel--system-message)
 (defvar gptel--known-backends)
 (defvar json-object-type)
