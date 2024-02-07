@@ -45,7 +45,7 @@
       :callback (and stream #'gptel-complete--stream-insert-response)
       :position (point-marker))))
 
-(defvar-keymap gptel-complete--map
+(defvar-keymap gptel-complete-map
   :doc "Keymap for actions on gptel completions."
   "C-c C-g" #'gptel-abort
   "C-c =" #'gptel-complete-ediff
@@ -77,7 +77,7 @@
       (setq ov (make-overlay (1- (point)) (point) nil t t)))
     (overlay-put ov 'gptel-overlay t)
     (overlay-put ov 'mouse-face 'highlight)
-    (overlay-put ov 'keymap gptel-complete--map)
+    (overlay-put ov 'keymap gptel-complete-map)
     (overlay-put ov 'help-echo
                  (concat
                   "\\[gptel-complete-regenerate]: Regenerate, \\[gptel-complete-ediff]: Ediff, "
