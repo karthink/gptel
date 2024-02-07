@@ -386,6 +386,9 @@ To set the model for a chat session interactively call
           (const :tag "GPT 4 32k" "gpt-4-32k")
           (const :tag "GPT 4 1106 (preview)" "gpt-4-1106-preview")))
 
+(defcustom gptel-callable-functions nil
+  "Vector defining callable functions according to JSON Schema")
+
 (defcustom gptel-temperature 1.0
   "\"Temperature\" of the LLM response.
 
