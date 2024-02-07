@@ -265,8 +265,8 @@ to the LLM, and after a text insertion."
   :type 'hook)
 
 (defcustom gptel-default-mode (if (fboundp 'markdown-mode)
-                                  'markdown-mode
-                                'text-mode)
+                               'markdown-mode
+                             'text-mode)
   "The default major mode for dedicated chat buffers.
 
 If `markdown-mode' is available, it is used.  Otherwise gptel
@@ -358,7 +358,7 @@ call `gptel-send' with a prefix argument."
   :safe #'always
   :group 'gptel
   :type '(choice (integer :tag "Specify Token count")
-          (const :tag "Default" nil)))
+                 (const :tag "Default" nil)))
 
 (defcustom gptel-model "gpt-3.5-turbo"
   "GPT Model for chat.
@@ -386,9 +386,6 @@ To set the model for a chat session interactively call
           (const :tag "GPT 4 32k" "gpt-4-32k")
           (const :tag "GPT 4 1106 (preview)" "gpt-4-1106-preview")))
 
-(defcustom gptel-callable-functions nil
-  "Vector defining callable functions according to JSON Schema")
-
 (defcustom gptel-temperature 1.0
   "\"Temperature\" of the LLM response.
 
@@ -413,11 +410,11 @@ with differing settings.")
 
 (defvar gptel--openai
   (gptel-make-openai
-      "ChatGPT"
-    :key 'gptel-api-key
-    :stream t
-    :models '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4"
-              "gpt-4-turbo-preview" "gpt-4-32k" "gpt-4-1106-preview")))
+   "ChatGPT"
+   :key 'gptel-api-key
+   :stream t
+   :models '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4"
+             "gpt-4-turbo-preview" "gpt-4-32k" "gpt-4-1106-preview")))
 
 (defcustom gptel-backend gptel--openai
   "LLM backend to use.
@@ -442,7 +439,7 @@ README for examples."
   :type `(choice
           (const :tag "ChatGPT" ,gptel--openai)
           (restricted-sexp :match-alternatives (gptel-backend-p 'nil)
-                           :tag "Other backend")))
+           :tag "Other backend")))
 
 (defvar-local gptel--bounds nil)
 (put 'gptel--bounds 'safe-local-variable #'always)
@@ -485,7 +482,7 @@ and \"apikey\" as USER."
                    :host (or host (gptel-backend-host gptel-backend))
                    :user (or user "apikey")
                    :require '(:secret)))
-             :secret)))
+                              :secret)))
       (if (functionp secret)
           (encode-coding-string (funcall secret) 'utf-8)
         secret)
@@ -573,7 +570,7 @@ in any way.")
         (when (setq prop (text-property-search-forward
                           'gptel 'response t))
           (cons (prop-match-beginning prop)
-                (prop-match-end prop)))))))
+                      (prop-match-end prop)))))))
 
 (defun gptel--in-response-p (&optional pt)
   "Check if position PT is inside a gptel response."
@@ -644,7 +641,7 @@ for when gptel restores chat metadata."
            (error (message "Could not restore gptel state, sorry!")))))
       (_ (when gptel--bounds
            (mapc (pcase-lambda (`(,beg . ,end))
-                   (put-text-property beg end 'gptel 'response))
+                         (put-text-property beg end 'gptel 'response))
                  gptel--bounds)
            (message "gptel chat restored."))
          (gptel--restore-backend gptel--backend-name)))))
@@ -719,37 +716,37 @@ file."
         (add-hook 'before-save-hook #'gptel--save-state nil t)
         (gptel--restore-state)
         (if gptel-use-header-line
-            (setq gptel--old-header-line header-line-format
-                  header-line-format
-                  (list '(:eval (concat (propertize " " 'display '(space :align-to 0))
-                                        (format "%s" (gptel-backend-name gptel-backend))))
-                        (propertize " Ready" 'face 'success)
-                        '(:eval
-                          (let* ((l1 (length gptel-model))
-                                 (num-exchanges
-                                  (if gptel--num-messages-to-send
-                                      (format "[Send: %s exchanges]" gptel--num-messages-to-send)
-                                    "[Send: buffer]"))
-                                 (l2 (length num-exchanges)))
-                            (concat
-                             (propertize
-                              " " 'display `(space :align-to ,(max 1 (- (window-width) (+ 2 l1 l2)))))
-                             (propertize
-                              (buttonize num-exchanges
-                                         (lambda (&rest _) (gptel-menu)))
-                              'mouse-face 'highlight
-                              'help-echo
-                              "Number of past exchanges to include with each request")
-                             " "
-                             (propertize
-                              (buttonize (concat "[" gptel-model "]")
-                                         (lambda (&rest _) (gptel-menu)))
-                              'mouse-face 'highlight
-                              'help-echo "GPT model in use"))))))
+          (setq gptel--old-header-line header-line-format
+                header-line-format
+                (list '(:eval (concat (propertize " " 'display '(space :align-to 0))
+                               (format "%s" (gptel-backend-name gptel-backend))))
+                      (propertize " Ready" 'face 'success)
+                      '(:eval
+                        (let* ((l1 (length gptel-model))
+                               (num-exchanges
+                                (if gptel--num-messages-to-send
+                                    (format "[Send: %s exchanges]" gptel--num-messages-to-send)
+                                  "[Send: buffer]"))
+                               (l2 (length num-exchanges)))
+                         (concat
+                          (propertize
+                           " " 'display `(space :align-to ,(max 1 (- (window-width) (+ 2 l1 l2)))))
+                          (propertize
+                           (buttonize num-exchanges
+                            (lambda (&rest _) (gptel-menu)))
+                           'mouse-face 'highlight
+                           'help-echo
+                           "Number of past exchanges to include with each request")
+                          " "
+                          (propertize
+                           (buttonize (concat "[" gptel-model "]")
+                            (lambda (&rest _) (gptel-menu)))
+                           'mouse-face 'highlight
+                           'help-echo "GPT model in use"))))))
           (setq mode-line-process
                 '(:eval (concat " "
-                                (buttonize gptel-model
-                                           (lambda (&rest _) (gptel-menu))))))))
+                         (buttonize gptel-model
+                            (lambda (&rest _) (gptel-menu))))))))
     (if gptel-use-header-line
         (setq header-line-format gptel--old-header-line
               gptel--old-header-line nil)
@@ -760,14 +757,14 @@ file."
   (when gptel-mode
     (if gptel-use-header-line
         (and (consp header-line-format)
-             (setf (nth 1 header-line-format)
-                   (propertize msg 'face face)))
+           (setf (nth 1 header-line-format)
+                 (propertize msg 'face face)))
       (if (member msg '(" Typing..." " Waiting..."))
           (setq mode-line-process (propertize msg 'face face))
         (setq mode-line-process
               '(:eval (concat " "
-                              (buttonize gptel-model
-                                         (lambda (&rest _) (gptel-menu))))))
+                       (buttonize gptel-model
+                            (lambda (&rest _) (gptel-menu))))))
         (message (propertize msg 'face face))))
     (force-mode-line-update)))
 
@@ -912,20 +909,20 @@ waiting for the response."
   (interactive "P")
   (if (and arg (require 'gptel-transient nil t))
       (call-interactively #'gptel-menu)
-    (message "Querying %s..." (gptel-backend-name gptel-backend))
-    (gptel--sanitize-model)
-    (let* ((response-pt
-            (if (use-region-p)
-                (set-marker (make-marker) (region-end))
-              (gptel--at-word-end (point-marker))))
-           (gptel-buffer (current-buffer))
-           (full-prompt (gptel--create-prompt response-pt)))
-      (funcall
-       (if gptel-use-curl
-           #'gptel-curl-get-response #'gptel--url-get-response)
-       (list :prompt full-prompt
-             :buffer gptel-buffer
-             :position response-pt)))
+  (message "Querying %s..." (gptel-backend-name gptel-backend))
+  (gptel--sanitize-model)
+  (let* ((response-pt
+          (if (use-region-p)
+              (set-marker (make-marker) (region-end))
+            (gptel--at-word-end (point-marker))))
+         (gptel-buffer (current-buffer))
+         (full-prompt (gptel--create-prompt response-pt)))
+    (funcall
+     (if gptel-use-curl
+         #'gptel-curl-get-response #'gptel--url-get-response)
+     (list :prompt full-prompt
+           :buffer gptel-buffer
+           :position response-pt)))
     (gptel--update-status " Waiting..." 'warning)))
 
 (defun gptel--insert-response (response info)
@@ -956,7 +953,7 @@ See `gptel--url-get-response' for details."
       (if response
           (progn
             (setq response (gptel--transform-response
-                            response gptel-buffer))
+                               response gptel-buffer))
             (save-excursion
               (add-text-properties
                0 (length response) '(gptel response rear-nonsticky t)
@@ -1008,7 +1005,7 @@ current heading and the cursor position."
   (pcase major-mode
     ('org-mode
      (when (org-entry-get (point) "GPTEL_TOPIC" 'inherit)
-       (marker-position org-entry-property-inherited-from)))
+         (marker-position org-entry-property-inherited-from)))
     ('markdown-mode nil)))
 
 (defun gptel--create-prompt (&optional prompt-end)
@@ -1100,11 +1097,11 @@ the response is inserted into the current buffer after point."
                   (when-let ((header (gptel-backend-header gptel-backend)))
                     (if (functionp header)
                         (funcall header) header))))
-         (url-request-data
-          (encode-coding-string
-           (json-encode (gptel--request-data
-                         gptel-backend (plist-get info :prompt)))
-           'utf-8)))
+        (url-request-data
+         (encode-coding-string
+          (json-encode (gptel--request-data
+                        gptel-backend (plist-get info :prompt)))
+          'utf-8)))
     (when gptel-log-level               ;logging
       (when (eq gptel-log-level 'debug)
         (gptel--log (json-encode url-request-extra-headers) "request headers"))
@@ -1159,8 +1156,8 @@ See `gptel-curl--get-response' for its contents.")
           (cond
            ((or (= url-http-response-status 200) (string-match-p "200 OK" http-msg))
             (list (string-trim (gptel--parse-response backend response
-                                                      '(:buffer response-buffer)))
-                  http-msg))
+                                             '(:buffer response-buffer)))
+                   http-msg))
            ((plist-get response :error)
             (let* ((error-data (plist-get response :error))
                    (error-msg (plist-get error-data :message))
@@ -1350,7 +1347,7 @@ text stream."
           (if noop-p
               (buffer-substring (point) start-pt)
             (prog1 (buffer-substring (point) (point-max))
-              (set-marker start-pt (point-max)))))))))
+                   (set-marker start-pt (point-max)))))))))
 
 
 ;; Response tweaking commands
@@ -1449,9 +1446,9 @@ context for the ediff session."
        history (cons (buffer-substring-no-properties beg end)
                      (nbutlast history))))
     (add-text-properties
-     0 (length alt-response)
-     `(gptel response rear-nonsticky t gptel-history ,history)
-     alt-response)
+             0 (length alt-response)
+             `(gptel response rear-nonsticky t gptel-history ,history)
+             alt-response)
     (setq offset (min (- (point) beg) (1- (length alt-response))))
     (delete-region beg end)
     (insert alt-response)
