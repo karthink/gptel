@@ -84,9 +84,8 @@
 (cl-defmethod gptel--request-data ((_backend gptel-openai) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
   (let ((prompts-plist
-         `(:model ,gptel-model
+         `(:model gptel-model
            :messages [,@prompts]
-           ;; :response_format (:type "json_object")
            :stream ,(or (and gptel-stream gptel-use-curl
                              (gptel-backend-stream gptel-backend))
                         :json-false))))
