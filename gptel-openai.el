@@ -73,56 +73,73 @@
     (apply #'concat (nreverse content-strs))))
 
 (cl-defmethod gptel--parse-response ((_backend gptel-openai) response _info)
-  (map-nested-elt response '(:choices 0 :message :content)))
+  ;;  (map-nested-elt response '(:choices 0 :message :content)))
 
-(cl-defmethod gptel--request-data ((_backend gptel-openai) prompts)
-  "JSON encode PROMPTS for sending to ChatGPT."
-  (let ((prompts-plist
-         `(:model ,gptel-model
-           :messages [,@prompts]
-           :stream ,(or (and gptel-stream gptel-use-curl
-                         (gptel-backend-stream gptel-backend))
-                     :json-false))))
-    (when gptel-temperature
-      (plist-put prompts-plist :temperature gptel-temperature))
-    (when gptel-max-tokens
-      (plist-put prompts-plist :max_tokens gptel-max-tokens))
-    prompts-plist))
+  (cl-defmethod gptel--parse-response ((_backend gptel-openai) response _info)
+    (let* ((choices-path '(:choices 0 :message))
+           (tool-calls (map-nested-elt response (append choices-path '(:tool_calls))))
+           (content (map-nested-elt response (append choices-path '(:content)))))
+      (if tool-calls
+          (prin1-to-string tool-calls)
+        content)))
 
-(cl-defmethod gptel--parse-buffer ((_backend gptel-openai) &optional max-entries)
-  (let ((prompts) (prop))
-    (while (and
-            (or (not max-entries) (>= max-entries 0))
-            (setq prop (text-property-search-backward
-                        'gptel 'response
-                        (when (get-char-property (max (point-min) (1- (point)))
-                                                 'gptel)
-                          t))))
-      (push (list :role (if (prop-match-value prop) "assistant" "user")
-                  :content
-                  (string-trim
-                   (buffer-substring-no-properties (prop-match-beginning prop)
-                                                   (prop-match-end prop))
-                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                           (regexp-quote (gptel-prompt-prefix-string)))
-                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                           (regexp-quote (gptel-response-prefix-string)))))
-            prompts)
-      (and max-entries (cl-decf max-entries)))
-    (cons (list :role "system"
-                :content gptel--system-message)
-          prompts)))
+  (cl-defmethod gptel--request-data ((_backend gptel-openai) prompts)
+    "JSON encode PROMPTS for sending to ChatGPT."
+    (let ((prompts-plist
+           `(:model ,gptel-model
+             :messages [,@prompts]
+             ;; :response_format (:type "json_object")
+             :tools ,(vector (list :type "function"
+                                   :function (list :name "moosay"
+                                                   :description "Have a cow say something"
+                                                   :parameters (list :type "object"
+                                                                     :properties (list :term (list :type "string"
+                                                                                                   :description "term to describe")
+                                                                                       :unit (list :type "string"))
+                                                                     :required ["describe"]))))
+             :stream ,(or (and gptel-stream gptel-use-curl
+                               (gptel-backend-stream gptel-backend))
+                          :json-false))))
+      (when gptel-temperature
+        (plist-put prompts-plist :temperature gptel-temperature))
+      (when gptel-max-tokens
+        (plist-put prompts-plist :max_tokens gptel-max-tokens))
+      prompts-plist))
+
+  (cl-defmethod gptel--parse-buffer ((_backend gptel-openai) &optional max-entries)
+    (let ((prompts) (prop))
+      (while (and
+              (or (not max-entries) (>= max-entries 0))
+              (setq prop (text-property-search-backward
+                          'gptel 'response
+                          (when (get-char-property (max (point-min) (1- (point)))
+                                                   'gptel)
+                            t))))
+        (push (list :role (if (prop-match-value prop) "assistant" "user")
+                    :content
+                    (string-trim
+                     (buffer-substring-no-properties (prop-match-beginning prop)
+                                                     (prop-match-end prop))
+                     (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                             (regexp-quote (gptel-prompt-prefix-string)))
+                     (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                             (regexp-quote (gptel-response-prefix-string)))))
+              prompts)
+        (and max-entries (cl-decf max-entries)))
+      (cons (list :role "system"
+                  :content gptel--system-message)
+            prompts)))
 
 ;;;###autoload
-(cl-defun gptel-make-openai
-    (name &key models stream key
-          (header
-           (lambda () (when-let (key (gptel--get-api-key))
-                   `(("Authorization" . ,(concat "Bearer " key))))))
-          (host "api.openai.com")
-          (protocol "https")
-          (endpoint "/v1/chat/completions"))
-  "Register an OpenAI API-compatible backend for gptel with NAME.
+  (cl-defun gptel-make-openai
+      (name &key models stream key
+            (header
+             (lambda () (when-let (key (gptel--get-api-key))
+                          `(("Authorization" . ,(concat "Bearer " key))))))
+            (host "api.openai.com")
+            (protocol "https")
+            (endpoint "/v1/chat/completions"))
+    "Register an OpenAI API-compatible backend for gptel with NAME.
 
 Keyword arguments:
 
