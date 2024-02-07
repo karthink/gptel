@@ -72,46 +72,14 @@
        (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
-;; (cl-defmethod gptel--parse-response ((_backend gptel-openai) response _info)
-;;  (map-nested-elt response '(:choices 0 :message :content)))
-
 (cl-defmethod gptel--parse-response ((_backend gptel-openai) response _info)
+  ;; If the reply specifies a function call, parse and return it instead of the message
   (let* ((choices-path '(:choices 0 :message))
          (tool-calls (map-nested-elt response (append choices-path '(:tool_calls))))
          (content (map-nested-elt response (append choices-path '(:content)))))
     (if tool-calls
         (prin1-to-string tool-calls)
       content)))
-
-(setq gptel-callable-functions
-      (vector
-       (list
-        :type "function"
-        :function (list
-                   :name "cowsay"
-                   :description "Have a cow say something"
-                   :parameters (list
-                                :type "object"
-                                :properties (list
-                                             :term (list
-                                                    :type "string"
-                                                    :description "term to say"))
-                                :required ["term"])))
-       (list
-        :type "function"
-        :function (list
-                   :name "create-file"
-                   :description "Create a new file"
-                   :parameters (list
-                                :type "object"
-                                :properties (list
-                                             :filename (list
-                                                        :type "string"
-                                                        :description "local path to file including file extension")
-                                             :contents (list
-                                                        :type "string"
-                                                        :description "file contents")))
-                   :required ["filename" "contents"]))))
 
 (cl-defmethod gptel--request-data ((_backend gptel-openai) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
