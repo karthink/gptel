@@ -162,33 +162,33 @@ alist, like:
 
 KEY (optional) is a variable whose value is the API key, or
 function that returns the key."
-  (declare (indent 1))
-  (let ((backend (gptel--make-openai
-                  :name name
-                  :host host
-                  :header header
-                  :key key
-                  :models models
-                  :protocol protocol
-                  :endpoint endpoint
-                  :stream stream
-                  :url (if protocol
-                           (concat protocol "://" host endpoint)
-                         (concat host endpoint)))))
-    (prog1 backend
-      (setf (alist-get name gptel--known-backends
-                       nil nil #'equal)
-                  backend))))
+    (declare (indent 1))
+    (let ((backend (gptel--make-openai
+                    :name name
+                    :host host
+                    :header header
+                    :key key
+                    :models models
+                    :protocol protocol
+                    :endpoint endpoint
+                    :stream stream
+                    :url (if protocol
+                             (concat protocol "://" host endpoint)
+                           (concat host endpoint)))))
+      (prog1 backend
+        (setf (alist-get name gptel--known-backends
+                         nil nil #'equal)
+              backend))))
 
 ;;; Azure
 ;;;###autoload
-(cl-defun gptel-make-azure
-    (name &key host
-          (protocol "https")
-          (header (lambda () `(("api-key" . ,(gptel--get-api-key)))))
-          (key 'gptel-api-key)
-          models stream endpoint)
-  "Register an Azure backend for gptel with NAME.
+  (cl-defun gptel-make-azure
+      (name &key host
+            (protocol "https")
+            (header (lambda () `(("api-key" . ,(gptel--get-api-key)))))
+            (key 'gptel-api-key)
+            models stream endpoint)
+    "Register an Azure backend for gptel with NAME.
 
 Keyword arguments:
 
@@ -222,28 +222,28 @@ Example:
  \"/openai/deployments/DEPLOYMENT_NAME/completions?api-version=2023-05-15\"
  :stream t
  :models \\='(\"gpt-3.5-turbo\" \"gpt-4\"))"
-  (declare (indent 1))
-  (let ((backend (gptel--make-openai
-                  :name name
-                  :host host
-                  :header header
-                  :key key
-                  :models models
-                  :protocol protocol
-                  :endpoint endpoint
-                  :stream stream
-                  :url (if protocol
-                           (concat protocol "://" host endpoint)
-                         (concat host endpoint)))))
-    (prog1 backend
-      (setf (alist-get name gptel--known-backends
-                       nil nil #'equal)
-            backend))))
+    (declare (indent 1))
+    (let ((backend (gptel--make-openai
+                    :name name
+                    :host host
+                    :header header
+                    :key key
+                    :models models
+                    :protocol protocol
+                    :endpoint endpoint
+                    :stream stream
+                    :url (if protocol
+                             (concat protocol "://" host endpoint)
+                           (concat host endpoint)))))
+      (prog1 backend
+        (setf (alist-get name gptel--known-backends
+                         nil nil #'equal)
+              backend))))
 
-;; GPT4All
+  ;; GPT4All
 ;;;###autoload
-(defalias 'gptel-make-gpt4all 'gptel-make-openai
-  "Register a GPT4All backend for gptel with NAME.
+  (defalias 'gptel-make-gpt4all 'gptel-make-openai
+    "Register a GPT4All backend for gptel with NAME.
 
 Keyword arguments:
 
@@ -277,5 +277,5 @@ Example:
  :host \"localhost:4891\"
  :models \\='(\"mistral-7b-openorca.Q4_0.gguf\"))")
 
-(provide 'gptel-openai)
+  (provide 'gptel-openai)
 ;;; gptel-backends.el ends here
