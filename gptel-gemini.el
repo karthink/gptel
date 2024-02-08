@@ -60,7 +60,15 @@
 (cl-defmethod gptel--request-data ((_backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
   (let ((prompts-plist
-         `(:contents [,@prompts]))
+         `(:contents [,@prompts]
+           :safetySettings [(:category "HARM_CATEGORY_HARASSMENT"
+                             :threshold "BLOCK_NONE")
+                            (:category "HARM_CATEGORY_SEXUALLY_EXPLICIT"
+                             :threshold "BLOCK_NONE")
+                            (:category "HARM_CATEGORY_DANGEROUS_CONTENT"
+                             :threshold "BLOCK_NONE")
+                            (:category "HARM_CATEGORY_HATE_SPEECH"
+                             :threshold "BLOCK_NONE")]))
         params)
     (when gptel-temperature
       (setq params
@@ -103,7 +111,7 @@
 
 ;;;###autoload
 (cl-defun gptel-make-gemini
-    (name &key header key stream
+    (name &key header key (stream nil)
           (host "generativelanguage.googleapis.com")
           (protocol "https")
           (models '("gemini-pro"))
@@ -146,12 +154,17 @@ function that returns the key."
                   :stream stream
                   :key key
                   :url
-                  (lambda ()
-                    (concat protocol "://" host endpoint
-                            (if gptel-stream
-                                "streamGenerateContent"
-                              "generateContent")
-                            "?key=" (gptel--get-api-key))))))
+                  (if stream
+                      (lambda ()
+                        (concat protocol "://" host endpoint
+                                (if gptel-stream
+                                    "streamGenerateContent"
+                                  "generateContent")
+                                "?key=" (gptel--get-api-key)))
+                    (lambda ()
+                      (concat protocol "://" host endpoint
+                              "generateContent" "?key="
+                              (gptel--get-api-key)))))))
     (prog1 backend
       (setf (alist-get name gptel--known-backends
                        nil nil #'equal)
