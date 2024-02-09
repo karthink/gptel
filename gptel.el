@@ -116,6 +116,8 @@
 (declare-function org-open-line "org")
 (declare-function org-at-heading-p "org")
 (declare-function org-get-heading "org")
+(declare-function ediff-make-cloned-buffer "ediff-util")
+(declare-function ediff-regions-internal "ediff")
 
 (eval-when-compile
   (require 'subr-x)
@@ -414,7 +416,8 @@ with differing settings.")
    :key 'gptel-api-key
    :stream t
    :models '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4"
-             "gpt-4-turbo-preview" "gpt-4-32k" "gpt-4-1106-preview")))
+             "gpt-4-turbo-preview" "gpt-4-32k" "gpt-4-1106-preview"
+             "gpt-4-0125-preview")))
 
 (defcustom gptel-backend gptel--openai
   "LLM backend to use.
