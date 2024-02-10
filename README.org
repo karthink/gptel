@@ -553,14 +553,15 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-temperature= | Randomness in response text, 0 to 2.                    |
 |-------------------+---------------------------------------------------------|
 
-|-----------------------------+----------------------------------------|
-| *Chat UI options*             |                                        |
-|-----------------------------+----------------------------------------|
-| =gptel-default-mode=          | Major mode for dedicated chat buffers. |
-| =gptel-prompt-prefix-alist=   | Text inserted before queries.          |
-| =gptel-response-prefix-alist= | Text inserted before responses.        |
-| =gptel-use-header-line= | Display status messages in header-line (default) or minibuffer      |
-|-----------------------------+----------------------------------------|
+|-----------------------------+----------------------------------------------------------------|
+| *Chat UI options*             |                                                                |
+|-----------------------------+----------------------------------------------------------------|
+| =gptel-default-mode=          | Major mode for dedicated chat buffers.                         |
+| =gptel-prompt-prefix-alist=   | Text inserted before queries.                                  |
+| =gptel-response-prefix-alist= | Text inserted before responses.                                |
+| =gptel-use-header-line=       | Display status messages in header-line (default) or minibuffer |
+| =gptel-display-buffer-action= | Placement of the gptel chat buffer.                            |
+|-----------------------------+----------------------------------------------------------------|
 
 ** COMMENT Will you add feature X?
 

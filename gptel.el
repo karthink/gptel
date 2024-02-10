@@ -313,6 +313,26 @@ information and the echo area for messages."
   :type 'boolean
   :group 'gptel)
 
+(defcustom gptel-display-buffer-action '(pop-to-buffer)
+  "The action used to display gptel chat buffers.
+
+The gptel buffer is displayed in a window using
+
+  (display-buffer BUFFER gptel-display-buffer-action)
+
+The value of this option has the form (FUNCTION . ALIST),
+where FUNCTION is a function or a list of functions.  Each such
+function should accept two arguments: a buffer to display and an
+alist of the same form as ALIST.  See info node `(elisp)Choosing
+Window' for details."
+  :group 'gptel
+  :type '(choice
+          (const :tag "Use display-buffer defaults" nil)
+          (const :tag "Display in selected window" (pop-to-buffer-same-window))
+          (cons :tag "Specify display-buffer action"
+           (choice function (repeat :tag "Functions" function))
+           alist)))
+
 (defcustom gptel-crowdsourced-prompts-file
   (let ((cache-dir (or (getenv "XDG_CACHE_HOME")
                        (getenv "XDG_DATA_HOME")
@@ -1242,7 +1262,7 @@ INTERACTIVEP is t when gptel is called interactively."
     (skip-chars-backward "\t\r\n")
     (if (bobp) (insert (or initial (gptel-prompt-prefix-string))))
     (when interactivep
-      (pop-to-buffer (current-buffer))
+      (display-buffer (current-buffer) gptel-display-buffer-action)
       (message "Send your query with %s!"
                (substitute-command-keys "\\[gptel-send]")))
     (current-buffer)))
