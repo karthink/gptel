@@ -66,6 +66,7 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
       (gptel--log data "request body"))
     (append
      gptel-curl--common-args
+     (gptel-backend-curl-args gptel-backend)
      (list (format "-w(%s . %%{size_header})" token))
      (if (length< data gptel-curl-file-size-threshold)
          (list (format "-d%s" data))

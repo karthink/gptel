@@ -120,7 +120,7 @@
 
 ;;;###autoload
 (cl-defun gptel-make-kagi
-    (name &key stream key
+    (name &key curl-args stream key
           (host "kagi.com")
           (header (lambda () `(("Authorization" . ,(concat "Bot " (gptel--get-api-key))))))
           (models '("fastgpt"
@@ -131,6 +131,8 @@
   "Register a Kagi FastGPT backend for gptel with NAME.
 
 Keyword arguments:
+
+CURL-ARGS (optional) is a list of additional Curl arguments.
 
 HOST is the Kagi host (with port), defaults to \"kagi.com\".
 
@@ -159,6 +161,7 @@ Example:
   (declare (indent 1))
   stream                                ;Silence byte-compiler
   (let ((backend (gptel--make-kagi
+                  :curl-args curl-args
                   :name name
                   :host host
                   :header header

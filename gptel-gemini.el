@@ -111,7 +111,7 @@
 
 ;;;###autoload
 (cl-defun gptel-make-gemini
-    (name &key header key (stream nil)
+    (name &key curl-args header key (stream nil)
           (host "generativelanguage.googleapis.com")
           (protocol "https")
           (models '("gemini-pro"))
@@ -120,6 +120,8 @@
   "Register a Gemini backend for gptel with NAME.
 
 Keyword arguments:
+
+CURL-ARGS (optional) is a list of additional Curl arguments.
 
 HOST (optional) is the API host, defaults to
 \"generativelanguage.googleapis.com\".
@@ -145,6 +147,7 @@ KEY (optional) is a variable whose value is the API key, or
 function that returns the key."
   (declare (indent 1))
   (let ((backend (gptel--make-gemini
+                  :curl-args curl-args
                   :name name
                   :host host
                   :header header
