@@ -101,13 +101,15 @@ Ollama models.")
 
 ;;;###autoload
 (cl-defun gptel-make-ollama
-    (name &key header key models stream
+    (name &key curl-args header key models stream
           (host "localhost:11434")
           (protocol "http")
           (endpoint "/api/generate"))
   "Register an Ollama backend for gptel with NAME.
 
 Keyword arguments:
+
+CURL-ARGS (optional) is a list of additional Curl arguments.
 
 HOST is where Ollama runs (with port), defaults to localhost:11434
 
@@ -140,6 +142,7 @@ Example:
   :stream t)"
   (declare (indent 1))
   (let ((backend (gptel--make-ollama
+                  :curl-args curl-args
                   :name name
                   :host host
                   :header header
