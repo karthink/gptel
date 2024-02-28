@@ -185,22 +185,18 @@ which see."
   (transient-parse-suffixes
    'gptel-system-prompt
    (cl-loop for (type . prompt) in gptel-directives
-       with taken
+       ;; Avoid clashes with the custom directive key
+       with unused-keys = (delete ?h (number-sequence ?a ?z))
        with width = (window-width)
        for name = (symbol-name type)
-       for key =
-       (let ((idx 0) pos)
-         (while (or (not pos) (member pos taken))
-           (setq pos (substring name idx (1+ idx)))
-           (cl-incf idx))
-         (push pos taken)
-         pos)
+       for key = (seq-find (lambda (k) (member k unused-keys)) name (seq-first unused-keys))
+       do (setq unused-keys (delete key unused-keys))
        ;; The explicit declaration ":transient transient--do-return" here
        ;; appears to be required for Transient v0.5 and up.  Without it, these
        ;; are treated as suffixes when invoking `gptel-system-prompt' directly,
        ;; and infixes when going through `gptel-menu'.
        ;; TODO: Raise an issue with Transient.
-       collect (list (key-description key)
+       collect (list (key-description (list key))
                      (concat (capitalize name) " "
                              (propertize " " 'display '(space :align-to 20))
                              (propertize
