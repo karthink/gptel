@@ -1097,19 +1097,19 @@ If PROMPT-END (a marker) is provided, end the prompt contents
 there."
   (save-excursion
     (save-restriction
-      (cond
-       ((use-region-p)
-        ;; Narrow to region
-        (narrow-to-region (region-beginning) (region-end))
-        (goto-char (point-max)))
-       ((when-let ((topic-start (gptel--get-topic-start)))
-          ;; Narrow to topic
-          (narrow-to-region topic-start (or prompt-end (point-max)))
-          (goto-char (point-max))))
-       (t (goto-char (or prompt-end (point-max)))))
       (let ((max-entries (and gptel--num-messages-to-send
                               (* 2 gptel--num-messages-to-send))))
-        (gptel--parse-buffer gptel-backend max-entries)))))
+        (cond
+         ((use-region-p)
+          ;; Narrow to region
+          (narrow-to-region (region-beginning) (region-end))
+          (goto-char (point-max))
+          (gptel--parse-buffer gptel-backend max-entries))
+         ((derived-mode-p 'org-mode)
+          (require 'gptel-org)
+          (gptel-org--create-prompt (or prompt-end (point-max))))
+         (t (goto-char (or prompt-end (point-max)))
+            (gptel--parse-buffer gptel-backend max-entries)))))))
 
 (cl-defgeneric gptel--parse-buffer (backend max-entries)
   "Parse current buffer backwards from point and return a list of prompts.
