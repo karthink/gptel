@@ -19,8 +19,7 @@
         ;; (forward-char)
         (condition-case-unless-debug err
             (thread-first
-              (gptel--json-read :object-type 'plist)
-              ;; (json-read)
+              (gptel--json-read)
               (map-nested-elt '(:choices 0 :delta :content))
               (push strs))
           (error strs)
