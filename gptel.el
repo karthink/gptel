@@ -108,6 +108,7 @@
 (declare-function markdown-mode "markdown-mode")
 (declare-function gptel-curl-get-response "gptel-curl")
 (declare-function gptel-menu "gptel-transient")
+(declare-function gptel-org--create-prompt "gptel-org")
 (declare-function pulse-momentary-highlight-region "pulse")
 
 ;; Functions used for saving/restoring gptel state in Org buffers
@@ -1094,19 +1095,19 @@ If PROMPT-END (a marker) is provided, end the prompt contents
 there."
   (save-excursion
     (save-restriction
-      (cond
-       ((use-region-p)
-        ;; Narrow to region
-        (narrow-to-region (region-beginning) (region-end))
-        (goto-char (point-max)))
-       ((when-let ((topic-start (gptel--get-topic-start)))
-          ;; Narrow to topic
-          (narrow-to-region topic-start (or prompt-end (point-max)))
-          (goto-char (point-max))))
-       (t (goto-char (or prompt-end (point-max)))))
       (let ((max-entries (and gptel--num-messages-to-send
                               (* 2 gptel--num-messages-to-send))))
-        (gptel--parse-buffer gptel-backend max-entries)))))
+        (cond
+         ((use-region-p)
+          ;; Narrow to region
+          (narrow-to-region (region-beginning) (region-end))
+          (goto-char (point-max))
+          (gptel--parse-buffer gptel-backend max-entries))
+         ((derived-mode-p 'org-mode)
+          (require 'gptel-org)
+          (gptel-org--create-prompt (or prompt-end (point-max))))
+         (t (goto-char (or prompt-end (point-max)))
+            (gptel--parse-buffer gptel-backend max-entries)))))))
 
 (cl-defgeneric gptel--parse-buffer (backend max-entries)
   "Parse current buffer backwards from point and return a list of prompts.
