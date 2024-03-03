@@ -161,7 +161,106 @@ value of `gptel-org-branching-context', which see."
       ;; Create prompt the usual way
       (gptel--parse-buffer gptel-backend max-entries))))
 
+
+;;; Saving and restoring state
+(defun gptel-org--entry-properties (&optional pt)
+  "Find gptel configuration properties stored in the current heading."
+  (pcase-let
+      ((`(,system ,backend ,model ,temperature ,tokens)
+         (mapcar
+          (lambda (prop) (org-entry-get (or pt (point)) prop 'selective))
+          '("GPTEL_SYSTEM" "GPTEL_BACKEND" "GPTEL_MODEL"
+            "GPTEL_TEMPERATURE" "GPTEL_MAX_TOKENS"))))
+    (when system
+      (setq system (string-replace "\\n" "\n" system)))
+    (when backend
+      (setq backend (alist-get backend gptel--known-backends
+                               nil nil #'equal)))
+    (when temperature
+      (setq temperature (gptel--numberize temperature)))
+    (when tokens (setq tokens (gptel--numberize tokens)))
+    (list system backend model temperature tokens)))
 
+  ;; (pcase-let ((`(,gptel--system-message ,gptel-backend
+  ;;                ,gptel-model ,gptel-temperature)
+  ;;              (if (derived-mode-p 'org-mode)
+  ;;                  (progn (require 'gptel-org)
+  ;;                         (gptel-org--entry-properties))
+  ;;                `(,gptel--system-message ,gptel-backend
+  ;;                  ,gptel-model ,gptel-temperature)))))
+  
+(defun gptel-org--restore-state ()
+  "Restore gptel state for Org buffers when turning on `gptel-mode'."
+  (save-restriction
+    (widen)
+    (condition-case status
+        (progn
+          (when-let ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
+            (mapc (pcase-lambda (`(,beg . ,end))
+                    (put-text-property beg end 'gptel 'response))
+                  (read bounds)))
+          (pcase-let ((`(,system ,backend ,model ,temperature ,tokens)
+                       (gptel-org--entry-properties (point-min))))
+            (when system (setq-local gptel--system-message system))
+            (if backend (setq-local gptel-backend backend)
+              (message
+               (substitute-command-keys
+                (concat
+                 "Could not activate gptel backend \"%s\"!  "
+                 "Switch backends with \\[universal-argument] \\[gptel-send]"
+                 " before using gptel."))
+               backend))
+            (when model (setq-local gptel-model model))
+            (when temperature (setq-local gptel-temperature temperature))
+            (when tokens (setq-local gptel-max-tokens tokens))))
+      (:success (message "gptel chat restored."))
+      (error (message "Could not restore gptel state, sorry! Error: %s" status)))))
+
+(defun gptel-org-set-config (pt &optional msg)
+  "Store the active gptel configuration under the current heading.
+
+The active gptel configuration includes the current system
+message, language model and provider (backend), and additional
+settings when applicable.
+
+PT is the curosr position by default. If MSG is
+non-nil (default), display a message afterwards."
+  (interactive (list (point) t))
+  (org-entry-put pt "GPTEL_MODEL" gptel-model)
+  (org-entry-put pt "GPTEL_BACKEND" (gptel-backend-name gptel-backend))
+  (unless (equal (default-value 'gptel-temperature) gptel-temperature)
+    (org-entry-put pt "GPTEL_TEMPERATURE"
+                   (number-to-string gptel-temperature)))
+  (unless (string= (default-value 'gptel--system-message)
+                   gptel--system-message)
+    (org-entry-put pt "GPTEL_SYSTEM"
+                   (string-replace "\n" "\\n" gptel--system-message)))   
+  (when gptel-max-tokens
+    (org-entry-put
+     pt "GPTEL_MAX_TOKENS" (number-to-string gptel-max-tokens)))
+  (when msg
+    (message "Added gptel configuration to current headline.")))
+
+(defun gptel-org--save-state ()
+  "Write the gptel state to the Org buffer as Org properties."
+  (org-with-wide-buffer
+   (goto-char (point-min))
+   (when (org-at-heading-p)
+     (org-open-line 1))
+   (gptel-org-set-config (point-min))
+   ;; Save response boundaries
+   (letrec ((write-bounds
+             (lambda (attempts)
+               (let* ((bounds (gptel--get-buffer-bounds))
+                      (offset (caar bounds))
+                      (offset-marker (set-marker (make-marker) offset)))
+                 (org-entry-put (point-min) "GPTEL_BOUNDS"
+                                (prin1-to-string (gptel--get-buffer-bounds)))
+                 (when (and (not (= (marker-position offset-marker) offset))
+                            (> attempts 0))
+                   (funcall write-bounds (1- attempts)))))))
+     (funcall write-bounds 6))))
+                                
 
 (provide 'gptel-org)
 ;;; gptel-org.el ends here
