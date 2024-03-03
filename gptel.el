@@ -111,18 +111,17 @@
 (declare-function gptel-system-prompt "gptel-transient")
 (declare-function pulse-momentary-highlight-region "pulse")
 
-;; Functions used for saving/restoring gptel state in Org buffers
-(defvar org-entry-property-inherited-from)
-(declare-function org-entry-get "org")
-(declare-function org-entry-put "org")
-(declare-function org-with-wide-buffer "org-macs")
-(declare-function org-set-property "org")
-(declare-function org-property-values "org")
-(declare-function org-open-line "org")
-(declare-function org-at-heading-p "org")
-(declare-function org-get-heading "org")
 (declare-function ediff-make-cloned-buffer "ediff-util")
 (declare-function ediff-regions-internal "ediff")
+
+(declare-function gptel-org--create-prompt "gptel-org")
+(declare-function gptel-org-set-topic "gptel-org")
+(declare-function gptel-org--save-state "gptel-org")
+(declare-function gptel-org--restore-state "gptel-org")
+(declare-function gptel--stream-convert-markdown->org "gptel-org")
+(declare-function gptel--convert-markdown->org "gptel-org")
+(define-obsolete-function-alias
+  'gptel-set-topic 'gptel-org-set-topic "0.7.5")
 
 (eval-when-compile
   (require 'subr-x)
@@ -652,9 +651,6 @@ Valid JSON unless NO-JSON is t."
 
 ;; Saving and restoring state
 
-(declare-function gptel-org--restore-state "gptel-org")
-(declare-function gptel-org--save-state "gptel-org")
-
 (defun gptel--restore-state ()
   "Restore gptel state when turning on `gptel-mode'."
   (when (buffer-file-name)
@@ -1012,37 +1008,6 @@ See `gptel--url-get-response' for details."
       (with-current-buffer gptel-buffer
         (run-hook-with-args 'gptel-post-response-functions response-beg response-end)))))
 
-(defun gptel-set-topic ()
-  "Set a topic and limit this conversation to the current heading.
-
-This limits the context sent to the LLM to the text between the
-current heading and the cursor position."
-  (interactive)
-  (pcase major-mode
-    ('org-mode
-     (org-set-property
-      "GPTEL_TOPIC"
-      (completing-read "Set topic as: "
-                       (org-property-values "GPTEL_TOPIC")
-                       nil nil (downcase
-                                (truncate-string-to-width
-                                 (substring-no-properties
-                                  (replace-regexp-in-string
-                                   "\\s-+" "-"
-                                   (org-get-heading)))
-                                 50)))))
-    ('markdown-mode
-     (message
-      "Support for multiple topics per buffer is not implemented for `markdown-mode'."))))
-
-(defun gptel--get-topic-start ()
-  "If a conversation topic is set, return it."
-  (pcase major-mode
-    ('org-mode
-     (when (org-entry-get (point) "GPTEL_TOPIC" 'inherit)
-         (marker-position org-entry-property-inherited-from)))
-    ('markdown-mode nil)))
-
 (defun gptel--create-prompt (&optional prompt-end)
   "Return a full conversation prompt from the contents of this buffer.
 
@@ -1280,152 +1245,6 @@ INTERACTIVEP is t when gptel is called interactively."
       (message "Send your query with %s!"
                (substitute-command-keys "\\[gptel-send]")))
     (current-buffer)))
-
-(defun gptel--convert-markdown->org (str)
-  "Convert string STR from markdown to org markup.
-
-This is a very basic converter that handles only a few markup
-elements."
-  (interactive)
-  (with-temp-buffer
-    (insert str)
-    (goto-char (point-min))
-    (while (re-search-forward "`\\|\\*\\{1,2\\}\\|_" nil t)
-      (pcase (match-string 0)
-        ("`" (if (looking-at "``")
-                 (progn (backward-char)
-                        (delete-char 3)
-                        (insert "#+begin_src ")
-                        (when (re-search-forward "^```" nil t)
-                          (replace-match "#+end_src")))
-               (replace-match "=")))
-        ("**" (cond
-               ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)")
-                (delete-char 1))
-               ((looking-back "\\(?:[[:word:]]\\|\s\\)\\*\\{2\\}"
-                              (max (- (point) 3) (point-min)))
-                (delete-char -1))))
-        ("*"
-         (cond
-          ((save-match-data
-             (and (looking-back "\\(?:[[:space:]]\\|\s\\)\\(?:_\\|\\*\\)"
-                                (max (- (point) 2) (point-min)))
-                  (not (looking-at "[[:space:]]\\|\s"))))
-           ;; Possible beginning of emphasis
-           (and
-            (save-excursion
-              (when (and (re-search-forward (regexp-quote (match-string 0))
-                                            (line-end-position) t)
-                         (looking-at "[[:space]]\\|\s")
-                         (not (looking-back "\\(?:[[:space]]\\|\s\\)\\(?:_\\|\\*\\)"
-                                            (max (- (point) 2) (point-min)))))
-                (delete-char -1) (insert "/") t))
-            (progn (delete-char -1) (insert "/"))))
-          ((save-excursion
-             (ignore-errors (backward-char 2))
-             (looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]"))
-           ;; Bullet point, replace with hyphen
-           (delete-char -1) (insert "-"))))))
-    (buffer-string)))
-
-(defun gptel--replace-source-marker (num-ticks &optional end)
-  "Replace markdown style backticks with Org equivalents.
-
-NUM-TICKS is the number of backticks being replaced.  If END is
-true these are \"ending\" backticks.
-
-This is intended for use in the markdown to org stream converter."
-  (let ((from (match-beginning 0)))
-    (delete-region from (point))
-    (if (and (= num-ticks 3)
-             (save-excursion (beginning-of-line)
-                             (skip-chars-forward " \t")
-                             (eq (point) from)))
-        (insert (if end "#+end_src" "#+begin_src "))
-      (insert "="))))
-
-(defun gptel--stream-convert-markdown->org ()
-  "Return a Markdown to Org converter.
-
-This function parses a stream of Markdown text to Org
-continuously when it is called with successive chunks of the
-text stream."
-  (letrec ((in-src-block nil)           ;explicit nil to address BUG #183
-           (temp-buf (generate-new-buffer-name "*gptel-temp*"))
-           (start-pt (make-marker))
-           (ticks-total 0)
-           (cleanup-fn
-            (lambda (&rest _)
-              (when (buffer-live-p (get-buffer temp-buf))
-                (set-marker start-pt nil)
-                (kill-buffer temp-buf))
-              (remove-hook 'gptel-post-response-functions cleanup-fn))))
-    (add-hook 'gptel-post-response-functions cleanup-fn)
-    (lambda (str)
-      (let ((noop-p) (ticks 0))
-        (with-current-buffer (get-buffer-create temp-buf)
-          (save-excursion (goto-char (point-max)) (insert str))
-          (when (marker-position start-pt) (goto-char start-pt))
-          (when in-src-block (setq ticks ticks-total))
-          (save-excursion
-            (while (re-search-forward "`\\|\\*\\{1,2\\}\\|_" nil t)
-              (pcase (match-string 0)
-                ("`"
-                 ;; Count number of consecutive backticks
-                 (backward-char)
-                 (while (and (char-after) (eq (char-after) ?`))
-                   (forward-char)
-                   (if in-src-block (cl-decf ticks) (cl-incf ticks)))
-                 ;; Set the verbatim state of the parser
-                 (if (and (eobp)
-                          ;; Special case heuristic: If the response ends with
-                          ;; ^``` we don't wait for more input.
-                          ;; FIXME: This can have false positives.
-                          (not (save-excursion (beginning-of-line)
-                                               (looking-at "^```$"))))
-                     ;; End of input => there could be more backticks coming,
-                     ;; so we wait for more input
-                     (progn (setq noop-p t) (set-marker start-pt (match-beginning 0)))
-                   ;; We reached a character other than a backtick
-                   (cond
-                    ;; Ticks balanced, end src block
-                    ((= ticks 0)
-                     (progn (setq in-src-block nil)
-                            (gptel--replace-source-marker ticks-total 'end)))
-                    ;; Positive number of ticks, start an src block
-                    ((and (> ticks 0) (not in-src-block))
-                     (setq ticks-total ticks
-                           in-src-block t)
-                     (gptel--replace-source-marker ticks-total))
-                    ;; Negative number of ticks or in a src block already,
-                    ;; reset ticks
-                    (t (setq ticks ticks-total)))))
-                ;; Handle other chars: emphasis, bold and bullet items
-                ((and "**" (guard (not in-src-block)))
-                 (cond
-                  ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)")
-                   (delete-char 1))
-                  ((looking-back "\\(?:[[:word:]]\\|\s\\)\\*\\{2\\}"
-                                 (max (- (point) 3) (point-min)))
-                   (delete-char -1))))
-                ((and "*" (guard (not in-src-block)))
-                 (save-match-data
-                   (save-excursion
-                     (ignore-errors (backward-char 2))
-                     (cond
-                      ((or (looking-at
-                            "[^[:space:][:punct:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
-                           (looking-at
-                            "\\(?:[[:space:][:punct:]]\\)\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
-                       ;; Emphasis, replace with slashes
-                       (forward-char 2) (delete-char -1) (insert "/"))
-                      ((looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]")
-                       ;; Bullet point, replace with hyphen
-                       (forward-char 2) (delete-char -1) (insert "-")))))))))
-          (if noop-p
-              (buffer-substring (point) start-pt)
-            (prog1 (buffer-substring (point) (point-max))
-                   (set-marker start-pt (point-max)))))))))
 
 
 ;; Response tweaking commands
