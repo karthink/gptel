@@ -133,6 +133,9 @@
 (require 'cl-generic)
 (require 'gptel-openai)
 
+(with-eval-after-load 'org
+  (require 'gptel-org))
+
 
 ;; User options
 
