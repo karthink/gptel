@@ -30,7 +30,9 @@
 ;; gptel is a simple Large Language Model chat client, with support for multiple models/backends.
 ;;
 ;; gptel supports
-;; - The services ChatGPT, Azure, Gemini, Anyscale, Together.ai and Kagi (FastGPT & Summarizer)
+;;
+;; - The services ChatGPT, Azure, Gemini, Anthropic AI, Anyscale, Together.ai,
+;;   Perplexity, and Kagi (FastGPT & Summarizer)
 ;; - Local models via Ollama, Llama.cpp, Llamafiles or GPT4All
 ;;
 ;;  Additionally, any LLM service (local or remote) that provides an
@@ -54,7 +56,9 @@
 ;;
 ;; - For Azure: define a gptel-backend with `gptel-make-azure', which see.
 ;; - For Gemini: define a gptel-backend with `gptel-make-gemini', which see.
-;; - For Kagi: define a gptel-backend with `gptel-make-kagi', which see
+;; - For Anthropic (Claude): define a gptel-backend with `gptel-make-anthropic',
+;;   which see
+;; - For Kagi: define a gptel-backend with `gptel-make-kagi', which see.
 ;;
 ;; For local models using Ollama, Llama.cpp or GPT4All:
 ;;
