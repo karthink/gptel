@@ -174,6 +174,27 @@ value of `gptel-org-branching-context', which see."
       ;; Create prompt the usual way
       (gptel--parse-buffer gptel-backend max-entries))))
 
+(defun gptel-org--send-with-props (send-fun &rest args)
+  "Conditionally modify SEND-FUN's calling environment.
+
+If in an Org buffer under a heading containing a stored gptel
+configuration, use that for requests instead.  This includes the
+system message, model and provider (backend), among other
+parameters."
+  (if (derived-mode-p 'org-mode)
+      (pcase-let ((`(,gptel--system-message ,gptel-backend ,gptel-model
+                     ,gptel-temperature ,gptel-max-tokens)
+                   (seq-mapn (lambda (a b) (or a b))
+                             (gptel-org--entry-properties)
+                             (list gptel--system-message gptel-backend gptel-model
+                                   gptel-temperature gptel-max-tokens))))
+        (apply send-fun args))
+    (apply send-fun args)))
+
+(advice-add 'gptel-send :around #'gptel-org--send-with-props)
+(advice-add 'gptel-request :around #'gptel-org--send-with-props)
+(advice-add 'gptel--suffix-send :around #'gptel-org--send-with-props)
+
 
 ;;; Saving and restoring state
 (defun gptel-org--entry-properties (&optional pt)
