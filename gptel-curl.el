@@ -206,7 +206,7 @@ PROCESS and _STATUS are process parameters."
           (progn
             ;; Finish handling response
             (with-current-buffer (marker-buffer start-marker)
-              (setq response-beg (+ start-marker 2)
+              (setq response-beg (marker-position start-marker)
                     response-end (marker-position tracking-marker))
               (pulse-momentary-highlight-region response-beg tracking-marker)
               (when gptel-mode (save-excursion (goto-char tracking-marker)
@@ -262,7 +262,8 @@ See `gptel--url-get-response' for details."
                 (insert "\n\n")
                 (when gptel-mode
                   ;; Put prefix before AI response.
-                  (insert (gptel-response-prefix-string))))
+                  (insert (gptel-response-prefix-string)))
+                (move-marker start-marker (point)))
               (setq tracking-marker (set-marker (make-marker) (point)))
               (set-marker-insertion-type tracking-marker t)
               (plist-put info :tracking-marker tracking-marker))
