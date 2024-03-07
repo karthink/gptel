@@ -201,7 +201,7 @@ PROCESS and _STATUS are process parameters."
            (http-status (plist-get info :http-status))
            (http-msg (plist-get info :status)))
       (when gptel-log-level (gptel-curl--log-response proc-buf info)) ;logging
-      (if (equal http-status "200")                                   ;Finish handling response
+      (if (member http-status '("200" "100")) ;Finish handling response
           (with-current-buffer gptel-buffer
             (if (not tracking-marker)   ;Empty response
                 (when gptel-mode (gptel--update-status " Empty response" 'success))
@@ -315,7 +315,7 @@ See `gptel--url-get-response' for details."
               display-buffer-pop-up-window)
              (reusable-frames . visible))))
         ;; Run pre-response hook
-        (when (and (equal (plist-get proc-info :http-status) "200")
+        (when (and (member (plist-get proc-info :http-status) '("200" "100"))
                    gptel-pre-response-hook)
           (with-current-buffer (marker-buffer (plist-get proc-info :position))
             (run-hooks 'gptel-pre-response-hook))))
@@ -323,7 +323,8 @@ See `gptel--url-get-response' for details."
       (when-let ((http-msg (plist-get proc-info :status))
                  (http-status (plist-get proc-info :http-status)))
         ;; Find data chunk(s) and run callback
-        (when-let (((equal http-status "200"))
+        ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
+        (when-let (((member http-status '("200" "100")))
                    (response (funcall (plist-get proc-info :parser) nil proc-info))
                    ((not (equal response ""))))
           (funcall (or (plist-get proc-info :callback)
@@ -385,7 +386,8 @@ PROC-INFO is a plist with contextual information."
                                      (json-read)
                                    (json-readtable-error 'json-read-error)))))
           (cond
-           ((equal http-status "200")
+           ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
+           ((member http-status '("200" "100"))
             (list (string-trim
                    (funcall parser nil response proc-info))
                   http-msg))

@@ -1183,7 +1183,9 @@ See `gptel-curl--get-response' for its contents.")
                                        (json-read-from-string json-str)
                                      (json-readtable-error 'json-read-error))))))
           (cond
-           ((or (= url-http-response-status 200) (string-match-p "200 OK" http-msg))
+            ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
+           ((or (memq url-http-response-status '(200 100))
+                (string-match-p "\\(?:1\\|2\\)00 OK" http-msg))
             (list (string-trim (gptel--parse-response backend response
                                              '(:buffer response-buffer)))
                    http-msg))
