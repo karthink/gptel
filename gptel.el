@@ -250,7 +250,9 @@ to the LLM, and after the full response has been inserted.  Each
 function is called with two arguments: the response beginning and
 end positions.
 
-Note: this hook runs even if the request fails."
+Note: this hook runs even if the request fails.  In this case the
+response beginning and end positions are both the cursor position
+at the time of the request."
   :group 'gptel
   :type 'hook)
 

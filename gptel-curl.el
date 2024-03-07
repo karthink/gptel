@@ -199,20 +199,17 @@ PROCESS and _STATUS are process parameters."
            (tracking-marker (plist-get info :tracking-marker))
            (start-marker (plist-get info :position))
            (http-status (plist-get info :http-status))
-           (http-msg (plist-get info :status))
-           response-beg response-end)
+           (http-msg (plist-get info :status)))
       (when gptel-log-level (gptel-curl--log-response proc-buf info)) ;logging
-      (if (equal http-status "200")
-          (progn
-            ;; Finish handling response
-            (with-current-buffer (marker-buffer start-marker)
-              (setq response-beg (marker-position start-marker)
-                    response-end (marker-position tracking-marker))
-              (pulse-momentary-highlight-region response-beg tracking-marker)
-              (when gptel-mode (save-excursion (goto-char tracking-marker)
-                                               (insert "\n\n" (gptel-prompt-prefix-string)))))
-            (with-current-buffer gptel-buffer
-              (when gptel-mode (gptel--update-status  " Ready" 'success))))
+      (if (equal http-status "200")                                   ;Finish handling response
+          (with-current-buffer gptel-buffer
+            (if (not tracking-marker)   ;Empty response
+                (when gptel-mode (gptel--update-status " Empty response" 'success))
+              (pulse-momentary-highlight-region start-marker tracking-marker)
+              (when gptel-mode
+                (save-excursion (goto-char tracking-marker)
+                                (insert "\n\n" (gptel-prompt-prefix-string)))
+                (gptel--update-status  " Ready" 'success))))
         ;; Or Capture error message
         (with-current-buffer proc-buf
           (goto-char (point-max))
@@ -240,7 +237,9 @@ PROCESS and _STATUS are process parameters."
             (gptel--update-status
              (format " Response Error: %s" http-msg) 'error))))
       (with-current-buffer gptel-buffer
-        (run-hook-with-args 'gptel-post-response-functions response-beg response-end)))
+        (run-hook-with-args 'gptel-post-response-functions
+                            (marker-position start-marker)
+                            (marker-position (or tracking-marker start-marker)))))
     (setf (alist-get process gptel-curl--process-alist nil 'remove) nil)
     (kill-buffer proc-buf)))
 
