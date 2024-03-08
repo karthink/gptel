@@ -1298,23 +1298,28 @@ elements."
                 (delete-char 1))
                ((looking-back "\\(?:[[:word:]]\\|\s\\)\\*\\{2\\}"
                               (max (- (point) 3) (point-min)))
-                (backward-delete-char 1))))
+                (delete-char -1))))
         ("*"
-         (if (save-match-data
-               (and (looking-back "\\(?:[[:space:]]\\|\s\\)\\(?:_\\|\\*\\)"
-                                  (max (- (point) 2) (point-min)))
-                    (not (looking-at "[[:space:]]\\|\s"))))
-             ;; Possible beginning of italics
-             (and
-              (save-excursion
-                (when (and (re-search-forward (regexp-quote (match-string 0)) nil t)
-                           (looking-at "[[:space]]\\|\s")
-                           (not (looking-back "\\(?:[[:space]]\\|\s\\)\\(?:_\\|\\*\\)"
-                                              (max (- (point) 2) (point-min)))))
-                  (backward-delete-char 1)
-                  (insert "/") t))
-              (progn (backward-delete-char 1)
-                     (insert "/")))))))
+         (cond
+          ((save-match-data
+             (and (looking-back "\\(?:[[:space:]]\\|\s\\)\\(?:_\\|\\*\\)"
+                                (max (- (point) 2) (point-min)))
+                  (not (looking-at "[[:space:]]\\|\s"))))
+           ;; Possible beginning of emphasis
+           (and
+            (save-excursion
+              (when (and (re-search-forward (regexp-quote (match-string 0))
+                                            (line-end-position) t)
+                         (looking-at "[[:space]]\\|\s")
+                         (not (looking-back "\\(?:[[:space]]\\|\s\\)\\(?:_\\|\\*\\)"
+                                            (max (- (point) 2) (point-min)))))
+                (delete-char -1) (insert "/") t))
+            (progn (delete-char -1) (insert "/"))))
+          ((save-excursion
+             (ignore-errors (backward-char 2))
+             (looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]"))
+           ;; Bullet point, replace with hyphen
+           (delete-char -1) (insert "-"))))))
     (buffer-string)))
 
 (defun gptel--stream-convert-markdown->org ()
@@ -1363,18 +1368,21 @@ text stream."
                    (delete-char 1))
                   ((looking-back "\\(?:[[:word:]]\\|\s\\)\\*\\{2\\}"
                                  (max (- (point) 3) (point-min)))
-                   (backward-delete-char 1))))
+                   (delete-char -1))))
                 ((and "*" (guard (not in-src-block)))
-                 (when (save-match-data
-                         (save-excursion
-                           (backward-char 2)
-                           (or
-                            (looking-at
-                             "[^[:space:][:punct:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
-                            (looking-at
-                             "\\(?:[[:space:][:punct:]]\\)\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))))
-                   (backward-delete-char 1)
-                   (insert "/"))))))
+                 (save-match-data
+                   (save-excursion
+                     (ignore-errors (backward-char 2))
+                     (cond
+                      ((or (looking-at
+                            "[^[:space:][:punct:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
+                           (looking-at
+                            "\\(?:[[:space:][:punct:]]\\)\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
+                       ;; Emphasis, replace with slashes
+                       (forward-char 2) (delete-char -1) (insert "/"))
+                      ((looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]")
+                       ;; Bullet point, replace with hyphen
+                       (forward-char 2) (delete-char -1) (insert "-")))))))))
           (if noop-p
               (buffer-substring (point) start-pt)
             (prog1 (buffer-substring (point) (point-max))
