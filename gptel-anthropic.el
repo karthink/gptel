@@ -41,9 +41,11 @@
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-anthropic) _info)
   (let* ((json-object-type 'plist)
-         (content-strs))
+         (content-strs)
+         (pt (point)))
     (condition-case nil
         (while (re-search-forward "^event: " nil t)
+          (setq pt (match-beginning 0))
           (cond
            ((looking-at "content_block_\\(?:start\\|delta\\|stop\\)")
             (save-match-data
@@ -52,8 +54,7 @@
                           (content (map-nested-elt
                                     response '(:delta :text))))
                 (push content content-strs))))))
-      (error
-       (goto-char (match-beginning 0))))
+      (error (goto-char pt)))
     (apply #'concat (nreverse content-strs))))
 
 (cl-defmethod gptel--parse-response ((_backend gptel-anthropic) response _info)
