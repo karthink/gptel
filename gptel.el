@@ -1210,19 +1210,20 @@ See `gptel-curl--get-response' for its contents.")
               "Could not parse HTTP response.")))))
 
 (cl-defun gptel--sanitize-model (&key (backend gptel-backend)
+                                      (model gptel-model)
                                       (shoosh t))
-  "Check if `gptel-model' is available in BACKEND, adjust accordingly.
+  "Check if MODEL is available in BACKEND, adjust accordingly.
 
 If SHOOSH is true, don't issue a warning."
   (let* ((available (gptel-backend-models backend)))
-    (unless (member gptel-model available)
+    (unless (member model available)
       (let ((fallback (car available)))
         (unless shoosh
           (display-warning
            'gptel
            (format (concat "Preferred `gptel-model' \"%s\" not"
                            "supported in \"%s\", using \"%s\" instead")
-                   gptel-model (gptel-backend-name backend) fallback)))
+                   model (gptel-backend-name backend) fallback)))
         (setq-local gptel-model fallback)))))
 
 ;;;###autoload
@@ -1265,6 +1266,7 @@ INTERACTIVEP is t when gptel is called interactively."
       (visual-line-mode 1))
      (t (funcall gptel-default-mode)))
     (gptel--sanitize-model :backend (default-value 'gptel-backend)
+                           :model (default-value 'gptel-model)
                            :shoosh nil)
     (unless gptel-mode (gptel-mode 1))
     (goto-char (point-max))
