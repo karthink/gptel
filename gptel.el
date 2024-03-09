@@ -656,8 +656,7 @@ for when gptel restores chat metadata."
              (progn
                (when-let ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
                  (mapc (pcase-lambda (`(,beg . ,end))
-                         (add-text-properties
-                          beg end '(gptel response rear-nonsticky t)))
+                         (put-text-property beg end 'gptel 'response))
                        (read bounds))
                  (message "gptel chat restored."))
                (when-let ((model (org-entry-get (point-min) "GPTEL_MODEL")))
@@ -728,6 +727,9 @@ file."
 
 
 ;; Minor mode and UI
+
+;; NOTE: It's not clear that this is the best strategy:
+(add-to-list 'text-property-default-nonsticky '(gptel . t))
 
 ;;;###autoload
 (define-minor-mode gptel-mode
@@ -984,9 +986,8 @@ See `gptel--url-get-response' for details."
             (setq response (gptel--transform-response
                                response gptel-buffer))
             (save-excursion
-              (add-text-properties
-               0 (length response) '(gptel response rear-nonsticky t)
-               response)
+              (put-text-property
+               0 (length response) 'gptel 'response response)
               (with-current-buffer (marker-buffer start-marker)
                 (goto-char start-marker)
                 (run-hooks 'gptel-pre-response-hook)
@@ -1486,7 +1487,7 @@ context for the ediff session."
                      (nbutlast history))))
     (add-text-properties
              0 (length alt-response)
-             `(gptel response rear-nonsticky t gptel-history ,history)
+             `(gptel response gptel-history ,history)
              alt-response)
     (setq offset (min (- (point) beg) (1- (length alt-response))))
     (delete-region beg end)
