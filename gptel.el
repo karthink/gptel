@@ -184,7 +184,12 @@ all at once.  This wait is asynchronous.
   :type 'boolean)
 (make-obsolete-variable 'gptel-playback 'gptel-stream "0.3.0")
 
-(defcustom gptel-use-curl (and (executable-find "curl") t)
+(defcustom gptel-curl-path "curl"
+  "The path to the curl executable."
+  :group 'gptel
+  :type 'string)
+
+(defcustom gptel-use-curl (and (executable-find gptel-curl-path) t)
   "Whether gptel should prefer Curl when available."
   :group 'gptel
   :type 'boolean)
