@@ -60,7 +60,15 @@
 (cl-defmethod gptel--request-data ((_backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
   (let ((prompts-plist
-         `(:contents [,@prompts]))
+         `(:contents [,@prompts]
+           :safetySettings [(:category "HARM_CATEGORY_HARASSMENT"
+                             :threshold "BLOCK_NONE")
+                            (:category "HARM_CATEGORY_SEXUALLY_EXPLICIT"
+                             :threshold "BLOCK_NONE")
+                            (:category "HARM_CATEGORY_DANGEROUS_CONTENT"
+                             :threshold "BLOCK_NONE")
+                            (:category "HARM_CATEGORY_HATE_SPEECH"
+                             :threshold "BLOCK_NONE")]))
         params)
     (when gptel-temperature
       (setq params
@@ -103,21 +111,22 @@
 
 ;;;###autoload
 (cl-defun gptel-make-gemini
-    (name &key header key stream
+    (name &key curl-args header key (stream nil)
           (host "generativelanguage.googleapis.com")
           (protocol "https")
           (models '("gemini-pro"))
-          (endpoint "/v1beta/models/gemini-pro:"))
+          (endpoint "/v1beta/models"))
 
   "Register a Gemini backend for gptel with NAME.
 
 Keyword arguments:
 
+CURL-ARGS (optional) is a list of additional Curl arguments.
+
 HOST (optional) is the API host, defaults to
 \"generativelanguage.googleapis.com\".
 
-MODELS is a list of available model names.  Currently only
-\"gemini-pro\" is available.
+MODELS is a list of available model names.
 
 STREAM is a boolean to enable streaming responses, defaults to
 false.
@@ -125,8 +134,7 @@ false.
 PROTOCOL (optional) specifies the protocol, \"https\" by default.
 
 ENDPOINT (optional) is the API endpoint for completions, defaults to
-\"/v1beta/models/gemini-pro:streamGenerateContent\" if STREAM is true and
-\"/v1beta/models/gemini-pro:generateContent\" otherwise.
+\"/v1beta/models\".
 
 HEADER (optional) is for additional headers to send with each
 request. It should be an alist or a function that retuns an
@@ -135,7 +143,9 @@ alist, like:
 
 KEY (optional) is a variable whose value is the API key, or
 function that returns the key."
+  (declare (indent 1))
   (let ((backend (gptel--make-gemini
+                  :curl-args curl-args
                   :name name
                   :host host
                   :header header
@@ -144,13 +154,18 @@ function that returns the key."
                   :endpoint endpoint
                   :stream stream
                   :key key
-                  :url
-                  (lambda ()
-                    (concat protocol "://" host endpoint
-                            (if gptel-stream
-                                "streamGenerateContent"
-                              "generateContent")
-                            "?key=" (gptel--get-api-key))))))
+                  :url (lambda ()
+                         (let ((method (if (and stream
+                                                gptel-stream)
+                                           "streamGenerateContent"
+                                         "generateContent")))
+                           (format "%s://%s%s/%s:%s?key=%s"
+                                   protocol
+                                   host
+                                   endpoint
+                                   gptel-model
+                                   method
+                                   (gptel--get-api-key)))))))
     (prog1 backend
       (setf (alist-get name gptel--known-backends
                        nil nil #'equal)

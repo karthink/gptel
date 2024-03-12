@@ -2,18 +2,23 @@
 
 [[https://melpa.org/#/gptel][file:https://melpa.org/packages/gptel-badge.svg]]
 
-GPTel is a simple Large Language Model chat client for Emacs, with support for multiple models/backends.
+GPTel is a simple Large Language Model chat client for Emacs, with support for multiple models and backends.
 
-| LLM Backend | Supports | Requires                  |
-|-------------+----------+---------------------------|
-| ChatGPT     | ✓      | [[https://platform.openai.com/account/api-keys][API key]]                   |
-| Azure       | ✓      | Deployment and API key    |
-| Ollama      | ✓      | [[https://ollama.ai/][Ollama running locally]]    |
-| GPT4All     | ✓      | [[https://gpt4all.io/index.html][GPT4All running locally]]   |
-| Gemini      | ✓      | [[https://makersuite.google.com/app/apikey][API key]]                   |
-| Llama.cpp   | ✓      | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]] |
-| Llamafile   | ✓      | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]   |
-| PrivateGPT  | Planned  | -                         |
+| LLM Backend        | Supports | Requires                  |
+|--------------------+----------+---------------------------|
+| ChatGPT            | ✓      | [[https://platform.openai.com/account/api-keys][API key]]                   |
+| Azure              | ✓      | Deployment and API key    |
+| Ollama             | ✓      | [[https://ollama.ai/][Ollama running locally]]    |
+| GPT4All            | ✓      | [[https://gpt4all.io/index.html][GPT4All running locally]]   |
+| Gemini             | ✓      | [[https://makersuite.google.com/app/apikey][API key]]                   |
+| Llama.cpp          | ✓      | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]] |
+| Llamafile          | ✓      | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]    |
+| Kagi FastGPT       | ✓      | [[https://kagi.com/settings?p=api][API key]]                   |
+| Kagi Summarizer    | ✓      | [[https://kagi.com/settings?p=api][API key]]                   |
+| together.ai        | ✓      | [[https://api.together.xyz/settings/api-keys][API key]]                   |
+| Anyscale           | ✓      | [[https://docs.endpoints.anyscale.com/][API key]]                   |
+| Perplexity         | ✓      | [[https://docs.perplexity.ai/docs/getting-started][API key]]                   |
+| Anthropic (Claude) | ✓      | [[https://www.anthropic.com/api][API key]]                   |
 
 *General usage*: ([[https://www.youtube.com/watch?v=bsRnh_brggM][YouTube Demo]])
 
@@ -31,6 +36,7 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/8607532/278854024-a
 - Supports conversations and multiple independent sessions.
 - Save chats as regular Markdown/Org/Text files and resume them later.
 - You can go back and edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.
+- Don't like gptel's workflow? Use it to create your own for any supported model/backend with a [[https://github.com/karthink/gptel/wiki#defining-custom-gptel-commands][simple API]].
 
 GPTel uses Curl if available, but falls back to url-retrieve to work without external dependencies.
 
@@ -48,19 +54,27 @@ GPTel uses Curl if available, but falls back to url-retrieve to work without ext
       - [[#ollama][Ollama]]
       - [[#gemini][Gemini]]
       - [[#llamacpp-or-llamafile][Llama.cpp or Llamafile]]
+      - [[#kagi-fastgpt--summarizer][Kagi (FastGPT & Summarizer)]]
+      - [[#togetherai][together.ai]]
+      - [[#anyscale][Anyscale]]
+      - [[#perplexity][Perplexity]]
+      - [[#anthropic-claude][Anthropic (Claude)]]
   - [[#usage][Usage]]
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
       - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
   - [[#faq][FAQ]]
-    - [[#i-want-the-window-to-scroll-automatically-as-the-response-is-inserted][I want the window to scroll automatically as the response is inserted]]
-    - [[#i-want-the-cursor-to-move-to-the-next-prompt-after-the-response-is-inserted][I want the cursor to move to the next prompt after the response is inserted]]
-    - [[#i-want-to-change-the-prefix-before-the-prompt-and-response][I want to change the prefix before the prompt and response]]
-    - [[#why-another-llm-client][Why another LLM client?]]
+      - [[#i-want-the-window-to-scroll-automatically-as-the-response-is-inserted][I want the window to scroll automatically as the response is inserted]]
+      - [[#i-want-the-cursor-to-move-to-the-next-prompt-after-the-response-is-inserted][I want the cursor to move to the next prompt after the response is inserted]]
+      - [[#i-want-to-change-the-formatting-of-the-prompt-and-llm-response][I want to change the formatting of the prompt and LLM response]]
+      - [[#i-want-the-transient-menu-options-to-be-saved-so-i-only-need-to-set-them-once][I want the transient menu options to be saved so I only need to set them once]]
+      - [[#i-want-to-use-gptel-in-a-way-thats-not-supported-by-gptel-send-or-the-options-menu][I want to use gptel in a way that's not supported by =gptel-send= or the options menu]]
+      - [[#doom-emacs-sending-a-query-from-the-gptel-menu-fails-because-of-a-key-conflict-with-org-mode][(Doom Emacs) Sending a query from the gptel menu fails because of a key conflict with Org mode]]
+      - [[#chatgpt-i-get-the-error-http2-429-you-exceeded-your-current-quota][(ChatGPT) I get the error "(HTTP/2 429) You exceeded your current quota"]]
+      - [[#why-another-llm-client][Why another LLM client?]]
   - [[#additional-configuration][Additional Configuration]]
-  - [[#the-gptel-api][The gptel API]]
-    - [[#extensions-using-gptel][Extensions using GPTel]]
   - [[#alternatives][Alternatives]]
+    - [[#extensions-using-gptel][Extensions using GPTel]]
   - [[#breaking-changes][Breaking Changes]]
   - [[#acknowledgments][Acknowledgments]]
 
@@ -100,6 +114,8 @@ In =config.el=
  :config
  (setq! gptel-api-key "your key"))
 #+end_src
+"your key" can be the API key itself, or (safer) a function that returns the key.  Setting =gptel-api-key= is optional, you will be asked for a key if it's not found.
+
 #+html: </details>
 #+html: <details><summary>
 **** Spacemacs
@@ -128,25 +144,32 @@ machine api.openai.com login apikey password TOKEN
 
 Register a backend with
 #+begin_src emacs-lisp
-(gptel-make-azure
- "Azure-1"                              ;Name, whatever you'd like
- :protocol "https"                      ;optional -- https is the default
- :host "YOUR_RESOURCE_NAME.openai.azure.com"
- :endpoint "/openai/deployments/YOUR_DEPLOYMENT_NAME/chat/completions?api-version=2023-05-15" ;or equivalent
- :stream t                              ;Enable streaming responses
- :key #'gptel-api-key
- :models '("gpt-3.5-turbo" "gpt-4"))
+(gptel-make-azure "Azure-1"             ;Name, whatever you'd like
+  :protocol "https"                     ;Optional -- https is the default
+  :host "YOUR_RESOURCE_NAME.openai.azure.com"
+  :endpoint "/openai/deployments/YOUR_DEPLOYMENT_NAME/chat/completions?api-version=2023-05-15" ;or equivalent
+  :stream t                             ;Enable streaming responses
+  :key #'gptel-api-key
+  :models '("gpt-3.5-turbo" "gpt-4"))
 #+end_src
 Refer to the documentation of =gptel-make-azure= to set more parameters.
 
-You can pick this backend from the menu when using gptel. (see [[#usage][Usage]])
+You can pick this backend from the menu when using gptel. (see [[#usage][Usage]]).
 
-If you want it to be the default, set it as the default value of =gptel-backend=:
+***** (Optional) Set as the default gptel backend
+
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
-(setq-default gptel-backend
-              (gptel-make-azure
-               "Azure-1"
-               ...))
+;; OPTIONAL configuration
+(setq-default
+ gptel-model "gpt-3.5-turbo"
+ gptel-backend (gptel-make-azure "Azure-1"
+                 :protocol "https"
+                 :host "YOUR_RESOURCE_NAME.openai.azure.com"
+                 :endpoint "/openai/deployments/YOUR_DEPLOYMENT_NAME/chat/completions?api-version=2023-05-15"
+                 :stream t
+                 :key #'gptel-api-key
+                 :models '("gpt-3.5-turbo" "gpt-4")))
 #+end_src
 #+html: </details>
 
@@ -156,21 +179,27 @@ If you want it to be the default, set it as the default value of =gptel-backend=
 
 Register a backend with
 #+begin_src emacs-lisp
-(gptel-make-gpt4all
- "GPT4All"                              ;Name of your choosing
- :protocol "http"                       
+(gptel-make-gpt4all "GPT4All"           ;Name of your choosing
+ :protocol "http"
  :host "localhost:4891"                 ;Where it's running
  :models '("mistral-7b-openorca.Q4_0.gguf")) ;Available models
 #+end_src
 These are the required parameters, refer to the documentation of =gptel-make-gpt4all= for more.
 
-You can pick this backend from the menu when using gptel (see [[#usage][Usage]]), or set this as the default value of =gptel-backend=.  Additionally you may want to increase the response token size since GPT4All uses very short (often truncated) responses by default:
+You can pick this backend from the menu when using gptel (see [[#usage][Usage]]).
 
+***** (Optional) Set as the default gptel backend
+
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.  Additionally you may want to increase the response token size since GPT4All uses very short (often truncated) responses by default.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default gptel-model "mistral-7b-openorca.Q4_0.gguf" ;Pick your default model
-              gptel-backend (gptel-make-gpt4all "GPT4All" :protocol ...))
-(setq-default gptel-max-tokens 500)
+(setq-default
+ gptel-max-tokens 500
+ gptel-model "mistral-7b-openorca.Q4_0.gguf"
+ gptel-backend (gptel-make-gpt4all "GPT4All"
+                 :protocol "http"
+                 :host "localhost:4891"
+                 :models '("mistral-7b-openorca.Q4_0.gguf")))
 #+end_src
 
 #+html: </details>
@@ -181,20 +210,26 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 Register a backend with
 #+begin_src emacs-lisp
-(gptel-make-ollama
- "Ollama"                               ;Any name of your choosing
- :host "localhost:11434"                ;Where it's running
- :models '("mistral:latest")            ;Installed models
- :stream t)                             ;Stream responses
+(gptel-make-ollama "Ollama"             ;Any name of your choosing
+  :host "localhost:11434"               ;Where it's running
+  :stream t                             ;Stream responses
+  :models '("mistral:latest"))          ;List of models
 #+end_src
 These are the required parameters, refer to the documentation of =gptel-make-ollama= for more.
 
-You can pick this backend from the menu when using gptel (see [[#usage][Usage]]), or set this as the default value of =gptel-backend=:
+You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
+***** (Optional) Set as the default gptel backend
+
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default gptel-model "mistral:latest" ;Pick your default model
-              gptel-backend (gptel-make-ollama "Ollama" :host ...))
+(setq-default
+ gptel-model "mistral:latest"
+ gptel-backend (gptel-make-ollama "Ollama"
+                 :host "localhost:11434"
+                 :stream t
+                 :models '("mistral:latest")))
 #+end_src
 
 #+html: </details>
@@ -206,19 +241,22 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 Register a backend with
 #+begin_src emacs-lisp
 ;; :key can be a function that returns the API key.
-(gptel-make-gemini
- "Gemini"
- :key "YOUR_GEMINI_API_KEY"
- :stream t)
+(gptel-make-gemini "Gemini" :key "YOUR_GEMINI_API_KEY" :stream t)
 #+end_src
 These are the required parameters, refer to the documentation of =gptel-make-gemini= for more.
 
-You can pick this backend from the menu when using gptel (see [[#usage][Usage]]), or set this as the default value of =gptel-backend=:
+You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
+***** (Optional) Set as the default gptel backend
+
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default gptel-model "gemini-pro" ;Pick your default model
-              gptel-backend (gptel-make-gemini "Gemini" :host ...))
+(setq-default
+ gptel-model "gemini-pro"
+ gptel-backend (gptel-make-gemini "Gemini"
+                 :key "YOUR_GEMINI_API_KEY"
+                 :stream t))
 #+end_src
 
 #+html: </details>
@@ -232,23 +270,203 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 Register a backend with
 #+begin_src emacs-lisp
-(gptel-make-openai                    ;Not a typo, same API as OpenAI
- "llama-cpp"                          ;Any name
- :stream t                            ;Stream responses
- :protocol "http"
- :host "localhost:8000"               ;Llama.cpp server location, typically localhost:8080 for Llamafile
- :key nil                             ;No key needed
- :models '("test"))                   ;Any names, doesn't matter for Llama
+;; Llama.cpp offers an OpenAI compatible API
+(gptel-make-openai "llama-cpp"          ;Any name
+  :stream t                             ;Stream responses
+  :protocol "http"
+  :host "localhost:8000"                ;Llama.cpp server location
+  :models '("test"))                    ;Any names, doesn't matter for Llama
 #+end_src
 These are the required parameters, refer to the documentation of =gptel-make-openai= for more.
 
-You can pick this backend from the menu when using gptel (see [[#usage][Usage]]), or set this as the default value of =gptel-backend=:
+You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
+
+***** (Optional) Set as the default gptel backend
+
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
-(setq-default gptel-backend (gptel-make-openai "llama-cpp" ...)
-              gptel-model   "test")
+;; OPTIONAL configuration
+(setq-default
+ gptel-model   "test"
+ gptel-backend (gptel-make-openai "llama-cpp"
+                 :stream t
+                 :protocol "http"
+                 :host "localhost:8000"
+                 :models '("test")))
 #+end_src
 
 #+html: </details>
+#+html: <details><summary>
+**** Kagi (FastGPT & Summarizer)
+#+html: </summary>
+
+Kagi's FastGPT model and the Universal Summarizer are both supported.  A couple of notes:
+
+1. Universal Summarizer: If there is a URL at point, the summarizer will summarize the contents of the URL.  Otherwise the context sent to the model is the same as always: the buffer text upto point, or the contents of the region if the region is active.
+
+2. Kagi models do not support multi-turn conversations, interactions are "one-shot".  They also do not support streaming responses.
+
+Register a backend with
+#+begin_src emacs-lisp
+(gptel-make-kagi "Kagi"                    ;any name
+  :key "YOUR_KAGI_API_KEY")                ;can be a function that returns the key
+#+end_src
+These are the required parameters, refer to the documentation of =gptel-make-kagi= for more.
+
+You can pick this backend and the model (fastgpt/summarizer) from the transient menu when using gptel.
+
+***** (Optional) Set as the default gptel backend
+
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+#+begin_src emacs-lisp
+;; OPTIONAL configuration
+(setq-default
+ gptel-model "fastgpt"
+ gptel-backend (gptel-make-kagi "Kagi"
+                 :key "YOUR_KAGI_API_KEY"))
+#+end_src
+
+The alternatives to =fastgpt= include =summarize:cecil=, =summarize:agnes=, =summarize:daphne= and =summarize:muriel=.  The difference between the summarizer engines is [[https://help.kagi.com/kagi/api/summarizer.html#summarization-engines][documented here]].
+
+#+html: </details>
+#+html: <details><summary>
+**** together.ai
+#+html: </summary>
+
+Register a backend with
+#+begin_src emacs-lisp
+;; Together.ai offers an OpenAI compatible API
+(gptel-make-openai "TogetherAI"         ;Any name you want
+  :host "api.together.xyz"
+  :key "your-api-key"                   ;can be a function that returns the key
+  :stream t
+  :models '(;; has many more, check together.ai
+            "mistralai/Mixtral-8x7B-Instruct-v0.1"
+            "codellama/CodeLlama-13b-Instruct-hf"
+            "codellama/CodeLlama-34b-Instruct-hf"))
+#+end_src
+
+You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
+
+***** (Optional) Set as the default gptel backend
+
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+#+begin_src emacs-lisp
+;; OPTIONAL configuration
+(setq-default
+ gptel-model   "mistralai/Mixtral-8x7B-Instruct-v0.1"
+ gptel-backend
+ (gptel-make-openai "TogetherAI"         
+   :host "api.together.xyz"
+   :key "your-api-key"                   
+   :stream t
+   :models '(;; has many more, check together.ai
+             "mistralai/Mixtral-8x7B-Instruct-v0.1"
+             "codellama/CodeLlama-13b-Instruct-hf"
+             "codellama/CodeLlama-34b-Instruct-hf")))
+#+end_src
+
+#+html: </details>
+#+html: <details><summary>
+**** Anyscale
+#+html: </summary>
+
+Register a backend with
+#+begin_src emacs-lisp
+;; Anyscale offers an OpenAI compatible API
+(gptel-make-openai "Anyscale"           ;Any name you want
+  :host "api.endpoints.anyscale.com"
+  :key "your-api-key"                   ;can be a function that returns the key
+  :models '(;; has many more, check anyscale
+            "mistralai/Mixtral-8x7B-Instruct-v0.1"))
+#+end_src
+
+You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
+
+***** (Optional) Set as the default gptel backend
+
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+#+begin_src emacs-lisp
+;; OPTIONAL configuration
+(setq-default
+ gptel-model   "mistralai/Mixtral-8x7B-Instruct-v0.1"
+ gptel-backend
+ (gptel-make-openai "Anyscale"
+                 :host "api.endpoints.anyscale.com"
+                 :key "your-api-key"
+                 :models '(;; has many more, check anyscale
+                           "mistralai/Mixtral-8x7B-Instruct-v0.1")))
+#+end_src
+
+#+html: </details>
+#+html: <details><summary>
+**** Perplexity
+#+html: </summary>
+
+Register a backend with
+#+begin_src emacs-lisp
+;; Perplexity offers an OpenAI compatible API
+(gptel-make-openai "Perplexity"         ;Any name you want
+  :host "api.perplexity.ai"
+  :key "your-api-key"                   ;can be a function that returns the key
+  :endpoint "/chat/completions"
+  :stream t
+  :models '(;; has many more, check perplexity.ai
+            "pplx-7b-chat"
+            "pplx-70b-chat"
+            "pplx-7b-online"
+            "pplx-70b-online"))
+#+end_src
+
+You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
+
+***** (Optional) Set as the default gptel backend
+
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+#+begin_src emacs-lisp
+;; OPTIONAL configuration
+(setq-default
+ gptel-model   "pplx-7b-chat"
+ gptel-backend
+ (gptel-make-openai "Perplexity"
+   :host "api.perplexity.ai"
+   :key "your-api-key"
+   :endpoint "/chat/completions"
+   :stream t
+   :models '(;; has many more, check perplexity.ai
+             "pplx-7b-chat"
+             "pplx-70b-chat"
+             "pplx-7b-online"
+             "pplx-70b-online")))
+#+end_src
+
+#+html: </details>
+#+html: <details><summary>
+**** Anthropic (Claude)
+#+html: </summary>
+Register a backend with
+#+begin_src emacs-lisp
+(gptel-make-anthropic "Claude"          ;Any name you want
+  :stream t                             ;Streaming responses
+  :key "your-api-key")
+#+end_src
+The =:key= can be a function that returns the key (more secure).
+
+You can pick this backend from the menu when using gptel (see [[#usage][Usage]]).
+
+***** (Optional) Set as the default gptel backend
+
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+#+begin_src emacs-lisp
+;; OPTIONAL configuration
+(setq-default
+ gptel-model "claude-3-sonnet-20240229" ;  "claude-3-opus-20240229" also available
+ gptel-backend (gptel-make-anthropic "Claude"
+                 :stream t :key "your-api-key"))
+#+end_src
+
+#+html: </details>
+
 ** Usage
 
 (This is also a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel.)
@@ -303,10 +521,12 @@ The default mode is =markdown-mode= if available, else =text-mode=.  You can set
 
 **** Save and restore your chat sessions
 
-Saving the file will save the state of the conversation as well.  To resume the chat, open the file and turn on =gptel-mode= before editing the buffer.  
+Saving the file will save the state of the conversation as well.  To resume the chat, open the file and turn on =gptel-mode= before editing the buffer.
 
 ** FAQ
-*** I want the window to scroll automatically as the response is inserted
+#+html: <details><summary>
+**** I want the window to scroll automatically as the response is inserted
+#+html: </summary>
 
 To be minimally annoying, GPTel does not move the cursor by default.  Add the following to your configuration to enable auto-scrolling.
 
@@ -314,26 +534,98 @@ To be minimally annoying, GPTel does not move the cursor by default.  Add the fo
 (add-hook 'gptel-post-stream-hook 'gptel-auto-scroll)
 #+end_src
 
-*** I want the cursor to move to the next prompt after the response is inserted
+#+html: </details>
+#+html: <details><summary>
+**** I want the cursor to move to the next prompt after the response is inserted
+#+html: </summary>
 
 To be minimally annoying, GPTel does not move the cursor by default.  Add the following to your configuration to move the cursor:
 
 #+begin_src emacs-lisp
-(add-hook 'gptel-post-response-hook 'gptel-end-of-response)
+(add-hook 'gptel-post-response-functions 'gptel-end-of-response)
 #+end_src
 
 You can also call =gptel-end-of-response= as a command at any time.
 
-*** I want to change the prefix before the prompt and response
 
-Customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=.  You can set a different pair for each major-mode.
+#+html: </details>
+#+html: <details><summary>
+**** I want to change the formatting of the prompt and LLM response
+#+html: </summary>
 
-*** Why another LLM client?
+For dedicated chat buffers: customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=.  You can set a different pair for each major-mode.
+
+Anywhere in Emacs: Use =gptel-pre-response-hook= and =gptel-post-response-functions=, which see.
+
+#+html: </details>
+#+html: <details><summary>
+**** I want the transient menu options to be saved so I only need to set them once
+#+html: </summary>
+
+Any model options you set are saved for the current buffer.  But the redirection options in the menu are set for the next query only:
+
+https://github.com/karthink/gptel/assets/8607532/2ecc6be9-aa52-4287-a739-ba06e1369ec2
+
+You can make them persistent across this Emacs session by pressing ~C-x C-s~:
+
+https://github.com/karthink/gptel/assets/8607532/b8bcb6ad-c974-41e1-9336-fdba0098a2fe
+
+(You can also cycle through presets you've saved with ~C-x p~ and ~C-x n~.)
+
+Now these will be enabled whenever you send a query from the transient menu.  If you want to use these options without invoking the transient menu, you can use a keyboard macro:
+
+#+begin_src emacs-lisp
+;; Replace with your key to invoke the transient menu:
+(keymap-global-set "<f6>" "C-u C-c <return> <return>")
+#+end_src
+
+See [[https://github.com/karthink/gptel/issues/94#issuecomment-1657093458][this comment by Tianshu Wang]] for an Elisp solution.
+
+#+html: </details>
+#+html: <details><summary>
+**** I want to use gptel in a way that's not supported by =gptel-send= or the options menu
+#+html: </summary>
+
+GPTel's default usage pattern is simple, and will stay this way: Read input in any buffer and insert the response below it.  Some custom behavior is possible with the transient menu (=C-u M-x gptel-send=).
+
+For more programmable usage, gptel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki][wiki]] for examples.
+
+#+html: </details>
+#+html: <details><summary>
+**** (Doom Emacs) Sending a query from the gptel menu fails because of a key conflict with Org mode
+#+html: </summary>
+
+Doom binds ~RET~ in Org mode to =+org/dwim-at-point=, which appears to conflict with gptel's transient menu bindings for some reason.
+
+Two solutions:
+- Press ~C-m~ instead of the return key.
+- Change the send key from return to a key of your choice:
+  #+begin_src emacs-lisp
+  (transient-suffix-put 'gptel-menu (kbd "RET") :key "<f8>")
+  #+end_src
+
+#+html: </details>
+#+html: <details><summary>
+**** (ChatGPT) I get the error "(HTTP/2 429) You exceeded your current quota"
+#+html:</summary>
+
+#+begin_quote
+(HTTP/2 429) You exceeded your current quota, please check your plan and billing details.
+#+end_quote
+
+Using the ChatGPT (or any OpenAI) API requires [[https://platform.openai.com/account/billing/overview][adding credit to your account]].
+
+#+html: </details>
+#+html: <details><summary>
+**** Why another LLM client?
+#+html: </summary>
 
 Other Emacs clients for LLMs prescribe the format of the interaction (a comint shell, org-babel blocks, etc).  I wanted:
 
 1. Something that is as free-form as possible: query the model using any text in any buffer, and redirect the response as required.  Using a dedicated =gptel= buffer just adds some visual flair to the interaction.
 2. Integration with org-mode, not using a walled-off org-babel block, but as regular text.  This way the model can generate code blocks that I can run.
+
+#+html: </details>
 
 ** Additional Configuration
 :PROPERTIES:
@@ -368,14 +660,15 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-temperature= | Randomness in response text, 0 to 2.                    |
 |-------------------+---------------------------------------------------------|
 
-|-----------------------------+----------------------------------------|
-| *Chat UI options*             |                                        |
-|-----------------------------+----------------------------------------|
-| =gptel-default-mode=          | Major mode for dedicated chat buffers. |
-| =gptel-prompt-prefix-alist=   | Text inserted before queries.          |
-| =gptel-response-prefix-alist= | Text inserted before responses.        |
-| =gptel-use-header-line= | Display status messages in header-line (default) or minibuffer      |
-|-----------------------------+----------------------------------------|
+|-----------------------------+----------------------------------------------------------------|
+| *Chat UI options*             |                                                                |
+|-----------------------------+----------------------------------------------------------------|
+| =gptel-default-mode=          | Major mode for dedicated chat buffers.                         |
+| =gptel-prompt-prefix-alist=   | Text inserted before queries.                                  |
+| =gptel-response-prefix-alist= | Text inserted before responses.                                |
+| =gptel-use-header-line=       | Display status messages in header-line (default) or minibuffer |
+| =gptel-display-buffer-action= | Placement of the gptel chat buffer.                            |
+|-----------------------------+----------------------------------------------------------------|
 
 ** COMMENT Will you add feature X?
 
@@ -396,19 +689,6 @@ Maybe, I'd like to experiment a bit more first.  Features added since the incept
 Features being considered or in the pipeline:
 - Fully stateless design (#17)
 
-** The gptel API
-
-GPTel's default usage pattern is simple, and will stay this way: Read input in any buffer and insert the response below it.  Some custom behavior is possible with the transient menu (=C-u M-x gptel-send=).
-
-For more programmable usage, gptel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki][wiki]] for examples.
-
-*** Extensions using GPTel
-
-These are packages that depend on GPTel to provide additional functionality
-
-- [[https://github.com/kamushadenes/gptel-extensions.el][gptel-extensions]]: Extra utility functions for GPTel.
-- [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
-
 ** Alternatives
 
 Other Emacs clients for LLMs include
@@ -418,7 +698,16 @@ Other Emacs clients for LLMs include
 
 There are several more: [[https://github.com/CarlQLange/chatgpt-arcana.el][chatgpt-arcana]], [[https://github.com/MichaelBurge/leafy-mode][leafy-mode]], [[https://github.com/iwahbe/chat.el][chat.el]]
 
+*** Extensions using GPTel
+
+These are packages that depend on GPTel to provide additional functionality
+
+- [[https://github.com/kamushadenes/gptel-extensions.el][gptel-extensions]]: Extra utility functions for GPTel.
+- [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
+
 ** Breaking Changes
+
+- =gptel-post-response-hook= has been renamed to =gptel-post-response-functions=, and functions in this hook are now called with two arguments: the start and end buffer positions of the response.  This should make it easy to act on the response text without having to locate it first.
 
 - Possible breakage, see #120: If streaming responses stop working for you after upgrading to v0.5, try reinstalling gptel and deleting its native comp eln cache in =native-comp-eln-load-path=.
 

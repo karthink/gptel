@@ -23,6 +23,8 @@
 
 ;;; Code:
 (require 'cl-generic)
+(eval-when-compile
+  (require 'cl-lib))
 (require 'map)
 
 (defvar gptel-model)
@@ -47,7 +49,7 @@
     (gptel-backend (:constructor gptel--make-backend)
                    (:copier gptel--copy-backend))
   name host header protocol stream
-  endpoint key models url)
+  endpoint key models url curl-args)
 
 ;;; OpenAI (ChatGPT)
 (cl-defstruct (gptel-openai (:constructor gptel--make-openai)
@@ -113,13 +115,18 @@
 
 ;;;###autoload
 (cl-defun gptel-make-openai
-    (name &key header models stream key
+    (name &key curl-args models stream key
+          (header
+           (lambda () (when-let (key (gptel--get-api-key))
+                   `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.openai.com")
           (protocol "https")
           (endpoint "/v1/chat/completions"))
   "Register an OpenAI API-compatible backend for gptel with NAME.
 
 Keyword arguments:
+
+CURL-ARGS (optional) is a list of additional Curl arguments.
 
 HOST (optional) is the API host, typically \"api.openai.com\".
 
@@ -139,8 +146,10 @@ alist, like:
 ((\"Content-Type\" . \"application/json\"))
 
 KEY (optional) is a variable whose value is the API key, or
-function that returns the key."  
+function that returns the key."
+  (declare (indent 1))
   (let ((backend (gptel--make-openai
+                  :curl-args curl-args
                   :name name
                   :host host
                   :header header
@@ -160,7 +169,7 @@ function that returns the key."
 ;;; Azure
 ;;;###autoload
 (cl-defun gptel-make-azure
-    (name &key host
+    (name &key curl-args host
           (protocol "https")
           (header (lambda () `(("api-key" . ,(gptel--get-api-key)))))
           (key 'gptel-api-key)
@@ -168,6 +177,8 @@ function that returns the key."
   "Register an Azure backend for gptel with NAME.
 
 Keyword arguments:
+
+CURL-ARGS (optional) is a list of additional Curl arguments.
 
 HOST is the API host.
 
@@ -199,7 +210,9 @@ Example:
  \"/openai/deployments/DEPLOYMENT_NAME/completions?api-version=2023-05-15\"
  :stream t
  :models \\='(\"gpt-3.5-turbo\" \"gpt-4\"))"
+  (declare (indent 1))
   (let ((backend (gptel--make-openai
+                  :curl-args curl-args
                   :name name
                   :host host
                   :header header
@@ -222,6 +235,8 @@ Example:
   "Register a GPT4All backend for gptel with NAME.
 
 Keyword arguments:
+
+CURL-ARGS (optional) is a list of additional Curl arguments.
 
 HOST is where GPT4All runs (with port), typically localhost:8491
 
