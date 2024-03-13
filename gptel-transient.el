@@ -208,7 +208,9 @@ which see."
                                ")")
                               'face 'shadow))
                      `(lambda () (interactive)
-                        (message "Directive: %s" ,prompt)
+                        (message "Directive: %s"
+                         ,(string-replace "\n" "⮐ "
+                           (truncate-string-to-width prompt 100 nil nil t)))
                         (setq gptel--system-message ,prompt))
 		     :transient 'transient--do-return)
        into prompt-suffixes
