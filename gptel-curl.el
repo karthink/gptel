@@ -64,7 +64,10 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
                         (funcall header) header)))))
     (when gptel-log-level
       (when (eq gptel-log-level 'debug)
-        (gptel--log (gptel--json-encode headers) "request headers"))
+        (gptel--log (gptel--json-encode
+                     (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
+                             headers))
+                    "request headers"))
       (gptel--log data "request body"))
     (append
      gptel-curl--common-args
@@ -110,8 +113,8 @@ the response is inserted into the current buffer after point."
          (process (apply #'start-process "gptel-curl"
                          (generate-new-buffer "*gptel-curl*") "curl" args)))
     (when (eq gptel-log-level 'debug)
-      (gptel--log (gptel--json-encode (cons "curl" args))
-                  "request Curl command"))
+      (gptel--log (mapconcat #'shell-quote-argument (cons "curl" args) " \\\n")
+                  "request Curl command" 'no-json))
     (with-current-buffer (process-buffer process)
       (set-process-query-on-exit-flag process nil)
       (setf (alist-get process gptel-curl--process-alist)

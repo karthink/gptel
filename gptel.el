@@ -1135,7 +1135,10 @@ the response is inserted into the current buffer after point."
           'utf-8)))
     (when gptel-log-level               ;logging
       (when (eq gptel-log-level 'debug)
-        (gptel--log (gptel--json-encode url-request-extra-headers) "request headers"))
+        (gptel--log (gptel--json-encode
+                     (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
+                             url-request-extra-headers))
+                    "request headers"))
       (gptel--log url-request-data "request body"))
     (url-retrieve (let ((backend-url (gptel-backend-url gptel-backend)))
                     (if (functionp backend-url)
