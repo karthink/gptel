@@ -3,6 +3,9 @@
 (require 'gptel)
 (require 'cl-generic)
 
+(declare-function json-read "json" ())
+(defvar json-object-type)
+
 ;;; Methods for collecting data from HTTP logs
 (cl-defgeneric gptel-test--read-response (backend &optional from to))
 (cl-defmethod gptel-test--read-response ((_backend gptel-openai) &optional from to)
@@ -11,16 +14,16 @@
   (save-restriction
     (narrow-to-region from to)
     (goto-char from)
-    (let ((strs) (json-object-type 'plist))
+    (let ((strs))
       (while (re-search-forward "^data: *" nil t)
         ;; (forward-char)
         (condition-case-unless-debug err
             (thread-first
-              (json-parse-buffer :object-type 'plist)
+              (gptel--json-read :object-type 'plist)
               ;; (json-read)
               (map-nested-elt '(:choices 0 :delta :content))
               (push strs))
-          (json-readtable-error strs)
+          (error strs)
           (:success strs)))
       (setq strs (delq nil (nreverse strs))))))
 

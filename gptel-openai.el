@@ -44,6 +44,29 @@
 (declare-function gptel-prompt-prefix-string "gptel")
 (declare-function gptel-response-prefix-string "gptel")
 
+(defmacro gptel--json-read ()
+  (if (fboundp 'json-parse-buffer)
+      `(json-parse-buffer
+        :object-type 'plist
+        :null-object nil
+        :false-object :json-false)
+    (require 'json)
+    (defvar json-object-type)
+    (declare-function json-read "json" ())
+    `(let ((json-object-type 'plist))
+      gptel--json-read)))
+
+(defmacro gptel--json-encode (object)
+  (if (fboundp 'json-serialize)
+      `(json-serialize ,object
+        :null-object nil
+        :false-object :json-false)
+    (require 'json)
+    (defvar json-false)
+    (declare-function json-encode "json" (object))
+    `(let ((json-false :json-false))
+      (json-encode ,object))))
+
 ;;; Common backend struct for LLM support
 (cl-defstruct
     (gptel-backend (:constructor gptel--make-backend)
@@ -57,13 +80,12 @@
                             (:include gptel-backend)))
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai) _info)
-  (let* ((json-object-type 'plist)
-         (content-strs))
+  (let* ((content-strs))
     (condition-case nil
         (while (re-search-forward "^data:" nil t)
           (save-match-data
             (unless (looking-at " *\\[DONE\\]")
-              (when-let* ((response (json-read))
+              (when-let* ((response (gptel--json-read))
                           (delta (map-nested-elt
                                   response '(:choices 0 :delta)))
                           (content (plist-get delta :content)))

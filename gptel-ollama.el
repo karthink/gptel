@@ -26,6 +26,9 @@
 (require 'gptel)
 (require 'cl-generic)
 
+(declare-function json-read "json" ())
+(defvar json-object-type)
+
 ;;; Ollama
 (cl-defstruct (gptel-ollama (:constructor gptel--make-ollama)
                             (:copier nil)
@@ -42,15 +45,14 @@ Ollama models.")
   (when (bobp)
     (re-search-forward "^{")
     (forward-line 0))
-  (let* ((json-object-type 'plist)
-         (content-strs)
+  (let* ((content-strs)
          (content))
     (condition-case nil
-        (while (setq content (json-read))
+        (while (setq content (gptel--json-read))
           (let ((done (map-elt content :done))
                 (response (map-elt content :response)))
             (push response content-strs)
-            (unless (eq done json-false)
+            (unless (eq done :json-false)
               (with-current-buffer (plist-get info :buffer)
                 (setq gptel--ollama-context (map-elt content :context)))
               (goto-char (point-max)))))

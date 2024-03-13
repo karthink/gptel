@@ -128,7 +128,6 @@
   (require 'cl-lib))
 (require 'compat nil t)
 (require 'url)
-(require 'json)
 (require 'map)
 (require 'text-property-search)
 (require 'cl-generic)
@@ -614,6 +613,8 @@ in any way.")
 
 (defconst gptel--log-buffer-name "*gptel-log*"
   "Log buffer for gptel.")
+
+(declare-function json-pretty-print "json")
 
 (defun gptel--log (data &optional type no-json)
   "Log DATA to `gptel--log-buffer-name'.
@@ -1129,12 +1130,12 @@ the response is inserted into the current buffer after point."
                         (funcall header) header))))
         (url-request-data
          (encode-coding-string
-          (json-encode (gptel--request-data
+          (gptel--json-encode (gptel--request-data
                         gptel-backend (plist-get info :prompt)))
           'utf-8)))
     (when gptel-log-level               ;logging
       (when (eq gptel-log-level 'debug)
-        (gptel--log (json-encode url-request-extra-headers) "request headers"))
+        (gptel--log (gptel--json-encode url-request-extra-headers) "request headers"))
       (gptel--log url-request-data "request body"))
     (url-retrieve (let ((backend-url (gptel-backend-url gptel-backend)))
                     (if (functionp backend-url)
@@ -1169,20 +1170,16 @@ See `gptel-curl--get-response' for its contents.")
         (save-excursion
           (goto-char url-http-end-of-headers)
           (when (eq gptel-log-level 'debug)
-            (gptel--log (json-encode (buffer-substring-no-properties (point-min) (point)))
+            (gptel--log (gptel--json-encode (buffer-substring-no-properties (point-min) (point)))
                         "response headers"))
           (gptel--log (buffer-substring-no-properties (point) (point-max))
                       "response body")))
       (if-let* ((http-msg (string-trim (buffer-substring (line-beginning-position)
                                                          (line-end-position))))
-                (json-object-type 'plist)
                 (response (progn (goto-char url-http-end-of-headers)
-                                 (let ((json-str (decode-coding-string
-                                                  (buffer-substring-no-properties (point) (point-max))
-                                                  'utf-8)))
-                                   (condition-case nil
-                                       (json-read-from-string json-str)
-                                     (json-readtable-error 'json-read-error))))))
+                                 (condition-case nil
+                                     (gptel--json-read)
+                                   (error 'json-read-error)))))
           (cond
             ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
            ((or (memq url-http-response-status '(200 100))

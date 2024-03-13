@@ -32,7 +32,9 @@
   (require 'cl-lib)
   (require 'subr-x))
 (require 'map)
-(require 'json)
+
+(declare-function json-read "json" ())
+(defvar json-object-type)
 
 (defconst gptel-curl--common-args
   (if (memq system-type '(windows-nt ms-dos))
@@ -53,7 +55,7 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
                     (if (functionp backend-url)
                         (funcall backend-url) backend-url)))
          (data (encode-coding-string
-                (json-encode (gptel--request-data gptel-backend prompts))
+                (gptel--json-encode (gptel--request-data gptel-backend prompts))
                 'utf-8))
          (headers
           (append '(("Content-Type" . "application/json"))
@@ -62,7 +64,7 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
                         (funcall header) header)))))
     (when gptel-log-level
       (when (eq gptel-log-level 'debug)
-        (gptel--log (json-encode headers) "request headers"))
+        (gptel--log (gptel--json-encode headers) "request headers"))
       (gptel--log data "request body"))
     (append
      gptel-curl--common-args
@@ -108,7 +110,7 @@ the response is inserted into the current buffer after point."
          (process (apply #'start-process "gptel-curl"
                          (generate-new-buffer "*gptel-curl*") "curl" args)))
     (when (eq gptel-log-level 'debug)
-      (gptel--log (json-encode (cons "curl" args))
+      (gptel--log (gptel--json-encode (cons "curl" args))
                   "request Curl command"))
     (with-current-buffer (process-buffer process)
       (set-process-query-on-exit-flag process nil)
@@ -154,7 +156,7 @@ PROC-INFO is the plist containing process metadata."
       (goto-char (point-min))
       (when (re-search-forward "?\n?\n" nil t)
         (when (eq gptel-log-level 'debug)
-          (gptel--log (json-encode-string
+          (gptel--log (gptel--json-encode
                        (buffer-substring-no-properties
                         (point-min) (1- (point))))
                       "response headers"))
@@ -216,10 +218,9 @@ PROCESS and _STATUS are process parameters."
           (search-backward (plist-get info :token))
           (backward-char)
           (pcase-let* ((`(,_ . ,header-size) (read (current-buffer)))
-                       (json-object-type 'plist)
                        (response (progn (goto-char header-size)
-                                        (condition-case nil (json-read)
-                                          (json-readtable-error 'json-read-error))))
+                                        (condition-case nil (gptel--json-read)
+                                          (error 'json-read-error))))
                        (error-data (plist-get response :error)))
             (cond
              (error-data
@@ -379,11 +380,10 @@ PROC-INFO is a plist with contextual information."
                  (save-match-data
                    (and (string-match "HTTP/[.0-9]+ +\\([0-9]+\\)" http-msg)
                         (match-string 1 http-msg))))
-                (json-object-type 'plist)
                 (response (progn (goto-char header-size)
                                  (condition-case nil
-                                     (json-read)
-                                   (json-readtable-error 'json-read-error)))))
+                                     (gptel--json-read)
+                                   (error 'json-read-error)))))
           (cond
            ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
            ((member http-status '("200" "100"))

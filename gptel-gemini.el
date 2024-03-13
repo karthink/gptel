@@ -30,6 +30,7 @@
 (declare-function prop-match-value "text-property-search")
 (declare-function text-property-search-backward "text-property-search")
 (declare-function json-read "json")
+(defvar json-object-type)
 
 ;;; Gemini
 (cl-defstruct
@@ -38,15 +39,14 @@
                   (:include gptel-backend)))
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-gemini) _info)
-  (let* ((json-object-type 'plist)
-         (content-strs))
+  (let* ((content-strs))
     (condition-case nil
         ;; while-let is Emacs 29.1+ only
         (while (prog1 (search-forward "{" nil t)
                  (backward-char 1))
           (save-match-data
             (when-let*
-                ((response (json-read))
+                ((response (gptel--json-read))
                  (text (map-nested-elt
                         response '(:candidates 0 :content :parts 0 :text))))
               (push text content-strs))))

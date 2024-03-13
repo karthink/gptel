@@ -32,7 +32,7 @@
 
 (declare-function prop-match-value "text-property-search")
 (declare-function text-property-search-backward "text-property-search")
-(declare-function json-read "json")
+(declare-function json-read "json" ())
 
 ;;; Anthropic (Messages API)
 (cl-defstruct (gptel-anthropic (:constructor gptel--make-anthropic)
@@ -40,8 +40,7 @@
                                (:include gptel-backend)))
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-anthropic) _info)
-  (let* ((json-object-type 'plist)
-         (content-strs)
+  (let* ((content-strs)
          (pt (point)))
     (condition-case nil
         (while (re-search-forward "^event: " nil t)
@@ -50,7 +49,7 @@
            ((looking-at "content_block_\\(?:start\\|delta\\|stop\\)")
             (save-match-data
               (forward-line 1) (forward-char 5)
-              (when-let* ((response (json-read))
+              (when-let* ((response (gptel--json-read))
                           (content (map-nested-elt
                                     response '(:delta :text))))
                 (push content content-strs))))))
