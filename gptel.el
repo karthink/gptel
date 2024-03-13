@@ -1325,6 +1325,22 @@ elements."
            (delete-char -1) (insert "-"))))))
     (buffer-string)))
 
+(defun gptel--replace-source-marker (num-ticks &optional end)
+  "Replace markdown style backticks with Org equivalents.
+
+NUM-TICKS is the number of backticks being replaced.  If END is
+true these are \"ending\" backticks.
+
+This is intended for use in the markdown to org stream converter."
+  (let ((from (match-beginning 0)))
+    (delete-region from (point))
+    (if (and (= num-ticks 3)
+             (save-excursion (beginning-of-line)
+                             (skip-chars-forward " \t")
+                             (eq (point) from)))
+        (insert (if end "#+end_src" "#+begin_src "))
+      (insert "="))))
+
 (defun gptel--stream-convert-markdown->org ()
   "Return a Markdown to Org converter.
 
@@ -1334,6 +1350,7 @@ text stream."
   (letrec ((in-src-block nil)           ;explicit nil to address BUG #183
            (temp-buf (generate-new-buffer-name "*gptel-temp*"))
            (start-pt (make-marker))
+           (ticks-total 0)
            (cleanup-fn
             (lambda (&rest _)
               (when (buffer-live-p (get-buffer temp-buf))
@@ -1342,29 +1359,45 @@ text stream."
               (remove-hook 'gptel-post-response-functions cleanup-fn))))
     (add-hook 'gptel-post-response-functions cleanup-fn)
     (lambda (str)
-      (let ((noop-p))
+      (let ((noop-p) (ticks 0))
         (with-current-buffer (get-buffer-create temp-buf)
-          (save-excursion (goto-char (point-max))
-                          (insert str))
+          (save-excursion (goto-char (point-max)) (insert str))
           (when (marker-position start-pt) (goto-char start-pt))
+          (when in-src-block (setq ticks ticks-total))
           (save-excursion
             (while (re-search-forward "`\\|\\*\\{1,2\\}\\|_" nil t)
               (pcase (match-string 0)
                 ("`"
-                 (cond
-                  ((looking-at "``")
-                   (backward-char 1)
-                   (delete-char 3)
-                   (if in-src-block
-                       (progn (insert "#+end_src")
-                              (setq in-src-block nil))
-                     (insert "#+begin_src ")
-                     (setq in-src-block t)))
-                  ((looking-at "`\\|$")
-                   (setq noop-p t)
-                   (set-marker start-pt (1- (point)))
-                   (unless (eobp) (forward-char 1)))
-                  ((not in-src-block) (replace-match "="))))
+                 ;; Count number of consecutive backticks
+                 (backward-char)
+                 (while (and (char-after) (eq (char-after) ?`))
+                   (forward-char)
+                   (if in-src-block (cl-decf ticks) (cl-incf ticks)))
+                 ;; Set the verbatim state of the parser
+                 (if (and (eobp)
+                          ;; Special case heuristic: If the response ends with
+                          ;; ^``` we don't wait for more input.
+                          ;; FIXME: This can have false positives.
+                          (not (save-excursion (beginning-of-line)
+                                               (looking-at "^```$"))))
+                     ;; End of input => there could be more backticks coming,
+                     ;; so we wait for more input
+                     (progn (setq noop-p t) (set-marker start-pt (match-beginning 0)))
+                   ;; We reached a character other than a backtick
+                   (cond
+                    ;; Ticks balanced, end src block
+                    ((= ticks 0)
+                     (progn (setq in-src-block nil)
+                            (gptel--replace-source-marker ticks-total 'end)))
+                    ;; Positive number of ticks, start an src block
+                    ((and (> ticks 0) (not in-src-block))
+                     (setq ticks-total ticks
+                           in-src-block t)
+                     (gptel--replace-source-marker ticks-total))
+                    ;; Negative number of ticks or in a src block already,
+                    ;; reset ticks
+                    (t (setq ticks ticks-total)))))
+                ;; Handle other chars: emphasis, bold and bullet items
                 ((and "**" (guard (not in-src-block)))
                  (cond
                   ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)")
