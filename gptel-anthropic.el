@@ -104,7 +104,9 @@
            (lambda () (when-let (key (gptel--get-api-key))
                         `(("x-api-key" . ,key)
                           ("anthropic-version" . "2023-06-01")))))
-          (models '("claude-3-sonnet-20240229" "claude-3-opus-20240229"))
+          (models '("claude-3-sonnet-20240229"
+                    "claude-3-haiku-20240307"
+                    "claude-3-opus-20240229"))
           (host "api.anthropic.com")
           (protocol "https")
           (endpoint "/v1/messages"))
