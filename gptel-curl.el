@@ -47,16 +47,14 @@
 (defvar gptel-curl--process-alist nil
   "Alist of active GPTel curl requests.")
 
-(defun gptel-curl--get-args (prompts token)
+(defun gptel-curl--get-args (data token)
   "Produce list of arguments for calling Curl.
 
-PROMPTS is the data to send, TOKEN is a unique identifier."
+REQUEST-DATA is the data to send, TOKEN is a unique identifier."
   (let* ((url (let ((backend-url (gptel-backend-url gptel-backend)))
                     (if (functionp backend-url)
                         (funcall backend-url) backend-url)))
-         (data (encode-coding-string
-                (gptel--json-encode (gptel--request-data gptel-backend prompts))
-                'utf-8))
+         (data-json (encode-coding-string (gptel--json-encode data) 'utf-8))
          (headers
           (append '(("Content-Type" . "application/json"))
                   (when-let ((header (gptel-backend-header gptel-backend)))
@@ -68,15 +66,15 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
                      (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
                              headers))
                     "request headers"))
-      (gptel--log data "request body"))
+      (gptel--log data-json "request body"))
     (append
      gptel-curl--common-args
      (gptel-backend-curl-args gptel-backend)
      (list (format "-w(%s . %%{size_header})" token))
-     (if (length< data gptel-curl-file-size-threshold)
-         (list (format "-d%s" data))
+     (if (length< data-json gptel-curl-file-size-threshold)
+         (list (format "-d%s" data-json))
        (letrec
-           ((temp-filename (make-temp-file "gptel-curl-data" nil ".json" data))
+           ((temp-filename (make-temp-file "gptel-curl-data" nil ".json" data-json))
             (cleanup-fn (lambda (&rest _)
                           (when (file-exists-p temp-filename)
                             (delete-file temp-filename)
@@ -99,7 +97,7 @@ PROMPTS is the data to send, TOKEN is a unique identifier."
   "Retrieve response to prompt in INFO.
 
 INFO is a plist with the following keys:
-- :prompt (the prompt being sent)
+- :data (the data being sent)
 - :buffer (the gptel buffer)
 - :position (marker at which to insert the response).
 
@@ -108,7 +106,7 @@ the response is inserted into the current buffer after point."
   (let* ((token (md5 (format "%s%s%s%s"
                              (random) (emacs-pid) (user-full-name)
                              (recent-keys))))
-         (args (gptel-curl--get-args (plist-get info :prompt) token))
+         (args (gptel-curl--get-args (plist-get info :data) token))
          (stream (and gptel-stream (gptel-backend-stream gptel-backend)))
          (process (apply #'start-process "gptel-curl"
                          (generate-new-buffer "*gptel-curl*") "curl" args)))

@@ -805,10 +805,13 @@ file."
 (cl-defun gptel-request
     (&optional prompt &key callback
                (buffer (current-buffer))
-               position context
+               position context dry-run
                (stream nil) (in-place nil)
                (system gptel--system-message))
   "Request a response from the `gptel-backend' for PROMPT.
+
+The request is asynchronous, the function immediately returns
+with the data that was sent.
 
 Note: This function is not fully self-contained.  Consider
 let-binding the parameters `gptel-backend' and `gptel-model'
@@ -832,7 +835,7 @@ with the RESPONSE (a string) and INFO (a plist):
 RESPONSE is nil if there was no response or an error.
 
 The INFO plist has (at least) the following keys:
-:prompt       - The full prompt that was sent with the request
+:data         - The request data included with the query
 :position     - marker at the point the request was sent, unless
                 POSITION is specified.
 :buffer       - The buffer current when the request was sent,
@@ -887,6 +890,9 @@ STREAM is a boolean that determines if the response should be
 streamed, as in `gptel-stream'. Do not set this if you are
 specifying a custom CALLBACK!
 
+If DRY-RUN is non-nil, construct and return the full
+query data as usual, but do not send the request.
+
 Model parameters can be let-bound around calls to this function."
   (declare (indent 1))
   (let* ((gptel-stream stream)
@@ -908,19 +914,22 @@ Model parameters can be let-bound around calls to this function."
             ;; FIXME Dear reader, welcome to Jank City:
             (with-temp-buffer
               (let ((gptel--system-message system)
+                    (gptel-model (buffer-local-value 'gptel-model buffer))
                     (gptel-backend (buffer-local-value 'gptel-backend buffer)))
                 (insert prompt)
                 (gptel--create-prompt))))
            ((consp prompt) prompt)))
-         (info (list :prompt full-prompt
+         (request-data (gptel--request-data gptel-backend full-prompt))
+         (info (list :data request-data
                      :buffer buffer
                      :position start-marker)))
     (when context (plist-put info :context context))
     (when in-place (plist-put info :in-place in-place))
-    (funcall
-     (if gptel-use-curl
-         #'gptel-curl-get-response #'gptel--url-get-response)
-     info callback)))
+    (unless dry-run
+      (funcall (if gptel-use-curl
+                   #'gptel-curl-get-response #'gptel--url-get-response)
+               info callback))
+    request-data))
 
 ;; TODO: Handle multiple requests(#15). (Only one request from one buffer at a time?)
 ;;;###autoload
@@ -943,19 +952,8 @@ waiting for the response."
       (call-interactively #'gptel-menu)
   (message "Querying %s..." (gptel-backend-name gptel-backend))
   (gptel--sanitize-model)
-  (let* ((response-pt
-          (if (use-region-p)
-              (set-marker (make-marker) (region-end))
-            (gptel--at-word-end (point-marker))))
-         (gptel-buffer (current-buffer))
-         (full-prompt (gptel--create-prompt response-pt)))
-    (funcall
-     (if gptel-use-curl
-         #'gptel-curl-get-response #'gptel--url-get-response)
-     (list :prompt full-prompt
-           :buffer gptel-buffer
-           :position response-pt)))
-    (gptel--update-status " Waiting..." 'warning)))
+  (gptel-request nil :stream gptel-stream)
+  (gptel--update-status " Waiting..." 'warning)))
 
 (defun gptel--insert-response (response info)
   "Insert the LLM RESPONSE into the gptel buffer.
@@ -1113,8 +1111,8 @@ BUFFER is the LLM interaction buffer."
   "Fetch response to prompt in INFO from the LLM.
 
 INFO is a plist with the following keys:
-- :prompt (the prompt being sent)
-- :buffer (the gptel buffer)
+- :data     (the data being sent)
+- :buffer   (the gptel buffer)
 - :position (marker at which to insert the response).
 
 Call CALLBACK with the response and INFO afterwards.  If omitted
@@ -1130,8 +1128,7 @@ the response is inserted into the current buffer after point."
                         (funcall header) header))))
         (url-request-data
          (encode-coding-string
-          (gptel--json-encode (gptel--request-data
-                        gptel-backend (plist-get info :prompt)))
+          (gptel--json-encode (plist-get info :data))
           'utf-8)))
     (when gptel-log-level               ;logging
       (when (eq gptel-log-level 'debug)
