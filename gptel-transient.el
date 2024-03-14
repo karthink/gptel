@@ -174,7 +174,20 @@ which see."
      :if gptel--at-response-history-p
      :transient t)
     ("E" "Ediff previous" gptel--ediff
-     :if gptel--at-response-history-p)]]
+     :if gptel--at-response-history-p)]
+   ["Inspect"
+    ("I" "Query as Lisp"
+     (lambda ()
+       "Inspect the query that will be sent as a lisp object."
+       (interactive)
+       (gptel--sanitize-model)
+       (gptel--inspect-query)))
+    ("J" "Query as JSON"
+     (lambda ()
+       "Inspect the query that will be sent as a JSON object."
+       (interactive)
+       (gptel--sanitize-model)
+       (gptel--inspect-query 'json)))]]
   (interactive)
   (gptel--sanitize-model)
   (transient-setup 'gptel-menu))

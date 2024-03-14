@@ -955,6 +955,31 @@ waiting for the response."
   (gptel-request nil :stream gptel-stream)
   (gptel--update-status " Waiting..." 'warning)))
 
+(declare-function json-pretty-print-buffer "json")
+(defun gptel--inspect-query (&optional arg)
+  "Show the full LLM query to be sent in a new buffer.
+
+This functions as a dry run of `gptel-send'.  If prefix ARG is
+the symbol json, show the encoded JSON query instead of the lisp
+structure gptel uses."
+  (let* ((request-data
+          (gptel-request nil :stream gptel-stream :dry-run t)))
+    (with-current-buffer (get-buffer-create "*gptel-query*")
+      (let ((standard-output (current-buffer))
+            (inhibit-read-only t))
+        (buffer-disable-undo)
+        (erase-buffer)
+        (if (eq arg 'json)
+            (progn (fundamental-mode)
+                   (insert (gptel--json-encode request-data))
+                   (json-pretty-print-buffer))
+          (lisp-data-mode)
+          (prin1 request-data)
+          (pp-buffer))
+        (goto-char (point-min))
+        (view-mode 1)
+        (display-buffer (current-buffer) gptel-display-buffer-action)))))
+
 (defun gptel--insert-response (response info)
   "Insert the LLM RESPONSE into the gptel buffer.
 
