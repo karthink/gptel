@@ -1494,6 +1494,7 @@ context for the ediff session."
                     (let ((inhibit-read-only t))
                       (erase-buffer)
                       (delay-mode-hooks (funcall buffer-mode))
+                      (visual-line-mode)
                       (insert prev-response)
                       (goto-char (point-min))
                       (list (current-buffer) (point-min) (point-max))))))
