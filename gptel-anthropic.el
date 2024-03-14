@@ -65,12 +65,12 @@
   "JSON encode PROMPTS for sending to ChatGPT."
   (let ((prompts-plist
          `(:model ,gptel-model
-           :messages [,@prompts]
            :system ,gptel--system-message
            :stream ,(or (and gptel-stream gptel-use-curl
                          (gptel-backend-stream gptel-backend))
                      :json-false)
-           :max_tokens ,(or gptel-max-tokens 1024))))
+           :max_tokens ,(or gptel-max-tokens 1024)
+           :messages [,@prompts])))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
     prompts-plist))
