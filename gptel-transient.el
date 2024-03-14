@@ -294,6 +294,16 @@ documention."
   (ignore-errors
     (read-from-minibuffer prompt initial-input read-expression-map t history)))
 
+(defclass gptel-lisp-variable (transient-lisp-variable)
+  ((display-nil :initarg :display-nil))
+  "Lisp variables that show :display-nil instead of nil.")
+
+(cl-defmethod transient-format-value
+  ((obj gptel-lisp-variable))
+  (propertize (prin1-to-string (or (oref obj value)
+                                   (oref obj display-nil)))
+              'face 'transient-value))
+
 (transient-define-infix gptel--infix-num-messages-to-send ()
   "Number of recent messages to send with each exchange.
 
@@ -301,9 +311,11 @@ By default, the full conversation history is sent with every new
 prompt. This retains the full context of the conversation, but
 can be expensive in token size. Set how many recent messages to
 include."
-  :description "Number of past messages to send"
-  :class 'transient-lisp-variable
+  :description "previous responses"
+  :class 'gptel-lisp-variable
   :variable 'gptel--num-messages-to-send
+  :display-nil 'all
+  :format " %k %v %d"
   :key "-n"
   :prompt "Number of past messages to include for context (leave empty for all): "
   :reader 'gptel--transient-read-variable)
@@ -315,8 +327,9 @@ This is roughly the number of words in the response. 100-300 is a
 reasonable range for short answers, 400 or more for longer
 responses."
   :description "Response length (tokens)"
-  :class 'transient-lisp-variable
+  :class 'gptel-lisp-variable
   :variable 'gptel-max-tokens
+  :display-nil 'auto
   :key "-c"
   :prompt "Response length in tokens (leave empty: default, 80-200: short, 200-500: long): "
   :reader 'gptel--transient-read-variable)
@@ -344,7 +357,7 @@ responses."
 
 (transient-define-infix gptel--infix-provider ()
   "AI Provider for Chat."
-  :description "GPT Model: "
+  :description "GPT Model"
   :class 'gptel-provider-variable
   :prompt "Model provider: "
   :variable 'gptel-backend
@@ -412,7 +425,8 @@ responses."
   "Send ARGS."
   :key "RET"
   :description "Send prompt"
-  (interactive (list (transient-args transient-current-command)))
+  (interactive (list (transient-args
+                      (or transient-current-command 'gptel-menu))))
   (let ((stream gptel-stream)
         (in-place (and (member "i" args) t))
         (output-to-other-buffer-p)
