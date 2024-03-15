@@ -124,7 +124,7 @@ which see."
    [""
     "Instructions"
     ("s" "Set system message" gptel-system-prompt :transient t)
-    (gptel--additional-directive :if (lambda () gptel-expert-commands))]]
+    (gptel--infix-add-directive :if (lambda () gptel-expert-commands))]]
   [["Model Parameters"
     (gptel--infix-provider)
     ;; (gptel--infix-model)
@@ -185,7 +185,7 @@ which see."
      (lambda ()
        "Inspect the query that will be sent as a lisp object."
        (interactive)
-       (let* ((extra (gptel--additional-directive-get
+       (let* ((extra (gptel--get-directive
                       (transient-args
                        transient-current-command)))
               (gptel--system-message
@@ -196,7 +196,7 @@ which see."
      (lambda ()
        "Inspect the query that will be sent as a JSON object."
        (interactive)
-       (let* ((extra (gptel--additional-directive-get
+       (let* ((extra (gptel--get-directive
                       (transient-args
                        transient-current-command)))
               (gptel--system-message
@@ -477,7 +477,7 @@ Also format its value in the Transient menu."
        (concat "(" (symbol-name (oref obj display-nil)) ")")
        'face 'transient-inactive-value))))
 
-(transient-define-infix gptel--additional-directive ()
+(transient-define-infix gptel--infix-add-directive ()
   "Additional directive intended for the next query only.
 
 This is useful to define a quick task on top of a more extensive
@@ -507,7 +507,7 @@ Or in an extended conversation:
   :description "Add directive"
   :transient t)
 
-(defun gptel--additional-directive-get (args)
+(defun gptel--get-directive (args)
   "Find the additional directive in the transient ARGS of this command."
   (cl-some (lambda (s) (and (string-prefix-p ":" s)
                        (concat "\n\n" (substring s 1))))
@@ -546,7 +546,7 @@ Or in an extended conversation:
         (backend-name (gptel-backend-name gptel-backend))
         (buffer) (position)
         (callback) (gptel-buffer-name)
-        (system-extra (gptel--additional-directive-get args))
+        (system-extra (gptel--get-directive args))
         ;; Input redirection: grab prompt from elsewhere?
         (prompt
          (cond
