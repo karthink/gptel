@@ -469,6 +469,11 @@ README for examples."
           (restricted-sexp :match-alternatives (gptel-backend-p 'nil)
            :tag "Other backend")))
 
+(defvar gptel-expert-commands nil
+  "Whether experimental gptel options should be enabled.
+
+This opens up advanced options in `gptel-menu'.")
+
 (defvar-local gptel--bounds nil)
 (put 'gptel--bounds 'safe-local-variable #'always)
 
@@ -545,16 +550,32 @@ Note: This will move the cursor."
           (scroll-up-command))
       (error nil))))
 
-(defun gptel-end-of-response (_ _ &optional arg)
+(defun gptel-beginning-of-response (&optional _ _ arg)
+  "Move point to the beginning of the LLM response ARG times."
+  (interactive "p")
+  ;; FIXME: Only works for arg == 1
+  (gptel-end-of-response nil nil (- (or arg 1))))
+
+(defun gptel-end-of-response (&optional _ _ arg)
   "Move point to the end of the LLM response ARG times."
-  (interactive (list nil nil current-prefix-arg))
-  (dotimes (_ (if arg (abs arg) 1))
-    (text-property-search-forward 'gptel 'response t)
-    (when (looking-at (concat "\n\\{1,2\\}"
-                              (regexp-quote
-                               (gptel-prompt-prefix-string))
-                              "?"))
-      (goto-char (match-end 0)))))
+  (interactive (list nil nil
+                     (prefix-numeric-value current-prefix-arg)))
+  (let ((search (if (> arg 0)
+                    #'text-property-search-forward
+                  #'text-property-search-backward)))
+    (dotimes (_ (abs arg))
+      (funcall search 'gptel 'response t)
+      (if (> arg 0)
+          (when (looking-at (concat "\n\\{1,2\\}"
+                                    (regexp-quote
+                                     (gptel-prompt-prefix-string))
+                                    "?"))
+            (goto-char (match-end 0)))
+        (when (looking-back (concat (regexp-quote
+                                     (gptel-response-prefix-string))
+                                    "?")
+                            (point-min))
+          (goto-char (match-beginning 0)))))))
 
 (defmacro gptel--at-word-end (&rest body)
   "Execute BODY at end of the current word or punctuation."
