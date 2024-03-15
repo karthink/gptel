@@ -1579,5 +1579,28 @@ context for the ediff session."
   (interactive "p")
   (gptel--previous-variant (- arg)))
 
+(cl-defun gptel-clean-up-llm-code (buffer beg end)
+  "Clean up LLM response between BEG & END in BUFFER."
+  (with-current-buffer buffer
+    (save-excursion
+      (let* ((res-beg beg)
+             (res-end end)
+             (contents nil))
+        (setq contents (buffer-substring-no-properties res-beg
+                                                       res-end))
+        (setq contents (replace-regexp-in-string
+                        "^\\(```.*\n\\)\\|\n\\(```.*\\)$"
+                        ""
+                        contents))
+        (delete-region res-beg res-end)
+        (goto-char res-beg)
+        (insert contents)
+        (setq res-end (point))
+        ;; Indent the code to match the buffer indentation if it's messed up.
+        (unless (eq indent-line-function #'indent-relative)
+          (indent-region res-beg res-end))
+        (pulse-momentary-highlight-region res-beg res-end)
+        (setq res-beg (next-single-property-change res-beg 'gptel))))))
+
 (provide 'gptel)
 ;;; gptel.el ends here
