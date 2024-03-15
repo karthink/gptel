@@ -123,21 +123,21 @@ which see."
        gptel--system-message (max (- (window-width) 6) 14) nil nil t)))
    [""
     "Instructions"
-    ("h" "Set system message" gptel-system-prompt :transient t)
+    ("s" "Set system message" gptel-system-prompt :transient t)
     (gptel--additional-directive :if (lambda () gptel-expert-commands))]]
   [["Model Parameters"
     (gptel--infix-provider)
     ;; (gptel--infix-model)
     (gptel--infix-max-tokens)
     (gptel--infix-num-messages-to-send)
-    (gptel--infix-temperature)]
+    (gptel--infix-temperature :if (lambda () gptel-expert-commands))]
    ["Prompt from"
-    ("p" "Minibuffer instead" "p")
+    ("m" "Minibuffer instead" "m")
     ("y" "Kill-ring instead" "y")
     ""
-    ("i" "Replace/Delete prompt" "i")]
+    ("i" "Respond in place" "i")]
     ["Response to"
-    ("m" "Minibuffer instead" "m")
+    ("e" "Echo area instead" "e")
     ("g" "gptel session" "g"
      :class transient-option
      :prompt "Existing or new gptel session: "
@@ -214,7 +214,7 @@ which see."
    'gptel-system-prompt
    (cl-loop for (type . prompt) in gptel-directives
        ;; Avoid clashes with the custom directive key
-       with unused-keys = (delete ?h (number-sequence ?a ?z))
+       with unused-keys = (delete ?s (number-sequence ?a ?z))
        with width = (window-width)
        for name = (symbol-name type)
        for key = (seq-find (lambda (k) (member k unused-keys)) name (seq-first unused-keys))
@@ -268,9 +268,11 @@ More extensive system messages can be useful for specific tasks.
 
 Customize `gptel-directives' for task-specific prompts."
   [:description
-   (lambda () (format "Current directive: %s"
-                 (truncate-string-to-width
-                  gptel--system-message 100 nil nil t)))
+   (lambda () (format "System Message: %s"
+                 (string-replace
+                  "\n" "⮐"
+                  (truncate-string-to-width
+                   gptel--system-message 100 nil nil t))))
    :class transient-column
    :setup-children gptel-system-prompt--setup
    :pad-keys t])
@@ -411,11 +413,11 @@ responses."
 
 (transient-define-infix gptel--infix-temperature ()
   "Temperature of request."
-  :description "Randomness (0 - 2.0)"
+  :description "Temperature (0 - 2.0)"
   :class 'transient-lisp-variable
   :variable 'gptel-temperature
   :key "-t"
-  :prompt "Set temperature (0.0-2.0, leave empty for default): "
+  :prompt "Temperature controls the response randomness (0.0-2.0, leave empty for default): "
   :reader 'gptel--transient-read-variable)
 
 ;; ** Infix for the refactor/rewrite system message
@@ -469,7 +471,7 @@ Also format its value in the Transient menu."
         (add-hook 'transient-exit-hook ov-clear-hook)))
     ;; Updating transient menu display
     (if value
-        (propertize (concat argument (truncate-string-to-width value 15 nil nil "..."))
+        (propertize (concat argument (truncate-string-to-width value 25 nil nil "..."))
                     'face 'transient-value)
       (propertize
        (concat "(" (symbol-name (oref obj display-nil)) ")")
@@ -502,7 +504,7 @@ Or in an extended conversation:
   :format " %k %d %v"
   :key "d"
   :argument ":"
-  :description "Additional directive"
+  :description "Add directive"
   :transient t)
 
 (defun gptel--additional-directive-get (args)
@@ -548,7 +550,7 @@ Or in an extended conversation:
         ;; Input redirection: grab prompt from elsewhere?
         (prompt
          (cond
-          ((member "p" args)
+          ((member "m" args)
            (read-string
             (format "Ask %s: " (gptel-backend-name gptel-backend))
             (apply #'buffer-substring-no-properties
@@ -564,7 +566,7 @@ Or in an extended conversation:
 
     ;; Output redirection: Send response elsewhere?
     (cond
-     ((member "m" args)
+     ((member "e" args)
       (setq stream nil)
       (setq callback
             (lambda (resp info)
@@ -738,7 +740,7 @@ This uses the prompts in the variable
   "Edit LLM directives."
   :transient 'transient--do-exit
   :description "Set custom directives"
-  :key "h"
+  :key "s"
   (interactive)
   (let ((orig-buf (current-buffer))
         (msg-start (make-marker)))
