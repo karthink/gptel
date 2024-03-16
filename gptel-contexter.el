@@ -408,13 +408,13 @@ REGIONS is a list of pairs of (start, end) lists."
                          (setq lineno (line-number-at-pos start)))
                        ;; We do not need to insert a line number indicator on
                        ;; inline regions.
-                       (unless (or region-inline region-continuous
-                                   (insert (format " (Line %d)" lineno))))))
+                       (unless (or region-inline region-continuous)
+                         (insert (format " (Line %d)" lineno)))))
                    (if is-top-snippet
-                       (setq is-top-snippet nil)
-                     (when (and (not region-inline)
-                                (not region-continuous))
-                       (insert "\n")))
+                       (setq is-top-snippet nil))
+                   (when (and (not region-inline)
+                              (not region-continuous))
+                     (insert "\n"))
                    (let (substring)
                      (with-current-buffer buffer
                        (setq substring

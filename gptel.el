@@ -1579,8 +1579,11 @@ context for the ediff session."
   (interactive "p")
   (gptel--previous-variant (- arg)))
 
-(cl-defun gptel-clean-up-llm-code (buffer beg end)
-  "Clean up LLM response between BEG & END in BUFFER."
+(defun gptel-clean-up-llm-code (buffer beg end)
+  "Clean up LLM response between BEG & END in BUFFER.
+
+Removes any markup formatting and indents the code within the parameters of the
+current buffer."
   (with-current-buffer buffer
     (save-excursion
       (let* ((res-beg beg)
