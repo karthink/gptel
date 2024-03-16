@@ -127,7 +127,6 @@ which see."
     (gptel--infix-add-directive :if (lambda () gptel-expert-commands))]]
   [["Model Parameters"
     (gptel--infix-provider)
-    ;; (gptel--infix-model)
     (gptel--infix-max-tokens)
     (gptel--infix-num-messages-to-send)
     (gptel--infix-temperature :if (lambda () gptel-expert-commands))]
@@ -384,32 +383,13 @@ responses."
   :model 'gptel-model
   :key "-m"
   :reader (lambda (prompt &rest _)
-            (let* ((backend-name
-                    (if (<= (length gptel--known-backends) 1)
-                        (caar gptel--known-backends)
-                      (completing-read
-                       prompt
-                       (mapcar #'car gptel--known-backends))))
-                   (backend (alist-get backend-name gptel--known-backends
-                                nil nil #'equal))
-                   (backend-models (gptel-backend-models backend))
-                   (model-name (if (= (length backend-models) 1)
-                                   (car backend-models)
-                                 (completing-read
-                                  "Model: " backend-models))))
-              (list backend model-name))))
-
-(transient-define-infix gptel--infix-model ()
-  "AI Model for Chat."
-  :description "GPT Model: "
-  :class 'transient-lisp-variable
-  :variable 'gptel-model
-  :key "-m"
-  :choices '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4" "gpt-4-1106-preview")
-  :reader (lambda (prompt &rest _)
-            (completing-read
-             prompt
-             '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4" "gpt-4-1106-preview"))))
+            (cl-loop
+             for (name . backend) in gptel--known-backends
+             nconc (cl-loop for model in (gptel-backend-models backend)
+                            collect (list (concat name ":" model) backend model))
+             into models-alist finally return
+             (cdr (assoc (completing-read "Model: " models-alist nil t)
+                         models-alist)))))
 
 (transient-define-infix gptel--infix-temperature ()
   "Temperature of request."
