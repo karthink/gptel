@@ -409,35 +409,34 @@ REGIONS is a list of pairs of (start, end) lists."
                        ;; We do not need to insert a line number indicator on
                        ;; inline regions.
                        (unless (or region-inline region-continuous
-                                   (insert (format " (Line %d)" lineno))))
-                       (setq is-top-snippet nil))
-                     (if is-top-snippet
-                         (setq is-top-snippet nil)
-                       (when (and (not region-inline)
-                                  (not region-continuous))
-                         (insert "\n")))
-                     (let (substring)
-                       (with-current-buffer buffer
-                         (setq substring
-                               (if compress-code
-                                   (gptel--compress-code
-                                    (buffer-substring start end)
-                                    major-mode)
-                                 (buffer-substring start end))))
-                       (let (ss-start ss-end)
-                         (setq ss-start (point))
-                         (insert substring)
-                         (setq ss-end (point))
-                         ;; Save the context as a text property, so
-                         ;; that we may later be able to delete the
-                         ;; context snippet from the context buffer.
-                         (put-text-property
-                          ss-start ss-end
-                          'gptel--context
-                          (cons buffer
-                                (list
-                                 (list start end)))))))
-                   (setq previous-region (cons start end)))))
+                                   (insert (format " (Line %d)" lineno))))))
+                   (if is-top-snippet
+                       (setq is-top-snippet nil)
+                     (when (and (not region-inline)
+                                (not region-continuous))
+                       (insert "\n")))
+                   (let (substring)
+                     (with-current-buffer buffer
+                       (setq substring
+                             (if compress-code
+                                 (gptel--compress-code
+                                  (buffer-substring start end)
+                                  major-mode)
+                               (buffer-substring start end))))
+                     (let (ss-start ss-end)
+                       (setq ss-start (point))
+                       (insert substring)
+                       (setq ss-end (point))
+                       ;; Save the context as a text property, so
+                       ;; that we may later be able to delete the
+                       ;; context snippet from the context buffer.
+                       (put-text-property
+                        ss-start ss-end
+                        'gptel--context
+                        (cons buffer
+                              (list
+                               (list start end)))))))
+                 (setq previous-region (cons start end))))
       (unless (= (cl-second (car (last regions))) buffer-point-max)
         (insert "\n..."))
       (insert "\n```"))
