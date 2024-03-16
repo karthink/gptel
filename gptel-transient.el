@@ -124,7 +124,7 @@ which see."
    [""
     "Instructions"
     ("s" "Set system message" gptel-system-prompt :transient t)
-    (gptel--infix-add-directive :if (lambda () gptel-expert-commands))]]
+    (gptel--infix-add-directive)]]
   [["Model Parameters"
     (gptel--infix-provider)
     (gptel--infix-max-tokens)
@@ -461,7 +461,7 @@ Also format its value in the Transient menu."
   "Additional directive intended for the next query only.
 
 This is useful to define a quick task on top of a more extensive
-or detailed system prompt (directive).
+or detailed system message.
 
 For example, with code/text selected:
 
@@ -719,7 +719,7 @@ This uses the prompts in the variable
 (transient-define-suffix gptel--suffix-system-message ()
   "Edit LLM directives."
   :transient 'transient--do-exit
-  :description "Set custom directives"
+  :description "Set or edit system message"
   :key "s"
   (interactive)
   (let ((orig-buf (current-buffer))
