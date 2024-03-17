@@ -369,7 +369,8 @@ interactively call `gptel-send' with a prefix argument."
   :safe #'always
   :type '(alist :key-type symbol :value-type string))
 
-(defvar-local gptel--system-message (alist-get 'default gptel-directives))
+(defvar gptel--system-message (alist-get 'default gptel-directives)
+  "The system message used by gptel.")
 (put 'gptel--system-message 'safe-local-variable #'always)
 
 (defcustom gptel-max-tokens nil
@@ -381,7 +382,6 @@ responses.
 
 To set the target token count for a chat session interactively
 call `gptel-send' with a prefix argument."
-  :local t
   :safe #'always
   :group 'gptel
   :type '(choice (integer :tag "Specify Token count")
@@ -401,7 +401,6 @@ The current options for ChatGPT are
  
 To set the model for a chat session interactively call
 `gptel-send' with a prefix argument."
-  :local t
   :safe #'always
   :group 'gptel
   :type '(choice
@@ -421,7 +420,6 @@ of the response, with 2.0 being the most random.
 
 To set the temperature for a chat session interactively call
 `gptel-send' with a prefix argument."
-  :local t
   :safe #'always
   :group 'gptel
   :type 'number)
@@ -461,7 +459,6 @@ one of the available backend creation functions:
 - `gptel-make-gemini'
 See their documentation for more information and the package
 README for examples."
-  :local t
   :safe #'always
   :group 'gptel
   :type `(choice
@@ -477,7 +474,7 @@ This opens up advanced options in `gptel-menu'.")
 (defvar-local gptel--bounds nil)
 (put 'gptel--bounds 'safe-local-variable #'always)
 
-(defvar-local gptel--num-messages-to-send nil)
+(defvar gptel--num-messages-to-send nil)
 (put 'gptel--num-messages-to-send 'safe-local-variable #'always)
 
 (defcustom gptel-log-level nil

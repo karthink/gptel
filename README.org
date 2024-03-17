@@ -160,10 +160,10 @@ You can pick this backend from the menu when using gptel. (see [[#usage][Usage]]
 
 ***** (Optional) Set as the default gptel backend
 
-The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default
+(setq
  gptel-model "gpt-3.5-turbo"
  gptel-backend (gptel-make-azure "Azure-1"
                  :protocol "https"
@@ -192,10 +192,10 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 ***** (Optional) Set as the default gptel backend
 
-The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.  Additionally you may want to increase the response token size since GPT4All uses very short (often truncated) responses by default.
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.  Additionally you may want to increase the response token size since GPT4All uses very short (often truncated) responses by default.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default
+(setq
  gptel-max-tokens 500
  gptel-model "mistral-7b-openorca.Q4_0.gguf"
  gptel-backend (gptel-make-gpt4all "GPT4All"
@@ -223,10 +223,10 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 ***** (Optional) Set as the default gptel backend
 
-The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default
+(setq
  gptel-model "mistral:latest"
  gptel-backend (gptel-make-ollama "Ollama"
                  :host "localhost:11434"
@@ -251,10 +251,10 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 ***** (Optional) Set as the default gptel backend
 
-The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default
+(setq
  gptel-model "gemini-pro"
  gptel-backend (gptel-make-gemini "Gemini"
                  :key "YOUR_GEMINI_API_KEY"
@@ -285,10 +285,10 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 ***** (Optional) Set as the default gptel backend
 
-The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default
+(setq
  gptel-model   "test"
  gptel-backend (gptel-make-openai "llama-cpp"
                  :stream t
@@ -319,10 +319,10 @@ You can pick this backend and the model (fastgpt/summarizer) from the transient 
 
 ***** (Optional) Set as the default gptel backend
 
-The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default
+(setq
  gptel-model "fastgpt"
  gptel-backend (gptel-make-kagi "Kagi"
                  :key "YOUR_KAGI_API_KEY"))
@@ -352,10 +352,10 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 ***** (Optional) Set as the default gptel backend
 
-The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default
+(setq
  gptel-model   "mistralai/Mixtral-8x7B-Instruct-v0.1"
  gptel-backend
  (gptel-make-openai "TogetherAI"         
@@ -387,10 +387,10 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 ***** (Optional) Set as the default gptel backend
 
-The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default
+(setq
  gptel-model   "mistralai/Mixtral-8x7B-Instruct-v0.1"
  gptel-backend
  (gptel-make-openai "Anyscale"
@@ -424,10 +424,10 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 ***** (Optional) Set as the default gptel backend
 
-The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default
+(setq
  gptel-model   "pplx-7b-chat"
  gptel-backend
  (gptel-make-openai "Perplexity"
@@ -458,10 +458,10 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 ***** (Optional) Set as the default gptel backend
 
-The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default
+(setq
  gptel-model "claude-3-sonnet-20240229" ;  "claude-3-opus-20240229" also available
  gptel-backend (gptel-make-anthropic "Claude"
                  :stream t :key "your-api-key"))
@@ -489,20 +489,19 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 ***** (Optional) Set as the default gptel backend
 
-The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the default value of =gptel-backend=.  Use this instead of the above.
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq-default
- gptel-model   "mixtral-8x7b-32768"
- gptel-backend
- (gptel-make-openai "Groq"
-  :host "api.groq.com"
-  :endpoint "/openai/v1/chat/completions"
-  :stream t
-  :key "your-api-key"
-  :models '("mixtral-8x7b-32768"
-            "gemma-7b-it"
-            "llama2-70b-4096")))
+(setq gptel-model   "mixtral-8x7b-32768"
+      gptel-backend
+      (gptel-make-openai "Groq"
+        :host "api.groq.com"
+        :endpoint "/openai/v1/chat/completions"
+        :stream t
+        :key "your-api-key"
+        :models '("mixtral-8x7b-32768"
+                  "gemma-7b-it"
+                  "llama2-70b-4096")))
 #+end_src
 
 #+html: </details>
