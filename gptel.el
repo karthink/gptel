@@ -281,12 +281,13 @@ defaults to `text-mode'."
   :group 'gptel
   :type 'symbol)
 
-;; TODO: Handle `prog-mode' using the `comment-start' variable
 (defcustom gptel-prompt-prefix-alist
   '((markdown-mode . "### ")
     (org-mode . "*** ")
+    (prog-mode . (lambda () (concat comment-start " ")))
     (text-mode . "### "))
-  "String used as a prefix to the query being sent to the LLM.
+  "A string or function that returns a string.
+This string will be used as a prefix to the query being sent to the LLM.
 
 This is meant for the user to distinguish between queries and
 responses, and is removed from the query before it is sent.
@@ -294,13 +295,15 @@ responses, and is removed from the query before it is sent.
 This is an alist mapping major modes to the prefix strings.  This
 is only inserted in dedicated gptel buffers."
   :group 'gptel
-  :type '(alist :key-type symbol :value-type string))
+  :type '(alist :key-type symbol :value-type sexp))
 
 (defcustom gptel-response-prefix-alist
   '((markdown-mode . "")
     (org-mode . "")
+    (prog-mode . (lambda () (concat comment-start " ")))
     (text-mode . ""))
-  "String inserted before the response from the LLM.
+  "A string or function that returns a string.
+This string will be inserted before the response from the LLM.
 
 This is meant for the user to distinguish between queries and
 responses.
@@ -308,7 +311,7 @@ responses.
 This is an alist mapping major modes to the reply prefix strings.  This
 is only inserted in dedicated gptel buffers before the AI's response."
   :group 'gptel
-  :type '(alist :key-type symbol :value-type string))
+  :type '(alist :key-type symbol :value-type sexp))
 
 (defcustom gptel-use-header-line t
   "Whether `gptel-mode' should use header-line for status information.
@@ -373,6 +376,26 @@ interactively call `gptel-send' with a prefix argument."
   "The system message used by gptel.")
 (put 'gptel--system-message 'safe-local-variable #'always)
 
+(defvar gptel--stream-point-pos nil
+  "Variable to track the point where we are.")
+
+(defun gptel--insert-prefix-on-stream ()
+  "Insert prefix after each newline in the newly inserted content."
+  (let ((prefix (gptel-response-prefix-string))
+        (new-point (point)))
+    (save-excursion
+      (goto-char gptel--stream-point-pos)
+      (while (re-search-forward "\n" new-point t)
+        (insert prefix)))
+    (setq gptel--stream-point-pos (point))))
+
+(defun gptel--reset-point-pos ()
+  "Reset point pos."
+  (setq gptel--stream-point-pos (point)))
+
+(add-hook 'gptel-pre-response-hook #'gptel--reset-point-pos)
+(add-hook 'gptel-post-stream-hook #'gptel--insert-prefix-on-stream)
+
 (defcustom gptel-max-tokens nil
   "Max tokens per response.
 
@@ -398,7 +421,7 @@ The current options for ChatGPT are
 - \"gpt-3.5-turbo-16k\"
 - \"gpt-4\" (experimental)
 - \"gpt-4-1106-preview\" (experimental)
- 
+
 To set the model for a chat session interactively call
 `gptel-send' with a prefix argument."
   :safe #'always
@@ -580,11 +603,29 @@ Note: This will move the cursor."
      (skip-syntax-forward "w.")
      ,@body))
 
+(defun gptel--get-mode-to-use (mode)
+  "Get the MODE to use to lookup alist."
+  (if (derived-mode-p 'prog-mode)
+    'prog-mode
+    major-mode))
+
 (defun gptel-prompt-prefix-string ()
-  (or (alist-get major-mode gptel-prompt-prefix-alist) ""))
+  "Provide a string that will be prefixed to the place where the user will write a prmopt."
+  (let* ((this-mode (gptel--get-mode-to-use major-mode))
+          (prefix-or-fn (alist-get this-mode gptel-prompt-prefix-alist)))
+    (cond
+     ((functionp prefix-or-fn) (funcall prefix-or-fn))    ; If it's a function, call it
+     ((stringp prefix-or-fn) prefix-or-fn)                ; If it's a string, use it directly
+     (t ""))))                                             ; If it's neither, return an empty string
 
 (defun gptel-response-prefix-string ()
-  (or (alist-get major-mode gptel-response-prefix-alist) ""))
+  "Provide a string that will be prefixed to the place where the LLM will write a response."
+  (let* ((this-mode (gptel--get-mode-to-use major-mode))
+          (prefix-or-fn (alist-get this-mode gptel-response-prefix-alist)))
+    (cond
+     ((functionp prefix-or-fn) (funcall prefix-or-fn))    ; If it's a function, call it
+     ((stringp prefix-or-fn) prefix-or-fn)                ; If it's a string, use it directly
+     (t ""))))                                             ; If it's neither, return an empty string
 
 (defvar-local gptel--backend-name nil
   "Store to persist backend name across Emacs sessions.
@@ -760,7 +801,8 @@ file."
     map)
   (if gptel-mode
       (progn
-        (unless (memq major-mode '(org-mode markdown-mode text-mode))
+        (unless (or (memq major-mode '(org-mode markdown-mode text-mode prog-mode))
+                    (derived-mode-p 'prog-mode))
           (gptel-mode -1)
           (user-error (format "`gptel-mode' is not supported in `%s'." major-mode)))
         (add-hook 'before-save-hook #'gptel--save-state nil t)
@@ -1034,11 +1076,13 @@ See `gptel--url-get-response' for details."
                 (goto-char start-marker)
                 (run-hooks 'gptel-pre-response-hook)
                 (unless (or (bobp) (plist-get info :in-place))
-                  (insert "\n\n")
-                  (when gptel-mode
-                    (insert (gptel-response-prefix-string))))
+                  (insert "\n\n"))
                 (setq response-beg (point)) ;Save response start position
-                (insert response)
+                (let ((prefix (when gptel-mode (gptel-response-prefix-string))))
+                  (insert
+                    (mapconcat (lambda (line) (concat prefix line))
+                      (split-string response "\n")
+                      "\n")))
                 (setq response-end (point))
                 (pulse-momentary-highlight-region response-beg response-end)
                 (when gptel-mode (insert "\n\n" (gptel-prompt-prefix-string)))) ;Save response end position
