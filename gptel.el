@@ -557,6 +557,7 @@ Note: This will move the cursor."
   "Move point to the end of the LLM response ARG times."
   (interactive (list nil nil
                      (prefix-numeric-value current-prefix-arg)))
+  (unless arg (setq arg 1))
   (let ((search (if (> arg 0)
                     #'text-property-search-forward
                   #'text-property-search-backward)))
