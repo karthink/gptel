@@ -45,14 +45,12 @@
     (condition-case nil
         (while (re-search-forward "^event: " nil t)
           (setq pt (match-beginning 0))
-          (cond
-           ((looking-at "content_block_\\(?:start\\|delta\\|stop\\)")
-            (save-match-data
-              (forward-line 1) (forward-char 5)
-              (when-let* ((response (gptel--json-read))
-                          (content (map-nested-elt
-                                    response '(:delta :text))))
-                (push content content-strs))))))
+          (when (looking-at "content_block_\\(?:start\\|delta\\|stop\\)")
+            (forward-line 1) (forward-char 5)
+            (when-let* ((response (gptel--json-read))
+                        (content (map-nested-elt
+                                  response '(:delta :text))))
+              (push content content-strs))))
       (error (goto-char pt)))
     (apply #'concat (nreverse content-strs))))
 
