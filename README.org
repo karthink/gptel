@@ -603,22 +603,22 @@ Anywhere in Emacs: Use =gptel-pre-response-hook= and =gptel-post-response-functi
 
 Any model options you set are saved for the current buffer.  But the redirection options in the menu are set for the next query only:
 
-https://github.com/karthink/gptel/assets/8607532/2ecc6be9-aa52-4287-a739-ba06e1369ec2
+#+html: <img src="https://github.com/karthink/gptel/assets/8607532/2ecc6be9-aa52-4287-a739-ba06e1369ec2" alt="https://github.com/karthink/gptel/assets/8607532/2ecc6be9-aa52-4287-a739-ba06e1369ec2">
 
 You can make them persistent across this Emacs session by pressing ~C-x C-s~:
 
-https://github.com/karthink/gptel/assets/8607532/b8bcb6ad-c974-41e1-9336-fdba0098a2fe
+#+html: <img src="https://github.com/karthink/gptel/assets/8607532/b8bcb6ad-c974-41e1-9336-fdba0098a2fe" alt="https://github.com/karthink/gptel/assets/8607532/b8bcb6ad-c974-41e1-9336-fdba0098a2fe">
 
 (You can also cycle through presets you've saved with ~C-x p~ and ~C-x n~.)
 
-Now these will be enabled whenever you send a query from the transient menu.  If you want to use these options without invoking the transient menu, you can use a keyboard macro:
+Now these will be enabled whenever you send a query from the transient menu.  If you want to use these saved options without invoking the transient menu, you can use a keyboard macro:
 
 #+begin_src emacs-lisp
 ;; Replace with your key to invoke the transient menu:
 (keymap-global-set "<f6>" "C-u C-c <return> <return>")
 #+end_src
 
-See [[https://github.com/karthink/gptel/issues/94#issuecomment-1657093458][this comment by Tianshu Wang]] for an Elisp solution.
+Or see this [[https://github.com/karthink/gptel/wiki#save-transient-flags][wiki entry]].
 
 #+html: </details>
 #+html: <details><summary>
