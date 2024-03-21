@@ -275,8 +275,8 @@ Also format its value in the Transient menu."
     "Instructions"
     ("s" "Set system message" gptel-system-prompt :transient t)
     (gptel--infix-add-directive)]]
-  [[:pad-keys t
-    "Model Parameters"
+  [["Model Parameters"
+    :pad-keys t
     (gptel--infix-variable-scope)
     (gptel--infix-provider)
     (gptel--infix-max-tokens)
