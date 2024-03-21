@@ -55,8 +55,6 @@
     (apply #'concat (nreverse content-strs))))
 
 (cl-defmethod gptel--parse-response ((_backend gptel-anthropic) response _info)
-  (with-current-buffer (get-buffer "*gptel-log*")
-    (princ response))
   (map-nested-elt response '(:content 0 :text)))
 
 (cl-defmethod gptel--request-data ((_backend gptel-anthropic) prompts)
