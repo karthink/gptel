@@ -353,9 +353,9 @@ REGIONS is a list of pairs of (start, end) lists."
     (let ((buffer-file
            ;; Use file path if buffer has one, otherwise use its regular name.
            (if (buffer-file-name buffer)
-               (format "'%s'"
+               (format "`%s`"
                        (buffer-file-name buffer))
-             (format "buffer '%s'"
+             (format "buffer `%s`"
                      (buffer-name buffer)))))
       (insert (format "In %s:" buffer-file)))
     (let ((is-top-snippet t)
@@ -364,8 +364,14 @@ REGIONS is a list of pairs of (start, end) lists."
           buffer-point-max
           prog-lang-tag)
       (with-current-buffer buffer
-        (setq buffer-point-min (point-min)
-              buffer-point-max (point-max)
+        (setq buffer-point-min (save-excursion
+                                 (goto-char (point-min))
+                                 (skip-chars-forward " \t\n\r")
+                                 (point))
+              buffer-point-max (save-excursion
+                                 (goto-char (point-max))
+                                 (skip-chars-backward " \t\n\r")
+                                 (point))
               prog-lang-tag (gptel--major-mode-md-prog-lang
                              major-mode)))
       (insert "\n\n```" prog-lang-tag "\n")
@@ -386,7 +392,7 @@ REGIONS is a list of pairs of (start, end) lists."
                            (gptel--regions-continuous-p buffer
                                                         previous-region
                                                         (cons start end)))))
-                   (unless (= start buffer-point-min)
+                   (unless (<= start buffer-point-min)
                      (if region-continuous
                          ;; If the regions are continuous, insert the
                          ;; whitespaces that separate them.
@@ -409,12 +415,13 @@ REGIONS is a list of pairs of (start, end) lists."
                        ;; We do not need to insert a line number indicator on
                        ;; inline regions.
                        (unless (or region-inline region-continuous)
-                         (insert (format " (Line %d)" lineno)))))
+                         (insert (format " (Line %d)\n" lineno)))))
+                   (when (and (not region-inline)
+                              (not region-continuous)
+                              (not is-top-snippet))
+                     (insert "\n"))
                    (if is-top-snippet
                        (setq is-top-snippet nil))
-                   (when (and (not region-inline)
-                              (not region-continuous))
-                     (insert "\n"))
                    (let (substring)
                      (with-current-buffer buffer
                        (setq substring
@@ -437,7 +444,7 @@ REGIONS is a list of pairs of (start, end) lists."
                               (list
                                (list start end)))))))
                  (setq previous-region (cons start end))))
-      (unless (= (cl-second (car (last regions))) buffer-point-max)
+      (unless (>= (cl-second (car (last regions))) buffer-point-max)
         (insert "\n..."))
       (insert "\n```"))
     (buffer-substring (point-min) (point-max))))
