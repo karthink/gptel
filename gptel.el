@@ -1047,8 +1047,13 @@ See `gptel--url-get-response' for details."
         (gptel--update-status
          (format " Response Error: %s" status-str) 'error)
         (message "gptel response error: (%s) %s"
-                 status-str (plist-get info :error)))
-      (run-hook-with-args 'gptel-post-response-functions response-beg response-end))))
+                 status-str (plist-get info :error))))
+    ;; Run hook in visible window to set window-point, BUG #269
+    (if-let ((gptel-window (get-buffer-window gptel-buffer 'visible)))
+        (with-selected-window gptel-window
+          (run-hook-with-args 'gptel-post-response-functions response-beg response-end))
+      (with-current-buffer gptel-buffer
+        (run-hook-with-args 'gptel-post-response-functions response-beg response-end)))))
 
 (defun gptel-set-topic ()
   "Set a topic and limit this conversation to the current heading.

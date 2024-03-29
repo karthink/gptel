@@ -238,10 +238,16 @@ PROCESS and _STATUS are process parameters."
           (when gptel-mode
             (gptel--update-status
              (format " Response Error: %s" http-msg) 'error))))
-      (with-current-buffer gptel-buffer
-        (run-hook-with-args 'gptel-post-response-functions
-                            (marker-position start-marker)
-                            (marker-position (or tracking-marker start-marker)))))
+      ;; Run hook in visible window to set window-point, BUG #269
+      (if-let ((gptel-window (get-buffer-window gptel-buffer 'visible)))
+          (with-selected-window gptel-window
+            (run-hook-with-args 'gptel-post-response-functions
+                                (marker-position start-marker)
+                                (marker-position (or tracking-marker start-marker))))
+        (with-current-buffer gptel-buffer
+          (run-hook-with-args 'gptel-post-response-functions
+                              (marker-position start-marker)
+                              (marker-position (or tracking-marker start-marker))))))
     (setf (alist-get process gptel-curl--process-alist nil 'remove) nil)
     (kill-buffer proc-buf)))
 
