@@ -45,6 +45,8 @@
     (condition-case nil
         (while (re-search-forward "^event: " nil t)
           (setq pt (match-beginning 0))
+          (if (equal (line-end-position) (point-max))
+              (error "Data block incomplete"))
           (when (looking-at "content_block_\\(?:start\\|delta\\|stop\\)")
             (forward-line 1) (forward-char 5)
             (when-let* ((response (gptel--json-read))
