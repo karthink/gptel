@@ -244,8 +244,8 @@ start and end buffer positions of the response.")
 (defcustom gptel-post-response-functions nil
   "Abnormal hook run after inserting the LLM response into the current buffer.
 
-This hook is called in the buffer from which the prompt was sent
-to the LLM, and after the full response has been inserted.  Each
+This hook is called in the buffer to which the LLM response is
+sent, and after the full response has been inserted.  Each
 function is called with two arguments: the response beginning and
 end positions.
 
