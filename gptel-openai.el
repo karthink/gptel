@@ -54,7 +54,7 @@
     (defvar json-object-type)
     (declare-function json-read "json" ())
     `(let ((json-object-type 'plist))
-      gptel--json-read)))
+      (json-read))))
 
 (defmacro gptel--json-encode (object)
   (if (fboundp 'json-serialize)
