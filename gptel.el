@@ -914,7 +914,8 @@ query data as usual, but do not send the request.
 
 Model parameters can be let-bound around calls to this function."
   (declare (indent 1))
-  (let* ((gptel-stream stream)
+  (let* ((gptel--system-message system)
+         (gptel-stream stream)
          (start-marker
           (cond
            ((null position)
@@ -926,14 +927,11 @@ Model parameters can be let-bound around calls to this function."
             (set-marker (make-marker) position buffer))))
          (full-prompt
           (cond
-           ((null prompt)
-            (let ((gptel--system-message system))
-              (gptel--create-prompt start-marker)))
+           ((null prompt) (gptel--create-prompt start-marker))
            ((stringp prompt)
             ;; FIXME Dear reader, welcome to Jank City:
             (with-temp-buffer
-              (let ((gptel--system-message system)
-                    (gptel-model (buffer-local-value 'gptel-model buffer))
+              (let ((gptel-model (buffer-local-value 'gptel-model buffer))
                     (gptel-backend (buffer-local-value 'gptel-backend buffer)))
                 (insert prompt)
                 (gptel--create-prompt))))
