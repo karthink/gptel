@@ -404,6 +404,7 @@ Also format its value in the Transient menu."
 		    ;; instead of returning to the system prompt menu.
                     :transient 'transient--do-exit))))))
 
+;;;###autoload (autoload 'gptel-system-prompt "gptel-transient" nil t)
 (transient-define-prefix gptel-system-prompt ()
   "Set the LLM system message for LLM interactions in this buffer.
 

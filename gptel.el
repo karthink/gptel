@@ -108,6 +108,7 @@
 (declare-function markdown-mode "markdown-mode")
 (declare-function gptel-curl-get-response "gptel-curl")
 (declare-function gptel-menu "gptel-transient")
+(declare-function gptel-system-prompt "gptel-transient")
 (declare-function pulse-momentary-highlight-region "pulse")
 
 ;; Functions used for saving/restoring gptel state in Org buffers
@@ -773,21 +774,20 @@ file."
                                (format "%s" (gptel-backend-name gptel-backend))))
                       (propertize " Ready" 'face 'success)
                       '(:eval
-                        (let* ((l1 (length gptel-model))
-                               (num-exchanges
-                                (if gptel--num-messages-to-send
-                                    (format "[Send: %s exchanges]" gptel--num-messages-to-send)
-                                  "[Send: buffer]"))
-                               (l2 (length num-exchanges)))
+                        (let ((system
+                               (format "[Prompt: %s]"
+                                (or (car-safe (rassoc gptel--system-message gptel-directives))
+                                 (truncate-string-to-width gptel--system-message 15 nil nil t)))))
                          (concat
                           (propertize
-                           " " 'display `(space :align-to ,(max 1 (- (window-width) (+ 2 l1 l2)))))
+                           " " 'display
+                           `(space :align-to (- right ,(+ 2 (length gptel-model) (length system)))))
                           (propertize
-                           (buttonize num-exchanges
-                            (lambda (&rest _) (gptel-menu)))
+                           (buttonize system
+                            (lambda (&rest _) (gptel-system-prompt)))
                            'mouse-face 'highlight
                            'help-echo
-                           "Number of past exchanges to include with each request")
+                           "System message for buffer")
                           " "
                           (propertize
                            (buttonize (concat "[" gptel-model "]")
