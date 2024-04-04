@@ -336,24 +336,19 @@ Also format its value in the Transient menu."
      (lambda ()
        "Inspect the query that will be sent as a lisp object."
        (interactive)
-       (let* ((extra (gptel--get-directive
-                      (transient-args
-                       transient-current-command)))
-              (gptel--system-message
-               (concat gptel--system-message extra)))
-         (gptel--sanitize-model)
-         (gptel--inspect-query))))
+       (gptel--sanitize-model)
+       (gptel--inspect-query
+        (gptel--suffix-send
+         (cons "I" (transient-args transient-current-command))))))
     ("J" "Inspect query (JSON)"
      (lambda ()
        "Inspect the query that will be sent as a JSON object."
        (interactive)
-       (let* ((extra (gptel--get-directive
-                      (transient-args
-                       transient-current-command)))
-              (gptel--system-message
-               (concat gptel--system-message extra)))
-         (gptel--sanitize-model)
-         (gptel--inspect-query 'json))))]]
+       (gptel--sanitize-model)
+       (gptel--inspect-query
+        (gptel--suffix-send
+         (cons "I" (transient-args transient-current-command)))
+        'json)))]]
   (interactive)
   (gptel--sanitize-model)
   (transient-setup 'gptel-menu))
@@ -594,6 +589,7 @@ Or in an extended conversation:
         (buffer) (position)
         (callback) (gptel-buffer-name)
         (system-extra (gptel--get-directive args))
+        (dry-run (and (member "I" args) t))
         ;; Input redirection: grab prompt from elsewhere?
         (prompt
          (cond
@@ -689,44 +685,47 @@ Or in an extended conversation:
       (setq buffer (get-buffer-create gptel-buffer-name))
       (with-current-buffer buffer (setq position (point)))))
 
-    (gptel-request
-     prompt
-     :buffer (or buffer (current-buffer))
-     :position position
-     :in-place (and in-place (not output-to-other-buffer-p))
-     :stream stream
-     :system (concat gptel--system-message system-extra)
-     :callback callback)
+    (prog1 (gptel-request prompt
+             :buffer (or buffer (current-buffer))
+             :position position
+             :in-place (and in-place (not output-to-other-buffer-p))
+             :stream stream
+             :system (concat gptel--system-message system-extra)
+             :callback callback
+             :dry-run dry-run)
 
-    ;; NOTE: Possible future race condition here if Emacs ever drops the GIL.
-    ;; The HTTP request callback might modify the buffer before the in-place
-    ;; text is killed below.
-    (when in-place
-      ;; Kill the latest prompt
-      (let ((beg
-             (if (use-region-p)
-                 (region-beginning)
-               (save-excursion
-                 (text-property-search-backward
-                  'gptel 'response
-                  (when (get-char-property (max (point-min) (1- (point)))
-                                           'gptel)
-                    t))
-                 (point))))
-            (end (if (use-region-p) (region-end) (point))))
-        (unless output-to-other-buffer-p
-          ;; store the killed text in gptel-history
-          (gptel--attach-response-history
-           (list (buffer-substring-no-properties beg end))))
-        (kill-region beg end)))
+      ;; NOTE: Possible future race condition here if Emacs ever drops the GIL.
+      ;; The HTTP request callback might modify the buffer before the in-place
+      ;; text is killed below.
+      (when in-place
+        ;; Kill the latest prompt
+        (let ((beg
+               (if (use-region-p)
+                   (region-beginning)
+                 (save-excursion
+                   (text-property-search-backward
+                    'gptel 'response
+                    (when (get-char-property (max (point-min) (1- (point)))
+                                             'gptel)
+                      t))
+                   (point))))
+              (end (if (use-region-p) (region-end) (point))))
+          (unless output-to-other-buffer-p
+            ;; store the killed text in gptel-history
+            (gptel--attach-response-history
+             (list (buffer-substring-no-properties beg end))))
+          (kill-region beg end)))
 
-    (when output-to-other-buffer-p
-      (message (concat "Prompt sent to buffer: "
-                       (propertize gptel-buffer-name 'face 'help-key-binding)))
-      (display-buffer
-       buffer '((display-buffer-reuse-window
-                 display-buffer-pop-up-window)
-                (reusable-frames . visible))))))
+      (when output-to-other-buffer-p
+        (message (concat "Prompt sent to buffer: "
+                         (propertize gptel-buffer-name 'face 'help-key-binding)))
+        (display-buffer
+         buffer '((display-buffer-reuse-window
+                   display-buffer-pop-up-window)
+                  (reusable-frames . visible)))))))
+
+;; Allow calling from elisp
+(put 'gptel--suffix-send 'interactive-only nil)
 
 ;; ** Suffix to regenerate response
 
