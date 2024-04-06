@@ -743,6 +743,7 @@ These are packages that depend on GPTel to provide additional functionality
 
 - [[https://github.com/kamushadenes/gptel-extensions.el][gptel-extensions]]: Extra utility functions for GPTel.
 - [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
+- [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate Commit Messages within magit-status Buffer using GPTel.
 
 ** Breaking Changes
 
