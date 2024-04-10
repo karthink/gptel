@@ -114,7 +114,8 @@
     (name &key curl-args header key (stream nil)
           (host "generativelanguage.googleapis.com")
           (protocol "https")
-          (models '("gemini-pro"))
+          (models '("gemini-pro"
+                    "gemini-1.5-pro-latest"))
           (endpoint "/v1beta/models"))
 
   "Register a Gemini backend for gptel with NAME.
