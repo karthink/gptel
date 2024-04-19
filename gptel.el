@@ -469,10 +469,13 @@ README for examples."
           (restricted-sexp :match-alternatives (gptel-backend-p 'nil)
            :tag "Other backend")))
 
-(defvar gptel-expert-commands nil
+(defcustom gptel-expert-commands nil
   "Whether experimental gptel options should be enabled.
 
-This opens up advanced options in `gptel-menu'.")
+This opens up advanced options in `gptel-menu'."
+  :group 'gptel
+  :type '(choice (const :tag "Disabled" nil)
+                 (const :tag "Enabled" t)))
 
 (defvar-local gptel--bounds nil)
 (put 'gptel--bounds 'safe-local-variable #'always)
