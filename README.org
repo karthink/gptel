@@ -560,16 +560,16 @@ The above code makes the backend available to select.  If you want it to be the 
 
 (This is also a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel.)
 
-|-------------------+-------------------------------------------------------------------------|
-| *Command*          | Description                                                             |
-|-------------------+-------------------------------------------------------------------------|
-| =gptel-send=        | Send conversation up to =(point)=, or selection if region is active.  Works anywhere in Emacs. |
-| =gptel=             | Create a new dedicated chat buffer.  Not required to use gptel. |
-| =C-u= =gptel-send=    | Transient menu for preferences, input/output redirection etc.            |
-| =gptel-menu=        | /(Same)/                                                                  |
-|-------------------+-------------------------------------------------------------------------|
-| =gptel-set-topic= | /(Org-mode only)/ Limit conversation context to an Org heading             |
-|-------------------+-------------------------------------------------------------------------|
+|--------------------+----------------------------------------------------------------------------------------|
+| *Command*          | Description                                                                            |
+|--------------------+----------------------------------------------------------------------------------------|
+| =gptel-send=       | Send conversation up to =(point)=, or selection if region is active.  Works anywhere in Emacs. |
+| =gptel=            | Create a new dedicated chat buffer.  Not required to use gptel.                        |
+| =C-u= =gptel-send= | Transient menu for preferences, input/output redirection etc.                          |
+| =gptel-menu=       | /(Same)/                                                                               |
+|--------------------+----------------------------------------------------------------------------------------|
+| =gptel-set-topic=  | /(Org-mode only)/ Limit conversation context to an Org heading                         |
+|--------------------+----------------------------------------------------------------------------------------|
 
 *** In any buffer:
 
@@ -611,6 +611,35 @@ The default mode is =markdown-mode= if available, else =text-mode=.  You can set
 **** Save and restore your chat sessions
 
 Saving the file will save the state of the conversation as well.  To resume the chat, open the file and turn on =gptel-mode= before editing the buffer.
+
+*** Optional: Add more context to your query
+
+You can add contextual information from any Emacs buffer by utilizing
+=gptel-add-context=. Each call will add another snippet including
+metadata like buffer-name, LOC and major mode.
+
+1. Select the text you want to add as context. If no text is selected,
+   the entire content of the current buffer will be used.
+
+2. =gptel-add-context= adds the selected text or the whole buffer
+   content to the "*gptel-context*" buffer.
+
+3. Proceed with LLM interactions using =gptel= as usual. The added
+   context will influence the LLM's responses, making them more
+   relevant and contextualized.
+
+4. At any point, you can manually edit the "*gptel-context*" buffer to
+   remove stale information.
+
+**** Practical Applications
+
+- Enhancing code development sessions with relevant documentation or
+  code snippets as a reference.
+- Accumulating research notes or sources while writing papers or
+  articles to ensure consistency in the narrative or arguments.
+- Providing detailed error logs or system information during debugging
+  sessions to assist in generating more accurate solutions or
+  suggestions from the LLM.
 
 ** FAQ
 #+html: <details><summary>

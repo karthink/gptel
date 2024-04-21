@@ -152,6 +152,15 @@
  "Use `gptel-make-openai' instead."
  "0.5.0")
 
+(defcustom gptel-context-prompt-preamble
+  "Here, you find more context for the following user prompts. Key aspects are:
+- User inputs are encapsulated within Emacs Org mode src blocks.
+- Naming Convention: Each src block is identified using a structured name format '{{name-of-original-buffer}}:{{beginning-line-number}}-{{ending-line-number}}'. This scheme offers insight into the origin and scope of the code or text snippet.
+- Mode Indication: The mode of the original file is included within each src block. This detail informs you about the programming language or markup format of the snippet, aiding in accurate interpretation and response."
+  "Instruct the llm about how to treat the additional context from *gptel-context*."
+  :group 'gptel
+  :type 'string)
+
 (defcustom gptel-proxy ""
   "Path to a proxy to use for gptel interactions.
 Passed to curl via --proxy arg, for example \"proxy.yourorg.com:80\"
@@ -887,7 +896,7 @@ Model parameters can be let-bound around calls to this function."
            ((markerp position) position)
            ((integerp position)
             (set-marker (make-marker) position buffer))))
-         (full-prompt
+         (full-prompt-draft
           (cond
            ((null prompt) (gptel--create-prompt start-marker))
            ((stringp prompt)
@@ -898,6 +907,17 @@ Model parameters can be let-bound around calls to this function."
                 (insert prompt)
                 (gptel--create-prompt))))
            ((consp prompt) prompt)))
+         (context-prompt
+          (when (get-buffer "*gptel-context*")
+            (list :role "user"
+                  :content (format "%s\n\n%s"
+                                   gptel-context-prompt-preamble
+                                   (with-current-buffer "*gptel-context*"
+                                     (save-excursion
+                                       (buffer-substring-no-properties (point-min) (point-max))))))))
+         (full-prompt (if context-prompt
+                          (append (list context-prompt) full-prompt-draft)
+                        full-prompt-draft))
          (request-data (gptel--request-data gptel-backend full-prompt))
          (info (list :data request-data
                      :buffer buffer
@@ -1357,6 +1377,28 @@ context for the ediff session."
     (insert alt-response)
     (goto-char (+ beg offset))
     (pulse-momentary-highlight-region beg (+ beg (length alt-response)))))
+
+;;;###autoload
+(defun gptel-add-context ()
+  "Add selected region (or whole buffer) to *gptel-context*."
+    (interactive)
+    (let* ((context (if (use-region-p)
+            (buffer-substring-no-properties (region-beginning) (region-end))
+            (buffer-substring-no-properties (point-min) (point-max))))
+           (src-name (buffer-name))
+           (start (line-number-at-pos (region-beginning)))
+           (end (line-number-at-pos (region-end)))
+           (region-major-mode (symbol-name major-mode))
+           (loc (format "%s:%d-%d" src-name start end)))
+      (with-current-buffer (get-buffer-create "*gptel-context*")
+        (org-mode)
+        (goto-char (point-max))
+        (unless (bolp) (insert "\n"))
+        (insert (format "#+NAME: %s\n" loc))
+        (insert (format "#+BEGIN_SRC %s\n" region-major-mode))
+        (insert (format "%s\n" context))
+        (insert "#+END_SRC\n\n"))
+      (message "Context has been added to *gptel-context*.")))
 
 (defun gptel--next-variant (&optional arg)
   "Switch to next gptel-response at this point, if it exists."
