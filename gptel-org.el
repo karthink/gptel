@@ -28,7 +28,6 @@
 (require 'outline)
 
 (declare-function org-element-begin "org-element")
-(declare-function org-element-lineage-map "org-element-ast")
 
 ;; Functions used for saving/restoring gptel state in Org buffers
 (defvar org-entry-property-inherited-from)
@@ -41,6 +40,33 @@
 (declare-function org-at-heading-p "org")
 (declare-function org-get-heading "org")
 (declare-function org-at-heading-p "org")
+
+;; Bundle `org-element-lineage-map' if it's not available (for Org 9.67 or older)
+(eval-when-compile
+  (if (fboundp 'org-element-lineage-map)
+      (progn (declare-function org-element-lineage-map "org-element-ast")
+             (defalias 'gptel-org--element-lineage-map 'org-element-lineage-map))
+    (defun gptel-org--element-lineage-map (datum fun &optional types with-self first-match)
+      "Map FUN across ancestors of DATUM, from closest to furthest.
+
+DATUM is an object or element.  For TYPES, WITH-SELF and
+FIRST-MATCH see `org-element-lineage-map'.
+
+This function is provided for compatibility with older versions
+of Org."
+      (declare (indent 2))
+      (setq fun (if (functionp fun) fun `(lambda (node) ,fun)))
+      (let ((up (if with-self datum (org-element-parent datum)))
+	    acc rtn)
+        (catch :--first-match
+          (while up
+            (when (or (not types) (org-element-type-p up types))
+              (setq rtn (funcall fun up))
+              (if (and first-match rtn)
+                  (throw :--first-match rtn)
+                (when rtn (push rtn acc))))
+            (setq up (org-element-parent up)))
+          (nreverse acc))))))
 
 
 ;;; User options
@@ -139,7 +165,7 @@ value of `gptel-org-branching-context', which see."
         ;; Create prompt from direct ancestors of point
         (save-excursion
           (let* ((org-buf (current-buffer))
-                 (start-bounds (org-element-lineage-map
+                 (start-bounds (gptel-org--element-lineage-map
                                    (org-element-at-point) #'org-element-begin
                                  '(headline org-data) 'with-self))
                  (end-bounds
