@@ -156,7 +156,6 @@
   "Path to a proxy to use for gptel interactions.
 Passed to curl via --proxy arg, for example \"proxy.yourorg.com:80\"
 Leave it empty if you don't use a proxy."
-  :group 'gptel
   :type 'string)
 
 (defcustom gptel-api-key #'gptel-api-key-from-auth-source
@@ -166,7 +165,6 @@ OpenAI by default.
 
 Can also be a function of no arguments that returns an API
 key (more secure) for the active backend."
-  :group 'gptel
   :type '(choice
           (string :tag "API key")
           (function :tag "Function that returns the API key")))
@@ -182,13 +180,11 @@ When set to nil, Emacs waits for the full response and inserts it
 all at once.  This wait is asynchronous.
 
 \='tis a bit silly."
-  :group 'gptel
   :type 'boolean)
 (make-obsolete-variable 'gptel-playback 'gptel-stream "0.3.0")
 
 (defcustom gptel-use-curl (and (executable-find "curl") t)
   "Whether gptel should prefer Curl when available."
-  :group 'gptel
   :type 'boolean)
 
 (defcustom gptel-curl-file-size-threshold 130000
@@ -207,11 +203,10 @@ and the typical size of the data being sent in GPTel queries.
 A larger value may improve performance by avoiding the overhead of creating
 temporary files for small data payloads, while a smaller value may be needed
 if the command-line argument size is limited by the operating system."
-  :group 'gptel
-  :type 'integer)
+  :type 'natnum)
 
 (defcustom gptel-response-filter-functions
-  '(gptel--convert-org)
+  (list #'gptel--convert-org)
   "Abnormal hook for transforming the response from an LLM.
 
 This is used to format the response in some way, such as filling
@@ -225,7 +220,6 @@ should return the transformed string.
 NOTE: This is only used for non-streaming responses.  To
 transform streaming responses, use `gptel-post-stream-hook' and
 `gptel-post-response-functions'."
-  :group 'gptel
   :type 'hook)
 
 (defcustom gptel-pre-response-hook nil
@@ -235,7 +229,6 @@ This hook is called in the buffer where the LLM response will be
 inserted.
 
 Note: this hook only runs if the request succeeds."
-  :group 'gptel
   :type 'hook)
 
 (define-obsolete-variable-alias
@@ -255,7 +248,6 @@ end positions.
 Note: this hook runs even if the request fails.  In this case the
 response beginning and end positions are both the cursor position
 at the time of the request."
-  :group 'gptel
   :type 'hook)
 
 ;; (defcustom gptel-pre-stream-insert-hook nil
@@ -271,18 +263,16 @@ at the time of the request."
 
 This hook is called in the buffer from which the prompt was sent
 to the LLM, and after a text insertion."
-  :group 'gptel
   :type 'hook)
 
 (defcustom gptel-default-mode (if (fboundp 'markdown-mode)
-                               'markdown-mode
-                             'text-mode)
+				  'markdown-mode
+				'text-mode)
   "The default major mode for dedicated chat buffers.
 
 If `markdown-mode' is available, it is used.  Otherwise gptel
 defaults to `text-mode'."
-  :group 'gptel
-  :type 'symbol)
+  :type 'function)
 
 ;; TODO: Handle `prog-mode' using the `comment-start' variable
 (defcustom gptel-prompt-prefix-alist
@@ -296,7 +286,6 @@ responses, and is removed from the query before it is sent.
 
 This is an alist mapping major modes to the prefix strings.  This
 is only inserted in dedicated gptel buffers."
-  :group 'gptel
   :type '(alist :key-type symbol :value-type string))
 
 (defcustom gptel-response-prefix-alist
@@ -310,7 +299,6 @@ responses.
 
 This is an alist mapping major modes to the reply prefix strings.  This
 is only inserted in dedicated gptel buffers before the AI's response."
-  :group 'gptel
   :type '(alist :key-type symbol :value-type string))
 
 (defcustom gptel-use-header-line t
@@ -318,8 +306,7 @@ is only inserted in dedicated gptel buffers before the AI's response."
 
 When set to nil, use the mode line for (minimal) status
 information and the echo area for messages."
-  :type 'boolean
-  :group 'gptel)
+  :type 'boolean)
 
 (defcustom gptel-display-buffer-action '(pop-to-buffer)
   "The action used to display gptel chat buffers.
@@ -333,17 +320,12 @@ where FUNCTION is a function or a list of functions.  Each such
 function should accept two arguments: a buffer to display and an
 alist of the same form as ALIST.  See info node `(elisp)Choosing
 Window' for details."
-  :group 'gptel
-  :type '(choice
-          (const :tag "Use display-buffer defaults" nil)
-          (const :tag "Display in selected window" (pop-to-buffer-same-window))
-          (cons :tag "Specify display-buffer action"
-           (choice function (repeat :tag "Functions" function))
-           alist)))
+  :type display-buffer--action-custom-type)
 
 (defcustom gptel-crowdsourced-prompts-file
-  (let ((cache-dir (or (getenv "XDG_CACHE_HOME")
-                       (getenv "XDG_DATA_HOME")
+  (let ((cache-dir (or (eval-when-compile
+			 (require 'xdg)
+			 (xdg-cache-home))
                        user-emacs-directory)))
     (expand-file-name "gptel-crowdsourced-prompts.csv" cache-dir))
   "File used to store crowdsourced system prompts.
@@ -351,7 +333,6 @@ Window' for details."
 These are prompts cached from an online source (see
 `gptel--crowdsourced-prompts-url'), and can be set from the
 transient menu interface provided by `gptel-menu'."
-  :group 'gptel
   :type 'file)
 
 ;; Model and interaction parameters
@@ -368,7 +349,6 @@ request to the LLM.
 Each entry in this alist maps a symbol naming the directive to
 the string that is sent.  To set the directive for a chat session
 interactively call `gptel-send' with a prefix argument."
-  :group 'gptel
   :safe #'always
   :type '(alist :key-type symbol :value-type string))
 
@@ -386,8 +366,7 @@ responses.
 To set the target token count for a chat session interactively
 call `gptel-send' with a prefix argument."
   :safe #'always
-  :group 'gptel
-  :type '(choice (integer :tag "Specify Token count")
+  :type '(choice (natnum :tag "Specify Token count")
                  (const :tag "Default" nil)))
 
 (defcustom gptel-model "gpt-3.5-turbo"
@@ -408,7 +387,6 @@ The current options for ChatGPT are
 To set the model for a chat session interactively call
 `gptel-send' with a prefix argument."
   :safe #'always
-  :group 'gptel
   :type '(choice
           (string :tag "Specify model name")
           (const :tag "GPT 3.5 turbo" "gpt-3.5-turbo")
@@ -428,7 +406,6 @@ of the response, with 2.0 being the most random.
 To set the temperature for a chat session interactively call
 `gptel-send' with a prefix argument."
   :safe #'always
-  :group 'gptel
   :type 'number)
 
 (defvar gptel--known-backends nil
@@ -467,7 +444,6 @@ one of the available backend creation functions:
 See their documentation for more information and the package
 README for examples."
   :safe #'always
-  :group 'gptel
   :type `(choice
           (const :tag "ChatGPT" ,gptel--openai)
           (restricted-sexp :match-alternatives (gptel-backend-p 'nil)
@@ -496,7 +472,6 @@ debug: Log request/response bodies, headers and all other
 
 When non-nil, information is logged to `gptel--log-buffer-name',
 which see."
-  :group 'gptel
   :type '(choice
           (const :tag "No logging" nil)
           (const :tag "Limited" info)
@@ -528,7 +503,7 @@ and \"apikey\" as USER."
 ;; FIXME Should we utf-8 encode the api-key here?
 (defun gptel--get-api-key (&optional key)
   "Get api key from KEY, or from `gptel-api-key'."
-  (when-let* ((key-sym (or key (gptel-backend-key gptel-backend))))
+  (when-let ((key-sym (or key (gptel-backend-key gptel-backend))))
     (cl-typecase key-sym
       (function (funcall key-sym))
       (string key-sym)
@@ -540,15 +515,18 @@ and \"apikey\" as USER."
 
 (defsubst gptel--numberize (val)
   "Ensure VAL is a number."
-  (if (stringp val) (string-to-number val) val))
+  (cond
+   ((numberp val) val)
+   ((stringp val) (string-to-number val))
+   ((error "%S cannot be converted to a number" val))))
 
 (defun gptel-auto-scroll ()
   "Scroll window if LLM response continues below viewport.
 
 Note: This will move the cursor."
-  (when-let* ((win (get-buffer-window (current-buffer) 'visible))
-              ((not (pos-visible-in-window-p (point) win)))
-              (scroll-error-top-bottom t))
+  (when-let ((win (get-buffer-window (current-buffer) 'visible))
+             ((not (pos-visible-in-window-p (point) win)))
+             (scroll-error-top-bottom t))
     (condition-case nil
         (with-selected-window win
           (scroll-up-command))
@@ -586,7 +564,7 @@ Note: This will move the cursor."
   "Execute BODY at end of the current word or punctuation."
   `(save-excursion
      (skip-syntax-forward "w.")
-     ,@body))
+     ,(macroexp-progn body)))
 
 (defun gptel-prompt-prefix-string ()
   (or (alist-get major-mode gptel-prompt-prefix-alist) ""))
@@ -1169,11 +1147,13 @@ See `gptel-curl--get-response' for its contents.")
                    (error-type (plist-get error-data :type))
                    (backend-name (gptel-backend-name backend)))
               (if (stringp error-data)
-                  (progn (message "%s error: (%s) %s" backend-name http-msg error-data)
-                         (setq error-msg (string-trim error-data)))
+                  (progn
+		    (message "%s error: (%s) %s" backend-name http-msg error-data)
+                    (setq error-msg (string-trim error-data)))
                 (when (stringp error-msg)
                   (message "%s error: (%s) %s" backend-name http-msg (string-trim error-msg)))
-                (when error-type (setq http-msg (concat "("  http-msg ") " (string-trim error-type)))))
+                (when error-type
+		  (setq http-msg (concat "("  http-msg ") " (string-trim error-type)))))
               (list nil (concat "(" http-msg ") " (or error-msg "")))))
            ((eq response 'json-read-error)
             (list nil (concat "(" http-msg ") Malformed JSON in response.") "json-read-error"))
@@ -1188,7 +1168,7 @@ See `gptel-curl--get-response' for its contents.")
   "Check if MODEL is available in BACKEND, adjust accordingly.
 
 If SHOOSH is true, don't issue a warning."
-  (let* ((available (gptel-backend-models backend)))
+  (let ((available (gptel-backend-models backend)))
     (unless (member model available)
       (let ((fallback (car available)))
         (unless shoosh
@@ -1329,7 +1309,7 @@ context for the ediff session."
   "Mark gptel response at point, if any."
   (interactive)
   (unless (gptel--in-response-p) (user-error "No gptel response at point"))
-  (pcase-let* ((`(,beg . ,end) (gptel--get-bounds)))
+  (pcase-let ((`(,beg . ,end) (gptel--get-bounds)))
     (goto-char beg) (push-mark) (goto-char end) (activate-mark)))
 
 (defun gptel--previous-variant (&optional arg)
@@ -1365,3 +1345,7 @@ context for the ediff session."
 
 (provide 'gptel)
 ;;; gptel.el ends here
+
+;; Local Variables:
+;; bug-reference-url-format: "https://github.com/karthink/gptel/issues/%s"
+;; End:
