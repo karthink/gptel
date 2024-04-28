@@ -44,8 +44,7 @@ Intended for internal use only.")
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-ollama) info)
   "Parse response stream for the Ollama API."
-  (when (bobp)
-    (re-search-forward "^{")
+  (when (and (bobp) (re-search-forward "^{" nil t))
     (forward-line 0))
   (let* ((content-strs) (content) (pt (point)))
     (condition-case nil
