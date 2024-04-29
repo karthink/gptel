@@ -458,19 +458,23 @@ text stream."
                                  (max (- (point) 3) (point-min)))
                    (delete-char -1))))
                 ((and "*" (guard (not in-src-block)))
-                 (save-match-data
-                   (save-excursion
-                     (ignore-errors (backward-char 2))
-                     (cond
-                      ((or (looking-at
-                            "[^[:space:][:punct:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
-                           (looking-at
-                            "\\(?:[[:space:][:punct:]]\\)\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
-                       ;; Emphasis, replace with slashes
-                       (forward-char 2) (delete-char -1) (insert "/"))
-                      ((looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]")
-                       ;; Bullet point, replace with hyphen
-                       (forward-char 2) (delete-char -1) (insert "-")))))))))
+                 (if (eobp)
+                     ;; Not enough information about the "*" yet
+                     (progn (setq noop-p t) (set-marker start-pt (match-beginning 0)))
+                   ;; "*" is either emphasis or a bullet point
+                   (save-match-data
+                     (save-excursion
+                       (ignore-errors (backward-char 2))
+                       (cond
+                        ((or (looking-at
+                              "[^[:space:][:punct:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
+                             (looking-at
+                              "\\(?:[[:space:][:punct:]]\\)\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
+                         ;; Emphasis, replace with slashes
+                         (forward-char 2) (delete-char -1) (insert "/"))
+                        ((looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]")
+                         ;; Bullet point, replace with hyphen
+                         (forward-char 2) (delete-char -1) (insert "-"))))))))))
           (if noop-p
               (buffer-substring (point) start-pt)
             (prog1 (buffer-substring (point) (point-max))
