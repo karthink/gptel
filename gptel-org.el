@@ -407,7 +407,7 @@ text stream."
           (when (marker-position start-pt) (goto-char start-pt))
           (when in-src-block (setq ticks ticks-total))
           (save-excursion
-            (while (re-search-forward "`\\|\\*\\{1,2\\}\\|_" nil t)
+            (while (re-search-forward "`\\|\\*\\{1,2\\}\\|_\\|^#+" nil t)
               (pcase (match-string 0)
                 ("`"
                  ;; Count number of consecutive backticks
@@ -439,12 +439,22 @@ text stream."
                     ;; Negative number of ticks or in a src block already,
                     ;; reset ticks
                     (t (setq ticks ticks-total)))))
-                ;; Handle other chars: emphasis, bold and bullet items
+                ;; Handle other chars: heading, emphasis, bold and bullet items
+                ((and (guard (and (not in-src-block) (eq (char-before) ?#))) heading)
+                 (if (eobp)
+                     ;; Not enough information about the heading yet
+                     (progn (setq noop-p t) (set-marker start-pt (match-beginning 0)))
+                   ;; Convert markdown heading to Org heading
+                   (when (looking-at "[[:space:]]")
+                     (delete-region (line-beginning-position) (point))
+                     (insert (make-string (length heading) ?*)))))
                 ((and "**" (guard (not in-src-block)))
                  (cond
-                  ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)")
-                   (delete-char 1))
-                  ((looking-back "\\(?:[[:word:]]\\|\s\\)\\*\\{2\\}"
+                  ;; TODO Not sure why this branch was needed
+                  ;; ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)") (delete-char 1))
+
+                  ;; Looking back at "w**" or " **"
+                  ((looking-back "\\(?:[[:word:][:punct:]\n]\\|\s\\)\\*\\{2\\}"
                                  (max (- (point) 3) (point-min)))
                    (delete-char -1))))
                 ((and "*" (guard (not in-src-block)))
