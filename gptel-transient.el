@@ -270,7 +270,7 @@ Also format its value in the Transient menu."
      (string-replace
       "\n" "⮐ "
       (truncate-string-to-width
-       gptel--system-message (max (- (window-width) 12) 14) nil nil t)))
+       gptel--system-message (max (- (frame-width) 12) 14) nil nil t)))
    [""
     "Instructions"
     ("s" "Set system message" gptel-system-prompt :transient t)
@@ -361,7 +361,7 @@ Also format its value in the Transient menu."
    (cl-loop for (type . prompt) in gptel-directives
        ;; Avoid clashes with the custom directive key
        with unused-keys = (delete ?s (number-sequence ?a ?z))
-       with width = (window-width)
+       with width = (frame-width)
        for name = (symbol-name type)
        for key = (seq-find (lambda (k) (member k unused-keys)) name (seq-first unused-keys))
        do (setq unused-keys (delete key unused-keys))
@@ -418,7 +418,7 @@ Customize `gptel-directives' for task-specific prompts."
    (lambda () (string-replace
           "\n" "⮐ "
           (truncate-string-to-width
-           gptel--system-message (max (- (window-width) 12) 14) nil nil t)))
+           gptel--system-message (max (- (frame-width) 12) 14) nil nil t)))
    [(gptel--suffix-system-message)]
    [(gptel--infix-variable-scope)]]
    [:class transient-column
@@ -434,7 +434,7 @@ Customize `gptel-directives' for task-specific prompts."
      (format "Directive:  %s"
              (truncate-string-to-width
               (or gptel--rewrite-message (gptel--rewrite-message))
-              (max (- (window-width) 14) 20) nil nil t)))
+              (max (- (frame-width) 14) 20) nil nil t)))
    (gptel--infix-rewrite-prompt)]
   [[:description "Diff Options"
    ("-w" "Wordwise diff" "-w")]
