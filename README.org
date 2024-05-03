@@ -796,6 +796,8 @@ Features being considered or in the pipeline:
 
 Other Emacs clients for LLMs include
 
+- [[https://github.com/ahyatt/llm][llm]]: llm provides a uniform API across language model providers for building LLM clients in Emacs, and is intended as a library for use by package authors.  For similar scripting purposes, gptel provides the command =gptel-request=, which see.
+- [[https://github.com/s-kostyaev/ellama][Ellama]]: A full-fledged LLM client built on llm, that supports many LLM providers (Ollama, Open AI, Vertex, GPT4All and more).  Its usage differs from gptel in that it provides separate commands for dozens of common tasks, like general chat, summarizing code/text, refactoring code, improving grammar, translation and so on.
 - [[https://github.com/xenodium/chatgpt-shell][chatgpt-shell]]: comint-shell based interaction with ChatGPT.  Also supports DALL-E, executable code blocks in the responses, and more.
 - [[https://github.com/rksm/org-ai][org-ai]]: Interaction through special =#+begin_ai ... #+end_ai= Org-mode blocks.  Also supports DALL-E, querying ChatGPT with the contents of project files, and more.
 

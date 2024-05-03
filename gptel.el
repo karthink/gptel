@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
-;; Author: Karthik Chikmagalur
+;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
 ;; Version: 0.8.6
 ;; Package-Requires: ((emacs "27.1") (transient "0.4.0") (compat "29.1.4.1"))
 ;; Keywords: convenience
@@ -1106,6 +1106,7 @@ the response is inserted into the current buffer after point."
          (encode-coding-string
           (gptel--json-encode (plist-get info :data))
           'utf-8)))
+    ;; why do these checks not occur inside of `gptel--log'?
     (when gptel-log-level               ;logging
       (when (eq gptel-log-level 'debug)
         (gptel--log (gptel--json-encode
