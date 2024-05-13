@@ -1230,7 +1230,7 @@ INTERACTIVEP is t when gptel is called interactively."
                             (generate-new-buffer-name
                              backend-name))
              (if (> (length gptel-bufs) 1)
-                 (completing-read "Choose Gptel buffer: " (mapcar #'buffer-name gptel-bufs))
+                 (completing-read "Choose Gptel buffer: " (mapcar #'buffer-name gptel-bufs) nil "confirm")
                backend-name))
            (condition-case nil
                (gptel--get-api-key
