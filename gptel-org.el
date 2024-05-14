@@ -28,7 +28,6 @@
 (require 'outline)
 
 (declare-function org-element-begin "org-element")
-(declare-function org-element-lineage-map "org-element-ast")
 
 ;; Functions used for saving/restoring gptel state in Org buffers
 (defvar org-entry-property-inherited-from)
@@ -41,6 +40,33 @@
 (declare-function org-at-heading-p "org")
 (declare-function org-get-heading "org")
 (declare-function org-at-heading-p "org")
+
+;; Bundle `org-element-lineage-map' if it's not available (for Org 9.67 or older)
+(eval-when-compile
+  (if (fboundp 'org-element-lineage-map)
+      (progn (declare-function org-element-lineage-map "org-element-ast")
+             (defalias 'gptel-org--element-lineage-map 'org-element-lineage-map))
+    (defun gptel-org--element-lineage-map (datum fun &optional types with-self first-match)
+      "Map FUN across ancestors of DATUM, from closest to furthest.
+
+DATUM is an object or element.  For TYPES, WITH-SELF and
+FIRST-MATCH see `org-element-lineage-map'.
+
+This function is provided for compatibility with older versions
+of Org."
+      (declare (indent 2))
+      (setq fun (if (functionp fun) fun `(lambda (node) ,fun)))
+      (let ((up (if with-self datum (org-element-parent datum)))
+	    acc rtn)
+        (catch :--first-match
+          (while up
+            (when (or (not types) (org-element-type-p up types))
+              (setq rtn (funcall fun up))
+              (if (and first-match rtn)
+                  (throw :--first-match rtn)
+                (when rtn (push rtn acc))))
+            (setq up (org-element-parent up)))
+          (nreverse acc))))))
 
 
 ;;; User options
@@ -139,7 +165,7 @@ value of `gptel-org-branching-context', which see."
         ;; Create prompt from direct ancestors of point
         (save-excursion
           (let* ((org-buf (current-buffer))
-                 (start-bounds (org-element-lineage-map
+                 (start-bounds (gptel-org--element-lineage-map
                                    (org-element-at-point) #'org-element-begin
                                  '(headline org-data) 'with-self))
                  (end-bounds
@@ -381,7 +407,7 @@ text stream."
           (when (marker-position start-pt) (goto-char start-pt))
           (when in-src-block (setq ticks ticks-total))
           (save-excursion
-            (while (re-search-forward "`\\|\\*\\{1,2\\}\\|_" nil t)
+            (while (re-search-forward "`\\|\\*\\{1,2\\}\\|_\\|^#+" nil t)
               (pcase (match-string 0)
                 ("`"
                  ;; Count number of consecutive backticks
@@ -413,28 +439,42 @@ text stream."
                     ;; Negative number of ticks or in a src block already,
                     ;; reset ticks
                     (t (setq ticks ticks-total)))))
-                ;; Handle other chars: emphasis, bold and bullet items
+                ;; Handle other chars: heading, emphasis, bold and bullet items
+                ((and (guard (and (not in-src-block) (eq (char-before) ?#))) heading)
+                 (if (eobp)
+                     ;; Not enough information about the heading yet
+                     (progn (setq noop-p t) (set-marker start-pt (match-beginning 0)))
+                   ;; Convert markdown heading to Org heading
+                   (when (looking-at "[[:space:]]")
+                     (delete-region (line-beginning-position) (point))
+                     (insert (make-string (length heading) ?*)))))
                 ((and "**" (guard (not in-src-block)))
                  (cond
-                  ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)")
-                   (delete-char 1))
-                  ((looking-back "\\(?:[[:word:]]\\|\s\\)\\*\\{2\\}"
+                  ;; TODO Not sure why this branch was needed
+                  ;; ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)") (delete-char 1))
+
+                  ;; Looking back at "w**" or " **"
+                  ((looking-back "\\(?:[[:word:][:punct:]\n]\\|\s\\)\\*\\{2\\}"
                                  (max (- (point) 3) (point-min)))
                    (delete-char -1))))
                 ((and "*" (guard (not in-src-block)))
-                 (save-match-data
-                   (save-excursion
-                     (ignore-errors (backward-char 2))
-                     (cond
-                      ((or (looking-at
-                            "[^[:space:][:punct:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
-                           (looking-at
-                            "\\(?:[[:space:][:punct:]]\\)\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
-                       ;; Emphasis, replace with slashes
-                       (forward-char 2) (delete-char -1) (insert "/"))
-                      ((looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]")
-                       ;; Bullet point, replace with hyphen
-                       (forward-char 2) (delete-char -1) (insert "-")))))))))
+                 (if (eobp)
+                     ;; Not enough information about the "*" yet
+                     (progn (setq noop-p t) (set-marker start-pt (match-beginning 0)))
+                   ;; "*" is either emphasis or a bullet point
+                   (save-match-data
+                     (save-excursion
+                       (ignore-errors (backward-char 2))
+                       (cond
+                        ((or (looking-at
+                              "[^[:space:][:punct:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
+                             (looking-at
+                              "\\(?:[[:space:][:punct:]]\\)\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
+                         ;; Emphasis, replace with slashes
+                         (forward-char 2) (delete-char -1) (insert "/"))
+                        ((looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]")
+                         ;; Bullet point, replace with hyphen
+                         (forward-char 2) (delete-char -1) (insert "-"))))))))))
           (if noop-p
               (buffer-substring (point) start-pt)
             (prog1 (buffer-substring (point) (point-max))

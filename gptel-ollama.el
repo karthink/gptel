@@ -34,79 +34,94 @@
                             (:copier nil)
                             (:include gptel-backend)))
 
-(defvar-local gptel--ollama-context nil
-  "Context for ollama conversations.
+(defvar-local gptel--ollama-token-count 0
+  "Token count for ollama conversations.
 
-This variable holds the context array for conversations with
-Ollama models.")
+This variable holds the total token count for conversations with
+Ollama models.
+
+Intended for internal use only.")
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-ollama) info)
-  ";TODO: "
-  (when (bobp)
-    (re-search-forward "^{")
+  "Parse response stream for the Ollama API."
+  (when (and (bobp) (re-search-forward "^{" nil t))
     (forward-line 0))
   (let* ((content-strs) (content) (pt (point)))
     (condition-case nil
         (while (setq content (gptel--json-read))
           (setq pt (point))
           (let ((done (map-elt content :done))
-                (response (map-elt content :response)))
+                (response (map-nested-elt content '(:message :content))))
             (push response content-strs)
             (unless (eq done :json-false)
               (with-current-buffer (plist-get info :buffer)
-                (setq gptel--ollama-context (map-elt content :context)))
+                (cl-incf gptel--ollama-token-count
+                         (+ (or (map-elt content :prompt_eval_count) 0)
+                            (or (map-elt content :eval_count) 0))))
               (goto-char (point-max)))))
       (error (goto-char pt)))
     (apply #'concat (nreverse content-strs))))
 
 (cl-defmethod gptel--parse-response ((_backend gptel-ollama) response info)
-  (when-let ((context (map-elt response :context)))
+  "Parse a one-shot RESPONSE from the Ollama API."
+  (when-let ((context
+              (+ (or (map-elt response :prompt_eval_count) 0)
+                 (or (map-elt response :eval_count) 0))))
     (with-current-buffer (plist-get info :buffer)
-      (setq gptel--ollama-context context)))
-  (map-elt response :response))
+      (cl-incf gptel--ollama-token-count context)))
+  (map-nested-elt response '(:message :content)))
 
 (cl-defmethod gptel--request-data ((_backend gptel-ollama) prompts)
-  "JSON encode PROMPTS for Ollama."
+  "JSON encode PROMPTS for sending to ChatGPT."
   (let ((prompts-plist
          `(:model ,gptel-model
-           ,@prompts
+           :messages [,@prompts]
            :stream ,(or (and gptel-stream gptel-use-curl
-                             (gptel-backend-stream gptel-backend))
-                     :json-false))))
-    (when gptel--ollama-context
-      (plist-put prompts-plist :context gptel--ollama-context))
+                         (gptel-backend-stream gptel-backend))
+                     :json-false)))
+        options-plist)
+    (when gptel-temperature
+      (setq options-plist
+            (plist-put options-plist :temperature
+                       gptel-temperature)))
+    (when gptel-max-tokens
+      (setq options-plist
+            (plist-put options-plist :num_predict
+                       gptel-max-tokens)))
+    (when options-plist
+      (plist-put prompts-plist :options options-plist))
     prompts-plist))
 
-(cl-defmethod gptel--parse-buffer ((_backend gptel-ollama) &optional _max-entries)
-  (let ((prompts)
-        (prop (text-property-search-backward
-               'gptel 'response
-               (when (get-char-property (max (point-min) (1- (point)))
-                                        'gptel)
-                 t))))
-    (if (and (prop-match-p prop)
-             (prop-match-value prop))
-        (user-error "No user prompt found!")
-      (setq prompts (list
-                     :system gptel--system-message
-                     :prompt
-                     (if (prop-match-p prop)
-                         (string-trim
-                          (buffer-substring-no-properties (prop-match-beginning prop)
-                                                          (prop-match-end prop))
-                          (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                                  (regexp-quote (gptel-prompt-prefix-string)))
-                          (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                                  (regexp-quote (gptel-response-prefix-string))))
-                       "")))
-      prompts)))
+(cl-defmethod gptel--parse-buffer ((_backend gptel-ollama) &optional max-entries)
+  (let ((prompts) (prop))
+    (while (and
+            (or (not max-entries) (>= max-entries 0))
+            (setq prop (text-property-search-backward
+                        'gptel 'response
+                        (when (get-char-property (max (point-min) (1- (point)))
+                                                 'gptel)
+                          t))))
+      (push (list :role (if (prop-match-value prop) "assistant" "user")
+                  :content
+                  (string-trim
+                   (buffer-substring-no-properties (prop-match-beginning prop)
+                                                   (prop-match-end prop))
+                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                           (regexp-quote (gptel-prompt-prefix-string)))
+                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                           (regexp-quote (gptel-response-prefix-string)))))
+            prompts)
+      (and max-entries (cl-decf max-entries)))
+    (cons (list :role "system"
+                :content gptel--system-message)
+          prompts)))
 
 ;;;###autoload
 (cl-defun gptel-make-ollama
     (name &key curl-args header key models stream
           (host "localhost:11434")
           (protocol "http")
-          (endpoint "/api/generate"))
+          (endpoint "/api/chat"))
   "Register an Ollama backend for gptel with NAME.
 
 Keyword arguments:

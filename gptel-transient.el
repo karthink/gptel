@@ -694,6 +694,8 @@ Or in an extended conversation:
              :callback callback
              :dry-run dry-run)
 
+      (gptel--update-status " Waiting..." 'warning)
+
       ;; NOTE: Possible future race condition here if Emacs ever drops the GIL.
       ;; The HTTP request callback might modify the buffer before the in-place
       ;; text is killed below.

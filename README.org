@@ -1,8 +1,8 @@
-#+title: GPTel: A simple LLM client for Emacs
+#+title: gptel: A simple LLM client for Emacs
 
-[[https://melpa.org/#/gptel][file:https://melpa.org/packages/gptel-badge.svg]]
+ [[https://elpa.nongnu.org/nongnu/gptel.svg][file:https://elpa.nongnu.org/nongnu/gptel.svg]] [[https://stable.melpa.org/packages/gptel-badge.svg][file:https://stable.melpa.org/packages/gptel-badge.svg]] [[https://melpa.org/#/gptel][file:https://melpa.org/packages/gptel-badge.svg]]
 
-GPTel is a simple Large Language Model chat client for Emacs, with support for multiple models and backends.
+gptel is a simple Large Language Model chat client for Emacs, with support for multiple models and backends.
 
 | LLM Backend        | Supports | Requires                  |
 |--------------------+----------+---------------------------|
@@ -40,7 +40,7 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/8607532/278854024-a
 - You can go back and edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.
 - Don't like gptel's workflow? Use it to create your own for any supported model/backend with a [[https://github.com/karthink/gptel/wiki#defining-custom-gptel-commands][simple API]].
 
-GPTel uses Curl if available, but falls back to url-retrieve to work without external dependencies.
+gptel uses Curl if available, but falls back to url-retrieve to work without external dependencies.
 
 ** Contents :toc:
   - [[#installation][Installation]]
@@ -67,6 +67,7 @@ GPTel uses Curl if available, but falls back to url-retrieve to work without ext
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
       - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
+    - [[#extra-org-mode-conveniences][Extra Org mode conveniences]]
   - [[#faq][FAQ]]
       - [[#i-want-the-window-to-scroll-automatically-as-the-response-is-inserted][I want the window to scroll automatically as the response is inserted]]
       - [[#i-want-the-cursor-to-move-to-the-next-prompt-after-the-response-is-inserted][I want the cursor to move to the next prompt after the response is inserted]]
@@ -78,13 +79,13 @@ GPTel uses Curl if available, but falls back to url-retrieve to work without ext
       - [[#why-another-llm-client][Why another LLM client?]]
   - [[#additional-configuration][Additional Configuration]]
   - [[#alternatives][Alternatives]]
-    - [[#extensions-using-gptel][Extensions using GPTel]]
+    - [[#extensions-using-gptel][Extensions using gptel]]
   - [[#breaking-changes][Breaking Changes]]
   - [[#acknowledgments][Acknowledgments]]
 
 ** Installation
 
-GPTel is on MELPA. Ensure that MELPA is in your list of sources, then install gptel with =M-x package-install⏎= =gptel=.
+gptel is on MELPA. Ensure that MELPA is in your list of sources, then install it with =M-x package-install⏎= =gptel=.
 
 (Optional: Install =markdown-mode=.)
 
@@ -560,16 +561,19 @@ The above code makes the backend available to select.  If you want it to be the 
 
 (This is also a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel.)
 
-|--------------------+----------------------------------------------------------------------------------------|
-| *Command*          | Description                                                                            |
-|--------------------+----------------------------------------------------------------------------------------|
-| =gptel-send=       | Send conversation up to =(point)=, or selection if region is active.  Works anywhere in Emacs. |
-| =gptel=            | Create a new dedicated chat buffer.  Not required to use gptel.                        |
-| =C-u= =gptel-send= | Transient menu for preferences, input/output redirection etc.                          |
-| =gptel-menu=       | /(Same)/                                                                               |
-|--------------------+----------------------------------------------------------------------------------------|
-| =gptel-set-topic=  | /(Org-mode only)/ Limit conversation context to an Org heading                         |
-|--------------------+----------------------------------------------------------------------------------------|
+|-----------------------------+------------------------------------------------------------------------------------------------|
+| *Command*                   | Description                                                                                    |
+|-----------------------------+------------------------------------------------------------------------------------------------|
+| =gptel-send=                | Send conversation up to =(point)=, or selection if region is active.  Works anywhere in Emacs. |
+| =gptel=                     | Create a new dedicated chat buffer.  Not required to use gptel.                                |
+| =C-u= =gptel-send=          | Transient menu for preferences, input/output redirection etc.                                  |
+| =gptel-menu=                | /(Same)/                                                                                       |
+|-----------------------------+------------------------------------------------------------------------------------------------|
+| *Command* /(Org mode only)/ |                                                                                                |
+|-----------------------------+------------------------------------------------------------------------------------------------|
+| =gptel-org-set-topic=       | Limit conversation context to an Org heading                                                   |
+| =gptel-org-set-properties=  | Write gptel configuration as Org properties (for self-contained chat logs)                     |
+|-----------------------------+------------------------------------------------------------------------------------------------|
 
 *** In any buffer:
 
@@ -641,12 +645,22 @@ metadata like buffer-name, LOC and major mode.
   sessions to assist in generating more accurate solutions or
   suggestions from the LLM.
 
+*** Extra Org mode conveniences
+
+gptel offers a few extra conveniences in Org mode.
+
+- You can limit the conversation context to an Org heading with the command =gptel-org-set-topic=.
+  
+- You can have branching conversations in Org mode, where each hierarchical outline path through the document is a separate conversation branch.  This is also useful for limiting the context size of each query.  See the variable =gptel-org-branching-context=.
+  
+- You can declare the gptel model, backend, temperature, system message and other parameters as Org properties with the command =gptel-org-set-properties=.  gptel queries under the corresponding heading will always use these settings, allowing you to create mostly reproducible LLM chat notebooks, and to have simultaneous chats with different models, model settings and directives under different Org headings.
+
 ** FAQ
 #+html: <details><summary>
 **** I want the window to scroll automatically as the response is inserted
 #+html: </summary>
 
-To be minimally annoying, GPTel does not move the cursor by default.  Add the following to your configuration to enable auto-scrolling.
+To be minimally annoying, gptel does not move the cursor by default.  Add the following to your configuration to enable auto-scrolling.
 
 #+begin_src emacs-lisp
 (add-hook 'gptel-post-stream-hook 'gptel-auto-scroll)
@@ -657,7 +671,7 @@ To be minimally annoying, GPTel does not move the cursor by default.  Add the fo
 **** I want the cursor to move to the next prompt after the response is inserted
 #+html: </summary>
 
-To be minimally annoying, GPTel does not move the cursor by default.  Add the following to your configuration to move the cursor:
+To be minimally annoying, gptel does not move the cursor by default.  Add the following to your configuration to move the cursor:
 
 #+begin_src emacs-lisp
 (add-hook 'gptel-post-response-functions 'gptel-end-of-response)
@@ -704,7 +718,7 @@ Or see this [[https://github.com/karthink/gptel/wiki#save-transient-flags][wiki 
 **** I want to use gptel in a way that's not supported by =gptel-send= or the options menu
 #+html: </summary>
 
-GPTel's default usage pattern is simple, and will stay this way: Read input in any buffer and insert the response below it.  Some custom behavior is possible with the transient menu (=C-u M-x gptel-send=).
+gptel's default usage pattern is simple, and will stay this way: Read input in any buffer and insert the response below it.  Some custom behavior is possible with the transient menu (=C-u M-x gptel-send=).
 
 For more programmable usage, gptel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki][wiki]] for examples.
 
@@ -811,18 +825,21 @@ Features being considered or in the pipeline:
 
 Other Emacs clients for LLMs include
 
+- [[https://github.com/ahyatt/llm][llm]]: llm provides a uniform API across language model providers for building LLM clients in Emacs, and is intended as a library for use by package authors.  For similar scripting purposes, gptel provides the command =gptel-request=, which see.
+- [[https://github.com/s-kostyaev/ellama][Ellama]]: A full-fledged LLM client built on llm, that supports many LLM providers (Ollama, Open AI, Vertex, GPT4All and more).  Its usage differs from gptel in that it provides separate commands for dozens of common tasks, like general chat, summarizing code/text, refactoring code, improving grammar, translation and so on.
 - [[https://github.com/xenodium/chatgpt-shell][chatgpt-shell]]: comint-shell based interaction with ChatGPT.  Also supports DALL-E, executable code blocks in the responses, and more.
 - [[https://github.com/rksm/org-ai][org-ai]]: Interaction through special =#+begin_ai ... #+end_ai= Org-mode blocks.  Also supports DALL-E, querying ChatGPT with the contents of project files, and more.
 
 There are several more: [[https://github.com/CarlQLange/chatgpt-arcana.el][chatgpt-arcana]], [[https://github.com/MichaelBurge/leafy-mode][leafy-mode]], [[https://github.com/iwahbe/chat.el][chat.el]]
 
-*** Extensions using GPTel
+*** Extensions using gptel
 
-These are packages that depend on GPTel to provide additional functionality
+These are packages that use gptel to provide additional functionality
 
-- [[https://github.com/kamushadenes/gptel-extensions.el][gptel-extensions]]: Extra utility functions for GPTel.
+- [[https://github.com/kamushadenes/gptel-extensions.el][gptel-extensions]]: Extra utility functions for gptel.
 - [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
-- [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate Commit Messages within magit-status Buffer using GPTel.
+- [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate Commit Messages within magit-status Buffer using gptel.
+- [[https://github.com/armindarvish/consult-web][consult-web]]: Provides gptel as a source when querying multiple local and online sources.
 
 ** Breaking Changes
 
