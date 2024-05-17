@@ -432,14 +432,7 @@ To set the temperature for a chat session interactively call
   :safe #'always
   :type 'number)
 
-(defvar gptel--known-backends nil
-  "Alist of LLM backends known to gptel.
-
-This is an alist mapping user-provided names to backend structs,
-see `gptel-backend'.
-
-You can have more than one backend pointing to the same resource
-with differing settings.")
+(defvar gptel--known-backends)
 
 (defvar gptel--openai
   (gptel-make-openai

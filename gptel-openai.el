@@ -34,7 +34,6 @@
 (defvar gptel-temperature)
 (defvar gptel-max-tokens)
 (defvar gptel--system-message)
-(defvar gptel--known-backends)
 (defvar json-object-type)
 
 (declare-function gptel--get-api-key "gptel")
@@ -68,6 +67,15 @@
       (json-encode ,object))))
 
 ;;; Common backend struct for LLM support
+(defvar gptel--known-backends nil
+  "Alist of LLM backends known to gptel.
+
+This is an alist mapping user-provided names to backend structs,
+see `gptel-backend'.
+
+You can have more than one backend pointing to the same resource
+with differing settings.")
+
 (cl-defstruct
     (gptel-backend (:constructor gptel--make-backend)
                    (:copier gptel--copy-backend))
