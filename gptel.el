@@ -1201,11 +1201,6 @@ If SHOOSH is true, don't issue a warning."
 (defun gptel (name &optional _ initial interactivep)
   "Switch to or start a chat session with NAME.
 
-If called interactively when multiple gptel buffers exist, ask the user
-which buffer to switch to.
-
-With a prefix arg, query for a (new) session name.
-
 Ask for API-KEY if `gptel-api-key' is unset.
 
 If region is active, use it as the INITIAL prompt.  Returns the
