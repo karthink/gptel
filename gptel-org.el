@@ -331,22 +331,28 @@ elements."
   (with-temp-buffer
     (insert str)
     (goto-char (point-min))
-    (while (re-search-forward "`\\|\\*\\{1,2\\}\\|_" nil t)
+    (while (re-search-forward "`+\\|\\*\\{1,2\\}\\|_\\|^#+" nil t)
       (pcase (match-string 0)
-        ("`" (if (save-excursion
-                   (beginning-of-line)
-                   (skip-chars-forward " \t")
-                   (looking-at "```"))
-                 (progn (backward-char)
-                        (delete-char 3)
-                        (insert "#+begin_src ")
-                        (when (re-search-forward "^```" nil t)
-                          (replace-match "#+end_src")))
-               (replace-match "=")))
+        ;; Handle backticks
+        ((and (guard (eq (char-before) ?`)) ticks)
+         (gptel--replace-source-marker (length ticks))
+         (save-match-data
+           (catch 'block-end
+             (while (search-forward ticks nil t)
+               (unless (or (eq (char-before (match-beginning 0)) ?`)
+                           (eq (char-after) ?`))
+                   (gptel--replace-source-marker (length ticks) 'end)
+                   (throw 'block-end nil))))))
+        ;; Handle headings
+        ((and (guard (eq (char-before) ?#)) heading)
+         (when (looking-at "[[:space:]]")
+           (delete-region (line-beginning-position) (point))
+           (insert (make-string (length heading) ?*))))
+        ;; Handle emphasis
         ("**" (cond
-               ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)")
-                (delete-char 1))
-               ((looking-back "\\(?:[[:word:]]\\|\s\\)\\*\\{2\\}"
+               ;; ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)")
+               ;;  (delete-char 1))
+               ((looking-back "\\(?:[[:word:][:punct:]\n]\\|\s\\)\\*\\{2\\}"
                               (max (- (point) 3) (point-min)))
                 (delete-char -1))))
         ("*"
