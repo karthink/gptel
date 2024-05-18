@@ -3,7 +3,7 @@
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
-;; Version: 0.8.6
+;; Version: 999.git
 ;; Package-Requires: ((emacs "27.1") (transient "0.4.0") (compat "29.1.4.1"))
 ;; Keywords: convenience
 ;; URL: https://github.com/karthink/gptel
@@ -1215,20 +1215,16 @@ INTERACTIVEP is t when gptel is called interactively."
   (interactive
    (let* ((backend (default-value 'gptel-backend))
           (backend-name
-           (format "*%s*" (gptel-backend-name backend)))
-          (gptel-bufs
-           (seq-filter
-            (lambda (buf) (buffer-local-value 'gptel-mode buf))
-            (buffer-list))))
+           (format "*%s*" (gptel-backend-name backend))))
      (list (if current-prefix-arg
                (read-string "Session name: "
                             (generate-new-buffer-name
                              backend-name))
-             (if (> (length gptel-bufs) 1)
-                 (completing-read "Choose Gptel buffer: "
-                                  (mapcar #'buffer-name gptel-bufs)
-                                  nil 'confirm)
-               backend-name))
+             (read-buffer "Create or choose gptel buffer: "
+                          backend-name nil                         ; DEFAULT and REQUIRE-MATCH
+                          (lambda (b)                              ; PREDICATE
+                            (buffer-local-value 'gptel-mode
+                                                (get-buffer (or (car-safe b) b))))))
            (condition-case nil
                (gptel--get-api-key
                 (gptel-backend-key backend))
