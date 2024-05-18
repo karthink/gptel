@@ -623,6 +623,7 @@ gptel offers a few extra conveniences in Org mode.
 - You can limit the conversation context to an Org heading with the command =gptel-org-set-topic=.
   
 - You can have branching conversations in Org mode, where each hierarchical outline path through the document is a separate conversation branch.  This is also useful for limiting the context size of each query.  See the variable =gptel-org-branching-context=.
+  Note: using this option requires Org 9.6.7 or higher to be available.  The [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]] package uses gptel to provide this branching conversation behavior for older versions of Org.
   
 - You can declare the gptel model, backend, temperature, system message and other parameters as Org properties with the command =gptel-org-set-properties=.  gptel queries under the corresponding heading will always use these settings, allowing you to create mostly reproducible LLM chat notebooks, and to have simultaneous chats with different models, model settings and directives under different Org headings.
 

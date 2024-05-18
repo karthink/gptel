@@ -163,40 +163,45 @@ value of `gptel-org-branching-context', which see."
       (narrow-to-region topic-start prompt-end))
     (if gptel-org-branching-context
         ;; Create prompt from direct ancestors of point
-        (save-excursion
-          (let* ((org-buf (current-buffer))
-                 (start-bounds (gptel-org--element-lineage-map
-                                   (org-element-at-point) #'org-element-begin
-                                 '(headline org-data) 'with-self))
-                 (end-bounds
-                  (cl-loop
-                   for pos in (cdr start-bounds)
-                   while
-                   (and (>= pos (point-min)) ;respect narrowing
-                        (goto-char pos)
-                        ;; org-element-lineage always returns an extra
-                        ;; (org-data) element at point 1.  If there is also a
-                        ;; heading here, it is either a false positive or we
-                        ;; would be double counting it.  So we reject this node
-                        ;; when also at a heading.
-                        (not (and (eq pos 1) (org-at-heading-p))))
-                   do (outline-next-heading)
-                   collect (point) into ends
-                   finally return (cons prompt-end ends))))
-            (with-temp-buffer
-              (setq-local gptel-backend
-                          (buffer-local-value 'gptel-backend org-buf)
-                          gptel--system-message
-                          (buffer-local-value 'gptel--system-message org-buf)
-                          gptel-model
-                          (buffer-local-value 'gptel-model org-buf))
-              (cl-loop for start in start-bounds
-                       for end   in end-bounds
-                       do (insert-buffer-substring org-buf start end)
-                       (goto-char (point-min)))
-              (goto-char (point-max))
-              (let ((major-mode 'org-mode))
-                (gptel--parse-buffer gptel-backend max-entries)))))
+        (if (fboundp 'org-element-lineage-map)
+            (save-excursion
+              (let* ((org-buf (current-buffer))
+                     (start-bounds (gptel-org--element-lineage-map
+                                       (org-element-at-point) #'org-element-begin
+                                     '(headline org-data) 'with-self))
+                     (end-bounds
+                      (cl-loop
+                       for pos in (cdr start-bounds)
+                       while
+                       (and (>= pos (point-min)) ;respect narrowing
+                            (goto-char pos)
+                            ;; org-element-lineage always returns an extra
+                            ;; (org-data) element at point 1.  If there is also a
+                            ;; heading here, it is either a false positive or we
+                            ;; would be double counting it.  So we reject this node
+                            ;; when also at a heading.
+                            (not (and (eq pos 1) (org-at-heading-p))))
+                       do (outline-next-heading)
+                       collect (point) into ends
+                       finally return (cons prompt-end ends))))
+                (with-temp-buffer
+                  (setq-local gptel-backend
+                              (buffer-local-value 'gptel-backend org-buf)
+                              gptel--system-message
+                              (buffer-local-value 'gptel--system-message org-buf)
+                              gptel-model
+                              (buffer-local-value 'gptel-model org-buf))
+                  (cl-loop for start in start-bounds
+                           for end   in end-bounds
+                           do (insert-buffer-substring org-buf start end)
+                           (goto-char (point-min)))
+                  (goto-char (point-max))
+                  (let ((major-mode 'org-mode))
+                    (gptel--parse-buffer gptel-backend max-entries)))))
+          (display-warning
+             '(gptel org)
+             "Using `gptel-org-branching-context' requires Org version 9.6.7 or higher, it will be ignored.")
+          (gptel--parse-buffer gptel-backend max-entries))
       ;; Create prompt the usual way
       (gptel--parse-buffer gptel-backend max-entries))))
 
@@ -326,22 +331,28 @@ elements."
   (with-temp-buffer
     (insert str)
     (goto-char (point-min))
-    (while (re-search-forward "`\\|\\*\\{1,2\\}\\|_" nil t)
+    (while (re-search-forward "`+\\|\\*\\{1,2\\}\\|_\\|^#+" nil t)
       (pcase (match-string 0)
-        ("`" (if (save-excursion
-                   (beginning-of-line)
-                   (skip-chars-forward " \t")
-                   (looking-at "```"))
-                 (progn (backward-char)
-                        (delete-char 3)
-                        (insert "#+begin_src ")
-                        (when (re-search-forward "^```" nil t)
-                          (replace-match "#+end_src")))
-               (replace-match "=")))
+        ;; Handle backticks
+        ((and (guard (eq (char-before) ?`)) ticks)
+         (gptel--replace-source-marker (length ticks))
+         (save-match-data
+           (catch 'block-end
+             (while (search-forward ticks nil t)
+               (unless (or (eq (char-before (match-beginning 0)) ?`)
+                           (eq (char-after) ?`))
+                   (gptel--replace-source-marker (length ticks) 'end)
+                   (throw 'block-end nil))))))
+        ;; Handle headings
+        ((and (guard (eq (char-before) ?#)) heading)
+         (when (looking-at "[[:space:]]")
+           (delete-region (line-beginning-position) (point))
+           (insert (make-string (length heading) ?*))))
+        ;; Handle emphasis
         ("**" (cond
-               ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)")
-                (delete-char 1))
-               ((looking-back "\\(?:[[:word:]]\\|\s\\)\\*\\{2\\}"
+               ;; ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)")
+               ;;  (delete-char 1))
+               ((looking-back "\\(?:[[:word:][:punct:]\n]\\|\s\\)\\*\\{2\\}"
                               (max (- (point) 3) (point-min)))
                 (delete-char -1))))
         ("*"
