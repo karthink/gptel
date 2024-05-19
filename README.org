@@ -85,7 +85,9 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
 
 ** Installation
 
-gptel is on MELPA. Ensure that MELPA is in your list of sources, then install it with =M-x package-install⏎= =gptel=.
+gptel can be installed in Emacs out of the box with =M-x package-install= ⏎ =gptel=.  This installs the latest release.
+
+If you want the development version instead, add MELPA (or NonGNU-devel ELPA) to your list of sources, then install it with =M-x package-install⏎= =gptel=.
 
 (Optional: Install =markdown-mode=.)
 
