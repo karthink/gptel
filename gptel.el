@@ -1201,8 +1201,6 @@ If SHOOSH is true, don't issue a warning."
 (defun gptel (name &optional _ initial interactivep)
   "Switch to or start a chat session with NAME.
 
-With a prefix arg, query for a (new) session name.
-
 Ask for API-KEY if `gptel-api-key' is unset.
 
 If region is active, use it as the INITIAL prompt.  Returns the
@@ -1213,11 +1211,11 @@ INTERACTIVEP is t when gptel is called interactively."
    (let* ((backend (default-value 'gptel-backend))
           (backend-name
            (format "*%s*" (gptel-backend-name backend))))
-     (list (if current-prefix-arg
-               (read-string "Session name: "
-                            (generate-new-buffer-name
-                             backend-name))
-             backend-name)
+     (list (read-buffer "Create or choose gptel buffer: "
+                        backend-name nil                         ; DEFAULT and REQUIRE-MATCH
+                        (lambda (b)                              ; PREDICATE
+                          (buffer-local-value 'gptel-mode
+                                              (get-buffer (or (car-safe b) b)))))
            (condition-case nil
                (gptel--get-api-key
                 (gptel-backend-key backend))
