@@ -3,7 +3,7 @@
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
-;; Version: 999.git
+;; Version: 0.8.6
 ;; Package-Requires: ((emacs "27.1") (transient "0.4.0") (compat "29.1.4.1"))
 ;; Keywords: convenience
 ;; URL: https://github.com/karthink/gptel
