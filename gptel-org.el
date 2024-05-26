@@ -185,12 +185,13 @@ value of `gptel-org-branching-context', which see."
                        collect (point) into ends
                        finally return (cons prompt-end ends))))
                 (with-temp-buffer
-                  (setq-local gptel-backend
-                              (buffer-local-value 'gptel-backend org-buf)
+                  (setq-local gptel-backend (buffer-local-value 'gptel-backend org-buf)
                               gptel--system-message
                               (buffer-local-value 'gptel--system-message org-buf)
-                              gptel-model
-                              (buffer-local-value 'gptel-model org-buf))
+                              gptel-model (buffer-local-value 'gptel-model org-buf)
+                              gptel-mode (buffer-local-value 'gptel-mode org-buf)
+                              gptel-track-response
+                              (buffer-local-value 'gptel-track-response org-buf))
                   (cl-loop for start in start-bounds
                            for end   in end-bounds
                            do (insert-buffer-substring org-buf start end)

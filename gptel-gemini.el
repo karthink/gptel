@@ -85,24 +85,30 @@
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-gemini) &optional max-entries)
   (let ((prompts) (prop))
-    (while (and
-            (or (not max-entries) (>= max-entries 0))
-            (setq prop (text-property-search-backward
-                        'gptel 'response
-                        (when (get-char-property (max (point-min) (1- (point)))
-                                                 'gptel)
-                          t))))
-      (push (list :role (if (prop-match-value prop) "model" "user")
+    (if (or gptel-mode gptel-track-response)
+        (while (and
+                (or (not max-entries) (>= max-entries 0))
+                (setq prop (text-property-search-backward
+                            'gptel 'response
+                            (when (get-char-property (max (point-min) (1- (point)))
+                                                     'gptel)
+                              t))))
+          (push (list :role (if (prop-match-value prop) "model" "user")
+                      :parts
+                      (list :text (string-trim
+                                   (buffer-substring-no-properties (prop-match-beginning prop)
+                                                                   (prop-match-end prop))
+                                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                                           (regexp-quote (gptel-prompt-prefix-string)))
+                                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                                           (regexp-quote (gptel-response-prefix-string))))))
+                prompts)
+          (and max-entries (cl-decf max-entries)))
+      (push (list :role "user"
                   :parts
                   (list :text (string-trim
-                               (buffer-substring-no-properties (prop-match-beginning prop)
-                                                               (prop-match-end prop))
-                               (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                                       (regexp-quote (gptel-prompt-prefix-string)))
-                               (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                                       (regexp-quote (gptel-response-prefix-string))))))
-            prompts)
-      (and max-entries (cl-decf max-entries)))
+                               (buffer-substring-no-properties (point-min) (point-max)))))
+            prompts))
     (cl-callf (lambda (msg) (concat gptel--system-message "\n\n" msg))
         (thread-first (car prompts)
                       (plist-get :parts)

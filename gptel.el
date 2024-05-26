@@ -496,6 +496,24 @@ which see."
 (make-obsolete-variable
  'gptel--debug 'gptel-log-level "0.6.5")
 
+(defcustom gptel-track-response t
+  "Distinguish between user messages and LLM responses.
+
+When creating a prompt to send to the LLM, gptel distinguishes
+between text entered by the user and past LLM responses.  This
+distinction is necessary for back-and-forth conversation with an
+LLM.
+
+In regular Emacs buffers you can turn this behavior off by
+setting `gptel-track-response' to `nil'.  All text, including
+past LLM responses, is then treated as user input when sending
+queries.
+
+This variable has no effect in dedicated chat buffers (buffers
+with `gptel-mode' enabled), where user prompts and responses are
+always handled separately."
+  :type 'boolean)
+
 (defvar-local gptel--old-header-line nil)
 
 
