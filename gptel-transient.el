@@ -236,6 +236,32 @@ This is used only for setting this variable via `gptel-menu'.")
              (oset obj model-value model-value)
              gptel--set-buffer-locally)))
 
+(defclass gptel-context-destination-variable (transient-lisp-variable)
+  ((display-value :initarg :display-value
+                  :initform (lambda (value)
+                              (pcase value
+                                (:nowhere "Nowhere")
+                                (:before-system-message "Before system message")
+                                (:after-system-message "After system message")
+                                (:before-user-prompt "Before user prompt")
+                                (:after-user-prompt "After user prompt"))))))
+
+(cl-defmethod transient-format-value ((obj gptel-context-destination-variable))
+  (propertize (funcall (oref obj display-value)
+                       (buffer-local-value (oref obj variable) transient--original-buffer))
+              'face 'transient-value))
+
+(cl-defmethod transient-infix-set ((obj gptel-context-destination-variable) value)
+  (funcall (oref obj set-value)
+           (oref obj variable)
+           (pcase value
+             ("Nowhere" :nowhere)
+             ("Before system message" :before-system-message)
+             ("After system message" :after-system-message)
+             ("Before user prompt" :before-user-prompt)
+             ("After user prompt" :after-user-prompt))
+           gptel--set-buffer-locally))
+
 (defclass gptel-option-overlaid (transient-option)
   ((display-nil :initarg :display-nil)
    (overlay :initarg :overlay))
@@ -288,6 +314,10 @@ Also format its value in the Transient menu."
     "Instructions"
     ("s" "Set system message" gptel-system-prompt :transient t)
     (gptel--infix-add-directive)]]
+  [["Context" :if (lambda () gptel-expert-commands)
+    (gptel--suffix-context-buffer)
+    (gptel--infix-context-destination)
+    (gptel--infix-use-context-in-chat :if (lambda () gptel-mode))]]
   [["Model Parameters"
     :pad-keys t
     (gptel--infix-variable-scope)
@@ -470,73 +500,27 @@ Customize `gptel-directives' for task-specific prompts."
 
 ;; ** Infixes for context aggregation
 
-(defclass gptel-keyword-variable (transient-lisp-variable)
-  ((choices :initarg :choices)
-   (always-read :initform t)
-   (set-value :initarg :set-value :initform #'set))
-  "Class for handling variables with keyword choices.")
-
-(cl-defmethod transient-format-value ((obj gptel-keyword-variable))
-  (let ((keyword-value (oref obj value))
-        (choices (oref obj choices)))
-    (propertize (cdr (assoc keyword-value choices)) 'face 'transient-value)))
-
-(cl-defmethod transient-infix-set ((obj gptel-keyword-variable) value)
-  (let ((keyword (car (rassoc value (oref obj choices)))))
-    (funcall (oref obj set-value)
-             (oref obj variable)
-             (oset obj value keyword))))
-
-(defun gptel--keyword-reader (prompt choices)
-  (let* ((display-choices (mapcar #'cdr choices))
-         (selected-string (completing-read prompt display-choices nil t)))
-    selected-string))
-
 (transient-define-infix gptel--infix-context-destination ()
   "Describe target destination for context injection."
   :description "Context destination"
-  :class 'gptel-keyword-variable
+  :class 'gptel-context-destination-variable
   :variable 'gptel-context-injection-destination
+  :set-value #'gptel--set-with-scope
   :key "-xd"
-  :choices '((:nowhere . "nowhere")
-             (:before-system-message . "before system message")
-             (:after-system-message . "after system message")
-             (:before-user-prompt . "before user prompt")
-             (:after-user-prompt . "after user prompt"))
   :reader (lambda (prompt &rest _)
-            (gptel--keyword-reader
-             prompt 
-             '((:nowhere . "nowhere")
-               (:before-system-message . "before system message")
-               (:after-system-message . "after system message")
-               (:before-user-prompt . "before user prompt")
-               (:after-user-prompt . "after user prompt")))))
-
-(defclass gptel-boolean-variable (transient-lisp-variable)
-  ((always-read :initform t)
-   (set-value :initarg :set-value :initform #'set))
-  "Class for handling boolean variables.")
-
-(cl-defmethod transient-format-value ((obj gptel-boolean-variable))
-  (let ((value (oref obj value)))
-    (propertize (if value "yes" "no") 'face 'transient-value)))
-
-(cl-defmethod transient-infix-set ((obj gptel-boolean-variable) value)
-  (funcall (oref obj set-value)
-           (oref obj variable)
-           (oset obj value (equal value "yes"))))
-
-(defun gptel--boolean-reader (prompt _ history)
-  (let* ((choice (completing-read prompt '("yes" "no") nil t nil history)))
-    choice))
+            (completing-read prompt '("Nowhere" "Before system message" "After system message"
+                                      "Before user prompt" "After user prompt")
+                             nil t)))
 
 (transient-define-infix gptel--infix-use-context-in-chat ()
   "Determine if context should be passed to the LLM during the chat."
   :description "Use in chat"
-  :class 'gptel-boolean-variable
+  :class 'gptel--switches
   :variable 'gptel-use-context-in-chat
-  :key "-xc"
-  :reader 'gptel--boolean-reader)
+  :set-value #'gptel--set-with-scope
+  :display-if-true "Yes"
+  :display-if-false "No"
+  :key "-xc")
 
 ;; ** Infixes for model parameters
 
@@ -954,296 +938,260 @@ When LOCAL is non-nil, set the system message only in the current buffer."
 
 ;; ** Suffix for displaying and removing context
 
-(defun gptel--context-edge-point (edge-type direction &optional inclusive)
-  "Find context edge point of EDGE-TYPE from current point.
-EDGE-TYPE is either :start or :end.
-DIRECTION is either :next or :previous.
-If INCLUSIVE is non-nil, return the current point if it is on an edge."
-  (let* ((point nil)
-         (get-edge-point #'(lambda (direction)
-                             (if (and inclusive
-                                      (when (get-text-property (point) 'gptel-context-overlay)
-                                        (if (eq edge-type :start)
-                                            (when (and (/= (point) (point-min))
-                                                       (not (get-text-property
-                                                             (1- (point))
-                                                             'gptel-context-overlay)))
-                                              t)
-                                          (when (and (/= (point) (point-max))
-                                                     (not (get-text-property
-                                                           (1+ (point))
-                                                           'gptel-context-overlay)))
-                                            t))))
-                                 (point)
-                               (if (eq direction :next)
-                                   (setq point (next-single-property-change
-                                                (point)
-                                                'gptel-context-overlay nil nil))
-                                 (setq point (previous-single-property-change
-                                                (point)
-                                                'gptel-context-overlay nil nil)))))))
-    (save-excursion
-      (if (eq edge-type :end)
-          (progn
-            (funcall get-edge-point direction)
-            (when point
-              (goto-char point)
-              (if (get-text-property (1+ point) 'gptel-context-overlay)
-                  ;; This is actually a starting edge, not an ending edge.
-                  (funcall get-edge-point direction)
-                point)))
-        (funcall get-edge-point direction)
-        (when point
-          (goto-char point)
-          (if (get-text-property (1- point) 'gptel-context-overlay)
-              ;; This is actually an ending edge, not a starting edge.
-              (funcall get-edge-point direction)))))
-    ;; Handle some edge cases (pun unintended).
-    (unless point
-      (if (eq edge-type :end)
-          (when (get-text-property (max (point-min) (1- (point))) 'gptel-context-overlay)
-            (setq point (point)))
-        (when (get-text-property (min (point-max) (1+ (point))) 'gptel-context-overlay)
-            (setq point (point)))))
-    point))
-
-(let* ((highlight-start nil)
-       (highlight-end nil)
-       (highlight-overlay nil)
-       (moved-backwards nil)) ; This is used for some deletion navigation QoL.
-  
-  (transient-define-suffix gptel--suffix-context-buffer ()
-    "Display all contexts from all buffers & files."
-    :transient 'transient--do-exit
-    :key "-xb"
-    :description (lambda ()
-                   (let* ((contexts (gptel-contexts))
-                          (buffer-count (length (delete-dups (mapcar #'overlay-buffer contexts)))))
-                     (concat "Display context buffer "
-                             (propertize
-                              (format "%d context%s in %d buffer%s"
-                                      (length contexts)
-                                      (if (/= (length contexts) 1) "s" "")
-                                      buffer-count
-                                      (if (/= buffer-count 1) "s" ""))
-                              'face 'transient-value))))
-    (interactive)
-    (let ((orig-buf (current-buffer)))
-      (with-current-buffer (get-buffer-create "*gptel-context*")
-        (read-only-mode 1)
-        (setq highlight-start nil
-              highlight-end nil
-              highlight-overlay nil)
-        (let ((inhibit-read-only t))
-          (erase-buffer)
-          (setq header-line-format
-                (concat
-                 "Mark/unmark deletion with "
-                 (propertize "d" 'face 'help-key-binding)
-                 ", jump to next/previous with "
-                 (propertize "n" 'face 'help-key-binding)
-                 "/"
-                 (propertize "p" 'face 'help-key-binding)
-                 ", respectively. "
-                 (propertize "C-c C-c" 'face 'help-key-binding)
-                 " to apply, or "
-                 (propertize "C-c C-k" 'face 'help-key-binding)
-                 " to abort."))
-          (save-excursion
-            (let ((contexts (gptel-contexts)))
-              (if (> (length contexts) 0)
-                  (insert (gptel-context-string))
-                (insert "There are no active contexts in any buffer.")))))
-        (display-buffer (current-buffer)
-                        `((display-buffer-below-selected)
-                          (body-function . ,#'select-window)
-                          (window-height . ,#'fit-window-to-buffer)))
-        ;; Add hook to change the highlight whenever the point has moved beyond
-        ;; that of the current highlight.
-        (add-hook
-         'post-command-hook
+(transient-define-suffix gptel--suffix-context-buffer ()
+  "Display all contexts from all buffers & files."
+  :transient 'transient--do-exit
+  :key "-xb"
+  :description (lambda ()
+                 (let* ((contexts (gptel-contexts))
+                        (buffer-count (length (delete-dups (mapcar #'overlay-buffer contexts)))))
+                   (concat "Display context buffer "
+                           (format
+                            (propertize "(%s)" 'face 'transient-delimiter)
+                            (propertize (format "%d context%s in %d buffer%s"
+                                                (length contexts)
+                                                (if (/= (length contexts) 1) "s" "")
+                                                buffer-count
+                                                (if (/= buffer-count 1) "s" ""))
+                                        'face (if (zerop (length contexts))
+                                                  'transient-inactive-value
+                                                'transient-value))))))
+  (interactive)
+  (let ((orig-buf (current-buffer))
+        (highlight-overlay nil)
+        (moved-backwards nil)) ; This is used for some deletion navigation QoL.
+    (with-current-buffer (get-buffer-create "*gptel-context*")
+      (read-only-mode 1)
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (setq header-line-format
+              (concat
+               "Mark/unmark deletion with "
+               (propertize "d" 'face 'help-key-binding)
+               ", jump to next/previous with "
+               (propertize "n" 'face 'help-key-binding)
+               "/"
+               (propertize "p" 'face 'help-key-binding)
+               ", respectively. "
+               (propertize "C-c C-c" 'face 'help-key-binding)
+               " to apply, or "
+               (propertize "C-c C-k" 'face 'help-key-binding)
+               " to abort."))
+        (save-excursion
+          (let ((contexts (gptel-contexts)))
+            (if (> (length contexts) 0)
+                (progn
+                  (insert (gptel-context-string t))
+                  ;; Mark the inserted context chunks with an overlay to simplify bookkeeping.
+                  (goto-char (point-min))
+                  (while (not (eobp))
+                    (let* ((beg (next-single-property-change (point) 'gptel-context-overlay))
+                           (end (when beg
+                                  (next-single-property-change beg 'gptel-context-overlay))))
+                      (if end
+                          (progn
+                            (when (get-text-property beg 'gptel-context-overlay)
+                              (let ((ov (make-overlay beg end)))
+                                ;; We want to make the highlighting overlay a higher priority than
+                                ;; the deletion overlay.  We superimpose both overlays to have an
+                                ;; effect that allows for both highlighting and deletion overlays
+                                ;; to exist simutaniously for the same context chunk.
+                                (overlay-put ov 'priority 1)
+                                (overlay-put ov 'gptel-context-highlight t)))
+                            (goto-char end))
+                        (goto-char (point-max))))))
+              (insert "There are no active contexts in any buffer.")))))
+      (display-buffer (current-buffer)
+                      `((display-buffer-below-selected)
+                        (body-function . ,#'select-window)
+                        (window-height . ,#'fit-window-to-buffer)))
+      ;; Add hook to change the highlight whenever the point has moved beyond
+      ;; that of the current highlight.
+      (add-hook
+       'post-command-hook
+       #'(lambda ()
+           ;; Only update if point moved outside the current region.
+           (unless (member highlight-overlay (overlays-at (point)))
+             (let ((context-overlay (car (cl-loop
+                                          for ov in (overlays-at (point))
+                                          when (overlay-get ov 'gptel-context-highlight)
+                                          collect ov))))
+               (when highlight-overlay
+                 (overlay-put highlight-overlay 'face nil))
+               (when context-overlay
+                 (overlay-put context-overlay 'face 'highlight))
+               (setq highlight-overlay context-overlay))))
+       nil t)
+      (let* ((quit-to-menu
+              (lambda ()
+                (interactive)
+                (local-unset-key (kbd "d"))
+                (local-unset-key (kbd "n"))
+                (local-unset-key (kbd "p"))
+                (local-unset-key (kbd "C-c C-c"))
+                (local-unset-key (kbd "C-c C-k"))
+                (quit-window)
+                (display-buffer
+                 orig-buf
+                 `((display-buffer-reuse-window
+                    display-buffer-use-some-window)
+                   (body-function . ,#'select-window)))
+                (call-interactively #'gptel-menu)))
+             ;; Function used to detect whether or not we are at the edges of an overlay.  This is
+             ;; used to know how many overlay changes we should jump over in order to reach the
+             ;; start or end of overlays.  Refers to inner edge.
+             (at-overlay-edge-p #'(lambda (pos left-edge)
+                                    ;; Obviously, if we have no overlay at the point, we cannot be
+                                    ;; at an edge.
+                                    (when (overlays-at (point))
+                                      (not (if left-edge
+                                               (overlays-at (max (1- pos) (point-min)))
+                                             (not (overlays-at (min (1+ pos) (point-max)))))))))
+             (move-forward
+              #'(lambda ()
+                  (interactive)
+                  (let ((point-is-inside-overlay (overlays-at (point)))
+                        (next-start (next-overlay-change (point))))
+                    (when (and (/= (point-max) next-start) point-is-inside-overlay)
+                      ;; We were inside the overlay, so we want the next overlay change, which
+                      ;; would be the start of the next overlay.
+                      (setq next-start (next-overlay-change next-start)))
+                    (when (/= next-start (point-max))
+                      (setq moved-backwards nil)
+                      (goto-char next-start)))))
+             (move-backward
+              #'(lambda ()
+                  (interactive)
+                  (let ((point-is-inside-overlay (overlays-at (point)))
+                        (previous-end (previous-overlay-change (point))))
+                    (when (and (/= (point-min) previous-end) point-is-inside-overlay
+                               ;; Handele the edge case where the caret is located right at the
+                               ;; beginning of an overlay.
+                               (overlays-at (max (1- (point)) (point-min))))
+                      ;; We were inside an overlay, so are currently at the start of the current
+                      ;; overlay.
+                      (setq previous-end (previous-overlay-change previous-end)))
+                    (when (/= (point-min) previous-end)
+                      (setq moved-backwards t)
+                      (goto-char (1- previous-end)))))))
+        (local-set-key (kbd "n") move-forward)
+        (local-set-key (kbd "p") move-backward)
+        (local-set-key
+         (kbd "d") ; Marking overlays for deletion
          #'(lambda ()
-             ;; Only update if point moved outside the current region.
-             (unless (and highlight-start highlight-end
-                          (>= (point) highlight-start)
-                          (<= (point) highlight-end))
-               ;; Remove the old region.
-               (when highlight-overlay (delete-overlay highlight-overlay))
-               (setq highlight-end nil
-                     highlight-start nil)
-               ;; Find new region to highlight.
-               (let* ((point-is-within-context
-                       (get-text-property (point) 'gptel-context-overlay))
-                      (start (previous-single-property-change
-                              (point)
-                              'gptel-context-overlay
-                              nil
-                              nil))
-                      (end (next-single-property-change
-                            (point)
-                            'gptel-context-overlay
-                            nil
-                            nil)))
-                 ;; Handle the edge cases where the point is located at the ends
-                 ;; of the context.
-                 (when (or (not start)
-                           (not (get-text-property (1+ start)
-                                                   'gptel-context-overlay)))
-                   (setq start (point)))
-                 (when (and start end (<= start (point) end)
-                            point-is-within-context)
-                   (setq highlight-start start)
-                   (setq highlight-end (1- end))
-                   ;; Create new overlay for highlighting.
-                   (setq highlight-overlay (make-overlay start end))
-                   (overlay-put highlight-overlay 'face 'highlight)
-                   (overlay-put highlight-overlay 'priority 1)
-                   (overlay-put highlight-overlay 'gptel-context-highlight t)))))
-         nil t)
-        (let ((quit-to-menu
-               (lambda ()
-                 (interactive)
-                 (local-unset-key (kbd "d"))
-                 (local-unset-key (kbd "n"))
-                 (local-unset-key (kbd "p"))
-                 (local-unset-key (kbd "C-c C-c"))
-                 (local-unset-key (kbd "C-c C-k"))
-                 (quit-window)
-                 (display-buffer
-                  orig-buf
-                  `((display-buffer-reuse-window
-                     display-buffer-use-some-window)
-                    (body-function . ,#'select-window)))
-                 (call-interactively #'gptel-menu)))
-              (forward-movement-func
-               #'(lambda ()
-                   (interactive)
-                   (let ((next-start (gptel--context-edge-point :start :next)))
-                     (when next-start
-                       (setq moved-backwards nil)
-                       (goto-char next-start)))))
-              (backward-movement-func
-               #'(lambda ()
-                   (interactive)
-                   (let ((previous-end (gptel--context-edge-point :end :previous)))
-                     (when (and previous-end (/= previous-end (point)))
-                       (setq moved-backwards t)
-                       (goto-char (1- previous-end)))))))
-          (local-set-key (kbd "n") forward-movement-func)
-          (local-set-key (kbd "p") backward-movement-func)
-          (local-set-key
-           (kbd "d") ; Marking overlays for deletion
-           #'(lambda ()
-               (interactive)
-               (if (not (region-active-p)) ; Separate functiaonlity with just points vs. regions.
-                   (progn
-                     (let ((overlays (overlays-at (point)))
-                           (deletion-overlay-found nil)
-                           (highlighting-overlay nil)
-                           (something-marked-or-unmarked nil))
-                       ;; Loop through all overlays at point to check for deletion mark or
-                       ;; highlight.
-                       (dolist (overlay overlays)
-                         (cond
-                          ((overlay-get overlay 'gptel-context-deletion-mark)
-                           ;; If deletion mark is found, delete the overlay and set flag to true.
-                           (delete-overlay overlay)
-                           (setq something-marked-or-unmarked t)
-                           (setq deletion-overlay-found t))
-                          ((overlay-get overlay 'gptel-context-highlight)
-                           (setq highlighting-overlay overlay))))
-                       (when (and highlighting-overlay
-                                  (not deletion-overlay-found)
-                                  (overlay-get highlighting-overlay 'gptel-context-highlight))
-                         (let* ((start (overlay-start highlighting-overlay))
-                                (end (overlay-end highlighting-overlay))
-                                (new-overlay (make-overlay start end)))
-                           ;; We want to have 0 priority so that the highlighting overlay takes
-                           ;; precedence.
-                           (setq something-marked-or-unmarked t)
-                           (overlay-put new-overlay 'priority 0)
-                           (overlay-put new-overlay 'face 'diff-indicator-removed)
-                           (overlay-put new-overlay 'gptel-context-deletion-mark t)))
-                       (when something-marked-or-unmarked
-                         (if moved-backwards
-                             (progn
-                               (let ((point (point)))
-                                 (funcall backward-movement-func)
-                                 (when (eq point (point))
-                                   ;; We haven't moved.  Disregard previous movement and just go
-                                   ;; forwards.
-                                   (setq moved-backwards nil)
-                                   (funcall forward-movement-func))))
-                           (funcall forward-movement-func)))))
-                 ;; We have a region selected, so we must iterate all the overlays in it to do the
-                 ;; same as we have done above.
-                 (let ((marking-action :mark-all) ; :mark-all, :unmark-all
-                       (context-region-and-mark '())
-                       (start (region-beginning))
-                       (end (region-end))
-                       (unmarked-context-found nil)
-                       (highlight-overlay-region-at-point
-                        #'(lambda ()
-                            ;; We can't get the overlay, because the hook isn't triggered, so the
-                            ;; highlighting overlay won't work when we use `goto-char'.
-                            (when (get-text-property (point) 'gptel-context-overlay)
-                              (cons (gptel--context-edge-point :start :previous t)
-                                    (gptel--context-edge-point :end :next t)))))
-                       (deletion-overlay-at-point
-                        #'(lambda ()
-                            (car (cl-loop
-                                  for ov in (overlays-at (point))
-                                  when (overlay-get ov 'gptel-context-deletion-mark)
-                                  collect ov)))))
-                   (deactivate-mark)
-                   ;; We want to collect the context regions and see if they have deletion marks to
-                   ;; determine what we want to do.
-                   (save-excursion
-                     (goto-char start)
-                     (cl-loop for previous-point = start then (point)
-                              do (progn
-                                   (let ((hov-region (funcall highlight-overlay-region-at-point))
-                                         (deletion-ov nil))
-                                     (when hov-region
-                                       (setq deletion-ov (funcall deletion-overlay-at-point))
-                                       (push (cons hov-region
-                                                   deletion-ov)
-                                             context-region-and-mark)
-                                       (unless deletion-ov
-                                         (setq unmarked-context-found t)))
-                                     (funcall forward-movement-func)))
-                              until (or (= previous-point (point))
-                                        (> (point) end))))
-                   (unless unmarked-context-found
-                     (setq marking-action :unmark-all))
-                   (cl-loop for (hov-region . dov) in context-region-and-mark do
-                            (if (eq marking-action :mark-all)
-                                (unless dov ; Do not make a duplicate deletion overlay.
-                                  (let* ((start (car hov-region))
-                                         (end (cdr hov-region))
-                                         (new-overlay (make-overlay start end)))
-                                    (overlay-put new-overlay 'priority 0)
-                                    (overlay-put new-overlay 'face 'diff-indicator-removed)
-                                    (overlay-put new-overlay 'gptel-context-deletion-mark t)))
-                              ;; marking-action is :unmark-all.
-                              (delete-overlay dov)))))))
-          (local-set-key (kbd "C-c C-c")
-                         #'(lambda ()
-                             (interactive)
-                             ;; Delete all the context overlays that have been marked for deletion.
-                             (cl-loop for dov in
-                                      (cl-loop for ov in (overlays-in (point-min) (point-max))
-                                               when
-                                               (and (overlay-get ov 'gptel-context-deletion-mark)
-                                                    ;; Ignore zero-length overlays.  Not sure why
-                                                    ;; these appear at the start of the buffer.
-                                                    (/= (overlay-start ov) (overlay-end ov)))
-                                               collect ov)
-                                      do (delete-overlay
-                                          (get-text-property (overlay-start dov)
-                                                             'gptel-context-overlay)))
-                             (funcall quit-to-menu)))
-          (local-set-key (kbd "C-c C-k") quit-to-menu))))))
+             (interactive)
+             (if (not (region-active-p)) ; Separate functionality with just points vs. regions.
+                 (progn
+                   (let ((overlays (overlays-at (point)))
+                         (deletion-overlay-found nil)
+                         (highlighting-overlay nil)
+                         (something-marked-or-unmarked nil))
+                     ;; Loop through all overlays at point to check for deletion mark or
+                     ;; highlight.
+                     (dolist (overlay overlays)
+                       (cond
+                        ((overlay-get overlay 'gptel-context-deletion-mark)
+                         ;; If deletion mark is found, delete the overlay and set flag to true.
+                         (delete-overlay overlay)
+                         (setq something-marked-or-unmarked t)
+                         (setq deletion-overlay-found t))
+                        ((overlay-get overlay 'gptel-context-highlight)
+                         (setq highlighting-overlay overlay))))
+                     (when (and highlighting-overlay
+                                (not deletion-overlay-found)
+                                (overlay-get highlighting-overlay 'gptel-context-highlight))
+                       (let* ((start (overlay-start highlighting-overlay))
+                              (end (overlay-end highlighting-overlay))
+                              (new-overlay (make-overlay start end)))
+                         ;; We want to have 0 priority so that the highlighting overlay takes
+                         ;; precedence.
+                         (setq something-marked-or-unmarked t)
+                         (overlay-put new-overlay 'priority 0)
+                         (overlay-put new-overlay 'face 'diff-indicator-removed)
+                         (overlay-put new-overlay 'gptel-context-deletion-mark t)))
+                     (when something-marked-or-unmarked
+                       (if moved-backwards
+                           (progn
+                             (let ((point (point)))
+                               (funcall move-backward)
+                               (when (eq point (point))
+                                 ;; We haven't moved.  Disregard previous movement and just go
+                                 ;; forwards.
+                                 (setq moved-backwards nil)
+                                 (funcall move-forward))))
+                         (funcall move-forward)))))
+               ;; We have a region selected, so we must iterate all the overlays in it to do the
+               ;; same as we have done above.
+               (let ((marking-action :mark-all) ; :mark-all, :unmark-all
+                     (context-region-and-mark '())
+                     (start (region-beginning))
+                     (end (region-end))
+                     (unmarked-context-found nil)
+                     (highlight-overlay-region-at-point
+                      #'(lambda ()
+                          ;; We can't get the overlay, because the hook isn't triggered, so the
+                          ;; highlighting overlay won't work when we use `goto-char'.
+                          (let ((ov (car (cl-loop for ov in (overlays-at (point))
+                                                  when (overlay-get ov 'gptel-context-highlight)
+                                                  collect ov))))
+                            (cons (overlay-start ov) (overlay-end ov)))))
+                     (deletion-overlay-at-point
+                      #'(lambda ()
+                          (car (cl-loop
+                                for ov in (overlays-at (point))
+                                when (overlay-get ov 'gptel-context-deletion-mark)
+                                collect ov)))))
+                 (deactivate-mark)
+                 ;; We want to collect the context regions and see if they have deletion marks to
+                 ;; determine what we want to do.
+                 (save-excursion
+                   (goto-char start)
+                   (cl-loop for previous-point = start then (point)
+                            do (progn
+                                 (let ((hov-region (funcall highlight-overlay-region-at-point))
+                                       (deletion-ov nil))
+                                   (when hov-region
+                                     (setq deletion-ov (funcall deletion-overlay-at-point))
+                                     (push (cons hov-region
+                                                 deletion-ov)
+                                           context-region-and-mark)
+                                     (unless deletion-ov
+                                       (setq unmarked-context-found t)))
+                                   (funcall move-forward)))
+                            until (or (= previous-point (point))
+                                      (> (point) end))))
+                 (unless unmarked-context-found
+                   (setq marking-action :unmark-all))
+                 (cl-loop for (hov-region . dov) in context-region-and-mark do
+                          (if (eq marking-action :mark-all)
+                              (unless dov ; Do not make a duplicate deletion overlay.
+                                (let* ((start (car hov-region))
+                                       (end (cdr hov-region))
+                                       (new-overlay (make-overlay start end)))
+                                  (overlay-put new-overlay 'priority 0)
+                                  (overlay-put new-overlay 'face 'diff-indicator-removed)
+                                  (overlay-put new-overlay 'gptel-context-deletion-mark t)))
+                            ;; marking-action is :unmark-all.
+                            (delete-overlay dov)))))))
+        (local-set-key (kbd "C-c C-c")
+                       #'(lambda ()
+                           (interactive)
+                           ;; Delete all the context overlays that have been marked for deletion.
+                           (cl-loop for dov in
+                                    (cl-loop for ov in (overlays-in (point-min) (point-max))
+                                             when
+                                             (and (overlay-get ov 'gptel-context-deletion-mark)
+                                                  ;; Ignore zero-length overlays.  Not sure why
+                                                  ;; these appear at the start of the buffer.
+                                                  (/= (overlay-start ov) (overlay-end ov)))
+                                             collect ov)
+                                    do (delete-overlay
+                                        ;; The text property from the context string points to the
+                                        ;; actual context overlay located in the buffers.
+                                        (get-text-property (overlay-start dov)
+                                                           'gptel-context-overlay)))
+                           (funcall quit-to-menu)))
+        (local-set-key (kbd "C-c C-k") quit-to-menu)))))
 
 ;; ** Suffixes for rewriting/refactoring
 

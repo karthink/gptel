@@ -26,6 +26,7 @@
 (eval-when-compile
   (require 'cl-lib))
 (require 'map)
+(require 'gptel-contexter)
 
 (defvar gptel-model)
 (defvar gptel-stream)
@@ -143,8 +144,22 @@ with differing settings.")
       (push (list :role "user"
                   :content
                   (string-trim
-                   (buffer-substring-no-properties (point-min) (point-max))))
-            prompts))
+                   (buffer-substring-no-properties (prop-match-beginning prop)
+                                                   (prop-match-end prop))
+                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                           (regexp-quote (gptel-prompt-prefix-string)))
+                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                           (regexp-quote (gptel-response-prefix-string)))))
+            prompts)
+      (and max-entries (cl-decf max-entries)))
+    (when (and (memq gptel-context-injection-destination '(:before-user-prompt :after-user-prompt))
+               (> (length prompts) 0))
+      ;; Add context to final user prompt.
+      (let* ((last-prompt (last prompts))
+             (last-plist (car last-prompt)))
+        (setf (car last-prompt) (plist-put last-plist :content
+                                           (gptel--wrap-in-context (plist-get (car last-prompt)
+                                                                              :content))))))
     (cons (list :role "system"
                 :content gptel--system-message)
           prompts)))

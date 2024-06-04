@@ -38,7 +38,8 @@
   :type 'symbol)
 
 (defcustom gptel-use-context-in-chat nil
-  "Determines if context should be injected when using the dedicated chat buffer."
+  "Determines if context should be injected when using the dedicated chat buffer.
+If non-nil, then the model will use the context in the chat buffer."
   :group 'gptel
   :type 'symbol)
 
@@ -53,6 +54,18 @@
   :group 'gptel
   :type 'symbol)
 
+(defcustom gptel-context-preamble "Request context:"
+  "A string to be prepended to the context."
+  :group 'gptel
+  :type 'string)
+
+(defcustom gptel-context-postamble ""
+  "A string to be appended to the context."
+  :group 'gptel
+  :type 'string)
+
+(defvar gptel--context-overlays '())
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ------------------------------ FUNCTIONS ------------------------------- ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -61,11 +74,13 @@
 (defun gptel-add-context (&optional arg)
   "Add context to GPTel.
 
-When called regularly, adds current buffer as context.
-When ARG is positive, prompts for buffer name to add as context.
-When ARG is negative, removes current buffer from context.
-When called with region selected, adds selected region as context."
-  (interactive)
+When called without a prefix argument, adds the current buffer as context.
+When ARG is positive, prompts for a buffer name and adds it as context.
+When ARG is negative, removes all contexts from the current buffer.
+When called with a region selected, adds the selected region as context.
+
+If there is a context under point, it is removed when called without a prefix."
+  (interactive "P")
   (cond
    ;; A region is selected.
    ((use-region-p)
@@ -74,55 +89,79 @@ When called with region selected, adds selected region as context."
                                   (region-end))
     (deactivate-mark)
     (message "Current region added as context."))
-   ;; No region is currently selected, so delete a context under point if there
-   ;; is one.
-   ((gptel-context-at-point)
-    (gptel-remove-context (gptel-context-at-point))
-    (message "Context under point has been removed."))
-   ;; No region is selected and no context is under point.  The default behavior
-   ;; is to add the entire buffer as context.
-   (t
-    (gptel--add-region-as-context (current-buffer) (point-min) (point-max))
-    (message "Current buffer added as context."))))
+   ;; No region is selected, and ARG is positive.
+   ((and arg (> (prefix-numeric-value arg) 0))
+    (let ((buffer-name (read-buffer "Choose buffer to add as context: " nil t)))
+      (gptel--add-region-as-context (get-buffer buffer-name) (point-min) (point-max))
+      (message "Buffer '%s' added as context." buffer-name)))
+   ;; No region is selected, and ARG is negative.
+   ((and arg (< (prefix-numeric-value arg) 0))
+    (when (y-or-n-p "Remove all contexts from this buffer? ")
+      (let ((removed-contexts 0))
+        (cl-loop for cov in
+                 (gptel-contexts-in-region (current-buffer) (point-min) (point-max))
+                 do (progn
+                      (cl-incf removed-contexts)
+                      (gptel-remove-context cov)))
+        (message (format "%d context%s removed from current buffer."
+                         removed-contexts
+                         (if (= removed-contexts 1) "" "s"))))))
+   (t ; Default behavior
+    (if (gptel-context-at-point)
+        (progn
+          (gptel-remove-context (car (gptel-contexts-in-region (current-buffer)
+                                                               (max (point-min) (1- (point)))
+                                                               (point))))
+          (message "Context under point has been removed."))
+      (gptel--add-region-as-context (current-buffer) (point-min) (point-max))
+      (message "Current buffer added as context.")))))
   
 (defun gptel--make-context-overlay (start end)
   "Highlight the region from START to END."
   (let ((overlay (make-overlay start end)))
+    (overlay-put overlay 'evaporate t)
     (overlay-put overlay 'face gptel-context-highlight-face)
     (overlay-put overlay 'gptel-context t)
+    (push overlay gptel--context-overlays)
     overlay))
+
+(defun gptel--wrap-in-context (message)
+  "Wrap MESSAGE with context.
+The message is usually either a system message or user prompt."
+  ;; Append context before/after system message.
+  (if (and (bound-and-true-p gptel-mode)
+           (not gptel-use-context-in-chat))
+      ;; If we are in the dedicated chat buffer, we would like to consult
+      ;; `gptel-use-context-in-chat' to see if context should be used inside.
+      message
+    (let ((context (gptel-context-string)))
+      (if (> (length context) 0)
+          (if (memq gptel-context-injection-destination
+                    '(:before-system-message
+                      :before-user-prompt))
+              (concat gptel-context-preamble
+                      (when (not (zerop (length gptel-context-preamble))) "\n\n")
+                      context
+                      "\n\n"
+                      gptel-context-postamble
+                      (when (not (zerop (length gptel-context-postamble))) "\n\n")
+                      message)
+            (concat message
+                    "\n\n"
+                    gptel-context-preamble
+                    (when (not (zerop (length gptel-context-preamble))) "\n\n")
+                    context
+                    (when (not (zerop (length gptel-context-postamble))) "\n\n")
+                    gptel-context-postamble))
+        message))))
 
 (cl-defun gptel--add-region-as-context (buffer region-beginning region-end)
   "Add region delimited by REGION-BEGINNING, REGION-END in BUFFER as context."
   ;; Remove existing contexts in the same region, if any.
   (mapc #'gptel-remove-context
         (gptel-contexts-in-region buffer region-beginning region-end))
-  (let ((start (make-marker))
-        (end (make-marker)))
-    (set-marker start region-beginning (current-buffer))
-    (set-marker end region-end (current-buffer))
-    ;; Trim the unnecessary parts of the context content.
-    (let* ((content (buffer-substring-no-properties start end))
-           (fat-at-end (progn
-                         (let ((match-pos
-                                (string-match-p (rx (+ (any "\t" "\n" " ")) eos)
-                                                content)))
-                           (when match-pos
-                             (- (- end start) match-pos)))))
-           (fat-at-start (progn
-                           (when (string-match (rx bos (+ (any "\t" "\n" " ")))
-                                               content)
-                             (match-end 0)))))
-      (when fat-at-start
-        (set-marker start (+ start fat-at-start)))
-      (when fat-at-end
-        (set-marker end (- end fat-at-end))))
-    (when (= start end)
-      (message "No content in selected region.")
-      (cl-return-from gptel--add-region-to-contexts nil))
-    ;; First, highlight the region.
-    (prog1 (gptel--make-context-overlay start end)
-      (message "Region added to context buffer."))))
+    (prog1 (gptel--make-context-overlay region-beginning region-end)
+      (message "Region added to context buffer.")))
 
 ;;;###autoload
 (defun gptel-contexts-in-region (buffer start end)
@@ -136,8 +175,10 @@ START and END signify the region delimiters."
 ;;;###autoload
 (defun gptel-context-at-point ()
   "Return the context overlay at point, if any."
-  (car (overlays-in (point) (point))))
-
+  (car (cl-remove-if-not #'(lambda (ov)
+                             (overlay-get ov 'gptel-context))
+                         (overlays-at (point)))))
+    
 ;;;###autoload
 (defun gptel-remove-context (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
@@ -160,17 +201,13 @@ If selection is active, removes all contexts within selection."
 
 ;;;###autoload
 (defun gptel-contexts ()
-  "Get the list of all context overlays in all active buffers."
-  (cl-remove-if-not #'(lambda (ov)
-                        (overlay-get ov 'gptel-context))
-                    (let ((all-overlays '()))
-                      (dolist (buf (buffer-list))
-                        (with-current-buffer buf
-                          (setq all-overlays
-                                (append all-overlays
-                                        (overlays-in (point-min)
-                                                     (point-max))))))
-                      all-overlays)))
+  "Get the list of all active context overlays."
+  ;; Get only the non-degenerate overlays, collect them, and update the overlays variable.
+  (let ((overlays (cl-loop for ov in gptel--context-overlays
+                           when (overlay-start ov)
+                           collect ov)))
+    (setq gptel--context-overlays overlays)
+    overlays))
 
 ;;;###autoload
 (defun gptel-contexts-in-buffer (buffer)
@@ -232,39 +269,16 @@ representthe regions' boundaries within BUFFER."
           (curr-line-start (line-number-at-pos (car current-region))))
       (= prev-line-end curr-line-start))))
 
-(defun gptel--regions-continuous-p (buffer previous-region current-region)
-  "Return non-nil if CURRENT-REGION is a continuation of PREVIOUS-REGION.
-Pretains only to regions in BUFFER.
-
-A region is considered a continuation of another if it is only separated by
-newlines and whitespaces.  PREVIOUS-REGION and CURRENT-REGION should be cons
-cells (START . END) representing the boundaries of the regions within BUFFER."
-  (with-current-buffer buffer
-    (let ((gap (buffer-substring-no-properties
-                (cdr previous-region) (car current-region))))
-      (string-match-p
-       (rx bos (* (any "\t" "\n" " ")) eos)
-       gap))))
-
-(defun gptel-buffer-context-string (buffer)
-  "Create a context string from all contexts in BUFFER."
+(defun gptel-buffer-context-string (buffer &optional depropertize)
+  "Create a context string from all contexts in BUFFER.
+If DEPROPERTIZE is non-nil, remove the properties from the final substring."
     (let ((is-top-snippet t)
           buffer-file
-          previous-region
-          buffer-point-min
-          buffer-point-max
+          (previous-line 1)
           prog-lang-tag
           (contexts (gptel-contexts-in-buffer buffer)))
       (with-current-buffer buffer
-        (setq buffer-point-min (save-excursion
-                                 (goto-char (point-min))
-                                 (skip-chars-forward " \t\n\r")
-                                 (point))
-              buffer-point-max (save-excursion
-                                 (goto-char (point-max))
-                                 (skip-chars-backward " \t\n\r")
-                                 (point))
-              prog-lang-tag (gptel-major-mode-md-prog-lang
+        (setq prog-lang-tag (gptel-major-mode-md-prog-lang
                              major-mode)))
       (setq buffer-file
             ;; Use file path if buffer has one, otherwise use its regular name.
@@ -279,55 +293,26 @@ cells (START . END) representing the boundaries of the regions within BUFFER."
         (cl-loop for context in contexts do
                  (progn
                    (let* ((start (overlay-start context))
-                          (end (overlay-end context))
-                          (region-inline
-                           ;; Does the current region start on the same line the
-                           ;; previous region ends?
-                           (when previous-region
-                             (gptel--region-inline-p buffer
-                                                     previous-region
-                                                     (cons start end))))
-                          (region-continuous
-                           ;; Is the current region a continuation of the
-                           ;; previous region? I.e., is it only separated by
-                           ;; newlines and whitespaces?
-                           (when previous-region
-                             (gptel--regions-continuous-p buffer
-                                                          previous-region
-                                                          (cons start end)))))
-                     (unless (<= start buffer-point-min)
-                       (if region-continuous
-                           ;; If the regions are continuous, insert the
-                           ;; whitespaces that separate them.
-                           (insert-buffer-substring-no-properties
-                            buffer
-                            (cdr previous-region)
-                            start)
-                         ;; Regions are not continuous. Are they on the same
-                         ;; line?
-                         (if region-inline
-                             ;; Region is inline but not continuous, so we
-                             ;; should just insert an ellipsis.
-                             (insert " ... ")
-                           ;; Region is neither inline nor continuous, so just
-                           ;; insert an ellipsis on a new line.
-                           (unless is-top-snippet
-                             (insert "\n"))
-                           (insert "...")))
-                       (let (lineno)
-                         (with-current-buffer buffer
-                           (setq lineno (line-number-at-pos start)))
-                         ;; We do not need to insert a line number indicator on
-                         ;; inline regions.
-                         (unless (or region-inline region-continuous)
-                           (insert (format " (Line %d)" lineno)))))
-                     (when (or (and (not region-inline)
-                                    (not region-continuous)
-                                    (not is-top-snippet))
-                               is-top-snippet)
-                       (insert "\n"))
-                     (if is-top-snippet
-                         (setq is-top-snippet nil))
+                          (end (overlay-end context)))
+                     (let (lineno column)
+                       (with-current-buffer buffer
+                         (setq lineno (line-number-at-pos start t))
+                         (setq column (save-excursion
+                                        (goto-char start)
+                                        (current-column))))
+                       ;; We do not need to insert a line number indicator if we have two regions
+                       ;; on the same line, because the previous region should have already put the
+                       ;; indicator.
+                       (unless (= previous-line lineno)
+                         (unless (= lineno 1)
+                           (insert (format "\n... (Line %d)\n" lineno))))
+                       (setq previous-line lineno)
+                       (unless (zerop column)
+                         (insert " ..."))
+                       (if is-top-snippet
+                           (setq is-top-snippet nil)
+                         (unless (= previous-line lineno)
+                           (insert "\n"))))
                      (let (substring)
                        (with-current-buffer buffer
                          (setq substring (buffer-substring-no-properties
@@ -337,20 +322,28 @@ cells (START . END) representing the boundaries of the regions within BUFFER."
                        (put-text-property 0 (length substring)
                                           'gptel-context-overlay
                                           context substring)
-                       (insert substring))
-                     (setq previous-region (cons start end)))))
-        (unless (>= (overlay-end (car (last contexts))) buffer-point-max)
+                       (insert substring)))))
+        (unless (>= (overlay-end (car (last contexts))) (point-max))
           (insert "\n..."))
         (insert "\n```")
-        (buffer-substring (point-min) (point-max)))))
+        (let ((context-snippet (buffer-substring (point-min) (point-max))))
+          (when depropertize
+            (set-text-properties 0 (length context-snippet) nil context-snippet))
+          context-snippet))))
 
 ;;;###autoload
-(defun gptel-context-string ()
-  "Return the context string of all aggregated contexts."
-  (string-trim-right
-   (cl-loop for buffer in
-            (delete-dups (mapcar #'overlay-buffer (gptel-contexts)))
-            concat (concat (gptel-buffer-context-string buffer) "\n\n"))))
+(defun gptel-context-string (&optional propertize)
+  "Return the context string of all aggregated contexts.
+If PROPERTIZE is non-nil, keep the text properties."
+  (without-restriction
+    (let ((context (string-trim-right
+                    (cl-loop for buffer in
+                             (delete-dups (mapcar #'overlay-buffer (gptel-contexts)))
+                             concat (concat (gptel-buffer-context-string buffer) "\n\n")))))
+      (if propertize
+          context
+        (set-text-properties 0 (length context) nil context)
+        context))))
 
 (provide 'gptel-contexter)
 ;;; gptel-contexter.el ends here.
