@@ -154,6 +154,7 @@
 (require 'text-property-search)
 (require 'cl-generic)
 (require 'gptel-openai)
+(require 'gptel-contexter)
 
 (with-eval-after-load 'org
   (require 'gptel-org))
@@ -902,11 +903,22 @@ Model parameters can be let-bound around calls to this function."
             (set-marker (make-marker) position buffer))))
          (full-prompt
           (cond
-           ((null prompt) (gptel--create-prompt start-marker))
+           ((null prompt)
+            (let ((gptel--system-message (if (memq gptel-context-injection-destination
+                                                   '(:before-system-message
+                                                     :after-system-message))
+                                             (gptel--wrap-in-context system)
+                                           system)))
+              (gptel--create-prompt start-marker)))
            ((stringp prompt)
             ;; FIXME Dear reader, welcome to Jank City:
             (with-temp-buffer
-              (let ((gptel-model (buffer-local-value 'gptel-model buffer))
+              (let ((gptel--system-message (if (memq gptel-context-injection-destination
+                                                     '(:before-system-message
+                                                       :after-system-message))
+                                               (gptel--wrap-in-context system)
+                                             system))
+                    (gptel-model (buffer-local-value 'gptel-model buffer))
                     (gptel-backend (buffer-local-value 'gptel-backend buffer)))
                 (insert prompt)
                 (gptel--create-prompt))))
@@ -915,6 +927,7 @@ Model parameters can be let-bound around calls to this function."
          (info (list :data request-data
                      :buffer buffer
                      :position start-marker)))
+    ;; This context should not be confused with the context aggregation context!
     (when context (plist-put info :context context))
     (when in-place (plist-put info :in-place in-place))
     (unless dry-run
@@ -1377,32 +1390,6 @@ context for the ediff session."
   "Switch to next gptel-response at this point, if it exists."
   (interactive "p")
   (gptel--previous-variant (- arg)))
-
-(defun gptel-clean-up-llm-code (buffer beg end)
-  "Clean up LLM response between BEG & END in BUFFER.
-
-Removes any markup formatting and indents the code within the parameters of the
-current buffer."
-  (with-current-buffer buffer
-    (save-excursion
-      (let* ((res-beg beg)
-             (res-end end)
-             (contents nil))
-        (setq contents (buffer-substring-no-properties res-beg
-                                                       res-end))
-        (setq contents (replace-regexp-in-string
-                        "^\\(```.*\n\\)\\|\n\\(```.*\\)$"
-                        ""
-                        contents))
-        (delete-region res-beg res-end)
-        (goto-char res-beg)
-        (insert contents)
-        (setq res-end (point))
-        ;; Indent the code to match the buffer indentation if it's messed up.
-        (unless (eq indent-line-function #'indent-relative)
-          (indent-region res-beg res-end))
-        (pulse-momentary-highlight-region res-beg res-end)
-        (setq res-beg (next-single-property-change res-beg 'gptel))))))
 
 (provide 'gptel)
 ;;; gptel.el ends here
