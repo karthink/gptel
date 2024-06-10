@@ -87,17 +87,20 @@
                  t))))
     (if (and url (string-prefix-p "summarize" gptel-model))
         (list :url url)
-      (if (and (prop-match-p prop)
+      (if (and (or gptel-mode gptel-track-response)
+               (prop-match-p prop)
                (prop-match-value prop))
           (user-error "No user prompt found!")
         (let ((prompts
-               (string-trim
-                (buffer-substring-no-properties (prop-match-beginning prop)
-                                                (prop-match-end prop))
-                (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                        (regexp-quote (gptel-prompt-prefix-string)))
-                (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                        (regexp-quote (gptel-response-prefix-string))))))
+               (if (or gptel-mode gptel-track-response)
+                   (string-trim
+                    (buffer-substring-no-properties (prop-match-beginning prop)
+                                                    (prop-match-end prop))
+                    (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                            (regexp-quote (gptel-prompt-prefix-string)))
+                    (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                            (regexp-quote (gptel-response-prefix-string))))
+                 (string-trim (buffer-substring-no-properties (point-min) (point-max))))))
           (pcase-exhaustive gptel-model
             ("fastgpt"
              (setq prompts (list

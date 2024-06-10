@@ -410,6 +410,7 @@ The current options for ChatGPT are
 - \"gpt-3.5-turbo\"
 - \"gpt-3.5-turbo-16k\"
 - \"gpt-4\"
+- \"gpt-4o\"
 - \"gpt-4-turbo\"
 - \"gpt-4-turbo-preview\"
 - \"gpt-4-32k\"
@@ -423,6 +424,7 @@ To set the model for a chat session interactively call
           (const :tag "GPT 3.5 turbo" "gpt-3.5-turbo")
           (const :tag "GPT 3.5 turbo 16k" "gpt-3.5-turbo-16k")
           (const :tag "GPT 4" "gpt-4")
+          (const :tag "GPT 4 omni" "gpt-4o")
           (const :tag "GPT 4 turbo" "gpt-4-turbo")
           (const :tag "GPT 4 turbo (preview)" "gpt-4-turbo-preview")
           (const :tag "GPT 4 32k" "gpt-4-32k")
@@ -439,23 +441,16 @@ To set the temperature for a chat session interactively call
   :safe #'always
   :type 'number)
 
-(defvar gptel--known-backends nil
-  "Alist of LLM backends known to gptel.
-
-This is an alist mapping user-provided names to backend structs,
-see `gptel-backend'.
-
-You can have more than one backend pointing to the same resource
-with differing settings.")
+(defvar gptel--known-backends)
 
 (defvar gptel--openai
   (gptel-make-openai
    "ChatGPT"
    :key 'gptel-api-key
    :stream t
-   :models '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4" "gpt-4-turbo"
-             "gpt-4-turbo-preview" "gpt-4-32k" "gpt-4-1106-preview"
-             "gpt-4-0125-preview")))
+   :models '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4" "gpt-4o"
+             "gpt-4-turbo" "gpt-4-turbo-preview" "gpt-4-32k"
+             "gpt-4-1106-preview" "gpt-4-0125-preview")))
 
 (defcustom gptel-backend gptel--openai
   "LLM backend to use.
@@ -509,6 +504,24 @@ which see."
           (const :tag "Full" debug)))
 (make-obsolete-variable
  'gptel--debug 'gptel-log-level "0.6.5")
+
+(defcustom gptel-track-response t
+  "Distinguish between user messages and LLM responses.
+
+When creating a prompt to send to the LLM, gptel distinguishes
+between text entered by the user and past LLM responses.  This
+distinction is necessary for back-and-forth conversation with an
+LLM.
+
+In regular Emacs buffers you can turn this behavior off by
+setting `gptel-track-response' to `nil'.  All text, including
+past LLM responses, is then treated as user input when sending
+queries.
+
+This variable has no effect in dedicated chat buffers (buffers
+with `gptel-mode' enabled), where user prompts and responses are
+always handled separately."
+  :type 'boolean)
 
 (defvar-local gptel--old-header-line nil)
 
@@ -1226,8 +1239,6 @@ If SHOOSH is true, don't issue a warning."
 (defun gptel (name &optional _ initial interactivep)
   "Switch to or start a chat session with NAME.
 
-With a prefix arg, query for a (new) session name.
-
 Ask for API-KEY if `gptel-api-key' is unset.
 
 If region is active, use it as the INITIAL prompt.  Returns the
@@ -1238,11 +1249,11 @@ INTERACTIVEP is t when gptel is called interactively."
    (let* ((backend (default-value 'gptel-backend))
           (backend-name
            (format "*%s*" (gptel-backend-name backend))))
-     (list (if current-prefix-arg
-               (read-string "Session name: "
-                            (generate-new-buffer-name
-                             backend-name))
-             backend-name)
+     (list (read-buffer "Create or choose gptel buffer: "
+                        backend-name nil                         ; DEFAULT and REQUIRE-MATCH
+                        (lambda (b)                              ; PREDICATE
+                          (buffer-local-value 'gptel-mode
+                                              (get-buffer (or (car-safe b) b)))))
            (condition-case nil
                (gptel--get-api-key
                 (gptel-backend-key backend))

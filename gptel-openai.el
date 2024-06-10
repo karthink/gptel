@@ -34,7 +34,6 @@
 (defvar gptel-temperature)
 (defvar gptel-max-tokens)
 (defvar gptel--system-message)
-(defvar gptel--known-backends)
 (defvar json-object-type)
 
 (declare-function gptel--get-api-key "gptel")
@@ -68,6 +67,15 @@
       (json-encode ,object))))
 
 ;;; Common backend struct for LLM support
+(defvar gptel--known-backends nil
+  "Alist of LLM backends known to gptel.
+
+This is an alist mapping user-provided names to backend structs,
+see `gptel-backend'.
+
+You can have more than one backend pointing to the same resource
+with differing settings.")
+
 (cl-defstruct
     (gptel-backend (:constructor gptel--make-backend)
                    (:copier gptel--copy-backend))
@@ -113,24 +121,30 @@
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-openai) &optional max-entries)
   (let ((prompts) (prop))
-    (while (and
-            (or (not max-entries) (>= max-entries 0))
-            (setq prop (text-property-search-backward
-                        'gptel 'response
-                        (when (get-char-property (max (point-min) (1- (point)))
-                                                 'gptel)
-                          t))))
-      (push (list :role (if (prop-match-value prop) "assistant" "user")
+    (if (or gptel-mode gptel-track-response)
+        (while (and
+                (or (not max-entries) (>= max-entries 0))
+                (setq prop (text-property-search-backward
+                            'gptel 'response
+                            (when (get-char-property (max (point-min) (1- (point)))
+                                                     'gptel)
+                              t))))
+          (push (list :role (if (prop-match-value prop) "assistant" "user")
+                      :content
+                      (string-trim
+                       (buffer-substring-no-properties (prop-match-beginning prop)
+                                                       (prop-match-end prop))
+                       (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                               (regexp-quote (gptel-prompt-prefix-string)))
+                       (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                               (regexp-quote (gptel-response-prefix-string)))))
+                prompts)
+          (and max-entries (cl-decf max-entries)))
+      (push (list :role "user"
                   :content
                   (string-trim
-                   (buffer-substring-no-properties (prop-match-beginning prop)
-                                                   (prop-match-end prop))
-                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                           (regexp-quote (gptel-prompt-prefix-string)))
-                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                           (regexp-quote (gptel-response-prefix-string)))))
-            prompts)
-      (and max-entries (cl-decf max-entries)))
+                   (buffer-substring-no-properties (point-min) (point-max))))
+            prompts))
     (cons (list :role "system"
                 :content gptel--system-message)
           prompts)))

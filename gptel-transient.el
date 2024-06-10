@@ -280,8 +280,11 @@ Also format its value in the Transient menu."
     (gptel--infix-variable-scope)
     (gptel--infix-provider)
     (gptel--infix-max-tokens)
-    (gptel--infix-num-messages-to-send)
-    (gptel--infix-temperature :if (lambda () gptel-expert-commands))]
+    (gptel--infix-num-messages-to-send
+     :if (lambda () (or gptel-mode gptel-track-response)))
+    (gptel--infix-temperature :if (lambda () gptel-expert-commands))
+    (gptel--infix-track-response
+     :if (lambda () (and gptel-expert-commands (not gptel-mode))))]
    ["Prompt from"
     ("m" "Minibuffer instead" "m")
     ("y" "Kill-ring instead" "y")
@@ -522,6 +525,26 @@ responses."
   :key "-t"
   :prompt "Temperature controls the response randomness (0.0-2.0, leave empty for default): "
   :reader 'gptel--transient-read-variable)
+
+(transient-define-infix gptel--infix-track-response ()
+  "Distinguish between user messages and LLM responses.
+
+When creating a prompt to send to the LLM, gptel distinguishes
+between text entered by the user and past LLM responses.  This is
+required for multi-turn conversations, and is always the case in
+dedicated chat buffers (in `gptel-mode').
+
+In regular buffers, you can toggle this behavior here or by
+customizing `gptel-track-response'.  When response tracking is
+turned off, all text will be assigned the \"user\" role when
+querying the LLM."
+  :description "Track LLM responses"
+  :class 'gptel--switches
+  :variable 'gptel-track-response
+  :set-value #'gptel--set-with-scope
+  :display-if-true "Yes"
+  :display-if-false "No"
+  :key "-r")
 
 ;; ** Infix for the refactor/rewrite system message
 
