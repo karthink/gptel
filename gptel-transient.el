@@ -164,9 +164,25 @@ which see."
 
 ;; * Transient classes and methods for gptel
 
-(defclass gptel--switches (transient-lisp-variable)
-  ((display-if-true :initarg :display-if-true :initform "for this buffer")
-   (display-if-false :initarg :display-if-false :initform "globally"))
+(defclass gptel-lisp-variable (transient-lisp-variable)
+  ((display-nil :initarg :display-nil))
+  "Lisp variables that show :display-nil instead of nil.")
+
+(cl-defmethod transient-format-value
+  ((obj gptel-lisp-variable))
+  (propertize (prin1-to-string (or (oref obj value)
+                                   (oref obj display-nil)))
+              'face 'transient-value))
+
+(cl-defmethod transient-infix-set ((obj gptel-lisp-variable) value)
+  (funcall (oref obj set-value)
+           (oref obj variable)
+           (oset obj value value)
+           gptel--set-buffer-locally))
+
+(defclass gptel--switches (gptel-lisp-variable)
+  ((display-if-true :initarg :display-if-true :initform "True")
+   (display-if-false :initarg :display-if-false :initform "False"))
   "Boolean lisp variable class for gptel-transient.")
 
 (cl-defmethod transient-infix-read ((obj gptel--switches))
@@ -184,21 +200,17 @@ which see."
         (propertize display-if-true
                     'face (if value 'transient-value 'transient-inactive-value))))))
 
-(defclass gptel-lisp-variable (transient-lisp-variable)
-  ((display-nil :initarg :display-nil))
-  "Lisp variables that show :display-nil instead of nil.")
+(defclass gptel--scope (gptel--switches)
+  ((display-if-true :initarg :display-if-true :initform "for this buffer")
+   (display-if-false :initarg :display-if-false :initform "globally"))
+  "Singleton lisp variable class for `gptel--set-buffer-locally'.
 
-(cl-defmethod transient-format-value
-  ((obj gptel-lisp-variable))
-  (propertize (prin1-to-string (or (oref obj value)
-                                   (oref obj display-nil)))
-              'face 'transient-value))
+This is used only for setting this variable via `gptel-menu'.")
 
-(cl-defmethod transient-infix-set ((obj gptel-lisp-variable) value)
+(cl-defmethod transient-infix-set ((obj gptel--scope) value)
   (funcall (oref obj set-value)
            (oref obj variable)
-           (oset obj value value)
-           gptel--set-buffer-locally))
+           (oset obj value value)))
 
 (defclass gptel-provider-variable (transient-lisp-variable)
   ((model       :initarg :model)
@@ -461,7 +473,7 @@ Customize `gptel-directives' for task-specific prompts."
   "Set gptel's model parameters and system message in this buffer or globally."
   :argument "scope"
   :variable 'gptel--set-buffer-locally
-  :class 'gptel--switches
+  :class 'gptel--scope
   :format "  %k %d %v"
   :key "="
   :description (propertize "Set" 'face 'transient-inactive-argument))
