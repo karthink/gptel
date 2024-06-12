@@ -1,5 +1,4 @@
-
-;;; gptel-contexter.el --- Context aggregator for GPTel
+;;; gptel-contexter.el --- Context aggregator for GPTel  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
@@ -64,7 +63,8 @@ If non-nil, then the model will use the context in the chat buffer."
   :group 'gptel
   :type 'string)
 
-(defvar gptel--context-overlays '())
+(defvar gptel--context-overlay-alist nil
+  "Alist of buffers and their corresponding context chunks.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ------------------------------ FUNCTIONS ------------------------------- ;;;
@@ -122,7 +122,8 @@ If there is a context under point, it is removed when called without a prefix."
     (overlay-put overlay 'evaporate t)
     (overlay-put overlay 'face gptel-context-highlight-face)
     (overlay-put overlay 'gptel-context t)
-    (push overlay gptel--context-overlays)
+    (push overlay (alist-get (current-buffer)
+                             gptel--context-overlay-alist))
     overlay))
 
 (defun gptel--wrap-in-context (message)
@@ -168,16 +169,14 @@ The message is usually either a system message or user prompt."
   "Return the list of context overlays in the given region, if any, in BUFFER.
 START and END signify the region delimiters."
   (with-current-buffer buffer
-    (cl-remove-if-not #'(lambda (overlay)
-                          (overlay-get overlay 'gptel-context))
+    (cl-remove-if-not (lambda (ov) (overlay-get ov 'gptel-context))
                       (overlays-in start end))))
 
 ;;;###autoload
 (defun gptel-context-at-point ()
   "Return the context overlay at point, if any."
-  (car (cl-remove-if-not #'(lambda (ov)
-                             (overlay-get ov 'gptel-context))
-                         (overlays-at (point)))))
+  (cl-find-if (lambda (ov) (overlay-get ov 'gptel-context))
+              (overlays-at (point))))
     
 ;;;###autoload
 (defun gptel-remove-context (&optional context)
@@ -203,11 +202,15 @@ If selection is active, removes all contexts within selection."
 (defun gptel-contexts ()
   "Get the list of all active context overlays."
   ;; Get only the non-degenerate overlays, collect them, and update the overlays variable.
-  (let ((overlays (cl-loop for ov in gptel--context-overlays
-                           when (overlay-start ov)
-                           collect ov)))
-    (setq gptel--context-overlays overlays)
-    overlays))
+  (let ((overlay-alist
+         (cl-loop for (buf . ovs) in gptel--context-overlay-alist
+                  when (buffer-live-p buf)
+                  for updated-ovs = (cl-loop for ov in ovs
+                                             when (overlay-start ov)
+                                             collect ov)
+                  when updated-ovs
+                  collect (cons buf updated-ovs))))
+    (setq gptel--context-overlay-alist overlay-alist)))
 
 ;;;###autoload
 (defun gptel-contexts-in-buffer (buffer)
@@ -269,81 +272,213 @@ representthe regions' boundaries within BUFFER."
           (curr-line-start (line-number-at-pos (car current-region))))
       (= prev-line-end curr-line-start))))
 
-(defun gptel-buffer-context-string (buffer &optional depropertize)
-  "Create a context string from all contexts in BUFFER.
-If DEPROPERTIZE is non-nil, remove the properties from the final substring."
+(defun gptel-buffer-insert-context-string (buffer)
+  "Insert at point a context string from all contexts in BUFFER."
     (let ((is-top-snippet t)
-          buffer-file
           (previous-line 1)
           prog-lang-tag
-          (contexts (gptel-contexts-in-buffer buffer)))
-      (with-current-buffer buffer
-        (setq prog-lang-tag (gptel-major-mode-md-prog-lang
-                             major-mode)))
-      (setq buffer-file
-            ;; Use file path if buffer has one, otherwise use its regular name.
-            (if (buffer-file-name buffer)
-                (format "`%s`"
-                        (buffer-file-name buffer))
-              (format "buffer `%s`"
-                      (buffer-name buffer))))
-      (with-temp-buffer
-        (insert (format "In %s:" buffer-file))
-        (insert "\n\n```" prog-lang-tag "\n")
-        (cl-loop for context in contexts do
-                 (progn
-                   (let* ((start (overlay-start context))
-                          (end (overlay-end context)))
-                     (let (lineno column)
-                       (with-current-buffer buffer
-                         (setq lineno (line-number-at-pos start t))
-                         (setq column (save-excursion
-                                        (goto-char start)
-                                        (current-column))))
-                       ;; We do not need to insert a line number indicator if we have two regions
-                       ;; on the same line, because the previous region should have already put the
-                       ;; indicator.
+          (contexts (alist-get buffer gptel--context-overlay-alist)))
+      (setq prog-lang-tag (gptel-major-mode-md-prog-lang
+                             (buffer-local-value 'major-mode buffer)))
+      (insert (format "In buffer `%s`:" (buffer-name buffer)))
+      (insert "\n\n```" prog-lang-tag "\n")
+      (cl-loop for context in contexts do
+               (progn
+                 (let* ((start (overlay-start context))
+                        (end (overlay-end context)))
+                   (let (lineno column)
+                     (with-current-buffer buffer
+                       (setq lineno (line-number-at-pos start t))
+                       (setq column (save-excursion
+                                      (goto-char start)
+                                      (current-column))))
+                     ;; We do not need to insert a line number indicator if we have two regions
+                     ;; on the same line, because the previous region should have already put the
+                     ;; indicator.
+                     (unless (= previous-line lineno)
+                       (unless (= lineno 1)
+                         (unless is-top-snippet
+                           (insert "\n"))
+                         (insert (format "... (Line %d)\n" lineno))))
+                     (setq previous-line lineno)
+                     (unless (zerop column)
+                       (insert " ..."))
+                     (if is-top-snippet
+                         (setq is-top-snippet nil)
                        (unless (= previous-line lineno)
-                         (unless (= lineno 1)
-                           (insert (format "\n... (Line %d)\n" lineno))))
-                       (setq previous-line lineno)
-                       (unless (zerop column)
-                         (insert " ..."))
-                       (if is-top-snippet
-                           (setq is-top-snippet nil)
-                         (unless (= previous-line lineno)
-                           (insert "\n"))))
-                     (let (substring)
-                       (with-current-buffer buffer
-                         (setq substring (buffer-substring-no-properties
-                                          start end)))
-                       ;; This text property will allow us to know what overlay
-                       ;; is associated to which context.
-                       (put-text-property 0 (length substring)
-                                          'gptel-context-overlay
-                                          context substring)
-                       (insert substring)))))
-        (unless (>= (overlay-end (car (last contexts))) (point-max))
-          (insert "\n..."))
-        (insert "\n```")
-        (let ((context-snippet (buffer-substring (point-min) (point-max))))
-          (when depropertize
-            (set-text-properties 0 (length context-snippet) nil context-snippet))
-          context-snippet))))
+                         (insert "\n"))))
+                   (insert-buffer-substring-no-properties
+                    buffer start end))))
+      (unless (>= (overlay-end (car (last contexts))) (point-max))
+        (insert "\n..."))
+      (insert "\n```")))
 
 ;;;###autoload
-(defun gptel-context-string (&optional propertize)
+(defun gptel-context-string ()
   "Return the context string of all aggregated contexts.
 If PROPERTIZE is non-nil, keep the text properties."
   (without-restriction
-    (let ((context (string-trim-right
-                    (cl-loop for buffer in
-                             (delete-dups (mapcar #'overlay-buffer (gptel-contexts)))
-                             concat (concat (gptel-buffer-context-string buffer) "\n\n")))))
-      (if propertize
-          context
-        (set-text-properties 0 (length context) nil context)
-        context))))
+    (with-temp-buffer
+      (cl-loop for (buf . ovs) in (gptel-contexts)
+               do (gptel-buffer-insert-context-string buf)
+               (insert "\n\n")
+               finally return (buffer-string)))))
+
+;;; Major mode for context inspection buffers
+(define-derived-mode gptel-context-buffer-mode special-mode "gptel-context"
+  "Major-mode for inspecting context used by gptel."
+  :group 'gptel
+  (add-hook 'post-command-hook #'gptel--context-post-command
+            nil t)
+  (setq-local revert-buffer-function #'gptel--context-buffer-setup))
+
+(defun gptel--context-buffer-setup (&optional _ignore-auto _noconfirm)
+  (with-current-buffer (get-buffer-create "*gptel-context*")
+    (gptel-context-buffer-mode)
+    (let ((inhibit-read-only t))
+      (erase-buffer)
+      (setq header-line-format
+            (concat
+             "Mark/unmark deletion with "
+             (propertize "d" 'face 'help-key-binding)
+             ", jump to next/previous with "
+             (propertize "n" 'face 'help-key-binding)
+             "/"
+             (propertize "p" 'face 'help-key-binding)
+             ", respectively. "
+             (propertize "C-c C-c" 'face 'help-key-binding)
+             " to apply, or "
+             (propertize "C-c C-k" 'face 'help-key-binding)
+             " to abort."))
+      (save-excursion
+        (let ((contexts gptel--context-overlay-alist))
+          (if (length> contexts 0)
+              (let (beg ov l1 l2)
+                (pcase-dolist (`(,buf . ,ovs) contexts)
+                  (dolist (source-ov ovs)
+                    (with-current-buffer buf
+                      (setq l1 (line-number-at-pos (overlay-start source-ov))
+                            l2 (line-number-at-pos (overlay-end source-ov))))
+                    (insert (make-separator-line)
+                            (propertize (format "In buffer %s (lines %d-%d):\n\n"
+                                                (buffer-name buf) l1 l2)
+                                        'face 'bold))
+                    (setq beg (point))
+                    (insert-buffer-substring
+                     buf (overlay-start source-ov) (overlay-end source-ov))
+                    (insert "\n")
+                    (setq ov (make-overlay beg (point)))
+                    (overlay-put ov 'gptel-context source-ov)
+                    (overlay-put ov 'gptel-overlay t)))
+                (goto-char (point-min)))
+            (insert "There are no active contexts in any buffer.")))))
+    (display-buffer (current-buffer)
+                    `((display-buffer-reuse-window
+                       display-buffer-reuse-mode-window
+                       display-buffer-below-selected)
+                      (body-function . ,#'select-window)
+                      (window-height . ,#'fit-window-to-buffer)))))
+
+(defvar gptel--context-buffer-reverse nil
+  "Last direction of cursor movement in gptel context buffer.
+
+If non-nil, indicates backward movement.")
+
+(defalias 'gptel--context-post-command
+  (let ((highlight-overlay))
+    (lambda ()
+      ;; Only update if point moved outside the current region.
+      (unless (memq highlight-overlay (overlays-at (point)))
+        (let ((context-overlay
+               (cl-loop for ov in (overlays-at (point))
+                        thereis (and (overlay-get ov 'gptel-overlay) ov))))
+          (when highlight-overlay
+            (overlay-put highlight-overlay 'face nil))
+          (when context-overlay
+            (overlay-put context-overlay 'face 'highlight))
+          (setq highlight-overlay context-overlay))))))
+
+(defun gptel-context-visit ()
+  (interactive)
+  (let ((ov-here (car (overlays-at (point)))))
+    (if-let* ((orig-ov (overlay-get ov-here 'gptel-context))
+              (buf (overlay-buffer orig-ov))
+              (offset (- (point) (overlay-start ov-here))))
+        (with-selected-window (display-buffer buf)
+          (goto-char (overlay-start orig-ov))
+          (forward-char offset)
+          (recenter))
+      (message "No source location for this context chunk."))))
+
+(defun gptel-context-next ()
+  (interactive)
+  (let ((ov-here (car (overlays-at (point))))
+        (next-start (next-overlay-change (point))))
+    (when (and (/= (point-max) next-start) ov-here)
+      ;; We were inside the overlay, so we want the next overlay change, which
+      ;; would be the start of the next overlay.
+      (setq next-start (next-overlay-change next-start)))
+    (when (/= next-start (point-max))
+      (setq gptel--context-buffer-reverse nil)
+      (goto-char next-start))))
+
+(defun gptel-context-previous ()
+  (interactive)
+  (let ((ov-here (car (overlays-at (point))))
+        (previous-end (previous-overlay-change (point))))
+    (when ov-here (goto-char (overlay-start ov-here)))
+    (goto-char (previous-overlay-change
+                (previous-overlay-change (point))))
+    (setq gptel--context-buffer-reverse t)))
+
+(defun gptel-context-flag-deletion ()
+  (interactive)
+  (let* ((overlays (if (use-region-p)
+                       (overlays-in (region-beginning) (region-end))
+                     (overlays-at (point))))
+         (deletion-ov)
+         (marked-ovs (cl-remove-if-not (lambda (ov) (overlay-get ov 'gptel-context-deletion-mark))
+                                       overlays)))
+    (if marked-ovs
+        (mapc #'delete-overlay marked-ovs)
+      (save-excursion
+        (dolist (ov overlays)
+          (goto-char (overlay-start ov))
+          (setq deletion-ov (make-overlay (overlay-start ov) (overlay-end ov)))
+          (overlay-put deletion-ov 'gptel-context (overlay-get ov 'gptel-context))
+          (overlay-put deletion-ov 'priority -80)
+          (overlay-put deletion-ov 'face 'diff-indicator-removed)
+          (overlay-put deletion-ov 'gptel-context-deletion-mark t))))
+    (if (use-region-p)
+        (deactivate-mark)
+      (if gptel--context-buffer-reverse
+          (gptel-context-previous)
+        (gptel-context-next)))))
+
+(defun gptel-context-quit ()
+  (interactive)
+  (quit-window)
+  (call-interactively #'gptel-menu))
+
+(defun gptel-context-confirm ()
+  (interactive)
+  ;; Delete all the context overlays that have been marked for deletion.
+  (mapc #'delete-overlay
+        (delq nil (mapcar (lambda (ov)
+                            (and
+                             (overlay-get ov 'gptel-context-deletion-mark)
+                             (overlay-get ov 'gptel-context)))
+                          (overlays-in (point-min) (point-max)))))
+  (gptel-context-quit))
+
+(defvar-keymap gptel-context-buffer-mode-map
+  :parent special-mode-map
+  "C-c C-c" #'gptel-context-confirm
+  "C-c C-k" #'gptel-context-quit
+  "RET"     #'gptel-context-visit
+  "n"       #'gptel-context-next
+  "p"       #'gptel-context-previous
+  "d"       #'gptel-context-flag-deletion)
 
 (provide 'gptel-contexter)
 ;;; gptel-contexter.el ends here.
