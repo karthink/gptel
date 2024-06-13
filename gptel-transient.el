@@ -166,14 +166,19 @@ which see."
 ;; * Transient classes and methods for gptel
 
 (defclass gptel-lisp-variable (transient-lisp-variable)
-  ((display-nil :initarg :display-nil))
+  ((display-nil :initarg :display-nil)  ;String to display if value if nil
+   (display-map :initarg :display-map :initform nil)) ;Display string from alist display-map
   "Lisp variables that show :display-nil instead of nil.")
 
-(cl-defmethod transient-format-value
-  ((obj gptel-lisp-variable))
-  (propertize (prin1-to-string (or (oref obj value)
-                                   (oref obj display-nil)))
-              'face 'transient-value))
+(cl-defmethod transient-format-value ((obj gptel-lisp-variable))
+  (let ((display-value
+         (with-slots (value display-nil display-map) obj
+           (cond ((null value) display-nil)
+                 (display-map (cdr (assoc value display-map)))
+                 (t value)))))
+    (propertize
+     (if (stringp display-value) display-value (prin1-to-string display-value))
+     'face 'transient-value)))
 
 (cl-defmethod transient-infix-set ((obj gptel-lisp-variable) value)
   (funcall (oref obj set-value)
@@ -235,32 +240,6 @@ This is used only for setting this variable via `gptel-menu'.")
              (oref obj model)
              (oset obj model-value model-value)
              gptel--set-buffer-locally)))
-
-(defclass gptel-context-destination-variable (transient-lisp-variable)
-  ((display-value :initarg :display-value
-                  :initform (lambda (value)
-                              (pcase value
-                                (:nowhere "Nowhere")
-                                (:before-system-message "Before system message")
-                                (:after-system-message "After system message")
-                                (:before-user-prompt "Before user prompt")
-                                (:after-user-prompt "After user prompt"))))))
-
-(cl-defmethod transient-format-value ((obj gptel-context-destination-variable))
-  (propertize (funcall (oref obj display-value)
-                       (buffer-local-value (oref obj variable) transient--original-buffer))
-              'face 'transient-value))
-
-(cl-defmethod transient-infix-set ((obj gptel-context-destination-variable) value)
-  (funcall (oref obj set-value)
-           (oref obj variable)
-           (pcase value
-             ("Nowhere" :nowhere)
-             ("Before system message" :before-system-message)
-             ("After system message" :after-system-message)
-             ("Before user prompt" :before-user-prompt)
-             ("After user prompt" :after-user-prompt))
-           gptel--set-buffer-locally))
 
 (defclass gptel-option-overlaid (transient-option)
   ((display-nil :initarg :display-nil)
@@ -502,15 +481,25 @@ Customize `gptel-directives' for task-specific prompts."
 
 (transient-define-infix gptel--infix-context-destination ()
   "Describe target destination for context injection."
-  :description "Context destination"
-  :class 'gptel-context-destination-variable
+  :description "Include context"
+  :class 'gptel-lisp-variable
   :variable 'gptel-context-injection-destination
   :set-value #'gptel--set-with-scope
+  :display-nil "No"
+  :display-map '((:nowhere               . "No")
+                 (:before-system-message . "before system message")
+                 (:after-system-message  . "after system message")
+                 (:before-user-prompt    . "before user prompt")
+                 (:after-user-prompt     . "after user prompt"))
   :key "-xd"
   :reader (lambda (prompt &rest _)
-            (completing-read prompt '("Nowhere" "Before system message" "After system message"
-                                      "Before user prompt" "After user prompt")
-                             nil t)))
+            (let* ((choices '(("No"                    . :nowhere)
+                              ("before system message" . :before-system-message)
+                              ("after system message"  . :after-system-message)
+                              ("before user prompt"    . :before-user-prompt)
+                              ("after user prompt"     . :after-user-prompt)))
+                   (destination (completing-read prompt choices nil t)))
+              (cdr (assoc destination choices)))))
 
 (transient-define-infix gptel--infix-use-context-in-chat ()
   "Determine if context should be passed to the LLM during the chat."
