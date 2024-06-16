@@ -1175,7 +1175,8 @@ See `gptel-curl--get-response' for its contents.")
            ((or (memq url-http-response-status '(200 100))
                 (string-match-p "\\(?:1\\|2\\)00 OK" http-msg))
             (list (string-trim (gptel--parse-response backend response
-                                             `(:buffer ,response-buffer)))
+                                             `(:buffer ,response-buffer
+                                               :backend ,backend)))
                    http-msg))
            ((plist-get response :error)
             (let* ((error-data (plist-get response :error))

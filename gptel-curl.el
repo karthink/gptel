@@ -110,6 +110,7 @@ the response is inserted into the current buffer after point."
                              (recent-keys))))
          (args (gptel-curl--get-args (plist-get info :data) token))
          (stream (and gptel-stream (gptel-backend-stream gptel-backend)))
+         (backend (buffer-local-value 'gptel-backend (plist-get info :buffer)))
          (process (apply #'start-process "gptel-curl"
                          (generate-new-buffer "*gptel-curl*") "curl" args)))
     (when (eq gptel-log-level 'debug)
@@ -119,22 +120,17 @@ the response is inserted into the current buffer after point."
       (set-process-query-on-exit-flag process nil)
       (setf (alist-get process gptel-curl--process-alist)
             (nconc (list :token token
+                         :backend backend
                          ;; FIXME `aref' breaks `cl-struct' abstraction boundary
                          ;; FIXME `cl--generic-method' is an internal `cl-struct'
                          :parser (cl--generic-method-function
                                   (if stream
                                       (cl-find-method
                                        'gptel-curl--parse-stream nil
-                                       (list
-                                        (aref (buffer-local-value
-                                               'gptel-backend (plist-get info :buffer))
-                                              0) t))
+                                       (list (aref backend 0) t))
                                     (cl-find-method
                                      'gptel--parse-response nil
-                                     (list
-                                      (aref (buffer-local-value
-                                             'gptel-backend (plist-get info :buffer))
-                                            0) t t))))
+                                     (list (aref backend 0) t t))))
                          :callback (or callback
                                        (if stream
                                            #'gptel-curl--stream-insert-response
