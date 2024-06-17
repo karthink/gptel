@@ -121,6 +121,10 @@ Intended for internal use only.")
                 :content gptel--system-message)
           prompts)))
 
+(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-ollama) prompts)
+  "Wrap the last user prompt in PROMPTS with the context string."
+  (cl-callf gptel-context--wrap (plist-get (car (last prompts)) :content)))
+
 ;;;###autoload
 (cl-defun gptel-make-ollama
     (name &key curl-args header key models stream

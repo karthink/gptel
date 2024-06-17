@@ -152,17 +152,13 @@ with differing settings.")
                            (regexp-quote (gptel-response-prefix-string)))))
             prompts)
       (and max-entries (cl-decf max-entries)))
-    (when (and (memq gptel-context-injection-destination '(:before-user-prompt :after-user-prompt))
-               (> (length prompts) 0))
-      ;; Add context to final user prompt.
-      (let* ((last-prompt (last prompts))
-             (last-plist (car last-prompt)))
-        (setf (car last-prompt) (plist-put last-plist :content
-                                           (gptel--wrap-in-context (plist-get (car last-prompt)
-                                                                              :content))))))
     (cons (list :role "system"
                 :content gptel--system-message)
           prompts)))
+
+(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-openai) prompts)
+  "Wrap the last user prompt in PROMPTS with the context string."
+  (cl-callf gptel-context--wrap (plist-get (car (last prompts)) :content)))
 
 ;;;###autoload
 (cl-defun gptel-make-openai

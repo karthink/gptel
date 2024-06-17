@@ -515,7 +515,33 @@ with `gptel-mode' enabled), where user prompts and responses are
 always handled separately."
   :type 'boolean)
 
+(defcustom gptel-use-context 'system
+  "Where in the request to inject gptel's additional context.
+
+gptel always includes the active region or the buffer up to the
+cursor in the request to the LLM.  Additionally, you can add
+other buffers or their regions to the context with
+`gptel-add-context', or from gptel's menu.  This data will be
+sent with every request.
+
+This option controls whether and where this additional context is
+included in the request.
+
+Currently supported options are:
+
+    nil     - Do not use the context.
+    system  - Include the context with the system message.
+    user    - Include the context with the user prompt."
+  :group 'gptel
+  :type '(choice
+          (const :tag "Don't include context" nil)
+          (const :tag "With system message" system)
+          (const :tag "With user prompt" user)))
+
 (defvar-local gptel--old-header-line nil)
+
+(defvar gptel-context--overlay-alist nil
+  "Alist of buffers and their corresponding context chunks.")
 
 
 ;; Utility functions
@@ -795,6 +821,8 @@ file."
         (message (propertize msg 'face face))))
     (force-mode-line-update)))
 
+(declare-function gptel-context--wrap "gptel-contexter")
+
 
 ;; Send queries, handle responses
 (cl-defun gptel-request
@@ -890,7 +918,12 @@ query data as usual, but do not send the request.
 
 Model parameters can be let-bound around calls to this function."
   (declare (indent 1))
-  (let* ((gptel--system-message system)
+  (let* ((gptel--system-message
+          ;Add context chunks to system message if required
+          (if (and gptel-context--overlay-alist
+                   (eq gptel-use-context 'system))
+              (gptel-context--wrap system)
+            system))
          (gptel-stream stream)
          (start-marker
           (cond
@@ -904,21 +937,11 @@ Model parameters can be let-bound around calls to this function."
          (full-prompt
           (cond
            ((null prompt)
-            (let ((gptel--system-message (if (memq gptel-context-injection-destination
-                                                   '(:before-system-message
-                                                     :after-system-message))
-                                             (gptel--wrap-in-context system)
-                                           system)))
-              (gptel--create-prompt start-marker)))
+            (gptel--create-prompt start-marker))
            ((stringp prompt)
             ;; FIXME Dear reader, welcome to Jank City:
             (with-temp-buffer
-              (let ((gptel--system-message (if (memq gptel-context-injection-destination
-                                                     '(:before-system-message
-                                                       :after-system-message))
-                                               (gptel--wrap-in-context system)
-                                             system))
-                    (gptel-model (buffer-local-value 'gptel-model buffer))
+              (let ((gptel-model (buffer-local-value 'gptel-model buffer))
                     (gptel-backend (buffer-local-value 'gptel-backend buffer)))
                 (insert prompt)
                 (gptel--create-prompt))))
@@ -1048,23 +1071,34 @@ recent exchanges.
 If the region is active limit the prompt to the region contents
 instead.
 
+If `gptel-context--overlay-alist' is non-nil and the additional
+context needs to be included with the user prompt, add it.
+
 If PROMPT-END (a marker) is provided, end the prompt contents
 there."
   (save-excursion
     (save-restriction
-      (let ((max-entries (and gptel--num-messages-to-send
-                              (* 2 gptel--num-messages-to-send))))
-        (cond
-         ((use-region-p)
-          ;; Narrow to region
-          (narrow-to-region (region-beginning) (region-end))
-          (goto-char (point-max))
-          (gptel--parse-buffer gptel-backend max-entries))
-         ((derived-mode-p 'org-mode)
-          (require 'gptel-org)
-          (gptel-org--create-prompt (or prompt-end (point-max))))
-         (t (goto-char (or prompt-end (point-max)))
-            (gptel--parse-buffer gptel-backend max-entries)))))))
+      (let* ((max-entries (and gptel--num-messages-to-send
+                               (* 2 gptel--num-messages-to-send)))
+             (prompts
+              (cond
+               ((use-region-p)
+                ;; Narrow to region
+                (narrow-to-region (region-beginning) (region-end))
+                (goto-char (point-max))
+                (gptel--parse-buffer gptel-backend max-entries))
+               ((derived-mode-p 'org-mode)
+                (require 'gptel-org)
+                (gptel-org--create-prompt (or prompt-end (point-max))))
+               (t (goto-char (or prompt-end (point-max)))
+                  (gptel--parse-buffer gptel-backend max-entries)))))
+        ;; Inject context chunks into the last user prompt if required
+        ;; NOTE: prompts is modified in place
+        (when (and gptel-context--overlay-alist
+                   (eq gptel-use-context 'user)
+                   (> (length prompts) 0))
+          (gptel--wrap-user-prompt gptel-backend prompts))
+        prompts))))
 
 (cl-defgeneric gptel--parse-buffer (backend max-entries)
   "Parse current buffer backwards from point and return a list of prompts.
@@ -1073,6 +1107,16 @@ BACKEND is the LLM backend in use.
 
 MAX-ENTRIES is the number of queries/responses to include for
 contexbt.")
+
+(cl-defgeneric gptel--wrap-user-prompt (backend prompts)
+  "Wrap the last prompt in PROMPTS with gptel's context.
+
+PROMPTS is a structure as returned by `gptel--parse-buffer'.
+Typically this is a list of plists."
+  (display-warning
+   '(gptel context)
+   (format "Context support not implemented for backend %s, ignoring context"
+           (gptel-backend-name backend))))
 
 (cl-defgeneric gptel--request-data (backend prompts)
   "Generate a plist of all data for an LLM query.

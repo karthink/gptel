@@ -115,6 +115,11 @@
                       (plist-get :text)))
     prompts))
 
+(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-gemini) prompts)
+  "Wrap the last user prompt in PROMPTS with the context string."
+  (cl-callf gptel-context--wrap
+      (plist-get (plist-get (car (last prompts)) :parts) :text)))
+
 ;;;###autoload
 (cl-defun gptel-make-gemini
     (name &key curl-args header key (stream nil)
