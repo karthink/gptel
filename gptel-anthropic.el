@@ -100,6 +100,10 @@
             prompts))
     prompts))
 
+(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-anthropic) prompts)
+  "Wrap the last user prompt in PROMPTS with the context string."
+  (cl-callf gptel-context--wrap (plist-get (car (last prompts)) :content)))
+
 ;;;###autoload
 (cl-defun gptel-make-anthropic
     (name &key curl-args stream key

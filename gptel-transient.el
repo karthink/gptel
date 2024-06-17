@@ -295,8 +295,7 @@ Also format its value in the Transient menu."
     (gptel--infix-add-directive)]]
   [["Context" :if (lambda () gptel-expert-commands)
     (gptel--suffix-context-buffer)
-    (gptel--infix-context-destination)
-    (gptel--infix-use-context-in-chat :if (lambda () gptel-mode))]]
+    (gptel--infix-use-context)]]
   [["Model Parameters"
     :pad-keys t
     (gptel--infix-variable-scope)
@@ -479,37 +478,23 @@ Customize `gptel-directives' for task-specific prompts."
 
 ;; ** Infixes for context aggregation
 
-(transient-define-infix gptel--infix-context-destination ()
+(transient-define-infix gptel--infix-use-context ()
   "Describe target destination for context injection."
   :description "Include context"
   :class 'gptel-lisp-variable
-  :variable 'gptel-context-injection-destination
+  :variable 'gptel-use-context
   :set-value #'gptel--set-with-scope
   :display-nil "No"
-  :display-map '((:nowhere               . "No")
-                 (:before-system-message . "before system message")
-                 (:after-system-message  . "after system message")
-                 (:before-user-prompt    . "before user prompt")
-                 (:after-user-prompt     . "after user prompt"))
+  :display-map '((nil    . "No")
+                 (system . "with system message")
+                 (user   . "with user prompt"))
   :key "-xd"
   :reader (lambda (prompt &rest _)
-            (let* ((choices '(("No"                    . :nowhere)
-                              ("before system message" . :before-system-message)
-                              ("after system message"  . :after-system-message)
-                              ("before user prompt"    . :before-user-prompt)
-                              ("after user prompt"     . :after-user-prompt)))
+            (let* ((choices '(("No"                  . nil)
+                              ("with system message" . system)
+                              ("with user prompt"    . user)))
                    (destination (completing-read prompt choices nil t)))
               (cdr (assoc destination choices)))))
-
-(transient-define-infix gptel--infix-use-context-in-chat ()
-  "Determine if context should be passed to the LLM during the chat."
-  :description "Use in chat"
-  :class 'gptel--switches
-  :variable 'gptel-use-context-in-chat
-  :set-value #'gptel--set-with-scope
-  :display-if-true "Yes"
-  :display-if-false "No"
-  :key "-xc")
 
 ;; ** Infixes for model parameters
 

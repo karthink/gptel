@@ -36,35 +36,26 @@
   :group 'gptel
   :type 'symbol)
 
-(defcustom gptel-use-context-in-chat nil
-  "Determines if context should be injected when using the dedicated chat buffer.
-If non-nil, then the model will use the context in the chat buffer."
-  :group 'gptel
-  :type 'symbol)
+(defcustom gptel-context-string-function #'gptel-context-string--default
+  "Function to format the context string sent with the gptel request.
 
-(defcustom gptel-context-injection-destination :nowhere
-  "Where to inject the context.  Currently supported options are:
+This function receives one argument, an alist of context overlays
+organized by buffer.  It should return a string containing the
+formatted context and any additional comments you wish to
+include.
 
-    :nowhere               - Do not use the context at all.
-    :before-system-message - Inject the context right before the system message.
-    :after-system-message  - Inject the context right after the system emssage.
-    :before-user-prompt    - Inject the context right before the user prompt.
-    :after-user-prompt     - Inject the context right after the user prompt."
-  :group 'gptel
-  :type 'symbol)
+The alist of context overlays is structured as follows:
 
-(defcustom gptel-context-preamble "Request context:"
-  "A string to be prepended to the context."
-  :group 'gptel
-  :type 'string)
+((buffer1 . (overlay1 overlay2)
+ (buffer2 . (overlay3 overlay4 overlay5))))
 
-(defcustom gptel-context-postamble ""
-  "A string to be appended to the context."
-  :group 'gptel
-  :type 'string)
+Each overlay covers a buffer region containing the
+context chunk.  This is accessible as, for example:
 
-(defvar gptel--context-overlay-alist nil
-  "Alist of buffers and their corresponding context chunks.")
+(with-current-buffer buffer1
+  (buffer-substring (overlay-start overlay1)
+                    (overlay-end   overlay1)))"
+  :type 'function)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ------------------------------ FUNCTIONS ------------------------------- ;;;
@@ -123,38 +114,22 @@ If there is a context under point, it is removed when called without a prefix."
     (overlay-put overlay 'face gptel-context-highlight-face)
     (overlay-put overlay 'gptel-context t)
     (push overlay (alist-get (current-buffer)
-                             gptel--context-overlay-alist))
+                             gptel-context--overlay-alist))
     overlay))
 
-(defun gptel--wrap-in-context (message)
+;;;###autoload
+(defun gptel-context--wrap (message)
   "Wrap MESSAGE with context.
+
 The message is usually either a system message or user prompt."
   ;; Append context before/after system message.
-  (if (and (bound-and-true-p gptel-mode)
-           (not gptel-use-context-in-chat))
-      ;; If we are in the dedicated chat buffer, we would like to consult
-      ;; `gptel-use-context-in-chat' to see if context should be used inside.
-      message
-    (let ((context (gptel-context-string)))
-      (if (> (length context) 0)
-          (if (memq gptel-context-injection-destination
-                    '(:before-system-message
-                      :before-user-prompt))
-              (concat gptel-context-preamble
-                      (when (not (zerop (length gptel-context-preamble))) "\n\n")
-                      context
-                      "\n\n"
-                      gptel-context-postamble
-                      (when (not (zerop (length gptel-context-postamble))) "\n\n")
-                      message)
-            (concat message
-                    "\n\n"
-                    gptel-context-preamble
-                    (when (not (zerop (length gptel-context-preamble))) "\n\n")
-                    context
-                    (when (not (zerop (length gptel-context-postamble))) "\n\n")
-                    gptel-context-postamble))
-        message))))
+  (let ((context (gptel-context-string)))
+    (if (> (length context) 0)
+        (pcase-exhaustive gptel-use-context
+          ('system (concat message "\n\n" context))
+          ('user   (concat context "\n\n" message))
+          ('nil    message))
+      message)))
 
 (cl-defun gptel--add-region-as-context (buffer region-beginning region-end)
   "Add region delimited by REGION-BEGINNING, REGION-END in BUFFER as context."
@@ -203,14 +178,14 @@ If selection is active, removes all contexts within selection."
   "Get the list of all active context overlays."
   ;; Get only the non-degenerate overlays, collect them, and update the overlays variable.
   (let ((overlay-alist
-         (cl-loop for (buf . ovs) in gptel--context-overlay-alist
+         (cl-loop for (buf . ovs) in gptel-context--overlay-alist
                   when (buffer-live-p buf)
                   for updated-ovs = (cl-loop for ov in ovs
                                              when (overlay-start ov)
                                              collect ov)
                   when updated-ovs
                   collect (cons buf updated-ovs))))
-    (setq gptel--context-overlay-alist overlay-alist)))
+    (setq gptel-context--overlay-alist overlay-alist)))
 
 ;;;###autoload
 (defun gptel-contexts-in-buffer (buffer)
@@ -277,7 +252,7 @@ representthe regions' boundaries within BUFFER."
     (let ((is-top-snippet t)
           (previous-line 1)
           prog-lang-tag
-          (contexts (alist-get buffer gptel--context-overlay-alist)))
+          (contexts (alist-get buffer gptel-context--overlay-alist)))
       (setq prog-lang-tag (gptel-major-mode-md-prog-lang
                              (buffer-local-value 'major-mode buffer)))
       (insert (format "In buffer `%s`:" (buffer-name buffer)))
@@ -313,18 +288,29 @@ representthe regions' boundaries within BUFFER."
         (insert "\n..."))
       (insert "\n```")))
 
+(defun gptel-context-string--default (context-alist)
+  (with-temp-buffer
+    (insert "Request context:\n\n")
+    (cl-loop for (buf . ovs) in context-alist
+             do (gptel-buffer-insert-context-string buf)
+             (insert "\n\n")
+             finally return (buffer-string))))
+
 ;;;###autoload
 (defun gptel-context-string ()
-  "Return the context string of all aggregated contexts.
-If PROPERTIZE is non-nil, keep the text properties."
-  (without-restriction
-    (with-temp-buffer
-      (cl-loop for (buf . ovs) in (gptel-contexts)
-               do (gptel-buffer-insert-context-string buf)
-               (insert "\n\n")
-               finally return (buffer-string)))))
+  "Return a string containing the aggregated gptel context."
+  (funcall gptel-context-string-function
+           (gptel-contexts)))
 
 ;;; Major mode for context inspection buffers
+(defvar-keymap gptel-context-buffer-mode-map
+  "C-c C-c" #'gptel-context-confirm
+  "C-c C-k" #'gptel-context-quit
+  "RET"     #'gptel-context-visit
+  "n"       #'gptel-context-next
+  "p"       #'gptel-context-previous
+  "d"       #'gptel-context-flag-deletion)
+
 (define-derived-mode gptel-context-buffer-mode special-mode "gptel-context"
   "Major-mode for inspecting context used by gptel."
   :group 'gptel
@@ -351,7 +337,7 @@ If PROPERTIZE is non-nil, keep the text properties."
              (propertize "C-c C-k" 'face 'help-key-binding)
              " to abort."))
       (save-excursion
-        (let ((contexts gptel--context-overlay-alist))
+        (let ((contexts gptel-context--overlay-alist))
           (if (length> contexts 0)
               (let (beg ov l1 l2)
                 (pcase-dolist (`(,buf . ,ovs) contexts)
@@ -366,10 +352,10 @@ If PROPERTIZE is non-nil, keep the text properties."
                     (setq beg (point))
                     (insert-buffer-substring
                      buf (overlay-start source-ov) (overlay-end source-ov))
-                    (insert "\n")
                     (setq ov (make-overlay beg (point)))
                     (overlay-put ov 'gptel-context source-ov)
-                    (overlay-put ov 'gptel-overlay t)))
+                    (overlay-put ov 'gptel-overlay t)
+                    (insert "\n")))
                 (goto-char (point-min)))
             (insert "There are no active contexts in any buffer.")))))
     (display-buffer (current-buffer)
@@ -470,15 +456,6 @@ If non-nil, indicates backward movement.")
                              (overlay-get ov 'gptel-context)))
                           (overlays-in (point-min) (point-max)))))
   (gptel-context-quit))
-
-(defvar-keymap gptel-context-buffer-mode-map
-  :parent special-mode-map
-  "C-c C-c" #'gptel-context-confirm
-  "C-c C-k" #'gptel-context-quit
-  "RET"     #'gptel-context-visit
-  "n"       #'gptel-context-next
-  "p"       #'gptel-context-previous
-  "d"       #'gptel-context-flag-deletion)
 
 (provide 'gptel-contexter)
 ;;; gptel-contexter.el ends here.
