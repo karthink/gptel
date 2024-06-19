@@ -114,12 +114,6 @@ This makes it feasible to have multiple conversation branches."
   :type 'boolean
   :group 'gptel)
 
-(defcustom gptel-org-force-branching-context-with-topic nil
-  "force the existence both the topic and branching context"
-  :local t
-  :type 'boolean
-  :group 'gptel)
-
 
 ;;; Setting context and creating queries
 (defun gptel-org--get-topic-start ()
@@ -167,8 +161,9 @@ value of `gptel-org-branching-context', which see."
     (if topic-start
         ;; narrow to GPTEL_TOPIC property scope
         (narrow-to-region topic-start prompt-end)
-      (when gptel-org-force-branching-context-with-topic
-        (error "topic forced but non-existent")))
+      (when (and gptel-force-prompt-context-be-explicit (buffer-file-name))
+        (error "explicit prompt context forced but org's topic not present
+ along hierarchical lineage of the current Org heading")))
     (if gptel-org-branching-context
         ;; Create prompt from direct ancestors of point
         (if (fboundp 'org-element-lineage-map)
@@ -211,8 +206,8 @@ value of `gptel-org-branching-context', which see."
              '(gptel org)
              "Using `gptel-org-branching-context' requires Org version 9.6.7 or higher, it will be ignored.")
           (gptel--parse-buffer gptel-backend max-entries))
-      (when gptel-org-force-branching-context-with-topic
-        (error "branching context forced but non-existent"))
+      (when (and gptel-force-prompt-context-be-explicit (buffer-file-name))
+        (error "explicit prompt context forced but org's branching context is not set"))
       ;; Create prompt the usual way
       (gptel--parse-buffer gptel-backend max-entries))))
 
