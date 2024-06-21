@@ -289,11 +289,14 @@ Also format its value in the Transient menu."
    [""
     "Instructions"
     ("s" "Set system message" gptel-system-prompt :transient t)
-    (gptel--infix-add-directive)]]
-  [["Context" :if (lambda () gptel-expert-commands)
-    (gptel--suffix-context-buffer)
-    (gptel--infix-use-context)]]
-  [["Model Parameters"
+    (gptel--infix-add-directive)]
+   [""
+    "Context"
+    (gptel--infix-use-context)
+    (gptel--suffix-context-add-region)
+    (gptel--suffix-context-add-buffer)
+    (gptel--suffix-context-buffer)]]
+  [["Request Parameters"
     :pad-keys t
     (gptel--infix-variable-scope)
     (gptel--infix-provider)
@@ -476,16 +479,24 @@ Customize `gptel-directives' for task-specific prompts."
 ;; ** Infixes for context aggregation
 
 (transient-define-infix gptel--infix-use-context ()
-  "Describe target destination for context injection."
-  :description "Include context"
+  "Describe target destination for context injection.
+
+gptel will include with the LLM request any additional context
+added with `gptel-add'.  This context can be ignored, included
+with the system message or included with the user prompt.
+
+Where in the request this context is included depends on the
+value of `gptel-use-context', set from here."
+  :description "Include"
   :class 'gptel-lisp-variable
   :variable 'gptel-use-context
+  :format " %k %d %v"
   :set-value #'gptel--set-with-scope
   :display-nil "No"
   :display-map '((nil    . "No")
                  (system . "with system message")
                  (user   . "with user prompt"))
-  :key "-xd"
+  :key "-i"
   :reader (lambda (prompt &rest _)
             (let* ((choices '(("No"                  . nil)
                               ("with system message" . system)
@@ -907,14 +918,15 @@ When LOCAL is non-nil, set the system message only in the current buffer."
                          (funcall quit-to-menu)))
         (local-set-key (kbd "C-c C-k") quit-to-menu)))))
 
-;; ** Suffix for displaying and removing context
+;; ** Suffix for adding, displaying and removing context
 (declare-function gptel-context--buffer-setup "gptel-context")
 (declare-function gptel-context--collect "gptel-context")
 
 (transient-define-suffix gptel--suffix-context-buffer ()
   "Display all contexts from all buffers & files."
   :transient 'transient--do-exit
-  :key "-xb"
+  :key "C"
+  :if (lambda () gptel-context--overlay-alist)
   :description
   (lambda ()
     (let* ((contexts (and gptel-context--overlay-alist (gptel-context--collect)))
@@ -923,18 +935,53 @@ When LOCAL is non-nil, set the system message only in the current buffer."
                          (cl-loop for (_ . ovs) in contexts
                                   sum (length ovs))
                        0)))
-      (concat "Display context buffer "
+      (concat "Inspect context "
               (format
                (propertize "(%s)" 'face 'transient-delimiter)
-               (propertize (format "%d context%s in %d buffer%s"
-                                   ov-count (if (/= ov-count 1) "s" "")
-                                   buffer-count
-                                   (if (/= buffer-count 1) "s" ""))
-                           'face (if (zerop (length contexts))
-                                     'transient-inactive-value
-                                   'transient-value))))))
+               (propertize
+                (concat
+                 (and (> ov-count 0)
+                      (format "%d region%s in %d buffer%s"
+                              ov-count (if (> ov-count 1) "s" "")
+                              (- buffer-count file-count)
+                              (if (> ( - buffer-count file-count) 1) "s" "")))
+                 (and (> file-count 0)
+                      (propertize
+                       (format "%s%d file%s"
+                               (if (> ov-count 0) ", " "") file-count
+                               (if (> file-count 1) "s" "")))))
+                'face (if (zerop (length contexts))
+                          'transient-inactive-value
+                        'transient-value))))))
   (interactive)
   (gptel-context--buffer-setup))
+
+(declare-function gptel-context--at-point "gptel-context")
+
+(transient-define-suffix gptel--suffix-context-add-region ()
+  "Add current region to gptel's context."
+  :transient 'transient--do-stay
+  :key "cr"
+  :if (lambda () (or (use-region-p)
+                (and (fboundp 'gptel-context--at-point)
+                     (gptel-context--at-point))))
+  :description
+  (lambda ()
+    (if (and (fboundp 'gptel-context--at-point)
+             (gptel-context--at-point))
+        "Remove context at point"
+      "Add region to context"))
+  (interactive)
+  (gptel-add)
+  (transient-setup))
+
+(transient-define-suffix gptel--suffix-context-add-buffer ()
+  "Add a buffer to gptel's context."
+  :transient 'transient--do-stay
+  :key "cb"
+  :description "Add a buffer to context"
+  (interactive)
+  (gptel-add '(4)))
 
 ;; ** Suffixes for rewriting/refactoring
 
