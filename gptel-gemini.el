@@ -30,7 +30,7 @@
 (declare-function prop-match-value "text-property-search")
 (declare-function text-property-search-backward "text-property-search")
 (declare-function json-read "json")
-(declare-function gptel-context--wrap "gptel-contexter")
+(declare-function gptel-context--wrap "gptel-context")
 (defvar json-object-type)
 
 ;;; Gemini

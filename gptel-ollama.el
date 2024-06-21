@@ -27,7 +27,7 @@
 (require 'cl-generic)
 
 (declare-function json-read "json" ())
-(declare-function gptel-context--wrap "gptel-contexter")
+(declare-function gptel-context--wrap "gptel-context")
 (defvar json-object-type)
 
 ;;; Ollama
