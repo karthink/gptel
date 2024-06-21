@@ -28,6 +28,8 @@
 (eval-when-compile
   (require 'cl-lib))
 
+(declare-function gptel-context--wrap "gptel-contexter")
+
 ;;; Kagi
 (cl-defstruct (gptel-kagi (:constructor gptel--make-kagi)
                             (:copier nil)

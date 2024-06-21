@@ -674,6 +674,18 @@ in any way.")
   "Check if gptel response at position PT has variants."
   (get-char-property (or pt (point)) 'gptel-history))
 
+(defun gptel--strip-mode-suffix (mode-sym)
+  "Remove the -mode suffix from MODE-NAME.
+
+MODE-NAME is typically a major-mode symbol."
+  (let ((mode-name (thread-last
+                (symbol-name mode-sym)
+                (string-remove-suffix "-mode")
+                (string-remove-suffix "-ts"))))
+    (if (provided-mode-derived-p
+         mode-sym 'prog-mode 'text-mode 'tex-mode)
+     mode-name "")))
+
 
 ;; Logging
 
