@@ -173,7 +173,8 @@ The message is usually either a system message or user prompt."
   ;; Remove existing contexts in the same region, if any.
   (mapc #'gptel-context-remove
         (gptel-context--in-region buffer region-beginning region-end))
-    (prog1 (gptel-context--make-overlay region-beginning region-end)
+  (prog1 (with-current-buffer buffer
+           (gptel-context--make-overlay region-beginning region-end))
       (message "Region added to context buffer.")))
 
 (defun gptel-context--in-region (buffer start end)
@@ -283,17 +284,12 @@ context overlays, see `gptel-context--overlay-alist'."
       (erase-buffer)
       (setq header-line-format
             (concat
-             "Mark/unmark deletion with "
-             (propertize "d" 'face 'help-key-binding)
-             ", jump to next/previous with "
-             (propertize "n" 'face 'help-key-binding)
-             "/"
-             (propertize "p" 'face 'help-key-binding)
-             ", respectively. "
-             (propertize "C-c C-c" 'face 'help-key-binding)
-             " to apply, or "
-             (propertize "C-c C-k" 'face 'help-key-binding)
-             " to abort."))
+             (propertize "d" 'face 'help-key-binding) ": Mark/unmark deletion, "
+             (propertize "n" 'face 'help-key-binding) "/"
+             (propertize "p" 'face 'help-key-binding) ": jump to next/previous, "
+             (propertize "C-c C-c" 'face 'help-key-binding) ": apply, "
+             (propertize "C-c C-k" 'face 'help-key-binding) ": cancel, "
+             (propertize "q" 'face 'help-key-binding) ": quit"))
       (save-excursion
         (let ((contexts gptel-context--overlay-alist))
           (if (length> contexts 0)
