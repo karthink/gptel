@@ -28,7 +28,6 @@
 (require 'cl-lib)
 (require 'gptel)
 (require 'transient)
-(require 'gptel-contexter)
 
 (declare-function ediff-regions-internal "ediff")
 (declare-function ediff-make-cloned-buffer "ediff-utils")
@@ -909,30 +908,33 @@ When LOCAL is non-nil, set the system message only in the current buffer."
         (local-set-key (kbd "C-c C-k") quit-to-menu)))))
 
 ;; ** Suffix for displaying and removing context
+(declare-function gptel-context--buffer-setup "gptel-context")
+(declare-function gptel-context--collect "gptel-context")
 
 (transient-define-suffix gptel--suffix-context-buffer ()
   "Display all contexts from all buffers & files."
   :transient 'transient--do-exit
   :key "-xb"
-  :description (lambda ()
-                 (let* ((contexts (gptel-contexts))
-                        (buffer-count (length contexts))
-                        (ov-count (if (> buffer-count 0)
-                                      (cl-loop for (_ . ovs) in contexts
-                                               sum (length ovs))
-                                    0)))
-                   (concat "Display context buffer "
-                           (format
-                            (propertize "(%s)" 'face 'transient-delimiter)
-                            (propertize (format "%d context%s in %d buffer%s"
-                                                ov-count (if (/= ov-count 1) "s" "")
-                                                buffer-count
-                                                (if (/= buffer-count 1) "s" ""))
-                                        'face (if (zerop (length contexts))
-                                                  'transient-inactive-value
-                                                'transient-value))))))
+  :description
+  (lambda ()
+    (let* ((contexts (and gptel-context--overlay-alist (gptel-context--collect)))
+           (buffer-count (length contexts))
+           (ov-count (if (> buffer-count 0)
+                         (cl-loop for (_ . ovs) in contexts
+                                  sum (length ovs))
+                       0)))
+      (concat "Display context buffer "
+              (format
+               (propertize "(%s)" 'face 'transient-delimiter)
+               (propertize (format "%d context%s in %d buffer%s"
+                                   ov-count (if (/= ov-count 1) "s" "")
+                                   buffer-count
+                                   (if (/= buffer-count 1) "s" ""))
+                           'face (if (zerop (length contexts))
+                                     'transient-inactive-value
+                                   'transient-value))))))
   (interactive)
-  (gptel--context-buffer-setup))
+  (gptel-context--buffer-setup))
 
 ;; ** Suffixes for rewriting/refactoring
 

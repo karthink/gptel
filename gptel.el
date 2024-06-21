@@ -154,7 +154,6 @@
 (require 'text-property-search)
 (require 'cl-generic)
 (require 'gptel-openai)
-(require 'gptel-contexter)
 
 (with-eval-after-load 'org
   (require 'gptel-org))
@@ -833,7 +832,7 @@ file."
         (message (propertize msg 'face face))))
     (force-mode-line-update)))
 
-(declare-function gptel-context--wrap "gptel-contexter")
+(declare-function gptel-context--wrap "gptel-context")
 
 
 ;; Send queries, handle responses
@@ -1120,7 +1119,7 @@ BACKEND is the LLM backend in use.
 MAX-ENTRIES is the number of queries/responses to include for
 contexbt.")
 
-(cl-defgeneric gptel--wrap-user-prompt (backend prompts)
+(cl-defgeneric gptel--wrap-user-prompt (backend _prompts)
   "Wrap the last prompt in PROMPTS with gptel's context.
 
 PROMPTS is a structure as returned by `gptel--parse-buffer'.
