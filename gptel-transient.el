@@ -102,9 +102,7 @@ Or is it the other way around?"
   "Set a generic refactor/rewrite message for the buffer."
   (if (derived-mode-p 'prog-mode)
       (format "You are a %s programmer. Refactor the following code. Generate only code, no explanation."
-              (thread-last (symbol-name major-mode)
-                           (string-remove-suffix "-mode")
-                           (string-remove-suffix "-ts")))
+              (gptel--strip-mode-suffix major-mode))
     (format "You are a prose editor. Rewrite the following text to be more professional.")))
 
 (defvar gptel--crowdsourced-prompts-url

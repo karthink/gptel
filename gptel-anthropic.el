@@ -33,6 +33,7 @@
 (declare-function prop-match-value "text-property-search")
 (declare-function text-property-search-backward "text-property-search")
 (declare-function json-read "json" ())
+(declare-function gptel-context--wrap "gptel-contexter")
 
 ;;; Anthropic (Messages API)
 (cl-defstruct (gptel-anthropic (:constructor gptel--make-anthropic)

@@ -26,7 +26,6 @@
 (eval-when-compile
   (require 'cl-lib))
 (require 'map)
-(require 'gptel-contexter)
 
 (defvar gptel-model)
 (defvar gptel-stream)
@@ -43,6 +42,7 @@
 (declare-function json-read "json")
 (declare-function gptel-prompt-prefix-string "gptel")
 (declare-function gptel-response-prefix-string "gptel")
+(declare-function gptel-context--wrap "gptel-contexter")
 
 (defmacro gptel--json-read ()
   (if (fboundp 'json-parse-buffer)

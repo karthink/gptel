@@ -208,34 +208,6 @@ If selection is active, removes all contexts within selection."
   (mapc #'gptel-remove-context
         (gptel-contexts)))
 
-;;;###autoload
-(defun gptel-major-mode-md-prog-lang (mode)
-  "Get the Markdown programming language string for the given MODE."
-  (cond
-   ((eq mode 'emacs-lisp-mode) "emacs-lisp")
-   ((eq mode 'lisp-mode) "common-lisp")
-   ((eq mode 'c-mode) "c")
-   ((eq mode 'c++-mode) "c++")
-   ((eq mode 'javascript-mode) "javascript")
-   ((eq mode 'python-mode) "python")
-   ((eq mode 'ruby-mode) "ruby")
-   ((eq mode 'java-mode) "java")
-   ((eq mode 'go-mode) "go")
-   ((eq mode 'rust-mode) "rust")
-   ((eq mode 'haskell-mode) "haskell")
-   ((eq mode 'scala-mode) "scala")
-   ((eq mode 'kotlin-mode) "kotlin")
-   ((eq mode 'typescript-mode) "typescript")
-   ((eq mode 'css-mode) "css")
-   ((eq mode 'html-mode) "html")
-   ((eq mode 'xml-mode) "xml")
-   ((eq mode 'swift-mode) "swift")
-   ((eq mode 'perl-mode) "perl")
-   ((eq mode 'php-mode) "php")
-   ((eq mode 'csharp-mode) "csharp")
-   ((eq mode 'sql-mode) "sql")
-   (t "")))
-
 (defun gptel--region-inline-p (buffer previous-region current-region)
   "Return non-nil if CURRENT-REGION begins on the line PREVIOUS-REGION ends in.
 This check pertains only to regions in BUFFER.
@@ -253,7 +225,7 @@ representthe regions' boundaries within BUFFER."
           (previous-line 1)
           prog-lang-tag
           (contexts (alist-get buffer gptel-context--overlay-alist)))
-      (setq prog-lang-tag (gptel-major-mode-md-prog-lang
+      (setq prog-lang-tag (gptel--strip-mode-suffix
                              (buffer-local-value 'major-mode buffer)))
       (insert (format "In buffer `%s`:" (buffer-name buffer)))
       (insert "\n\n```" prog-lang-tag "\n")
