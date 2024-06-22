@@ -52,22 +52,25 @@
 This is used in gptel context buffers."
   :group 'gptel)
 
-(defcustom gptel-context-string-function #'gptel-context--string-default
+(defcustom gptel-context-wrap-function #'gptel-context--wrap-default
   "Function to format the context string sent with the gptel request.
 
-This function receives one argument, an alist of contexts
-organized by buffer.  It should return a string containing the
-formatted context and any additional comments you wish to
-include.
+This function receives two argument, the message to wrap with the
+context, and an alist of contexts organized by buffer.  It should
+return a string containing the message and the context, formatted as
+necessary.
 
-Each gptel \"context\" is either a file path or an overlay in a
-buffer. The alist of contexts is structured as follows:
+The message is either the system message or the last user prompt,
+as configured by `gptel-use-context'.
+
+The alist of contexts is structured as follows:
 
  ((buffer1 . (overlay1 overlay2)
   (\"path/to/file\")
   (buffer2 . (overlay3 overlay4 overlay5))))
 
-Each overlay covers a buffer region containing the
+Each gptel \"context\" is either a file path or an overlay in a
+buffer.  Each overlay covers a buffer region containing the
 context chunk.  This is accessible as, for example:
 
  (with-current-buffer buffer1
@@ -187,15 +190,21 @@ If selection is active, removes all contexts within selection."
 
 ;;;###autoload
 (defun gptel-context--wrap (message)
-  "Wrap MESSAGE with context.
+  (funcall gptel-context-wrap-function
+           message (gptel-context--collect)))
 
-The message is usually either a system message or user prompt."
+(defun gptel-context--wrap-default (message contexts)
+  "Add CONTEXTS to MESSAGE.
+
+MESSAGE is usually either the system message or the user prompt.
+The accumulated context from CONTEXTS is appended or prepended to
+it, respectively."
   ;; Append context before/after system message.
-  (let ((context (gptel-context--string)))
-    (if (> (length context) 0)
+  (let ((context-string (gptel-context--string contexts)))
+    (if (> (length context-string) 0)
         (pcase-exhaustive gptel-use-context
-          ('system (concat message "\n\n" context))
-          ('user   (concat context "\n\n" message))
+          ('system (concat message "\n\n" context-string))
+          ('user   (concat context-string "\n\n" message))
           ('nil    message))
       message)))
 
@@ -282,7 +291,7 @@ START and END signify the region delimiters."
   (goto-char (point-max))
   (insert "\n```\n"))
 
-(defun gptel-context--string-default (context-alist)
+(defun gptel-context--string (context-alist)
   "Format the aggregated gptel context as annotated markdown fragments.
 
 Returns a string.  CONTEXT-ALIST is a structure containing
@@ -295,12 +304,6 @@ context overlays, see `gptel-context--alist'."
              else do (gptel-context--insert-file-string buf)
              do (insert "\n\n")
              finally return (buffer-string))))
-
-;;;###autoload
-(defun gptel-context--string ()
-  "Return a string containing the aggregated gptel context."
-  (funcall gptel-context-string-function
-           (gptel-context--collect)))
 
 ;;; Major mode for context inspection buffers
 (defvar-keymap gptel-context-buffer-mode-map
