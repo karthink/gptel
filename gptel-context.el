@@ -303,6 +303,9 @@ context overlays, see `gptel-context--alist'."
              do (gptel-context--insert-buffer-string buf ovs)
              else do (gptel-context--insert-file-string buf)
              do (insert "\n\n")
+             finally do
+             (skip-chars-backward "\n\t\r ")
+             (delete-region (point) (point-max))
              finally return (buffer-string))))
 
 ;;; Major mode for context inspection buffers
