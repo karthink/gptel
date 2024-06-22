@@ -335,7 +335,7 @@ context overlays, see `gptel-context--alist'."
       (save-excursion
         (let ((contexts gptel-context--alist))
           (if (length> contexts 0)
-              (let ((first t) beg ov l1 l2)
+              (let (beg ov l1 l2)
                 (pcase-dolist (`(,buf . ,ovs) contexts)
                   (if (bufferp buf)
                       ;; It's a buffer with some overlay(s)
@@ -343,9 +343,6 @@ context overlays, see `gptel-context--alist'."
                         (with-current-buffer buf
                           (setq l1 (line-number-at-pos (overlay-start source-ov))
                                 l2 (line-number-at-pos (overlay-end source-ov))))
-                        (if (not first)
-                            (insert "\n")
-                          (setq first nil))
                         (insert (propertize (format "In buffer %s (lines %d-%d):\n\n"
                                                     (buffer-name buf) l1 l2)
                                             'face 'bold))
@@ -356,12 +353,8 @@ context overlays, see `gptel-context--alist'."
                         (overlay-put ov 'gptel-context source-ov)
                         (overlay-put ov 'gptel-overlay t)
                         (overlay-put ov 'evaporate t)
-                        (insert "\n\n")
-                        (insert (make-separator-line)))
+                        (insert "\n" (make-separator-line) "\n"))
                     ;; BUF is a file path, not a buffer
-                    (if (not first)
-                        (insert "\n")
-                      (setq first nil))
                     (insert (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
                                         'face 'bold))
                     (setq beg (point))
@@ -371,8 +364,7 @@ context overlays, see `gptel-context--alist'."
                     (overlay-put ov 'gptel-context buf)
                     (overlay-put ov 'gptel-overlay t)
                     (overlay-put ov 'evaporate t)
-                    (insert "\n\n")
-                    (insert (make-separator-line))))
+                    (insert "\n" (make-separator-line) "\n")))
                 (goto-char (point-min)))
             (insert "There are no active gptel contexts.")))))
     (display-buffer (current-buffer)
