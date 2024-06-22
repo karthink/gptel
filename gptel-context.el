@@ -355,6 +355,7 @@ context overlays, see `gptel-context--alist'."
                         (setq beg (point))
                         (insert-buffer-substring
                          buf (overlay-start source-ov) (overlay-end source-ov))
+                        (insert "\n")
                         (setq ov (make-overlay beg (point)))
                         (overlay-put ov 'gptel-context source-ov)
                         (overlay-put ov 'gptel-overlay t)
@@ -366,6 +367,7 @@ context overlays, see `gptel-context--alist'."
                     (setq beg (point))
                     (insert-file-contents buf)
                     (goto-char (point-max))
+                    (insert "\n")
                     (setq ov (make-overlay beg (point)))
                     (overlay-put ov 'gptel-context buf)
                     (overlay-put ov 'gptel-overlay t)
