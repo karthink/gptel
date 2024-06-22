@@ -158,9 +158,12 @@ value of `gptel-org-branching-context', which see."
   (let ((max-entries (and gptel--num-messages-to-send
                           (* 2 gptel--num-messages-to-send)))
         (topic-start (gptel-org--get-topic-start)))
-    (when topic-start
-      ;; narrow to GPTEL_TOPIC property scope
-      (narrow-to-region topic-start prompt-end))
+    (if topic-start
+        ;; narrow to GPTEL_TOPIC property scope
+        (narrow-to-region topic-start prompt-end)
+      (when (and gptel-force-prompt-context-be-explicit (buffer-file-name))
+        (error "explicit prompt context forced but org's topic not present
+ along hierarchical lineage of the current Org heading")))
     (if gptel-org-branching-context
         ;; Create prompt from direct ancestors of point
         (if (fboundp 'org-element-lineage-map)
@@ -203,6 +206,8 @@ value of `gptel-org-branching-context', which see."
              '(gptel org)
              "Using `gptel-org-branching-context' requires Org version 9.6.7 or higher, it will be ignored.")
           (gptel--parse-buffer gptel-backend max-entries))
+      (when (and gptel-force-prompt-context-be-explicit (buffer-file-name))
+        (error "explicit prompt context forced but org's branching context is not set"))
       ;; Create prompt the usual way
       (gptel--parse-buffer gptel-backend max-entries))))
 

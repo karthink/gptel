@@ -514,6 +514,19 @@ with `gptel-mode' enabled), where user prompts and responses are
 always handled separately."
   :type 'boolean)
 
+(defcustom gptel-force-prompt-context-be-explicit nil
+  "Force the context that is sent along the prompt be explicitly bound.
+
+If non-nil, then:
+For Org mode's FILE buffers: `gptel-org-branching-context' must be non-nil
+                              and conversation topic needs to be present
+                              in hierarchical lineage of the current Org
+                              heading.
+For other buffers: region must be marked."
+  :local t
+  :type 'boolean
+  :group 'gptel)
+
 (defvar-local gptel--old-header-line nil)
 
 
@@ -1050,8 +1063,11 @@ there."
          ((derived-mode-p 'org-mode)
           (require 'gptel-org)
           (gptel-org--create-prompt (or prompt-end (point-max))))
-         (t (goto-char (or prompt-end (point-max)))
-            (gptel--parse-buffer gptel-backend max-entries)))))))
+         (t
+          (when gptel-force-prompt-context-be-explicit
+            (error "explicit prompt context forced but region is NOT marked"))
+          (goto-char (or prompt-end (point-max)))
+          (gptel--parse-buffer gptel-backend max-entries)))))))
 
 (cl-defgeneric gptel--parse-buffer (backend max-entries)
   "Parse current buffer backwards from point and return a list of prompts.
