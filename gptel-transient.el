@@ -290,11 +290,13 @@ Also format its value in the Transient menu."
     "Instructions"
     ("s" "Set system message" gptel-system-prompt :transient t)
     (gptel--infix-add-directive)]
-   [""
+   [:pad-keys t
+    ""
     "Context"
     (gptel--infix-use-context)
     (gptel--suffix-context-add-region)
     (gptel--suffix-context-add-buffer)
+    (gptel--suffix-context-add-file)
     (gptel--suffix-context-buffer)]]
   [["Request Parameters"
     :pad-keys t
@@ -593,7 +595,7 @@ querying the LLM."
   :set-value #'gptel--set-with-scope
   :display-if-true "Yes"
   :display-if-false "No"
-  :key "-r")
+  :key "-d")
 
 ;; ** Infix for the refactor/rewrite system message
 
@@ -926,16 +928,21 @@ When LOCAL is non-nil, set the system message only in the current buffer."
   "Display all contexts from all buffers & files."
   :transient 'transient--do-exit
   :key "C"
-  :if (lambda () gptel-context--overlay-alist)
+  :if (lambda () gptel-context--alist)
   :description
   (lambda ()
-    (let* ((contexts (and gptel-context--overlay-alist (gptel-context--collect)))
-           (buffer-count (length contexts))
-           (ov-count (if (> buffer-count 0)
-                         (cl-loop for (_ . ovs) in contexts
-                                  sum (length ovs))
-                       0)))
-      (concat "Inspect context "
+    (pcase-let*
+        ((contexts (and gptel-context--alist (gptel-context--collect)))
+         (buffer-count (length contexts))
+         (`(,file-count ,ov-count)
+          (if (> buffer-count 0)
+              (cl-loop for (buf-file . ovs) in contexts
+                       if (bufferp buf-file)
+                       sum (length ovs) into ov-count
+                       else count (stringp buf-file) into file-count
+                       finally return (list file-count ov-count))
+            (list 0 0))))
+      (concat "Inspect "
               (format
                (propertize "(%s)" 'face 'transient-delimiter)
                (propertize
@@ -961,7 +968,7 @@ When LOCAL is non-nil, set the system message only in the current buffer."
 (transient-define-suffix gptel--suffix-context-add-region ()
   "Add current region to gptel's context."
   :transient 'transient--do-stay
-  :key "cr"
+  :key "-r"
   :if (lambda () (or (use-region-p)
                 (and (fboundp 'gptel-context--at-point)
                      (gptel-context--at-point))))
@@ -978,10 +985,22 @@ When LOCAL is non-nil, set the system message only in the current buffer."
 (transient-define-suffix gptel--suffix-context-add-buffer ()
   "Add a buffer to gptel's context."
   :transient 'transient--do-stay
-  :key "cb"
+  :key "-b"
   :description "Add a buffer to context"
   (interactive)
-  (gptel-add '(4)))
+  (gptel-add '(4))
+  (transient-setup))
+
+(declare-function gptel-add-file "gptel-context")
+
+(transient-define-suffix gptel--suffix-context-add-file ()
+  "Add a file to gptel's context."
+  :transient 'transient--do-stay
+  :key "-f"
+  :description "Add a file to context"
+  (interactive)
+  (call-interactively #'gptel-add-file)
+  (transient-setup))
 
 ;; ** Suffixes for rewriting/refactoring
 
