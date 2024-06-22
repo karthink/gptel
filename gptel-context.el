@@ -337,7 +337,7 @@ context overlays, see `gptel-context--alist'."
       (save-excursion
         (let ((contexts gptel-context--alist))
           (if (length> contexts 0)
-              (let (beg ov l1 l2)
+              (let ((first t) beg ov l1 l2)
                 (pcase-dolist (`(,buf . ,ovs) contexts)
                   (if (bufferp buf)
                       ;; It's a buffer with some overlay(s)
@@ -345,8 +345,10 @@ context overlays, see `gptel-context--alist'."
                         (with-current-buffer buf
                           (setq l1 (line-number-at-pos (overlay-start source-ov))
                                 l2 (line-number-at-pos (overlay-end source-ov))))
-                        (insert (make-separator-line)
-                                (propertize (format "In buffer %s (lines %d-%d):\n\n"
+                        (if (not first)
+                            (insert "\n")
+                          (setq first nil))
+                        (insert (propertize (format "In buffer %s (lines %d-%d):\n\n"
                                                     (buffer-name buf) l1 l2)
                                             'face 'bold))
                         (setq beg (point))
@@ -356,10 +358,13 @@ context overlays, see `gptel-context--alist'."
                         (overlay-put ov 'gptel-context source-ov)
                         (overlay-put ov 'gptel-overlay t)
                         (overlay-put ov 'evaporate t)
-                        (insert "\n"))
+                        (insert "\n\n")
+                        (insert (make-separator-line)))
                     ;; BUF is a file path, not a buffer
-                    (insert (make-separator-line)
-                            (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
+                    (if (not first)
+                        (insert "\n")
+                      (setq first nil))
+                    (insert (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
                                         'face 'bold))
                     (setq beg (point))
                     (insert-file-contents buf)
@@ -368,7 +373,8 @@ context overlays, see `gptel-context--alist'."
                     (overlay-put ov 'gptel-context buf)
                     (overlay-put ov 'gptel-overlay t)
                     (overlay-put ov 'evaporate t)
-                    (insert "\n\n")))
+                    (insert "\n\n")
+                    (insert (make-separator-line))))
                 (goto-char (point-min)))
             (insert "There are no active gptel contexts.")))))
     (display-buffer (current-buffer)
@@ -421,16 +427,21 @@ If non-nil, indicates backward movement.")
       (setq next-start (next-overlay-change next-start)))
     (when (/= next-start (point-max))
       (setq gptel-context--buffer-reverse nil)
-      (goto-char next-start))))
+      (goto-char next-start)
+      (recenter (floor (window-height) 4)))))
 
 (defun gptel-context-previous ()
   "Move to previous gptel context chunk."
   (interactive)
   (let ((ov-here (car (overlays-at (point)))))
     (when ov-here (goto-char (overlay-start ov-here)))
-    (goto-char (previous-overlay-change
-                (previous-overlay-change (point))))
-    (setq gptel-context--buffer-reverse t)))
+    (let ((previous-context-pos (previous-overlay-change
+                                 (previous-overlay-change (point)))))
+      ;; Prevent point from jumping to the start of the buffer.
+      (unless (= previous-context-pos (point-min))
+        (goto-char previous-context-pos)
+        (recenter (floor (window-height) 4))
+        (setq gptel-context--buffer-reverse t)))))
 
 (defun gptel-context-flag-deletion ()
   "Mark gptel context chunk at point for removal."
