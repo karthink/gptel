@@ -293,10 +293,9 @@ Also format its value in the Transient menu."
    [:pad-keys t
     ""
     "Context"
-    (gptel--infix-use-context)
-    (gptel--suffix-context-add-region)
-    (gptel--suffix-context-add-buffer)
-    (gptel--suffix-context-add-file)
+    (gptel--infix-context-add-region)
+    (gptel--infix-context-add-buffer)
+    (gptel--infix-context-add-file)
     (gptel--suffix-context-buffer)]]
   [["Request Parameters"
     :pad-keys t
@@ -306,6 +305,7 @@ Also format its value in the Transient menu."
     (gptel--infix-num-messages-to-send
      :if (lambda () (or gptel-mode gptel-track-response)))
     (gptel--infix-temperature :if (lambda () gptel-expert-commands))
+    (gptel--infix-use-context)
     (gptel--infix-track-response
      :if (lambda () (and gptel-expert-commands (not gptel-mode))))]
    ["Prompt from"
@@ -489,7 +489,7 @@ with the system message or included with the user prompt.
 
 Where in the request this context is included depends on the
 value of `gptel-use-context', set from here."
-  :description "Include"
+  :description "Include context"
   :class 'gptel-lisp-variable
   :variable 'gptel-use-context
   :format " %k %d %v"
@@ -596,6 +596,48 @@ querying the LLM."
   :display-if-true "Yes"
   :display-if-false "No"
   :key "-d")
+
+;; ** Infixes for adding and removing context
+
+(declare-function gptel-context--at-point "gptel-context")
+(declare-function gptel-add "gptel-context")
+
+(transient-define-suffix gptel--infix-context-add-region ()
+  "Add current region to gptel's context."
+  :transient 'transient--do-stay
+  :key "-r"
+  :if (lambda () (or (use-region-p)
+                (and (fboundp 'gptel-context--at-point)
+                     (gptel-context--at-point))))
+  :description
+  (lambda ()
+    (if (and (fboundp 'gptel-context--at-point)
+             (gptel-context--at-point))
+        "Remove context at point"
+      "Add region to context"))
+  (interactive)
+  (gptel-add)
+  (transient-setup))
+
+(transient-define-suffix gptel--infix-context-add-buffer ()
+  "Add a buffer to gptel's context."
+  :transient 'transient--do-stay
+  :key "-b"
+  :description "Add a buffer to context"
+  (interactive)
+  (gptel-add '(4))
+  (transient-setup))
+
+(declare-function gptel-add-file "gptel-context")
+
+(transient-define-suffix gptel--infix-context-add-file ()
+  "Add a file to gptel's context."
+  :transient 'transient--do-stay
+  :key "-f"
+  :description "Add a file to context"
+  (interactive)
+  (call-interactively #'gptel-add-file)
+  (transient-setup))
 
 ;; ** Infix for the refactor/rewrite system message
 
@@ -920,14 +962,14 @@ When LOCAL is non-nil, set the system message only in the current buffer."
                          (funcall quit-to-menu)))
         (local-set-key (kbd "C-c C-k") quit-to-menu)))))
 
-;; ** Suffix for adding, displaying and removing context
+;; ** Suffix for displaying and removing context
 (declare-function gptel-context--buffer-setup "gptel-context")
 (declare-function gptel-context--collect "gptel-context")
 
 (transient-define-suffix gptel--suffix-context-buffer ()
   "Display all contexts from all buffers & files."
   :transient 'transient--do-exit
-  :key "C"
+  :key " C"
   :if (lambda () gptel-context--alist)
   :description
   (lambda ()
@@ -962,45 +1004,6 @@ When LOCAL is non-nil, set the system message only in the current buffer."
                         'transient-value))))))
   (interactive)
   (gptel-context--buffer-setup))
-
-(declare-function gptel-context--at-point "gptel-context")
-
-(transient-define-suffix gptel--suffix-context-add-region ()
-  "Add current region to gptel's context."
-  :transient 'transient--do-stay
-  :key "-r"
-  :if (lambda () (or (use-region-p)
-                (and (fboundp 'gptel-context--at-point)
-                     (gptel-context--at-point))))
-  :description
-  (lambda ()
-    (if (and (fboundp 'gptel-context--at-point)
-             (gptel-context--at-point))
-        "Remove context at point"
-      "Add region to context"))
-  (interactive)
-  (gptel-add)
-  (transient-setup))
-
-(transient-define-suffix gptel--suffix-context-add-buffer ()
-  "Add a buffer to gptel's context."
-  :transient 'transient--do-stay
-  :key "-b"
-  :description "Add a buffer to context"
-  (interactive)
-  (gptel-add '(4))
-  (transient-setup))
-
-(declare-function gptel-add-file "gptel-context")
-
-(transient-define-suffix gptel--suffix-context-add-file ()
-  "Add a file to gptel's context."
-  :transient 'transient--do-stay
-  :key "-f"
-  :description "Add a file to context"
-  (interactive)
-  (call-interactively #'gptel-add-file)
-  (transient-setup))
 
 ;; ** Suffixes for rewriting/refactoring
 
