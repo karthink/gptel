@@ -73,19 +73,25 @@ context chunk.  This is accessible as, for example:
   :group 'gptel
   :type 'function)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; ------------------------------ FUNCTIONS ------------------------------- ;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (defun gptel-context-add (&optional arg)
-  "Add context to GPTel.
+  "Add context to gptel in a DWIM fashion.
 
-When called without a prefix argument, adds the current buffer as context.
-When ARG is positive, prompts for a buffer name and adds it as context.
-When ARG is negative, removes all contexts from the current buffer.
-When called with a region selected, adds the selected region as context.
+When called without prefix argument ARG:
 
-If there is a context under point, it is removed when called without a prefix."
+- If a region is selected, add the selected region to the
+context.
+
+- If there is a gptel context under point, remove it.
+
+- Otherwise add the current buffer to the context.
+
+Otherwise:
+
+- When ARG is positive, prompt for a buffer name and add it to
+  the context.
+
+- When ARG is negative, removes all gptel contexts from the
+  current buffer."
   (interactive "P")
   (cond
    ;; A region is selected.
@@ -98,7 +104,8 @@ If there is a context under point, it is removed when called without a prefix."
    ;; No region is selected, and ARG is positive.
    ((and arg (> (prefix-numeric-value arg) 0))
     (let ((buffer-name (read-buffer "Choose buffer to add as context: " nil t)))
-      (gptel-context--add-region (get-buffer buffer-name) (point-min) (point-max))
+      (gptel-context--add-region
+       (get-buffer buffer-name) (point-min) (point-max) t)
       (message "Buffer '%s' added as context." buffer-name)))
    ;; No region is selected, and ARG is negative.
    ((and arg (< (prefix-numeric-value arg) 0))
@@ -119,7 +126,7 @@ If there is a context under point, it is removed when called without a prefix."
                                                                (max (point-min) (1- (point)))
                                                                (point))))
           (message "Context under point has been removed."))
-      (gptel-context--add-region (current-buffer) (point-min) (point-max))
+      (gptel-context--add-region (current-buffer) (point-min) (point-max) t)
       (message "Current buffer added as context.")))))
 
 ;;;###autoload (autoload 'gptel-add "gptel-context" "Add or remove context to gptel's requests." t)
@@ -144,9 +151,9 @@ If selection is active, removes all contexts within selection."
       (when ctx
         (delete-overlay ctx))))))
 
-(defun gptel-context--make-overlay (start end)
+(defun gptel-context--make-overlay (start end &optional advance)
   "Highlight the region from START to END."
-  (let ((overlay (make-overlay start end)))
+  (let ((overlay (make-overlay start end nil (not advance) advance)))
     (overlay-put overlay 'evaporate t)
     (overlay-put overlay 'face 'gptel-context-highlight-face)
     (overlay-put overlay 'gptel-context t)
@@ -168,13 +175,16 @@ The message is usually either a system message or user prompt."
           ('nil    message))
       message)))
 
-(cl-defun gptel-context--add-region (buffer region-beginning region-end)
-  "Add region delimited by REGION-BEGINNING, REGION-END in BUFFER as context."
+(cl-defun gptel-context--add-region (buffer region-beginning region-end &optional advance)
+  "Add region delimited by REGION-BEGINNING, REGION-END in BUFFER as context.
+
+If ADVANCE is non-nil, the context overlay envelopes changes at
+the beginning and end."
   ;; Remove existing contexts in the same region, if any.
   (mapc #'gptel-context-remove
         (gptel-context--in-region buffer region-beginning region-end))
   (prog1 (with-current-buffer buffer
-           (gptel-context--make-overlay region-beginning region-end))
+           (gptel-context--make-overlay region-beginning region-end advance))
       (message "Region added to context buffer.")))
 
 (defun gptel-context--in-region (buffer start end)
