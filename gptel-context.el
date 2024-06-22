@@ -32,6 +32,7 @@
 (require 'cl-lib)
 
 (declare-function gptel-menu "gptel-transient")
+(declare-function dired-get-marked-files "dired")
 
 (defface gptel-context-highlight-face
   '((t :inherit header-line))
@@ -54,14 +55,16 @@ This is used in gptel context buffers."
 (defcustom gptel-context-string-function #'gptel-context--string-default
   "Function to format the context string sent with the gptel request.
 
-This function receives one argument, an alist of context overlays
+This function receives one argument, an alist of contexts
 organized by buffer.  It should return a string containing the
 formatted context and any additional comments you wish to
 include.
 
-The alist of context overlays is structured as follows:
+Each gptel \"context\" is either a file path or an overlay in a
+buffer. The alist of contexts is structured as follows:
 
  ((buffer1 . (overlay1 overlay2)
+  (\"path/to/file\")
   (buffer2 . (overlay3 overlay4 overlay5))))
 
 Each overlay covers a buffer region containing the
@@ -76,21 +79,17 @@ context chunk.  This is accessible as, for example:
 (defun gptel-context-add (&optional arg)
   "Add context to gptel in a DWIM fashion.
 
-When called without prefix argument ARG:
-
 - If a region is selected, add the selected region to the
-context.
+  context.  If there is already a gptel context at point, remove it
+  instead.
 
-- If there is a gptel context under point, remove it.
+- If in Dired, add marked files or file at point to the context.
+  With negative prefix ARG, remove them from the context instead.
 
-- Otherwise add the current buffer to the context.
+- Otherwise add the current buffer to the context.  With positive
+  prefix ARG, prompt for a buffer name and add it to the context.
 
-Otherwise:
-
-- When ARG is positive, prompt for a buffer name and add it to
-  the context.
-
-- When ARG is negative, removes all gptel contexts from the
+- With negative prefix ARG, remove all gptel contexts from the
   current buffer."
   (interactive "P")
   (cond
@@ -101,6 +100,12 @@ Otherwise:
                                   (region-end))
     (deactivate-mark)
     (message "Current region added as context."))
+   ;; If in dired
+   ((derived-mode-p 'dired-mode)
+    (mapc (if (and arg (< (prefix-numeric-value arg) 0))
+              #'gptel-context-remove
+              #'gptel-context-add-file)
+          (dired-get-marked-files)))
    ;; No region is selected, and ARG is positive.
    ((and arg (> (prefix-numeric-value arg) 0))
     (let ((buffer-name (read-buffer "Choose buffer to add as context: " nil t)))
@@ -129,27 +134,46 @@ Otherwise:
       (gptel-context--add-region (current-buffer) (point-min) (point-max) t)
       (message "Current buffer added as context.")))))
 
-;;;###autoload (autoload 'gptel-add "gptel-context" "Add or remove context to gptel's requests." t)
+;;;###autoload (autoload 'gptel-add "gptel-context" "Add/remove regions or buffers from gptel's context." t)
 (defalias 'gptel-add #'gptel-context-add)
   
+(defun gptel-context-add-file (path)
+  "Add the file at PATH to the gptel context.
+
+PATH should be readable as text."
+  (interactive "fChoose file to add to context: ")
+  (condition-case nil
+      ;; Check if file is binary
+      (if (with-temp-buffer ;; (create-file-buffer file)
+            (insert-file-contents path nil 1 512 'replace)
+            (eq buffer-file-coding-system 'no-conversion))
+          (message "Ignoring unsupported binary file \"%s\"." path)
+        (cl-pushnew (list path) gptel-context--alist :test #'equal)
+        (message "File \"%s\" added to context." path)
+        path)
+    (file-missing (message "File \"%s\" does not exist." path))))
+
+;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
+(defalias 'gptel-add-file #'gptel-context-add-file)
+
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
 If CONTEXT is nil, removes the context at point.
 If selection is active, removes all contexts within selection."
-  (interactive)
   (cond
    ((overlayp context)
     (delete-overlay context))
+   ((stringp context)                   ;file
+    (setf (alist-get context gptel-context--alist nil 'remove #'equal) 
+          nil))
    ((region-active-p)
-    (let ((contexts (gptel-context--in-region (current-buffer)
-                                              (region-beginning)
-                                              (region-end))))
-      (when contexts
-        (cl-loop for ctx in contexts do (delete-overlay ctx)))))
+    (when-let ((contexts (gptel-context--in-region (current-buffer)
+                                                   (region-beginning)
+                                                   (region-end))))
+      (cl-loop for ctx in contexts do (delete-overlay ctx))))
    (t
-    (let ((ctx (gptel-context--at-point)))
-      (when ctx
-        (delete-overlay ctx))))))
+    (when-let ((ctx (gptel-context--at-point)))
+      (delete-overlay ctx)))))
 
 (defun gptel-context--make-overlay (start end &optional advance)
   "Highlight the region from START to END."
@@ -158,7 +182,7 @@ If selection is active, removes all contexts within selection."
     (overlay-put overlay 'face 'gptel-context-highlight-face)
     (overlay-put overlay 'gptel-context t)
     (push overlay (alist-get (current-buffer)
-                             gptel-context--overlay-alist))
+                             gptel-context--alist))
     overlay))
 
 ;;;###autoload
@@ -203,15 +227,15 @@ START and END signify the region delimiters."
 (defun gptel-context--collect ()
   "Get the list of all active context overlays."
   ;; Get only the non-degenerate overlays, collect them, and update the overlays variable.
-  (let ((overlay-alist
-         (cl-loop for (buf . ovs) in gptel-context--overlay-alist
-                  when (buffer-live-p buf)
-                  for updated-ovs = (cl-loop for ov in ovs
-                                             when (overlay-start ov)
-                                             collect ov)
-                  when updated-ovs
-                  collect (cons buf updated-ovs))))
-    (setq gptel-context--overlay-alist overlay-alist)))
+  (setq gptel-context--alist
+        (cl-loop for (buf . ovs) in gptel-context--alist
+                 if (buffer-live-p buf)
+                   if (cl-loop for ov in ovs when (overlay-start ov) collect ov)
+                   collect (cons buf it) into elements
+                   end
+                 else if (file-exists-p buf)
+                   collect (list buf) into elements
+                 finally return elements)))
 
 (defun gptel-context--insert-buffer-string (buffer contexts)
   "Insert at point a context string from all CONTEXTS in BUFFER."
@@ -252,16 +276,26 @@ START and END signify the region delimiters."
         (insert "\n..."))
       (insert "\n```")))
 
+(defun gptel-context--insert-file-string (path)
+  "Insert at point the contents of the file at PATH as context."
+  (insert (format "In file `%s`:" (file-name-nondirectory path))
+          "\n\n```\n")
+  (insert-file-contents path)
+  (goto-char (point-max))
+  (insert "\n```\n"))
+
 (defun gptel-context--string-default (context-alist)
   "Format the aggregated gptel context as annotated markdown fragments.
 
 Returns a string.  CONTEXT-ALIST is a structure containing
-context overlays, see `gptel-context--overlay-alist'."
+context overlays, see `gptel-context--alist'."
   (with-temp-buffer
     (insert "Request context:\n\n")
     (cl-loop for (buf . ovs) in context-alist
+             if (bufferp buf)
              do (gptel-context--insert-buffer-string buf ovs)
-             (insert "\n\n")
+             else do (gptel-context--insert-file-string buf)
+             do (insert "\n\n")
              finally return (buffer-string))))
 
 ;;;###autoload
@@ -301,27 +335,42 @@ context overlays, see `gptel-context--overlay-alist'."
              (propertize "C-c C-k" 'face 'help-key-binding) ": cancel, "
              (propertize "q" 'face 'help-key-binding) ": quit"))
       (save-excursion
-        (let ((contexts gptel-context--overlay-alist))
+        (let ((contexts gptel-context--alist))
           (if (length> contexts 0)
               (let (beg ov l1 l2)
                 (pcase-dolist (`(,buf . ,ovs) contexts)
-                  (dolist (source-ov ovs)
-                    (with-current-buffer buf
-                      (setq l1 (line-number-at-pos (overlay-start source-ov))
-                            l2 (line-number-at-pos (overlay-end source-ov))))
+                  (if (bufferp buf)
+                      ;; It's a buffer with some overlay(s)
+                      (dolist (source-ov ovs)
+                        (with-current-buffer buf
+                          (setq l1 (line-number-at-pos (overlay-start source-ov))
+                                l2 (line-number-at-pos (overlay-end source-ov))))
+                        (insert (make-separator-line)
+                                (propertize (format "In buffer %s (lines %d-%d):\n\n"
+                                                    (buffer-name buf) l1 l2)
+                                            'face 'bold))
+                        (setq beg (point))
+                        (insert-buffer-substring
+                         buf (overlay-start source-ov) (overlay-end source-ov))
+                        (setq ov (make-overlay beg (point)))
+                        (overlay-put ov 'gptel-context source-ov)
+                        (overlay-put ov 'gptel-overlay t)
+                        (overlay-put ov 'evaporate t)
+                        (insert "\n"))
+                    ;; BUF is a file path, not a buffer
                     (insert (make-separator-line)
-                            (propertize (format "In buffer %s (lines %d-%d):\n\n"
-                                                (buffer-name buf) l1 l2)
+                            (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
                                         'face 'bold))
                     (setq beg (point))
-                    (insert-buffer-substring
-                     buf (overlay-start source-ov) (overlay-end source-ov))
+                    (insert-file-contents buf)
+                    (goto-char (point-max))
                     (setq ov (make-overlay beg (point)))
-                    (overlay-put ov 'gptel-context source-ov)
+                    (overlay-put ov 'gptel-context buf)
                     (overlay-put ov 'gptel-overlay t)
-                    (insert "\n")))
+                    (overlay-put ov 'evaporate t)
+                    (insert "\n\n")))
                 (goto-char (point-min)))
-            (insert "There are no active contexts in any buffer.")))))
+            (insert "There are no active gptel contexts.")))))
     (display-buffer (current-buffer)
                     `((display-buffer-reuse-window
                        display-buffer-reuse-mode-window
@@ -418,7 +467,7 @@ If non-nil, indicates backward movement.")
   "Confirm pending operations and return to gptel's menu."
   (interactive)
   ;; Delete all the context overlays that have been marked for deletion.
-  (mapc #'delete-overlay
+  (mapc #'gptel-context-remove
         (delq nil (mapcar (lambda (ov)
                             (and
                              (overlay-get ov 'gptel-context-deletion-mark)

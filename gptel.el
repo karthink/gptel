@@ -539,8 +539,13 @@ Currently supported options are:
 
 (defvar-local gptel--old-header-line nil)
 
-(defvar gptel-context--overlay-alist nil
-  "Alist of buffers and their corresponding context chunks.")
+(defvar gptel-context--alist nil
+  "List of gptel's context sources.
+
+Each entry is of the form
+ (buffer . (overlay1 overlay2 ...))
+or
+ (\"path/to/file\").")
 
 
 ;; Utility functions
@@ -931,7 +936,7 @@ Model parameters can be let-bound around calls to this function."
   (declare (indent 1))
   (let* ((gptel--system-message
           ;Add context chunks to system message if required
-          (if (and gptel-context--overlay-alist
+          (if (and gptel-context--alist
                    (eq gptel-use-context 'system))
               (gptel-context--wrap system)
             system))
@@ -1082,7 +1087,7 @@ recent exchanges.
 If the region is active limit the prompt to the region contents
 instead.
 
-If `gptel-context--overlay-alist' is non-nil and the additional
+If `gptel-context--alist' is non-nil and the additional
 context needs to be included with the user prompt, add it.
 
 If PROMPT-END (a marker) is provided, end the prompt contents
@@ -1105,7 +1110,7 @@ there."
                   (gptel--parse-buffer gptel-backend max-entries)))))
         ;; Inject context chunks into the last user prompt if required
         ;; NOTE: prompts is modified in place
-        (when (and gptel-context--overlay-alist
+        (when (and gptel-context--alist
                    (eq gptel-use-context 'user)
                    (> (length prompts) 0))
           (gptel--wrap-user-prompt gptel-backend prompts))
