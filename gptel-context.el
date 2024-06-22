@@ -233,7 +233,7 @@ START and END signify the region delimiters."
                    if (cl-loop for ov in ovs when (overlay-start ov) collect ov)
                    collect (cons buf it) into elements
                    end
-                 else if (file-exists-p buf)
+                 else if (and (stringp buf) (file-exists-p buf))
                    collect (list buf) into elements
                  finally return elements)))
 
@@ -245,33 +245,31 @@ START and END signify the region delimiters."
               "\n\n```" (gptel--strip-mode-suffix (buffer-local-value
                                                    'major-mode buffer))
               "\n")
-      (cl-loop for context in contexts do
-               (progn
-                 (let* ((start (overlay-start context))
-                        (end (overlay-end context)))
-                   (let (lineno column)
-                     (with-current-buffer buffer
-                       (setq lineno (line-number-at-pos start t))
-                       (setq column (save-excursion
-                                      (goto-char start)
-                                      (current-column))))
-                     ;; We do not need to insert a line number indicator if we have two regions
-                     ;; on the same line, because the previous region should have already put the
-                     ;; indicator.
-                     (unless (= previous-line lineno)
-                       (unless (= lineno 1)
-                         (unless is-top-snippet
-                           (insert "\n"))
-                         (insert (format "... (Line %d)\n" lineno))))
-                     (setq previous-line lineno)
-                     (unless (zerop column)
-                       (insert " ..."))
-                     (if is-top-snippet
-                         (setq is-top-snippet nil)
-                       (unless (= previous-line lineno)
-                         (insert "\n"))))
-                   (insert-buffer-substring-no-properties
-                    buffer start end))))
+      (dolist (context contexts)
+        (let* ((start (overlay-start context))
+               (end (overlay-end context))
+               content)
+          (let (lineno column)
+            (with-current-buffer buffer
+              (without-restriction
+                (setq lineno (line-number-at-pos start t)
+                      column (save-excursion (goto-char start)
+                                             (current-column))
+                      content (buffer-substring-no-properties start end))))
+            ;; We do not need to insert a line number indicator if we have two regions
+            ;; on the same line, because the previous region should have already put the
+            ;; indicator.
+            (unless (= previous-line lineno)
+              (unless (= lineno 1)
+                (unless is-top-snippet
+                  (insert "\n"))
+                (insert (format "... (Line %d)\n" lineno))))
+            (setq previous-line lineno)
+            (unless (zerop column) (insert " ..."))
+            (if is-top-snippet
+                (setq is-top-snippet nil)
+              (unless (= previous-line lineno) (insert "\n"))))
+          (insert content)))
       (unless (>= (overlay-end (car (last contexts))) (point-max))
         (insert "\n..."))
       (insert "\n```")))
