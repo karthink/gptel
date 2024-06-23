@@ -69,6 +69,7 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
       - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
+    - [[#include-more-context-with-requests][Include more context with requests]]
     - [[#extra-org-mode-conveniences][Extra Org mode conveniences]]
   - [[#faq][FAQ]]
       - [[#i-want-the-window-to-scroll-automatically-as-the-response-is-inserted][I want the window to scroll automatically as the response is inserted]]
@@ -599,19 +600,27 @@ The above code makes the backend available to select.  If you want it to be the 
 
 (This is also a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel.)
 
-|-----------------------------+------------------------------------------------------------------------------------------------|
-| *Command*                   | Description                                                                                    |
-|-----------------------------+------------------------------------------------------------------------------------------------|
-| =gptel-send=                | Send conversation up to =(point)=, or selection if region is active.  Works anywhere in Emacs. |
-| =gptel=                     | Create a new dedicated chat buffer.  Not required to use gptel.                                |
-| =C-u= =gptel-send=          | Transient menu for preferences, input/output redirection etc.                                  |
-| =gptel-menu=                | /(Same)/                                                                                       |
-|-----------------------------+------------------------------------------------------------------------------------------------|
-| *Command* /(Org mode only)/ |                                                                                                |
-|-----------------------------+------------------------------------------------------------------------------------------------|
-| =gptel-org-set-topic=       | Limit conversation context to an Org heading                                                   |
-| =gptel-org-set-properties=  | Write gptel configuration as Org properties (for self-contained chat logs)                     |
-|-----------------------------+------------------------------------------------------------------------------------------------|
+|----------------------------+------------------------------------------------------------------------------------------------|
+| *To send queries* | Description                                                                                    |
+|----------------------------+------------------------------------------------------------------------------------------------|
+| =gptel-send=               | Send conversation up to =(point)=, or selection if region is active.  Works anywhere in Emacs. |
+| =gptel=                    | Create a new dedicated chat buffer.  Not required to use gptel.                                |
+|----------------------------+------------------------------------------------------------------------------------------------|
+| *To Set options*           |                                                                                                |
+|----------------------------+------------------------------------------------------------------------------------------------|
+| =C-u= =gptel-send=         | Transient menu for preferences, input/output redirection etc.                                  |
+| =gptel-menu=               | /(Same)/                                                                                       |
+|----------------------------+------------------------------------------------------------------------------------------------|
+| *To add context*           |                                                                                                |
+|----------------------------+------------------------------------------------------------------------------------------------|
+| =gptel-add=                | Add a region or buffer to gptel's context.  Will be sent with each request.                    |
+| =gptel-add-file=           | Add a (text-readable) file to gptel's context.                                                 |
+|----------------------------+------------------------------------------------------------------------------------------------|
+| *In Org mode only*         |                                                                                                |
+|----------------------------+------------------------------------------------------------------------------------------------|
+| =gptel-org-set-topic=      | Limit conversation context to an Org heading                                                   |
+| =gptel-org-set-properties= | Write gptel configuration as Org properties (for self-contained chat logs)                     |
+|----------------------------+------------------------------------------------------------------------------------------------|
 
 *** In any buffer:
 
@@ -620,12 +629,14 @@ The above code makes the backend available to select.  If you want it to be the 
 2. If a region is selected, the conversation will be limited to its contents.
 
 3. Call =M-x gptel-send= with a prefix argument to
-- set chat parameters (GPT model, directives etc) for this buffer,
-- to read the prompt from elsewhere or redirect the response elsewhere,
-- or to replace the prompt with the response.
+   - to set chat parameters (GPT model, system message etc) for this buffer,
+   - set quick instructions for the next request,
+   - to add additional context -- regions, buffers or files -- to gptel,
+   - to read the prompt from or redirect the response elsewhere,
+   - or to replace the prompt with the response.
 
-[[https://user-images.githubusercontent.com/8607532/230770018-9ce87644-6c17-44af-bd39-8c899303dce1.png]]
-
+#+html: <img src="https://github.com/karthink/gptel/assets/8607532/3562a6e2-7a5c-4f7e-8e57-bf3c11589c73" align="center" alt="Image showing gptel's menu with some of the available query options.">
+     
 With a region selected, you can also rewrite prose or refactor code from here:
 
 *Code*:
@@ -643,8 +654,8 @@ With a region selected, you can also rewrite prose or refactor code from here:
 2. In the gptel buffer, send your prompt with =M-x gptel-send=, bound to =C-c RET=.
 
 3. Set chat parameters (LLM provider, model, directives etc) for the session by calling =gptel-send= with a prefix argument (=C-u C-c RET=):
-
-[[https://user-images.githubusercontent.com/8607532/224946059-9b918810-ab8b-46a6-b917-549d50c908f2.png]]
+   
+#+html: <img src="https://github.com/karthink/gptel/assets/8607532/eb4867e5-30ac-455f-999f-e17123afb810" align="center" alt="Image showing gptel's menu with some of the available query options.">
 
 That's it. You can go back and edit previous prompts and responses if you want.
 
@@ -653,6 +664,20 @@ The default mode is =markdown-mode= if available, else =text-mode=.  You can set
 **** Save and restore your chat sessions
 
 Saving the file will save the state of the conversation as well.  To resume the chat, open the file and turn on =gptel-mode= before editing the buffer.
+
+*** Include more context with requests
+
+By default, gptel will query the LLM with the active region or the buffer up to the cursor.  Often it can be helpful to provide the LLM with additional context from outside the current buffer, such as when asking questions about a (possibly changing) code buffer and auxiliary files from a chat session.
+
+You can include additional text regions, buffers or files with gptel's queries.  This additional context is "live" and not a snapshot.  Once added, the regions, buffers or files are scanned and included at the time of each query.
+
+You can add a selected region, buffer or file to gptel's context from the menu, or call =gptel-add=.  (To add a file use =gptel-add= in Dired or use the dedicated =gptel-add-file= command.)
+
+You can examine the active context from the menu:
+#+html: <img src="https://github.com/karthink/gptel/assets/8607532/63cd7fc8-6b3e-42ae-b6ca-06ff935bae9c" align="center" alt="Image showing gptel's menu with the "inspect context" command.">
+
+And then browse through or remove context from the context buffer:
+#+html: <img src="https://github.com/karthink/gptel/assets/8607532/79a5ffe8-3d63-4bf7-9bf6-0457ab61bf2a" align="center" alt="Image showing gptel's context buffer.">
 
 *** Extra Org mode conveniences
 
