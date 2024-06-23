@@ -87,7 +87,7 @@ Intended for internal use only.")
                        gptel-temperature)))
     (when gptel-max-tokens
       (setq options-plist
-            (plist-put options-plist :num_predict
+            (plist-put options-plist :num_ctx
                        gptel-max-tokens)))
     (when options-plist
       (plist-put prompts-plist :options options-plist))
