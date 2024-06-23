@@ -4,6 +4,7 @@
 
 gptel is a simple Large Language Model chat client for Emacs, with support for multiple models and backends.
 
+#+html: <div align="center">
 | LLM Backend        | Supports | Requires                   |
 |--------------------+----------+----------------------------|
 | ChatGPT            | ✓        | [[https://platform.openai.com/account/api-keys][API key]]                    |
@@ -22,6 +23,7 @@ gptel is a simple Large Language Model chat client for Emacs, with support for m
 | Groq               | ✓        | [[https://console.groq.com/keys][API key]]                    |
 | OpenRouter         | ✓        | [[https://openrouter.ai/keys][API key]]                    |
 | PrivateGPT         | ✓        | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
+#+html: </div>
 
 *General usage*: ([[https://www.youtube.com/watch?v=bsRnh_brggM][YouTube Demo]])
 
