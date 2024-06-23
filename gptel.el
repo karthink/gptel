@@ -83,8 +83,8 @@
 ;;
 ;; To use this in any buffer:
 ;;
-;; - Call `gptel-send' to send the text up to the cursor.  Select a region to
-;;   send only the region.
+;; - Call `gptel-send' to send the buffer's text up to the cursor.  Select a
+;;   region to send only the region.
 ;;
 ;; - You can select previous prompts and responses to continue the conversation.
 ;;
@@ -95,7 +95,6 @@
 ;; To use this in a dedicated buffer:
 ;; 
 ;; - M-x gptel: Start a chat session
-;; - C-u M-x gptel: Start another session or multiple independent chat sessions
 ;;
 ;; - In the chat session: Press `C-c RET' (`gptel-send') to send your prompt.
 ;;   Use a prefix argument (`C-u C-c RET') to access a menu.  In this menu you
@@ -106,6 +105,17 @@
 ;; - You can save this buffer to a file.  When opening this file, turn on
 ;;   `gptel-mode' before editing it to restore the conversation state and
 ;;   continue chatting.
+;;
+;; Include more context with requests:
+;;
+;; If you want to provide the LLM with more context, you can add arbitrary
+;; regions, buffers or files to the query with `gptel-add'.  (Call `gptel-add'
+;; in Dired or use the dedicated `gptel-add-file' to add files.)
+;;
+;; You can also add context from gptel's menu instead (gptel-send with a prefix
+;; arg), as well as examine or modify context.
+;;
+;; When context is available, gptel will include it with each LLM query.
 ;;
 ;; gptel in Org mode:
 ;;
