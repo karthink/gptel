@@ -1,27 +1,29 @@
 #+title: gptel: A simple LLM client for Emacs
 
- [[https://elpa.nongnu.org/nongnu/gptel.svg][file:https://elpa.nongnu.org/nongnu/gptel.svg]] [[https://stable.melpa.org/packages/gptel-badge.svg][file:https://stable.melpa.org/packages/gptel-badge.svg]] [[https://melpa.org/#/gptel][file:https://melpa.org/packages/gptel-badge.svg]]
+[[https://elpa.nongnu.org/nongnu/gptel.svg][file:https://elpa.nongnu.org/nongnu/gptel.svg]] [[https://stable.melpa.org/packages/gptel-badge.svg][file:https://stable.melpa.org/packages/gptel-badge.svg]] [[https://melpa.org/#/gptel][file:https://melpa.org/packages/gptel-badge.svg]]
 
-gptel is a simple Large Language Model chat client for Emacs, with support for multiple models and backends.
+gptel is a simple Large Language Model chat client for Emacs, with support for multiple models and backends.  It works in the spirit of Emacs, available at any time and uniformly in any buffer.
 
+#+html: <div align="center">
 | LLM Backend        | Supports | Requires                   |
 |--------------------+----------+----------------------------|
-| ChatGPT            | ✓        | [[https://platform.openai.com/account/api-keys][API key]]                    |
-| Azure              | ✓        | Deployment and API key     |
-| Ollama             | ✓        | [[https://ollama.ai/][Ollama running locally]]     |
-| GPT4All            | ✓        | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
-| Gemini             | ✓        | [[https://makersuite.google.com/app/apikey][API key]]                    |
-| Llama.cpp          | ✓        | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]]  |
-| Llamafile          | ✓        | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
-| Kagi FastGPT       | ✓        | [[https://kagi.com/settings?p=api][API key]]                    |
-| Kagi Summarizer    | ✓        | [[https://kagi.com/settings?p=api][API key]]                    |
-| together.ai        | ✓        | [[https://api.together.xyz/settings/api-keys][API key]]                    |
-| Anyscale           | ✓        | [[https://docs.endpoints.anyscale.com/][API key]]                    |
-| Perplexity         | ✓        | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
-| Anthropic (Claude) | ✓        | [[https://www.anthropic.com/api][API key]]                    |
-| Groq               | ✓        | [[https://console.groq.com/keys][API key]]                    |
-| OpenRouter         | ✓        | [[https://openrouter.ai/keys][API key]]                    |
-| PrivateGPT         | ✓        | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
+| ChatGPT            | ✓      | [[https://platform.openai.com/account/api-keys][API key]]                    |
+| Azure              | ✓      | Deployment and API key     |
+| Ollama             | ✓      | [[https://ollama.ai/][Ollama running locally]]     |
+| GPT4All            | ✓      | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
+| Gemini             | ✓      | [[https://makersuite.google.com/app/apikey][API key]]                    |
+| Llama.cpp          | ✓      | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]]  |
+| Llamafile          | ✓      | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
+| Kagi FastGPT       | ✓      | [[https://kagi.com/settings?p=api][API key]]                    |
+| Kagi Summarizer    | ✓      | [[https://kagi.com/settings?p=api][API key]]                    |
+| together.ai        | ✓      | [[https://api.together.xyz/settings/api-keys][API key]]                    |
+| Anyscale           | ✓      | [[https://docs.endpoints.anyscale.com/][API key]]                    |
+| Perplexity         | ✓      | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
+| Anthropic (Claude) | ✓      | [[https://www.anthropic.com/api][API key]]                    |
+| Groq               | ✓      | [[https://console.groq.com/keys][API key]]                    |
+| OpenRouter         | ✓      | [[https://openrouter.ai/keys][API key]]                    |
+| PrivateGPT         | ✓      | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
+#+html: </div>
 
 *General usage*: ([[https://www.youtube.com/watch?v=bsRnh_brggM][YouTube Demo]])
 
@@ -83,7 +85,6 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
   - [[#additional-configuration][Additional Configuration]]
   - [[#alternatives][Alternatives]]
     - [[#extensions-using-gptel][Extensions using gptel]]
-  - [[#breaking-changes][Breaking Changes]]
   - [[#acknowledgments][Acknowledgments]]
 
 ** Installation
@@ -600,27 +601,33 @@ The above code makes the backend available to select.  If you want it to be the 
 
 (This is also a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel.)
 
-|----------------------------+------------------------------------------------------------------------------------------------|
+|-------------------+------------------------------------------------------------------------------------------------|
 | *To send queries* | Description                                                                                    |
-|----------------------------+------------------------------------------------------------------------------------------------|
-| =gptel-send=               | Send conversation up to =(point)=, or selection if region is active.  Works anywhere in Emacs. |
-| =gptel=                    | Create a new dedicated chat buffer.  Not required to use gptel.                                |
-|----------------------------+------------------------------------------------------------------------------------------------|
-| *To Set options*           |                                                                                                |
-|----------------------------+------------------------------------------------------------------------------------------------|
-| =C-u= =gptel-send=         | Transient menu for preferences, input/output redirection etc.                                  |
-| =gptel-menu=               | /(Same)/                                                                                       |
-|----------------------------+------------------------------------------------------------------------------------------------|
-| *To add context*           |                                                                                                |
-|----------------------------+------------------------------------------------------------------------------------------------|
-| =gptel-add=                | Add a region or buffer to gptel's context.  Will be sent with each request.                    |
-| =gptel-add-file=           | Add a (text-readable) file to gptel's context.                                                 |
-|----------------------------+------------------------------------------------------------------------------------------------|
-| *In Org mode only*         |                                                                                                |
-|----------------------------+------------------------------------------------------------------------------------------------|
-| =gptel-org-set-topic=      | Limit conversation context to an Org heading                                                   |
-| =gptel-org-set-properties= | Write gptel configuration as Org properties (for self-contained chat logs)                     |
-|----------------------------+------------------------------------------------------------------------------------------------|
+|-------------------+------------------------------------------------------------------------------------------------|
+| =gptel-send=      | Send conversation up to =(point)=, or selection if region is active.  Works anywhere in Emacs. |
+| =gptel=           | Create a new dedicated chat buffer.  Not required to use gptel.                                |
+|-------------------+------------------------------------------------------------------------------------------------|
+
+|--------------------+---------------------------------------------------------------|
+| *To Set options*   |                                                               |
+|--------------------+---------------------------------------------------------------|
+| =C-u= =gptel-send= | Transient menu for preferences, input/output redirection etc. |
+| =gptel-menu=       | /(Same)/                                                      |
+|--------------------+---------------------------------------------------------------|
+
+|------------------+-----------------------------------------------------------------------------|
+| *To add context* |                                                                             |
+|------------------+-----------------------------------------------------------------------------|
+| =gptel-add=      | Add a region or buffer to gptel's context.  Will be sent with each request. |
+| =gptel-add-file= | Add a (text-readable) file to gptel's context.                              |
+|------------------+-----------------------------------------------------------------------------|
+
+|----------------------------+----------------------------------------------------------------------------|
+| *In Org mode only*         |                                                                            |
+|----------------------------+----------------------------------------------------------------------------|
+| =gptel-org-set-topic=      | Limit conversation context to an Org heading                               |
+| =gptel-org-set-properties= | Write gptel configuration as Org properties (for self-contained chat logs) |
+|----------------------------+----------------------------------------------------------------------------|
 
 *** In any buffer:
 
@@ -808,34 +815,51 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
   all)
 #+end_src
 
-|---------------------------+---------------------------------------------------------------------|
-| *Connection options*        |                                                                     |
-|---------------------------+---------------------------------------------------------------------|
-| =gptel-use-curl=            | Use Curl (default), fallback to Emacs' built-in =url=.                |
-| =gptel-proxy=               | Proxy server for requests, passed to curl via =--proxy=.              |
-| =gptel-api-key=             | Variable/function that returns the API key for the active backend.  |
-|---------------------------+---------------------------------------------------------------------|
+|----------------------+--------------------------------------------------------------------|
+| *Connection options* |                                                                    |
+|----------------------+--------------------------------------------------------------------|
+| =gptel-use-curl=     | Use Curl (default), fallback to Emacs' built-in =url=.             |
+| =gptel-proxy=        | Proxy server for requests, passed to curl via =--proxy=.           |
+| =gptel-api-key=      | Variable/function that returns the API key for the active backend. |
+|----------------------+--------------------------------------------------------------------|
 
-|-------------------+---------------------------------------------------------|
-| *LLM options*       | /(Note: not supported uniformly across LLMs)/             |
-|-------------------+---------------------------------------------------------|
-| =gptel-backend=     | Default LLM Backend.                                    |
-| =gptel-model=       | Default model to use, depends on the backend.           |
-| =gptel-stream=      | Enable streaming responses, if the backend supports it. |
-| =gptel-directives=  | Alist of system directives, can switch on the fly.      |
-| =gptel-max-tokens=  | Maximum token count (in query + response).              |
-| =gptel-temperature= | Randomness in response text, 0 to 2.                    |
-|-------------------+---------------------------------------------------------|
+|-----------------------+---------------------------------------------------------|
+| *LLM request options* | /(Note: not supported uniformly across LLMs)/           |
+|-----------------------+---------------------------------------------------------|
+| =gptel-backend=       | Default LLM Backend.                                    |
+| =gptel-model=         | Default model to use, depends on the backend.           |
+| =gptel-stream=        | Enable streaming responses, if the backend supports it. |
+| =gptel-directives=    | Alist of system directives, can switch on the fly.      |
+| =gptel-max-tokens=    | Maximum token count (in query + response).              |
+| =gptel-temperature=   | Randomness in response text, 0 to 2.                    |
+| =gptel-use-context=   | How/whether to include additional context               |
+|-----------------------+---------------------------------------------------------|
 
-|-----------------------------+----------------------------------------------------------------|
+|-------------------------------+----------------------------------------------------------------|
 | *Chat UI options*             |                                                                |
-|-----------------------------+----------------------------------------------------------------|
+|-------------------------------+----------------------------------------------------------------|
 | =gptel-default-mode=          | Major mode for dedicated chat buffers.                         |
+| =gptel-track-response=        | Distinguish between user messages and LLM responses?           |
 | =gptel-prompt-prefix-alist=   | Text inserted before queries.                                  |
 | =gptel-response-prefix-alist= | Text inserted before responses.                                |
 | =gptel-use-header-line=       | Display status messages in header-line (default) or minibuffer |
 | =gptel-display-buffer-action= | Placement of the gptel chat buffer.                            |
-|-----------------------------+----------------------------------------------------------------|
+|-------------------------------+----------------------------------------------------------------|
+
+|-------------------------------+-------------------------------------------------------|
+| *Org mode UI options*         |                                                       |
+|-------------------------------+-------------------------------------------------------|
+| =gptel-org-branching-context= | Make each outline path a separate conversation branch |
+|-------------------------------+-------------------------------------------------------|
+
+|---------------------------------+------------------------------------------------------------|
+| *Hooks for customization*       |                                                            |
+|---------------------------------+------------------------------------------------------------|
+| =gptel-pre-response-hook=       | Runs before inserting the LLM response into the buffer     |
+| =gptel-post-response-functions= | Runs after inserting the full LLM response into the buffer |
+| =gptel-post-stream-hook=        | Runs after each streaming insertion                        |
+| =gptel-context-wrap-function=   | To include additional context formatted your way           |
+|---------------------------------+------------------------------------------------------------|
 
 ** COMMENT Will you add feature X?
 
@@ -876,7 +900,7 @@ These are packages that use gptel to provide additional functionality
 - [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate Commit Messages within magit-status Buffer using gptel.
 - [[https://github.com/armindarvish/consult-web][consult-web]]: Provides gptel as a source when querying multiple local and online sources.
 
-** Breaking Changes
+** COMMENT Breaking Changes
 
 - =gptel-post-response-hook= has been renamed to =gptel-post-response-functions=, and functions in this hook are now called with two arguments: the start and end buffer positions of the response.  This should make it easy to act on the response text without having to locate it first.
 
@@ -890,7 +914,9 @@ These are packages that use gptel to provide additional functionality
 
 - [[https://github.com/algal][Alexis Gallagher]] and [[https://github.com/d1egoaz][Diego Alvarez]] for fixing a nasty multi-byte bug with =url-retrieve=.
 - [[https://github.com/tarsius][Jonas Bernoulli]] for the Transient library.
-
+- [[https://github.com/daedsidog][daedsidog]] for adding context support to gptel.
+- [[https://github.com/Aquan1412][Aquan1412]] for adding PrivateGPT support to gptel.
+- [[https://github.com/r0man][r0man]] for improving gptel's Curl integration.
 
 # Local Variables:
 # toc-org-max-depth: 4
