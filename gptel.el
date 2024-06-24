@@ -803,20 +803,39 @@ file."
                       (propertize " Ready" 'face 'success)
                       '(:eval
                         (let ((system
-                               (format "[Prompt: %s]"
-                                (or (car-safe (rassoc gptel--system-message gptel-directives))
-                                 (truncate-string-to-width gptel--system-message 15 nil nil t)))))
+                               (propertize
+                                (buttonize
+                                 (format "[Prompt: %s]"
+                                  (or (car-safe (rassoc gptel--system-message gptel-directives))
+                                   (truncate-string-to-width gptel--system-message 15 nil nil t)))
+                                 (lambda (&rest _) (gptel-system-prompt)))
+                                'mouse-face 'highlight
+                                'help-echo "System message for session"))
+                              (context
+                               (and gptel-context--alist
+                                (cl-loop for entry in gptel-context--alist
+                                 if (bufferp (car entry)) count it into bufs
+                                 else count (stringp (car entry)) into files
+                                 finally return
+                                 (propertize
+                                  (buttonize
+                                   (concat "[Context: "
+                                    (and (> bufs 0) (format "%d buf" bufs))
+                                    (and (> bufs 1) "s")
+                                    (and (> bufs 0) (> files 0) ", ")
+                                    (and (> files 0) (format "%d file" files))
+                                    (and (> files 1) "s")
+                                    "]")
+                                   (lambda (&rest _)
+                                     (require 'gptel-context)
+                                     (gptel-context--buffer-setup)))
+                                  'mouse-face 'highlight
+                                  'help-echo "Active gptel context")))))
                          (concat
                           (propertize
                            " " 'display
-                           `(space :align-to (- right ,(+ 2 (length gptel-model) (length system)))))
-                          (propertize
-                           (buttonize system
-                            (lambda (&rest _) (gptel-system-prompt)))
-                           'mouse-face 'highlight
-                           'help-echo
-                           "System message for buffer")
-                          " "
+                           `(space :align-to (- right ,(+ 4 (length gptel-model) (length system) (length context)))))
+                          context " " system " "
                           (propertize
                            (buttonize (concat "[" gptel-model "]")
                             (lambda (&rest _) (gptel-menu)))

@@ -165,7 +165,13 @@ If CONTEXT is nil, removes the context at point.
 If selection is active, removes all contexts within selection."
   (cond
    ((overlayp context)
-    (delete-overlay context))
+    (delete-overlay context)
+    ;; FIXME: Quadratic cost when clearing a bunch of contexts at once
+    (unless
+        (cl-loop
+         for ov in (alist-get (current-buffer) gptel-context--alist)
+         thereis (overlay-start ov))
+      (setf (alist-get (current-buffer) gptel-context--alist nil 'remove) nil)))
    ((stringp context)                   ;file
     (setf (alist-get context gptel-context--alist nil 'remove #'equal) 
           nil))
