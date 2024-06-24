@@ -615,12 +615,12 @@ The above code makes the backend available to select.  If you want it to be the 
 | =gptel-menu=       | /(Same)/                                                      |
 |--------------------+---------------------------------------------------------------|
 
-|------------------+-----------------------------------------------------------------------------|
-| *To add context* |                                                                             |
-|------------------+-----------------------------------------------------------------------------|
-| =gptel-add=      | Add a region or buffer to gptel's context.  Will be sent with each request. |
-| =gptel-add-file= | Add a (text-readable) file to gptel's context.                              |
-|------------------+-----------------------------------------------------------------------------|
+|------------------+---------------------------------------------------------------------------|
+| *To add context* | Will be sent with each request. (Also available from the Transient menu)  |
+|------------------+---------------------------------------------------------------------------|
+| =gptel-add=      | Add a region or buffer to gptel's context.  Add marked files if in Dired. |
+| =gptel-add-file= | Add a (text-readable) file to gptel's context.                            |
+|------------------+---------------------------------------------------------------------------|
 
 |----------------------------+----------------------------------------------------------------------------|
 | *In Org mode only*         |                                                                            |
@@ -635,9 +635,9 @@ The above code makes the backend available to select.  If you want it to be the 
 
 2. If a region is selected, the conversation will be limited to its contents.
 
-3. Call =M-x gptel-send= with a prefix argument to
+3. Call =M-x gptel-send= with a prefix argument (~C-u~) to
    - to set chat parameters (GPT model, system message etc) for this buffer,
-   - set quick instructions for the next request,
+   - include quick instructions for the next request only,
    - to add additional context -- regions, buffers or files -- to gptel,
    - to read the prompt from or redirect the response elsewhere,
    - or to replace the prompt with the response.
@@ -674,7 +674,7 @@ Saving the file will save the state of the conversation as well.  To resume the 
 
 *** Include more context with requests
 
-By default, gptel will query the LLM with the active region or the buffer up to the cursor.  Often it can be helpful to provide the LLM with additional context from outside the current buffer, such as when asking questions about a (possibly changing) code buffer and auxiliary files from a chat session.
+By default, gptel will query the LLM with the active region or the buffer contents up to the cursor.  Often it can be helpful to provide the LLM with additional context from outside the current buffer. For example, when you're in a chat buffer but want to ask questions about a (possibly changing) code buffer and auxiliary project files.
 
 You can include additional text regions, buffers or files with gptel's queries.  This additional context is "live" and not a snapshot.  Once added, the regions, buffers or files are scanned and included at the time of each query.
 
@@ -899,6 +899,7 @@ These are packages that use gptel to provide additional functionality
 - [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
 - [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate Commit Messages within magit-status Buffer using gptel.
 - [[https://github.com/armindarvish/consult-web][consult-web]]: Provides gptel as a source when querying multiple local and online sources.
+- [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  (Note that gptel includes this feature as well (via =gptel-org-branching-context=), but requires a recent version of Org mode (9.67 or later) to be installed.)
 
 ** COMMENT Breaking Changes
 
