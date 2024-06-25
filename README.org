@@ -41,7 +41,7 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/8607532/278854024-a
 - Supports conversations and multiple independent sessions.
 - Save chats as regular Markdown/Org/Text files and resume them later.
 - You can go back and edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.
-- Don't like gptel's workflow? Use it to create your own for any supported model/backend with a [[https://github.com/karthink/gptel/wiki#defining-custom-gptel-commands][simple API]].
+- Don't like gptel's workflow? Use it to create your own for any supported model/backend with a [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][simple API]].
 
 gptel uses Curl if available, but falls back to url-retrieve to work without external dependencies.
 
@@ -615,12 +615,12 @@ The above code makes the backend available to select.  If you want it to be the 
 | =gptel-menu=       | /(Same)/                                                      |
 |--------------------+---------------------------------------------------------------|
 
-|------------------+--------------------------------------------------------------------------------------|
-| *To add context* | Also available from the Transient menu                                               |
-|------------------+--------------------------------------------------------------------------------------|
-| =gptel-add=      | Add/remove a region or buffer to gptel's context.  Add/remove marked files in Dired. |
-| =gptel-add-file= | Add a (text-readable) file to gptel's context.                                       |
-|------------------+--------------------------------------------------------------------------------------|
+|------------------+-----------------------------------------------------------------------------------------|
+| *To add context* |                                                                                         |
+|------------------+-----------------------------------------------------------------------------------------|
+| =gptel-add=      | Add/remove a region or buffer to gptel's context.  Add/remove marked files in Dired.    |
+| =gptel-add-file= | Add a (text-readable) file to gptel's context.  Also available from the transient menu. |
+|------------------+-----------------------------------------------------------------------------------------|
 
 |----------------------------+----------------------------------------------------------------------------|
 | *In Org mode only*         |                                                                            |
@@ -635,7 +635,7 @@ The above code makes the backend available to select.  If you want it to be the 
 
 2. If a region is selected, the conversation will be limited to its contents.
 
-3. Call =M-x gptel-send= with a prefix argument (~C-u~) to
+3. Call =M-x gptel-send= with a prefix argument (~C-u~)
    - to set chat parameters (GPT model, system message etc) for this buffer,
    - include quick instructions for the next request only,
    - to add additional context -- regions, buffers or files -- to gptel,
@@ -753,7 +753,7 @@ Now these will be enabled whenever you send a query from the transient menu.  If
 (keymap-global-set "<f6>" "C-u C-c <return> <return>")
 #+end_src
 
-Or see this [[https://github.com/karthink/gptel/wiki#save-transient-flags][wiki entry]].
+Or see this [[https://github.com/karthink/gptel/wiki/Commonly-requested-features#save-transient-flags][wiki entry]].
 
 #+html: </details>
 #+html: <details><summary>
@@ -762,7 +762,7 @@ Or see this [[https://github.com/karthink/gptel/wiki#save-transient-flags][wiki 
 
 gptel's default usage pattern is simple, and will stay this way: Read input in any buffer and insert the response below it.  Some custom behavior is possible with the transient menu (=C-u M-x gptel-send=).
 
-For more programmable usage, gptel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki][wiki]] for examples.
+For more programmable usage, gptel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][wiki]] for examples.
 
 #+html: </details>
 #+html: <details><summary>
@@ -867,7 +867,7 @@ Maybe, I'd like to experiment a bit more first.  Features added since the incept
 - Curl support (=gptel-use-curl=)
 - Streaming responses (=gptel-stream=)
 - Cancelling requests in progress (=gptel-abort=)
-- General API for writing your own commands (=gptel-request=, [[https://github.com/karthink/gptel/wiki][wiki]])
+- General API for writing your own commands (=gptel-request=, [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][wiki]])
 - Dispatch menus using Transient (=gptel-send= with a prefix arg)
 - Specifying the conversation context size
 - GPT-4 support
