@@ -727,27 +727,27 @@ Valid JSON unless NO-JSON is t."
 (defun gptel--restore-state ()
   "Restore gptel state when turning on `gptel-mode'."
   (when (buffer-file-name)
-    (pcase major-mode
-      ('org-mode
-       (require 'gptel-org)
-       (gptel-org--restore-state))
-      (_ (when gptel--bounds
-           (mapc (pcase-lambda (`(,beg . ,end))
-                         (put-text-property beg end 'gptel 'response))
-                 gptel--bounds)
-           (message "gptel chat restored."))
-         (when gptel--backend-name
-           (if-let ((backend (alist-get
-                              gptel--backend-name gptel--known-backends
-                              nil nil #'equal)))
-               (setq-local gptel-backend backend)
-             (message
-               (substitute-command-keys
-                (concat
-                 "Could not activate gptel backend \"%s\"!  "
-                 "Switch backends with \\[universal-argument] \\[gptel-send]"
-                 " before using gptel."))
-               gptel--backend-name)))))))
+    (if (derived-mode-p 'org-mode)
+        (progn
+          (require 'gptel-org)
+          (gptel-org--restore-state))
+      (when gptel--bounds
+        (mapc (pcase-lambda (`(,beg . ,end))
+                (put-text-property beg end 'gptel 'response))
+              gptel--bounds)
+        (message "gptel chat restored."))
+      (when gptel--backend-name
+        (if-let ((backend (alist-get
+                           gptel--backend-name gptel--known-backends
+                           nil nil #'equal)))
+            (setq-local gptel-backend backend)
+          (message
+           (substitute-command-keys
+            (concat
+             "Could not activate gptel backend \"%s\"!  "
+             "Switch backends with \\[universal-argument] \\[gptel-send]"
+             " before using gptel."))
+           gptel--backend-name))))))
 
 (defun gptel--save-state ()
   "Write the gptel state to the buffer.
@@ -755,24 +755,24 @@ Valid JSON unless NO-JSON is t."
 This saves chat metadata when writing the buffer to disk.  To
 restore a chat session, turn on `gptel-mode' after opening the
 file."
-  (pcase major-mode
-    ('org-mode
-     (require 'gptel-org)
-     (gptel-org--save-state))
-    (_ (let ((print-escape-newlines t))
-         (save-excursion
-           (save-restriction
-             (add-file-local-variable 'gptel-model gptel-model)
-             (add-file-local-variable 'gptel--backend-name
-                                      (gptel-backend-name gptel-backend))
-             (unless (equal (default-value 'gptel-temperature) gptel-temperature)
-               (add-file-local-variable 'gptel-temperature gptel-temperature))
-             (unless (string= (default-value 'gptel--system-message)
-                              gptel--system-message)
-               (add-file-local-variable 'gptel--system-message gptel--system-message))
-             (when gptel-max-tokens
-               (add-file-local-variable 'gptel-max-tokens gptel-max-tokens))
-             (add-file-local-variable 'gptel--bounds (gptel--get-buffer-bounds))))))))
+  (if (derived-mode-p 'org-mode)
+      (progn
+        (require 'gptel-org)
+        (gptel-org--save-state))
+    (let ((print-escape-newlines t))
+      (save-excursion
+        (save-restriction
+          (add-file-local-variable 'gptel-model gptel-model)
+          (add-file-local-variable 'gptel--backend-name
+                                   (gptel-backend-name gptel-backend))
+          (unless (equal (default-value 'gptel-temperature) gptel-temperature)
+            (add-file-local-variable 'gptel-temperature gptel-temperature))
+          (unless (string= (default-value 'gptel--system-message)
+                           gptel--system-message)
+            (add-file-local-variable 'gptel--system-message gptel--system-message))
+          (when gptel-max-tokens
+            (add-file-local-variable 'gptel-max-tokens gptel-max-tokens))
+          (add-file-local-variable 'gptel--bounds (gptel--get-buffer-bounds)))))))
 
 
 ;; Minor mode and UI
@@ -790,7 +790,8 @@ file."
     map)
   (if gptel-mode
       (progn
-        (unless (memq major-mode '(org-mode markdown-mode text-mode))
+        (unless (or (derived-mode-p 'org-mode 'markdown-mode)
+                    (eq major-mode 'text-mode))
           (gptel-mode -1)
           (user-error (format "`gptel-mode' is not supported in `%s'." major-mode)))
         (add-hook 'before-save-hook #'gptel--save-state nil t)
@@ -1194,9 +1195,9 @@ hook."
 Currently only `org-mode' is handled.
 
 BUFFER is the LLM interaction buffer."
-  (pcase (buffer-local-value 'major-mode buffer)
-    ('org-mode (gptel--convert-markdown->org content))
-    (_ content)))
+  (if (with-current-buffer buffer (derived-mode-p 'org-mode))
+      (gptel--convert-markdown->org content)
+    content))
 
 (defun gptel--url-get-response (info &optional callback)
   "Fetch response to prompt in INFO from the LLM.
