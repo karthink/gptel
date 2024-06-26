@@ -80,7 +80,8 @@ Intended for internal use only.")
            :stream ,(or (and gptel-stream gptel-use-curl
                          (gptel-backend-stream gptel-backend))
                      :json-false)))
-        options-plist)
+        ;; TODO num_ctx chosen according to #330, make customizable
+        (options-plist '(:num_ctx 8192)))
     (when gptel-temperature
       (setq options-plist
             (plist-put options-plist :temperature
