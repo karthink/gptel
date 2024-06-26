@@ -491,9 +491,10 @@ Register a backend with
   :endpoint "/openai/v1/chat/completions"
   :stream t
   :key "your-api-key"                   ;can be a function that returns the key
-  :models '("mixtral-8x7b-32768"
-            "gemma-7b-it"
-            "llama2-70b-4096"))
+  :models '("llama3-70b-8192"
+            "llama3-8b-8192"
+            "mixtral-8x7b-32768"
+            "gemma-7b-it"))
 #+end_src
 
 You can pick this backend from the menu when using gptel (see [[#usage][Usage]]).  Note that Groq is fast enough that you could easily set =:stream nil= and still get near-instant responses.
@@ -510,9 +511,10 @@ The above code makes the backend available to select.  If you want it to be the 
         :endpoint "/openai/v1/chat/completions"
         :stream t
         :key "your-api-key"
-        :models '("mixtral-8x7b-32768"
-                  "gemma-7b-it"
-                  "llama2-70b-4096")))
+        :models '("llama3-70b-8192"
+                  "llama3-8b-8192"
+                  "mixtral-8x7b-32768"
+                  "gemma-7b-it")))
 #+end_src
 
 #+html: </details>
