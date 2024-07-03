@@ -294,7 +294,8 @@ non-nil (default), display a message afterwards."
     (org-entry-put pt "GPTEL_TEMPERATURE"
                    (number-to-string gptel-temperature)))
   (org-entry-put pt "GPTEL_SYSTEM"
-                 (string-replace "\n" "\\n" gptel--system-message))   
+                 (when gptel--system-message
+                   (string-replace "\n" "\\n" gptel--system-message)))
   (when gptel-max-tokens
     (org-entry-put
      pt "GPTEL_MAX_TOKENS" (number-to-string gptel-max-tokens)))

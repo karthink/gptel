@@ -110,7 +110,10 @@
                   (list :text (string-trim
                                (buffer-substring-no-properties (point-min) (point-max)))))
             prompts))
-    (cl-callf (lambda (msg) (concat gptel--system-message "\n\n" msg))
+    (cl-callf (lambda (msg)
+                (if gptel--system-message
+                    (concat gptel--system-message "\n\n" msg)
+                  msg))
         (thread-first (car prompts)
                       (plist-get :parts)
                       (plist-get :text)))

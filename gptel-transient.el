@@ -58,6 +58,9 @@ Meant to be called when `gptel-menu' is active."
                        (concat "\n\n" (substring s 1))))
                   args))
 
+(defconst gptel--no-system-message-description "[No system message]"
+  "Description displayed when no system message is active.")
+
 (defun gptel--instructions-make-overlay (text &optional ov)
   "TODO"
   (save-excursion
@@ -282,10 +285,12 @@ Also format its value in the Transient menu."
   ;; :incompatible '(("-m" "-n" "-k" "-e"))
   [:description
    (lambda ()
-     (string-replace
-      "\n" "⮐ "
-      (truncate-string-to-width
-       gptel--system-message (max (- (window-width) 12) 14) nil nil t)))
+     (if gptel--system-message
+         (string-replace
+          "\n" "⮐ "
+          (truncate-string-to-width
+           gptel--system-message (max (- (window-width) 12) 14) nil nil t))
+       gptel--no-system-message-description))
    [""
     "Instructions"
     ("s" "Set system message" gptel-system-prompt :transient t)
@@ -397,20 +402,27 @@ Also format its value in the Transient menu."
        ;; and infixes when going through `gptel-menu'.
        ;; TODO: Raise an issue with Transient.
        collect (list (key-description (list key))
-                     (concat (capitalize name) " "
-                             (propertize " " 'display '(space :align-to 20))
-                             (propertize
-                              (concat
-                               "("
-                               (string-replace
-                                "\n" " "
-                                (truncate-string-to-width prompt (- width 30) nil nil t))
-                               ")")
-                              'face 'shadow))
+                     (if prompt
+                         (concat (capitalize name) " "
+                                 (propertize " " 'display '(space :align-to 20))
+                                 (propertize
+                                  (concat
+                                   "("
+                                   (string-replace
+                                    "\n" " "
+                                    (truncate-string-to-width
+                                     prompt (- width 30) nil nil t))
+                                   ")")
+                                  'face 'shadow))
+                       (capitalize name))
                      `(lambda () (interactive)
                         (message "Directive: %s"
-                         ,(string-replace "\n" "⮐ "
-                           (truncate-string-to-width prompt 100 nil nil t)))
+                                 ,(if prompt
+                                      (string-replace
+                                       "\n" "⮐ "
+                                       (truncate-string-to-width
+                                        prompt 100 nil nil t))
+                                    gptel--no-system-message-description))
                         (gptel--set-with-scope 'gptel--system-message ,prompt
                          gptel--set-buffer-locally))
 		     :transient 'transient--do-return)
@@ -441,10 +453,13 @@ More extensive system messages can be useful for specific tasks.
 
 Customize `gptel-directives' for task-specific prompts."
   [:description
-   (lambda () (string-replace
+   (lambda ()
+     (if gptel--system-message
+         (string-replace
           "\n" "⮐ "
           (truncate-string-to-width
-           gptel--system-message (max (- (window-width) 12) 14) nil nil t)))
+           gptel--system-message (max (- (window-width) 12) 14) nil nil t))
+       gptel--no-system-message-description))
    [(gptel--suffix-system-message)]
    [(gptel--infix-variable-scope)]]
    [:class transient-column
@@ -806,7 +821,8 @@ Or in an extended conversation:
              :position position
              :in-place (and in-place (not output-to-other-buffer-p))
              :stream stream
-             :system (concat gptel--system-message system-extra)
+             :system (when gptel--system-message
+                       (concat gptel--system-message system-extra))
              :callback callback
              :dry-run dry-run)
 

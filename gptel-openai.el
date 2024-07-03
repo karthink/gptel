@@ -152,9 +152,11 @@ with differing settings.")
                            (regexp-quote (gptel-response-prefix-string)))))
             prompts)
       (and max-entries (cl-decf max-entries)))
-    (cons (list :role "system"
-                :content gptel--system-message)
-          prompts)))
+    (if gptel--system-message
+        (cons (list :role "system"
+                    :content gptel--system-message)
+              prompts)
+      prompts)))
 
 (cl-defmethod gptel--wrap-user-prompt ((_backend gptel-openai) prompts)
   "Wrap the last user prompt in PROMPTS with the context string."

@@ -374,7 +374,8 @@ transient menu interface provided by `gptel-menu'."
   '((default . "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
     (programming . "You are a large language model and a careful programmer. Provide code and only code as output without any additional text, prompt or note.")
     (writing . "You are a large language model and a writing assistant. Respond concisely.")
-    (chat . "You are a large language model and a conversation partner. Respond concisely."))
+    (chat . "You are a large language model and a conversation partner. Respond concisely.")
+    (none))
   "System prompts (directives) for the LLM.
 
 These are system instructions sent at the beginning of each
@@ -809,8 +810,9 @@ file."
                                (propertize
                                 (buttonize
                                  (format "[Prompt: %s]"
-                                  (or (car-safe (rassoc gptel--system-message gptel-directives))
-                                   (truncate-string-to-width gptel--system-message 15 nil nil t)))
+                                  (when gptel--system-message
+                                   (or (car-safe (rassoc gptel--system-message gptel-directives))
+                                    (truncate-string-to-width gptel--system-message 15 nil nil t))))
                                  (lambda (&rest _) (gptel-system-prompt)))
                                 'mouse-face 'highlight
                                 'help-echo "System message for session"))
@@ -968,7 +970,8 @@ Model parameters can be let-bound around calls to this function."
   (declare (indent 1))
   (let* ((gptel--system-message
           ;Add context chunks to system message if required
-          (if (and gptel-context--alist
+          (if (and system
+                   gptel-context--alist
                    (eq gptel-use-context 'system))
               (gptel-context--wrap system)
             system))
