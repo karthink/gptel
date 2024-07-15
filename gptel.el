@@ -1334,20 +1334,21 @@ file."
 (defvar gptel--fsm-last)                ;Defined further below
 
 (defun gptel--response-region-at-point ()
-  "Return cons of response start and end points."
-  (let* ((pos (point))
-         (start pos)
-         (end pos))
-    (cl-flet ((responsep (point)
-                (member 'gptel (text-properties-at point))))
-    (while (and (/= start (point-min))
-                (responsep start))
-      (setq start (or (previous-property-change start) (point-min))))
-    (while (and (/= end (point-max))
-                (responsep end))
-      (setq end (or (next-property-change end) (point-max))))
-    (setq start (if (responsep start) start (1+ start)))
-    (cons start end))))
+  "Return cons of response start and end points.
+
+Returns nil if no response is found at the point."
+  (cl-flet ((responsep (point type)
+              (let ((prop (member 'gptel (text-properties-at point))))
+                (and prop (eq (cadr prop) type)))))
+    (let ((type (get-text-property (point) 'gptel)))
+      (if (responsep (point) type)
+          (cons (cl-loop for i from (point) downto 0
+                         while (responsep i type)
+                         finally (cl-return (1+ i)))
+                (cl-loop for i from (point) to (point-max)
+                         while (responsep i type)
+                         finally (cl-return i)))
+        nil))))
 
 (defun gptel-toggle-response-role ()
   "Toggle the role of the text between the user and the assistant.
@@ -1357,15 +1358,16 @@ If a region is selected, modifies the region.  Otherwise, modifies at the point.
     (user-error "This command is only usable in the dedicated gptel chat buffer"))
   (let (start end)
     (if (region-active-p)
-        (setf start (region-beginning)
+        (setq start (region-beginning)
               end (region-end))
       (let ((response-region (gptel--response-region-at-point)))
-        (setf start (car response-region)
+        (setq start (car response-region)
               end (cdr response-region))))
-        (let ((type (get-text-property start 'gptel)))
-          (if (eq type 'response)
-              (put-text-property start end 'gptel nil)
-            (put-text-property start end 'gptel 'response)))))
+    (when (and start end)
+      (let ((type (get-text-property start 'gptel)))
+        (if (eq type 'response)
+            (put-text-property start end 'gptel nil)
+          (put-text-property start end 'gptel 'response))))))
 
 (defun gptel--update-status (&optional msg face)
   "Update status MSG in FACE."
