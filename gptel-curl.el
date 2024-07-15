@@ -92,6 +92,10 @@ REQUEST-DATA is the data to send, TOKEN is a unique identifier."
               collect (format "-H%s: %s" key val))
      (list url))))
 
+(defcustom gptel-curl-convert-markdown-to-org nil
+  "Whether to convert Markdown to Org in GPTel curl responses."
+  :type 'boolean)
+
 ;;TODO: The :transformer argument here is an alternate implementation of
 ;;`gptel-response-filter-functions'. The two need to be unified.
 ;;;###autoload
@@ -135,8 +139,10 @@ the response is inserted into the current buffer after point."
                                        (if stream
                                            #'gptel-curl--stream-insert-response
                                          #'gptel--insert-response))
-                         :transformer (when (with-current-buffer (plist-get info :buffer)
-                                              (derived-mode-p 'org-mode))
+                         :transformer (when (and
+                                             (with-current-buffer (plist-get info :buffer)
+                                               (derived-mode-p 'org-mode))
+                                             gptel-curl-convert-markdown-to-org)
                                         (gptel--stream-convert-markdown->org)))
                    info))
       (if stream
