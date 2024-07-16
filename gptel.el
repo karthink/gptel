@@ -383,7 +383,18 @@ is only inserted in dedicated gptel buffers before the AI's response."
   "Whether or not the assistant responses should be highlighted.
 
 Applies only to the dedicated gptel chat buffer."
-  :type 'boolean)
+  :type 'boolean
+  :set (lambda (symbol value)
+         (set-default symbol value)
+         (when (bound-and-true-p gptel-mode)
+           (if value
+               (progn
+                 (font-lock-add-keywords
+                  nil '((gptel--response-text-search 0 'gptel-response-highlight-face prepend)) t)
+                 (font-lock-flush))
+             (font-lock-remove-keywords
+              nil '((gptel--response-text-search 0 'gptel-response-highlight-face prepend)))
+             (font-lock-flush)))))
 
 (defcustom gptel-use-header-line t
   "Whether `gptel-mode' should use header-line for status information.
