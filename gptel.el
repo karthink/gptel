@@ -1200,12 +1200,13 @@ file."
 
 (defface gptel-response-highlight-face
   '((((class color) (min-colors 257) (background light))
-     :foreground "#0066cc")
+     :background "#e6f2ff" :extend t)
     (((class color) (min-colors 88) (background light))
-     :foreground "#0066cc")
+     :background "#cce7ff" :extend t)
     (((class color) (min-colors 88) (background dark))
-     :foreground "light sky blue")
-    (((class color)) :foreground "blue"))
+     :background "#202030" :extend t)
+    (((class color) (background dark))
+     :background "#202030" :extend t))
   "Face used to highlight gptel responses in the dedicated chat buffer."
   :group 'gptel)
 
