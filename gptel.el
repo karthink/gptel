@@ -1376,10 +1376,16 @@ If a region is selected, modifies the region.  Otherwise, modifies at the point.
         (setq start (car response-region)
               end (cdr response-region))))
     (when (and start end)
-      (let ((type (get-text-property start 'gptel)))
-        (if (eq type 'response)
-            (put-text-property start end 'gptel nil)
-          (put-text-property start end 'gptel 'response))))))
+      (let* ((type (get-text-property start 'gptel))
+             ;; If a region has a fragmented role that opposes the current one at the start, we make
+             ;; sure to fill it with the role at the start of the region.
+             (dst-type (cl-loop for i from start while (< i end)
+                                thereis (unless (eq type (get-text-property i 'gptel))
+                                          type)
+                                finally (cl-return (if (eq type 'response)
+                                                       nil
+                                                     'response)))))
+            (put-text-property start end 'gptel dst-type)))))
 
 (defun gptel--update-status (&optional msg face)
   "Update status MSG in FACE."
