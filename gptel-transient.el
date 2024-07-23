@@ -570,7 +570,7 @@ responses."
 (transient-define-infix gptel--infix-temperature ()
   "Temperature of request."
   :description "Temperature (0 - 2.0)"
-  :class 'transient-lisp-variable
+  :class 'gptel-lisp-variable
   :variable 'gptel-temperature
   :set-value #'gptel--set-with-scope
   :key "-t"
