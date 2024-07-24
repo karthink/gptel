@@ -1196,7 +1196,7 @@ file."
 ;;; Minor mode and UI
 
 ;; NOTE: It's not clear that this is the best strategy:
-(add-to-list 'text-property-default-nonsticky '(gptel . t))
+(add-to-list 'text-property-default-nonsticky '(gptel . nil))
 
 (defface gptel-response-highlight-face
   '((((class color) (min-colors 257) (background light))
@@ -1381,11 +1381,13 @@ If a region is selected, modifies the region.  Otherwise, modifies at the point.
              ;; sure to fill it with the role at the start of the region.
              (dst-type (cl-loop for i from start while (< i end)
                                 thereis (unless (eq type (get-text-property i 'gptel))
-                                          type)
+                                          (unless type
+                                            'query))
                                 finally (cl-return (if (eq type 'response)
-                                                       nil
+                                                       'query
                                                      'response)))))
-            (put-text-property start end 'gptel dst-type)))))
+        (setq dst-type (if (eq dst-type 'query-placeholder) nil dst-type))
+        (put-text-property start end 'gptel dst-type)))))
 
 (defun gptel--update-status (&optional msg face)
   "Update status MSG in FACE."
