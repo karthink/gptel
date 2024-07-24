@@ -42,7 +42,7 @@
 (declare-function org-at-heading-p "org")
 
 ;; Bundle `org-element-lineage-map' if it's not available (for Org 9.67 or older)
-(eval-when-compile
+(eval-and-compile
   (if (fboundp 'org-element-lineage-map)
       (progn (declare-function org-element-lineage-map "org-element-ast")
              (defalias 'gptel-org--element-lineage-map 'org-element-lineage-map))
