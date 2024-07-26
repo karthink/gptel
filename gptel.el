@@ -446,6 +446,17 @@ To set the temperature for a chat session interactively call
   :safe #'always
   :type 'number)
 
+(defcustom gptel-image nil
+  "An image that is sent to the vision-based LLM models as part of the prompt.
+
+Should be a valid pathname to an image.
+
+To set the image for a chat session interactively call
+`gptel-send' with a prefix argument."
+  :safe #'always
+  :type 'string)
+
+
 (defvar gptel--known-backends)
 
 (defvar gptel--openai
@@ -704,7 +715,15 @@ MODE-NAME is typically a major-mode symbol."
          mode-sym 'prog-mode 'text-mode 'tex-mode)
      mode-name "")))
 
-
+(defun gptel--base64-encode (file)
+  "Encode FILE as a base64 string.
+
+FILE is assumed to exist and be a regular file."
+  (with-temp-buffer
+    (insert-file-contents-literally file)
+    (base64-encode-region (point-min) (point-max))
+    (buffer-string)))
+
 ;; Logging
 
 (defconst gptel--log-buffer-name "*gptel-log*"

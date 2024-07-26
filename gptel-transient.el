@@ -306,6 +306,7 @@ Also format its value in the Transient menu."
      :if (lambda () (or gptel-mode gptel-track-response)))
     (gptel--infix-temperature :if (lambda () gptel-expert-commands))
     (gptel--infix-use-context)
+    (gptel--infix-use-image)
     (gptel--infix-track-response
      :if (lambda () (and gptel-expert-commands (not gptel-mode))))]
    ["Prompt from"
@@ -505,6 +506,27 @@ value of `gptel-use-context', set from here."
                               ("with user prompt"    . user)))
                    (destination (completing-read prompt choices nil t)))
               (cdr (assoc destination choices)))))
+
+;; ** Infixes for prompt images
+
+(transient-define-infix gptel--infix-use-image ()
+  "Image to be used for vision models."
+  :description "With image"
+  :class 'gptel-lisp-variable
+  :variable 'gptel-image
+  :set-value #'gptel--set-with-scope
+  :key "-p"
+  :prompt "Path or URL to image: "
+  :display-nil "No"
+  :reader (lambda (prompt &rest _)
+            (let ((image (completing-read-default prompt
+                                                  nil
+                                                  nil
+                                                  nil
+                                                  (or gptel-image default-directory))))
+              (if (string-empty-p (string-trim image))
+                  nil
+                image))))
 
 ;; ** Infixes for model parameters
 
