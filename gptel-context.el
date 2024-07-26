@@ -254,48 +254,92 @@ START and END signify the region delimiters."
 
 (defun gptel-context--insert-buffer-string (buffer contexts)
   "Insert at point a context string from all CONTEXTS in BUFFER."
-    (let ((is-top-snippet t)
-          (previous-line 1))
-      (insert (format "In buffer `%s`:" (buffer-name buffer))
-              "\n\n```" (gptel--strip-mode-suffix (buffer-local-value
-                                                   'major-mode buffer))
-              "\n")
-      (dolist (context contexts)
-        (let* ((start (overlay-start context))
-               (end (overlay-end context))
-               content)
-          (let (lineno column)
-            (with-current-buffer buffer
-              (without-restriction
-                (setq lineno (line-number-at-pos start t)
-                      column (save-excursion (goto-char start)
-                                             (current-column))
-                      content (buffer-substring-no-properties start end))))
-            ;; We do not need to insert a line number indicator if we have two regions
-            ;; on the same line, because the previous region should have already put the
-            ;; indicator.
-            (unless (= previous-line lineno)
-              (unless (= lineno 1)
-                (unless is-top-snippet
-                  (insert "\n"))
-                (insert (format "... (Line %d)\n" lineno))))
-            (setq previous-line lineno)
-            (unless (zerop column) (insert " ..."))
-            (if is-top-snippet
-                (setq is-top-snippet nil)
-              (unless (= previous-line lineno) (insert "\n"))))
-          (insert content)))
-      (unless (>= (overlay-end (car (last contexts))) (point-max))
-        (insert "\n..."))
-      (insert "\n```")))
+  (setq contexts (cl-remove-if-not (lambda (context)
+                                     (and (overlayp context) (bufferp (overlay-buffer context))))
+                                   contexts))
+  (sort contexts (lambda (a b)
+                   (< (overlay-start a) (overlay-start b))))
+  (let ((first-iteration t))
+    (dolist (context contexts)
+      (let* ((start (overlay-start context))
+             (end (overlay-end context))
+             start-line
+             end-line
+             start-column
+             end-column
+             content
+             start-prop
+             end-prop)
+        (with-current-buffer buffer
+          (without-restriction
+            (save-excursion
+              (goto-char start)
+              (setq start-column (current-column))
+              (if (bolp)
+                  (setq start-prop :bol)
+                (if (eolp)
+                    (setq start-prop :eol)))
+              (goto-char end)
+              (setq end-column (current-column))
+              (if (bolp)
+                  (setq end-prop :bol)
+                (if (eolp)
+                    (setq end-prop :eol))))
+            (when (and (eq start-prop :eol) (not (eq start-prop :bol)))
+              (cl-incf start)
+              (setq start-prop :bol))
+            (when (and (eq end-prop :bol) (not (eq end-prop :eol)))
+              (cl-decf end)
+              (setq end-prop :eol))
+            (setq start-line (line-number-at-pos start t)
+                  end-line (line-number-at-pos end t))
+            (setq content (buffer-substring-no-properties start end))))
+        (let ((block-delimiter (gptel-context--appropriate-delimiter content))
+              (region-info-string (format "lines %d%s-%d%s"
+                                          start-line
+                                          (if (eq start-prop :bol)
+                                              ""
+                                            (format ":%d" start-column))
+                                          end-line
+                                          (if (eq end-prop :eol)
+                                              ""
+                                            (format ":%d" end-column)))))
+          (insert (if first-iteration
+                      (progn
+                        (setq first-iteration nil)
+                        "")
+                    "\n\n")
+                  (format "In buffer `%s` (%s):" (buffer-name buffer) region-info-string)
+                  "\n\n" block-delimiter (gptel--strip-mode-suffix (buffer-local-value
+                                                                    'major-mode buffer))
+                  "\n"
+                  content
+                  "\n"
+                  block-delimiter))))))
+
+(defun gptel-context--appropriate-delimiter (target-content)
+  "Return the appropriate context block delimiter for TARGET-CONTENT.
+
+Used in case of the existance of delimiter strings in the TARGET-CONTENT.
+
+Currently only used for Markdown."
+  (let ((backticks "```"))
+    (while (string-match-p backticks target-content)
+      (setq backticks (concat backticks "`")))
+    backticks))
 
 (defun gptel-context--insert-file-string (path)
   "Insert at point the contents of the file at PATH as context."
+  (let* ((file-contents
+          (with-temp-buffer
+            (insert-file-contents path)
+            (buffer-substring (point-min) (point-max))))
+         (delimiter (gptel-context--appropriate-delimiter file-contents)))
   (insert (format "In file `%s`:" (file-name-nondirectory path))
-          "\n\n```\n")
-  (insert-file-contents path)
+          "\n\n" delimiter "\n")
+  (insert file-contents)
   (goto-char (point-max))
-  (insert "\n```\n"))
+  (insert "\n" delimiter "\n")))
 
 (defun gptel-context--string (context-alist)
   "Format the aggregated gptel context as annotated markdown fragments.
