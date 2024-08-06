@@ -1046,6 +1046,7 @@ When LOCAL is non-nil, set the system message only in the current buffer."
             (lambda ()
               (when (window-configuration-p cwc)
                 (set-window-configuration cwc))
+              (ediff-kill-buffer-carefully "*gptel-rewrite-Region.B-*")
               (remove-hook 'ediff-quit-hook gptel--ediff-restore))))
     (message "Waiting for response... ")
     (gptel-request
@@ -1071,7 +1072,9 @@ When LOCAL is non-nil, set the system message only in the current buffer."
              (add-hook 'ediff-quit-hook gptel--ediff-restore)
              (apply
               #'ediff-regions-internal
-              (get-buffer (ediff-make-cloned-buffer gptel-buffer "-Region.A-"))
+              (if (and (require 'eglot nil t) (eglot-managed-p))
+                  gptel-buffer
+                (get-buffer (ediff-make-cloned-buffer gptel-buffer "-Region.A-")))
               (car gptel-bounds) (cdr gptel-bounds)
               new-buf new-beg new-end
               nil
