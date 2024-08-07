@@ -111,9 +111,11 @@ context chunk.  This is accessible as, for example:
           (dired-get-marked-files)))
    ;; No region is selected, and ARG is positive.
    ((and arg (> (prefix-numeric-value arg) 0))
-    (let ((buffer-name (read-buffer "Choose buffer to add as context: " nil t)))
+    (let* ((buffer-name (read-buffer "Choose buffer to add as context: " nil t))
+           (start (with-current-buffer buffer-name (point-min)))
+           (end (with-current-buffer buffer-name (point-max))))
       (gptel-context--add-region
-       (get-buffer buffer-name) (point-min) (point-max) t)
+       (get-buffer buffer-name) start end t)
       (message "Buffer '%s' added as context." buffer-name)))
    ;; No region is selected, and ARG is negative.
    ((and arg (< (prefix-numeric-value arg) 0))
