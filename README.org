@@ -491,7 +491,9 @@ Register a backend with
   :endpoint "/openai/v1/chat/completions"
   :stream t
   :key "your-api-key"                   ;can be a function that returns the key
-  :models '("llama3-70b-8192"
+  :models '("llama-3.1-70b-versatile"
+            "llama-3.1-8b-instant"
+            "llama3-70b-8192"
             "llama3-8b-8192"
             "mixtral-8x7b-32768"
             "gemma-7b-it"))
@@ -511,7 +513,9 @@ The above code makes the backend available to select.  If you want it to be the 
         :endpoint "/openai/v1/chat/completions"
         :stream t
         :key "your-api-key"
-        :models '("llama3-70b-8192"
+        :models '("llama-3.1-70b-versatile"
+                  "llama-3.1-8b-instant"
+                  "llama3-70b-8192"
                   "llama3-8b-8192"
                   "mixtral-8x7b-32768"
                   "gemma-7b-it")))
