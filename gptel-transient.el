@@ -105,7 +105,7 @@ Or is it the other way around?"
     (format "You are a prose editor. Rewrite the following text to be more professional.")))
 
 (defvar gptel--crowdsourced-prompts-url
-  "https://github.com/f/awesome-chatgpt-prompts/raw/main/prompts.csv"
+  "https://raw.githubusercontent.com/f/awesome-chatgpt-prompts/main/prompts.csv"
   "URL for crowdsourced LLM system prompts.")
 
 (defvar gptel--crowdsourced-prompts
