@@ -1354,7 +1354,7 @@ Returns nil if no response is found at the point."
                 (and prop (eq (cadr prop) type)))))
     (let ((type (get-text-property (point) 'gptel)))
       (if (responsep (point) type)
-          (cons (cl-loop for i from (point) downto 0
+          (cons (cl-loop for i from (point) downto (point-min)
                          while (responsep i type)
                          finally (cl-return (1+ i)))
                 (cl-loop for i from (point) to (point-max)
@@ -1386,7 +1386,6 @@ If a region is selected, modifies the region.  Otherwise, modifies at the point.
                                 finally (cl-return (if (eq type 'response)
                                                        'query
                                                      'response)))))
-        (setq dst-type (if (eq dst-type 'query-placeholder) nil dst-type))
         (put-text-property start end 'gptel dst-type)))))
 
 (defun gptel--update-status (&optional msg face)

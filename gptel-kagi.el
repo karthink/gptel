@@ -87,8 +87,9 @@
         ;; (filename (thing-at-point 'existing-filename)) ;no file upload support yet
         (prop (text-property-search-backward
                'gptel 'response
-               (when (get-char-property (max (point-min) (1- (point)))
-                                        'gptel)
+               (when (eq (get-char-property (max (point-min) (1- (point)))
+                                            'gptel)
+                         'response)
                  t))))
     (if (and url (string-prefix-p "summarize" (gptel--model-name gptel-model)))
         (list :url url)
