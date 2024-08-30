@@ -100,7 +100,7 @@ Or is it the other way around?"
 (defun gptel--rewrite-message ()
   "Set a generic refactor/rewrite message for the buffer."
   (if (derived-mode-p 'prog-mode)
-      (format "You are a %s programmer. Refactor the following code. Generate only code, no explanation, no code fences."
+      (format "You are a %s programmer. Generate only code, no explanation, no code fences. Refactor the following code."
               (gptel--strip-mode-suffix major-mode))
     (format "You are a prose editor. Rewrite the following text to be more professional.")))
 
