@@ -120,6 +120,31 @@ with differing settings.")
       (plist-put prompts-plist :max_tokens gptel-max-tokens))
     prompts-plist))
 
+(defun gptel--urlp (file-path)
+  "Check if FILE-PATH is a remote URL."
+  (let ((protocol-regexp (rx string-start (or "http" "https" "ftp") "://" anything)))
+    (string-match-p protocol-regexp file-path)))
+
+(defun gptel--query-with-image-data (text-content)
+  "Return a query with image data baked in given TEXT-CONTENT of query."
+  (if (and gptel-image
+           (not (file-remote-p gptel-image))
+           (file-exists-p gptel-image))
+      (let ((ext (file-name-extension gptel-image)))
+        (when (equal ext "jpg")
+          (setq ext "jpeg"))
+        `[(:type "text" :text ,text-content)
+          (:type "image_url" :image_url
+                 (:url
+                  ,(concat "data:image/"
+                           ext ";base64,"
+                           (gptel--base64-encode gptel-image))))])
+    (if (and gptel-image
+             (gptel--urlp gptel-image))
+        `[(:type "text" :text ,text-content)
+          (:type "image_url" :image_url (:url ,gptel-image))]
+      text-content)))
+
 (cl-defmethod gptel--parse-buffer ((_backend gptel-openai) &optional max-entries)
   (let ((prompts) (prop))
     (if (or gptel-mode gptel-track-response)
@@ -142,16 +167,19 @@ with differing settings.")
                 prompts)
           (and max-entries (cl-decf max-entries)))
       (push (list :role "user"
-                  :content
-                  (string-trim
-                   (buffer-substring-no-properties (prop-match-beginning prop)
-                                                   (prop-match-end prop))
-                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                           (regexp-quote (gptel-prompt-prefix-string)))
-                   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                           (regexp-quote (gptel-response-prefix-string)))))
+                  :content (string-trim
+                            (buffer-substring-no-properties (prop-match-beginning prop)
+                                                            (prop-match-end prop))
+                            (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                                    (regexp-quote (gptel-prompt-prefix-string)))
+                            (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                                    (regexp-quote (gptel-response-prefix-string)))))
             prompts)
       (and max-entries (cl-decf max-entries)))
+    (when (string-equal (plist-get (car prompts) :role) "user")
+      (setf (plist-get (car prompts) :content)
+            ;; Bake the query content with image data if necessary.
+            (gptel--query-with-image-data (plist-get (car prompts) :content))))
     (cons (list :role "system"
                 :content gptel--system-message)
           prompts)))
