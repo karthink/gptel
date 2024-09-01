@@ -1130,6 +1130,7 @@ there."
     (save-restriction
       (let* ((max-entries (and gptel--num-messages-to-send
                                (* 2 gptel--num-messages-to-send)))
+             (prompt-end (or prompt-end (point-max)))
              (prompts
               (cond
                ((use-region-p)
@@ -1139,8 +1140,9 @@ there."
                 (gptel--parse-buffer gptel-backend max-entries))
                ((derived-mode-p 'org-mode)
                 (require 'gptel-org)
-                (gptel-org--create-prompt (or prompt-end (point-max))))
-               (t (goto-char (or prompt-end (point-max)))
+                (goto-char prompt-end)
+                (gptel-org--create-prompt prompt-end))
+               (t (goto-char prompt-end)
                   (gptel--parse-buffer gptel-backend max-entries)))))
         ;; Inject context chunks into the last user prompt if required
         ;; NOTE: prompts is modified in place
