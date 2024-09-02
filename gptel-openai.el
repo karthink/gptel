@@ -144,8 +144,7 @@ with differing settings.")
       (push (list :role "user"
                   :content
                   (string-trim
-                   (buffer-substring-no-properties (prop-match-beginning prop)
-                                                   (prop-match-end prop))
+                   (buffer-substring-no-properties (point-min) (point-max))
                    (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
                            (regexp-quote (gptel-prompt-prefix-string)))
                    (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
