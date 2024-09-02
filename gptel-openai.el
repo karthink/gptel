@@ -121,7 +121,7 @@ with differing settings.")
     prompts-plist))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-openai) &optional max-entries)
-  (let ((prompts) (end (max (point-min) (1- (point)))) (beg))
+  (let ((prompts) (end (point)) (beg))
     (if (or gptel-mode gptel-track-response)
         (while (and
                 (or (not max-entries) (>= max-entries 0))

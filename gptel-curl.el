@@ -204,6 +204,7 @@ PROCESS and _STATUS are process parameters."
           (with-current-buffer gptel-buffer
             (if (not tracking-marker)   ;Empty response
                 (when gptel-mode (gptel--update-status " Empty response" 'success))
+              (gptel--response-overlay start-marker (or tracking-marker start-marker))
               (pulse-momentary-highlight-region start-marker tracking-marker)
               (when gptel-mode
                 (save-excursion (goto-char tracking-marker)
@@ -231,7 +232,6 @@ PROCESS and _STATUS are process parameters."
               (message "%s error (%s): Malformed JSON in response." backend-name http-msg))
              (t (message "%s error (%s): Could not parse HTTP response." backend-name http-msg)))))
         (with-current-buffer gptel-buffer
-          (gptel--response-overlay start-marker (or tracking-marker start-marker))
           (when gptel-mode
             (gptel--update-status
              (format " Response Error: %s" http-msg) 'error))))

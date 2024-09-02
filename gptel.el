@@ -163,7 +163,7 @@
 (require 'compat nil t)
 (require 'url)
 (require 'map)
-(require 'text-property-search)
+;; (require 'text-property-search)
 (require 'cl-generic)
 (require 'gptel-openai)
 
@@ -632,7 +632,7 @@ When IGNORE-PREFIX is non-nil, do not treat past any gptel
                   #'previous-single-char-property-change)))
     (dotimes (_ (* 2 (abs arg)))
       (goto-char (funcall search (point) 'gptel))))
-  (when (and (not ignore-prefix) gptel-mode
+  (when (and (not ignore-prefix)
              (looking-back (concat (regexp-quote
                                     (gptel-response-prefix-string))
                                    "?")
@@ -663,7 +663,7 @@ When IGNORE-PREFIX is non-nil, do not treat past any gptel
     (if (> arg 0) (cl-decf arg) (cl-incf arg))
     (dotimes (_ (* 2 (abs arg)))
       (goto-char (funcall search (point) 'gptel))))
-  (when (and (not ignore-prefix) gptel-mode
+  (when (and (not ignore-prefix)
              (looking-at (concat "\n\\{1,2\\}"
                                  (regexp-quote
                                   (gptel-prompt-prefix-string))
@@ -731,6 +731,8 @@ BUFFER default to the current buffer."
   (let ((ov (make-overlay beg end buffer 'front-advance)))
     (overlay-put ov 'gptel (or gptel-prop 'response))
     (overlay-put ov 'evaporate t)
+    ;; TODO: Check if this priority works as expected.
+    (overlay-put ov 'priority '(nil . 0))
     ov))
 
 (defun gptel--get-buffer-bounds ()
@@ -739,31 +741,18 @@ BUFFER default to the current buffer."
     (save-restriction
       (widen)
       (goto-char (point-max))
-      (let ((prop) (bounds))
+      (let ((bounds))
         (while (not (bobp))
           (goto-char (previous-single-char-property-change (point) 'gptel))
           (when-let ((ov (cdr (get-char-property-and-overlay (point) 'gptel))))
             (push (cons (overlay-start ov) (overlay-end ov)) bounds)))
-        ;; (while (setq prop (text-property-search-backward
-        ;;                    'gptel 'response t))
-        ;;   (push (cons (prop-match-beginning prop)
-        ;;               (prop-match-end prop))
-        ;;         bounds))
         bounds))))
 
 (defun gptel--get-bounds ()
   "Return the gptel response boundaries around point."
-  (let (prop)
-    (save-excursion
-      (when-let ((ov (cdr (get-char-property-and-overlay (point) 'gptel))))
-        (cons (overlay-start ov) (overlay-end ov)))
-      ;; (when (text-property-search-backward
-      ;;        'gptel 'response t)
-      ;;   (when (setq prop (text-property-search-forward
-      ;;                     'gptel 'response t))
-      ;;     (cons (prop-match-beginning prop)
-      ;;                 (prop-match-end prop))))
-      )))
+  (save-excursion
+    (when-let ((ov (cdr (get-char-property-and-overlay (point) 'gptel))))
+      (cons (overlay-start ov) (overlay-end ov)))))
 
 (defun gptel--in-response-p (&optional pt)
   "Check if position PT is inside a gptel response.
@@ -820,15 +809,15 @@ Valid JSON unless NO-JSON is t."
           (gptel-org--restore-state))
       (when gptel--bounds
         (mapc (pcase-lambda (`(,beg . ,end))
+                ;; ;; Text property for provenance tracking
+                ;; (put-text-property beg end 'gptel 'response)
+
                 ;; Remove existing gptel response overlay
                 (dolist (ov (overlays-in beg end))
                   (when (eq (overlay-get ov 'gptel) 'response)
                     (delete-overlay ov)))
                 ;; Make a new one
-                (let ((new-ov (make-overlay beg end nil 'front-advance)))
-                  (overlay-put new-ov 'gptel 'response))
-                ;; ;; Also add text property, this is for contingencies
-                ;; (put-text-property beg end 'gptel 'response)
+                (gptel--response-overlay beg end)
                 )
               gptel--bounds)
         (message "gptel chat restored."))
@@ -873,7 +862,7 @@ file."
 
 ;; Minor mode and UI
 
-;; NOTE: It's not clear that this is the best strategy:
+;; TODO: Remove eventually
 (add-to-list 'text-property-default-nonsticky '(gptel . t))
 
 ;;;###autoload
@@ -1180,8 +1169,8 @@ See `gptel--url-get-response' for details."
             (setq response (gptel--transform-response
                                response gptel-buffer))
             (save-excursion
-              (put-text-property
-               0 (length response) 'gptel 'response response)
+              ;; (put-text-property
+              ;;  0 (length response) 'gptel 'response response)
               (with-current-buffer (marker-buffer start-marker)
                 (goto-char start-marker)
                 (run-hooks 'gptel-pre-response-hook)
@@ -1484,7 +1473,7 @@ This is used to maintain variants of prompts or responses to diff
 against if required."
   (with-current-buffer (or buf (current-buffer))
     (letrec ((gptel--attach-after
-              (lambda (b e)
+              (lambda (_b e)
                 ()
                 (when-let ((ov (cdr (get-char-property-and-overlay (1- e) 'gptel))))
                   (overlay-put ov 'gptel-history

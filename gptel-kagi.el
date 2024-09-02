@@ -82,7 +82,7 @@
                   (get-text-property (point) 'shr-url)
                   (get-text-property (point) 'image-url)))
          ;; (filename (thing-at-point 'existing-filename)) ;no file upload support yet
-         (end (max (point-min) (1- (point))))
+         (end (point))
          (beg (previous-single-char-property-change end 'gptel)))
     (if (and url (string-prefix-p "summarize" gptel-model))
         (list :url url)

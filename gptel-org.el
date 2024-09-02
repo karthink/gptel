@@ -183,7 +183,14 @@ value of `gptel-org-branching-context', which see."
                             (not (and (eq pos 1) (org-at-heading-p))))
                        do (outline-next-heading)
                        collect (point) into ends
-                       finally return (cons prompt-end ends))))
+                       finally return (cons prompt-end ends)))
+                     ;; Find response overlays to copy to temp buffer
+                     (org-overlays
+                      (cl-loop
+                       for s in start-bounds
+                       for e in end-bounds
+                       collect (seq-filter (lambda (ov) (overlay-get ov 'gptel))
+                                           (overlays-in s e)))))
                 (with-temp-buffer
                   (setq-local gptel-backend (buffer-local-value 'gptel-backend org-buf)
                               gptel--system-message
@@ -194,8 +201,17 @@ value of `gptel-org-branching-context', which see."
                               (buffer-local-value 'gptel-track-response org-buf))
                   (cl-loop for start in start-bounds
                            for end   in end-bounds
+                           for ovs   in org-overlays 
                            do (insert-buffer-substring org-buf start end)
-                           (goto-char (point-min)))
+                           (goto-char (point-min))
+                           when ovs do
+                           ;; Copy overlays to temp buffer with offsets
+                           (mapc (lambda (ov)
+                                   (move-overlay (copy-overlay ov)
+                                                 (- (max start (overlay-start ov)) (1- start))
+                                                 (- (min end (overlay-end ov)) (1- start))
+                                                 (current-buffer)))
+                                 ovs))
                   (goto-char (point-max))
                   (let ((major-mode 'org-mode))
                     (gptel--parse-buffer gptel-backend max-entries)))))
@@ -259,15 +275,15 @@ parameters."
         (progn
           (when-let ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
             (mapc (pcase-lambda (`(,beg . ,end))
+                    ;; ;; Text property for provenance tracking
+                    ;; (put-text-property beg end 'gptel 'response)
+
                     ;; Remove existing gptel response overlay
                     (dolist (ov (overlays-in beg end))
                       (when (eq (overlay-get ov 'gptel) 'response)
                         (delete-overlay ov)))
                     ;; Make a new one
-                    (let ((new-ov (make-overlay beg end nil 'front-advance)))
-                      (overlay-put new-ov 'gptel 'response))
-                    ;; Also add text property, this is for contingencies
-                    (put-text-property beg end 'gptel 'response))
+                    (gptel--response-overlay beg end))
                   (read bounds)))
           (pcase-let ((`(,system ,backend ,model ,temperature ,tokens)
                        (gptel-org--entry-properties (point-min))))
