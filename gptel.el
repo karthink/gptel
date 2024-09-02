@@ -619,6 +619,7 @@ When IGNORE-PREFIX is non-nil, do not treat past any gptel
  prompt/response prefix specially."
   (interactive (list nil nil
                      (prefix-numeric-value current-prefix-arg)))
+  (setq arg (or arg 1))
   (push-mark)
   ;; How it works:
   ;; 1. Always go to the start of the current or next response.
@@ -646,6 +647,7 @@ When IGNORE-PREFIX is non-nil, do not treat past any gptel
  prompt/response prefix specially."
   (interactive (list nil nil
                      (prefix-numeric-value current-prefix-arg)))
+  (setq arg (or arg 1))
   (push-mark)
   ;; How it works:
   ;; 1. Always go to the start of the current or next response.
