@@ -259,6 +259,14 @@ parameters."
         (progn
           (when-let ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
             (mapc (pcase-lambda (`(,beg . ,end))
+                    ;; Remove existing gptel response overlay
+                    (dolist (ov (overlays-in beg end))
+                      (when (eq (overlay-get ov 'gptel) 'response)
+                        (delete-overlay ov)))
+                    ;; Make a new one
+                    (let ((new-ov (make-overlay beg end nil 'front-advance)))
+                      (overlay-put new-ov 'gptel 'response))
+                    ;; Also add text property, this is for contingencies
                     (put-text-property beg end 'gptel 'response))
                   (read bounds)))
           (pcase-let ((`(,system ,backend ,model ,temperature ,tokens)

@@ -95,26 +95,25 @@ Intended for internal use only.")
     prompts-plist))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-ollama) &optional max-entries)
-  (let ((prompts) (prop))
+  (let ((prompts) (end (max (point-min) (1- (point)))) (beg))
     (if (or gptel-mode gptel-track-response)
         (while (and
                 (or (not max-entries) (>= max-entries 0))
-                (setq prop (text-property-search-backward
-                            'gptel 'response
-                            (when (get-char-property (max (point-min) (1- (point)))
-                                                     'gptel)
-                              t))))
-          (push (list :role (if (prop-match-value prop) "assistant" "user")
+                (setq beg (previous-single-char-property-change
+                           end 'gptel))
+                (/= beg end))
+          (push (list :role (if (eq (get-char-property beg 'gptel) 'response)
+                                "assistant" "user")
                       :content
                       (string-trim
-                       (buffer-substring-no-properties (prop-match-beginning prop)
-                                                       (prop-match-end prop))
+                       (buffer-substring-no-properties beg end)
                        (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
                                (regexp-quote (gptel-prompt-prefix-string)))
                        (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
                                (regexp-quote (gptel-response-prefix-string)))))
                 prompts)
-          (and max-entries (cl-decf max-entries)))
+          (and max-entries (cl-decf max-entries))
+          (setq end beg))
       (push (list :role "user"
                   :content
                   (string-trim (buffer-substring-no-properties (point-min) (point-max))))

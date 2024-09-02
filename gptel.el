@@ -612,33 +612,95 @@ Note: This will move the cursor."
           (scroll-up-command))
       (error nil))))
 
-(defun gptel-beginning-of-response (&optional _ _ arg)
-  "Move point to the beginning of the LLM response ARG times."
-  (interactive "p")
-  ;; FIXME: Only works for arg == 1
-  (gptel-end-of-response nil nil (- (or arg 1))))
+(defun gptel-beginning-of-response (&optional _ _ arg ignore-prefix)
+  "Move point to the beginning of the LLM response ARG times.
 
-(defun gptel-end-of-response (&optional _ _ arg)
-  "Move point to the end of the LLM response ARG times."
+When IGNORE-PREFIX is non-nil, do not treat past any gptel
+ prompt/response prefix specially."
   (interactive (list nil nil
                      (prefix-numeric-value current-prefix-arg)))
-  (unless arg (setq arg 1))
+  (push-mark)
+  ;; How it works:
+  ;; 1. Always go to the start of the current or next response.
+  (if-let ((ov (gptel--in-response-p)))
+        (goto-char (overlay-start ov))
+      (goto-char (next-single-char-property-change (point) 'gptel)))
+  ;; 2. Now go back ARG responses or forward (ARG-1) responses
+  (if (> arg 0) (cl-decf arg))
   (let ((search (if (> arg 0)
-                    #'text-property-search-forward
-                  #'text-property-search-backward)))
-    (dotimes (_ (abs arg))
-      (funcall search 'gptel 'response t)
-      (if (> arg 0)
-          (when (looking-at (concat "\n\\{1,2\\}"
-                                    (regexp-quote
-                                     (gptel-prompt-prefix-string))
-                                    "?"))
-            (goto-char (match-end 0)))
-        (when (looking-back (concat (regexp-quote
-                                     (gptel-response-prefix-string))
-                                    "?")
-                            (point-min))
-          (goto-char (match-beginning 0)))))))
+                    #'next-single-char-property-change
+                  #'previous-single-char-property-change)))
+    (dotimes (_ (* 2 (abs arg)))
+      (goto-char (funcall search (point) 'gptel))))
+  (when (and (not ignore-prefix) gptel-mode
+             (looking-back (concat (regexp-quote
+                                    (gptel-response-prefix-string))
+                                   "?")
+                           (point-min)))
+    (goto-char (match-beginning 0))))
+
+(defun gptel-end-of-response (&optional _ _ arg ignore-prefix)
+  "Move point to the beginning of the LLM response ARG times.
+
+When IGNORE-PREFIX is non-nil, do not treat past any gptel
+ prompt/response prefix specially."
+  (interactive (list nil nil
+                     (prefix-numeric-value current-prefix-arg)))
+  (push-mark)
+  ;; How it works:
+  ;; 1. Always go to the start of the current or next response.
+  (if-let ((ov (gptel--in-response-p
+                (if (> arg 0) (point) (max (1- (point)) (point-min))))))
+      (goto-char (overlay-start ov))
+    (goto-char (next-single-char-property-change (point) 'gptel)))
+  ;; Now go to the end of this response or the previous one,
+  ;; depending on ARG.
+  (let ((search (if (> arg 0)
+                    #'next-single-char-property-change
+                  #'previous-single-char-property-change)))
+    (goto-char (funcall search (point) 'gptel))
+    ;; Repeat (|ARG|-1) times if required.
+    (if (> arg 0) (cl-decf arg) (cl-incf arg))
+    (dotimes (_ (* 2 (abs arg)))
+      (goto-char (funcall search (point) 'gptel))))
+  (when (and (not ignore-prefix) gptel-mode
+             (looking-at (concat "\n\\{1,2\\}"
+                                 (regexp-quote
+                                  (gptel-prompt-prefix-string))
+                                 "?")))
+    (goto-char (match-end 0))))
+
+
+;; (defun gptel-end-of-response (&optional _ _ arg)
+;;   "Move point to the end of the LLM response ARG times."
+;;   (interactive (list nil nil
+;;                      (prefix-numeric-value current-prefix-arg)))
+;;   (unless arg (setq arg 1))
+;;   (let ((search (if (> arg 0)
+;;                     #'next-single-char-property-change
+;;                   #'previous-single-char-property-change)))
+;;     ;; (when (gptel--in-response-p)
+;;     ;;   ;; Move to beginning of response
+;;     ;;   (goto-char (next-single-property-change (point) 'gptel)))
+;;     (dotimes (_ (abs arg))
+;;       (goto-char (funcall search (point) 'gptel))
+;;       (unless (or (bobp) (eobp))
+;;         (when-let ((ov (cdr (get-char-property-and-overlay
+;;                              (if (< arg 0) (1- (point)) (point))
+;;                              'gptel))))
+;;             (goto-char (if (> arg 0) (overlay-end ov) (overlay-start ov))))))
+;;     ;; (funcall search 'gptel 'response t)
+;;     (if (> arg 0)
+;;         (when (looking-at (concat "\n\\{1,2\\}"
+;;                                   (regexp-quote
+;;                                    (gptel-prompt-prefix-string))
+;;                                   "?"))
+;;           (goto-char (match-end 0)))
+;;       (when (looking-back (concat (regexp-quote
+;;                                    (gptel-response-prefix-string))
+;;                                   "?")
+;;                           (point-min))
+;;         (goto-char (match-beginning 0))))))
 
 (defmacro gptel--at-word-end (&rest body)
   "Execute BODY at end of the current word or punctuation."
@@ -659,6 +721,18 @@ Note: Changing this variable does not affect gptel\\='s behavior
 in any way.")
 (put 'gptel--backend-name 'safe-local-variable #'always)
 
+(defun gptel--response-overlay (beg end &optional gptel-prop buffer)
+  "Make a gptel response overlay from BEG to END in BUFFER.
+
+GPTEL-PROP is the gptel property value to apply to the overlay,
+defaults to \"response\".
+
+BUFFER default to the current buffer."
+  (let ((ov (make-overlay beg end buffer 'front-advance)))
+    (overlay-put ov 'gptel (or gptel-prop 'response))
+    (overlay-put ov 'evaporate t)
+    ov))
+
 (defun gptel--get-buffer-bounds ()
   "Return the gptel response boundaries in the buffer as an alist."
   (save-excursion
@@ -666,31 +740,40 @@ in any way.")
       (widen)
       (goto-char (point-max))
       (let ((prop) (bounds))
-        (while (setq prop (text-property-search-backward
-                           'gptel 'response t))
-          (push (cons (prop-match-beginning prop)
-                      (prop-match-end prop))
-                bounds))
+        (while (not (bobp))
+          (goto-char (previous-single-char-property-change (point) 'gptel))
+          (when-let ((ov (cdr (get-char-property-and-overlay (point) 'gptel))))
+            (push (cons (overlay-start ov) (overlay-end ov)) bounds)))
+        ;; (while (setq prop (text-property-search-backward
+        ;;                    'gptel 'response t))
+        ;;   (push (cons (prop-match-beginning prop)
+        ;;               (prop-match-end prop))
+        ;;         bounds))
         bounds))))
 
 (defun gptel--get-bounds ()
   "Return the gptel response boundaries around point."
   (let (prop)
     (save-excursion
-      (when (text-property-search-backward
-             'gptel 'response t)
-        (when (setq prop (text-property-search-forward
-                          'gptel 'response t))
-          (cons (prop-match-beginning prop)
-                      (prop-match-end prop)))))))
+      (when-let ((ov (cdr (get-char-property-and-overlay (point) 'gptel))))
+        (cons (overlay-start ov) (overlay-end ov)))
+      ;; (when (text-property-search-backward
+      ;;        'gptel 'response t)
+      ;;   (when (setq prop (text-property-search-forward
+      ;;                     'gptel 'response t))
+      ;;     (cons (prop-match-beginning prop)
+      ;;                 (prop-match-end prop))))
+      )))
 
 (defun gptel--in-response-p (&optional pt)
-  "Check if position PT is inside a gptel response."
-  (get-char-property (or pt (point)) 'gptel))
+  "Check if position PT is inside a gptel response.
+
+Return the response overlay if it is."
+  (cdr (get-char-property-and-overlay (or pt (point)) 'gptel)))
 
 (defun gptel--at-response-history-p (&optional pt)
   "Check if gptel response at position PT has variants."
-  (get-char-property (or pt (point)) 'gptel-history))
+  (cdr (get-char-property-and-overlay (or pt (point)) 'gptel-history)))
 
 (defun gptel--strip-mode-suffix (mode-sym)
   "Remove the -mode suffix from MODE-NAME.
@@ -737,7 +820,16 @@ Valid JSON unless NO-JSON is t."
           (gptel-org--restore-state))
       (when gptel--bounds
         (mapc (pcase-lambda (`(,beg . ,end))
-                (put-text-property beg end 'gptel 'response))
+                ;; Remove existing gptel response overlay
+                (dolist (ov (overlays-in beg end))
+                  (when (eq (overlay-get ov 'gptel) 'response)
+                    (delete-overlay ov)))
+                ;; Make a new one
+                (let ((new-ov (make-overlay beg end nil 'front-advance)))
+                  (overlay-put new-ov 'gptel 'response))
+                ;; ;; Also add text property, this is for contingencies
+                ;; (put-text-property beg end 'gptel 'response)
+                )
               gptel--bounds)
         (message "gptel chat restored."))
       (when gptel--backend-name
@@ -947,7 +1039,9 @@ of (point) or (region-end), depending on whether the region is
 active.
 
 CONTEXT is any additional data needed for the callback to run. It
-is included in the INFO argument to the callback.
+is included in the INFO argument to the callback.  You may store
+any kind of state information here to retrieve when the callback
+runs later.
 
 SYSTEM is the system message (chat directive) sent to the LLM. If
 omitted, the value of `gptel--system-message' for the current
@@ -1098,6 +1192,8 @@ See `gptel--url-get-response' for details."
                 (setq response-beg (point)) ;Save response start position
                 (insert response)
                 (setq response-end (point))
+                ;; Add overlay for tracking
+                (gptel--response-overlay response-beg response-end)
                 (pulse-momentary-highlight-region response-beg response-end)
                 (when gptel-mode (insert "\n\n" (gptel-prompt-prefix-string)))) ;Save response end position
               (when gptel-mode (gptel--update-status " Ready" 'success))))
@@ -1389,9 +1485,14 @@ against if required."
   (with-current-buffer (or buf (current-buffer))
     (letrec ((gptel--attach-after
               (lambda (b e)
-                (put-text-property b e 'gptel-history
-                                   (append (ensure-list history)
-                                           (get-char-property (1- e) 'gptel-history)))
+                ()
+                (when-let ((ov (cdr (get-char-property-and-overlay (1- e) 'gptel))))
+                  (overlay-put ov 'gptel-history
+                               (append (ensure-list history)
+                                       (get-char-property (1- e) 'gptel-history))))
+                ;; (put-text-property b e 'gptel-history
+                ;;                    (append (ensure-list history)
+                ;;                            (get-char-property (1- e) 'gptel-history)))
                 (remove-hook 'gptel-post-response-functions
                              gptel--attach-after 'local))))
       (add-hook 'gptel-post-response-functions gptel--attach-after
@@ -1462,7 +1563,7 @@ context for the ediff session."
   (pcase-let* ((`(,beg . ,end) (gptel--get-bounds))
                (history (get-char-property (point) 'gptel-history))
                (alt-response (car-safe history))
-               (offset))
+               (offset) (ov))
     (unless (and history alt-response)
       (user-error "No variant responses available"))
     (if (> arg 0)
@@ -1472,13 +1573,15 @@ context for the ediff session."
        alt-response (car (last history))
        history (cons (buffer-substring-no-properties beg end)
                      (nbutlast history))))
-    (add-text-properties
-             0 (length alt-response)
-             `(gptel response gptel-history ,history)
-             alt-response)
+    ;; (add-text-properties
+    ;;          0 (length alt-response)
+    ;;          `(gptel response gptel-history ,history)
+    ;;          alt-response)
     (setq offset (min (- (point) beg) (1- (length alt-response))))
     (delete-region beg end)
-    (insert alt-response)
+    (setq ov (gptel--response-overlay
+              (point) (progn (insert alt-response) (point))))
+    (overlay-put ov 'gptel-history history)
     (goto-char (+ beg offset))
     (pulse-momentary-highlight-region beg (+ beg (length alt-response)))))
 

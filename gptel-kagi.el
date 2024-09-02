@@ -78,26 +78,21 @@
      `(,@prompts :engine ,(substring model 10)))))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-kagi) &optional _max-entries)
-  (let ((url (or (thing-at-point 'url)
-                 (get-text-property (point) 'shr-url)
-                 (get-text-property (point) 'image-url)))
-        ;; (filename (thing-at-point 'existing-filename)) ;no file upload support yet
-        (prop (text-property-search-backward
-               'gptel 'response
-               (when (get-char-property (max (point-min) (1- (point)))
-                                        'gptel)
-                 t))))
+  (let* ((url (or (thing-at-point 'url)
+                  (get-text-property (point) 'shr-url)
+                  (get-text-property (point) 'image-url)))
+         ;; (filename (thing-at-point 'existing-filename)) ;no file upload support yet
+         (end (max (point-min) (1- (point))))
+         (beg (previous-single-char-property-change end 'gptel)))
     (if (and url (string-prefix-p "summarize" gptel-model))
         (list :url url)
       (if (and (or gptel-mode gptel-track-response)
-               (prop-match-p prop)
-               (prop-match-value prop))
+               (eq (get-char-property beg 'gptel) 'response))
           (user-error "No user prompt found!")
         (let ((prompts
                (if (or gptel-mode gptel-track-response)
                    (string-trim
-                    (buffer-substring-no-properties (prop-match-beginning prop)
-                                                    (prop-match-end prop))
+                    (buffer-substring-no-properties beg end)
                     (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
                             (regexp-quote (gptel-prompt-prefix-string)))
                     (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
@@ -105,22 +100,12 @@
                  (string-trim (buffer-substring-no-properties (point-min) (point-max))))))
           (pcase-exhaustive gptel-model
             ("fastgpt"
-             (setq prompts (list
-                            :query
-                            (if (prop-match-p prop)
-                                (concat
-                                 ;; Fake a system message by including it in the prompt
-                                 gptel--system-message "\n\n" prompts)
-                              ""))))
+             (setq prompts ; Fake a system message by including it in the prompt
+                   (list :query (concat gptel--system-message "\.n\n" prompts))))
             ((and model (guard (string-prefix-p "summarize" model)))
              ;; If the entire contents of the prompt looks like a url, send the url
              ;; Else send the text of the region
-             (setq prompts
-                   (if-let (((prop-match-p prop))
-                            (engine (substring model 10)))
-                       ;; It's a region of text
-                       (list :text prompts)
-                     ""))))
+             (setq prompts (list :text prompts)))) ; It's a region of text
           prompts)))))
 
 (cl-defmethod gptel--wrap-user-prompt ((_backend gptel-kagi) prompts)

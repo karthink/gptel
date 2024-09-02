@@ -231,6 +231,7 @@ PROCESS and _STATUS are process parameters."
               (message "%s error (%s): Malformed JSON in response." backend-name http-msg))
              (t (message "%s error (%s): Could not parse HTTP response." backend-name http-msg)))))
         (with-current-buffer gptel-buffer
+          (gptel--response-overlay start-marker (or tracking-marker start-marker))
           (when gptel-mode
             (gptel--update-status
              (format " Response Error: %s" http-msg) 'error))))
@@ -274,8 +275,8 @@ See `gptel--url-get-response' for details."
             (when transformer
               (setq response (funcall transformer response)))
             
-            (put-text-property
-             0 (length response) 'gptel 'response response)
+            ;; (put-text-property
+             ;;  0 (length response) 'gptel 'response response)
             (goto-char tracking-marker)
             ;; (run-hooks 'gptel-pre-stream-hook)
             (insert response)

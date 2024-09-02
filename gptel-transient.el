@@ -72,7 +72,7 @@ Meant to be called when `gptel-menu' is active."
      ((gptel--in-response-p)
       (gptel-beginning-of-response)
       (skip-chars-forward "\n \t"))
-     (t (text-property-search-backward 'gptel 'response)
+     (t (gptel-end-of-response nil nil -1 'ignore-prefix)
         (skip-chars-forward "\n \t")))
     ;; Make overlay
     (if (and ov (overlayp ov))
@@ -719,13 +719,8 @@ Or in an extended conversation:
                      (buffer-substring-no-properties (region-beginning)
                                                      (region-end))
                    (buffer-substring-no-properties
-                    (save-excursion
-                      (text-property-search-backward
-                       'gptel 'response
-                       (when (get-char-property (max (point-min) (1- (point)))
-                                                'gptel)
-                         t))
-                      (point))
+                    (previous-single-char-property-change
+                     (max (point-min) (1- (point))) 'gptel)
                     (gptel--at-word-end (point)))))))
         (cond
          ((buffer-live-p (get-buffer gptel-buffer-name))
@@ -785,13 +780,8 @@ Or in an extended conversation:
         (let ((beg
                (if (use-region-p)
                    (region-beginning)
-                 (save-excursion
-                   (text-property-search-backward
-                    'gptel 'response
-                    (when (get-char-property (max (point-min) (1- (point)))
-                                             'gptel)
-                      t))
-                   (point))))
+                 (previous-single-char-property-change
+                     (max (point-min) (1- (point))) 'gptel)))
               (end (if (use-region-p) (region-end) (point))))
           (unless output-to-other-buffer-p
             ;; store the killed text in gptel-history

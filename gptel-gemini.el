@@ -85,26 +85,25 @@
     prompts-plist))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-gemini) &optional max-entries)
-  (let ((prompts) (prop))
+  (let ((prompts) (end (max (point-min) (1- (point)))) (beg))
     (if (or gptel-mode gptel-track-response)
         (while (and
                 (or (not max-entries) (>= max-entries 0))
-                (setq prop (text-property-search-backward
-                            'gptel 'response
-                            (when (get-char-property (max (point-min) (1- (point)))
-                                                     'gptel)
-                              t))))
-          (push (list :role (if (prop-match-value prop) "model" "user")
+                (setq beg (previous-single-char-property-change
+                           end 'gptel))
+                (/= beg end))
+          (push (list :role (if (eq (get-char-property beg 'gptel) 'response)
+                                "model" "user")
                       :parts
                       (list :text (string-trim
-                                   (buffer-substring-no-properties (prop-match-beginning prop)
-                                                                   (prop-match-end prop))
+                                   (buffer-substring-no-properties beg end)
                                    (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
                                            (regexp-quote (gptel-prompt-prefix-string)))
                                    (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
                                            (regexp-quote (gptel-response-prefix-string))))))
                 prompts)
-          (and max-entries (cl-decf max-entries)))
+          (and max-entries (cl-decf max-entries))
+          (setq end beg))
       (push (list :role "user"
                   :parts
                   (list :text (string-trim
