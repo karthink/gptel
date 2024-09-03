@@ -672,38 +672,6 @@ When IGNORE-PREFIX is non-nil, do not treat past any gptel
                                  "?")))
     (goto-char (match-end 0))))
 
-
-;; (defun gptel-end-of-response (&optional _ _ arg)
-;;   "Move point to the end of the LLM response ARG times."
-;;   (interactive (list nil nil
-;;                      (prefix-numeric-value current-prefix-arg)))
-;;   (unless arg (setq arg 1))
-;;   (let ((search (if (> arg 0)
-;;                     #'next-single-char-property-change
-;;                   #'previous-single-char-property-change)))
-;;     ;; (when (gptel--in-response-p)
-;;     ;;   ;; Move to beginning of response
-;;     ;;   (goto-char (next-single-property-change (point) 'gptel)))
-;;     (dotimes (_ (abs arg))
-;;       (goto-char (funcall search (point) 'gptel))
-;;       (unless (or (bobp) (eobp))
-;;         (when-let ((ov (cdr (get-char-property-and-overlay
-;;                              (if (< arg 0) (1- (point)) (point))
-;;                              'gptel))))
-;;             (goto-char (if (> arg 0) (overlay-end ov) (overlay-start ov))))))
-;;     ;; (funcall search 'gptel 'response t)
-;;     (if (> arg 0)
-;;         (when (looking-at (concat "\n\\{1,2\\}"
-;;                                   (regexp-quote
-;;                                    (gptel-prompt-prefix-string))
-;;                                   "?"))
-;;           (goto-char (match-end 0)))
-;;       (when (looking-back (concat (regexp-quote
-;;                                    (gptel-response-prefix-string))
-;;                                   "?")
-;;                           (point-min))
-;;         (goto-char (match-beginning 0))))))
-
 (defmacro gptel--at-word-end (&rest body)
   "Execute BODY at end of the current word or punctuation."
   `(save-excursion
