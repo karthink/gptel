@@ -32,6 +32,20 @@
 
 (declare-function diff-no-select "diff")
 
+;; * User options
+
+(defcustom gptel-rewrite-directives-hook (list #'gptel--rewrite-message)
+  "Hook run to generate gptel's default rewrite directives.
+
+Each function in this hook is called with no arguments until one
+returns a non-nil value, the base string to use as the
+rewrite/refactor instruction.
+
+Use this hook to tailor context-specific refactoring directives.
+For example, you can specialize the default refactor directive
+for a particular major-mode."
+  :group 'gptel
+  :type 'hook)
 
 ;; * Variables
 
@@ -211,7 +225,7 @@ the changed regions. BUF is the (current) buffer."
    (lambda ()
      (format "Directive:  %s"
              (truncate-string-to-width
-              (or gptel--rewrite-message (gptel--rewrite-message))
+              gptel--rewrite-message
               (max (- (window-width) 14) 20) nil nil t)))
    (gptel--infix-rewrite-prompt)]
   [[:description "Diff Options"
@@ -232,7 +246,10 @@ the changed regions. BUF is the (current) buffer."
     (gptel--suffix-rewrite-clear)]]
   (interactive)
   (unless gptel--rewrite-message
-    (setq gptel--rewrite-message (gptel--rewrite-message)))
+    (setq gptel--rewrite-message
+          (save-mark-and-excursion
+            (run-hook-with-args-until-success
+             'gptel-rewrite-directives-hook))))
   (transient-setup 'gptel-rewrite-menu))
 
 ;; * Transient infixes for rewriting/refactoring
@@ -249,7 +266,11 @@ the changed regions. BUF is the (current) buffer."
   :prompt "Set directive for rewrite: "
   :reader (lambda (prompt _ history)
             (read-string
-             prompt (gptel--rewrite-message) history)))
+             prompt
+             (save-mark-and-excursion
+               (run-hook-with-args-until-success
+                'gptel-rewrite-directives-hook))
+             history)))
 
 (transient-define-argument gptel--rewrite-infix-diff:-U ()
   :description "Context lines"
