@@ -59,13 +59,19 @@ Meant to be called when `gptel-menu' is active."
                   args))
 
 (defun gptel--instructions-make-overlay (text &optional ov)
-  "TODO"
+  "Make or move overlay OV with TEXT."
   (save-excursion
+    ;; Move point to overlay position
     (cond
-     ((use-region-p) (goto-char (region-beginning)))
-     ((gptel--in-response-p) (gptel-beginning-of-response))
-     (t (text-property-search-backward 'gptel 'response)))
-    (skip-chars-forward "\n \t")
+     ((use-region-p)
+      (if (pos-visible-in-window-p (region-beginning))
+          (goto-char (region-beginning))))
+     ((gptel--in-response-p)
+      (gptel-beginning-of-response)
+      (skip-chars-forward "\n \t"))
+     (t (text-property-search-backward 'gptel 'response)
+        (skip-chars-forward "\n \t")))
+    ;; Make overlay
     (if (and ov (overlayp ov))
         (move-overlay ov (point) (point) (current-buffer))
       (setq ov (make-overlay (point) (point) nil t)))
@@ -75,9 +81,8 @@ Meant to be called when `gptel-menu' is active."
     (overlay-put ov 'category 'gptel)
     (overlay-put
      ov 'after-string
-     (concat
-      (propertize (concat "GPTEL: " text)
-                  'font-lock-face '(:inherit shadow :box t))
+     (concat (propertize (concat "DIRECTIVE: " text)
+                         'font-lock-face '(:inherit shadow :weight bold  :box t))
       "\n"))
     ov))
 
