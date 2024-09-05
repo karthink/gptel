@@ -32,8 +32,8 @@
 ;; gptel supports
 ;;
 ;; - The services ChatGPT, Azure, Gemini, Anthropic AI, Anyscale, Together.ai,
-;;   Perplexity, Anyscale, OpenRouter, Groq, PrivateGPT, DeepSeek and Kagi
-;;   (FastGPT & Summarizer)
+;;   Perplexity, Anyscale, OpenRouter, Groq, PrivateGPT, DeepSeek, Cerebras and
+;;   Kagi (FastGPT & Summarizer)
 ;; - Local models via Ollama, Llama.cpp, Llamafiles or GPT4All
 ;;
 ;;  Additionally, any LLM service (local or remote) that provides an
@@ -61,8 +61,8 @@
 ;; - For Gemini: define a gptel-backend with `gptel-make-gemini', which see.
 ;; - For Anthropic (Claude): define a gptel-backend with `gptel-make-anthropic',
 ;;   which see
-;; - For Together.ai, Anyscale, Perplexity, Groq, OpenRouter or DeepSeek: define
-;;   a gptel-backend with `gptel-make-openai', which see.
+;; - For Together.ai, Anyscale, Perplexity, Groq, OpenRouter, DeepSeek or
+;;   Cerebras: define a gptel-backend with `gptel-make-openai', which see.
 ;; - For PrivateGPT: define a backend with `gptel-make-privategpt', which see.
 ;; - For Kagi: define a gptel-backend with `gptel-make-kagi', which see.
 ;;
