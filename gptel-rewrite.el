@@ -52,7 +52,7 @@
 ;; * Helper functions
 
 (defun gptel--rewrite-sanitize-overlays ()
-  "TODO"
+  "Ensure gptel's rewrite overlays in buffer are consistent."
   (setq gptel--rewrite-overlays
         (cl-delete-if-not #'overlay-buffer
                           gptel--rewrite-overlays)))
@@ -146,17 +146,15 @@ the changed regions. BUF is the (current) buffer."
         (goto-char pt)
         ;; We mostly just want font-locking
         ;; (delay-mode-hooks (funcall mode))
-        ;; MAYBE: Copy mark and local variables?
         ;; Apply the changes to the new buffer
         (save-excursion
-          ;; TODO: Use gptel--rewrite-apply here
           (gptel--rewrite-apply ovs)))
       newbuf)))
 
 ;; * Refactor action functions
 
 (defun gptel--rewrite-clear (&optional ovs)
-  "TODO"
+  "Clear pending LLM responses in OVS or at point."
   (interactive (list (gptel--rewrite-overlay-at)))
   (dolist (ov (ensure-list ovs))
     (setq gptel--rewrite-overlays (delq ov gptel--rewrite-overlays))
@@ -166,7 +164,7 @@ the changed regions. BUF is the (current) buffer."
   (message "Cleared pending LLM response(s)."))
 
 (defun gptel--rewrite-apply (&optional ovs)
-  "TODO"
+  "Apply pending LLM responses in OVS or at point."
   (interactive (list (gptel--rewrite-overlay-at)))
   (cl-loop for ov in (ensure-list ovs)
            for ov-beg = (overlay-start ov)
@@ -179,7 +177,7 @@ the changed regions. BUF is the (current) buffer."
   (message "Replaced region(s) with LLM output."))
 
 (defun gptel--rewrite-diff (&optional ovs switches)
-  "TODO"
+  "Diff pending LLM responses in OVS or at point."
   (interactive (list (gptel--rewrite-overlay-at)))
   (let* ((buf (current-buffer))
          (newbuf (gptel--rewrite-prepare-buffer ovs))
@@ -192,7 +190,7 @@ the changed regions. BUF is the (current) buffer."
     (display-buffer diff-buf)))
 
 (defun gptel--rewrite-ediff (&optional ovs)
-  "TODO"
+  "Ediff pending LLM responses in OVS or at point."
   (interactive (list (gptel--rewrite-overlay-at)))
   (letrec ((newbuf (gptel--rewrite-prepare-buffer ovs))
            (cwc (current-window-configuration))
@@ -224,10 +222,7 @@ the changed regions. BUF is the (current) buffer."
     (gptel--rewrite-infix-diff:-U)]
    [:description gptel--refactor-or-rewrite
     :if use-region-p
-    (gptel--suffix-rewrite)
-    ;; (gptel--suffix-rewrite-and-replace)
-    ;; (gptel--suffix-rewrite-and-ediff)
-    ]
+    (gptel--suffix-rewrite)]
    [:description (lambda () (concat "Continue " (gptel--refactor-or-rewrite)))
     :if (lambda () (gptel--rewrite-sanitize-overlays))
     (gptel--suffix-rewrite-diff)
@@ -306,7 +301,7 @@ the changed regions. BUF is the (current) buffer."
               (overlay-put ov 'keymap gptel-rewrite-actions-map)
               (overlay-put ov 'before-string
                            (concat (propertize
-                                    " " 'display `(space :align-to (- right ,(+ (length hint-str) 2))))
+                                    " " 'display `(space :align-to (- right ,(1+ (length hint-str)))))
                                    (propertize hint-str 'face 'success)))
               (overlay-put ov 'help-echo
                            (format "%s rewrite available:
