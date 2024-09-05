@@ -37,10 +37,12 @@
 
 (defvar-keymap gptel-rewrite-actions-map
   :doc "Keymap for gptel rewrite actions at point."
-  "C-c C-k" 'gptel--rewrite-clear
-  "C-c C-a" 'gptel--rewrite-apply
-  "C-c C-d" 'gptel--rewrite-diff
-  "C-c C-e" 'gptel--rewrite-ediff)
+  "C-c C-k" #'gptel--rewrite-clear
+  "C-c C-a" #'gptel--rewrite-apply
+  "C-c C-d" #'gptel--rewrite-diff
+  "C-c C-e" #'gptel--rewrite-ediff
+  "C-c C-n" #'gptel--rewrite-next
+  "C-c C-p" #'gptel--rewrite-previous)
 
 (defvar-local gptel--rewrite-overlays nil
   "List of active rewrite overlays in the buffer.")
@@ -81,6 +83,31 @@ CALLBACK is supplied by Eldoc, see
                        (propertize (concat (gptel-backend-name gptel-backend)
                                            ":" gptel-model)
                                    'face 'mode-line-emphasis)))))
+
+(defun gptel--rewrite-move (search-func)
+  "Move directionally to a gptel rewrite location using SEARCH-FUNC."
+  (let* ((ov (cdr (get-char-property-and-overlay (point) 'gptel-rewrite)))
+         (pt (save-excursion
+               (if ov
+                   (goto-char
+                    (funcall search-func (overlay-start ov) 'gptel-rewrite))
+                 (goto-char
+                  (max (1- (funcall search-func (point) 'gptel-rewrite))
+                       (point-min))))
+               (funcall search-func (point) 'gptel-rewrite))))
+    (if (get-char-property pt 'gptel-rewrite)
+        (goto-char pt)
+      (user-error "No further rewrite regions!"))))
+
+(defun gptel--rewrite-next ()
+  "Go to next pending LLM rewrite in buffer, if one exists."
+  (interactive)
+  (gptel--rewrite-move #'next-single-char-property-change))
+
+(defun gptel--rewrite-previous ()
+  "Go to previous pending LLM rewrite in buffer, if one exists."
+  (interactive)
+  (gptel--rewrite-move #'previous-single-char-property-change))
 
 (defun gptel--rewrite-overlay-at (&optional pt)
   "Check for a gptel rewrite overlay at PT and return it.
