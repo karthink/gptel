@@ -257,14 +257,17 @@ the changed regions. BUF is the (current) buffer."
     (gptel--rewrite-infix-diff:-U)]
    [:description gptel--refactor-or-rewrite
     :if use-region-p
-    (gptel--suffix-rewrite)]
-   [:description (lambda () (concat "Continue " (gptel--refactor-or-rewrite)))
-    :if (lambda () (gptel--rewrite-sanitize-overlays))
+    (gptel--suffix-rewrite)]]
+  [[:description (lambda () (concat "Diff " (gptel--refactor-or-rewrite) "s"))
+    :if (lambda () gptel--rewrite-overlays)
     (gptel--suffix-rewrite-diff)
-    (gptel--suffix-rewrite-ediff)
+    (gptel--suffix-rewrite-ediff)]
+   [:description (lambda () (concat "Continue " (gptel--refactor-or-rewrite) "s"))
+    :if (lambda () (gptel--rewrite-sanitize-overlays))
     (gptel--suffix-rewrite-merge)
-    (gptel--suffix-rewrite-apply)
-    "Cancel"
+    (gptel--suffix-rewrite-apply)]
+   [:description (lambda () (concat "Reject " (gptel--refactor-or-rewrite) "s"))
+    :if (lambda () (gptel--rewrite-sanitize-overlays))
     (gptel--suffix-rewrite-clear)]]
   (interactive)
   (unless gptel--rewrite-message
@@ -368,27 +371,24 @@ the changed regions. BUF is the (current) buffer."
 (transient-define-suffix gptel--suffix-rewrite-diff (&optional switches)
   "Diff LLM output against buffer."
   :if (lambda () gptel--rewrite-overlays)
-  :key "cd"
-  :description (concat "Diff  LLM " (downcase (gptel--refactor-or-rewrite))
-                       "s against buffer")
+  :key "D"
+  :description (concat "Diff  LLM " (downcase (gptel--refactor-or-rewrite)) "s")
   (interactive (list (transient-args transient-current-command)))
   (gptel--rewrite-diff gptel--rewrite-overlays switches))
 
 (transient-define-suffix gptel--suffix-rewrite-ediff ()
   "Ediff LLM output against buffer."
   :if (lambda () gptel--rewrite-overlays)
-  :key "ce"
-  :description (concat "Ediff LLM " (downcase (gptel--refactor-or-rewrite))
-                             "s against buffer")
+  :key "E"
+  :description (concat "Ediff LLM " (downcase (gptel--refactor-or-rewrite)) "s")
   (interactive)
   (gptel--rewrite-ediff gptel--rewrite-overlays))
 
 (transient-define-suffix gptel--suffix-rewrite-merge ()
   "Insert LLM output as merge conflicts"
   :if (lambda () gptel--rewrite-overlays)
-  :key "ce"
-  :description (concat "LLM " (downcase (gptel--refactor-or-rewrite))
-                             "s as merge conflicts")
+  :key "cm"
+  :description "Accept as merge conflicts"
   (interactive)
   (gptel--rewrite-merge gptel--rewrite-overlays))
 
@@ -396,9 +396,7 @@ the changed regions. BUF is the (current) buffer."
   "Accept pending LLM rewrites."
   :if (lambda () gptel--rewrite-overlays)
   :key "ca"
-  :description (concat "Accept all pending LLM "
-                       (downcase (gptel--refactor-or-rewrite))
-                       "s")
+  :description "Accept in-place"
   (interactive)
   (gptel--rewrite-apply gptel--rewrite-overlays))
 
@@ -406,7 +404,7 @@ the changed regions. BUF is the (current) buffer."
   "Clear pending LLM rewrites."
   :if (lambda () gptel--rewrite-overlays)
   :key "ck"
-  :description (concat "Clear all pending LLM "
+  :description (concat "Clear pending "
                        (downcase (gptel--refactor-or-rewrite))
                        "s")
   (interactive)
