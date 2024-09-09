@@ -363,9 +363,8 @@ the changed regions. BUF is the (current) buffer."
             (message
              (concat
               "LLM %s output"
-              (unless (eq (current-buffer) buf) (format " for buffer %s " buf))
-              (substitute-command-keys "ready.  \\[gptel-menu] to continue")
-              (propertize " ✓" 'face 'success))
+              (unless (eq (current-buffer) buf) (format " in buffer %s " buf))
+              (substitute-command-keys " ready, \\[gptel-menu] to continue."))
              action-str)))))))
 
 (transient-define-suffix gptel--suffix-rewrite-diff (&optional switches)
