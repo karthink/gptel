@@ -88,7 +88,7 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
       - [[#why-another-llm-client][Why another LLM client?]]
   - [[#additional-configuration][Additional Configuration]]
   - [[#alternatives][Alternatives]]
-    - [[#extensions-using-gptel][Extensions using gptel]]
+    - [[#packages-using-gptel][Packages using gptel]]
   - [[#acknowledgments][Acknowledgments]]
 
 ** Installation
@@ -698,7 +698,7 @@ The above code makes the backend available to select.  If you want it to be the 
 |------------------+-----------------------------------------------------------------------------------------|
 | *To add context* |                                                                                         |
 |------------------+-----------------------------------------------------------------------------------------|
-| =gptel-add=      | Add/remove a region or buffer to gptel's context.  Add/remove marked files in Dired.    |
+| =gptel-add=      | Add/remove a region or buffer to gptel's context.  In Dired, add/remove marked files.   |
 | =gptel-add-file= | Add a (text-readable) file to gptel's context.  Also available from the transient menu. |
 |------------------+-----------------------------------------------------------------------------------------|
 
@@ -726,13 +726,25 @@ The above code makes the backend available to select.  If you want it to be the 
      
 With a region selected, you can also rewrite prose or refactor code from here:
 
-*Code*:
-
-[[https://user-images.githubusercontent.com/8607532/230770162-1a5a496c-ee57-4a67-9c95-d45f238544ae.png]]
-
 *Prose*:
 
-[[https://user-images.githubusercontent.com/8607532/230770352-ee6f45a3-a083-4cf0-b13c-619f7710e9ba.png]]
+https://github.com/user-attachments/assets/172e75cd-11e9-4f3b-9ab9-b4edfb8f6695
+
+# [[https://user-images.githubusercontent.com/8607532/230770352-ee6f45a3-a083-4cf0-b13c-619f7710e9ba.png]]
+
+*Code*:
+
+https://github.com/user-attachments/assets/172e75cd-11e9-4f3b-9ab9-b4edfb8f6695
+
+# [[https://user-images.githubusercontent.com/8607532/230770162-1a5a496c-ee57-4a67-9c95-d45f238544ae.png]]
+
+When the refactor is ready, you can apply it or compare against the original:
+ 
+https://github.com/user-attachments/assets/a0cf33b2-3ad3-4f55-aa7b-4349e54d6771
+
+These actions are also available directly when the cursor is inside the pending rewrite region:
+
+https://github.com/user-attachments/assets/57e1fff7-f8e4-47f0-9bda-d0b698443559
 
 *** In a dedicated chat buffer:
 
@@ -971,15 +983,18 @@ Other Emacs clients for LLMs include
 
 There are several more: [[https://github.com/CarlQLange/chatgpt-arcana.el][chatgpt-arcana]], [[https://github.com/MichaelBurge/leafy-mode][leafy-mode]], [[https://github.com/iwahbe/chat.el][chat.el]]
 
-*** Extensions using gptel
+*** Packages using gptel
 
-These are packages that use gptel to provide additional functionality
+gptel is a general-purpose package for chat and ad-hoc LLM interaction.  The following packages use gptel to provide additional or specialized functionality:
 
-- [[https://github.com/kamushadenes/gptel-extensions.el][gptel-extensions]]: Extra utility functions for gptel.
-- [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
-- [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate Commit Messages within magit-status Buffer using gptel.
-- [[https://github.com/armindarvish/consult-web][consult-web]]: Provides gptel as a source when querying multiple local and online sources.
-- [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  (Note that gptel includes this feature as well (via =gptel-org-branching-context=), but requires a recent version of Org mode (9.67 or later) to be installed.)
+- [[https://github.com/karthink/gptel-quick][gptel-quick]]: Quickly look up the region or text at point.
+- [[https://github.com/daedsidog/evedel][Evedel]]: Instructed LLM Programmer/Assistant
+- [[https://github.com/lanceberge/elysium][Elysium]]: Automatically apply AI-generated changes as you code
+- [[https://github.com/kamushadenes/gptel-extensions.el][gptel-extensions]]: Extra utility functions for gptel
+- [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo
+- [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate Commit Messages within magit-status Buffer using gptel
+- [[https://github.com/armindarvish/consult-web][consult-web]]: Provides gptel as a source when querying multiple local and online sources
+- [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  (Note that gptel includes this feature as well (see =gptel-org-branching-context=), but requires a recent version of Org mode (9.67 or later) to be installed.)
 
 ** COMMENT Breaking Changes
 
