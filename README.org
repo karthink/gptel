@@ -734,7 +734,7 @@ With a region selected, you can also rewrite prose or refactor code from here:
 
 *Code*:
 
-#+html: <img src="https://github.com/user-attachments/assets/172e75cd-11e9-4f3b-9ab9-b4edfb8f6695" align="center" />
+#+html: <img src="https://github.com/user-attachments/assets/8670ddb3-8655-47f4-a70c-8994994e61e3" align="center" />
 
 # [[https://user-images.githubusercontent.com/8607532/230770162-1a5a496c-ee57-4a67-9c95-d45f238544ae.png]]
 
