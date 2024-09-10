@@ -23,8 +23,7 @@
 ;;
 
 ;;; Code:
-(require 'gptel)
-(require 'transient)
+(require 'gptel-transient)
 (require 'cl-lib)
 
 (defvar eldoc-documentation-functions)
@@ -81,7 +80,7 @@ for a particular major-mode."
         (cl-delete-if-not #'overlay-buffer
                           gptel--rewrite-overlays)))
 
-(defun gptel--refactor-or-rewrite ()
+(defsubst gptel--refactor-or-rewrite ()
   "Rewrite should be refactored into refactor.
 
 Or is it the other way around?"
@@ -258,6 +257,11 @@ the changed regions. BUF is the (current) buffer."
               gptel--rewrite-message
               (max (- (window-width) 14) 20) nil nil t)))
    (gptel--infix-rewrite-prompt)]
+  ;; FIXME: We are requiring `gptel-transient' because of this suffix, perhaps
+  ;; we can get find some way around that?
+  [:description (lambda () (concat "Context for " (gptel--refactor-or-rewrite)))
+   :if use-region-p
+   (gptel--suffix-context-buffer :key "C")]
   [[:description "Diff Options"
     :if (lambda () gptel--rewrite-overlays)
     ("-b" "Ignore whitespace changes"      ("-b" "--ignore-space-change"))
@@ -321,7 +325,9 @@ the changed regions. BUF is the (current) buffer."
   (interactive (list gptel--rewrite-message))
   (let* ((prompt (buffer-substring-no-properties
                   (region-beginning) (region-end)))
-         (gptel--system-message (or rewrite-message gptel--rewrite-message)))
+         (gptel--system-message (or rewrite-message gptel--rewrite-message))
+         ;; always send context with system message
+         (gptel-use-context (and gptel-use-context 'system)))
     (deactivate-mark)
     (gptel-request prompt
       :context

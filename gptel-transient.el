@@ -97,7 +97,7 @@ documention."
   (ignore-errors
     (read-from-minibuffer prompt initial-input read-expression-map t history)))
 
-(defun gptel--refactor-or-rewrite ()
+(defsubst gptel--refactor-or-rewrite ()
   "Rewrite should be refactored into refactor.
 
 Or is it the other way around?"
