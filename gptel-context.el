@@ -35,7 +35,9 @@
 (declare-function dired-get-marked-files "dired")
 
 (defface gptel-context-highlight-face
-  '((t :inherit header-line))
+  '((((background dark)  (min-colors 88)) :background "gray4" :extend t)
+    (((background light) (min-colors 88)) :background "alice blue" :extend t)
+    (t :inherit mode-line))
   "Face used to highlight gptel contexts in buffers."
   :group 'gptel)
 

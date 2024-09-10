@@ -47,6 +47,15 @@ for a particular major-mode."
   :group 'gptel
   :type 'hook)
 
+(defface gptel-rewrite-highlight-face
+  '((((class color) (min-colors 88) (background dark))
+     :background "#041714" :extend t)
+    (((class color) (min-colors 88) (background light))
+     :background "light goldenrod yellow" :extend t)
+    (t :inherit secondary-selection))
+  "Face for highlighting regions with pending rewrites."
+  :group 'gptel)
+
 ;; * Variables
 
 (defvar-keymap gptel-rewrite-actions-map
@@ -343,7 +352,7 @@ the changed regions. BUF is the (current) buffer."
                                      " READY ✓\n"))
               (add-hook 'eldoc-documentation-functions #'gptel--rewrite-key-help nil 'local)
               (overlay-put ov 'gptel-rewrite response)
-              (overlay-put ov 'face 'secondary-selection)
+              (overlay-put ov 'face 'gptel-rewrite-highlight-face)
               (overlay-put ov 'keymap gptel-rewrite-actions-map)
               (overlay-put ov 'before-string
                            (concat (propertize
