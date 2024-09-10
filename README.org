@@ -728,23 +728,23 @@ With a region selected, you can also rewrite prose or refactor code from here:
 
 *Prose*:
 
-https://github.com/user-attachments/assets/172e75cd-11e9-4f3b-9ab9-b4edfb8f6695
+#+html: <img src="https://github.com/user-attachments/assets/172e75cd-11e9-4f3b-9ab9-b4edfb8f6695" align="center" />
 
 # [[https://user-images.githubusercontent.com/8607532/230770352-ee6f45a3-a083-4cf0-b13c-619f7710e9ba.png]]
 
 *Code*:
 
-https://github.com/user-attachments/assets/172e75cd-11e9-4f3b-9ab9-b4edfb8f6695
+#+html: <img src="https://github.com/user-attachments/assets/172e75cd-11e9-4f3b-9ab9-b4edfb8f6695" align="center" />
 
 # [[https://user-images.githubusercontent.com/8607532/230770162-1a5a496c-ee57-4a67-9c95-d45f238544ae.png]]
 
 When the refactor is ready, you can apply it or compare against the original:
  
-https://github.com/user-attachments/assets/a0cf33b2-3ad3-4f55-aa7b-4349e54d6771
+#+html: <img src="https://github.com/user-attachments/assets/a0cf33b2-3ad3-4f55-aa7b-4349e54d6771" align="center" />
 
 These actions are also available directly when the cursor is inside the pending rewrite region:
 
-https://github.com/user-attachments/assets/57e1fff7-f8e4-47f0-9bda-d0b698443559
+#+html: <img src="https://github.com/user-attachments/assets/57e1fff7-f8e4-47f0-9bda-d0b698443559" align="center" />
 
 *** In a dedicated chat buffer:
 
