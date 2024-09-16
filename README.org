@@ -713,6 +713,8 @@ The above code makes the backend available to select.  If you want it to be the 
           :models '("gpt-4o"))
 #+end_src
 
+#+html: </details>
+
 ** Usage
 
 (This is also a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel.)
