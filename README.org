@@ -72,7 +72,7 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
       - [[#privategpt][PrivateGPT]]
       - [[#deepseek][DeepSeek]]
       - [[#cerebras][Cerebras]]
-      - [[#Github Models][Github Models]]
+      - [[#github-models][Github Models]]
   - [[#usage][Usage]]
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
