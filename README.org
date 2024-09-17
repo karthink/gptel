@@ -7,24 +7,25 @@ gptel is a simple Large Language Model chat client for Emacs, with support for m
 #+html: <div align="center">
 | LLM Backend        | Supports | Requires                   |
 |--------------------+----------+----------------------------|
-| ChatGPT            | ✓      | [[https://platform.openai.com/account/api-keys][API key]]                    |
-| Azure              | ✓      | Deployment and API key     |
-| Ollama             | ✓      | [[https://ollama.ai/][Ollama running locally]]     |
-| GPT4All            | ✓      | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
-| Gemini             | ✓      | [[https://makersuite.google.com/app/apikey][API key]]                    |
-| Llama.cpp          | ✓      | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]]  |
-| Llamafile          | ✓      | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
-| Kagi FastGPT       | ✓      | [[https://kagi.com/settings?p=api][API key]]                    |
-| Kagi Summarizer    | ✓      | [[https://kagi.com/settings?p=api][API key]]                    |
-| together.ai        | ✓      | [[https://api.together.xyz/settings/api-keys][API key]]                    |
-| Anyscale           | ✓      | [[https://docs.endpoints.anyscale.com/][API key]]                    |
-| Perplexity         | ✓      | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
-| Anthropic (Claude) | ✓      | [[https://www.anthropic.com/api][API key]]                    |
-| Groq               | ✓      | [[https://console.groq.com/keys][API key]]                    |
-| OpenRouter         | ✓      | [[https://openrouter.ai/keys][API key]]                    |
-| PrivateGPT         | ✓      | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
-| DeepSeek           | ✓      | [[https://platform.deepseek.com/api_keys][API key]]                    |
-| Cerebras           | ✓      | [[https://cloud.cerebras.ai/][API key]]                    |
+| ChatGPT            | ✓        | [[https://platform.openai.com/account/api-keys][API key]]                    |
+| Azure              | ✓        | Deployment and API key     |
+| Ollama             | ✓        | [[https://ollama.ai/][Ollama running locally]]     |
+| GPT4All            | ✓        | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
+| Gemini             | ✓        | [[https://makersuite.google.com/app/apikey][API key]]                    |
+| Llama.cpp          | ✓        | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]]  |
+| Llamafile          | ✓        | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
+| Kagi FastGPT       | ✓        | [[https://kagi.com/settings?p=api][API key]]                    |
+| Kagi Summarizer    | ✓        | [[https://kagi.com/settings?p=api][API key]]                    |
+| together.ai        | ✓        | [[https://api.together.xyz/settings/api-keys][API key]]                    |
+| Anyscale           | ✓        | [[https://docs.endpoints.anyscale.com/][API key]]                    |
+| Perplexity         | ✓        | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
+| Anthropic (Claude) | ✓        | [[https://www.anthropic.com/api][API key]]                    |
+| Groq               | ✓        | [[https://console.groq.com/keys][API key]]                    |
+| OpenRouter         | ✓        | [[https://openrouter.ai/keys][API key]]                    |
+| PrivateGPT         | ✓        | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
+| DeepSeek           | ✓        | [[https://platform.deepseek.com/api_keys][API key]]                    |
+| Cerebras           | ✓        | [[https://cloud.cerebras.ai/][API key]]                    |
+| Github Models      | ✓        | [[https://github.com/settings/tokens][Token]]                      |
 #+html: </div>
 
 *General usage*: ([[https://www.youtube.com/watch?v=bsRnh_brggM][YouTube Demo]])
@@ -71,6 +72,7 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
       - [[#privategpt][PrivateGPT]]
       - [[#deepseek][DeepSeek]]
       - [[#cerebras][Cerebras]]
+      - [[#github-models][Github Models]]
   - [[#usage][Usage]]
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
@@ -674,6 +676,41 @@ The above code makes the backend available to select.  If you want it to be the 
         :key "your-api-key"
         :models '("llama3.1-70b"
                   "llama3.1-8b")))
+#+end_src
+
+#+html: </details>
+#+html: <details><summary>
+**** Github Models
+#+html: </summary>
+
+Register a backend with
+#+begin_src emacs-lisp
+  ;; Github Models offers an OpenAI compatible API
+  (gptel-make-openai "Github Models" ;Any name you want
+    :host "models.inference.ai.azure.com"
+    :endpoint "/chat/completions"
+    :stream t
+    :key "your-github-token"
+    :models '("gpt-4o"))
+#+end_src
+
+For all the available models, check the [[https://github.com/marketplace/models][marketplace]].
+
+You can pick this backend from the menu when using (see [[#usage][Usage]]).
+
+***** (Optional) Set as the default gptel backend
+
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
+#+begin_src emacs-lisp
+  ;; OPTIONAL configuration
+  (setq gptel-model  "gpt-4o"
+        gptel-backend
+        (gptel-make-openai "Github Models" ;Any name you want
+          :host "models.inference.ai.azure.com"
+          :endpoint "/chat/completions"
+          :stream t
+          :key "your-github-token"
+          :models '("gpt-4o"))
 #+end_src
 
 #+html: </details>
