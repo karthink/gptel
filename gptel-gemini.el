@@ -127,6 +127,7 @@
           (host "generativelanguage.googleapis.com")
           (protocol "https")
           (models '("gemini-pro"
+                    "gemini-1.5-flash"
                     "gemini-1.5-pro-latest"))
           (endpoint "/v1beta/models"))
 
