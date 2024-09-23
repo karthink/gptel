@@ -776,6 +776,9 @@ file."
             (add-file-local-variable 'gptel--system-message gptel--system-message))
           (when gptel-max-tokens
             (add-file-local-variable 'gptel-max-tokens gptel-max-tokens))
+          (when (natnump gptel--num-messages-to-send)
+            (add-file-local-variable 'gptel--num-messages-to-send
+                                     gptel--num-messages-to-send))
           (add-file-local-variable 'gptel--bounds (gptel--get-buffer-bounds)))))))
 
 

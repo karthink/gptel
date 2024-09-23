@@ -236,11 +236,12 @@ parameters."
 (defun gptel-org--entry-properties (&optional pt)
   "Find gptel configuration properties stored in the current heading."
   (pcase-let
-      ((`(,system ,backend ,model ,temperature ,tokens)
+      ((`(,system ,backend ,model ,temperature ,tokens ,num)
          (mapcar
           (lambda (prop) (org-entry-get (or pt (point)) prop 'selective))
           '("GPTEL_SYSTEM" "GPTEL_BACKEND" "GPTEL_MODEL"
-            "GPTEL_TEMPERATURE" "GPTEL_MAX_TOKENS"))))
+            "GPTEL_TEMPERATURE" "GPTEL_MAX_TOKENS"
+            "GPTEL_NUM_MESSAGES_TO_SEND"))))
     (when system
       (setq system (string-replace "\\n" "\n" system)))
     (when backend
@@ -249,7 +250,8 @@ parameters."
     (when temperature
       (setq temperature (gptel--numberize temperature)))
     (when tokens (setq tokens (gptel--numberize tokens)))
-    (list system backend model temperature tokens)))
+    (when num (setq num (gptel--numberize num)))
+    (list system backend model temperature tokens num)))
 
 (defun gptel-org--restore-state ()
   "Restore gptel state for Org buffers when turning on `gptel-mode'."
@@ -261,7 +263,7 @@ parameters."
             (mapc (pcase-lambda (`(,beg . ,end))
                     (put-text-property beg end 'gptel 'response))
                   (read bounds)))
-          (pcase-let ((`(,system ,backend ,model ,temperature ,tokens)
+          (pcase-let ((`(,system ,backend ,model ,temperature ,tokens ,num)
                        (gptel-org--entry-properties (point-min))))
             (when system (setq-local gptel--system-message system))
             (if backend (setq-local gptel-backend backend)
@@ -274,7 +276,8 @@ parameters."
                backend))
             (when model (setq-local gptel-model model))
             (when temperature (setq-local gptel-temperature temperature))
-            (when tokens (setq-local gptel-max-tokens tokens))))
+            (when tokens (setq-local gptel-max-tokens tokens))
+            (when num (setq-local gptel--num-messages-to-send num))))
       (:success (message "gptel chat restored."))
       (error (message "Could not restore gptel state, sorry! Error: %s" status)))))
 
@@ -293,6 +296,9 @@ non-nil (default), display a message afterwards."
   (unless (equal (default-value 'gptel-temperature) gptel-temperature)
     (org-entry-put pt "GPTEL_TEMPERATURE"
                    (number-to-string gptel-temperature)))
+  (when (natnump gptel--num-messages-to-send)
+    (org-entry-put pt "GPTEL_NUM_MESSAGES_TO_SEND"
+                   (number-to-string gptel--num-messages-to-send)))
   (org-entry-put pt "GPTEL_SYSTEM"
                  (string-replace "\n" "\\n" gptel--system-message))   
   (when gptel-max-tokens
