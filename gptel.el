@@ -171,7 +171,7 @@
   (require 'gptel-org))
 
 
-;; User options
+;;; User options
 
 (defgroup gptel nil
   "Interact with LLMs from anywhere in Emacs."
@@ -562,7 +562,7 @@ or
  (\"path/to/file\").")
 
 
-;; Utility functions
+;;; Utility functions
 
 (defun gptel-api-key-from-auth-source (&optional host user)
   "Lookup api key in the auth source.
@@ -705,7 +705,7 @@ MODE-NAME is typically a major-mode symbol."
      mode-name "")))
 
 
-;; Logging
+;;; Logging
 
 (defconst gptel--log-buffer-name "*gptel-log*"
   "Log buffer for gptel.")
@@ -726,7 +726,7 @@ Valid JSON unless NO-JSON is t."
       (unless no-json (ignore-errors (json-pretty-print p (point)))))))
 
 
-;; Saving and restoring state
+;;; Saving and restoring state
 
 (defun gptel--restore-state ()
   "Restore gptel state when turning on `gptel-mode'."
@@ -782,7 +782,7 @@ file."
           (add-file-local-variable 'gptel--bounds (gptel--get-buffer-bounds)))))))
 
 
-;; Minor mode and UI
+;;; Minor mode and UI
 
 ;; NOTE: It's not clear that this is the best strategy:
 (add-to-list 'text-property-default-nonsticky '(gptel . t))
@@ -877,7 +877,7 @@ file."
 (declare-function gptel-context--wrap "gptel-context")
 
 
-;; Send queries, handle responses
+;;; Send queries, handle responses
 (cl-defun gptel-request
     (&optional prompt &key callback
                (buffer (current-buffer))
@@ -1379,7 +1379,7 @@ INTERACTIVEP is t when gptel is called interactively."
     (current-buffer)))
 
 
-;; Response tweaking commands
+;;; Response tweaking commands
 
 (defun gptel--attach-response-history (history &optional buf)
   "Attach HISTORY to the next gptel response in buffer BUF.
