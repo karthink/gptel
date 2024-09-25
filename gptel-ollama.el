@@ -119,9 +119,11 @@ Intended for internal use only.")
                   :content
                   (string-trim (buffer-substring-no-properties (point-min) (point-max))))
             prompts))
-    (cons (list :role "system"
-                :content gptel--system-message)
-          prompts)))
+    (if gptel--system-message
+        (cons (list :role "system"
+                    :content gptel--system-message)
+              prompts)
+      prompts)))
 
 (cl-defmethod gptel--wrap-user-prompt ((_backend gptel-ollama) prompts)
   "Wrap the last user prompt in PROMPTS with the context string."

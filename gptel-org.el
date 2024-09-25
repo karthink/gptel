@@ -300,7 +300,8 @@ non-nil (default), display a message afterwards."
     (org-entry-put pt "GPTEL_NUM_MESSAGES_TO_SEND"
                    (number-to-string gptel--num-messages-to-send)))
   (org-entry-put pt "GPTEL_SYSTEM"
-                 (string-replace "\n" "\\n" gptel--system-message))   
+                 (when gptel--system-message
+                   (string-replace "\n" "\\n" gptel--system-message)))
   (when gptel-max-tokens
     (org-entry-put
      pt "GPTEL_MAX_TOKENS" (number-to-string gptel-max-tokens)))

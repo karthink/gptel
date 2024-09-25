@@ -108,9 +108,11 @@
              (setq prompts (list
                             :query
                             (if (prop-match-p prop)
-                                (concat
-                                 ;; Fake a system message by including it in the prompt
-                                 gptel--system-message "\n\n" prompts)
+                                (if gptel--system-message
+                                    (concat
+                                     ;; Fake a system message by including it in the prompt
+                                     gptel--system-message "\n\n" prompts)
+                                  prompts)
                               ""))))
             ((and model (guard (string-prefix-p "summarize" model)))
              ;; If the entire contents of the prompt looks like a url, send the url
