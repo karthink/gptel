@@ -61,7 +61,8 @@
 (cl-defmethod gptel--request-data ((_backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
   (let ((prompts-plist
-         `(:contents [,@prompts]
+         `(:system_instruction (:parts (:text ,gptel--system-message))
+           :contents [,@prompts]
            :safetySettings [(:category "HARM_CATEGORY_HARASSMENT"
                              :threshold "BLOCK_NONE")
                             (:category "HARM_CATEGORY_SEXUALLY_EXPLICIT"
@@ -110,10 +111,6 @@
                   (list :text (string-trim
                                (buffer-substring-no-properties (point-min) (point-max)))))
             prompts))
-    (cl-callf (lambda (msg) (concat gptel--system-message "\n\n" msg))
-        (thread-first (car prompts)
-                      (plist-get :parts)
-                      (plist-get :text)))
     prompts))
 
 (cl-defmethod gptel--wrap-user-prompt ((_backend gptel-gemini) prompts)
