@@ -693,6 +693,19 @@ Note: This will move the cursor."
    (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
            (regexp-quote (gptel-response-prefix-string)))))
 
+(defsubst gptel--link-standalone-p (beg end)
+  "Return non-nil if positions BEG and END are isolated.
+
+This means the extent from BEG to END is the only non-whitespace
+content on this line."
+  (save-excursion
+    (and (= beg (progn (goto-char beg) (beginning-of-line)
+                       (skip-chars-forward "\t ")
+                       (point)))
+         (= end (progn (goto-char end) (end-of-line)
+                       (skip-chars-backward "\t ")
+                       (point))))))
+
 (defvar-local gptel--backend-name nil
   "Store to persist backend name across Emacs sessions.
 
@@ -727,6 +740,19 @@ in any way.")
   "Return non nil if MODEL can understand MIME type."
   (car-safe (member mime (gptel--model-mimes
                         (or model gptel-model)))))
+
+;;;; File handling
+(defun gptel--base64-encode (file)
+  "Encode FILE as a base64 string.
+
+FILE is assumed to exist and be a regular file."
+  (with-temp-buffer
+    (insert-file-contents-literally file)
+    (base64-encode-region (point-min) (point-max)
+                          :no-line-break)
+    (buffer-string)))
+
+;;;; Response text recognition
 
 (defun gptel--get-buffer-bounds ()
   "Return the gptel response boundaries in the buffer as an alist."

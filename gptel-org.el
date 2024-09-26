@@ -217,6 +217,18 @@ value of `gptel-org-branching-context', which see."
       ;; Create prompt the usual way
       (gptel--parse-buffer gptel-backend max-entries))))
 
+(defun gptel-org--link-standalone-p (object)
+  "Check if link OBJECT is on a line by itself."
+  (let ((par (org-element-lineage object 'paragraph)))
+    (and (= (org-element-begin object)
+            (save-excursion
+              (goto-char (org-element-property :contents-begin par))
+              (skip-chars-forward "\t ")
+              (point)))                 ;account for leading space
+                                        ;before object
+         (<= (- (org-element-property :contents-end par)
+                (org-element-property :end object))
+             1))))
 (defun gptel-org--send-with-props (send-fun &rest args)
   "Conditionally modify SEND-FUN's calling environment.
 
