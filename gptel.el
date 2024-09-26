@@ -519,7 +519,7 @@ distinction is necessary for back-and-forth conversation with an
 LLM.
 
 In regular Emacs buffers you can turn this behavior off by
-setting `gptel-track-response' to `nil'.  All text, including
+setting `gptel-track-response' to nil.  All text, including
 past LLM responses, is then treated as user input when sending
 queries.
 
@@ -593,12 +593,25 @@ and \"apikey\" as USER."
                 (error "`gptel-api-key' is not valid")))
       (t (error "`gptel-api-key' is not valid")))))
 
-(defsubst gptel--numberize (val)
+(defsubst gptel--to-number (val)
   "Ensure VAL is a number."
   (cond
    ((numberp val) val)
    ((stringp val) (string-to-number val))
    ((error "%S cannot be converted to a number" val))))
+
+(defsubst gptel--to-string (s)
+  "Convert S to a string, if possible."
+  (cl-etypecase s
+    (symbol (symbol-name s))
+    (string s)
+    (number (number-to-string s))))
+
+(defsubst gptel--intern (s)
+  "Intern S, if possible."
+  (cl-etypecase s
+    (symbol s)
+    (string (intern s))))
 
 (defun gptel-auto-scroll ()
   "Scroll window if LLM response continues below viewport.
@@ -647,10 +660,20 @@ Note: This will move the cursor."
      ,(macroexp-progn body)))
 
 (defun gptel-prompt-prefix-string ()
+  "Prefix before user prompts in `gptel-mode'."
   (or (alist-get major-mode gptel-prompt-prefix-alist) ""))
 
 (defun gptel-response-prefix-string ()
+  "Prefix before LLM responses in `gptel-mode'."
   (or (alist-get major-mode gptel-response-prefix-alist) ""))
+
+(defsubst gptel--trim-prefixes (s)
+  "Remove prompt/response prefixes from string S."
+  (string-trim s
+   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+             (regexp-quote (gptel-prompt-prefix-string)))
+   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+           (regexp-quote (gptel-response-prefix-string)))))
 
 (defvar-local gptel--backend-name nil
   "Store to persist backend name across Emacs sessions.
@@ -693,9 +716,9 @@ in any way.")
   (get-char-property (or pt (point)) 'gptel-history))
 
 (defun gptel--strip-mode-suffix (mode-sym)
-  "Remove the -mode suffix from MODE-NAME.
+  "Remove the -mode suffix from MODE-SYM.
 
-MODE-NAME is typically a major-mode symbol."
+MODE-SYM is typically a major-mode symbol."
   (let ((mode-name (thread-last
                 (symbol-name mode-sym)
                 (string-remove-suffix "-mode")
@@ -1041,7 +1064,7 @@ waiting for the response."
   "Show REQUEST-DATA, the full LLM query to be sent, in a buffer.
 
 This functions as a dry run of `gptel-send'.  If ARG is
-the symbol json, show the encoded JSON query instead of the lisp
+the symbol json, show the encoded JSON query instead of the Lisp
 structure gptel uses."
   (with-current-buffer (get-buffer-create "*gptel-query*")
     (let ((standard-output (current-buffer))
