@@ -34,6 +34,9 @@
 (defvar org-entry-property-inherited-from)
 (defvar gptel-backend)
 (defvar gptel--known-backends)
+(declare-function gptel--model-capable-p "gptel")
+(declare-function gptel--model-mime-capable-p "gptel")
+(declare-function gptel--model-name "gptel")
 (declare-function gptel--to-string "gptel")
 (declare-function gptel--intern "gptel")
 (declare-function gptel--get-buffer-bounds "gptel")
@@ -257,6 +260,7 @@ ARGS are the original function call arguments."
     (when backend
       (setq backend (alist-get backend gptel--known-backends
                                nil nil #'equal)))
+    (when model (setq model (gptel--intern model)))
     (when temperature
       (setq temperature (gptel--to-number temperature)))
     (when tokens (setq tokens (gptel--to-number tokens)))
@@ -301,7 +305,7 @@ settings when applicable.
 PT is the cursor position by default.  If MSG is
 non-nil (default), display a message afterwards."
   (interactive (list (point) t))
-  (org-entry-put pt "GPTEL_MODEL" gptel-model)
+  (org-entry-put pt "GPTEL_MODEL" (gptel--model-name gptel-model))
   (org-entry-put pt "GPTEL_BACKEND" (gptel-backend-name gptel-backend))
   (unless (equal (default-value 'gptel-temperature) gptel-temperature)
     (org-entry-put pt "GPTEL_TEMPERATURE"

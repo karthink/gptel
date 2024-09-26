@@ -75,7 +75,7 @@ Intended for internal use only.")
 (cl-defmethod gptel--request-data ((_backend gptel-ollama) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
   (let ((prompts-plist
-         `(:model ,gptel-model
+         `(:model ,(gptel--model-name gptel-model)
            :messages [,@prompts]
            :stream ,(or (and gptel-stream gptel-use-curl
                          (gptel-backend-stream gptel-backend))
@@ -141,7 +141,26 @@ CURL-ARGS (optional) is a list of additional Curl arguments.
 
 HOST is where Ollama runs (with port), defaults to localhost:11434
 
-MODELS is a list of available model names.
+MODELS is a list of available model names, as symbols.
+Additionally, you can specify supported LLM capabilities like
+vision or tool-use by appending a plist to the model with more
+information, in the form
+
+ (model-name . plist)
+
+Currently recognized plist keys are :description, :capabilities
+and :mime-types.  An example of a model specification including
+both kinds of specs:
+
+:models
+\\='(mistral:latest                        ;Simple specs
+  openhermes:latest
+  (llava:13b                            ;Full spec
+   :description
+   \"Llava 1.6: Large Lanuage and Vision Assistant\"
+   :capabilities (media)
+   :mime-types (\"image/jpeg\" \"image/png\")))
+
 
 STREAM is a boolean to toggle streaming responses, defaults to
 false.
@@ -175,7 +194,7 @@ Example:
                   :host host
                   :header header
                   :key key
-                  :models models
+                  :models (gptel--process-models models)
                   :protocol protocol
                   :endpoint endpoint
                   :stream stream

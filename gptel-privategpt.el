@@ -107,7 +107,7 @@
 			`(("Authorization" . ,(concat "Bearer " key))))))
           (host "localhost:8001")
           (protocol "http")
-	  (models '("private-gpt"))
+	  (models '(private-gpt))
           (endpoint "/v1/chat/completions")
           (context t) (sources t))
   "Register an Privategpt API-compatible backend for gptel with NAME.

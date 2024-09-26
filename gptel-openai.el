@@ -35,10 +35,11 @@
 (defvar gptel-max-tokens)
 (defvar gptel--system-message)
 (defvar json-object-type)
-
 (defvar gptel-mode)
 (defvar gptel-track-response)
 (declare-function gptel--trim-prefixes "gptel")
+(declare-function gptel--model-capable-p "gptel")
+(declare-function gptel--model-name "gptel")
 (declare-function gptel--get-api-key "gptel")
 (declare-function prop-match-value "text-property-search")
 (declare-function text-property-search-backward "text-property-search")
@@ -69,6 +70,21 @@
     (declare-function json-encode "json" (object))
     `(let ((json-false :json-false))
       (json-encode ,object))))
+
+(defun gptel--process-models (models)
+  "Convert items in MODELS to symbols with appropriate properties."
+  (let ((models-processed))
+    (dolist (model models)
+      (cl-etypecase model
+        (string (push (intern model) models-processed))
+        (symbol (push model models-processed))
+        (cons
+         (cl-destructuring-bind (name . props) model
+           (setf (symbol-plist name)
+                 (map-merge 'plist (symbol-plist name)
+                            props))
+           (push name models-processed)))))
+    (nreverse models-processed)))
 
 ;;; Common backend struct for LLM support
 (defvar gptel--known-backends nil
@@ -112,7 +128,7 @@ with differing settings.")
 (cl-defmethod gptel--request-data ((_backend gptel-openai) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
   (let ((prompts-plist
-         `(:model ,gptel-model
+         `(:model ,(gptel--model-name gptel-model)
            :messages [,@prompts]
            :stream ,(or (and gptel-stream gptel-use-curl
                          (gptel-backend-stream gptel-backend))
@@ -179,7 +195,26 @@ CURL-ARGS (optional) is a list of additional Curl arguments.
 
 HOST (optional) is the API host, typically \"api.openai.com\".
 
-MODELS is a list of available model names.
+MODELS is a list of available model names, as symbols.
+Additionally, you can specify supported LLM capabilities like
+vision or tool-use by appending a plist to the model with more
+information, in the form
+
+ (model-name . plist)
+
+Currently recognized plist keys are :description, :capabilities
+and :mime-types.  An example of a model specification including
+both kinds of specs:
+
+:models
+\\='(gpt-3.5-turbo                         ;Simple specs
+  gpt-4-turbo
+  (gpt-4o-mini                          ;Full spec
+   :description
+   \"Affordable and intelligent small model for lightweight tasks\"
+   :capabilities (media tool json url)
+   :mime-types
+   (\"image/jpeg\" \"image/png\" \"image/gif\" \"image/webp\")))
 
 STREAM is a boolean to toggle streaming responses, defaults to
 false.
@@ -203,7 +238,7 @@ function that returns the key."
                   :host host
                   :header header
                   :key key
-                  :models models
+                  :models (gptel--process-models models)
                   :protocol protocol
                   :endpoint endpoint
                   :stream stream
@@ -266,7 +301,7 @@ Example:
                   :host host
                   :header header
                   :key key
-                  :models models
+                  :models (gptel--process-models models)
                   :protocol protocol
                   :endpoint endpoint
                   :stream stream

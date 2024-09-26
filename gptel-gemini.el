@@ -134,9 +134,21 @@
     (name &key curl-args header key (stream nil)
           (host "generativelanguage.googleapis.com")
           (protocol "https")
-          (models '("gemini-pro"
-                    "gemini-1.5-flash"
-                    "gemini-1.5-pro-latest"))
+          (models '((gemini-pro
+                     :description "Complex reasoning tasks, problem solving, data extraction and generation"
+                     :capabilities (tool json)
+                     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                                  "application/pdf" "text/plain" "text/csv" "text/html"))
+                    (gemini-1.5-flash
+                     :description "Fast and versatile performance across a diverse variety of tasks"
+                     :capabilities (tool json)
+                     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                                  "application/pdf" "text/plain" "text/csv" "text/html"))
+                    (gemini-1.5-pro-latest
+                     :description "Complex reasoning tasks, problem solving, data extraction and generation"
+                     :capabilities (tool json)
+                     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                                  "application/pdf" "text/plain" "text/csv" "text/html"))))
           (endpoint "/v1beta/models"))
 
   "Register a Gemini backend for gptel with NAME.
@@ -148,7 +160,27 @@ CURL-ARGS (optional) is a list of additional Curl arguments.
 HOST (optional) is the API host, defaults to
 \"generativelanguage.googleapis.com\".
 
-MODELS is a list of available model names.
+MODELS is a list of available model names, as symbols.
+Additionally, you can specify supported LLM capabilities like
+vision or tool-use by appending a plist to the model with more
+information, in the form
+
+ (model-name . plist)
+
+Currently recognized plist keys are :description, :capabilities
+and :mime-types.  An example of a model specification including
+both kinds of specs:
+
+:models
+\\='(gemini-pro                            ;Simple specs
+  gemini-1.5-flash
+  (gemini-1.5-pro-latest                ;Full spec
+   :description
+   \"Complex reasoning tasks, problem solving and data extraction\"
+   :capabilities (tool json)
+   :mime-types
+   (\"image/jpeg\" \"image/png\" \"image/webp\" \"image/heic\")))
+
 
 STREAM is a boolean to enable streaming responses, defaults to
 false.
@@ -171,7 +203,7 @@ function that returns the key."
                   :name name
                   :host host
                   :header header
-                  :models models
+                  :models (gptel--process-models models)
                   :protocol protocol
                   :endpoint endpoint
                   :stream stream

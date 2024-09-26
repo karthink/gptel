@@ -223,8 +223,10 @@ This is used only for setting this variable via `gptel-menu'.")
   "Class used for gptel-backends.")
 
 (cl-defmethod transient-format-value ((obj gptel-provider-variable))
-  (propertize (concat (gptel-backend-name (oref obj value)) ":"
-                      (buffer-local-value (oref obj model) transient--original-buffer))
+  (propertize (concat
+               (gptel-backend-name (oref obj value)) ":"
+               (gptel--model-name
+                (buffer-local-value (oref obj model) transient--original-buffer)))
               'face 'transient-value))
 
 (cl-defmethod transient-infix-set ((obj gptel-provider-variable) value)
@@ -541,8 +543,22 @@ responses."
             (cl-loop
              for (name . backend) in gptel--known-backends
              nconc (cl-loop for model in (gptel-backend-models backend)
-                            collect (list (concat name ":" model) backend model))
-             into models-alist finally return
+                            collect (list (concat name ":" (gptel--model-name model))
+                                          backend model))
+             into models-alist
+             with completion-extra-properties =
+             `(:annotation-function
+               ,(lambda (comp)
+                  (let* ((model (nth 2 (assoc comp models-alist)))
+                         (desc (get model :description))
+                         (caps (get model :capabilities)))
+                   (when (or desc caps)
+                    (concat
+                     (propertize " " 'display `(space :align-to (0.33 . ,(window-width))))
+                     desc
+                     (propertize " " 'display `(space :align-to (0.75 . ,(window-width))))
+                     (when caps (prin1-to-string caps)))))))
+             finally return
              (cdr (assoc (completing-read prompt models-alist nil t)
                          models-alist)))))
 

@@ -63,7 +63,7 @@
 (cl-defmethod gptel--request-data ((_backend gptel-anthropic) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
   (let ((prompts-plist
-         `(:model ,gptel-model
+         `(:model ,(gptel--model-name gptel-model)
            :system ,gptel--system-message
            :stream ,(or (and gptel-stream gptel-use-curl
                          (gptel-backend-stream gptel-backend))
@@ -112,10 +112,22 @@
            (lambda () (when-let (key (gptel--get-api-key))
                         `(("x-api-key" . ,key)
                           ("anthropic-version" . "2023-06-01")))))
-          (models '("claude-3-5-sonnet-20240620"
-                    "claude-3-sonnet-20240229"
-                    "claude-3-haiku-20240307"
-                    "claude-3-opus-20240229"))
+          (models '((claude-3-5-sonnet-20240620
+                     :description "Balance of intelligence and speed"
+                     :capabilities (media tool)
+                     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
+                    (claude-3-sonnet-20240229
+                     :description "Highest level of intelligence and capability"
+                     :capabilities (media tool)
+                     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
+                    (claude-3-haiku-20240307
+                     :description "Fast and most compact model for near-instant responsiveness"
+                     :capabilities (media tool)
+                     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
+                    (claude-3-opus-20240229
+                     :description "Top-level performance, intelligence, fluency, and understanding"
+                     :capabilities (media tool)
+                     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))))
           (host "api.anthropic.com")
           (protocol "https")
           (endpoint "/v1/messages"))
@@ -127,7 +139,25 @@ CURL-ARGS (optional) is a list of additional Curl arguments.
 
 HOST (optional) is the API host, \"api.anthropic.com\" by default.
 
-MODELS is a list of available model names.
+MODELS is a list of available model names, as symbols.
+Additionally, you can specify supported LLM capabilities like
+vision or tool-use by appending a plist to the model with more
+information, in the form
+
+ (model-name . plist)
+
+Currently recognized plist keys are :description, :capabilities
+and :mime-types.  An example of a model specification including
+both kinds of specs:
+
+:models
+\\='(claude-3-haiku-20240307               ;Simple specs
+  claude-3-opus-20240229
+  (claude-3-5-sonnet-20240620           ;Full spec
+   :description  \"Balance of intelligence and speed\"
+   :capabilities (media tool json)
+   :mime-types
+   (\"image/jpeg\" \"image/png\" \"image/gif\" \"image/webp\")))
 
 STREAM is a boolean to toggle streaming responses, defaults to
 false.
@@ -151,7 +181,7 @@ returns the key."
                   :host host
                   :header header
                   :key key
-                  :models models
+                  :models (gptel--process-models models)
                   :protocol protocol
                   :endpoint endpoint
                   :stream stream

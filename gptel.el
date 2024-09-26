@@ -403,7 +403,7 @@ call `gptel-send' with a prefix argument."
   :type '(choice (natnum :tag "Specify Token count")
                  (const :tag "Default" nil)))
 
-(defcustom gptel-model "gpt-3.5-turbo"
+(defcustom gptel-model 'gpt-4o-mini
   "GPT Model for chat.
 
 The name of the model as a string.  This is the name as expected
@@ -424,16 +424,16 @@ To set the model for a chat session interactively call
 `gptel-send' with a prefix argument."
   :safe #'always
   :type '(choice
-          (string :tag "Specify model name")
-          (const :tag "GPT 4 omni mini" "gpt-4o-mini")
-          (const :tag "GPT 3.5 turbo" "gpt-3.5-turbo")
-          (const :tag "GPT 3.5 turbo 16k" "gpt-3.5-turbo-16k")
-          (const :tag "GPT 4" "gpt-4")
-          (const :tag "GPT 4 omni" "gpt-4o")
-          (const :tag "GPT 4 turbo" "gpt-4-turbo")
-          (const :tag "GPT 4 turbo (preview)" "gpt-4-turbo-preview")
-          (const :tag "GPT 4 32k" "gpt-4-32k")
-          (const :tag "GPT 4 1106 (preview)" "gpt-4-1106-preview")))
+          (symbol :tag "Specify model name")
+          (const :tag "GPT 4 omni mini" gpt-4o-mini)
+          (const :tag "GPT 3.5 turbo" gpt-3.5-turbo)
+          (const :tag "GPT 3.5 turbo 16k" gpt-3.5-turbo-16k)
+          (const :tag "GPT 4" gpt-4)
+          (const :tag "GPT 4 omni" gpt-4o)
+          (const :tag "GPT 4 turbo" gpt-4-turbo)
+          (const :tag "GPT 4 turbo (preview)" gpt-4-turbo-preview)
+          (const :tag "GPT 4 32k" gpt-4-32k)
+          (const :tag "GPT 4 1106 (preview)" gpt-4-1106-preview)))
 
 (defcustom gptel-temperature 1.0
   "\"Temperature\" of the LLM response.
@@ -453,9 +453,27 @@ To set the temperature for a chat session interactively call
    "ChatGPT"
    :key 'gptel-api-key
    :stream t
-   :models '("gpt-3.5-turbo" "gpt-3.5-turbo-16k" "gpt-4o-mini"
-             "gpt-4" "gpt-4o" "gpt-4-turbo" "gpt-4-turbo-preview"
-             "gpt-4-32k" "gpt-4-1106-preview" "gpt-4-0125-preview")))
+   :models
+   '((gpt-4o-mini
+      :capabilities (media tool json url)
+      :description "Affordable and intelligent small model for fast, lightweight tasks"
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
+     (gpt-4o
+      :capabilities (media tool json url)
+      :description "High-intelligence flagship model for complex, multi-step tasks"
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
+     (gpt-3.5-turbo
+      :description "Fast, inexpensive model for simple tasks"
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :capabilities (tool))
+     (gpt-3.5-turbo-16k :description "Fast, inexpensive model for simple tasks, 16K context"
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
+     (gpt-4-turbo
+      :capabilities (media tool url)
+      :description "Previous high-intelligence model"
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
+     (gpt-4 :description "Previous high-intelligence model")
+     gpt-4-turbo-preview gpt-4-32k gpt-4-1106-preview gpt-4-0125-preview)))
 
 (defcustom gptel-backend gptel--openai
   "LLM backend to use.
@@ -682,6 +700,34 @@ Note: Changing this variable does not affect gptel\\='s behavior
 in any way.")
 (put 'gptel--backend-name 'safe-local-variable #'always)
 
+;;;; Model interface
+;; NOTE: This interface would be simpler to implement as a defstruct.  But then
+;; users cannot set `gptel-model' to a symbol/string directly, or we'd need
+;; another map from these symbols to the actual model structs.
+
+(defsubst gptel--model-name (model)
+  "Get name of gptel MODEL."
+  (gptel--to-string model))
+
+(defsubst gptel--model-capabilities (model)
+  "Get MODEL capabilities."
+  (get model :capabilities))
+
+(defsubst gptel--model-mimes (model)
+  "Get supported mime-types for MODEL."
+  (get model :mime-types))
+
+(defsubst gptel--model-capable-p (cap &optional model)
+  "Return non-nil if MODEL supports capability CAP."
+  (memq cap (gptel--model-capabilities
+             (or model gptel-model))))
+
+;; TODO Handle model mime specifications like "image/*"
+(defsubst gptel--model-mime-capable-p (mime &optional model)
+  "Return non nil if MODEL can understand MIME type."
+  (car-safe (member mime (gptel--model-mimes
+                        (or model gptel-model)))))
+
 (defun gptel--get-buffer-bounds ()
   "Return the gptel response boundaries in the buffer as an alist."
   (save-excursion
@@ -846,7 +892,8 @@ file."
                                (format "%s" (gptel-backend-name gptel-backend))))
                       (propertize " Ready" 'face 'success)
                       '(:eval
-                        (let ((system
+                        (let* ((model (gptel--model-name gptel-model))
+                              (system
                                (propertize
                                 (buttonize
                                  (format "[Prompt: %s]"
@@ -887,7 +934,7 @@ file."
                            'help-echo "GPT model in use"))))))
           (setq mode-line-process
                 '(:eval (concat " "
-                         (buttonize gptel-model
+                         (buttonize (gptel--model-name gptel-model)
                             (lambda (&rest _) (gptel-menu))))))))
     (if gptel-use-header-line
         (setq header-line-format gptel--old-header-line
@@ -1354,6 +1401,14 @@ See `gptel-curl--get-response' for its contents.")
 
 If SHOOSH is true, don't issue a warning."
   (let ((available (gptel-backend-models backend)))
+    (when (stringp model)
+      (unless shoosh
+        (display-warning
+         'gptel
+         (format "`gptel-model' expects a symbol, found string \"%s\"
+   Resetting `gptel-model' to %s"
+                 model model)))
+      (setq gptel-model (gptel--intern model)))
     (unless (member model available)
       (let ((fallback (car available)))
         (unless shoosh

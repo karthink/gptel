@@ -71,7 +71,7 @@
 
 (cl-defmethod gptel--request-data ((_backend gptel-kagi) prompts)
   "JSON encode PROMPTS for Kagi."
-  (pcase-exhaustive gptel-model
+  (pcase-exhaustive (gptel--model-name gptel-model)
     ("fastgpt"
      `(,@prompts :web_search t :cache t))
     ((and model (guard (string-prefix-p "summarize" model)))
@@ -87,7 +87,7 @@
                (when (get-char-property (max (point-min) (1- (point)))
                                         'gptel)
                  t))))
-    (if (and url (string-prefix-p "summarize" gptel-model))
+    (if (and url (string-prefix-p "summarize" (gptel--model-name gptel-model)))
         (list :url url)
       (if (and (or gptel-mode gptel-track-response)
                (prop-match-p prop)
@@ -103,7 +103,7 @@
                     (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
                             (regexp-quote (gptel-response-prefix-string))))
                  (string-trim (buffer-substring-no-properties (point-min) (point-max))))))
-          (pcase-exhaustive gptel-model
+          (pcase-exhaustive (gptel--model-name gptel-model)
             ("fastgpt"
              (setq prompts (list
                             :query
@@ -137,9 +137,9 @@
     (name &key curl-args stream key
           (host "kagi.com")
           (header (lambda () `(("Authorization" . ,(concat "Bot " (gptel--get-api-key))))))
-          (models '("fastgpt"
-                    "summarize:cecil" "summarize:agnes"
-                    "summarize:daphne" "summarize:muriel"))
+          (models '(fastgpt
+                    summarize:cecil summarize:agnes
+                    summarize:daphne summarize:muriel))
           (protocol "https")
           (endpoint "/api/v0/"))
   "Register a Kagi FastGPT backend for gptel with NAME.
@@ -186,7 +186,7 @@ Example:
                   :url
                   (lambda ()
                     (concat protocol "://" host endpoint
-                            (if (equal gptel-model "fastgpt")
+                            (if (equal gptel-model 'fastgpt)
                                 "fastgpt" "summarize"))))))
     (prog1 backend
       (setf (alist-get name gptel--known-backends
