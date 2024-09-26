@@ -138,9 +138,9 @@ ENDPOINT (optional) is the API endpoint for completions, defaults to
 \"/v1/messages\".
 
 HEADER (optional) is for additional headers to send with each
-request. It should be an alist or a function that retuns an
+request.  It should be an alist or a function that retuns an
 alist, like:
-((\"Content-Type\" . \"application/json\"))
+ ((\"Content-Type\" . \"application/json\"))
 
 KEY is a variable whose value is the API key, or function that
 returns the key."
@@ -164,4 +164,4 @@ returns the key."
                   backend))))
 
 (provide 'gptel-anthropic)
-;;; gptel-backends.el ends here
+;;; gptel-anthropic.el ends here

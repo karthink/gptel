@@ -36,6 +36,9 @@
 (defvar gptel--system-message)
 (defvar json-object-type)
 
+(defvar gptel-mode)
+(defvar gptel-track-response)
+(declare-function gptel--trim-prefixes "gptel")
 (declare-function gptel--get-api-key "gptel")
 (declare-function prop-match-value "text-property-search")
 (declare-function text-property-search-backward "text-property-search")
@@ -187,9 +190,9 @@ ENDPOINT (optional) is the API endpoint for completions, defaults to
 \"/v1/chat/completions\".
 
 HEADER (optional) is for additional headers to send with each
-request. It should be an alist or a function that retuns an
+request.  It should be an alist or a function that retuns an
 alist, like:
-((\"Content-Type\" . \"application/json\"))
+ ((\"Content-Type\" . \"application/json\"))
 
 KEY (optional) is a variable whose value is the API key, or
 function that returns the key."
@@ -238,9 +241,9 @@ PROTOCOL (optional) specifies the protocol, https by default.
 ENDPOINT is the API endpoint for completions.
 
 HEADER (optional) is for additional headers to send with each
-request. It should be an alist or a function that retuns an
+request.  It should be an alist or a function that retuns an
 alist, like:
-((\"Content-Type\" . \"application/json\"))
+ ((\"Content-Type\" . \"application/json\"))
 
 KEY (optional) is a variable whose value is the API key, or
 function that returns the key.
@@ -248,14 +251,14 @@ function that returns the key.
 Example:
 -------
 
-(gptel-make-azure
- \"Azure-1\"
- :protocol \"https\"
- :host \"RESOURCE_NAME.openai.azure.com\"
- :endpoint
- \"/openai/deployments/DEPLOYMENT_NAME/completions?api-version=2023-05-15\"
- :stream t
- :models \\='(\"gpt-3.5-turbo\" \"gpt-4\"))"
+ (gptel-make-azure
+  \"Azure-1\"
+  :protocol \"https\"
+  :host \"RESOURCE_NAME.openai.azure.com\"
+  :endpoint
+  \"/openai/deployments/DEPLOYMENT_NAME/completions?api-version=2023-05-15\"
+  :stream t
+  :models \\='(\"gpt-3.5-turbo\" \"gpt-4\"))"
   (declare (indent 1))
   (let ((backend (gptel--make-openai
                   :curl-args curl-args
@@ -315,4 +318,4 @@ Example:
  :models \\='(\"mistral-7b-openorca.Q4_0.gguf\"))")
 
 (provide 'gptel-openai)
-;;; gptel-backends.el ends here
+;;; gptel-openai.el ends here

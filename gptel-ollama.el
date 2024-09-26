@@ -154,7 +154,7 @@ ENDPOINT (optional) is the API endpoint for completions, defaults to
 HEADER (optional) is for additional headers to send with each
 request.  It should be an alist or a function that retuns an
 alist, like:
-((\"Content-Type\" . \"application/json\"))
+ ((\"Content-Type\" . \"application/json\"))
 
 KEY (optional) is a variable whose value is the API key, or
 function that returns the key.  This is typically not required
@@ -163,11 +163,11 @@ for local models like Ollama.
 Example:
 -------
 
-(gptel-make-ollama
-  \"Ollama\"
-  :host \"localhost:11434\"
-  :models \\='(\"mistral:latest\")
-  :stream t)"
+ (gptel-make-ollama
+   \"Ollama\"
+   :host \"localhost:11434\"
+   :models \\='(\"mistral:latest\")
+   :stream t)"
   (declare (indent 1))
   (let ((backend (gptel--make-ollama
                   :curl-args curl-args

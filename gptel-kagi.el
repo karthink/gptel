@@ -163,7 +163,7 @@ ENDPOINT (optional) is the API endpoint for completions, defaults to
 HEADER (optional) is for additional headers to send with each
 request.  It should be an alist or a function that retuns an
 alist, like:
-((\"Content-Type\" . \"application/json\"))
+ ((\"Content-Type\" . \"application/json\"))
 
 KEY (optional) is a variable whose value is the API key, or
 function that returns the key.
@@ -171,7 +171,7 @@ function that returns the key.
 Example:
 -------
 
-(gptel-make-kagi \"Kagi\" :key my-kagi-key)"
+ (gptel-make-kagi \"Kagi\" :key my-kagi-key)"
   (declare (indent 1))
   stream                                ;Silence byte-compiler
   (let ((backend (gptel--make-kagi
