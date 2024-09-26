@@ -33,6 +33,8 @@
 
 (declare-function gptel-menu "gptel-transient")
 (declare-function dired-get-marked-files "dired")
+(declare-function image-file-name-regexp "image-file")
+(declare-function create-image "image")
 
 (defface gptel-context-highlight-face
   '((((background dark)  (min-colors 88)) :background "gray4" :extend t)
@@ -69,7 +71,8 @@ The alist of contexts is structured as follows:
 
  ((buffer1 . (overlay1 overlay2)
   (\"path/to/file\")
-  (buffer2 . (overlay3 overlay4 overlay5))))
+  (buffer2 . (overlay3 overlay4 overlay5))
+  (\"path/to/image/file\" :mime \"image/jpeg\")))
 
 Each gptel \"context\" is either a file path or an overlay in a
 buffer.  Each overlay covers a buffer region containing the
@@ -111,6 +114,14 @@ context chunk.  This is accessible as, for example:
               #'gptel-context-remove
               #'gptel-context-add-file)
           (dired-get-marked-files)))
+   ;; If in an image buffer
+   ((and (derived-mode-p 'image-mode)
+         (gptel--model-capable-p 'media;)
+         (buffer-file-name))
+    (funcall (if (and arg (< (prefix-numeric-value arg) 0))
+              #'gptel-context-remove
+              #'gptel-context-add-file)
+          (buffer-file-name))))
    ;; No region is selected, and ARG is positive.
    ((and arg (> (prefix-numeric-value arg) 0))
     (let* ((buffer-name (read-buffer "Choose buffer to add as context: " nil t))
@@ -144,21 +155,32 @@ context chunk.  This is accessible as, for example:
 ;;;###autoload (autoload 'gptel-add "gptel-context" "Add/remove regions or buffers from gptel's context." t)
 (defalias 'gptel-add #'gptel-context-add)
   
+(defun gptel--file-binary-p (path)
+  "Check if file at PATH is readable and binary."
+  (condition-case nil
+      (with-temp-buffer
+        (insert-file-contents path nil 1 512 'replace)
+        (eq buffer-file-coding-system 'no-conversion))
+    (file-missing (message "File \"%s\" is not readable." path))))
+
 (defun gptel-context-add-file (path)
   "Add the file at PATH to the gptel context.
 
 PATH should be readable as text."
   (interactive "fChoose file to add to context: ")
-  (condition-case nil
-      ;; Check if file is binary
-      (if (with-temp-buffer ;; (create-file-buffer file)
-            (insert-file-contents path nil 1 512 'replace)
-            (eq buffer-file-coding-system 'no-conversion))
-          (message "Ignoring unsupported binary file \"%s\"." path)
-        (cl-pushnew (list path) gptel-context--alist :test #'equal)
-        (message "File \"%s\" added to context." path)
-        path)
-    (file-missing (message "File \"%s\" does not exist." path))))
+  (if (gptel--file-binary-p path)   ;Attach if supported
+      (if-let* (((gptel--model-capable-p 'media))
+                (mime (mailcap-file-name-to-mime-type path))
+                ((gptel--model-mime-capable-p mime)))
+          (prog1 path
+            (cl-pushnew (list path :mime mime)
+                        gptel-context--alist :test #'equal)
+            (message "File \"%s\" added to context." path))
+        (message "Ignoring unsupported binary file \"%s\"." path))
+    ;; Add text file
+    (cl-pushnew (list path) gptel-context--alist :test #'equal)
+    (message "File \"%s\" added to context." path)
+    path))
 
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
 (defalias 'gptel-add-file #'gptel-context-add-file)
@@ -177,7 +199,7 @@ If selection is active, removes all contexts within selection."
          thereis (overlay-start ov))
       (setf (alist-get (current-buffer) gptel-context--alist nil 'remove) nil)))
    ((stringp context)                   ;file
-    (setf (alist-get context gptel-context--alist nil 'remove #'equal) 
+    (setf (alist-get context gptel-context--alist nil 'remove #'equal)
           nil))
    ((region-active-p)
     (when-let ((contexts (gptel-context--in-region (current-buffer)
@@ -189,7 +211,9 @@ If selection is active, removes all contexts within selection."
       (delete-overlay ctx)))))
 
 (defun gptel-context--make-overlay (start end &optional advance)
-  "Highlight the region from START to END."
+  "Highlight the region from START to END.
+
+ADVANCE controls the overlay boundary behavior."
   (let ((overlay (make-overlay start end nil (not advance) advance)))
     (overlay-put overlay 'evaporate t)
     (overlay-put overlay 'face 'gptel-context-highlight-face)
@@ -200,6 +224,7 @@ If selection is active, removes all contexts within selection."
 
 ;;;###autoload
 (defun gptel-context--wrap (message)
+  "Wrap MESSAGE with context string."
   (funcall gptel-context-wrap-function
            message (gptel-context--collect)))
 
@@ -217,6 +242,16 @@ it, respectively."
           ('user   (concat context-string "\n\n" message))
           ('nil    message))
       message)))
+
+(defun gptel-context--collect-media (&optional contexts)
+  "Collect media CONTEXTS.
+
+CONTEXTS, which are typically paths to binary files, are
+base64-encoded and prepended to the first user prompt."
+  (cl-loop for context in (or contexts gptel-context--alist)
+           for (path . props) = context
+           when (and (stringp path) (plist-get props :mime))
+           collect (cons :media context)))
 
 (cl-defun gptel-context--add-region (buffer region-beginning region-end &optional advance)
   "Add region delimited by REGION-BEGINNING, REGION-END in BUFFER as context.
@@ -253,7 +288,9 @@ START and END signify the region delimiters."
                    collect (cons buf it) into elements
                    end
                  else if (and (stringp buf) (file-exists-p buf))
-                   collect (list buf) into elements
+                 if (plist-get ovs :mime)
+                 collect (cons buf ovs) into elements
+                 else collect (list buf) into elements
                  finally return elements)))
 
 (defun gptel-context--insert-buffer-string (buffer contexts)
@@ -307,16 +344,21 @@ START and END signify the region delimiters."
 Returns a string.  CONTEXT-ALIST is a structure containing
 context overlays, see `gptel-context--alist'."
   (with-temp-buffer
-    (insert "Request context:\n\n")
     (cl-loop for (buf . ovs) in context-alist
              if (bufferp buf)
              do (gptel-context--insert-buffer-string buf ovs)
-             else do (gptel-context--insert-file-string buf)
+             else if (not (plist-get ovs :mime))
+             do (gptel-context--insert-file-string buf) end
              do (insert "\n\n")
              finally do
              (skip-chars-backward "\n\t\r ")
              (delete-region (point) (point-max))
-             finally return (buffer-string))))
+             (unless (bobp)
+               (goto-char (point-min))
+               (insert "Request context:\n\n"))
+             finally return
+              (and (> (buffer-size) 0)
+                   (buffer-string)))))
 
 ;;; Major mode for context inspection buffers
 (defvar-keymap gptel-context-buffer-mode-map
@@ -375,7 +417,15 @@ context overlays, see `gptel-context--alist'."
                     (insert (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
                                         'face 'bold))
                     (setq beg (point))
-                    (insert-file-contents buf)
+                    (if-let ((mime (plist-get ovs :mime)))
+                        ;; BUF is a binary file
+                        (if-let  (((string-match-p (image-file-name-regexp) buf))
+                                  (img (create-image buf)))
+                            (insert-image img "*") ; Can be displayed
+                          (insert
+                           buf " " (propertize "(No preview for binary file)"
+                                                'face '(:inherit shadow :slant italic))))
+                      (insert-file-contents buf))
                     (goto-char (point-max))
                     (insert "\n")
                     (setq ov (make-overlay beg (point)))

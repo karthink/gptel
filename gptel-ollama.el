@@ -28,6 +28,7 @@
 
 (declare-function json-read "json" ())
 (declare-function gptel-context--wrap "gptel-context")
+(declare-function gptel-context--collect-media "gptel-context")
 (defvar json-object-type)
 
 ;;; Ollama
@@ -132,9 +133,6 @@ Intended for internal use only.")
                 :content gptel--system-message)
           prompts)))
 
-(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-ollama) prompts)
-  "Wrap the last user prompt in PROMPTS with the context string."
-  (cl-callf gptel-context--wrap (plist-get (car (last prompts)) :content)))
 (defun gptel--ollama-parse-multipart (parts)
   "Convert a multipart prompt PARTS to the Ollama API format.
 
@@ -161,6 +159,21 @@ format."
    `(,@(and text-array  (list :content (mapconcat #'identity text-array " ")))
      ,@(and media-array (list :images  (vconcat media-array))))))
 
+(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-ollama) prompts
+                                       &optional inject-media)
+  "Wrap the last user prompt in PROMPTS with the context string.
+
+If INJECT-MEDIA is non-nil wrap it with base64-encoded media files in the context."
+  (if inject-media
+      ;; Wrap the first user prompt with included media files/contexts
+      (when-let* ((media-list (gptel-context--collect-media))
+                  (media-processed (gptel--ollama-parse-multipart media-list)))
+        (cl-callf (lambda (images)
+                    (vconcat (plist-get media-processed :images)
+                             images))
+            (plist-get (cadr prompts) :images)))
+    ;; Wrap the last user prompt with included text contexts
+    (cl-callf gptel-context--wrap (plist-get (car (last prompts)) :content))))
 
 ;;;###autoload
 (cl-defun gptel-make-ollama

@@ -38,6 +38,7 @@
 (defvar gptel-mode)
 (defvar gptel-track-response)
 (defvar gptel-track-media)
+(declare-function gptel-context--collect-media "gptel-context")
 (declare-function gptel--base64-encode "gptel")
 (declare-function gptel--trim-prefixes "gptel")
 (declare-function gptel--parse-media-links "gptel")
@@ -183,9 +184,6 @@ with differing settings.")
                 :content gptel--system-message)
           prompts)))
 
-(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-openai) prompts)
-  "Wrap the last user prompt in PROMPTS with the context string."
-  (cl-callf gptel-context--wrap (plist-get (car (last prompts)) :content)))
 ;; TODO This could be a generic function
 (defun gptel--openai-parse-multipart (parts)
   "Convert a multipart prompt PARTS to the OpenAI API format.
@@ -219,6 +217,33 @@ format."
      :image_url (:url ,(plist-get part :url)))
    into parts-array
    finally return (vconcat parts-array)))
+
+;; TODO: Does this need to be a generic function?
+(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-openai) prompts
+                                       &optional inject-media)
+  "Wrap the last user prompt in PROMPTS with the context string.
+
+If INJECT-MEDIA is non-nil wrap it with base64-encoded media
+files in the context."
+  (if inject-media
+      ;; Wrap the first user prompt with included media files/contexts
+      (when-let ((media-list (gptel-context--collect-media)))
+        (cl-callf (lambda (current)
+                    (vconcat
+                     (gptel--openai-parse-multipart media-list)
+                     (cl-typecase current
+                       (string `((:type "text" :text ,current)))
+                       (vector current)
+                       (t current))))
+            (plist-get (cadr prompts) :content)))
+    ;; Wrap the last user prompt with included text contexts
+    (cl-callf (lambda (current)
+                (cl-typecase current
+                  (string (gptel-context--wrap current))
+                  (vector (vconcat `((:type "text" :text ,(gptel-context--wrap nil)))
+                                   current))
+                  (t (gptel-context--wrap nil))))
+        (plist-get (car (last prompts)) :content))))
 
 ;;;###autoload
 (cl-defun gptel-make-openai

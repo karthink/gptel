@@ -34,6 +34,7 @@
 (declare-function text-property-search-backward "text-property-search")
 (declare-function json-read "json" ())
 (declare-function gptel-context--wrap "gptel-context")
+(declare-function gptel-context--collect-media "gptel-context")
 
 ;;; Anthropic (Messages API)
 (cl-defstruct (gptel-anthropic (:constructor gptel--make-anthropic)
@@ -112,9 +113,6 @@
             prompts))
     prompts))
 
-(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-anthropic) prompts)
-  "Wrap the last user prompt in PROMPTS with the context string."
-  (cl-callf gptel-context--wrap (plist-get (car (last prompts)) :content)))
 (defun gptel--anthropic-parse-multipart (parts)
   "Convert a multipart prompt PARTS to the Anthropic API format.
 
@@ -144,6 +142,40 @@ format."
    into parts-array
    finally return (vconcat parts-array)))
 
+(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-anthropic) prompts
+                                       &optional inject-media)
+  "Wrap the last user prompt in PROMPTS with the context string.
+
+If INJECT-MEDIA is non-nil wrap it with base64-encoded media
+files in the context."
+  (if inject-media
+      ;; Wrap the first user prompt with included media files/contexts
+      (when-let ((media-list (gptel-context--collect-media)))
+        (cl-callf (lambda (current)
+                    (vconcat
+                     (gptel--anthropic-parse-multipart media-list)
+                     (cl-typecase current
+                       (string `((:type "text" :text ,current)))
+                       (vector current)
+                       (t current))))
+            (plist-get (car prompts) :content)))
+    ;; Wrap the last user prompt with included text contexts
+    (cl-callf (lambda (current)
+                (cl-typecase current
+                  (string (gptel-context--wrap current))
+                  (vector (vconcat `((:type "text" :text ,(gptel-context--wrap nil)))
+                                   current))
+                  (t (gptel-context--wrap nil))))
+        (plist-get (car (last prompts)) :content))))
+
+;; (if-let ((context-string (gptel-context--string gptel-context--alist)))
+;;     (cl-callf (lambda (previous)
+;;                 (cl-typecase previous
+;;                   (string (concat context-string previous))
+;;                   (vector (vconcat `((:type "text" :text ,previous))
+;;                                    previous))
+;;                   (t context-string)))
+;;         (plist-get (car (last prompts)) :content)))
 
 ;;;###autoload
 (cl-defun gptel-make-anthropic

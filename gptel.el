@@ -1307,12 +1307,16 @@ there."
                 (gptel-org--create-prompt prompt-end))
                (t (goto-char prompt-end)
                   (gptel--parse-buffer gptel-backend max-entries)))))
-        ;; Inject context chunks into the last user prompt if required
         ;; NOTE: prompts is modified in place
-        (when (and gptel-context--alist
-                   (eq gptel-use-context 'user)
-                   (> (length prompts) 0))
-          (gptel--wrap-user-prompt gptel-backend prompts))
+        (when gptel-context--alist
+          ;; Inject context chunks into the last user prompt if required
+          (when (and (eq gptel-use-context 'user)
+                     (> (length prompts) 0)) ;FIXME context should be injected
+                                             ;even when there are no prompts
+            (gptel--wrap-user-prompt gptel-backend prompts))
+          ;; Inject media chunks into the first user prompt if required
+          (when (and gptel-use-context (gptel--model-capable-p 'media))
+            (gptel--wrap-user-prompt gptel-backend prompts :media)))
         prompts))))
 
 (cl-defgeneric gptel--parse-buffer (backend max-entries)
