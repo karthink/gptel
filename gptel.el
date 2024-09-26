@@ -546,6 +546,37 @@ with `gptel-mode' enabled), where user prompts and responses are
 always handled separately."
   :type 'boolean)
 
+(defcustom gptel-track-media nil
+  "Whether supported media in chat buffers should be sent.
+
+When the active `gptel-model' supports it, gptel can send images
+or other media from links in chat buffers to the LLM.  To use
+this, the following steps are required.
+
+1. `gptel-track-media' (this variable) should be non-nil
+
+2. The LLM should provide vision or document support.  Currently,
+only the OpenAI, Anthropic and Ollama APIs are supported.  See
+the documentation of `gptel-make-openai', `gptel-make-anthropic'
+and `gptel-make-ollama' resp. for details on how to specify media
+support for models.
+
+3. Only \"standalone\" links in chat buffers are considered.
+These are links on their own line with no surrounding text.
+Further:
+
+- In Org mode, only files or URLs of the form
+  [[/path/to/media][bracket links]] and <angle/link/path>
+  are sent.
+
+- In Markdown mode, only files or URLS of the form
+  [bracket link](/path/to/media) and <angle/link/path>
+  are sent.
+
+This option has no effect in non-chat buffers.  To include
+media (including images) more generally, use `gptel-add'."
+  :type 'boolean)
+
 (defcustom gptel-use-context 'system
   "Where in the request to inject gptel's additional context.
 
@@ -947,14 +978,34 @@ file."
                                      (require 'gptel-context)
                                      (gptel-context--buffer-setup)))
                                   'mouse-face 'highlight
-                                  'help-echo "Active gptel context")))))
+                                  'help-echo "Active gptel context"))))
+                              (toggle-track-media
+                               (lambda (&rest _)
+                                 (setq-local gptel-track-media
+                                  (not gptel-track-media))
+                                 (message "Toggled sending images.")
+                                 (run-at-time 0 nil #'force-mode-line-update)))
+                              (track-media
+                               (and (gptel--model-capable-p 'media)
+                                (if gptel-track-media
+                                    (propertize
+                                     (buttonize "[Sending images]" toggle-track-media)
+                                     'mouse-face 'highlight
+                                     'help-echo
+                                     "Sending images from standalone links/urls when supported.\nClick to toggle")
+                                  (propertize
+                                     (buttonize "[Ignoring images]" toggle-track-media)
+                                     'mouse-face 'highlight
+                                     'help-echo
+                                     "Ignoring images from standalone links/urls.\nClick to toggle")))))
                          (concat
                           (propertize
                            " " 'display
-                           `(space :align-to (- right ,(+ 4 (length gptel-model) (length system) (length context)))))
-                          context " " system " "
+                           `(space :align-to (- right ,(+ 5 (length model) (length system)
+                                                        (length track-media) (length context)))))
+                          track-media (and context " ") context " " system " "
                           (propertize
-                           (buttonize (concat "[" gptel-model "]")
+                           (buttonize (concat "[" model "]")
                             (lambda (&rest _) (gptel-menu)))
                            'mouse-face 'highlight
                            'help-echo "GPT model in use"))))))
@@ -1272,11 +1323,73 @@ BACKEND is the LLM backend in use.
 MAX-ENTRIES is the number of queries/responses to include for
 contexbt.")
 
+(cl-defgeneric gptel--parse-media-links (mode beg end)
+  "Find media links between BEG and END.
+
+MODE is the major-mode of the buffer.
+
+Returns a plist where each entry is of the form
+  (:text \"some text\")
+or
+  (:media \"media uri or file path\")."
+  (ignore mode)                         ;byte-compiler
+  (list `(:text ,(buffer-substring beg end))))
+
+(defvar markdown-regex-link-inline)
+(defvar markdown-regex-angle-uri)
+(declare-function markdown-link-at-pos "markdown-mode")
+(declare-function mailcap-file-name-to-mime-type "mailcap")
+
+(cl-defmethod gptel--parse-media-links ((_mode (eql 'markdown-mode)) beg end)
+  "Parse text and actionable links between BEG and END.
+
+Return a list of the form
+ ((:text \"some text\")
+  (:media \"/path/to/media.png\" :mime \"image/png\")
+  (:text \"More text\"))
+for inclusion into the user prompt for the gptel request."
+  (require 'mailcap)                    ;FIXME Avoid this somehow
+  (let ((parts) (from-pt))
+    (save-excursion
+      (setq from-pt (goto-char beg))
+      (while (re-search-forward
+              (concat "\\(?:" markdown-regex-link-inline "\\|"
+                      markdown-regex-angle-uri "\\)")
+              end t)
+        (when-let* ((link-at-pt (markdown-link-at-pos (point)))
+                    ((gptel--link-standalone-p
+                      (car link-at-pt) (cadr link-at-pt)))
+                    (path (nth 3 link-at-pt))
+                    (path (string-remove-prefix "file://" path))
+                    (mime (mailcap-file-name-to-mime-type path))
+                    ((gptel--model-mime-capable-p mime)))
+          (cond
+           ((seq-some (lambda (p) (string-prefix-p p path))
+                      '("https:" "http:" "ftp:"))
+            ;; Collect text up to this image, and collect this image url
+            (when (gptel--model-capable-p 'url) ; FIXME This is not a good place
+                                                ; to check for url capability!
+              (push (list :text (buffer-substring-no-properties from-pt (car link-at-pt)))
+                    parts)
+              (push (list :url path :mime mime) parts)
+              (setq from-pt (cadr link-at-pt))))
+           ((file-readable-p path)
+            ;; Collect text up to this image, and collect this image
+            (push (list :text (buffer-substring-no-properties from-pt (car link-at-pt)))
+                  parts)
+            (push (list :media path :mime mime) parts)
+            (setq from-pt (cadr link-at-pt)))))))
+    (unless (= from-pt end)
+      (push (list :text (buffer-substring-no-properties from-pt end)) parts))
+    (nreverse parts)))
+
 (cl-defgeneric gptel--wrap-user-prompt (backend _prompts)
   "Wrap the last prompt in PROMPTS with gptel's context.
 
 PROMPTS is a structure as returned by `gptel--parse-buffer'.
-Typically this is a list of plists."
+Typically this is a list of plists.
+
+BACKEND is the gptel backend in use."
   (display-warning
    '(gptel context)
    (format "Context support not implemented for backend %s, ignoring context"

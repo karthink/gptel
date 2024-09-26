@@ -75,7 +75,9 @@
     prompts-plist))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-anthropic) &optional max-entries)
-  (let ((prompts) (prop))
+  (let ((prompts) (prop)
+        (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
+                                                (gptel--model-capable-p 'url)))))
     (if (or gptel-mode gptel-track-response)
         (while (and
                 (or (not max-entries) (>= max-entries 0))
@@ -84,16 +86,25 @@
                             (when (get-char-property (max (point-min) (1- (point)))
                                                      'gptel)
                               t))))
-          (push (list :role (if (prop-match-value prop) "assistant" "user")
-                      :content
-                      (string-trim
-                       (buffer-substring-no-properties (prop-match-beginning prop)
-                                                       (prop-match-end prop))
-                       (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                               (regexp-quote (gptel-prompt-prefix-string)))
-                       (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                               (regexp-quote (gptel-response-prefix-string)))))
-                prompts)
+          (if (prop-match-value prop)   ; assistant role
+              (push (list :role "assistant"
+                          :content
+                          (buffer-substring-no-properties (prop-match-beginning prop)
+                                                          (prop-match-end prop)))
+                    prompts)
+            (if include-media           ; user role: possibly with media
+                (push (list :role "user"
+                            :content
+                            (gptel--anthropic-parse-multipart
+                             (gptel--parse-media-links
+                              major-mode (prop-match-beginning prop) (prop-match-end prop))))
+                      prompts)
+              (push (list :role "user"
+                          :content
+                          (gptel--trim-prefixes
+                           (buffer-substring-no-properties (prop-match-beginning prop)
+                                                           (prop-match-end prop))))
+                    prompts)))
           (and max-entries (cl-decf max-entries)))
       (push (list :role "user"
                   :content
@@ -104,6 +115,35 @@
 (cl-defmethod gptel--wrap-user-prompt ((_backend gptel-anthropic) prompts)
   "Wrap the last user prompt in PROMPTS with the context string."
   (cl-callf gptel-context--wrap (plist-get (car (last prompts)) :content)))
+(defun gptel--anthropic-parse-multipart (parts)
+  "Convert a multipart prompt PARTS to the Anthropic API format.
+
+The input is an alist of the form
+ ((:text \"some text\")
+  (:media \"/path/to/media.png\" :mime \"image/png\")
+  (:text \"More text\")).
+
+The output is a vector of entries in a backend-appropriate
+format."
+  (cl-loop
+   for part in parts
+   for n upfrom 1
+   with last = (length parts)
+   for text = (plist-get part :text)
+   for media = (plist-get part :media)
+   if text do
+   (and (or (= n 1) (= n last)) (setq text (gptel--trim-prefixes text))) and
+   unless (string-empty-p text)
+   collect `(:type "text" :text ,text) into parts-array end
+   else if media
+   collect
+   `(:type "image"
+     :source (:type "base64"
+              :media_type ,(plist-get part :mime)
+              :data ,(gptel--base64-encode media)))
+   into parts-array
+   finally return (vconcat parts-array)))
+
 
 ;;;###autoload
 (cl-defun gptel-make-anthropic

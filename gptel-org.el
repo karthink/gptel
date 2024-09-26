@@ -34,6 +34,10 @@
 (defvar org-entry-property-inherited-from)
 (defvar gptel-backend)
 (defvar gptel--known-backends)
+
+(defvar org-link-angle-re)
+(defvar org-link-bracket-re)
+(declare-function mailcap-file-name-to-mime-type "mailcap")
 (declare-function gptel--model-capable-p "gptel")
 (declare-function gptel--model-mime-capable-p "gptel")
 (declare-function gptel--model-name "gptel")
@@ -217,6 +221,55 @@ value of `gptel-org-branching-context', which see."
       ;; Create prompt the usual way
       (gptel--parse-buffer gptel-backend max-entries))))
 
+;; Handle media links in the buffer
+(cl-defmethod gptel--parse-media-links ((_mode (eql 'org-mode)) beg end)
+  "Parse text and actionable links between BEG and END.
+
+Return a list of the form
+ ((:text \"some text\")
+  (:media \"/path/to/media.png\" :mime \"image/png\")
+  (:text \"More text\"))
+for inclusion into the user prompt for the gptel request."
+  (require 'mailcap)                    ;FIXME Avoid this somehow
+  (let ((parts) (from-pt)
+        (link-regex (concat "\\(?:" org-link-bracket-re "\\|"
+                            org-link-angle-re "\\)")))
+    (save-excursion
+      (setq from-pt (goto-char beg))
+      (while (re-search-forward link-regex end t)
+        (when-let* ((link (org-element-context))
+                    ((gptel-org--link-standalone-p link))
+                    (raw-link (org-element-property :raw-link link))
+                    (path (org-element-property :path link))
+                    (type (org-element-property :type link))
+                    ;; FIXME This is not a good place to check for url capability!
+                    ((member type `("attachment" "file"
+                                    ,@(and (gptel--model-capable-p 'url)
+                                       '("http" "https" "ftp")))))
+                    (mime (mailcap-file-name-to-mime-type path))
+                    ((gptel--model-mime-capable-p mime)))
+          (cond
+           ((member type '("file" "attachment"))
+            (when (file-readable-p path)
+              ;; Collect text up to this image, and
+              ;; Collect this image
+              (when-let ((text (string-trim (buffer-substring-no-properties
+                                             from-pt (org-element-begin link)))))
+                (unless (string-empty-p text) (push (list :text text) parts)))
+              (push (list :media path :mime mime) parts)
+              (setq from-pt (point))))
+           ((member type '("http" "https" "ftp"))
+            ;; Collect text up to this image, and
+            ;; Collect this image url
+            (when-let ((text (string-trim (buffer-substring-no-properties
+                                             from-pt (org-element-begin link)))))
+              (unless (string-empty-p text) (push (list :text text) parts)))
+            (push (list :url raw-link :mime mime) parts)
+            (setq from-pt (point))))))
+      (unless (= from-pt end)
+        (push (list :text (buffer-substring-no-properties from-pt end)) parts)))
+    (nreverse parts)))
+
 (defun gptel-org--link-standalone-p (object)
   "Check if link OBJECT is on a line by itself."
   (let ((par (org-element-lineage object 'paragraph)))
@@ -229,6 +282,7 @@ value of `gptel-org-branching-context', which see."
          (<= (- (org-element-property :contents-end par)
                 (org-element-property :end object))
              1))))
+
 (defun gptel-org--send-with-props (send-fun &rest args)
   "Conditionally modify SEND-FUN's calling environment.
 

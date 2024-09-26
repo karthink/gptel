@@ -309,7 +309,9 @@ Also format its value in the Transient menu."
     (gptel--infix-temperature :if (lambda () gptel-expert-commands))
     (gptel--infix-use-context)
     (gptel--infix-track-response
-     :if (lambda () (and gptel-expert-commands (not gptel-mode))))]
+     :if (lambda () (and gptel-expert-commands (not gptel-mode))))
+    (gptel--infix-track-media
+     :if (lambda () (and gptel-mode (gptel--model-capable-p 'media))))]
    ["Prompt from"
     ("m" "Minibuffer instead" "m")
     ("y" "Kill-ring instead" "y")
@@ -591,6 +593,24 @@ querying the LLM."
   :display-if-true "Yes"
   :display-if-false "No"
   :key "-d")
+
+(transient-define-infix gptel--infix-track-media ()
+  "Send media from \"standalone\" links in the prompt.
+
+When the active `gptel-model' supports it, gptel can send images
+or other media from links in the buffer to the LLM.  Only
+\"standalone\" links are considered: these are links on their own
+line with no surrounding text.
+
+What link types are sent depends on the mime-types the model
+supports.  See `gptel-track-media' for more information."
+  :description "Send media from links"
+  :class 'gptel--switches
+  :variable 'gptel-track-media
+  :set-value #'gptel--set-with-scope
+  :display-if-true "Yes"
+  :display-if-false "No"
+  :key "-I")
 
 ;; ** Infixes for adding and removing context
 
