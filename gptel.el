@@ -715,17 +715,30 @@ in any way.")
   "Check if gptel response at position PT has variants."
   (get-char-property (or pt (point)) 'gptel-history))
 
+(defvar gptel--mode-description-alist
+  '((js2-mode      . "Javascript")
+    (sh-mode       . "Shell")
+    (enh-ruby-mode . "Ruby")
+    (yaml-mode     . "Yaml")
+    (yaml-ts-mode  . "Yaml")
+    (rustic-mode   . "Rust"))
+  "Mapping from unconventionally named major modes to languages.
+
+This is used when generating system prompts for rewriting and
+when including context from these major modes.")
+
 (defun gptel--strip-mode-suffix (mode-sym)
   "Remove the -mode suffix from MODE-SYM.
 
 MODE-SYM is typically a major-mode symbol."
-  (let ((mode-name (thread-last
-                (symbol-name mode-sym)
-                (string-remove-suffix "-mode")
-                (string-remove-suffix "-ts"))))
-    (if (provided-mode-derived-p
-         mode-sym 'prog-mode 'text-mode 'tex-mode)
-     mode-name "")))
+  (or (alist-get mode-sym gptel--mode-description-alist)
+      (let ((mode-name (thread-last
+                         (symbol-name mode-sym)
+                         (string-remove-suffix "-mode")
+                         (string-remove-suffix "-ts"))))
+        (if (provided-mode-derived-p
+             mode-sym 'prog-mode 'text-mode 'tex-mode)
+            mode-name ""))))
 
 
 ;;; Logging
