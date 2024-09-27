@@ -61,8 +61,7 @@
 (cl-defmethod gptel--request-data ((_backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
   (let ((prompts-plist
-         `(:system_instruction (:parts (:text ,gptel--system-message))
-           :contents [,@prompts]
+         `(:contents [,@prompts]
            :safetySettings [(:category "HARM_CATEGORY_HARASSMENT"
                              :threshold "BLOCK_NONE")
                             (:category "HARM_CATEGORY_SEXUALLY_EXPLICIT"
@@ -72,6 +71,11 @@
                             (:category "HARM_CATEGORY_HATE_SPEECH"
                              :threshold "BLOCK_NONE")]))
         params)
+    ;; HACK only gemini-pro doesn't support system messages.  Need a less hacky
+    ;; way to do this.
+    (unless (equal gptel-model "gemini-pro")
+      (plist-put prompts-plist :system_instruction
+                 `(:parts (:text ,gptel--system-message))))
     (when gptel-temperature
       (setq params
             (plist-put params
@@ -111,6 +115,13 @@
                   (list :text (string-trim
                                (buffer-substring-no-properties (point-min) (point-max)))))
             prompts))
+    ;; HACK Prepend the system message to the first user prompt, but only for
+    ;; this model.
+    (when (equal gptel-model "gemini-pro")
+      (cl-callf (lambda (msg) (concat gptel--system-message "\n\n" msg))
+          (thread-first (car prompts)
+                        (plist-get :parts)
+                        (plist-get :text))))
     prompts))
 
 (cl-defmethod gptel--wrap-user-prompt ((_backend gptel-gemini) prompts)
