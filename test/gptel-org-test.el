@@ -1,4 +1,4 @@
-;; -*- lexical-binding: t; -*-
+;; -*- lexical-binding: t; no-byte-compile: t; -*-
 (require 'ert)
 (require 'gptel)
 (require 'gptel-org)
