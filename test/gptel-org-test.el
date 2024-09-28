@@ -1,6 +1,7 @@
 ;; -*- lexical-binding: t; -*-
 (require 'ert)
 (require 'gptel)
+(require 'gptel-org)
 (require 'cl-generic)
 
 (declare-function json-read "json" ())
