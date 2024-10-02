@@ -206,7 +206,9 @@ value of `gptel-org-branching-context', which see."
                               gptel-model (buffer-local-value 'gptel-model org-buf)
                               gptel-mode (buffer-local-value 'gptel-mode org-buf)
                               gptel-track-response
-                              (buffer-local-value 'gptel-track-response org-buf))
+                              (buffer-local-value 'gptel-track-response org-buf)
+                              gptel-track-media
+                              (buffer-local-value 'gptel-track-media org-buf))
                   (cl-loop for start in start-bounds
                            for end   in end-bounds
                            do (insert-buffer-substring org-buf start end)
