@@ -906,9 +906,8 @@ When LOCAL is non-nil, set the system message only in the current buffer."
                         (window-height . ,#'fit-window-to-buffer)))
       (let ((quit-to-menu
              (lambda ()
+               "Cancel system message update and return to `gptel-menu'"
                (interactive)
-               (local-unset-key (kbd "C-c C-c"))
-               (local-unset-key (kbd "C-c C-k"))
                (quit-window)
                (display-buffer
                 orig-buf
@@ -916,16 +915,20 @@ When LOCAL is non-nil, set the system message only in the current buffer."
                    display-buffer-use-some-window)
                   (body-function . ,#'select-window)))
                (call-interactively #'gptel-menu))))
-        (local-set-key (kbd "C-c C-c")
-                       (lambda ()
-                         (interactive)
-                         (let ((system-message
-                                (buffer-substring msg-start (point-max))))
-                           (with-current-buffer orig-buf
-                             (gptel--set-with-scope 'gptel--system-message system-message
-                                                    gptel--set-buffer-locally)))
-                         (funcall quit-to-menu)))
-        (local-set-key (kbd "C-c C-k") quit-to-menu)))))
+        (use-local-map
+         (make-composed-keymap
+          (define-keymap
+            "C-c C-c" (lambda ()
+                        "Confirm system message and return to `gptel-menu'."
+                        (interactive)
+                        (let ((system-message
+                               (buffer-substring msg-start (point-max))))
+                          (with-current-buffer orig-buf
+                            (gptel--set-with-scope 'gptel--system-message system-message
+                                                   gptel--set-buffer-locally)))
+                        (funcall quit-to-menu))
+            "C-c C-k" quit-to-menu)
+          text-mode-map))))))
 
 ;; ** Suffix for displaying and removing context
 (declare-function gptel-context--buffer-setup "gptel-context")
