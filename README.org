@@ -1033,7 +1033,7 @@ gptel is a general-purpose package for chat and ad-hoc LLM interaction.  The fol
 - [[https://github.com/kamushadenes/gptel-extensions.el][gptel-extensions]]: Extra utility functions for gptel
 - [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo
 - [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate Commit Messages within magit-status Buffer using gptel
-- [[https://github.com/armindarvish/consult-web][consult-web]]: Provides gptel as a source when querying multiple local and online sources
+- [[https://github.com/armindarvish/consult-omni][consult-omni]]: Versatile multi-source search package.  It includes gptel as one of its many sources.
 - [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  (Note that gptel includes this feature as well (see =gptel-org-branching-context=), but requires a recent version of Org mode (9.67 or later) to be installed.)
 
 ** COMMENT Breaking Changes
