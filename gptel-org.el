@@ -274,7 +274,8 @@ for inclusion into the user prompt for the gptel request."
 
 (defun gptel-org--link-standalone-p (object)
   "Check if link OBJECT is on a line by itself."
-  (let ((par (org-element-lineage object 'paragraph)))
+  ;; Specify ancestor TYPES as list (#245)
+  (let ((par (org-element-lineage object '(paragraph))))
     (and (= (org-element-begin object)
             (save-excursion
               (goto-char (org-element-property :contents-begin par))
