@@ -27,8 +27,6 @@
 (require 'org-element)
 (require 'outline)
 
-(declare-function org-element-begin "org-element")
-
 ;; Functions used for saving/restoring gptel state in Org buffers
 (defvar gptel--num-messages-to-send)
 (defvar org-entry-property-inherited-from)
@@ -81,7 +79,13 @@ of Org."
                   (throw :--first-match rtn)
                 (when rtn (push rtn acc))))
             (setq up (org-element-parent up)))
-          (nreverse acc))))))
+          (nreverse acc)))))
+  (if (fboundp 'org-element-begin)
+      (progn (declare-function org-element-begin "org-element")
+             (defalias 'gptel-org--element-begin 'org-element-begin))
+    (defun gptel-org--element-begin (node)
+      "Get `:begin' property of NODE."
+      (org-element-property :begin node))))
 
 
 ;;; User options
@@ -182,7 +186,7 @@ value of `gptel-org-branching-context', which see."
             (save-excursion
               (let* ((org-buf (current-buffer))
                      (start-bounds (gptel-org--element-lineage-map
-                                       (org-element-at-point) #'org-element-begin
+                                       (org-element-at-point) #'gptel-org--element-begin
                                      '(headline org-data) 'with-self))
                      (end-bounds
                       (cl-loop
@@ -256,7 +260,7 @@ for inclusion into the user prompt for the gptel request."
               ;; Collect text up to this image, and
               ;; Collect this image
               (when-let ((text (string-trim (buffer-substring-no-properties
-                                             from-pt (org-element-begin link)))))
+                                             from-pt (gptel-org--element-begin link)))))
                 (unless (string-empty-p text) (push (list :text text) parts)))
               (push (list :media path :mime mime) parts)
               (setq from-pt (point))))
@@ -264,7 +268,7 @@ for inclusion into the user prompt for the gptel request."
             ;; Collect text up to this image, and
             ;; Collect this image url
             (when-let ((text (string-trim (buffer-substring-no-properties
-                                             from-pt (org-element-begin link)))))
+                                             from-pt (gptel-org--element-begin link)))))
               (unless (string-empty-p text) (push (list :text text) parts)))
             (push (list :url raw-link :mime mime) parts)
             (setq from-pt (point))))))
@@ -276,7 +280,7 @@ for inclusion into the user prompt for the gptel request."
   "Check if link OBJECT is on a line by itself."
   ;; Specify ancestor TYPES as list (#245)
   (let ((par (org-element-lineage object '(paragraph))))
-    (and (= (org-element-begin object)
+    (and (= (gptel-org--element-begin object)
             (save-excursion
               (goto-char (org-element-property :contents-begin par))
               (skip-chars-forward "\t ")
