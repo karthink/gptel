@@ -158,7 +158,7 @@ with differing settings.")
                 :content gptel--system-message)
           prompts)))
 
-(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-openai) prompts)
+(cl-defmethod gptel--wrap-last-user-prompt ((_backend gptel-openai) prompts)
   "Wrap the last user prompt in PROMPTS with the context string."
   (cl-callf gptel-context--wrap (plist-get (car (last prompts)) :content)))
 
