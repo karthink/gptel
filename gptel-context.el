@@ -208,14 +208,14 @@ If selection is active, removes all contexts within selection."
 
 MESSAGE is usually either the system message or the last user prompt.
 The accumulated context from CONTEXTS is appended or prepended to
-it, respectively."
-  ;; Append context before/after system message.
+it, as requested."
   (let ((context-string (gptel-context--string contexts)))
     (if (> (length context-string) 0)
         (pcase-exhaustive gptel-use-context
-          ('system (concat message "\n\n" context-string))
-          ('user   (concat context-string "\n\n" message))
-          ('nil    message))
+          ('system         (concat message "\n\n" context-string))
+          ('system-prepend (concat context-string "\n\n" message))
+          ('user           (concat context-string "\n\n" message))
+          ('nil            message))
       message)))
 
 (cl-defun gptel-context--add-region (buffer region-beginning region-end &optional advance)
