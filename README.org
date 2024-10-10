@@ -138,10 +138,11 @@ In =config.el=
 #+html: <details><summary>
 **** Spacemacs
 #+html: </summary>
-After installation with =M-x package-install⏎= =gptel=
-
-- Add =gptel= to =dotspacemacs-additional-packages=
-- Add =(require 'gptel)= to =dotspacemacs/user-config=
+In your =.spacemacs= file, add =llm-client= to =dotspacemacs-configuration-layers=.
+#+begin_src emacs-lisp
+(llm-client :variables
+            llm-client-enable-gptel t)
+#+end_src
 #+html: </details>
 ** Setup
 *** ChatGPT
