@@ -600,12 +600,12 @@ Currently supported options are:
 
     nil     - Do not use the context.
     system  - Include the context with the system message.
-    user    - Include the context with the user prompt."
+    user    - Include the context with the last user prompt."
   :group 'gptel
   :type '(choice
           (const :tag "Don't include context" nil)
           (const :tag "With system message" system)
-          (const :tag "With user prompt" user)))
+          (const :tag "With last user prompt" user)))
 
 (defvar-local gptel--old-header-line nil)
 
@@ -1299,7 +1299,7 @@ If the region is active limit the prompt to the region contents
 instead.
 
 If `gptel-context--alist' is non-nil and the additional
-context needs to be included with the user prompt, add it.
+context needs to be included with the last user prompt, add it.
 
 If PROMPT-END (a marker) is provided, end the prompt contents
 there."
@@ -1406,7 +1406,7 @@ for inclusion into the user prompt for the gptel request."
     (nreverse parts)))
 
 (cl-defgeneric gptel--wrap-user-prompt (backend _prompts)
-  "Wrap the last prompt in PROMPTS with gptel's context.
+  "Wrap the last user prompt in PROMPTS with gptel's context.
 
 PROMPTS is a structure as returned by `gptel--parse-buffer'.
 Typically this is a list of plists.

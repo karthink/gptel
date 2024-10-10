@@ -468,7 +468,7 @@ Customize `gptel-directives' for task-specific prompts."
 
 gptel will include with the LLM request any additional context
 added with `gptel-add'.  This context can be ignored, included
-with the system message or included with the user prompt.
+with the system message or included with the last user prompt.
 
 Where in the request this context is included depends on the
 value of `gptel-use-context', set from here."
@@ -480,12 +480,12 @@ value of `gptel-use-context', set from here."
   :display-nil "No"
   :display-map '((nil    . "No")
                  (system . "with system message")
-                 (user   . "with user prompt"))
+                 (user   . "with last user prompt"))
   :key "-i"
   :reader (lambda (prompt &rest _)
-            (let* ((choices '(("No"                  . nil)
-                              ("with system message" . system)
-                              ("with user prompt"    . user)))
+            (let* ((choices '(("No"                    . nil)
+                              ("with system message"   . system)
+                              ("with last user prompt" . user)))
                    (destination (completing-read prompt choices nil t)))
               (cdr (assoc destination choices)))))
 
