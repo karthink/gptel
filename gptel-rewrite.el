@@ -326,8 +326,10 @@ the changed regions. BUF is the (current) buffer."
   (let* ((prompt (buffer-substring-no-properties
                   (region-beginning) (region-end)))
          (gptel--system-message (or rewrite-message gptel--rewrite-message))
-         ;; always send context with system message
-         (gptel-use-context (and gptel-use-context 'system)))
+         (gptel-use-context (or
+			     ;; Never prepend context to last user prompt.
+			     (and (eq gptel-use-context 'user) 'system)
+			     gptel-use-context)))
     (deactivate-mark)
     (gptel-request prompt
       :context

@@ -123,7 +123,7 @@
                      ""))))
           prompts)))))
 
-(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-kagi) prompts)
+(cl-defmethod gptel--wrap-last-user-prompt ((_backend gptel-kagi) prompts)
   (cond
    ((plist-get prompts :url)
     (message "Ignoring gptel context for URL summary request."))
