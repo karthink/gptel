@@ -598,13 +598,15 @@ included in the request.
 
 Currently supported options are:
 
-    nil     - Do not use the context.
-    system  - Include the context with the system message.
-    user    - Include the context with the user prompt."
+    nil            - Do not use the context.
+    system         - Include the context with the system message (append).
+    system-prepend - Include the context with the system message (prepend).
+    user           - Include the context with the user prompt."
   :group 'gptel
   :type '(choice
           (const :tag "Don't include context" nil)
-          (const :tag "With system message" system)
+          (const :tag "With system message (append)" system)
+          (const :tag "With system message (prepend)" system-prepend)
           (const :tag "With user prompt" user)))
 
 (defvar-local gptel--old-header-line nil)
@@ -1148,7 +1150,8 @@ Model parameters can be let-bound around calls to this function."
   (let* ((gptel--system-message
           ;Add context chunks to system message if required
           (if (and gptel-context--alist
-                   (eq gptel-use-context 'system))
+                   (or (eq gptel-use-context 'system)
+                       (eq gptel-use-context 'system-prepend)))
               (gptel-context--wrap system)
             system))
          (gptel-stream stream)
