@@ -30,6 +30,12 @@
 (declare-function gptel-context--wrap "gptel-context")
 (defvar json-object-type)
 
+(defcustom gptel-ollama-num-ctx nil
+  "Max input context, used to set num_ctx in Ollama."
+  :safe #'always
+  :type '(choice (natnum :tag "Specify count")
+                 (const :tag "Default" nil)))
+
 ;;; Ollama
 (cl-defstruct (gptel-ollama (:constructor gptel--make-ollama)
                             (:copier nil)
@@ -80,8 +86,7 @@ Intended for internal use only.")
            :stream ,(or (and gptel-stream gptel-use-curl
                          (gptel-backend-stream gptel-backend))
                      :json-false)))
-        ;; TODO num_ctx chosen according to #330, make customizable
-        (options-plist '(:num_ctx 8192)))
+        (options-plist))
     (when gptel-temperature
       (setq options-plist
             (plist-put options-plist :temperature
@@ -90,6 +95,10 @@ Intended for internal use only.")
       (setq options-plist
             (plist-put options-plist :num_predict
                        gptel-max-tokens)))
+    (when gptel-ollama-num-ctx
+      (setq options-plist
+            (plist-put options-plist :num_ctx
+                       gptel-ollama-num-ctx)))
     (when options-plist
       (plist-put prompts-plist :options options-plist))
     prompts-plist))
