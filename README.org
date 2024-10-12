@@ -34,6 +34,10 @@ https://user-images.githubusercontent.com/8607532/230516812-86510a09-a2fb-4cbd-b
 
 https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-ad3f-b66fa73c6e45.mp4
 
+*Media support*
+
+https://github.com/user-attachments/assets/1fd947e1-226b-4be2-bc68-7b22b2e3215f
+
 *Multi-LLM support demo*:
 
 https://github-production-user-asset-6210df.s3.amazonaws.com/8607532/278854024-ae1336c4-5b87-41f2-83e9-e415349d6a43.mp4
@@ -42,6 +46,7 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/8607532/278854024-a
 - Interact with LLMs from anywhere in Emacs (any buffer, shell, minibuffer, wherever)
 - LLM responses are in Markdown or Org markup.
 - Supports conversations and multiple independent sessions.
+- Supports multi-modal models (send images, documents)
 - Save chats as regular Markdown/Org/Text files and resume them later.
 - You can go back and edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.
 - Don't like gptel's workflow? Use it to create your own for any supported model/backend with a [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][simple API]].
@@ -77,6 +82,7 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
   - [[#usage][Usage]]
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
+      - [[#including-media-images-documents-with-requests][Including media (images, documents) with requests]]
       - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
     - [[#include-more-context-with-requests][Include more context with requests]]
     - [[#rewrite-refactor-or-fill-in-a-region][Rewrite, refactor or fill in a region]]
@@ -782,15 +788,93 @@ That's it. You can go back and edit previous prompts and responses if you want.
 
 The default mode is =markdown-mode= if available, else =text-mode=.  You can set =gptel-default-mode= to =org-mode= if desired.
 
+#+html: <details><summary>
+**** Including media (images, documents) with requests
+#+html: </summary>
+
+gptel supports sending media in Markdown and Org chat buffers, but this feature is disabled by default.
+
+- You can enable it globally, for all models that support it, by setting =gptel-track-media=.  
+- Or you can set it locally, just for the chat buffer, via the header line:
+
+#+html: <img src="https://github.com/user-attachments/assets/91f6aaab-2ea4-4806-9cc9-39b4b46a8e6c" align="center" alt="Image showing a gptel chat buffer's header line with the button to toggle media support">
+
+-----
+
+There are two ways to include media with requests:
+
+1. Adding media files to the context with =gptel-add-file=, described further below.
+2. Including links to media in chat buffers, described here:
+
+To send media -- images or other supported file types -- with requests in chat buffers, you can include links to them in the chat buffer.  Such a link must be "standalone", i.e. on a line by itself surrounded by whitespace.
+
+In Org mode, for example, the following are all *valid* ways of including an image with the request:
+
+- "Standalone" file link:
+#+begin_src
+Describe this picture
+
+[[file:/path/to/screenshot.png]]
+
+Focus specifically on the text content.
+#+end_src
+
+- "Standalone" file link with description:
+#+begin_src 
+Describe this picture
+
+[[file:/path/to/screenshot.png][some picture]]
+
+Focus specifically on the text content.
+#+end_src
+
+- "Standalone", angle file link:
+#+begin_src 
+Describe this picture
+
+<file:/path/to/screenshot.png>
+
+Focus specifically on the text content.
+#+end_src
+
+The following links are *not valid*, and the text of the link will be sent instead of the file contents:
+
+- Inline link:
+#+begin_src 
+Describe this [[file:/path/to/screenshot.png][picture]].
+
+Focus specifically on the text content.
+#+end_src
+
+- Link not "standalone":
+#+begin_src
+Describe this picture: 
+[[file:/path/to/screenshot.png]]
+Focus specifically on the text content.
+#+end_src
+
+- Not a valid Org link:
+#+begin_src 
+Describe the picture
+
+file:/path/to/screenshot.png
+#+end_src
+
+Similar criteria apply to Markdown chat buffers.
+
+#+html: </details>
+#+html: <details><summary>
 **** Save and restore your chat sessions
+#+html: </summary>
 
 Saving the file will save the state of the conversation as well.  To resume the chat, open the file and turn on =gptel-mode= before editing the buffer.
 
+#+html: </details>
 *** Include more context with requests
 
 By default, gptel will query the LLM with the active region or the buffer contents up to the cursor.  Often it can be helpful to provide the LLM with additional context from outside the current buffer. For example, when you're in a chat buffer but want to ask questions about a (possibly changing) code buffer and auxiliary project files.
 
-You can include additional text regions, buffers or files with gptel's queries.  This additional context is "live" and not a snapshot.  Once added, the regions, buffers or files are scanned and included at the time of each query.
+You can include additional text regions, buffers or files with gptel's queries.  This additional context is "live" and not a snapshot.  Once added, the regions, buffers or files are scanned and included at the time of each query.  When using multi-modal models, added files can be of any supported type -- typically images.
 
 You can add a selected region, buffer or file to gptel's context from the menu, or call =gptel-add=.  (To add a file use =gptel-add= in Dired or use the dedicated =gptel-add-file= command.)
 

@@ -27,13 +27,14 @@
 
 ;;; Commentary:
 
-;; gptel is a simple Large Language Model chat client, with support for multiple models/backends.
+;; gptel is a simple Large Language Model chat client, with support for multiple
+;; models and backends.
 ;;
 ;; gptel supports
 ;;
 ;; - The services ChatGPT, Azure, Gemini, Anthropic AI, Anyscale, Together.ai,
-;;   Perplexity, Anyscale, OpenRouter, Groq, PrivateGPT, DeepSeek, Cerebras, Github Models and
-;;   Kagi (FastGPT & Summarizer)
+;;   Perplexity, Anyscale, OpenRouter, Groq, PrivateGPT, DeepSeek, Cerebras,
+;;   Github Models and Kagi (FastGPT & Summarizer)
 ;; - Local models via Ollama, Llama.cpp, Llamafiles or GPT4All
 ;;
 ;;  Additionally, any LLM service (local or remote) that provides an
@@ -45,6 +46,7 @@
 ;;   wherever)
 ;; - LLM responses are in Markdown or Org markup.
 ;; - Supports conversations and multiple independent sessions.
+;; - Supports multi-modal models (send images, documents).
 ;; - Save chats as regular Markdown/Org/Text files and resume them later.
 ;; - You can go back and edit your previous prompts or LLM responses when
 ;;   continuing a conversation.  These will be fed back to the model.
@@ -108,11 +110,16 @@
 ;;   `gptel-mode' before editing it to restore the conversation state and
 ;;   continue chatting.
 ;;
+;; - To include media files with your request, you can add them to the context
+;;   (described next), or include them as links in Org or Markdown mode chat
+;;   buffers.  Sending media is disabled by default, you can turn it on globally
+;;   via `gptel-track-media', or locally in a chat buffer via the header line.
+;; 
 ;; Include more context with requests:
 ;;
 ;; If you want to provide the LLM with more context, you can add arbitrary
-;; regions, buffers or files to the query with `gptel-add'.  (Call `gptel-add'
-;; in Dired or use the dedicated `gptel-add-file' to add files.)
+;; regions, buffers or files to the query with `gptel-add'.  To add text or
+;; media files, call `gptel-add' in Dired or use the dedicated `gptel-add-file'.
 ;;
 ;; You can also add context from gptel's menu instead (gptel-send with a prefix
 ;; arg), as well as examine or modify context.
