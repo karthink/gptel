@@ -1143,6 +1143,8 @@ query data as usual, but do not send the request.
 
 Model parameters can be let-bound around calls to this function."
   (declare (indent 1))
+  ;; TODO Remove this check in version 1.0
+  (gptel--sanitize-model)
   (let* ((gptel--system-message
           ;Add context chunks to system message if required
           (if (and gptel-context--alist
@@ -1567,7 +1569,8 @@ If SHOOSH is true, don't issue a warning."
          (format "`gptel-model' expects a symbol, found string \"%s\"
    Resetting `gptel-model' to %s"
                  model model)))
-      (setq gptel-model (gptel--intern model)))
+      (setq gptel-model (gptel--intern model)
+            model gptel-model))
     (unless (member model available)
       (let ((fallback (car available)))
         (unless shoosh
