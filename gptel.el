@@ -983,18 +983,23 @@ file."
                                (lambda (&rest _)
                                  (setq-local gptel-track-media
                                   (not gptel-track-media))
-                                 (message "Toggled sending images.")
+                                 (if gptel-track-media
+                                     (message
+                                      (concat
+                                       "Sending media from included links.  To include media, create "
+                                       "a \"standalone\" link in a paragraph by itself, separated from surrounding text."))
+                                   (message "Ignoring image links.  Only link text will be sent."))
                                  (run-at-time 0 nil #'force-mode-line-update)))
                               (track-media
                                (and (gptel--model-capable-p 'media)
                                 (if gptel-track-media
                                     (propertize
-                                     (buttonize "[Sending images]" toggle-track-media)
+                                     (buttonize "[Sending media]" toggle-track-media)
                                      'mouse-face 'highlight
                                      'help-echo
-                                     "Sending images from standalone links/urls when supported.\nClick to toggle")
+                                     "Sending media from standalone links/urls when supported.\nClick to toggle")
                                   (propertize
-                                     (buttonize "[Ignoring images]" toggle-track-media)
+                                     (buttonize "[Ignoring media]" toggle-track-media)
                                      'mouse-face 'highlight
                                      'help-echo
                                      "Ignoring images from standalone links/urls.\nClick to toggle")))))
@@ -1307,15 +1312,19 @@ there."
                 (gptel-org--create-prompt prompt-end))
                (t (goto-char prompt-end)
                   (gptel--parse-buffer gptel-backend max-entries)))))
-        ;; NOTE: prompts is modified in place
+        ;; NOTE: prompts is modified in place here
         (when gptel-context--alist
           ;; Inject context chunks into the last user prompt if required
           (when (and (eq gptel-use-context 'user)
                      (> (length prompts) 0)) ;FIXME context should be injected
                                              ;even when there are no prompts
             (gptel--wrap-user-prompt gptel-backend prompts))
-          ;; Inject media chunks into the first user prompt if required
-          (when (and gptel-use-context (gptel--model-capable-p 'media))
+          ;; Inject media chunks into the first user prompt if required.  Media
+          ;; chunks are always included with the first user message,
+          ;; irrespective of the preference in `gptel-use-context'.  This is
+          ;; because media cannot be included (in general) with system messages.
+          (when (and gptel-use-context gptel-track-media
+                     (gptel--model-capable-p 'media))
             (gptel--wrap-user-prompt gptel-backend prompts :media)))
         prompts))))
 
