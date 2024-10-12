@@ -161,11 +161,12 @@ files in the context."
             (plist-get (car prompts) :content)))
     ;; Wrap the last user prompt with included text contexts
     (cl-callf (lambda (current)
-                (cl-typecase current
+                (cl-etypecase current
                   (string (gptel-context--wrap current))
-                  (vector (vconcat `((:type "text" :text ,(gptel-context--wrap nil)))
-                                   current))
-                  (t (gptel-context--wrap nil))))
+                  (vector (if-let ((wrapped (gptel-context--wrap nil)))
+                              (vconcat `((:type "text" :text ,wrapped))
+                                       current)
+                            current))))
         (plist-get (car (last prompts)) :content))))
 
 ;; (if-let ((context-string (gptel-context--string gptel-context--alist)))
