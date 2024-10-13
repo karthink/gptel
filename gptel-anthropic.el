@@ -211,7 +211,8 @@ files in the context."
      :input-cost 3
      :output-cost 15
      :updated "2023-08-01"))
-  "List of available Anthropic models and associated properties. Keys:
+  "List of available Anthropic models and associated properties.
+Keys:
 
 - `:description': a brief description of the model.
 
