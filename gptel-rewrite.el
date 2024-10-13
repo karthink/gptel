@@ -104,7 +104,7 @@ CALLBACK is supplied by Eldoc, see
       (funcall callback
                (format (substitute-command-keys "%s rewrite available: accept \\[gptel--rewrite-apply], clear \\[gptel--rewrite-clear], merge \\[gptel--rewrite-merge], diff \\[gptel--rewrite-diff] or ediff \\[gptel--rewrite-ediff]")
                        (propertize (concat (gptel-backend-name gptel-backend)
-                                           ":" gptel-model)
+                                           ":" (gptel--model-name gptel-model))
                                    'face 'mode-line-emphasis)))))
 
 (defun gptel--rewrite-move (search-func)
@@ -354,8 +354,8 @@ the changed regions. BUF is the (current) buffer."
                       (setq response (replace-regexp-in-string "^```.*$" "" response))))
                 (setq action-str "rewrite"))
               (setq hint-str (concat "[" (gptel-backend-name gptel-backend)
-                                     ":" gptel-model "] " (upcase action-str)
-                                     " READY ✓\n"))
+                                     ":" (gptel--model-name gptel-model) "] "
+                                     (upcase action-str) " READY ✓\n"))
               (add-hook 'eldoc-documentation-functions #'gptel--rewrite-key-help nil 'local)
               (overlay-put ov 'gptel-rewrite response)
               (overlay-put ov 'face 'gptel-rewrite-highlight-face)
@@ -364,15 +364,16 @@ the changed regions. BUF is the (current) buffer."
                            (concat (propertize
                                     " " 'display `(space :align-to (- right ,(1+ (length hint-str)))))
                                    (propertize hint-str 'face 'success)))
-              (overlay-put ov 'help-echo
-                           (format "%s rewrite available:
+              (overlay-put
+               ov 'help-echo
+               (format "%s rewrite available:
 - accept \\[gptel--rewrite-apply],
 - clear  \\[gptel--rewrite-clear],
 - merge  \\[gptel--accept-merge],
 - diff   \\[gptel--rewrite-diff],
 - ediff  \\[gptel--rewrite-ediff]"
-                                   (propertize (concat (gptel-backend-name gptel-backend)
-                                                       ":" gptel-model))))
+                       (propertize (concat (gptel-backend-name gptel-backend)
+                                           ":" (gptel--model-name gptel-model)))))
               (push ov gptel--rewrite-overlays))
             ;; Message user
             (message
