@@ -178,7 +178,7 @@ files in the context."
 ;;                   (t context-string)))
 ;;         (plist-get (car (last prompts)) :content)))
 
-(defconst gptel-anthropic-models
+(defconst gptel--anthropic-models
   '((claude-3-5-sonnet-20240620
      :description "Highest level of intelligence and capability"
      :capabilities (media tool)
@@ -242,7 +242,7 @@ sources:
            (lambda () (when-let (key (gptel--get-api-key))
                    `(("x-api-key" . ,key)
                      ("anthropic-version" . "2023-06-01")))))
-          (models gptel-anthropic-models)
+          (models gptel--anthropic-models)
           (host "api.anthropic.com")
           (protocol "https")
           (endpoint "/v1/messages"))
@@ -262,7 +262,7 @@ information, in the form
  (model-name . plist)
 
 For a list of currently recognized plist keys, see
-`gptel-anthropic-models'. An example of a model specification
+`gptel--anthropic-models'. An example of a model specification
 including both kinds of specs:
 
 :models
