@@ -211,7 +211,7 @@ files in the context."
      ;; input & output price is halved for prompts of 128k tokens or less
      :input-cost 2.50
      :output-cost 10))
-  "List of available Anthropic models and associated properties.
+  "List of available Gemini models and associated properties.
 Keys:
 
 - `:description': a brief description of the model.
@@ -229,7 +229,7 @@ Keys:
 - `:updated': the most recent update of the model’s training data, in
   ISO 8601 format.
 
-Information about the Anthropic models was obtained from the following
+Information about the Gemini models was obtained from the following
 source:
 
 - <https://ai.google.dev/pricing>")
