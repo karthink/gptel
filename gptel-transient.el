@@ -553,13 +553,24 @@ responses."
                ,(lambda (comp)
                   (let* ((model (nth 2 (assoc comp models-alist)))
                          (desc (get model :description))
-                         (caps (get model :capabilities)))
-                   (when (or desc caps)
-                    (concat
-                     (propertize " " 'display `(space :align-to (0.33 . ,(window-width))))
-                     desc
-                     (propertize " " 'display `(space :align-to (0.75 . ,(window-width))))
-                     (when caps (prin1-to-string caps)))))))
+                         (caps (get model :capabilities))
+                         (context (get model :context-window))
+                         (input-cost (get model :input-cost))
+                         (output-cost (get model :output-cost))
+                         (updated (get model :updated)))
+                    (when (or desc caps context input-cost output-cost updated)
+                      (concat
+                       (propertize " " 'display `(space :align-to (0.15 . ,(window-width))))
+                       desc
+		       (propertize " " 'display `(space :align-to (0.60 . ,(window-width))))
+                       (when updated (format "Updated: %s" updated))
+                       (propertize " " 'display `(space :align-to (0.70 . ,(window-width))))
+                       (when context (format "Context: %dk" context))
+                       (propertize " " 'display `(space :align-to (0.80 . ,(window-width))))
+                       (when (and input-cost output-cost)
+			 (format "Cost: $%s/$%s" input-cost output-cost))
+		       (propertize " " 'display `(space :align-to (0.90 . ,(window-width))))
+		       (when caps (prin1-to-string caps)))))))
              finally return
              (cdr (assoc (completing-read prompt models-alist nil t)
                          models-alist)))))
