@@ -465,7 +465,7 @@ To set the temperature for a chat session interactively call
      :output-cost 10
      :updated "2023-10-01")
     (gpt-4o-mini
-     :description "Affordable and intelligent small model for fast, lightweight tasks; cheaper & more capable than GPT-3.5 Turbo"
+     :description "Affordable & intelligent small model for fast, lightweight tasks; cheaper & more capable than GPT-3.5 Turbo"
      :capabilities (media tool json url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 128
