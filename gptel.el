@@ -455,32 +455,105 @@ To set the temperature for a chat session interactively call
 
 (defvar gptel--known-backends)
 
+(defconst gptel--openai-models'
+  ((gpt-4o
+    :description "High-intelligence flagship model for complex, multi-step tasks; cheaper & faster than GPT-4 Turbo"
+    :capabilities (media tool json url)
+    :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+    :context-window 128
+    :input-cost 2.50
+    :output-cost 10
+    :updated "2023-10-01")
+   (gpt-4o-mini
+    :description "Affordable and intelligent small model for fast, lightweight tasks; cheaper & more capable than GPT-3.5 Turbo"
+    :capabilities (media tool json url)
+    :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+    :context-window 128
+    :input-cost 0.15
+    :output-cost 0.60
+    :updated "2023-10")
+   (gpt-4-turbo
+    :description "Previous high-intelligence model"
+    :capabilities (media tool url)
+    :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+    :context-window 128
+    :input-cost 10
+    :output-cost 30
+    :updated "2023-12")
+   ;; points to gpt-4-0613
+   (gpt-4
+    :description "Snapshot of gpt-4 from June 13th 2023 with improved function calling support"
+    :context-window 8.192
+    :input-cost 30
+    :output-cost 60
+    :updated "2023-09")
+   (gpt-4-turbo-preview
+    :description "Points to gpt-4-0125-preview"
+    :context-window 128
+    :input-cost 10
+    :output-cost 30
+    :updated "2023-12")
+   (gpt-4-0125-preview
+    :description "GPT-4 Turbo preview model intended to reduce cases of “laziness” where the model doesn’t complete a task"
+    :context-window 128
+    :input-cost 10
+    :output-cost 30
+    :updated "2023-12")
+   ;; limited information available
+   (gpt-4-32k
+    :input-cost 60
+    :output-cost 120)
+   (gpt-4-1106-preview
+    :description "Preview model with improved function calling support"
+    :context-window 128
+    :input-cost 10
+    :output-cost 30
+    :updated "2023-04")
+   (gpt-3.5-turbo
+    :description "gpt-4o-mini is cheaper, more capable, multimodal, and just as fast, so should be used instead"
+    :capabilities (tool)
+    :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+    :context-window 16.358
+    :input-cost 0.50
+    :output-cost 1.50
+    :updated "2021-09-01")
+   (gpt-3.5-turbo-16k
+    :description "gpt-4o-mini is cheaper, more capable, multimodal, and just as fast, so should be used instead"
+    :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+    :context-window 16.385
+    :input-cost 3
+    :output-cost 4
+    :updated "2021-09-01"))
+  "List of available OpenAI models and associated properties.
+Keys:
+
+- `:description': a brief description of the model.
+
+- `:capabilities': a list of capabilities supported by the model.
+
+- `:mime-types': a list of supported MIME types for media files.
+
+- `:context-window': the context window size, in thousands of tokens.
+
+- `:input-cost': the input cost, in US dollars per million tokens.
+
+- `:output-cost': the output cost, in US dollars per million tokens.
+
+- `:updated': the most recent update of the model’s training data, in
+  ISO 8601 format.
+
+Information about the OpenAI models was obtained from the following
+sources:
+
+- <https://openai.com/pricing>
+- <https://platform.openai.com/docs/models>")
+
 (defvar gptel--openai
   (gptel-make-openai
-   "ChatGPT"
-   :key 'gptel-api-key
-   :stream t
-   :models
-   '((gpt-4o-mini
-      :capabilities (media tool json url)
-      :description "Affordable and intelligent small model for fast, lightweight tasks"
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
-     (gpt-4o
-      :capabilities (media tool json url)
-      :description "High-intelligence flagship model for complex, multi-step tasks"
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
-     (gpt-3.5-turbo
-      :description "Fast, inexpensive model for simple tasks"
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-      :capabilities (tool))
-     (gpt-3.5-turbo-16k :description "Fast, inexpensive model for simple tasks, 16K context"
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
-     (gpt-4-turbo
-      :capabilities (media tool url)
-      :description "Previous high-intelligence model"
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
-     (gpt-4 :description "Previous high-intelligence model")
-     gpt-4-turbo-preview gpt-4-32k gpt-4-1106-preview gpt-4-0125-preview)))
+      "ChatGPT"
+    :key 'gptel-api-key
+    :stream t
+    :models gptel--openai-models))
 
 (defcustom gptel-backend gptel--openai
   "LLM backend to use.
@@ -503,7 +576,7 @@ README for examples."
   :type `(choice
           (const :tag "ChatGPT" ,gptel--openai)
           (restricted-sexp :match-alternatives (gptel-backend-p 'nil)
-           :tag "Other backend")))
+			   :tag "Other backend")))
 
 (defvar gptel-expert-commands nil
   "Whether experimental gptel options should be enabled.
