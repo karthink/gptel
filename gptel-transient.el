@@ -560,20 +560,21 @@ responses."
                          (updated (get model :updated)))
                     (when (or desc caps context input-cost output-cost updated)
                       (concat
-                       (propertize " " 'display `(space :align-to (0.15 . ,(window-width))))
+                       (propertize " " 'display `(space :align-to (0.20 . ,(window-width))))
                        desc
-		       (propertize " " 'display `(space :align-to (0.60 . ,(window-width))))
-                       (when updated (format "Updated: %s" updated))
-                       (propertize " " 'display `(space :align-to (0.70 . ,(window-width))))
-                       (when context (format "Context: %dk" context))
-                       (propertize " " 'display `(space :align-to (0.80 . ,(window-width))))
-                       (when (and input-cost output-cost)
-			 (format "Cost: $%s/$%s" input-cost output-cost))
+		       (propertize " " 'display `(space :align-to (0.65 . ,(window-width))))
+		       (when caps (prin1-to-string caps))
+                       (propertize " " 'display `(space :align-to (0.75 . ,(window-width))))
+                       (when context (format "%dk" context))
+		       (propertize " " 'display `(space :align-to (0.80 . ,(window-width))))
+		       (when input-cost (format "%10s" (format "$%.2f in" input-cost)))
+		       (propertize " " 'display `(space :align-to (0.85 . ,(window-width))))
+		       (when output-cost (format "%11s" (format "$%.2f out" output-cost)))
 		       (propertize " " 'display `(space :align-to (0.90 . ,(window-width))))
-		       (when caps (prin1-to-string caps)))))))
-             finally return
-             (cdr (assoc (completing-read prompt models-alist nil t)
-                         models-alist)))))
+		       updated)))))
+	     finally return
+	     (cdr (assoc (completing-read prompt models-alist nil t)
+			 models-alist)))))
 
 (transient-define-infix gptel--infix-temperature ()
   "Temperature of request."
