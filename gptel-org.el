@@ -32,6 +32,10 @@
 (defvar org-entry-property-inherited-from)
 (defvar gptel-backend)
 (defvar gptel--known-backends)
+(defvar gptel--system-message)
+(defvar gptel-model)
+(defvar gptel-temperature)
+(defvar gptel-max-tokens)
 
 (defvar org-link-angle-re)
 (defvar org-link-bracket-re)
@@ -40,6 +44,7 @@
 (declare-function gptel--model-mime-capable-p "gptel")
 (declare-function gptel--model-name "gptel")
 (declare-function gptel--to-string "gptel")
+(declare-function gptel--to-number "gptel")
 (declare-function gptel--intern "gptel")
 (declare-function gptel--get-buffer-bounds "gptel")
 (declare-function gptel-backend-name "gptel")
