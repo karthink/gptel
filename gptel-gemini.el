@@ -186,7 +186,7 @@ files in the context."
 
 (defconst gptel--gemini-models
   '((gemini-pro
-     :description "The previous generation of Google's multimodal AI model."
+     :description "The previous generation of Google's multimodal AI model"
      :capabilities (tool json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
