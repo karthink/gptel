@@ -93,19 +93,24 @@
                           (buffer-substring-no-properties (prop-match-beginning prop)
                                                           (prop-match-end prop)))
                     prompts)
-            (if include-media           ; user role: possibly with media
+            ;; HACK Until we can find a more robust solution for editing
+            ;; responses, ignore user prompts containing only whitespace, as the
+            ;; Anthropic API can't handle it.  See #409, #406, #351 and #321
+            (unless (save-excursion (skip-syntax-forward " ")
+                                    (eq (get-char-property (point) 'gptel) 'response))
+              (if include-media         ; user role: possibly with media
+                  (push (list :role "user"
+                              :content
+                              (gptel--anthropic-parse-multipart
+                               (gptel--parse-media-links
+                                major-mode (prop-match-beginning prop) (prop-match-end prop))))
+                        prompts)
                 (push (list :role "user"
                             :content
-                            (gptel--anthropic-parse-multipart
-                             (gptel--parse-media-links
-                              major-mode (prop-match-beginning prop) (prop-match-end prop))))
-                      prompts)
-              (push (list :role "user"
-                          :content
-                          (gptel--trim-prefixes
-                           (buffer-substring-no-properties (prop-match-beginning prop)
-                                                           (prop-match-end prop))))
-                    prompts)))
+                            (gptel--trim-prefixes
+                             (buffer-substring-no-properties (prop-match-beginning prop)
+                                                             (prop-match-end prop))))
+                      prompts))))
           (and max-entries (cl-decf max-entries)))
       (push (list :role "user"
                   :content
