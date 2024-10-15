@@ -1369,7 +1369,7 @@ Return a list of the form
  ((:text \"some text\")
   (:media \"/path/to/media.png\" :mime \"image/png\")
   (:text \"More text\"))
-for inclusion into the user prompt for the gptel request."
+for inclusion into a user prompt for the gptel request."
   (require 'mailcap)                    ;FIXME Avoid this somehow
   (let ((parts) (from-pt))
     (save-excursion
