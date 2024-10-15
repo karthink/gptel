@@ -115,17 +115,15 @@
                       prompts)
               (push (list :role "user"
                           :parts
-                          (vconcat
-                           (list :text (gptel--trim-prefixes
+                          `[,(list :text (gptel--trim-prefixes
                                         (buffer-substring-no-properties (prop-match-beginning prop)
-                                                                        (prop-match-end prop))))))
+                                                                        (prop-match-end prop))))])
                     prompts)))
           (and max-entries (cl-decf max-entries)))
       (push (list :role "user"
                   :parts
-                  (vconcat
-                   (list :text (string-trim
-                                (buffer-substring-no-properties (point-min) (point-max))))))
+                  `[,(list :text (string-trim
+                                (buffer-substring-no-properties (point-min) (point-max))))])
             prompts))
     ;; HACK Prepend the system message to the first user prompt, but only for
     ;; this model.
