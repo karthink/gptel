@@ -1025,6 +1025,7 @@ file."
                 '(:eval (concat " "
                          (buttonize (gptel--model-name gptel-model)
                             (lambda (&rest _) (gptel-menu))))))))
+    (remove-hook 'before-save-hook #'gptel--save-state t)
     (if gptel-use-header-line
         (setq header-line-format gptel--old-header-line
               gptel--old-header-line nil)
