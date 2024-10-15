@@ -163,7 +163,8 @@ format."
                                        &optional inject-media)
   "Wrap the last user prompt in PROMPTS with the context string.
 
-If INJECT-MEDIA is non-nil wrap it with base64-encoded media files in the context."
+If INJECT-MEDIA is non-nil wrap the first user prompt in PROMPTS
+with base64-encoded media files in the context."
   (if inject-media
       ;; Wrap the first user prompt with included media files/contexts
       (when-let* ((media-list (gptel-context--collect-media))

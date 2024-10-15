@@ -1329,7 +1329,7 @@ there."
                                              ;even when there are no prompts
             (gptel--wrap-user-prompt gptel-backend prompts))
           ;; Inject media chunks into the first user prompt if required.  Media
-          ;; chunks are always included with the first user message,
+          ;; chunks are always included with the first user prompt,
           ;; irrespective of the preference in `gptel-use-context'.  This is
           ;; because media cannot be included (in general) with system messages.
           (when (and gptel-use-context gptel-track-media
