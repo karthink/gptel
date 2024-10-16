@@ -5,8 +5,8 @@ assignees: []
 body:
   - type: markdown
     attributes:
-      value: "**NOTE**: Please update gptel and test before filing the bug.  Chances are it's already fixed."
-  - type: input
+      value: "**NOTE**: *Please update gptel and test before filing the bug.  It may already be fixed.*"
+  - type: textarea
     id: bug-description
     attributes:
       label: Bug Description
@@ -41,30 +41,30 @@ body:
       required: true
   - type: markdown
     attributes:
+      label: Logging and simulation
       value: |
-        Logging and simulation
-
         Depending on the bug, it might be useful to include the data gptel sends and receives from the LLM, or to simulate a request.
                 
-        To see gptel's log,
+        **To see gptel's log**
         1. Turn on logging by running `(setq gptel-log-level 'info)`.  Set it to `debug` for more information
         2. Use gptel
         3. Check the `*gptel-log*` buffer
 
-        For a gptel request dry-run,
+        **For a gptel request dry-run**
         1. Run `(setq gptel-expert-commands t)`
         2. From gptel's menu (`M-x gptel-menu`), use one of the newly visible `dry run` options.
   - type: textarea
     id: log-info
     attributes:
       label: Log Information
-      description: (Only if relevant) paste the relevant log information or dry-run output here
-      placeholder: (Only if relevant) paste the contents of the *gptel-log* buffer or dry-run output here
+      description: (If relevant) paste the relevant log information or dry-run output here
+      placeholder: (If relevant) paste the contents of the *gptel-log* buffer or dry-run output here
       render: json
     validations:
       required: false
   - type: markdown
     attributes:
+      label: Backtrace
       value: |
         If Emacs throws an error, please generate a backtrace as follows:
         1. Run `M-x toggle-debug-on-error`
@@ -73,7 +73,6 @@ body:
   - type: textarea
     id: backtrace
     attributes:
-      label: Backtrace
       description: Paste the backtrace here
       render: emacs-lisp
   - type: textarea
