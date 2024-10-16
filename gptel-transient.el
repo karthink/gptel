@@ -551,30 +551,30 @@ responses."
              with completion-extra-properties =
              `(:annotation-function
                ,(lambda (comp)
-                  (let* ((model (nth 2 (assoc comp models-alist)))
-                         (desc (get model :description))
-                         (caps (get model :capabilities))
-                         (context (get model :context-window))
-                         (input-cost (get model :input-cost))
-                         (output-cost (get model :output-cost))
-                         (updated (get model :updated)))
-                    (when (or desc caps context input-cost output-cost updated)
-                      (concat
-                       (propertize " " 'display `(space :align-to (0.20 . ,(window-width))))
-                       desc
-		       (propertize " " 'display `(space :align-to (0.65 . ,(window-width))))
-		       (when caps (prin1-to-string caps))
-                       (propertize " " 'display `(space :align-to (0.75 . ,(window-width))))
-                       (when context (format "%dk" context))
-		       (propertize " " 'display `(space :align-to (0.80 . ,(window-width))))
+		  (let* ((model (nth 2 (assoc comp models-alist)))
+			 (desc (get model :description))
+			 (caps (get model :capabilities))
+			 (context (get model :context-window))
+			 (input-cost (get model :input-cost))
+			 (output-cost (get model :output-cost))
+			 (updated (get model :updated)))
+		    (when (or desc caps context input-cost output-cost updated)
+		      (concat
+		       (propertize " " 'display `(space :align-to 40))
+		       (when desc (truncate-string-to-width desc 70 nil ? t t))
+		       " " (propertize " " 'display `(space :align-to 111))
+		       (when caps (truncate-string-to-width (prin1-to-string caps) 21 nil ? t t))
+		       " " (propertize " " 'display `(space :align-to 133))
+		       (when context (format "%6dk" context))
+		       " " (propertize " " 'display `(space :align-to 141))
 		       (when input-cost (format "%10s" (format "$%.2f in" input-cost)))
-		       (propertize " " 'display `(space :align-to (0.85 . ,(window-width))))
+		       " " (propertize " " 'display `(space :align-to 152))
 		       (when output-cost (format "%11s" (format "$%.2f out" output-cost)))
-		       (propertize " " 'display `(space :align-to (0.90 . ,(window-width))))
+		       " " (propertize " " 'display `(space :align-to 164))
 		       updated)))))
-	     finally return
-	     (cdr (assoc (completing-read prompt models-alist nil t)
-			 models-alist)))))
+             finally return
+             (cdr (assoc (completing-read prompt models-alist nil t)
+                         models-alist)))))
 
 (transient-define-infix gptel--infix-temperature ()
   "Temperature of request."
