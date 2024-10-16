@@ -463,7 +463,7 @@ To set the temperature for a chat session interactively call
      :context-window 128
      :input-cost 2.50
      :output-cost 10
-     :updated "2023-10-01")
+     :cutoff-date "2023-10-01")
     (gpt-4o-mini
      :description "Cheap model for fast tasks; cheaper & more capable than GPT-3.5 Turbo"
      :capabilities (media tool json url)
@@ -471,7 +471,7 @@ To set the temperature for a chat session interactively call
      :context-window 128
      :input-cost 0.15
      :output-cost 0.60
-     :updated "2023-10")
+     :cutoff-date "2023-10")
     (gpt-4-turbo
      :description "Previous high-intelligence model"
      :capabilities (media tool url)
@@ -479,26 +479,26 @@ To set the temperature for a chat session interactively call
      :context-window 128
      :input-cost 10
      :output-cost 30
-     :updated "2023-12")
+     :cutoff-date "2023-12")
     ;; points to gpt-4-0613
     (gpt-4
      :description "GPT-4 snapshot from June 2023 with improved function calling support"
      :context-window 8.192
      :input-cost 30
      :output-cost 60
-     :updated "2023-09")
+     :cutoff-date "2023-09")
     (gpt-4-turbo-preview
      :description "Points to gpt-4-0125-preview"
      :context-window 128
      :input-cost 10
      :output-cost 30
-     :updated "2023-12")
+     :cutoff-date "2023-12")
     (gpt-4-0125-preview
      :description "GPT-4 Turbo preview model intended to reduce cases of “laziness” where the model doesn’t complete a task"
      :context-window 128
      :input-cost 10
      :output-cost 30
-     :updated "2023-12")
+     :cutoff-date "2023-12")
     ;; limited information available
     (gpt-4-32k
      :input-cost 60
@@ -508,7 +508,7 @@ To set the temperature for a chat session interactively call
      :context-window 128
      :input-cost 10
      :output-cost 30
-     :updated "2023-04")
+     :cutoff-date "2023-04")
     (gpt-3.5-turbo
      :description "More expensive & less capable than GPT-4o-mini; use that instead"
      :capabilities (tool)
@@ -516,14 +516,14 @@ To set the temperature for a chat session interactively call
      :context-window 16.358
      :input-cost 0.50
      :output-cost 1.50
-     :updated "2021-09-01")
+     :cutoff-date "2021-09-01")
     (gpt-3.5-turbo-16k
      :description "More expensive & less capable than GPT-4o-mini; use that instead"
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 16.385
      :input-cost 3
      :output-cost 4
-     :updated "2021-09-01"))
+     :cutoff-date "2021-09-01"))
   "List of available OpenAI models and associated properties.
 Keys:
 
@@ -539,8 +539,7 @@ Keys:
 
 - `:output-cost': the output cost, in US dollars per million tokens.
 
-- `:updated': the most recent update of the model’s training data, in
-  ISO 8601 format.
+- `:cutoff-date': the knowledge cutoff date, in ISO 8601 format.
 
 Information about the OpenAI models was obtained from the following
 sources:

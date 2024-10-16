@@ -226,8 +226,7 @@ Keys:
 
 - `:output-cost': the output cost, in US dollars per million tokens.
 
-- `:updated': the most recent update of the model’s training data, in
-  ISO 8601 format.
+- `:cutoff-date': the knowledge cutoff date, in ISO 8601 format.
 
 Information about the Gemini models was obtained from the following
 source:
