@@ -41,7 +41,7 @@ body:
       required: true
   - type: markdown
     attributes:
-      value: "#### Logging and simulation"
+      value: "#### Logging and simulation instructions"
   - type: markdown
     attributes:
       value: |
@@ -66,7 +66,7 @@ body:
       required: false
   - type: markdown
     attributes:
-      value: "#### Backtrace"
+      value: "#### Backtrace instructions"
   - type: markdown
     attributes:
       value: |
