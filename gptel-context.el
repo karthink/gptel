@@ -231,7 +231,7 @@ ADVANCE controls the overlay boundary behavior."
 (defun gptel-context--wrap-default (message contexts)
   "Add CONTEXTS to MESSAGE.
 
-MESSAGE is usually either the system message or the user prompt.
+MESSAGE is usually either the system message or the last user prompt.
 The accumulated context from CONTEXTS is appended or prepended to
 it, respectively."
   ;; Append context before/after system message.
