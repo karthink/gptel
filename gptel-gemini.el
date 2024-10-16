@@ -73,7 +73,7 @@
         params)
     ;; HACK only gemini-pro doesn't support system messages.  Need a less hacky
     ;; way to do this.
-    (unless (equal gptel-model "gemini-pro")
+    (unless (equal gptel-model 'gemini-pro)
       (plist-put prompts-plist :system_instruction
                  `(:parts (:text ,gptel--system-message))))
     (when gptel-temperature
@@ -127,11 +127,12 @@
             prompts))
     ;; HACK Prepend the system message to the first user prompt, but only for
     ;; this model.
-    (when (equal gptel-model "gemini-pro")
-      (cl-callf (lambda (msg) (concat gptel--system-message "\n\n" msg))
+    (when (equal gptel-model 'gemini-pro)
+      (cl-callf
+          (lambda (msg)
+            (vconcat `((:text ,(concat gptel--system-message "\n\n"))) msg))
           (thread-first (car prompts)
-                        (plist-get :parts)
-                        (plist-get :text))))
+                        (plist-get :parts))))
     prompts))
 
 (defun gptel--gemini-parse-multipart (parts)
