@@ -7,6 +7,8 @@ assignees: ''
 
 ---
 
+**NOTE**: please update gptel and test before reporting a bug.  Chances are it's been fixed already.
+
 **Describe the bug**
 A short description of what the bug is.
 
@@ -14,7 +16,7 @@ A short description of what the bug is.
 How I can reproduce the behavior.
 
 **Logging and/or simulation**
-Depending on the bug, it might be relevant to see the data gptel sends and receives from the LLM, or simulate a request.
+Depending on the bug, it might be relevant to include the data gptel sends and receives from the LLM, or simulate a request.
 
 To see gptel's log,
 1. Turn on logging by running `(setq gptel-log-level 'info)` (or `'debug`)
