@@ -31,6 +31,7 @@
 (declare-function text-property-search-backward "text-property-search")
 (declare-function json-read "json")
 (declare-function gptel-context--wrap "gptel-context")
+(declare-function gptel-context--collect-media "gptel-context")
 (defvar json-object-type)
 
 ;;; Gemini
@@ -115,15 +116,14 @@
                       prompts)
               (push (list :role "user"
                           :parts
-                          `[,(list :text (gptel--trim-prefixes
-                                        (buffer-substring-no-properties (prop-match-beginning prop)
-                                                                        (prop-match-end prop))))])
+                          `[(:text ,(gptel--trim-prefixes
+                                     (buffer-substring-no-properties (prop-match-beginning prop)
+                                      (prop-match-end prop))))])
                     prompts)))
           (and max-entries (cl-decf max-entries)))
       (push (list :role "user"
                   :parts
-                  `[,(list :text (string-trim
-                                (buffer-substring-no-properties (point-min) (point-max))))])
+                  `[(:text ,(string-trim (buffer-substring-no-properties (point-min) (point-max))))])
             prompts))
     ;; HACK Prepend the system message to the first user prompt, but only for
     ;; this model.

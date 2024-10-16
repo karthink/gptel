@@ -82,7 +82,7 @@ Intended for internal use only.")
                          (gptel-backend-stream gptel-backend))
                      :json-false)))
         ;; TODO num_ctx chosen according to #330, make customizable
-        (options-plist '(:num_ctx 8192)))
+        (options-plist (list :num_ctx 8192)))
     (when gptel-temperature
       (setq options-plist
             (plist-put options-plist :temperature
