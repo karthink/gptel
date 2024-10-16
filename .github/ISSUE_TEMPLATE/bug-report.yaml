@@ -58,8 +58,8 @@ body:
     id: log-info
     attributes:
       label: Log Information
-      description: Only if relevant: paste the relevant log information or dry-run output here
-      placeholder: Only if relevant: paste the contents of the *gptel-log* buffer or dry-run output here
+      description: (Only if relevant) paste the relevant log information or dry-run output here
+      placeholder: (Only if relevant) paste the contents of the *gptel-log* buffer or dry-run output here
       render: json
     validations:
       required: false
