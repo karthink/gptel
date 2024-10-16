@@ -39,6 +39,20 @@ body:
         4. See error '...'
     validations:
       required: true
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Provide any additional context (e.g., Emacs version, operating system)
+      placeholder: |
+        Emacs version:
+        Operating System:
+        Any other information (Curl version, gptel backend etc -- only if relevant):
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: "### Supporting data for bug (optional)"
   - type: markdown
     attributes:
       value: "#### Logging and simulation instructions"
@@ -78,16 +92,5 @@ body:
     id: backtrace
     attributes:
       label: Backtrace
-      description: Paste the backtrace here
+      description: (If relevant) Paste the backtrace here
       render: emacs-lisp
-  - type: textarea
-    id: additional-context
-    attributes:
-      label: Additional Context
-      description: Provide any additional context (e.g., Emacs version, operating system)
-      placeholder: |
-        Emacs version:
-        Operating System:
-        Any other information (Curl version, gptel backend etc -- only if relevant):
-    validations:
-      required: true
