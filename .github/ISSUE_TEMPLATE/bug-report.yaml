@@ -41,10 +41,10 @@ body:
       required: true
   - type: markdown
     attributes:
+      value: "#### Logging and simulation"
+  - type: markdown
+    attributes:
       value: |
-        Logging and simulation
-        ----------------------
-
         Depending on the bug, it might be useful to include the data gptel sends and receives from the LLM, or to simulate a request.
                 
         **To see gptel's log**
@@ -66,10 +66,10 @@ body:
       required: false
   - type: markdown
     attributes:
+      value: "#### Backtrace"
+  - type: markdown
+    attributes:
       value: |
-        Backtrace
-        ----------
-
         If Emacs throws an error, please generate a backtrace as follows:
         1. Run `M-x toggle-debug-on-error`
         2. Reproduce the error
