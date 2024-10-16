@@ -457,7 +457,7 @@ To set the temperature for a chat session interactively call
 
 (defconst gptel--openai-models
   '((gpt-4o
-     :description "High-intelligence flagship model for complex, multi-step tasks; cheaper & faster than GPT-4 Turbo"
+     :description "Advanced model for complex tasks; cheaper & faster than GPT-Turbo"
      :capabilities (media tool json url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 128
@@ -465,7 +465,7 @@ To set the temperature for a chat session interactively call
      :output-cost 10
      :updated "2023-10-01")
     (gpt-4o-mini
-     :description "Affordable & intelligent small model for fast, lightweight tasks; cheaper & more capable than GPT-3.5 Turbo"
+     :description "Cheap model for fast tasks; cheaper & more capable than GPT-3.5 Turbo"
      :capabilities (media tool json url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 128
@@ -482,7 +482,7 @@ To set the temperature for a chat session interactively call
      :updated "2023-12")
     ;; points to gpt-4-0613
     (gpt-4
-     :description "Snapshot of gpt-4 from June 13th 2023 with improved function calling support"
+     :description "GPT-4 snapshot from June 2023 with improved function calling support"
      :context-window 8.192
      :input-cost 30
      :output-cost 60
@@ -510,7 +510,7 @@ To set the temperature for a chat session interactively call
      :output-cost 30
      :updated "2023-04")
     (gpt-3.5-turbo
-     :description "gpt-4o-mini is cheaper, more capable, multimodal, and just as fast, so should be used instead"
+     :description "More expensive & less capable than GPT-4o-mini; use that instead"
      :capabilities (tool)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 16.358
@@ -518,7 +518,7 @@ To set the temperature for a chat session interactively call
      :output-cost 1.50
      :updated "2021-09-01")
     (gpt-3.5-turbo-16k
-     :description "gpt-4o-mini is cheaper, more capable, multimodal, and just as fast, so should be used instead"
+     :description "More expensive & less capable than GPT-4o-mini; use that instead"
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 16.385
      :input-cost 3
