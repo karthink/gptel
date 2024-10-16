@@ -494,7 +494,7 @@ To set the temperature for a chat session interactively call
      :output-cost 30
      :cutoff-date "2023-12")
     (gpt-4-0125-preview
-     :description "GPT-4 Turbo preview model intended to reduce cases of “laziness” where the model doesn’t complete a task"
+     :description "GPT-4 Turbo preview model intended to reduce cases of “laziness”"
      :context-window 128
      :input-cost 10
      :output-cost 30
