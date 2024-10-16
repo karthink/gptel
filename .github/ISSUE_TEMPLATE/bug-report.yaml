@@ -1,0 +1,89 @@
+name: Bug Report
+description: File a bug report
+labels: ["bug"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: "**NOTE**: Please update gptel and test before filing the bug.  Chances are it's already fixed."
+  - type: input
+    id: bug-description
+    attributes:
+      label: Bug Description
+      description: Provide a short description of the bug
+      placeholder: A clear and concise description of the bug
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      description: Is the issue with a particular gptel backend? (Leave blank otherwise)
+      options:
+        - OpenAI/Azure
+        - Ollama
+        - Gemini
+        - Anthropic
+        - Kagi
+        - Other (please specify in Additional Context)
+    validations:
+      required: false
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Steps to Reproduce
+      description: Provide detailed steps to reproduce the bug
+      placeholder: |
+        1. Set '...'
+        2. Run '....'
+        4. See error '...'
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        Logging and simulation
+
+        Depending on the bug, it might be useful to include the data gptel sends and receives from the LLM, or to simulate a request.
+                
+        To see gptel's log,
+        1. Turn on logging by running `(setq gptel-log-level 'info)`.  Set it to `debug` for more information
+        2. Use gptel
+        3. Check the `*gptel-log*` buffer
+
+        For a gptel request dry-run,
+        1. Run `(setq gptel-expert-commands t)`
+        2. From gptel's menu (`M-x gptel-menu`), use one of the newly visible `dry run` options.
+  - type: textarea
+    id: log-info
+    attributes:
+      label: Log Information
+      description: Only if relevant: paste the relevant log information or dry-run output here
+      placeholder: Only if relevant: paste the contents of the *gptel-log* buffer or dry-run output here
+      render: json
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: |
+        If Emacs throws an error, please generate a backtrace as follows:
+        1. Run `M-x toggle-debug-on-error`
+        2. Reproduce the error
+        3. Paste the contents of the backtrace here
+  - type: textarea
+    id: backtrace
+    attributes:
+      label: Backtrace
+      description: Paste the backtrace here
+      render: emacs-lisp
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Provide any additional context (e.g., Emacs version, operating system)
+      placeholder: |
+        Emacs version:
+        Operating System:
+        Any other information (Curl version, gptel backend etc -- only if relevant):
+    validations:
+      required: true
