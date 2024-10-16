@@ -194,7 +194,7 @@ files in the context."
      :input-cost 0.50
      :output-cost 1.50)
     (gemini-1.5-flash
-     :description "A faster, more efficient version of Gemini 1.5 optimized for quick responses"
+     :description "A faster, more efficient version of Gemini 1.5 optimized for speed"
      :capabilities (tool json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
@@ -203,7 +203,7 @@ files in the context."
      :input-cost 0.15
      :output-cost 0.60)
     (gemini-1.5-pro-latest
-     :description "Google's latest large language model with enhanced capabilities across various tasks"
+     :description "Google's latest model with enhanced capabilities across various tasks"
      :capabilities (tool json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
