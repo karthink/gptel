@@ -478,14 +478,16 @@ value of `gptel-use-context', set from here."
   :format " %k %d %v"
   :set-value #'gptel--set-with-scope
   :display-nil "No"
-  :display-map '((nil    . "No")
-                 (system . "with system message")
-                 (user   . "with user prompt"))
+  :display-map '((nil            . "No")
+                 (system         . "with system message (append)")
+                 (system-prepend . "with system message (prepend)")
+                 (user           . "with user prompt"))
   :key "-i"
   :reader (lambda (prompt &rest _)
-            (let* ((choices '(("No"                  . nil)
-                              ("with system message" . system)
-                              ("with user prompt"    . user)))
+            (let* ((choices '(("No"                            . nil)
+                              ("with system message (append)"  . system)
+                              ("with system message (prepend)" . system-prepend)
+                              ("with user prompt"              . user)))
                    (destination (completing-read prompt choices nil t)))
               (cdr (assoc destination choices)))))
 
