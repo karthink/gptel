@@ -183,29 +183,71 @@ files in the context."
 ;;                   (t context-string)))
 ;;         (plist-get (car (last prompts)) :content)))
 
+(defconst gptel--anthropic-models
+  '((claude-3-5-sonnet-20240620
+     :description "Highest level of intelligence and capability"
+     :capabilities (media tool)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 200
+     :input-cost 3
+     :output-cost 15
+     :cutoff-date "2024-04")
+    (claude-3-opus-20240229
+     :description "Top-level performance, intelligence, fluency, and understanding"
+     :capabilities (media tool)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 200
+     :input-cost 15
+     :output-cost 75
+     :cutoff-date "2023-08")
+    (claude-3-haiku-20240307
+     :description "Fast and most compact model for near-instant responsiveness"
+     :capabilities (media tool)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 200
+     :input-cost 0.25
+     :output-cost 1.25
+     :cutoff-date "2023-08")
+    (claude-3-sonnet-20240229
+     :description "Balance of intelligence and speed (legacy model)"
+     :capabilities (media tool)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 200
+     :input-cost 3
+     :output-cost 15
+     :cutoff-date "2023-08"))
+  "List of available Anthropic models and associated properties.
+Keys:
+
+- `:description': a brief description of the model.
+
+- `:capabilities': a list of capabilities supported by the model.
+
+- `:mime-types': a list of supported MIME types for media files.
+
+- `:context-window': the context window size, in thousands of tokens.
+
+- `:input-cost': the input cost, in US dollars per million tokens.
+
+- `:output-cost': the output cost, in US dollars per million tokens.
+
+- `:cutoff-date': the knowledge cutoff date.
+
+Information about the Anthropic models was obtained from the following
+sources:
+
+- <https://www.anthropic.com/pricing#anthropic-api>
+- <https://www.anthropic.com/news/claude-3-5-sonnet>
+- <https://support.anthropic.com/en/articles/8114494-how-up-to-date-is-claude-s-training-data>")
+
 ;;;###autoload
 (cl-defun gptel-make-anthropic
     (name &key curl-args stream key
           (header
            (lambda () (when-let (key (gptel--get-api-key))
-                        `(("x-api-key" . ,key)
-                          ("anthropic-version" . "2023-06-01")))))
-          (models '((claude-3-5-sonnet-20240620
-                     :description "Balance of intelligence and speed"
-                     :capabilities (media tool)
-                     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
-                    (claude-3-sonnet-20240229
-                     :description "Highest level of intelligence and capability"
-                     :capabilities (media tool)
-                     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
-                    (claude-3-haiku-20240307
-                     :description "Fast and most compact model for near-instant responsiveness"
-                     :capabilities (media tool)
-                     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
-                    (claude-3-opus-20240229
-                     :description "Top-level performance, intelligence, fluency, and understanding"
-                     :capabilities (media tool)
-                     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))))
+                   `(("x-api-key" . ,key)
+                     ("anthropic-version" . "2023-06-01")))))
+          (models gptel--anthropic-models)
           (host "api.anthropic.com")
           (protocol "https")
           (endpoint "/v1/messages"))
@@ -224,9 +266,9 @@ information, in the form
 
  (model-name . plist)
 
-Currently recognized plist keys are :description, :capabilities
-and :mime-types.  An example of a model specification including
-both kinds of specs:
+For a list of currently recognized plist keys, see
+`gptel--anthropic-models'. An example of a model specification
+including both kinds of specs:
 
 :models
 \\='(claude-3-haiku-20240307               ;Simple specs

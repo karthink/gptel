@@ -183,26 +183,65 @@ files in the context."
                   current))
         (plist-get (car (last prompts)) :parts))))
 
+(defconst gptel--gemini-models
+  '((gemini-pro
+     :description "The previous generation of Google's multimodal AI model"
+     :capabilities (tool json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 32
+     :input-cost 0.50
+     :output-cost 1.50
+     :cutoff-date "2023-02")
+    (gemini-1.5-flash
+     :description "A faster, more efficient version of Gemini 1.5 optimized for speed"
+     :capabilities (tool json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1000
+     ;; input & output price is halved for prompts of 128k tokens or less
+     :input-cost 0.15
+     :output-cost 0.60
+     :cutoff-date "2024-05")
+    (gemini-1.5-pro-latest
+     :description "Google's latest model with enhanced capabilities across various tasks"
+     :capabilities (tool json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 2000
+     ;; input & output price is halved for prompts of 128k tokens or less
+     :input-cost 2.50
+     :output-cost 10
+     :cutoff-date "2024-05"))
+  "List of available Gemini models and associated properties.
+Keys:
+
+- `:description': a brief description of the model.
+
+- `:capabilities': a list of capabilities supported by the model.
+
+- `:mime-types': a list of supported MIME types for media files.
+
+- `:context-window': the context window size, in thousands of tokens.
+
+- `:input-cost': the input cost, in US dollars per million tokens.
+
+- `:output-cost': the output cost, in US dollars per million tokens.
+
+- `:cutoff-date': the knowledge cutoff date.
+
+Information about the Gemini models was obtained from the following
+source:
+
+- <https://ai.google.dev/pricing>
+- <https://cloud.google.com/vertex-ai/generative-ai/docs/learn/models>")
+
 ;;;###autoload
 (cl-defun gptel-make-gemini
     (name &key curl-args header key (stream nil)
           (host "generativelanguage.googleapis.com")
           (protocol "https")
-          (models '((gemini-pro
-                     :description "Complex reasoning tasks, problem solving, data extraction and generation"
-                     :capabilities (tool json media)
-                     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                                  "application/pdf" "text/plain" "text/csv" "text/html"))
-                    (gemini-1.5-flash
-                     :description "Fast and versatile performance across a diverse variety of tasks"
-                     :capabilities (tool json media)
-                     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                                  "application/pdf" "text/plain" "text/csv" "text/html"))
-                    (gemini-1.5-pro-latest
-                     :description "Complex reasoning tasks, problem solving, data extraction and generation"
-                     :capabilities (tool json media)
-                     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                                  "application/pdf" "text/plain" "text/csv" "text/html"))))
+          (models gptel--gemini-models)
           (endpoint "/v1beta/models"))
 
   "Register a Gemini backend for gptel with NAME.
@@ -221,9 +260,9 @@ information, in the form
 
  (model-name . plist)
 
-Currently recognized plist keys are :description, :capabilities
-and :mime-types.  An example of a model specification including
-both kinds of specs:
+For a list of currently recognized plist keys, see
+`gptel--gemini-models'. An example of a model specification
+including both kinds of specs:
 
 :models
 \\='(gemini-pro                            ;Simple specs
