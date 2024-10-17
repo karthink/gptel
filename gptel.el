@@ -3,7 +3,7 @@
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
-;; Version: 0.9.5
+;; Version: 0.9.6
 ;; Package-Requires: ((emacs "27.1") (transient "0.4.0") (compat "29.1.4.1"))
 ;; Keywords: convenience
 ;; URL: https://github.com/karthink/gptel
@@ -30,6 +30,8 @@
 ;; gptel is a simple Large Language Model chat client, with support for multiple
 ;; models and backends.
 ;;
+;; It works in the spirit of Emacs, available at any time and in any buffer.
+;;
 ;; gptel supports
 ;;
 ;; - The services ChatGPT, Azure, Gemini, Anthropic AI, Anyscale, Together.ai,
@@ -50,6 +52,9 @@
 ;; - Save chats as regular Markdown/Org/Text files and resume them later.
 ;; - You can go back and edit your previous prompts or LLM responses when
 ;;   continuing a conversation.  These will be fed back to the model.
+;; - Redirect prompts and responses easily
+;; - Rewrite, refactor or fill in regions in buffers
+;; - Write your own commands for custom tasks with a simple API.
 ;;
 ;; Requirements for ChatGPT, Azure, Gemini or Kagi:
 ;;
@@ -125,6 +130,12 @@
 ;; arg), as well as examine or modify context.
 ;;
 ;; When context is available, gptel will include it with each LLM query.
+;;
+;; Rewrite/refactor interface
+;;
+;; In any buffer: with a region selected, you can rewrite prose, refactor code
+;; or fill in the region.  Use gptel's menu (C-u M-x `gptel-send') to access
+;; this feature.
 ;;
 ;; gptel in Org mode:
 ;;
