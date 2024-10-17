@@ -270,9 +270,9 @@ information, in the form
 
  (model-name . plist)
 
-Currently recognized plist keys are :description, :capabilities
-and :mime-types.  An example of a model specification including
-both kinds of specs:
+For a list of currently recognized plist keys, see
+`gptel--openai-models'. An example of a model specification
+including both kinds of specs:
 
 :models
 \\='(gpt-3.5-turbo                         ;Simple specs
