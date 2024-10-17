@@ -192,7 +192,8 @@ files in the context."
                   "application/pdf" "text/plain" "text/csv" "text/html")
      :context-window 32
      :input-cost 0.50
-     :output-cost 1.50)
+     :output-cost 1.50
+     :cutoff-date "2023-02-01")
     (gemini-1.5-flash
      :description "A faster, more efficient version of Gemini 1.5 optimized for speed"
      :capabilities (tool json media)
@@ -201,7 +202,8 @@ files in the context."
      :context-window 1000
      ;; input & output price is halved for prompts of 128k tokens or less
      :input-cost 0.15
-     :output-cost 0.60)
+     :output-cost 0.60
+     :cutoff-date "2024-05-01")
     (gemini-1.5-pro-latest
      :description "Google's latest model with enhanced capabilities across various tasks"
      :capabilities (tool json media)
@@ -210,7 +212,8 @@ files in the context."
      :context-window 2000
      ;; input & output price is halved for prompts of 128k tokens or less
      :input-cost 2.50
-     :output-cost 10))
+     :output-cost 10
+     :cutoff-date "2024-05-01"))
   "List of available Gemini models and associated properties.
 Keys:
 
@@ -231,7 +234,8 @@ Keys:
 Information about the Gemini models was obtained from the following
 source:
 
-- <https://ai.google.dev/pricing>")
+- <https://ai.google.dev/pricing>
+- <https://cloud.google.com/vertex-ai/generative-ai/docs/learn/models>")
 
 ;;;###autoload
 (cl-defun gptel-make-gemini
