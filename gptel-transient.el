@@ -557,8 +557,8 @@ responses."
 			 (context (get model :context-window))
 			 (input-cost (get model :input-cost))
 			 (output-cost (get model :output-cost))
-			 (updated (get model :updated)))
-		    (when (or desc caps context input-cost output-cost updated)
+			 (cutoff (get model :cutoff-date)))
+		    (when (or desc caps context input-cost output-cost cutoff)
 		      (concat
 		       (propertize " " 'display `(space :align-to 40))
 		       (when desc (truncate-string-to-width desc 70 nil ? t t))
@@ -572,7 +572,7 @@ responses."
 		       " " (propertize " " 'display `(space :align-to 153))
 		       (when output-cost (format "$%6.2f out" output-cost))
 		       " " (propertize " " 'display `(space :align-to 166))
-		       updated)))))
+		       cutoff)))))
              finally return
              (cdr (assoc (completing-read prompt models-alist nil t)
                          models-alist)))))
