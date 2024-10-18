@@ -1125,7 +1125,7 @@ file."
           (setq mode-line-process (propertize msg 'face face))
         (setq mode-line-process
               '(:eval (concat " "
-                       (buttonize gptel-model
+                       (buttonize (gptel--model-name gptel-model)
                             (lambda (&rest _) (gptel-menu))))))
         (message (propertize msg 'face face))))
     (force-mode-line-update)))
