@@ -45,8 +45,8 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/8607532/278854024-a
 - It's async and fast, streams responses.
 - Interact with LLMs from anywhere in Emacs (any buffer, shell, minibuffer, wherever)
 - LLM responses are in Markdown or Org markup.
-- Supports conversations and multiple independent sessions.
-- Supports multi-modal models (send images, documents)
+- Supports multiple independent conversations and one-off ad hoc interactions.
+- Supports multi-modal models (include images, documents)
 - Save chats as regular Markdown/Org/Text files and resume them later.
 - You can go back and edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.
 - Don't like gptel's workflow? Use it to create your own for any supported model/backend with a [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][simple API]].
@@ -103,13 +103,13 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
 
 ** Breaking changes!
 
-- The =gptel-model= is now expected to be a symbol, not a string.  Please update your configuration.
+- =gptel-model= is now expected to be a symbol, not a string.  Please update your configuration.
 
 ** Installation
 
-gptel can be installed in Emacs out of the box with =M-x package-install= ⏎ =gptel=.  This installs the latest release.
+gptel can be installed in Emacs out of the box with =M-x package-install= ⏎ =gptel=.  This installs the latest commit.
 
-If you want the development version instead, add MELPA (or NonGNU-devel ELPA) to your list of sources, then install it with =M-x package-install⏎= =gptel=.
+If you want the stable version instead, add NonGNU-devel ELPA or MELPA-stable to your list of package sources (=package-archives=), then install gptel with =M-x package-install⏎= =gptel= from these sources.
 
 (Optional: Install =markdown-mode=.)
 
@@ -729,12 +729,12 @@ The above code makes the backend available to select.  If you want it to be the 
 
 ** Usage
 
-(This is also a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel.)
+(There is also a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel.)
 
 |-------------------+------------------------------------------------------------------------------------------------|
 | *To send queries* | Description                                                                                    |
 |-------------------+------------------------------------------------------------------------------------------------|
-| =gptel-send=      | Send conversation up to =(point)=, or selection if region is active.  Works anywhere in Emacs. |
+| =gptel-send=      | Send all text up to =(point)=, or the selection if region is active.  Works anywhere in Emacs. |
 | =gptel=           | Create a new dedicated chat buffer.  Not required to use gptel.                                |
 |-------------------+------------------------------------------------------------------------------------------------|
 
@@ -745,19 +745,19 @@ The above code makes the backend available to select.  If you want it to be the 
 | =gptel-menu=       | /(Same)/                                                      |
 |--------------------+---------------------------------------------------------------|
 
-|------------------+-----------------------------------------------------------------------------------------|
-| *To add context* |                                                                                         |
-|------------------+-----------------------------------------------------------------------------------------|
-| =gptel-add=      | Add/remove a region or buffer to gptel's context.  In Dired, add/remove marked files.   |
-| =gptel-add-file= | Add a (text-readable) file to gptel's context.  Also available from the transient menu. |
-|------------------+-----------------------------------------------------------------------------------------|
+|------------------+--------------------------------------------------------------------------------------------------------|
+| *To add context* |                                                                                                        |
+|------------------+--------------------------------------------------------------------------------------------------------|
+| =gptel-add=      | Add/remove a region or buffer to gptel's context.  In Dired, add/remove marked files.                  |
+| =gptel-add-file= | Add a file (text or supported media type) to gptel's context.  Also available from the transient menu. |
+|------------------+--------------------------------------------------------------------------------------------------------|
 
-|----------------------------+----------------------------------------------------------------------------|
-| *In Org mode only*         |                                                                            |
-|----------------------------+----------------------------------------------------------------------------|
-| =gptel-org-set-topic=      | Limit conversation context to an Org heading                               |
-| =gptel-org-set-properties= | Write gptel configuration as Org properties (for self-contained chat logs) |
-|----------------------------+----------------------------------------------------------------------------|
+|----------------------------+-----------------------------------------------------------------------------------------|
+| *Org mode bonuses*         |                                                                                         |
+|----------------------------+-----------------------------------------------------------------------------------------|
+| =gptel-org-set-topic=      | Limit conversation context to an Org heading.  (For branching conversations see below.) |
+| =gptel-org-set-properties= | Write gptel configuration as Org properties, for per-heading chat configuration.        |
+|----------------------------+-----------------------------------------------------------------------------------------|
 
 *** In any buffer:
 
