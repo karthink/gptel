@@ -184,7 +184,15 @@ files in the context."
 ;;         (plist-get (car (last prompts)) :content)))
 
 (defconst gptel--anthropic-models
-  '((claude-3-5-sonnet-20240620
+  '((claude-3-5-sonnet-20241022
+     :description "Highest level of intelligence and capability"
+     :capabilities (media tool)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 200
+     :input-cost 3
+     :output-cost 15
+     :cutoff-date "2024-04")
+    (claude-3-5-sonnet-20240620
      :description "Highest level of intelligence and capability"
      :capabilities (media tool)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
@@ -238,7 +246,7 @@ sources:
 
 - <https://www.anthropic.com/pricing#anthropic-api>
 - <https://www.anthropic.com/news/claude-3-5-sonnet>
-- <https://support.anthropic.com/en/articles/8114494-how-up-to-date-is-claude-s-training-data>")
+- <https://assets.anthropic.com/m/61e7d27f8c8f5919/original/Claude-3-Model-Card.pdf>")
 
 ;;;###autoload
 (cl-defun gptel-make-anthropic
