@@ -91,8 +91,10 @@ context chunk.  This is accessible as, for example:
   context.  If there is already a gptel context at point, remove it
   instead.
 
-- If in Dired, add marked files or file at point to the context.
-  With negative prefix ARG, remove them from the context instead.
+- If in Dired, add marked files or file at point to the context. If
+  the file at point is a directory, or directories are marked,
+  recursively add all their files. With negative prefix ARG, remove
+  them from the context instead.
 
 - Otherwise add the current buffer to the context.  With positive
   prefix ARG, prompt for a buffer name and add it to the context.
@@ -110,10 +112,14 @@ context chunk.  This is accessible as, for example:
     (message "Current region added as context."))
    ;; If in dired
    ((derived-mode-p 'dired-mode)
-    (mapc (if (and arg (< (prefix-numeric-value arg) 0))
-              #'gptel-context-remove
+    (let ((files (cl-loop for file in (dired-get-marked-files)
+			  if (file-directory-p file)
+			  append (directory-files-recursively file "." t)
+			  else collect file)))
+      (mapc (if (and arg (< (prefix-numeric-value arg) 0))
+		#'gptel-context-remove
               #'gptel-context-add-file)
-          (dired-get-marked-files)))
+            (cl-remove-if #'file-directory-p files))))
    ;; If in an image buffer
    ((and (derived-mode-p 'image-mode)
          (gptel--model-capable-p 'media;)
