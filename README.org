@@ -1078,6 +1078,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 |---------------------------------+------------------------------------------------------------|
 | *Hooks for customization*       |                                                            |
 |---------------------------------+------------------------------------------------------------|
+| =gptel-save-state-hook=         | Runs before saving the chat state to a file on disk        |
 | =gptel-pre-response-hook=       | Runs before inserting the LLM response into the buffer     |
 | =gptel-post-response-functions= | Runs after inserting the full LLM response into the buffer |
 | =gptel-post-stream-hook=        | Runs after each streaming insertion                        |

@@ -317,6 +317,14 @@ This hook is called in the buffer from which the prompt was sent
 to the LLM, and after a text insertion."
   :type 'hook)
 
+(defcustom gptel-save-state-hook nil
+  "Hook run before gptel saves model parameters to a file.
+
+You can use this hook to store additional conversation state or
+model parameters to the chat buffer, or to modify the buffer in
+some other way."
+  :type 'hook)
+
 (defcustom gptel-default-mode (if (fboundp 'markdown-mode)
 				  'markdown-mode
 				'text-mode)
@@ -988,6 +996,7 @@ Valid JSON unless NO-JSON is t."
 This saves chat metadata when writing the buffer to disk.  To
 restore a chat session, turn on `gptel-mode' after opening the
 file."
+  (run-hooks 'gptel-save-state-hook)
   (if (derived-mode-p 'org-mode)
       (progn
         (require 'gptel-org)
