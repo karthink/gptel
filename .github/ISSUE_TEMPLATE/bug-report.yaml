@@ -3,9 +3,13 @@ description: File a bug report
 labels: ["bug"]
 assignees: []
 body:
-  - type: markdown
+  - type: checkboxes
+    id: updated-gptel
     attributes:
-      value: "**NOTE**: *Please update gptel and test before filing the bug.  It may already be fixed.*"
+      label: Please update gptel first -- errors are often fixed by the time they're reported.
+      options:
+        - label: I have updated gptel to the latest commit and tested that the issue still exists
+          required: true
   - type: textarea
     id: bug-description
     attributes:
@@ -55,6 +59,22 @@ body:
       value: "### Supporting data for bug (optional)"
   - type: markdown
     attributes:
+      value: "#### Backtrace instructions"
+  - type: markdown
+    attributes:
+      value: |
+        If Emacs throws an error, please generate a backtrace as follows:
+        1. Run `M-x toggle-debug-on-error`
+        2. Reproduce the error
+        3. Paste the contents of the backtrace here
+  - type: textarea
+    id: backtrace
+    attributes:
+      label: Backtrace
+      description: (If relevant) Paste the backtrace here
+      render: emacs-lisp
+  - type: markdown
+    attributes:
       value: "#### Logging and simulation instructions"
   - type: markdown
     attributes:
@@ -78,19 +98,3 @@ body:
       render: json
     validations:
       required: false
-  - type: markdown
-    attributes:
-      value: "#### Backtrace instructions"
-  - type: markdown
-    attributes:
-      value: |
-        If Emacs throws an error, please generate a backtrace as follows:
-        1. Run `M-x toggle-debug-on-error`
-        2. Reproduce the error
-        3. Paste the contents of the backtrace here
-  - type: textarea
-    id: backtrace
-    attributes:
-      label: Backtrace
-      description: (If relevant) Paste the backtrace here
-      render: emacs-lisp
