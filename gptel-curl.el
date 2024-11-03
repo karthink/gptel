@@ -113,6 +113,10 @@ the response is inserted into the current buffer after point."
          (backend (buffer-local-value 'gptel-backend (plist-get info :buffer)))
          (process (apply #'start-process "gptel-curl"
                          (generate-new-buffer "*gptel-curl*") "curl" args)))
+    (when (memq system-type '(windows-nt ms-dos))
+      ;; Don't try to convert cr-lf to cr on Windows so that curl's "header size
+      ;; in bytes" stays correct
+      (set-process-coding-system process 'utf-8-unix 'utf-8-unix))
     (when (eq gptel-log-level 'debug)
       (gptel--log (mapconcat #'shell-quote-argument (cons "curl" args) " \\\n")
                   "request Curl command" 'no-json))
