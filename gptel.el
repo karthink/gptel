@@ -1688,11 +1688,13 @@ INTERACTIVEP is t when gptel is called interactively."
    (let* ((backend (default-value 'gptel-backend))
           (backend-name
            (format "*%s*" (gptel-backend-name backend))))
-     (list (read-buffer "Create or choose gptel buffer: "
-                        backend-name nil                         ; DEFAULT and REQUIRE-MATCH
-                        (lambda (b)                              ; PREDICATE
-                          (buffer-local-value 'gptel-mode
-                                              (get-buffer (or (car-safe b) b)))))
+     (list (read-buffer
+            "Create or choose gptel buffer: "
+            backend-name nil                         ; DEFAULT and REQUIRE-MATCH
+            (lambda (b)                                   ; PREDICATE
+              ;; NOTE: buffer check is required (#450)
+              (and-let* ((buf (get-buffer (or (car-safe b) b))))
+                (buffer-local-value 'gptel-mode buf))))
            (condition-case nil
                (gptel--get-api-key
                 (gptel-backend-key backend))
