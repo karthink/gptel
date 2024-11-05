@@ -102,7 +102,7 @@
 ;;   prompt/response.
 ;;
 ;; To use this in a dedicated buffer:
-;; 
+;;
 ;; - M-x gptel: Start a chat session
 ;;
 ;; - In the chat session: Press `C-c RET' (`gptel-send') to send your prompt.
@@ -119,7 +119,7 @@
 ;;   (described next), or include them as links in Org or Markdown mode chat
 ;;   buffers.  Sending media is disabled by default, you can turn it on globally
 ;;   via `gptel-track-media', or locally in a chat buffer via the header line.
-;; 
+;;
 ;; Include more context with requests:
 ;;
 ;; If you want to provide the LLM with more context, you can add arbitrary
@@ -142,11 +142,11 @@
 ;; gptel offers a few extra conveniences in Org mode.
 ;; - You can limit the conversation context to an Org heading with
 ;;   `gptel-org-set-topic'.
-;;   
+;;
 ;; - You can have branching conversations in Org mode, where each hierarchical
 ;;   outline path through the document is a separate conversation branch.
 ;;   See the variable `gptel-org-branching-context'.
-;;   
+;;
 ;; - You can declare the gptel model, backend, temperature, system message and
 ;;   other parameters as Org properties with the command
 ;;   `gptel-org-set-properties'.  gptel queries under the corresponding heading
@@ -938,7 +938,7 @@ MODE-SYM is typically a major-mode symbol."
                          (string-remove-suffix "-mode")
                          (string-remove-suffix "-ts"))))
         (if (provided-mode-derived-p
-             mode-sym 'prog-mode 'text-mode 'tex-mode)
+             mode-sym '(prog-mode text-mode tex-mode))
             mode-name ""))))
 
 
