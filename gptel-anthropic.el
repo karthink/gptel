@@ -208,6 +208,14 @@ files in the context."
      :input-cost 15
      :output-cost 75
      :cutoff-date "2023-08")
+    (claude-3-5-haiku-20241022
+     :description "Intelligence at blazing speeds"
+     :capabilities (media tool)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 200
+     :input-cost 1.00
+     :output-cost 5.00
+     :cutoff-date "2024-07")
     (claude-3-haiku-20240307
      :description "Fast and most compact model for near-instant responsiveness"
      :capabilities (media tool)
