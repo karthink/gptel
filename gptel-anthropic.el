@@ -132,18 +132,31 @@ format."
    for part in parts
    for n upfrom 1
    with last = (length parts)
+   with type
    for text = (plist-get part :text)
+   for mime = (plist-get part :mime)
    for media = (plist-get part :media)
    if text do
    (and (or (= n 1) (= n last)) (setq text (gptel--trim-prefixes text))) and
    unless (string-empty-p text)
    collect `(:type "text" :text ,text) into parts-array end
    else if media
-   collect
-   `(:type "image"
+   do
+   (setq type (cond                     ;Currently supported: Images and PDFs
+               ((equal (substring mime 0 5) "image") "image")
+               ;; NOTE: Only Claude 3.5 Sonnet supports PDF documents:
+               ((equal mime "application/pdf") "document")
+               (t (error (concat "(gptel-anthropic) Request aborted: "
+                                 "trying to send unsupported MIME type %s")
+                         mime))))
+   and collect
+   `(:type ,type
      :source (:type "base64"
               :media_type ,(plist-get part :mime)
-              :data ,(gptel--base64-encode media)))
+              :data ,(gptel--base64-encode media))
+     ;; TODO Make media caching a user option
+     ,@(and (gptel--model-capable-p 'cache)
+        '(:cache_control (:type "ephemeral"))))
    into parts-array
    finally return (vconcat parts-array)))
 
@@ -186,15 +199,15 @@ files in the context."
 (defconst gptel--anthropic-models
   '((claude-3-5-sonnet-20241022
      :description "Highest level of intelligence and capability"
-     :capabilities (media tool)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :capabilities (media tool cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
      :input-cost 3
      :output-cost 15
      :cutoff-date "2024-04")
     (claude-3-5-sonnet-20240620
      :description "Highest level of intelligence and capability"
-     :capabilities (media tool)
+     :capabilities (media tool cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 3
@@ -202,7 +215,7 @@ files in the context."
      :cutoff-date "2024-04")
     (claude-3-opus-20240229
      :description "Top-level performance, intelligence, fluency, and understanding"
-     :capabilities (media tool)
+     :capabilities (media tool cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 15
@@ -262,7 +275,9 @@ sources:
           (header
            (lambda () (when-let (key (gptel--get-api-key))
                    `(("x-api-key" . ,key)
-                     ("anthropic-version" . "2023-06-01")))))
+                     ("anthropic-version" . "2023-06-01")
+                     ("anthropic-beta" . "pdfs-2024-09-25")
+                     ("anthropic-beta" . "prompt-caching-2024-07-31")))))
           (models gptel--anthropic-models)
           (host "api.anthropic.com")
           (protocol "https")
