@@ -95,6 +95,7 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
       - [[#i-want-to-change-the-formatting-of-the-prompt-and-llm-response][I want to change the formatting of the prompt and LLM response]]
       - [[#i-want-the-transient-menu-options-to-be-saved-so-i-only-need-to-set-them-once][I want the transient menu options to be saved so I only need to set them once]]
       - [[#i-want-to-use-gptel-in-a-way-thats-not-supported-by-gptel-send-or-the-options-menu][I want to use gptel in a way that's not supported by =gptel-send= or the options menu]]
+      - [[#how-does-gptel-distinguish-between-user-prompts-and-llm-responses][How does gptel distinguish between user prompts and LLM responses?]]
       - [[#doom-emacs-sending-a-query-from-the-gptel-menu-fails-because-of-a-key-conflict-with-org-mode][(Doom Emacs) Sending a query from the gptel menu fails because of a key conflict with Org mode]]
       - [[#chatgpt-i-get-the-error-http2-429-you-exceeded-your-current-quota][(ChatGPT) I get the error "(HTTP/2 429) You exceeded your current quota"]]
       - [[#why-another-llm-client][Why another LLM client?]]
@@ -1027,6 +1028,16 @@ Or see this [[https://github.com/karthink/gptel/wiki/Commonly-requested-features
 gptel's default usage pattern is simple, and will stay this way: Read input in any buffer and insert the response below it.  Some custom behavior is possible with the transient menu (=C-u M-x gptel-send=).
 
 For more programmable usage, gptel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][wiki]] for examples.
+
+#+html: </details>
+#+html: <details><summary>
+**** How does gptel distinguish between user prompts and LLM responses?
+
+gptel uses [[https://www.gnu.org/software/emacs/manual/html_node/elisp/Text-Properties.html][text-properties]] to watermark LLM responses.  Thus this text is interpreted as a response even if you copy it into another buffer.  In regular buffers (buffers without =gptel-mode= enabled), you can turn off this tracking by unsetting =gptel-track-responses=.
+
+When restoring a chat state from a file on disk, gptel will apply these properties from saved metadata in the file when you turn on =gptel-mode=.
+
+gptel does /not/ use any prefix or semantic/syntax element in the buffer (such as headings) to separate prompts and responses.  The reason for this is that gptel aims to integrate as seamlessly as possible into your regular Emacs usage: LLM interaction is not the objective, it's just another tool at your disposal.  So requiring a bunch of "user" and "assistant" tags in the buffer is noisy and restrictive. If you want these demarcations, you can customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=.  Note that these prefixes are for your readability only and purely cosmetic.
 
 #+html: </details>
 #+html: <details><summary>
