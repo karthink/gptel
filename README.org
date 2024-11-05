@@ -1032,6 +1032,7 @@ For more programmable usage, gptel provides a general =gptel-request= function t
 #+html: </details>
 #+html: <details><summary>
 **** How does gptel distinguish between user prompts and LLM responses?
+#+html: </summary>
 
 gptel uses [[https://www.gnu.org/software/emacs/manual/html_node/elisp/Text-Properties.html][text-properties]] to watermark LLM responses.  Thus this text is interpreted as a response even if you copy it into another buffer.  In regular buffers (buffers without =gptel-mode= enabled), you can turn off this tracking by unsetting =gptel-track-responses=.
 
