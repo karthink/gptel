@@ -88,6 +88,7 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
       - [[#including-media-images-documents-with-requests][Including media (images, documents) with requests]]
       - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
+    - Selecting a backend
     - [[#include-more-context-with-requests][Include more context with requests]]
     - [[#rewrite-refactor-or-fill-in-a-region][Rewrite, refactor or fill in a region]]
     - [[#extra-org-mode-conveniences][Extra Org mode conveniences]]
@@ -952,7 +953,7 @@ Similar criteria apply to Markdown chat buffers.
 Saving the file will save the state of the conversation as well.  To resume the chat, open the file and turn on =gptel-mode= before editing the buffer.
 
 #+html: </details>
-*** Select a backend
+*** Selecting a backend
 
 Selecting a model or backend can be done interactively via the =-m= command of =gptel-menu=. Available registered models are prefixed by the name of their backend with a string like `ChatGPT:gpt-4o-mini`, where `ChatGPT` is the backend name you used to register it and `gpt-4o-mini` is the name of the model.
 
