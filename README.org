@@ -88,7 +88,7 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
       - [[#including-media-images-documents-with-requests][Including media (images, documents) with requests]]
       - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
-    - Selecting a backend
+    - [[#selecting-a-backend][Selecting a backend]]
     - [[#include-more-context-with-requests][Include more context with requests]]
     - [[#rewrite-refactor-or-fill-in-a-region][Rewrite, refactor or fill in a region]]
     - [[#extra-org-mode-conveniences][Extra Org mode conveniences]]
