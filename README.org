@@ -952,6 +952,10 @@ Similar criteria apply to Markdown chat buffers.
 Saving the file will save the state of the conversation as well.  To resume the chat, open the file and turn on =gptel-mode= before editing the buffer.
 
 #+html: </details>
+*** Select a backend
+
+Selecting a model or backend can be done interactively via the =-m= command of =gptel-menu=. Available registered models are prefixed by the name of their backend with a string like `ChatGPT:gpt-4o-mini`, where `ChatGPT` is the backend name you used to register it and `gpt-4o-mini` is the name of the model.
+
 *** Include more context with requests
 
 By default, gptel will query the LLM with the active region or the buffer contents up to the cursor.  Often it can be helpful to provide the LLM with additional context from outside the current buffer. For example, when you're in a chat buffer but want to ask questions about a (possibly changing) code buffer and auxiliary project files.
