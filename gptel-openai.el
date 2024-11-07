@@ -390,7 +390,7 @@ Keyword arguments:
 
 CURL-ARGS (optional) is a list of additional Curl arguments.
 
-HOST is where GPT4All runs (with port), typically localhost:8491
+HOST is where GPT4All runs (with port), typically localhost:4891
 
 MODELS is a list of available model names.
 
