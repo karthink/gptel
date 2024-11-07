@@ -56,14 +56,14 @@ body:
       required: true
   - type: markdown
     attributes:
-      value: "### Supporting data for bug (optional)"
+      value: "### Backtrace and log"
   - type: markdown
     attributes:
-      value: "#### Backtrace instructions"
+      value: "#### Backtrace"
   - type: markdown
     attributes:
       value: |
-        If Emacs throws an error, please generate a backtrace as follows:
+        If an error was signaled, please generate a backtrace as follows:
         1. Run `M-x toggle-debug-on-error`
         2. Reproduce the error
         3. Paste the contents of the backtrace here
@@ -71,7 +71,7 @@ body:
     id: backtrace
     attributes:
       label: Backtrace
-      description: (If relevant) Paste the backtrace here
+      description: Paste the backtrace here
       render: emacs-lisp
   - type: markdown
     attributes:
