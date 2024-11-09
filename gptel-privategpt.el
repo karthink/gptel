@@ -85,7 +85,7 @@
 (cl-defmethod gptel--request-data ((_backend gptel-privategpt) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
   (let ((prompts-plist
-         `(:model ,gptel-model
+         `(:model ,(gptel--model-name gptel-model)
 	   :messages [,@prompts]
 	   :use_context ,(or (gptel-privategpt-context gptel-backend) :json-false)
 	   :include_sources ,(or (gptel-privategpt-sources gptel-backend) :json-false)
