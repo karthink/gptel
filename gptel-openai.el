@@ -50,6 +50,7 @@
 (declare-function json-read "json")
 (declare-function gptel-prompt-prefix-string "gptel")
 (declare-function gptel-response-prefix-string "gptel")
+(declare-function gptel--merge-plists "gptel")
 (declare-function gptel-context--wrap "gptel-context")
 
 (defmacro gptel--json-read ()
@@ -104,7 +105,8 @@ with differing settings.")
     (gptel-backend (:constructor gptel--make-backend)
                    (:copier gptel--copy-backend))
   name host header protocol stream
-  endpoint key models url curl-args)
+  endpoint key models url request-params
+  curl-args)
 
 ;;; OpenAI (ChatGPT)
 (cl-defstruct (gptel-openai (:constructor gptel--make-openai)
@@ -140,8 +142,12 @@ with differing settings.")
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-max-tokens
-      (plist-put prompts-plist :max_tokens gptel-max-tokens))
-    prompts-plist))
+      (plist-put prompts-plist :max_completion_tokens gptel-max-tokens))
+    ;; Merge request params with model and backend params.
+    (gptel--merge-plists
+     prompts-plist
+     (gptel-backend-request-params gptel-backend)
+     (gptel--model-request-params  gptel-model))))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-openai) &optional max-entries)
   (let ((prompts) (prop)
@@ -248,7 +254,7 @@ files in the context."
 
 ;;;###autoload
 (cl-defun gptel-make-openai
-    (name &key curl-args models stream key
+    (name &key curl-args models stream key request-params
           (header
            (lambda () (when-let (key (gptel--get-api-key))
                    `(("Authorization" . ,(concat "Bearer " key))))))
@@ -298,7 +304,12 @@ alist, like:
  ((\"Content-Type\" . \"application/json\"))
 
 KEY (optional) is a variable whose value is the API key, or
-function that returns the key."
+function that returns the key.
+
+REQUEST-PARAMS (optional) is a plist of additional HTTP request
+parameters (as plist keys) and values supported by the API.  Use
+these to set parameters that gptel does not provide user options
+for."
   (declare (indent 1))
   (let ((backend (gptel--make-openai
                   :curl-args curl-args
@@ -310,6 +321,7 @@ function that returns the key."
                   :protocol protocol
                   :endpoint endpoint
                   :stream stream
+                  :request-params request-params
                   :url (if protocol
                            (concat protocol "://" host endpoint)
                          (concat host endpoint)))))
@@ -325,7 +337,7 @@ function that returns the key."
           (protocol "https")
           (header (lambda () `(("api-key" . ,(gptel--get-api-key)))))
           (key 'gptel-api-key)
-          models stream endpoint)
+          models stream endpoint request-params)
   "Register an Azure backend for gptel with NAME.
 
 Keyword arguments:
@@ -334,7 +346,7 @@ CURL-ARGS (optional) is a list of additional Curl arguments.
 
 HOST is the API host.
 
-MODELS is a list of available model names.
+MODELS is a list of available model names, as symbols.
 
 STREAM is a boolean to toggle streaming responses, defaults to
 false.
@@ -351,6 +363,11 @@ alist, like:
 KEY (optional) is a variable whose value is the API key, or
 function that returns the key.
 
+REQUEST-PARAMS (optional) is a plist of additional HTTP request
+parameters (as plist keys) and values supported by the API.  Use
+these to set parameters that gptel does not provide user options
+for.
+
 Example:
 -------
 
@@ -361,7 +378,7 @@ Example:
   :endpoint
   \"/openai/deployments/DEPLOYMENT_NAME/completions?api-version=2023-05-15\"
   :stream t
-  :models \\='(\"gpt-3.5-turbo\" \"gpt-4\"))"
+  :models \\='(gpt-3.5-turbo gpt-4))"
   (declare (indent 1))
   (let ((backend (gptel--make-openai
                   :curl-args curl-args
@@ -373,6 +390,7 @@ Example:
                   :protocol protocol
                   :endpoint endpoint
                   :stream stream
+                  :request-params request-params
                   :url (if protocol
                            (concat protocol "://" host endpoint)
                          (concat host endpoint)))))
@@ -392,7 +410,7 @@ CURL-ARGS (optional) is a list of additional Curl arguments.
 
 HOST is where GPT4All runs (with port), typically localhost:4891
 
-MODELS is a list of available model names.
+MODELS is a list of available model names, as symbols.
 
 STREAM is a boolean to toggle streaming responses, defaults to
 false.
@@ -411,6 +429,11 @@ KEY (optional) is a variable whose value is the API key, or
 function that returns the key. This is typically not required for
 local models like GPT4All.
 
+REQUEST-PARAMS (optional) is a plist of additional HTTP request
+parameters (as plist keys) and values supported by the API.  Use
+these to set parameters that gptel does not provide user options
+for.
+
 Example:
 -------
 
@@ -418,7 +441,7 @@ Example:
  \"GPT4All\"
  :protocol \"http\"
  :host \"localhost:4891\"
- :models \\='(\"mistral-7b-openorca.Q4_0.gguf\"))")
+ :models \\='(mistral-7b-openorca.Q4_0.gguf))")
 
 (provide 'gptel-openai)
 ;;; gptel-openai.el ends here

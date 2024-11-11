@@ -73,7 +73,11 @@
            :messages [,@prompts])))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
-    prompts-plist))
+    ;; Merge request params with model and backend params.
+    (gptel--merge-plists
+     prompts-plist
+     (gptel-backend-request-params gptel-backend)
+     (gptel--model-request-params  gptel-model))))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-anthropic) &optional max-entries)
   (let ((prompts) (prop)
@@ -262,6 +266,9 @@ Keys:
 
 - `:cutoff-date': the knowledge cutoff date.
 
+- `:request-params': a plist of additional request parameters to
+  include when using this model.
+
 Information about the Anthropic models was obtained from the following
 sources:
 
@@ -271,7 +278,7 @@ sources:
 
 ;;;###autoload
 (cl-defun gptel-make-anthropic
-    (name &key curl-args stream key
+    (name &key curl-args stream key request-params
           (header
            (lambda () (when-let (key (gptel--get-api-key))
                    `(("x-api-key" . ,key)
@@ -324,7 +331,12 @@ alist, like:
  ((\"Content-Type\" . \"application/json\"))
 
 KEY is a variable whose value is the API key, or function that
-returns the key."
+returns the key.
+
+REQUEST-PARAMS (optional) is a plist of additional HTTP request
+parameters (as plist keys) and values supported by the API.  Use
+these to set parameters that gptel does not provide user options
+for."
   (declare (indent 1))
   (let ((backend (gptel--make-anthropic
                   :curl-args curl-args
@@ -336,6 +348,7 @@ returns the key."
                   :protocol protocol
                   :endpoint endpoint
                   :stream stream
+                  :request-params request-params
                   :url (if protocol
                            (concat protocol "://" host endpoint)
                          (concat host endpoint)))))

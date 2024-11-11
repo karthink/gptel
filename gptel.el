@@ -560,6 +560,9 @@ Keys:
 
 - `:cutoff-date': the knowledge cutoff date.
 
+- `:request-params': a plist of additional request parameters to
+  include when using this model.
+
 Information about the OpenAI models was obtained from the following
 sources:
 
@@ -760,6 +763,19 @@ and \"apikey\" as USER."
     (symbol s)
     (string (intern s))))
 
+(defun gptel--merge-plists (&rest plists)
+  "Merge PLISTS, altering the first one.
+
+Later plists in the sequence take precedence over earlier ones."
+  (let (;; (rtn (copy-sequence (pop plists)))
+        (rtn (pop plists))
+        p v ls)
+    (while plists
+      (setq ls (pop plists))
+      (while ls
+        (setq p (pop ls) v (pop ls))
+        (setq rtn (plist-put rtn p v))))
+    rtn))
 (defun gptel-auto-scroll ()
   "Scroll window if LLM response continues below viewport.
 
@@ -869,6 +885,10 @@ in any way.")
   "Return non nil if MODEL can understand MIME type."
   (car-safe (member mime (gptel--model-mimes
                         (or model gptel-model)))))
+
+(defsubst gptel--model-request-params (model)
+  "Get model-specific request parameters for MODEL."
+  (get model :request-params))
 
 ;;;; File handling
 (defun gptel--base64-encode (file)

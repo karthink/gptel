@@ -109,7 +109,16 @@ the response is inserted into the current buffer after point."
                              (random) (emacs-pid) (user-full-name)
                              (recent-keys))))
          (args (gptel-curl--get-args (plist-get info :data) token))
-         (stream (and gptel-stream (gptel-backend-stream gptel-backend)))
+         (stream (and ;; Check model-specific request-params for streaming preference
+                  (let* ((model-params (gptel--model-request-params gptel-model))
+                         (stream-spec (plist-get model-params :stream)))
+                    ;; If not present, there is no model-specific preference
+                    (or (not (memq :stream model-params))
+                        ;; If present, it must not be :json-false or nil
+                        (and stream-spec (not (eq stream-spec :json-false)))))
+                  ;; Check global and backend-specific streaming settings
+                  gptel-stream
+                  (gptel-backend-stream gptel-backend)))
          (backend (buffer-local-value 'gptel-backend (plist-get info :buffer)))
          (process (apply #'start-process "gptel-curl"
                          (generate-new-buffer "*gptel-curl*") "curl" args)))
