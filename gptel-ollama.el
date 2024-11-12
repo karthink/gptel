@@ -80,7 +80,8 @@ Intended for internal use only.")
            :messages [,@prompts]
            :stream ,(or (and gptel-stream gptel-use-curl
                          (gptel-backend-stream gptel-backend))
-                     :json-false))))
+                     :json-false)))
+        options-plist)
     (when gptel-temperature
       (setq options-plist
             (plist-put options-plist :temperature
@@ -89,6 +90,11 @@ Intended for internal use only.")
       (setq options-plist
             (plist-put options-plist :num_predict
                        gptel-max-tokens)))
+    ;; FIXME: These options will be lost if there are model/backend-specific
+    ;; :options, since `gptel--merge-plists' does not merge plist values
+    ;; recursively.
+    (when options-plist
+      (plist-put prompts-plist :options options-plist))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
      prompts-plist
