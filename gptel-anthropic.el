@@ -65,12 +65,14 @@
   "JSON encode PROMPTS for sending to ChatGPT."
   (let ((prompts-plist
          `(:model ,(gptel--model-name gptel-model)
-           :system ,gptel--system-message
            :stream ,(or (and gptel-stream gptel-use-curl
                          (gptel-backend-stream gptel-backend))
                      :json-false)
            :max_tokens ,(or gptel-max-tokens 1024)
            :messages [,@prompts])))
+    (when (and gptel--system-message
+               (not (gptel--model-capable-p 'nosystem)))
+      (plist-put prompts-plist :system gptel--system-message))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
     ;; Merge request params with model and backend params.

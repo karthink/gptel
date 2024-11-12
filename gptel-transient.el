@@ -58,7 +58,7 @@ buffer-local value and set its default global value."
 
 Meant to be called when `gptel-menu' is active."
   (cl-some (lambda (s) (and (stringp s) (string-prefix-p ":" s)
-                       (concat "\n\n" (substring s 1))))
+                       (substring s 1)))
                   args))
 
 (defun gptel--instructions-make-overlay (text &optional ov)
@@ -103,6 +103,26 @@ documention."
 Or is it the other way around?"
   (if (derived-mode-p 'prog-mode)
       "Refactor" "Rewrite"))
+
+(defun gptel--format-system-message (&optional message)
+  "Format the system MESSAGE for display in gptel's transient menus."
+  (setq message (or message gptel--system-message))
+  (if (gptel--model-capable-p 'nosystem)
+      (concat (propertize "[No system message support for model "
+                          'face 'transient-heading)
+              (propertize (gptel--model-name gptel-model)
+                          'face 'warning)
+              (propertize "]" 'face 'transient-heading))
+    (if message
+        (cl-etypecase message
+          (string (string-replace
+                   "\n" "⮐ "
+                   (truncate-string-to-width
+                    message
+                    (max (- (window-width) 12) 14) nil nil t)))
+          (function (gptel--format-system-message (funcall message)))
+          (list (gptel--format-system-message (car message))))
+      "[No system message set]")))
 
 (defvar gptel--crowdsourced-prompts-url
   "https://raw.githubusercontent.com/f/awesome-chatgpt-prompts/main/prompts.csv"
@@ -238,7 +258,8 @@ This is used only for setting this variable via `gptel-menu'.")
     (funcall (oref obj set-value)
              (oref obj model)
              (oset obj model-value model-value)
-             gptel--set-buffer-locally)))
+             gptel--set-buffer-locally))
+  (transient-setup))
 
 (defclass gptel-option-overlaid (transient-option)
   ((display-nil :initarg :display-nil)
@@ -282,13 +303,9 @@ Also format its value in the Transient menu."
 (transient-define-prefix gptel-menu ()
   "Change parameters of prompt to send to the LLM."
   ;; :incompatible '(("-m" "-n" "-k" "-e"))
-  [:description
-   (lambda ()
-     (string-replace
-      "\n" "⮐ "
-      (truncate-string-to-width
-       gptel--system-message (max (- (window-width) 12) 14) nil nil t)))
+  [:description gptel--format-system-message
    [""
+    :if (lambda () (not (gptel--model-capable-p 'nosystem)))
     "Instructions"
     ("s" "Set system message" gptel-system-prompt :transient t)
     (gptel--infix-add-directive)]
@@ -425,7 +442,13 @@ Also format its value in the Transient menu."
        finally return
        (nconc
         prompt-suffixes
-        (list (list "SPC" "Pick crowdsourced prompt"
+        (list (list "DEL" "None"
+                    (lambda () (interactive)
+                      (message "Directive unset")
+                      (gptel--set-with-scope 'gptel--system-message nil
+                                             gptel--set-buffer-locally))
+                    :transient 'transient--do-return)
+              (list "SPC" "Pick crowdsourced prompt"
                     'gptel--read-crowdsourced-prompt
 		    ;; NOTE: Quitting the completing read when picking a
 		    ;; crowdsourced prompt will cause the transient to exit
@@ -447,11 +470,7 @@ You are a poet. Reply only in verse.
 More extensive system messages can be useful for specific tasks.
 
 Customize `gptel-directives' for task-specific prompts."
-  [:description
-   (lambda () (string-replace
-          "\n" "⮐ "
-          (truncate-string-to-width
-           gptel--system-message (max (- (window-width) 12) 14) nil nil t)))
+  [:description gptel--format-system-message
    [(gptel--suffix-system-message)]
    [(gptel--infix-variable-scope)]]
    [:class transient-column
@@ -820,7 +839,11 @@ Or in an extended conversation:
              :position position
              :in-place (and in-place (not output-to-other-buffer-p))
              :stream stream
-             :system (concat gptel--system-message system-extra)
+             :system (if system-extra
+                         (concat (if gptel--system-message
+                                     (concat gptel--system-message "\n\n"))
+                                 system-extra)
+                       gptel--system-message)
              :callback callback
              :dry-run dry-run)
 
@@ -946,7 +969,7 @@ When LOCAL is non-nil, set the system message only in the current buffer."
         ;; (insert (propertize (make-separator-line) 'rear-nonsticky t))
         (set-marker msg-start (point))
         (save-excursion
-          (insert (buffer-local-value 'gptel--system-message orig-buf))
+          (insert (or (buffer-local-value 'gptel--system-message orig-buf) ""))
           (push-mark nil 'nomsg))
         (activate-mark))
       (display-buffer (current-buffer)

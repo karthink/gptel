@@ -1261,7 +1261,8 @@ Model parameters can be let-bound around calls to this function."
   (let* ((gptel--system-message
           ;Add context chunks to system message if required
           (if (and gptel-context--alist
-                   (eq gptel-use-context 'system))
+                   (eq gptel-use-context 'system)
+                   (not (gptel--model-capable-p 'nosystem)))
               (gptel-context--wrap system)
             system))
          (gptel-stream stream)
@@ -1436,8 +1437,12 @@ there."
                   (gptel--parse-buffer gptel-backend max-entries)))))
         ;; NOTE: prompts is modified in place here
         (when gptel-context--alist
-          ;; Inject context chunks into the last user prompt if required
-          (when (and (eq gptel-use-context 'user)
+          ;; Inject context chunks into the last user prompt if required.
+          ;; This is also the fallback for when `gptel-use-context' is set to
+          ;; 'system but the model does not support system messages.
+          (when (and gptel-use-context
+                     (or (eq gptel-use-context 'user)
+                         (gptel--model-capable-p 'nosystem))
                      (> (length prompts) 0)) ;FIXME context should be injected
                                              ;even when there are no prompts
             (gptel--wrap-user-prompt gptel-backend prompts))

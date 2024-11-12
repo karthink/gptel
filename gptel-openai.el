@@ -86,8 +86,12 @@
         (cons
          (cl-destructuring-bind (name . props) model
            (setf (symbol-plist name)
-                 (map-merge 'plist (symbol-plist name)
-                            props))
+                 ;; MAYBE: Merging existing symbol plists is safer, but makes it
+                 ;; difficult to reset a symbol plist, since removing keys from
+                 ;; it (as opposed to setting them to nil) is more work.
+                 ;;
+                 ;; (map-merge 'plist (symbol-plist name) props)
+                 props)
            (push name models-processed)))))
     (nreverse models-processed)))
 
@@ -186,9 +190,12 @@ with differing settings.")
                   :content
                   (gptel--trim-prefixes (buffer-substring-no-properties (point-min) (point-max))))
             prompts))
-    (cons (list :role "system"
-                :content gptel--system-message)
-          prompts)))
+    (if (and (not (gptel--model-capable-p 'nosystem))
+             gptel--system-message)
+        (cons (list :role "system"
+                    :content gptel--system-message)
+              prompts)
+      prompts)))
 
 ;; TODO This could be a generic function
 (defun gptel--openai-parse-multipart (parts)
