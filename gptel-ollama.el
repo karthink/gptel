@@ -82,13 +82,11 @@ Intended for internal use only.")
                          (gptel-backend-stream gptel-backend))
                      :json-false))))
     (when gptel-temperature
-      (setq options-plist
-            (plist-put options-plist :temperature
-                       gptel-temperature)))
+      (plist-put prompts-plist :temperature
+                 gptel-temperature))
     (when gptel-max-tokens
-      (setq options-plist
-            (plist-put options-plist :num_predict
-                       gptel-max-tokens)))
+      (plist-put prompts-plist :num_predict
+                 gptel-max-tokens))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
      prompts-plist
