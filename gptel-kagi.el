@@ -105,14 +105,7 @@
                             (regexp-quote (gptel-response-prefix-string))))
                  (string-trim (buffer-substring-no-properties (point-min) (point-max))))))
           (pcase-exhaustive (gptel--model-name gptel-model)
-            ("fastgpt"
-             (setq prompts (list
-                            :query
-                            (if (prop-match-p prop)
-                                (concat
-                                 ;; Fake a system message by including it in the prompt
-                                 gptel--system-message "\n\n" prompts)
-                              ""))))
+            ("fastgpt" (setq prompts (list :query (if (prop-match-p prop) prompts ""))))
             ((and model (guard (string-prefix-p "summarize" model)))
              ;; If the entire contents of the prompt looks like a url, send the url
              ;; Else send the text of the region
@@ -138,9 +131,11 @@
     (name &key curl-args stream key
           (host "kagi.com")
           (header (lambda () `(("Authorization" . ,(concat "Bot " (gptel--get-api-key))))))
-          (models '(fastgpt
-                    summarize:cecil summarize:agnes
-                    summarize:daphne summarize:muriel))
+          (models '((fastgpt :capabilities (nosystem))
+                    (summarize:cecil :capabilities (nosystem))
+                    (summarize:agnes :capabilities (nosystem))
+                    (summarize:daphne :capabilities (nosystem))
+                    (summarize:muriel :capabilities (nosystem))))
           (protocol "https")
           (endpoint "/api/v0/"))
   "Register a Kagi FastGPT backend for gptel with NAME.
@@ -181,7 +176,7 @@ Example:
                   :host host
                   :header header
                   :key key
-                  :models models
+                  :models (gptel--process-models models)
                   :protocol protocol
                   :endpoint endpoint
                   :url
