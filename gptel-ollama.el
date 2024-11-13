@@ -29,6 +29,7 @@
 (declare-function json-read "json" ())
 (declare-function gptel-context--wrap "gptel-context")
 (declare-function gptel-context--collect-media "gptel-context")
+(declare-function cl-union "cl-seq")
 (defvar json-object-type)
 
 ;;; Ollama
@@ -268,6 +269,51 @@ Example:
       (setf (alist-get name gptel--known-backends
                        nil nil #'equal)
                   backend))))
+
+;;; Auto-update model list from Ollama
+(defvar url-http-end-of-headers)
+(defun gptel--ollama-fetch-models (&optional backend)
+  "Update model list for Ollama BACKEND.
+
+Query the Ollama API and obtain a full list of available models,
+then merge with the currently defined list for BACKEND."
+  (setq backend
+        (if (stringp backend)
+            (alist-get backend gptel--known-backends
+                       nil nil #'equal)
+          (or backend gptel-backend)))
+  (when (cl-typep backend 'gptel-ollama)
+    (message "Updating available Ollama models...")
+    (condition-case nil
+        (let* ((host (gptel-backend-host backend))
+               (endpoint (concat (unless (string-suffix-p host "/") "/")
+                                 "api/tags"))
+               (buf (url-retrieve-synchronously
+                     (concat (gptel-backend-protocol backend)
+                             "://" host endpoint)
+                     'silent t 3))
+               (model-data))
+          (when (buffer-live-p buf)
+            (with-current-buffer buf
+              (goto-char url-http-end-of-headers)
+              (setq model-data (gptel--json-read))
+              (setq model-data
+                    (mapcar (lambda (elt) (plist-get elt :model))
+                            (plist-get model-data :models)))
+              (prog1 (gptel--ollama-merge-models backend model-data)
+                (message "Updated Ollama models")))
+            (kill-buffer buf)))
+      (file-error (message "Could not reach Ollama at %s://%s"
+                           (gptel-backend-protocol backend)
+                           (gptel-backend-host backend)))
+      (error (message "Could not update model data from Ollama")))))
+
+(defun gptel--ollama-merge-models (backend newdata)
+  "Merge model data in BACKEND with NEWDATA."
+  (setf (gptel-backend-models backend)
+        (cl-union (mapcar #'gptel--intern newdata)
+                  (gptel-backend-models backend)
+                  :test #'equal)))
 
 (provide 'gptel-ollama)
 ;;; gptel-ollama.el ends here
