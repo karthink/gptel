@@ -994,7 +994,7 @@ When LOCAL is non-nil, set the system message only in the current buffer."
                         "Confirm system message and return to `gptel-menu'."
                         (interactive)
                         (let ((system-message
-                               (buffer-substring msg-start (point-max))))
+                               (buffer-substring-no-properties msg-start (point-max))))
                           (with-current-buffer orig-buf
                             (gptel--set-with-scope 'gptel--system-message system-message
                                                    gptel--set-buffer-locally)))

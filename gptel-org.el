@@ -195,7 +195,7 @@ value of `gptel-org-branching-context', which see."
                                      '(headline org-data) 'with-self))
                      (end-bounds
                       (cl-loop
-                       for pos in (cdr start-bounds)
+                       for (pos . rest) on (cdr start-bounds)
                        while
                        (and (>= pos (point-min)) ;respect narrowing
                             (goto-char pos)
@@ -204,7 +204,10 @@ value of `gptel-org-branching-context', which see."
                             ;; heading here, it is either a false positive or we
                             ;; would be double counting it.  So we reject this node
                             ;; when also at a heading.
-                            (not (and (eq pos 1) (org-at-heading-p))))
+                            (not (and (eq pos 1) (org-at-heading-p)
+                                      ;; Skip if at the last element of start-bounds,
+                                      ;; since we captured this heading already (#476)
+                                      (null rest))))
                        do (outline-next-heading)
                        collect (point) into ends
                        finally return (cons prompt-end ends))))
