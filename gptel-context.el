@@ -104,24 +104,24 @@ context chunk.  This is accessible as, for example:
    ;; A region is selected.
    ((use-region-p)
     (gptel-context--add-region (current-buffer)
-                                  (region-beginning)
-                                  (region-end))
+                               (region-beginning)
+                               (region-end))
     (deactivate-mark)
     (message "Current region added as context."))
    ;; If in dired
    ((derived-mode-p 'dired-mode)
     (mapc (if (and arg (< (prefix-numeric-value arg) 0))
               #'gptel-context-remove
-              #'gptel-context-add-file)
+            #'gptel-context-add-file)
           (dired-get-marked-files)))
    ;; If in an image buffer
    ((and (derived-mode-p 'image-mode)
          (gptel--model-capable-p 'media;)
-         (buffer-file-name))
-    (funcall (if (and arg (< (prefix-numeric-value arg) 0))
-              #'gptel-context-remove
-              #'gptel-context-add-file)
-          (buffer-file-name))))
+                                 (buffer-file-name))
+         (funcall (if (and arg (< (prefix-numeric-value arg) 0))
+                      #'gptel-context-remove
+                    #'gptel-context-add-file)
+                  (buffer-file-name))))
    ;; No region is selected, and ARG is positive.
    ((and arg (> (prefix-numeric-value arg) 0))
     (let* ((buffer-name (read-buffer "Choose buffer to add as context: " nil t))
@@ -154,7 +154,7 @@ context chunk.  This is accessible as, for example:
 
 ;;;###autoload (autoload 'gptel-add "gptel-context" "Add/remove regions or buffers from gptel's context." t)
 (defalias 'gptel-add #'gptel-context-add)
-  
+
 (defun gptel--file-binary-p (path)
   "Check if file at PATH is readable and binary."
   (condition-case nil
@@ -263,7 +263,7 @@ the beginning and end."
         (gptel-context--in-region buffer region-beginning region-end))
   (prog1 (with-current-buffer buffer
            (gptel-context--make-overlay region-beginning region-end advance))
-      (message "Region added to context buffer.")))
+    (message "Region added to context buffer.")))
 
 (defun gptel-context--in-region (buffer start end)
   "Return the list of context overlays in the given region, if any, in BUFFER.
@@ -276,7 +276,7 @@ START and END signify the region delimiters."
   "Return the context overlay at point, if any."
   (cl-find-if (lambda (ov) (overlay-get ov 'gptel-context))
               (overlays-at (point))))
-    
+
 ;;;###autoload
 (defun gptel-context--collect ()
   "Get the list of all active context overlays."
@@ -284,9 +284,9 @@ START and END signify the region delimiters."
   (setq gptel-context--alist
         (cl-loop for (buf . ovs) in gptel-context--alist
                  if (buffer-live-p buf)
-                   if (cl-loop for ov in ovs when (overlay-start ov) collect ov)
-                   collect (cons buf it) into elements
-                   end
+                 if (cl-loop for ov in ovs when (overlay-start ov) collect ov)
+                 collect (cons buf it) into elements
+                 end
                  else if (and (stringp buf) (file-exists-p buf))
                  if (plist-get ovs :mime)
                  collect (cons buf ovs) into elements
@@ -295,40 +295,40 @@ START and END signify the region delimiters."
 
 (defun gptel-context--insert-buffer-string (buffer contexts)
   "Insert at point a context string from all CONTEXTS in BUFFER."
-    (let ((is-top-snippet t)
-          (previous-line 1))
-      (insert (format "In buffer `%s`:" (buffer-name buffer))
-              "\n\n```" (gptel--strip-mode-suffix (buffer-local-value
-                                                   'major-mode buffer))
-              "\n")
-      (dolist (context contexts)
-        (let* ((start (overlay-start context))
-               (end (overlay-end context))
-               content)
-          (let (lineno column)
-            (with-current-buffer buffer
-              (without-restriction
-                (setq lineno (line-number-at-pos start t)
-                      column (save-excursion (goto-char start)
-                                             (current-column))
-                      content (buffer-substring-no-properties start end))))
-            ;; We do not need to insert a line number indicator if we have two regions
-            ;; on the same line, because the previous region should have already put the
-            ;; indicator.
-            (unless (= previous-line lineno)
-              (unless (= lineno 1)
-                (unless is-top-snippet
-                  (insert "\n"))
-                (insert (format "... (Line %d)\n" lineno))))
-            (setq previous-line lineno)
-            (unless (zerop column) (insert " ..."))
-            (if is-top-snippet
-                (setq is-top-snippet nil)
-              (unless (= previous-line lineno) (insert "\n"))))
-          (insert content)))
-      (unless (>= (overlay-end (car (last contexts))) (point-max))
-        (insert "\n..."))
-      (insert "\n```")))
+  (let ((is-top-snippet t)
+        (previous-line 1))
+    (insert (format "In buffer `%s`:" (buffer-name buffer))
+            "\n\n```" (gptel--strip-mode-suffix (buffer-local-value
+                                                 'major-mode buffer))
+            "\n")
+    (dolist (context contexts)
+      (let* ((start (overlay-start context))
+             (end (overlay-end context))
+             content)
+        (let (lineno column)
+          (with-current-buffer buffer
+            (without-restriction
+              (setq lineno (line-number-at-pos start t)
+                    column (save-excursion (goto-char start)
+                                           (current-column))
+                    content (buffer-substring-no-properties start end))))
+          ;; We do not need to insert a line number indicator if we have two regions
+          ;; on the same line, because the previous region should have already put the
+          ;; indicator.
+          (unless (= previous-line lineno)
+            (unless (= lineno 1)
+              (unless is-top-snippet
+                (insert "\n"))
+              (insert (format "... (Line %d)\n" lineno))))
+          (setq previous-line lineno)
+          (unless (zerop column) (insert " ..."))
+          (if is-top-snippet
+              (setq is-top-snippet nil)
+            (unless (= previous-line lineno) (insert "\n"))))
+        (insert content)))
+    (unless (>= (overlay-end (car (last contexts))) (point-max))
+      (insert "\n..."))
+    (insert "\n```")))
 
 (defun gptel-context--insert-file-string (path)
   "Insert at point the contents of the file at PATH as context."
@@ -357,8 +357,8 @@ context overlays, see `gptel-context--alist'."
                (goto-char (point-min))
                (insert "Request context:\n\n"))
              finally return
-              (and (> (buffer-size) 0)
-                   (buffer-string)))))
+             (and (> (buffer-size) 0)
+                  (buffer-string)))))
 
 ;;; Major mode for context inspection buffers
 (defvar-keymap gptel-context-buffer-mode-map
@@ -424,7 +424,7 @@ context overlays, see `gptel-context--alist'."
                             (insert-image img "*") ; Can be displayed
                           (insert
                            buf " " (propertize "(No preview for binary file)"
-                                                'face '(:inherit shadow :slant italic))))
+                                               'face '(:inherit shadow :slant italic))))
                       (insert-file-contents buf))
                     (goto-char (point-max))
                     (insert "\n")
