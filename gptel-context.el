@@ -383,13 +383,14 @@ context overlays, see `gptel-context--alist'."
     (let ((inhibit-read-only t))
       (erase-buffer)
       (setq header-line-format
-            (concat
-             (propertize "d" 'face 'help-key-binding) ": Mark/unmark deletion, "
-             (propertize "n" 'face 'help-key-binding) "/"
-             (propertize "p" 'face 'help-key-binding) ": jump to next/previous, "
-             (propertize "C-c C-c" 'face 'help-key-binding) ": apply, "
-             (propertize "C-c C-k" 'face 'help-key-binding) ": cancel, "
-             (propertize "q" 'face 'help-key-binding) ": quit"))
+            (substitute-command-keys
+             (concat
+              "\\[gptel-context-flag-deletion]: Mark/unmark deletion, "
+              "\\[gptel-context-next]/\\[gptel-context-previous]: next/previous, "
+              "\\[gptel-context-visit]: visit, "
+              "\\[gptel-context-confirm]: apply, "
+              "\\[gptel-context-cancel]: cancel, "
+              "\\[quit-window]: quit")))
       (save-excursion
         (let ((contexts gptel-context--alist))
           (if (length> contexts 0)
