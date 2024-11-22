@@ -51,6 +51,7 @@
 (declare-function gptel-prompt-prefix-string "gptel")
 (declare-function gptel-response-prefix-string "gptel")
 (declare-function gptel--merge-plists "gptel")
+(declare-function gptel--model-request-params "gptel")
 (declare-function gptel-context--wrap "gptel-context")
 
 (defmacro gptel--json-read ()
