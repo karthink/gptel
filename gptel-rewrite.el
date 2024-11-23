@@ -334,7 +334,7 @@ the changed regions. BUF is the (current) buffer."
 
 ;; * Transient suffixes for rewriting/refactoring
 
-(transient-define-suffix gptel--suffix-rewrite (&optional rewrite-message)
+(transient-define-suffix gptel--suffix-rewrite (&optional rewrite-message dry-run)
   "Rewrite or refactor region contents."
   :key "r"
   :description #'gptel--refactor-or-rewrite
@@ -346,6 +346,7 @@ the changed regions. BUF is the (current) buffer."
          (gptel-use-context (and gptel-use-context 'system)))
     (deactivate-mark)
     (gptel-request prompt
+      :dry-run dry-run
       :context
       (let ((ov (make-overlay (region-beginning) (region-end))))
         (overlay-put ov 'category 'gptel)
