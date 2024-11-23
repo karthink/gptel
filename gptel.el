@@ -1489,7 +1489,8 @@ Returns a plist where each entry is of the form
 or
   (:media \"media uri or file path\")."
   (ignore mode)                         ;byte-compiler
-  (list `(:text ,(buffer-substring beg end))))
+  (list `(:text ,(buffer-substring-no-properties
+                  beg end))))
 
 (defvar markdown-regex-link-inline)
 (defvar markdown-regex-angle-uri)
