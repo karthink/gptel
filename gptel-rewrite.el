@@ -270,7 +270,23 @@ the changed regions. BUF is the (current) buffer."
     (gptel--rewrite-infix-diff:-U)]
    [:description gptel--refactor-or-rewrite
     :if use-region-p
-    (gptel--suffix-rewrite)]]
+    (gptel--suffix-rewrite)]
+   ["Dry Run" :if (lambda () (or gptel-log-level gptel-expert-commands))
+    ("I" "Inspect query (Lisp)"
+     (lambda ()
+       "Inspect the query that will be sent as a lisp object."
+       (interactive)
+       (gptel--sanitize-model)
+       (gptel--inspect-query
+        (gptel--suffix-rewrite gptel--rewrite-message t))))
+    ("J" "Inspect query (JSON)"
+     (lambda ()
+       "Inspect the query that will be sent as a JSON object."
+       (interactive)
+       (gptel--sanitize-model)
+       (gptel--inspect-query
+        (gptel--suffix-rewrite gptel--rewrite-message t)
+        'json)))]]
   [[:description (lambda () (concat "Diff " (gptel--refactor-or-rewrite) "s"))
     :if (lambda () gptel--rewrite-overlays)
     (gptel--suffix-rewrite-diff)
