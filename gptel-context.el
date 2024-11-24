@@ -465,11 +465,15 @@ If non-nil, indicates backward movement.")
   "Display the location of this gptel context chunk in its original buffer."
   (interactive)
   (let ((ov-here (car (overlays-at (point)))))
-    (if-let* ((orig-ov (overlay-get ov-here 'gptel-context))
-              (buf (overlay-buffer orig-ov))
+    (if-let* ((source (overlay-get ov-here 'gptel-context))
+              (buf (if (overlayp source)
+                       (overlay-buffer source)
+                     (find-file-noselect source)))
               (offset (- (point) (overlay-start ov-here))))
         (with-selected-window (display-buffer buf)
-          (goto-char (overlay-start orig-ov))
+          (goto-char (if (overlayp source)
+                         (overlay-start source)
+                       (point-min)))
           (forward-char offset)
           (recenter))
       (message "No source location for this gptel context chunk."))))
@@ -537,12 +541,16 @@ If non-nil, indicates backward movement.")
   "Confirm pending operations and return to gptel's menu."
   (interactive)
   ;; Delete all the context overlays that have been marked for deletion.
-  (mapc #'gptel-context-remove
-        (delq nil (mapcar (lambda (ov)
-                            (and
-                             (overlay-get ov 'gptel-context-deletion-mark)
-                             (overlay-get ov 'gptel-context)))
-                          (overlays-in (point-min) (point-max)))))
+  (when-let ((deletion-marks
+              (delq nil (mapcar
+                         (lambda (ov)
+                           (and
+                            (overlay-get ov 'gptel-context-deletion-mark)
+                            (overlay-get ov 'gptel-context)))
+                         (overlays-in (point-min) (point-max))))))
+    (mapc #'gptel-context-remove deletion-marks)
+    (gptel-context--collect)           ;Update contexts and revert buffer (#482)
+    (revert-buffer))
   (gptel-context-quit))
 
 (provide 'gptel-context)
