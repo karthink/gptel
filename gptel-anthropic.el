@@ -212,21 +212,13 @@ files in the context."
      :output-cost 15
      :cutoff-date "2024-04")
     (claude-3-5-sonnet-20240620
-     :description "Highest level of intelligence and capability"
+     :description "Highest level of intelligence and capability (earlier version)"
      :capabilities (media tool cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 3
      :output-cost 15
      :cutoff-date "2024-04")
-    (claude-3-opus-20240229
-     :description "Top-level performance, intelligence, fluency, and understanding"
-     :capabilities (media tool cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 200
-     :input-cost 15
-     :output-cost 75
-     :cutoff-date "2023-08")
     (claude-3-5-haiku-20241022
      :description "Intelligence at blazing speeds"
      :capabilities (media tool)
@@ -235,13 +227,13 @@ files in the context."
      :input-cost 1.00
      :output-cost 5.00
      :cutoff-date "2024-07")
-    (claude-3-haiku-20240307
-     :description "Fast and most compact model for near-instant responsiveness"
-     :capabilities (media tool)
+    (claude-3-opus-20240229
+     :description "Top-level performance, intelligence, fluency, and understanding"
+     :capabilities (media tool cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
-     :input-cost 0.25
-     :output-cost 1.25
+     :input-cost 15
+     :output-cost 75
      :cutoff-date "2023-08")
     (claude-3-sonnet-20240229
      :description "Balance of intelligence and speed (legacy model)"
@@ -250,6 +242,14 @@ files in the context."
      :context-window 200
      :input-cost 3
      :output-cost 15
+     :cutoff-date "2023-08")
+    (claude-3-haiku-20240307
+     :description "Fast and most compact model for near-instant responsiveness"
+     :capabilities (media tool)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 200
+     :input-cost 0.25
+     :output-cost 1.25
      :cutoff-date "2023-08"))
   "List of available Anthropic models and associated properties.
 Keys:
@@ -272,11 +272,9 @@ Keys:
   include when using this model.
 
 Information about the Anthropic models was obtained from the following
-sources:
+comparison table:
 
-- <https://www.anthropic.com/pricing#anthropic-api>
-- <https://www.anthropic.com/news/claude-3-5-sonnet>
-- <https://assets.anthropic.com/m/61e7d27f8c8f5919/original/Claude-3-Model-Card.pdf>")
+<https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table>")
 
 ;;;###autoload
 (cl-defun gptel-make-anthropic
