@@ -751,11 +751,10 @@ and \"apikey\" as USER."
   "Get api key from KEY, or from `gptel-api-key'."
   (when-let ((key-sym (or key (gptel-backend-key gptel-backend))))
     (cl-typecase key-sym
-      (function (funcall key-sym))
-      (string key-sym)
+      (function (string-trim-right (funcall key-sym) "[\n\r]+"))
+      (string (string-trim-right key-sym "[\n\r]+"))
       (symbol (if-let ((val (symbol-value key-sym)))
-                  (gptel--get-api-key
-                   (symbol-value key-sym))
+                  (gptel--get-api-key val)
                 (error "`gptel-api-key' is not valid")))
       (t (error "`gptel-api-key' is not valid")))))
 
