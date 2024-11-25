@@ -46,6 +46,26 @@ for a particular major-mode."
   :group 'gptel
   :type 'hook)
 
+(defcustom gptel-rewrite-default-action nil
+  "Action to take when rewriting a text region using gptel.
+
+When the LLM response with the rewritten text is received, you can
+- merge it with the current region, possibly creating a merge conflict,
+- diff or ediff against the original region,
+- or accept it in place, overwriting the original region.
+
+If this option is nil (the default), gptel waits for an explicit
+command.  Set it to the symbol merge, diff, ediff or replace to
+automatically do one of these things instead."
+  :group 'gptel
+  :type '(choice
+          (const :tag "Wait" nil)
+          (const :tag "Merge with current region" gptel--rewrite-merge)
+          (const :tag  "Diff against current region" gptel--rewrite-diff)
+          (const :tag "Ediff against current region" gptel--rewrite-ediff)
+          (const :tag "Replace current region" gptel--rewrite-apply)
+          (function :tag "Custom action")))
+
 (defface gptel-rewrite-highlight-face
   '((((class color) (min-colors 88) (background dark))
      :background "#041714" :extend t)
@@ -150,7 +170,7 @@ This is used for (e)diff purposes.
 
 RESPONSE is the LLM response.  OVS are the overlays specifying
 the changed regions. BUF is the (current) buffer."
-  (setq buf (or buf (current-buffer)))
+  (setq buf (or buf (overlay-buffer (or (car-safe ovs) ovs))))
   (with-current-buffer buf
     (let ((pmin (point-min))
           (pmax (point-max))
@@ -171,7 +191,7 @@ the changed regions. BUF is the (current) buffer."
         ;; (delay-mode-hooks (funcall mode))
         ;; Apply the changes to the new buffer
         (save-excursion
-          (gptel--rewrite-apply ovs)))
+          (gptel--rewrite-apply ovs newbuf)))
       newbuf)))
 
 ;; * Refactor action functions
@@ -186,64 +206,78 @@ the changed regions. BUF is the (current) buffer."
     (remove-hook 'eldoc-documentation-functions 'gptel--rewrite-key-help 'local))
   (message "Cleared pending LLM response(s)."))
 
-(defun gptel--rewrite-apply (&optional ovs)
-  "Apply pending LLM responses in OVS or at point."
+(defun gptel--rewrite-apply (&optional ovs buf)
+  "Apply pending LLM responses in OVS or at point.
+
+BUF is the buffer to modify, defaults to the overlay buffer."
   (interactive (list (gptel--rewrite-overlay-at)))
-  (cl-loop for ov in (ensure-list ovs)
-           for ov-beg = (overlay-start ov)
-           for ov-end = (overlay-end ov)
-           for response = (overlay-get ov 'gptel-rewrite)
-           do (overlay-put ov 'before-string nil)
-           (goto-char ov-beg)
-           (delete-region ov-beg ov-end)
-           (insert response))
-  (message "Replaced region(s) with LLM output."))
+  (when-let* ((ov-buf (overlay-buffer (or (car-safe ovs) ovs)))
+              (buf (or buf ov-buf))
+              ((buffer-live-p buf)))
+    (with-current-buffer ov-buf
+      (cl-loop for ov in (ensure-list ovs)
+               for ov-beg = (overlay-start ov)
+               for ov-end = (overlay-end ov)
+               for response = (overlay-get ov 'gptel-rewrite)
+               do (overlay-put ov 'before-string nil)
+               (with-current-buffer buf
+                 (goto-char ov-beg)
+                 (delete-region ov-beg ov-end)
+                 (insert response))))
+    (message "Replaced region(s) with LLM output in buffer: %s."
+             (buffer-name ov-buf))))
 
 (defun gptel--rewrite-diff (&optional ovs switches)
   "Diff pending LLM responses in OVS or at point."
   (interactive (list (gptel--rewrite-overlay-at)))
-  (let* ((buf (current-buffer))
-         (newbuf (gptel--rewrite-prepare-buffer ovs))
-         (diff-buf (diff-no-select
-                    (if-let ((buf-file (buffer-file-name buf)))
-                        (expand-file-name buf-file) buf)
-                    newbuf switches)))
-    (with-current-buffer diff-buf
-      (setq-local diff-jump-to-old-file t))
-    (display-buffer diff-buf)))
+  (when-let* ((ov-buf (overlay-buffer (or (car-safe ovs) ovs)))
+              ((buffer-live-p ov-buf)))
+    (let* ((newbuf (gptel--rewrite-prepare-buffer ovs))
+           (diff-buf (diff-no-select
+                      (if-let ((buf-file (buffer-file-name ov-buf)))
+                          (expand-file-name buf-file) ov-buf)
+                      newbuf switches)))
+      (with-current-buffer diff-buf
+        (setq-local diff-jump-to-old-file t))
+      (display-buffer diff-buf))))
 
 (defun gptel--rewrite-ediff (&optional ovs)
   "Ediff pending LLM responses in OVS or at point."
   (interactive (list (gptel--rewrite-overlay-at)))
-  (letrec ((newbuf (gptel--rewrite-prepare-buffer ovs))
-           (cwc (current-window-configuration))
-           (gptel--ediff-restore
-            (lambda ()
-              (when (window-configuration-p cwc)
-                (set-window-configuration cwc))
-              (remove-hook 'ediff-quit-hook gptel--ediff-restore))))
-    (add-hook 'ediff-quit-hook gptel--ediff-restore)
-    (ediff-buffers (current-buffer) newbuf)))
+  (when-let* ((ov-buf (overlay-buffer (or (car-safe ovs) ovs)))
+              ((buffer-live-p ov-buf)))
+    (letrec ((newbuf (gptel--rewrite-prepare-buffer ovs))
+             (cwc (current-window-configuration))
+             (gptel--ediff-restore
+              (lambda ()
+                (when (window-configuration-p cwc)
+                  (set-window-configuration cwc))
+                (remove-hook 'ediff-quit-hook gptel--ediff-restore))))
+      (add-hook 'ediff-quit-hook gptel--ediff-restore)
+      (ediff-buffers ov-buf newbuf))))
 
 (defun gptel--rewrite-merge (&optional ovs)
   "Insert pending LLM responses in OVS as merge conflicts."
   (interactive (list (gptel--rewrite-overlay-at)))
-  (let ((changed))
-    (dolist (ov (ensure-list ovs))
-      (save-excursion
-        (when-let (new-str (overlay-get ov 'gptel-rewrite))
-          ;; Insert merge
-          (goto-char (overlay-start ov))
-          (unless (bolp) (insert "\n"))
-          (insert-before-markers "<<<<<<< original\n")
-          (goto-char (overlay-end ov))
-          (unless (bolp) (insert "\n"))
-          (insert
-           "=======\n" new-str
-           "\n>>>>>>> " (gptel-backend-name gptel-backend) "\n")
-          (setq changed t))))
-    (when changed (smerge-mode 1)))
-  (gptel--rewrite-clear ovs))
+  (when-let* ((ov-buf (overlay-buffer (or (car-safe ovs) ovs)))
+              ((buffer-live-p ov-buf)))
+    (with-current-buffer ov-buf
+      (let ((changed))
+        (dolist (ov (ensure-list ovs))
+          (save-excursion
+            (when-let (new-str (overlay-get ov 'gptel-rewrite))
+              ;; Insert merge
+              (goto-char (overlay-start ov))
+              (unless (bolp) (insert "\n"))
+              (insert-before-markers "<<<<<<< original\n")
+              (goto-char (overlay-end ov))
+              (unless (bolp) (insert "\n"))
+              (insert
+               "=======\n" new-str
+               "\n>>>>>>> " (gptel-backend-name gptel-backend) "\n")
+              (setq changed t))))
+        (when changed (smerge-mode 1)))
+      (gptel--rewrite-clear ovs))))
 
 ;; * Transient Prefix for rewriting/refactoring
 
@@ -363,42 +397,45 @@ the changed regions. BUF is the (current) buffer."
           (let ((buf (plist-get info :buffer))
                  (ov  (plist-get info :context))
                  (action-str) (hint-str))
-            (with-current-buffer buf
-              (if (derived-mode-p 'prog-mode)
-                  (progn
-                    (setq action-str "refactor")
-                    (when (string-match-p "^```" response)
-                      (setq response (replace-regexp-in-string "^```.*$" "" response))))
-                (setq action-str "rewrite"))
-              (setq hint-str (concat "[" (gptel-backend-name gptel-backend)
-                                     ":" (gptel--model-name gptel-model) "] "
-                                     (upcase action-str) " READY ✓\n"))
-              (add-hook 'eldoc-documentation-functions #'gptel--rewrite-key-help nil 'local)
-              (overlay-put ov 'gptel-rewrite response)
-              (overlay-put ov 'face 'gptel-rewrite-highlight-face)
-              (overlay-put ov 'keymap gptel-rewrite-actions-map)
-              (overlay-put ov 'before-string
-                           (concat (propertize
-                                    " " 'display `(space :align-to (- right ,(1+ (length hint-str)))))
-                                   (propertize hint-str 'face 'success)))
-              (overlay-put
-               ov 'help-echo
-               (format "%s rewrite available:
+            (when (buffer-live-p buf)
+              (with-current-buffer buf
+                (if (derived-mode-p 'prog-mode)
+                    (progn
+                      (setq action-str "refactor")
+                      (when (string-match-p "^```" response)
+                        (setq response (replace-regexp-in-string "^```.*$" "" response))))
+                  (setq action-str "rewrite"))
+                (setq hint-str (concat "[" (gptel-backend-name gptel-backend)
+                                       ":" (gptel--model-name gptel-model) "] "
+                                       (upcase action-str) " READY ✓\n"))
+                (add-hook 'eldoc-documentation-functions #'gptel--rewrite-key-help nil 'local)
+                (overlay-put ov 'gptel-rewrite response)
+                (overlay-put ov 'face 'gptel-rewrite-highlight-face)
+                (overlay-put ov 'keymap gptel-rewrite-actions-map)
+                (overlay-put ov 'before-string
+                             (concat (propertize
+                                      " " 'display `(space :align-to (- right ,(1+ (length hint-str)))))
+                                     (propertize hint-str 'face 'success)))
+                (overlay-put
+                 ov 'help-echo
+                 (format "%s rewrite available:
 - accept \\[gptel--rewrite-apply],
 - clear  \\[gptel--rewrite-clear],
 - merge  \\[gptel--accept-merge],
 - diff   \\[gptel--rewrite-diff],
 - ediff  \\[gptel--rewrite-ediff]"
-                       (propertize (concat (gptel-backend-name gptel-backend)
-                                           ":" (gptel--model-name gptel-model)))))
-              (push ov gptel--rewrite-overlays))
-            ;; Message user
-            (message
-             (concat
-              "LLM %s output"
-              (unless (eq (current-buffer) buf) (format " in buffer %s " buf))
-              (substitute-command-keys " ready, \\[gptel-menu] to continue."))
-             action-str)))))))
+                         (propertize (concat (gptel-backend-name gptel-backend)
+                                             ":" (gptel--model-name gptel-model)))))
+                (push ov gptel--rewrite-overlays))
+              (if (functionp gptel-rewrite-default-action)
+                  (funcall gptel-rewrite-default-action ov)
+                ;; Message user
+                (message
+                 (concat
+                  "LLM %s output"
+                  (unless (eq (current-buffer) buf) (format " in buffer %s " buf))
+                  (substitute-command-keys " ready, \\[gptel-menu] to continue."))
+                 action-str)))))))))
 
 (transient-define-suffix gptel--suffix-rewrite-diff (&optional switches)
   "Diff LLM output against buffer."
