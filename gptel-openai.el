@@ -147,7 +147,11 @@ with differing settings.")
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-max-tokens
-      (plist-put prompts-plist :max_completion_tokens gptel-max-tokens))
+      ;; HACK: The OpenAI API has deprecated max_tokens, but we still need it
+      ;; for OpenAI-compatible APIs like GPT4All (#485)
+      (plist-put prompts-plist (if (memq gptel-model '(o1-preview o1-mini))
+                                   :max_completion_tokens :max_tokens)
+                 gptel-max-tokens))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
      prompts-plist
