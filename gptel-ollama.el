@@ -75,6 +75,11 @@ Intended for internal use only.")
 
 (cl-defmethod gptel--request-data ((_backend gptel-ollama) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
+  (when (and gptel--system-message
+             (not (gptel--model-capable-p 'nosystem)))
+    (push (list :role "system"
+                :content gptel--system-message)
+          prompts))
   (let ((prompts-plist
          `(:model ,(gptel--model-name gptel-model)
            :messages [,@prompts]
@@ -135,12 +140,7 @@ Intended for internal use only.")
                   :content
                   (string-trim (buffer-substring-no-properties (point-min) (point-max))))
             prompts))
-    (if (and (not (gptel--model-capable-p 'nosystem))
-             gptel--system-message)
-        (cons (list :role "system"
-                    :content gptel--system-message)
-              prompts)
-      prompts)))
+    prompts))
 
 (defun gptel--ollama-parse-multipart (parts)
   "Convert a multipart prompt PARTS to the Ollama API format.

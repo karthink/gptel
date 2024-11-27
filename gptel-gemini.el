@@ -61,6 +61,14 @@
 
 (cl-defmethod gptel--request-data ((_backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
+  ;; HACK (backwards compatibility) Prepend the system message to the first user
+  ;; prompt, but only for gemini-pro.
+  (when (and (equal gptel-model 'gemini-pro) gptel--system-message)
+    (cl-callf
+        (lambda (msg)
+          (vconcat `((:text ,(concat gptel--system-message "\n\n"))) msg))
+        (thread-first (car prompts)
+                      (plist-get :parts))))
   (let ((prompts-plist
          `(:contents [,@prompts]
            :safetySettings [(:category "HARM_CATEGORY_HARASSMENT"
@@ -131,15 +139,6 @@
                   :parts
                   `[(:text ,(string-trim (buffer-substring-no-properties (point-min) (point-max))))])
             prompts))
-    ;; HACK Prepend the system message to the first user prompt, but only for
-    ;; this model.
-    (when (and (equal gptel-model 'gemini-pro)
-               gptel--system-message)
-      (cl-callf
-          (lambda (msg)
-            (vconcat `((:text ,(concat gptel--system-message "\n\n"))) msg))
-          (thread-first (car prompts)
-                        (plist-get :parts))))
     prompts))
 
 (defun gptel--gemini-parse-multipart (parts)
