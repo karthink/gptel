@@ -1107,9 +1107,11 @@ file."
                                    (gptel-backend-name gptel-backend))
           (unless (equal (default-value 'gptel-temperature) gptel-temperature)
             (add-file-local-variable 'gptel-temperature gptel-temperature))
-          (unless (string= (default-value 'gptel--system-message)
+          (unless (equal (default-value 'gptel--system-message)
                            gptel--system-message)
-            (add-file-local-variable 'gptel--system-message gptel--system-message))
+            (add-file-local-variable
+             'gptel--system-message
+             (car-safe (gptel--parse-directive gptel--system-message))))
           (when gptel-max-tokens
             (add-file-local-variable 'gptel-max-tokens gptel-max-tokens))
           (when (natnump gptel--num-messages-to-send)
