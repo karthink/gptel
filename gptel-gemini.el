@@ -104,6 +104,15 @@
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
 
+(cl-defmethod gptel--parse-list ((_backend gptel-gemini) prompt-list)
+  (cl-loop for text in prompt-list
+           for role = t then (not role)
+           if text
+           if role
+           collect (list :role "user" :parts `[(:text ,text)]) into prompts
+           else collect (list :role "model" :parts `(:text ,text)) into prompts
+           finally return prompts))
+
 (cl-defmethod gptel--parse-buffer ((_backend gptel-gemini) &optional max-entries)
   (let ((prompts) (prop)
         (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)

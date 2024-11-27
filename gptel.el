@@ -1480,6 +1480,16 @@ BACKEND is the LLM backend in use.
 MAX-ENTRIES is the number of queries/responses to include for
 contexbt.")
 
+(cl-defgeneric gptel--parse-list (backend prompt-list)
+  "Parse PROMPT-LIST and return a list of prompts suitable for
+BACKEND.
+
+PROMPT-LIST is interpreted as a conversation, i.e. an alternating
+series of user prompts and LLM responses.  The returned structure
+is suitable for including in the request payload.
+
+BACKEND is the LLM backend in use.")
+
 (cl-defgeneric gptel--parse-media-links (mode beg end)
   "Find media links between BEG and END.
 

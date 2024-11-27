@@ -106,6 +106,12 @@ Intended for internal use only.")
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
 
+(cl-defmethod gptel--parse-list ((_backend gptel-ollama) prompt-list)
+  (cl-loop for text in (cdr prompt-list)
+           for role = t then (not role)
+           if text collect
+           (list :role (if role "user" "assistant") :content text)))
+
 (cl-defmethod gptel--parse-buffer ((_backend gptel-ollama) &optional max-entries)
   (let ((prompts) (prop)
         (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
