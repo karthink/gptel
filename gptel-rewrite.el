@@ -33,7 +33,7 @@
 
 ;; * User options
 
-(defcustom gptel-rewrite-directives-hook (list #'gptel--rewrite-message)
+(defcustom gptel-rewrite-directives-hook nil
   "Hook run to generate gptel's default rewrite directives.
 
 Each function in this hook is called with no arguments until one
@@ -42,7 +42,7 @@ rewrite/refactor instruction.
 
 Use this hook to tailor context-specific refactoring directives.
 For example, you can specialize the default refactor directive
-for a particular major-mode."
+for a particular major-mode or project."
   :group 'gptel
   :type 'hook)
 
@@ -90,7 +90,54 @@ automatically do one of these things instead."
 (defvar-local gptel--rewrite-overlays nil
   "List of active rewrite overlays in the buffer.")
 
-(defvar-local gptel--rewrite-message nil)
+(defvar-local gptel--rewrite-message nil
+  "Request-specific instructions for a gptel-rewrite action.")
+
+;; ;; NOTE: Should we expose this option?  `gptel-rewrite-directives-hook'
+;; ;; already functions as a robust way to customize the system message for
+;; ;; rewriting.
+;;
+;; (defcustom gptel-rewrite-directive
+;;   #'gptel--rewrite-directive
+;;   "A gptel template (system message, a string), or function that
+;; returns a system message intended for a rewrite action."
+;;   :group 'gptel
+;;   :type '(choice
+;;           (string :tag "System message")
+;;           (function :tag "Function that returns system message")))
+
+(defun gptel--rewrite-directive ()
+  "General gptel directive when rewriting or refactoring.
+
+This supplies the general instructions to the LLM that are not
+specific to any particular required change.
+
+The returned string is interpreted as the system message for the
+rewrite request.  To substitute your own, add to
+`gptel-rewrite-directives-hook', which see."
+  (or (save-mark-and-excursion
+        (run-hook-with-args-until-success
+         'gptel-rewrite-directives-hook))
+      (let* ((lang (downcase (gptel--strip-mode-suffix major-mode)))
+             (article (if (and lang (not (string-empty-p lang))
+                               (memq (aref lang 0) '(?a ?e ?i ?o ?u)))
+                          "an" "a")))
+        (if (derived-mode-p 'prog-mode)
+            (format (concat "You are %s %s programmer.  "
+                            "Follow my instructions and refactor %s code I provide.\n"
+                            "- Generate ONLY %s code as output, without "
+                            "any explanation or markdown code fences.\n"
+                            "- Generate code in full, do not abbreviate or omit code.\n"
+                            "- Do not ask for further clarification, and make "
+                            "any assumptions you need to follow instructions.")
+                    article lang lang lang)
+          (concat
+           (if (string-empty-p lang)
+               "You are an editor."
+             (format "You are %s %s editor." article lang))
+           "  Follow my instructions and improve or rewrite the text I provide."
+           "  Generate ONLY the replacement text,"
+           " without any explanation or markdown code fences.")))))
 
 ;; * Helper functions
 
@@ -107,12 +154,45 @@ Or is it the other way around?"
   (if (derived-mode-p 'prog-mode)
       "Refactor" "Rewrite"))
 
-(defun gptel--rewrite-message ()
-  "Set a generic refactor/rewrite message for the buffer."
-  (if (derived-mode-p 'prog-mode)
-      (format "You are a %s programmer. Generate only code, no explanation, no code fences. Refactor the following code."
-              (gptel--strip-mode-suffix major-mode))
-    (format "You are a prose editor. Rewrite the following text to be more professional.")))
+(defun gptel--rewrite-expand-prompt ()
+  "Show the active rewrite directive in the minibuffer.
+
+The directive, in this case just the system message, is shown in
+an overlay.  Repeated calls to this command will toggle its
+visibility state."
+  (interactive)
+  (unless (minibufferp)
+    (user-error "This command is intended to be used in the minibuffer."))
+  (let ((full (with-minibuffer-selected-window
+                (gptel--rewrite-directive)))
+        (update
+         (lambda (ov s)
+           (overlay-put
+            ov 'after-string
+            (and s (concat (propertize (concat "\n" s "\n") 'face 'shadow)
+                           (make-separator-line)))))))
+    (when full
+      (unless visual-line-mode (visual-line-mode 1))
+      (goto-char (minibuffer-prompt-end))
+      (pcase-let ((`(,prop . ,ov)
+                   (get-char-property-and-overlay
+                    (point-min) 'gptel)))
+        (unless ov
+          (setq ov (make-overlay
+                    (point-min) (minibuffer-prompt-end) nil t)))
+        (pcase prop
+          ('partial
+           (if (> (length full) (window-width))
+               (progn (overlay-put ov 'gptel 'full)
+                      (funcall update ov full))
+             (overlay-put ov 'gptel 'hide)
+             (funcall update ov nil)))
+          ('full (overlay-put ov 'gptel 'hide)
+                 (funcall update ov nil))
+          (_ (overlay-put ov 'gptel 'partial)
+             (funcall update ov (truncate-string-to-width
+                                 full (window-width) nil nil
+                                 'ellipsis))))))))
 
 (defun gptel--rewrite-key-help (callback)
   "Eldoc documentation function for gptel rewrite actions.
@@ -286,10 +366,9 @@ BUF is the buffer to modify, defaults to the overlay buffer."
   "Rewrite or refactor text region using an LLM."
   [:description
    (lambda ()
-     (format "Directive:  %s"
-             (truncate-string-to-width
-              gptel--rewrite-message
-              (max (- (window-width) 14) 20) nil nil t)))
+     (format "%s" (truncate-string-to-width
+                   gptel--rewrite-message
+                   (max (- (window-width) 14) 20) nil nil t)))
    (gptel--infix-rewrite-prompt)]
   ;; FIXME: We are requiring `gptel-transient' because of this suffix, perhaps
   ;; we can get find some way around that?
@@ -305,7 +384,9 @@ BUF is the buffer to modify, defaults to the overlay buffer."
    [:description gptel--refactor-or-rewrite
     :if use-region-p
     (gptel--suffix-rewrite)]
-   ["Dry Run" :if (lambda () (or gptel-log-level gptel-expert-commands))
+   ["Dry Run"
+    :if (lambda () (and (use-region-p)
+                   (or gptel-log-level gptel-expert-commands)))
     ("I" "Inspect query (Lisp)"
      (lambda ()
        "Inspect the query that will be sent as a lisp object."
@@ -335,9 +416,7 @@ BUF is the buffer to modify, defaults to the overlay buffer."
   (interactive)
   (unless gptel--rewrite-message
     (setq gptel--rewrite-message
-          (save-mark-and-excursion
-            (run-hook-with-args-until-success
-             'gptel-rewrite-directives-hook))))
+          (concat (gptel--refactor-or-rewrite) ": ")))
   (transient-setup 'gptel-rewrite-menu))
 
 ;; * Transient infixes for rewriting/refactoring
@@ -351,14 +430,22 @@ BUF is the buffer to modify, defaults to the overlay buffer."
   :class 'transient-lisp-variable
   :variable 'gptel--rewrite-message
   :key "d"
-  :prompt "Set directive for rewrite: "
+  :prompt (concat "Instructions ("
+                  (propertize "TAB" 'face 'help-key-binding) " to expand, "
+                  (propertize "M-n" 'face 'help-key-binding) "/"
+                  (propertize "M-p" 'face 'help-key-binding) " for next/previous): ")
   :reader (lambda (prompt _ history)
-            (read-string
-             prompt
-             (save-mark-and-excursion
-               (run-hook-with-args-until-success
-                'gptel-rewrite-directives-hook))
-             history)))
+            (let ((minibuffer-local-map
+                   (make-composed-keymap
+                    (define-keymap "TAB" #'gptel--rewrite-expand-prompt
+                      "<tab>" #'gptel--rewrite-expand-prompt)
+                    minibuffer-local-map)))
+              (minibuffer-with-setup-hook #'gptel--rewrite-expand-prompt
+                (read-string
+                 prompt
+                 (or gptel--rewrite-message
+                     (concat (gptel--refactor-or-rewrite) ": "))
+                 history)))))
 
 (transient-define-argument gptel--rewrite-infix-diff:-U ()
   :description "Context lines"
@@ -373,14 +460,19 @@ BUF is the buffer to modify, defaults to the overlay buffer."
   :key "r"
   :description #'gptel--refactor-or-rewrite
   (interactive (list gptel--rewrite-message))
-  (let* ((prompt (buffer-substring-no-properties
-                  (region-beginning) (region-end)))
-         (gptel--system-message (or rewrite-message gptel--rewrite-message))
-         ;; always send context with system message
-         (gptel-use-context (and gptel-use-context 'system)))
+  (let* ((nosystem (gptel--model-capable-p 'nosystem))
+         ;; Try to send context with system message
+         (gptel-use-context
+          (and gptel-use-context (if nosystem 'user 'system)))
+         (prompt (list (buffer-substring-no-properties (region-beginning) (region-end))
+                       "What is the required change?"
+                       (or rewrite-message gptel--rewrite-message))))
     (deactivate-mark)
+    (when nosystem (setcar prompt (concat (gptel--rewrite-directive)
+                                          "\n\n" (car prompt))))
     (gptel-request prompt
       :dry-run dry-run
+      :system #'gptel--rewrite-directive
       :context
       (let ((ov (make-overlay (region-beginning) (region-end))))
         (overlay-put ov 'category 'gptel)
