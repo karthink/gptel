@@ -401,20 +401,28 @@ transient menu interface provided by `gptel-menu'."
     (programming . "You are a large language model and a careful programmer. Provide code and only code as output without any additional text, prompt or note.")
     (writing . "You are a large language model and a writing assistant. Respond concisely.")
     (chat . "You are a large language model and a conversation partner. Respond concisely."))
-  "System prompts (directives) for the LLM.
+  "System prompts or directives for the LLM.
 
-These are system instructions sent at the beginning of each
-request to the LLM.
+A \"directive\" is the system message (also called system prompt
+or system instruction) sent at the beginning of each request to
+the LLM.
+
+A directive can be
+- A string, interpreted as the system message.
+- A list of strings, whose first (possibly nil) element is
+  interpreted as the system message, and the remaining elements
+  as alternating user prompts and LLM responses.  This can be
+  used to template the intial part of a conversation.
+- A function that returns a string or a list of strings,
+  interpreted as the above.  This can be used to dynamically
+  generate a system message and/or conversation template based on
+  the current context.
 
 Each entry in this alist maps a symbol naming the directive to
-the string that is sent.  To set the directive for a chat session
+the directive itself.  To set the directive for a chat session
 interactively call `gptel-send' with a prefix argument."
   :safe #'always
   :type '(alist :key-type symbol :value-type string))
-
-(defvar gptel--system-message (alist-get 'default gptel-directives)
-  "The system message used by gptel.")
-(put 'gptel--system-message 'safe-local-variable #'always)
 
 (defcustom gptel-max-tokens nil
   "Max tokens per response.
@@ -978,6 +986,59 @@ MODE-SYM is typically a major-mode symbol."
              mode-sym 'prog-mode 'text-mode 'tex-mode)
             mode-name ""))))
 
+;;;; Directive handling
+
+
+(defvar gptel--system-message (alist-get 'default gptel-directives)
+  "The system message used by gptel.")
+(put 'gptel--system-message 'safe-local-variable #'always)
+
+(defun gptel--describe-directive (directive width &optional replacement)
+  "Find description for DIRECTIVE, truncated  to WIDTH.
+
+DIRECTIVE is a gptel directive, and can be a string, a function
+or a list of strings.  See `gptel-directives'.
+
+The result is a string intended for display.  Newlines are
+replaced with REPLACEMENT."
+  (cl-typecase directive
+    (string
+     (concat
+      (string-replace "\n" (or replacement " ")
+                      (truncate-string-to-width
+                       directive width nil nil t))))
+    (function
+     (concat
+      "λ: "
+      (string-replace
+       "\n" (or replacement " ")
+       (truncate-string-to-width
+        (or (documentation directive)
+            "[Dynamically generated; no preview available]")
+        width nil nil t))))
+    (list (and-let* ((from-template (car directive)))
+            (gptel--describe-directive
+             from-template width)))
+    (t "")))
+
+(defun gptel--parse-directive (directive)
+  "Parse DIRECTIVE into a backend-appropriate form.
+
+DIRECTIVE is a gptel directive: it can be a string, a list or a
+function that returns either, see `gptel-directives'.
+
+Return a cons cell consisting of the system message (a string)
+and a template consisting of alternating user/assistant
+records (a list of strings or nil)."
+  (and directive
+       (cl-etypecase directive
+         (string   (list directive))
+         (function (gptel--parse-directive (funcall directive)))
+         (cons     (cons (car directive)
+                         (gptel--parse-list
+                          gptel-backend (cdr directive)))))))
+
+
 
 ;;; Logging
 
@@ -1091,7 +1152,7 @@ file."
                                 (buttonize
                                  (format "[Prompt: %s]"
                                   (or (car-safe (rassoc gptel--system-message gptel-directives))
-                                   (truncate-string-to-width gptel--system-message 15 nil nil t)))
+                                   (gptel--describe-directive gptel--system-message 15)))
                                  (lambda (&rest _) (gptel-system-prompt)))
                                 'mouse-face 'highlight
                                 'help-echo "System message for session"))
@@ -1198,6 +1259,8 @@ around calls to it as required.
 If PROMPT is
 - a string, it is used to create a full prompt suitable for
   sending to the LLM.
+- A list of strings, it is interpreted as a conversation, i.e. a
+  series of alternating user prompts and LLM responses.
 - nil but region is active, the region contents are used.
 - nil, the current buffer's contents up to (point) are used.
   Previous responses from the LLM are identified as responses.
@@ -1254,9 +1317,11 @@ active.
 CONTEXT is any additional data needed for the callback to run. It
 is included in the INFO argument to the callback.
 
-SYSTEM is the system message (chat directive) sent to the LLM. If
-omitted, the value of `gptel--system-message' for the current
-buffer is used.
+SYSTEM is the system message or extended chat directive sent to
+the LLM.  This can be a string, a list of strings or a function
+that returns either; see `gptel-directives' for more
+information. If SYSTEM is omitted, the value of
+`gptel--system-message' for the current buffer is used.
 
 The following keywords are mainly for internal use:
 
@@ -1275,13 +1340,15 @@ Model parameters can be let-bound around calls to this function."
   (declare (indent 1))
   ;; TODO Remove this check in version 1.0
   (gptel--sanitize-model)
-  (let* ((gptel--system-message
-          ;Add context chunks to system message if required
+  (let* ((directive (gptel--parse-directive system))
+         ;; DIRECTIVE contains both the system message and the template prompts
+         (gptel--system-message
+          ;; Add context chunks to system message if required
           (if (and gptel-context--alist
                    (eq gptel-use-context 'system)
                    (not (gptel--model-capable-p 'nosystem)))
-              (gptel-context--wrap system)
-            system))
+              (gptel-context--wrap (car directive))
+            (car directive)))
          (gptel-stream stream)
          (start-marker
           (cond
@@ -1293,17 +1360,19 @@ Model parameters can be let-bound around calls to this function."
            ((integerp position)
             (set-marker (make-marker) position buffer))))
          (full-prompt
-          (cond
-           ((null prompt)
-            (gptel--create-prompt start-marker))
-           ((stringp prompt)
-            ;; FIXME Dear reader, welcome to Jank City:
-            (with-temp-buffer
-              (let ((gptel-model (buffer-local-value 'gptel-model buffer))
-                    (gptel-backend (buffer-local-value 'gptel-backend buffer)))
-                (insert prompt)
-                (gptel--create-prompt))))
-           ((consp prompt) prompt)))
+          (nconc
+           (cdr directive)              ;prompt constructed from directive/template
+           (cond                        ;prompt from buffer or explicitly supplied
+            ((null prompt)
+             (gptel--create-prompt start-marker))
+            ((stringp prompt)
+             ;; FIXME Dear reader, welcome to Jank City:
+             (with-temp-buffer
+               (let ((gptel-model (buffer-local-value 'gptel-model buffer))
+                     (gptel-backend (buffer-local-value 'gptel-backend buffer)))
+                 (insert prompt)
+                 (gptel--create-prompt))))
+            ((consp prompt) (gptel--parse-list gptel-backend prompt)))))
          (request-data (gptel--request-data gptel-backend full-prompt))
          (info (list :data request-data
                      :buffer buffer

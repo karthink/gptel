@@ -104,8 +104,11 @@ Or is it the other way around?"
   (if (derived-mode-p 'prog-mode)
       "Refactor" "Rewrite"))
 
-(defun gptel--format-system-message (&optional message)
-  "Format the system MESSAGE for display in gptel's transient menus."
+(defun gptel-system-prompt--format (&optional message)
+  "Format the system MESSAGE for display in gptel's transient menus.
+
+Handle formatting for system messages when the active
+`gptel-model' does not support system messages."
   (setq message (or message gptel--system-message))
   (if (gptel--model-capable-p 'nosystem)
       (concat (propertize "[No system message support for model "
@@ -114,14 +117,8 @@ Or is it the other way around?"
                           'face 'warning)
               (propertize "]" 'face 'transient-heading))
     (if message
-        (cl-etypecase message
-          (string (string-replace
-                   "\n" "⮐ "
-                   (truncate-string-to-width
-                    message
-                    (max (- (window-width) 12) 14) nil nil t)))
-          (function (gptel--format-system-message (funcall message)))
-          (list (gptel--format-system-message (car message))))
+        (gptel--describe-directive
+         message (max (- (window-width) 12) 14) "⮐ ")
       "[No system message set]")))
 
 (defvar gptel--crowdsourced-prompts-url
@@ -303,7 +300,7 @@ Also format its value in the Transient menu."
 (transient-define-prefix gptel-menu ()
   "Change parameters of prompt to send to the LLM."
   ;; :incompatible '(("-m" "-n" "-k" "-e"))
-  [:description gptel--format-system-message
+  [:description gptel-system-prompt--format
    [""
     :if (lambda () (not (gptel--model-capable-p 'nosystem)))
     "Instructions"
@@ -421,24 +418,19 @@ Also format its value in the Transient menu."
        ;; are treated as suffixes when invoking `gptel-system-prompt' directly,
        ;; and infixes when going through `gptel-menu'.
        ;; TODO: Raise an issue with Transient.
-       collect (list (key-description (list key))
-                     (concat (capitalize name) " "
-                             (propertize " " 'display '(space :align-to 20))
-                             (propertize
-                              (concat
-                               "("
-                               (string-replace
-                                "\n" " "
-                                (truncate-string-to-width prompt (- width 30) nil nil t))
-                               ")")
-                              'face 'shadow))
-                     `(lambda () (interactive)
-                        (message "Directive: %s"
-                         ,(string-replace "\n" "⮐ "
-                           (truncate-string-to-width prompt 100 nil nil t)))
-                        (gptel--set-with-scope 'gptel--system-message ,prompt
-                         gptel--set-buffer-locally))
-		     :transient 'transient--do-return)
+       collect
+       (list (key-description (list key))
+             (concat (capitalize name) " "
+                     (propertize " " 'display '(space :align-to 20))
+                     (propertize
+                      (concat "(" (gptel--describe-directive prompt (- width 30)) ")")
+                      'face 'shadow))
+             `(lambda () (interactive)
+                (message "Directive: %s"
+                 ,(gptel--describe-directive prompt 100 "⮐ "))
+                (gptel--set-with-scope 'gptel--system-message ',prompt
+                 gptel--set-buffer-locally))
+	     :transient 'transient--do-return)
        into prompt-suffixes
        finally return
        (nconc
@@ -471,7 +463,7 @@ You are a poet. Reply only in verse.
 More extensive system messages can be useful for specific tasks.
 
 Customize `gptel-directives' for task-specific prompts."
-  [:description gptel--format-system-message
+  [:description gptel-system-prompt--format
    [(gptel--suffix-system-message)]
    [(gptel--infix-variable-scope)]]
    [:class transient-column
@@ -852,11 +844,10 @@ Or in an extended conversation:
              :position position
              :in-place (and in-place (not output-to-other-buffer-p))
              :stream stream
-             :system (if system-extra
-                         (concat (if gptel--system-message
-                                     (concat gptel--system-message "\n\n"))
-                                 system-extra)
-                       gptel--system-message)
+             :system
+             (if system-extra
+                 (gptel--merge-additional-directive system-extra)
+               gptel--system-message)
              :callback callback
              :dry-run dry-run)
 
@@ -891,6 +882,26 @@ Or in an extended conversation:
          buffer '((display-buffer-reuse-window
                    display-buffer-pop-up-window)
                   (reusable-frames . visible)))))))
+
+(defun gptel--merge-additional-directive (additional &optional full)
+  "Merge ADDITIONAL gptel directive with the full system message.
+
+The ADDITIONAL directive is typically specified from `gptel-menu'
+and applies only to the next gptel request, see
+`gptel--infix-add-directive'.
+
+FULL defaults to the active, full system message.  It may be a
+string, a list of prompts or a function, see `gptel-directives'
+for details."
+  (setq full (or full gptel--system-message))
+  (cl-typecase full
+    (string (concat full "\n\n" additional))
+    (list (let ((copy (copy-sequence full)))
+            (setcar copy (concat (car copy) "\n\n" additional))
+            copy))
+    (function (lambda () (gptel--merge-additional-directive
+                     additional (funcall full))))
+    (otherwise additional)))
 
 ;; Allow calling from elisp
 (put 'gptel--suffix-send 'interactive-only nil)
@@ -959,61 +970,79 @@ When LOCAL is non-nil, set the system message only in the current buffer."
   :key "s"
   (interactive)
   (let ((orig-buf (current-buffer))
-        (msg-start (make-marker)))
-    (with-current-buffer (get-buffer-create "*gptel-system*")
-      (let ((inhibit-read-only t))
-        (erase-buffer)
-        (text-mode)
-        (setq header-line-format
-              (concat
-               "Edit your system message below and press "
-               (propertize "C-c C-c" 'face 'help-key-binding)
-               " when ready, or "
-               (propertize "C-c C-k" 'face 'help-key-binding)
-               " to abort."))
-        (insert
-         "# Example: You are a helpful assistant. Answer as concisely as possible.\n"
-         "# Example: Reply only with shell commands and no prose.\n"
-         "# Example: You are a poet. Reply only in verse.\n\n")
-        (add-text-properties
-         (point-min) (1- (point))
-         (list 'read-only t 'face 'font-lock-comment-face))
-        ;; TODO: make-separator-line requires Emacs 28.1+.
-        ;; (insert (propertize (make-separator-line) 'rear-nonsticky t))
-        (set-marker msg-start (point))
-        (save-excursion
-          (insert (or (buffer-local-value 'gptel--system-message orig-buf) ""))
-          (push-mark nil 'nomsg))
-        (activate-mark))
-      (display-buffer (current-buffer)
-                      `((display-buffer-below-selected)
-                        (body-function . ,#'select-window)
-                        (window-height . ,#'fit-window-to-buffer)))
-      (let ((quit-to-menu
-             (lambda ()
-               "Cancel system message update and return to `gptel-menu'"
-               (interactive)
-               (quit-window)
-               (display-buffer
-                orig-buf
-                `((display-buffer-reuse-window
-                   display-buffer-use-some-window)
-                  (body-function . ,#'select-window)))
-               (call-interactively #'gptel-menu))))
-        (use-local-map
-         (make-composed-keymap
-          (define-keymap
-            "C-c C-c" (lambda ()
-                        "Confirm system message and return to `gptel-menu'."
-                        (interactive)
-                        (let ((system-message
-                               (buffer-substring-no-properties msg-start (point-max))))
-                          (with-current-buffer orig-buf
-                            (gptel--set-with-scope 'gptel--system-message system-message
-                                                   gptel--set-buffer-locally)))
-                        (funcall quit-to-menu))
-            "C-c C-k" quit-to-menu)
-          text-mode-map))))))
+        (msg-start (make-marker))
+        cancel
+        (directive gptel--system-message))
+    (when (functionp gptel--system-message)
+      (setq directive (funcall gptel--system-message)
+            cancel
+            (not (y-or-n-p
+                  "Active directive is a function: Edit its current value instead?"))))
+    (if cancel
+        (progn (message "Edit canceled")
+               (call-interactively #'gptel-menu))
+      ;; TODO: Handle editing list-of-strings directives
+      (with-current-buffer (get-buffer-create "*gptel-system*")
+        (let ((inhibit-read-only t))
+          (erase-buffer)
+          (text-mode)
+          (setq header-line-format
+                (concat
+                 "Edit your system message below and press "
+                 (propertize "C-c C-c" 'face 'help-key-binding)
+                 " when ready, or "
+                 (propertize "C-c C-k" 'face 'help-key-binding)
+                 " to abort."))
+          (insert
+           "# Example: You are a helpful assistant. Answer as concisely as possible.\n"
+           "# Example: Reply only with shell commands and no prose.\n"
+           "# Example: You are a poet. Reply only in verse.\n\n")
+          (add-text-properties
+           (point-min) (1- (point))
+           (list 'read-only t 'face 'font-lock-comment-face))
+          ;; TODO: make-separator-line requires Emacs 28.1+.
+          ;; (insert (propertize (make-separator-line) 'rear-nonsticky t))
+          (set-marker msg-start (point))
+          (save-excursion
+            ;; If it's a list, insert only the system message part
+            ;; MAYBE: Use `gptel--parse-directive'/`gptel--describe-directive'
+            ;; here?
+            (insert (or (car-safe directive) directive ""))
+            (push-mark nil 'nomsg))
+          (activate-mark))
+        (display-buffer (current-buffer)
+                        `((display-buffer-below-selected)
+                          (body-function . ,#'select-window)
+                          (window-height . ,#'fit-window-to-buffer)))
+        (let ((quit-to-menu
+               (lambda ()
+                 "Cancel system message update and return to `gptel-menu'"
+                 (interactive)
+                 (quit-window)
+                 (display-buffer
+                  orig-buf
+                  `((display-buffer-reuse-window
+                     display-buffer-use-some-window)
+                    (body-function . ,#'select-window)))
+                 (call-interactively #'gptel-menu))))
+          (use-local-map
+           (make-composed-keymap
+            (define-keymap
+              "C-c C-c" (lambda ()
+                          "Confirm system message and return to `gptel-menu'."
+                          (interactive)
+                          (let ((system-message
+                                 (buffer-substring-no-properties msg-start (point-max))))
+                            (with-current-buffer orig-buf
+                              (gptel--set-with-scope
+                               'gptel--system-message
+                               (if (cdr-safe directive) ;Handle list of strings
+                                   (prog1 directive (setcar directive system-message))
+                                 system-message)
+                               gptel--set-buffer-locally)))
+                          (funcall quit-to-menu))
+              "C-c C-k" quit-to-menu)
+            text-mode-map)))))))
 
 ;; ** Suffix for displaying and removing context
 (declare-function gptel-context--buffer-setup "gptel-context")
