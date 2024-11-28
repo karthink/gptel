@@ -433,6 +433,8 @@ gptel's idea of the directive is more general.  A directive in
   :safe #'always
   :type '(alist :key-type symbol :value-type string))
 
+(defvar gptel-templates nil "Templates for gptel.")
+
 (defcustom gptel-max-tokens nil
   "Max tokens per response.
 

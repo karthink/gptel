@@ -395,6 +395,7 @@ Also format its value in the Transient menu."
    [" <Prompt from"
     ("m" "Minibuffer instead" "m")
     ("y" "Kill-ring instead" "y")
+    (gptel--infix-template)
     ""
     ("i" "Respond in place" "i")]
     [" >Response to"
@@ -540,6 +541,25 @@ Customize `gptel-directives' for task-specific prompts."
 
 
 ;; * Transient Infixes
+
+(transient-define-infix gptel--infix-template ()
+  "Use a predefined template for the LLM interaction.
+
+Templates provides easy access to one-shot, predefined tasks.  A
+template is a combination of a system message (when applicable)
+and a pre-written conversation that is filled in using user
+input.
+
+Templates must be added to `gptel-templates', which see."
+  :if (lambda () gptel-templates)
+  :key "t"
+  :description "template instead"
+  :class 'transient-option
+  :argument "<"
+  :prompt "Use template: "
+  :reader (lambda (prompt _ history)
+            (completing-read prompt gptel-templates
+                             nil t nil history)))
 
 ;; ** Infixes for context aggregation
 
@@ -812,7 +832,7 @@ Or in an extended conversation:
   :description "Send prompt"
   (interactive (list (transient-args
                       (or transient-current-command 'gptel-menu))))
-  (let ((stream gptel-stream)
+  (let* ((stream gptel-stream)
         (in-place (and (member "i" args) t))
         (output-to-other-buffer-p)
         (backend gptel-backend)
@@ -822,9 +842,18 @@ Or in an extended conversation:
         (callback) (gptel-buffer-name)
         (system-extra (gptel--get-directive args))
         (dry-run (and (member "I" args) t))
+        (template
+         (if-let* ((temp
+                    (cl-some
+                     (lambda (a) (and (string-prefix-p "<" a)
+                                 (alist-get (intern (substring a 1))
+                                            gptel-templates)))
+                     args)))
+             (gptel--parse-directive temp 'raw)))
         ;; Input redirection: grab prompt from elsewhere?
         (prompt
          (cond
+          (template (cdr template))
           ((member "m" args)
            (read-string
             (format "Ask %s: " (gptel-backend-name gptel-backend))
@@ -865,7 +894,7 @@ Or in an extended conversation:
       (let ((reduced-prompt             ;For inserting into the gptel buffer as
                                         ;context, not the prompt used for the
                                         ;request itself
-             (or prompt
+             (or (if (consp prompt) (car (last prompt)) prompt)
                  (if (use-region-p)
                      (buffer-substring-no-properties (region-beginning)
                                                      (region-end))
@@ -924,9 +953,10 @@ Or in an extended conversation:
              :in-place (and in-place (not output-to-other-buffer-p))
              :stream stream
              :system
-             (if system-extra
-                 (gptel--merge-additional-directive system-extra)
-               gptel--system-message)
+             (or (car-safe template)
+                 (if system-extra
+                     (gptel--merge-additional-directive system-extra)
+                   gptel--system-message))
              :callback callback
              :dry-run dry-run)
 
