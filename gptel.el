@@ -424,6 +424,8 @@ interactively call `gptel-send' with a prefix argument."
   :safe #'always
   :type '(alist :key-type symbol :value-type string))
 
+(defvar gptel-templates nil "Templates for gptel.")
+
 (defcustom gptel-max-tokens nil
   "Max tokens per response.
 
