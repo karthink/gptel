@@ -75,31 +75,32 @@ Intended for internal use only.")
 
 (cl-defmethod gptel--request-data ((_backend gptel-ollama) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
-  ;; start a prompts-plist with the default values AND any
-  ;; backend/model-specific params
-  (let* ((prompts-plist (gptel--merge-plists
-                         `(:model ,(gptel--model-name gptel-model)
-                                  :messages [,@prompts]
-                                  :stream ,(or (and gptel-stream gptel-use-curl
-                                                    (gptel-backend-stream gptel-backend))
-                                               :json-false))
-                         (gptel-backend-request-params gptel-backend)
-                         (gptel--model-request-params  gptel-model)))
-         ;; the initial options (if any) we got from request params
+  (when (and gptel--system-message
+             (not (gptel--model-capable-p 'nosystem)))
+    (push (list :role "system"
+                :content gptel--system-message)
+          prompts))
+  (let* ((prompts-plist
+          (gptel--merge-plists
+           `(:model ,(gptel--model-name gptel-model)
+             :messages [,@prompts]
+             :stream ,(or (and gptel-stream gptel-use-curl
+                               (gptel-backend-stream gptel-backend))
+                          :json-false))
+           (gptel-backend-request-params gptel-backend)
+           (gptel--model-request-params  gptel-model)))
+         ;; the initial options (if any) from request params
          (options-plist (plist-get prompts-plist :options)))
 
     ;; if the temperature and max-tokens aren't set as
     ;; backend/model-specific, use the global settings
     (when (and gptel-temperature (not (plist-get options-plist :temperature)))
       (setq options-plist
-            (plist-put options-plist :temperature
-                       gptel-temperature)))
+            (plist-put options-plist :temperature gptel-temperature)))
     (when (and gptel-max-tokens (not (plist-get options-plist :num_predict)))
       (setq options-plist
-            (plist-put options-plist :num_predict
-                       gptel-max-tokens)))
-    (plist-put prompts-plist :options options-plist)
-    prompts-plist))
+            (plist-put options-plist :num_predict gptel-max-tokens)))
+    (plist-put prompts-plist :options options-plist)))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-ollama) &optional max-entries)
   (let ((prompts) (prop)
