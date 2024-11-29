@@ -78,14 +78,16 @@ Intended for internal use only.")
   ;; start a prompts-plist with the default values AND any
   ;; backend/model-specific params
   (let* ((prompts-plist (gptel--merge-plists
-                         `(:model ,(gptel--model-name gptel-model)
-                                  :messages [,@prompts]
-                                  :stream ,(or (and gptel-stream gptel-use-curl
-                                                    (gptel-backend-stream gptel-backend))
-                                               :json-false))
+                         `(:model
+                           ,(gptel--model-name gptel-model)
+                           :messages [,@prompts]
+                           :stream ,(or
+                                     (and gptel-stream gptel-use-curl
+                                          (gptel-backend-stream gptel-backend))
+                                     :json-false))
                          (gptel-backend-request-params gptel-backend)
                          (gptel--model-request-params  gptel-model)))
-         ;; the initial options (if any) we got from request params
+         ;; the initial options (if any) from request params
          (options-plist (plist-get prompts-plist :options)))
 
     ;; if the temperature and max-tokens aren't set as
@@ -98,8 +100,7 @@ Intended for internal use only.")
       (setq options-plist
             (plist-put options-plist :num_predict
                        gptel-max-tokens)))
-    (plist-put prompts-plist :options options-plist)
-    prompts-plist))
+    (plist-put prompts-plist :options options-plist)))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-ollama) &optional max-entries)
   (let ((prompts) (prop)
