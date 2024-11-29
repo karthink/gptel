@@ -210,6 +210,15 @@ If selection is active, removes all contexts within selection."
     (when-let ((ctx (gptel-context--at-point)))
       (delete-overlay ctx)))))
 
+(defun gptel-context-remove-all ()
+  "Remove all gptel context."
+  (cl-loop
+   for (source . ovs) in gptel-context--alist
+   if (bufferp source) do               ;Buffers and buffer regions
+   (mapc #'gptel-context-remove ovs)
+   else do (gptel-context-remove source) ;files or other types
+   finally do (setq gptel-context--alist nil)))
+
 (defun gptel-context--make-overlay (start end &optional advance)
   "Highlight the region from START to END.
 

@@ -315,6 +315,7 @@ Also format its value in the Transient menu."
     (gptel--infix-context-add-region)
     (gptel--infix-context-add-buffer)
     (gptel--infix-context-add-file)
+    (gptel--infix-context-remove-all)
     (gptel--suffix-context-buffer)]]
   [["Request Parameters"
     :pad-keys t
@@ -624,7 +625,7 @@ querying the LLM."
   :set-value #'gptel--set-with-scope
   :display-if-true "Yes"
   :display-if-false "No"
-  :key "-d")
+  :key "-v")
 
 (transient-define-infix gptel--infix-track-media ()
   "Send media from \"standalone\" links in the prompt.
@@ -676,6 +677,7 @@ supports.  See `gptel-track-media' for more information."
   (transient-setup))
 
 (declare-function gptel-add-file "gptel-context")
+(declare-function gptel-context-remove-all "gptel-context")
 
 (transient-define-suffix gptel--infix-context-add-file ()
   "Add a file to gptel's context."
@@ -685,6 +687,17 @@ supports.  See `gptel-track-media' for more information."
   (interactive)
   (call-interactively #'gptel-add-file)
   (transient-setup))
+
+(transient-define-suffix gptel--infix-context-remove-all ()
+  "Clear gptel's context."
+  :if (lambda () gptel-context--alist)
+  :transient 'transient--do-stay
+  :key "-d"
+  :description "Remove all"
+  (interactive)
+  (when (y-or-n-p "Remove all context? ")
+    (gptel-context-remove-all)
+    (transient-setup)))
 
 ;; ** Infix for the refactor/rewrite system message
 
