@@ -352,7 +352,7 @@ By default, gptel uses the directive associated with the `rewrite'
   [:description
    (lambda ()
      (gptel--describe-directive
-      gptel--rewrite-directive (max (- (window-width) 14) 20) "⮐"))
+      gptel--rewrite-directive (max (- (window-width) 14) 20) " "))
    [""
     ("s" "Set full directive" gptel--rewrite-directive-menu)
     (gptel--infix-rewrite-extra)]]

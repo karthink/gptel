@@ -1013,7 +1013,8 @@ replaced with REPLACEMENT."
       (string-replace
        "\n" (or replacement " ")
        (truncate-string-to-width
-        (or (documentation directive)
+        (or (and-let* ((doc (documentation directive)))
+              (substring doc nil (string-match-p "\n" doc)))
             "[Dynamically generated; no preview available]")
         width nil nil t))))
     (list (and-let* ((from-template (car directive)))
