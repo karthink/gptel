@@ -415,6 +415,7 @@ By default, gptel uses the directive associated with the `rewrite'
                        "Rewrite instruction"))
   :class 'gptel-lisp-variable
   :variable 'gptel--rewrite-message
+  :set-value #'gptel--set-with-scope
   :key "d"
   :format " %k %d %v"
   :prompt (concat "Instructions " gptel--read-with-prefix-help)

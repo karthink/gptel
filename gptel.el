@@ -411,8 +411,8 @@ A directive can be
 - A string, interpreted as the system message.
 - A list of strings, whose first (possibly nil) element is
   interpreted as the system message, and the remaining elements
-  as alternating user prompts and LLM responses.  This can be
-  used to template the intial part of a conversation.
+  as (possibly nil) alternating user prompts and LLM responses.
+  This can be used to template the intial part of a conversation.
 - A function that returns a string or a list of strings,
   interpreted as the above.  This can be used to dynamically
   generate a system message and/or conversation template based on
