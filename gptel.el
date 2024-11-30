@@ -1037,7 +1037,7 @@ returned as a list of strings."
   (and directive
        (cl-etypecase directive
          (string   (list directive))
-         (function (gptel--parse-directive (funcall directive)))
+         (function (gptel--parse-directive (funcall directive) raw))
          (cons     (if raw directive
                      (cons (car directive)
                            (gptel--parse-list
