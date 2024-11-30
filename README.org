@@ -8,20 +8,20 @@ gptel is a simple Large Language Model chat client for Emacs, with support for m
 | LLM Backend        | Supports | Requires                   |
 |--------------------+----------+----------------------------|
 | ChatGPT            | ✓        | [[https://platform.openai.com/account/api-keys][API key]]                    |
-| Azure              | ✓        | Deployment and API key     |
-| Ollama             | ✓        | [[https://ollama.ai/][Ollama running locally]]     |
-| GPT4All            | ✓        | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
+| Anthropic (Claude) | ✓        | [[https://www.anthropic.com/api][API key]]                    |
 | Gemini             | ✓        | [[https://makersuite.google.com/app/apikey][API key]]                    |
+| Ollama             | ✓        | [[https://ollama.ai/][Ollama running locally]]     |
 | Llama.cpp          | ✓        | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]]  |
 | Llamafile          | ✓        | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
+| GPT4All            | ✓        | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
 | Kagi FastGPT       | ✓        | [[https://kagi.com/settings?p=api][API key]]                    |
 | Kagi Summarizer    | ✓        | [[https://kagi.com/settings?p=api][API key]]                    |
+| Azure              | ✓        | Deployment and API key     |
+| Groq               | ✓        | [[https://console.groq.com/keys][API key]]                    |
+| Perplexity         | ✓        | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
+| OpenRouter         | ✓        | [[https://openrouter.ai/keys][API key]]                    |
 | together.ai        | ✓        | [[https://api.together.xyz/settings/api-keys][API key]]                    |
 | Anyscale           | ✓        | [[https://docs.endpoints.anyscale.com/][API key]]                    |
-| Perplexity         | ✓        | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
-| Anthropic (Claude) | ✓        | [[https://www.anthropic.com/api][API key]]                    |
-| Groq               | ✓        | [[https://console.groq.com/keys][API key]]                    |
-| OpenRouter         | ✓        | [[https://openrouter.ai/keys][API key]]                    |
 | PrivateGPT         | ✓        | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
 | DeepSeek           | ✓        | [[https://platform.deepseek.com/api_keys][API key]]                    |
 | Cerebras           | ✓        | [[https://cloud.cerebras.ai/][API key]]                    |
@@ -88,7 +88,7 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
       - [[#including-media-images-documents-with-requests][Including media (images, documents) with requests]]
       - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
-    - [[#selecting-a-backend][Selecting a backend]]
+    - [[#setting-options-backend-model-request-parameters-system-prompts-and-more][Setting options (backend, model, request parameters, system prompts and more)]]
     - [[#include-more-context-with-requests][Include more context with requests]]
     - [[#rewrite-refactor-or-fill-in-a-region][Rewrite, refactor or fill in a region]]
     - [[#extra-org-mode-conveniences][Extra Org mode conveniences]]
@@ -849,7 +849,7 @@ The above code makes the backend available to select.  If you want it to be the 
 2. If a region is selected, the conversation will be limited to its contents.
 
 3. Call =M-x gptel-send= with a prefix argument (~C-u~)
-   - to set chat parameters (GPT model, system message etc) for this buffer,
+   - to set chat parameters (GPT model, backend, system message etc) for this buffer,
    - include quick instructions for the next request only,
    - to add additional context -- regions, buffers or files -- to gptel,
    - to read the prompt from or redirect the response elsewhere,
@@ -953,9 +953,12 @@ Similar criteria apply to Markdown chat buffers.
 Saving the file will save the state of the conversation as well.  To resume the chat, open the file and turn on =gptel-mode= before editing the buffer.
 
 #+html: </details>
-*** Selecting a backend
+*** Setting options (backend, model, request parameters, system prompts and more)
 
-Selecting a model or backend can be done interactively via the =-m= command of =gptel-menu=. Available registered models are prefixed by the name of their backend with a string like `ChatGPT:gpt-4o-mini`, where `ChatGPT` is the backend name you used to register it and `gpt-4o-mini` is the name of the model.
+Most gptel options can be set from gptel's transient menu, available by calling =gptel-send= with a prefix-argument, or via =gptel-menu=.  To change their default values in your configuration, see [[*Additional Configuration]].  Chat buffer-specific options are also available via the header-line in chat buffers.
+
+# TODO Remove this when writing the manual.
+Selecting a model dand backend can be done interactively via the =-m= command of =gptel-menu=.  Available registered models are prefixed by the name of their backend with a string like =ChatGPT:gpt-4o-mini=, where =ChatGPT= is the backend name you used to register it and =gpt-4o-mini= is the name of the model.
 
 *** Include more context with requests
 
@@ -1123,10 +1126,12 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 
 #+html: </details>
 
+#+html: <details><summary>
 ** Additional Configuration
 :PROPERTIES:
 :ID:       f885adac-58a3-4eba-a6b7-91e9e7a17829
 :END:
+#+html: </summary>
 
 #+begin_src emacs-lisp :exports none :results list
 (let ((all))
