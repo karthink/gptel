@@ -1125,7 +1125,6 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 2. Integration with org-mode, not using a walled-off org-babel block, but as regular text.  This way the model can generate code blocks that I can run.
 
 #+html: </details>
-
 #+html: <details><summary>
 ** Additional Configuration
 :PROPERTIES:
@@ -1191,6 +1190,8 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-rewrite-default-action=  | Automatically diff, ediff, merge or replace refactored text |
 |---------------------------------+-------------------------------------------------------------|
 
+#+html: </details>
+
 ** COMMENT Will you add feature X?
 
 Maybe, I'd like to experiment a bit more first.  Features added since the inception of this package include
@@ -1219,7 +1220,7 @@ Other Emacs clients for LLMs include
 - [[https://github.com/xenodium/chatgpt-shell][chatgpt-shell]]: comint-shell based interaction with ChatGPT.  Also supports DALL-E, executable code blocks in the responses, and more.
 - [[https://github.com/rksm/org-ai][org-ai]]: Interaction through special =#+begin_ai ... #+end_ai= Org-mode blocks.  Also supports DALL-E, querying ChatGPT with the contents of project files, and more.
 
-There are several more: [[https://github.com/MichaelBurge/leafy-mode][leafy-mode]], [[https://github.com/iwahbe/chat.el][chat.el]]
+There are several more: [[https://github.com/MichaelBurge/leafy-mode][leafy-mode]], [[https://github.com/iwahbe/chat.el][chat.el]], [[https://github.com/stuhlmueller/gpt.el][gpt.el]],  [[https://github.com/AnselmC/le-gpt.el][le-gpt]], [[https://github.com/stevemolitor/robby][robby]].
 
 *** Packages using gptel
 
@@ -1233,6 +1234,7 @@ gptel is a general-purpose package for chat and ad-hoc LLM interaction.  The fol
 - [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate Commit Messages within magit-status Buffer using gptel
 - [[https://github.com/armindarvish/consult-omni][consult-omni]]: Versatile multi-source search package.  It includes gptel as one of its many sources.
 - [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  (Note that gptel includes this feature as well (see =gptel-org-branching-context=), but requires a recent version of Org mode (9.67 or later) to be installed.)
+- [[https://github.com/rob137/Corsair][Corsair]]: Helps gather text to populate LLM prompts for gptel.
 
 ** COMMENT Older Breaking Changes
 
