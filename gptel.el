@@ -1022,22 +1022,26 @@ replaced with REPLACEMENT."
              from-template width)))
     (t "")))
 
-(defun gptel--parse-directive (directive)
+(defun gptel--parse-directive (directive &optional raw)
   "Parse DIRECTIVE into a backend-appropriate form.
 
 DIRECTIVE is a gptel directive: it can be a string, a list or a
 function that returns either, see `gptel-directives'.
 
 Return a cons cell consisting of the system message (a string)
-and a template consisting of alternating user/assistant
-records (a list of strings or nil)."
+and a template consisting of alternating user/LLM
+records (a list of strings or nil).
+
+If RAW is non-nil, the user/LLM records are not processed and are
+returned as a list of strings."
   (and directive
        (cl-etypecase directive
          (string   (list directive))
          (function (gptel--parse-directive (funcall directive)))
-         (cons     (cons (car directive)
-                         (gptel--parse-list
-                          gptel-backend (cdr directive)))))))
+         (cons     (if raw directive
+                     (cons (car directive)
+                           (gptel--parse-list
+                            gptel-backend (cdr directive))))))))
 
 
 
