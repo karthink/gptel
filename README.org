@@ -978,23 +978,23 @@ And then browse through or remove context from the context buffer:
 
 In any buffer: with a region selected, you can rewrite prose or refactor code from here:
 
-*Prose*:
+***** Prose:
 
 #+html: <img src="https://github.com/user-attachments/assets/1024226c-3b60-46bb-948d-04f1e721b0e0" align="center" />
 
-*Code*:
+***** Code:
 
 #+html: <img src="https://github.com/user-attachments/assets/234a6143-bcac-4567-99f3-b20d982ef8e1" align="center" />
 
-*When the refactor is ready, you can apply it or compare against the original*:
+***** When the refactor is ready, you can apply it or compare against the original:
 
 #+html: <img src="https://github.com/user-attachments/assets/7687b2d2-781d-41fd-881d-c01bd9105aa0" align="center" />
 
-*These actions are also available directly when the cursor is inside the pending rewrite region*:
+***** These actions are also available directly when the cursor is inside the pending rewrite region:
 
 #+html: <img src="https://github.com/user-attachments/assets/f5b3ca47-e146-45fe-8584-f11035fa4dbc" align="center" />
 
-*If you want to run one of these actions automatically, you can customize =gptel-rewrite-default-action=*.
+***** If you want to run one of these actions automatically, you can customize =gptel-rewrite-default-action=.
 
 *** Extra Org mode conveniences
 
