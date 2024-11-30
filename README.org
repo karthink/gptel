@@ -980,25 +980,21 @@ In any buffer: with a region selected, you can rewrite prose or refactor code fr
 
 *Prose*:
 
-#+html: <img src="https://github.com/user-attachments/assets/172e75cd-11e9-4f3b-9ab9-b4edfb8f6695" align="center" />
-
-# [[https://user-images.githubusercontent.com/8607532/230770352-ee6f45a3-a083-4cf0-b13c-619f7710e9ba.png]]
+#+html: <img src="https://github.com/user-attachments/assets/1024226c-3b60-46bb-948d-04f1e721b0e0" align="center" />
 
 *Code*:
 
-#+html: <img src="https://github.com/user-attachments/assets/8670ddb3-8655-47f4-a70c-8994994e61e3" align="center" />
+#+html: <img src="https://github.com/user-attachments/assets/234a6143-bcac-4567-99f3-b20d982ef8e1" align="center" />
 
-# [[https://user-images.githubusercontent.com/8607532/230770162-1a5a496c-ee57-4a67-9c95-d45f238544ae.png]]
+*When the refactor is ready, you can apply it or compare against the original*:
 
-- When the refactor is ready, you can apply it or compare against the original:
+#+html: <img src="https://github.com/user-attachments/assets/7687b2d2-781d-41fd-881d-c01bd9105aa0" align="center" />
 
-#+html: <img src="https://github.com/user-attachments/assets/a0cf33b2-3ad3-4f55-aa7b-4349e54d6771" align="center" />
+*These actions are also available directly when the cursor is inside the pending rewrite region*:
 
-- These actions are also available directly when the cursor is inside the pending rewrite region:
+#+html: <img src="https://github.com/user-attachments/assets/f5b3ca47-e146-45fe-8584-f11035fa4dbc" align="center" />
 
-#+html: <img src="https://github.com/user-attachments/assets/57e1fff7-f8e4-47f0-9bda-d0b698443559" align="center" />
-
-- If you want to run one of these actions automatically, you can customize =gptel-rewrite-default-action=.
+*If you want to run one of these actions automatically, you can customize =gptel-rewrite-default-action=*.
 
 *** Extra Org mode conveniences
 
