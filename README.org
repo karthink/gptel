@@ -990,26 +990,35 @@ In any buffer: with a region selected, you can rewrite prose or refactor code fr
 
 # [[https://user-images.githubusercontent.com/8607532/230770162-1a5a496c-ee57-4a67-9c95-d45f238544ae.png]]
 
-When the refactor is ready, you can apply it or compare against the original:
+- When the refactor is ready, you can apply it or compare against the original:
 
 #+html: <img src="https://github.com/user-attachments/assets/a0cf33b2-3ad3-4f55-aa7b-4349e54d6771" align="center" />
 
-These actions are also available directly when the cursor is inside the pending rewrite region:
+- These actions are also available directly when the cursor is inside the pending rewrite region:
 
 #+html: <img src="https://github.com/user-attachments/assets/57e1fff7-f8e4-47f0-9bda-d0b698443559" align="center" />
 
-If you want to run one of these actions automatically, you can customize =gptel-rewrite-default-action=.
+- If you want to run one of these actions automatically, you can customize =gptel-rewrite-default-action=.
 
 *** Extra Org mode conveniences
 
 gptel offers a few extra conveniences in Org mode.
 
-- You can limit the conversation context to an Org heading with the command =gptel-org-set-topic=.
+***** Limit conversation context to an Org heading
+
+You can limit the conversation context to an Org heading with the command =gptel-org-set-topic=.
+
+(This sets an Org property (=GPTEL_TOPIC=) under the heading.  You can also add this property manually instead.)
   
-- You can have branching conversations in Org mode, where each hierarchical outline path through the document is a separate conversation branch.  This is also useful for limiting the context size of each query.  See the variable =gptel-org-branching-context=.
-  Note: using this option requires Org 9.6.7 or higher to be available.  The [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]] package uses gptel to provide this branching conversation behavior for older versions of Org.
+***** Use branching context in Org mode (tree of conversations)
+
+You can have branching conversations in Org mode, where each hierarchical outline path through the document is a separate conversation branch.  This is also useful for limiting the context size of each query.  See the variable =gptel-org-branching-context=.
+
+Note: using this option requires Org 9.6.7 or higher to be available.  The [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]] package uses gptel to provide this branching conversation behavior for older versions of Org.
   
-- You can declare the gptel model, backend, temperature, system message and other parameters as Org properties with the command =gptel-org-set-properties=.  gptel queries under the corresponding heading will always use these settings, allowing you to create mostly reproducible LLM chat notebooks, and to have simultaneous chats with different models, model settings and directives under different Org headings.
+***** Save gptel parameters to Org headings (reproducible chats)
+
+You can declare the gptel model, backend, temperature, system message and other parameters as Org properties with the command =gptel-org-set-properties=.  gptel queries under the corresponding heading will always use these settings, allowing you to create mostly reproducible LLM chat notebooks, and to have simultaneous chats with different models, model settings and directives under different Org headings.
 
 ** FAQ
 #+html: <details><summary>
