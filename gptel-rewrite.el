@@ -396,12 +396,14 @@ INFO is the async communication channel for the rewrite request."
           (cl-callf concat (overlay-get ov 'gptel-rewrite) response)
           (overlay-put ov 'display (buffer-string))))
       (unless (plist-get info :stream) (gptel--rewrite-callback t info)))
-     ((null response)                   ;finished with error
-      (message (concat "LLM response error: %s. Rewrite/refactor in buffer %s canceled.")
-               (plist-get info :status) (plist-get info :buffer))
+     ((eq response 'abort)              ;request aborted
       (when-let* ((proc-buf (cdr-safe (plist-get info :context))))
         (kill-buffer proc-buf))
       (delete-overlay ov))
+     ((null response)                   ;finished with error
+      (message (concat "LLM response error: %s. Rewrite/refactor in buffer %s canceled.")
+               (plist-get info :status) (plist-get info :buffer))
+      (gptel--rewrite-callback 'abort info))
      (t (let ((proc-buf (cdr-safe (plist-get info :context))) ;finished successfully
               (mkb (propertize "<mouse-1>" 'face 'help-key-binding)))
           (with-current-buffer proc-buf
