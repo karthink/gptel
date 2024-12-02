@@ -432,9 +432,8 @@ Also format its value in the Transient menu."
      ;;FIXME: Transient complains if I use `gptel--refactor-or-rewrite' here. It
      ;;reads this function as a suffix instead of a function that returns the
      ;;description.
-     (lambda () (if (derived-mode-p 'prog-mode)
-               "Refactor" "Rewrite"))
-     gptel-rewrite-menu)]
+     (lambda () (if (derived-mode-p 'prog-mode) "Refactor" "Rewrite"))
+     gptel-rewrite)]
    ["Tweak Response" :if gptel--in-response-p :pad-keys t
     ("SPC" "Mark" gptel--mark-response)
     ("P" "Previous variant" gptel--previous-variant

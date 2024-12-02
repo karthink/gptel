@@ -424,7 +424,7 @@ INFO is the async communication channel for the rewrite request."
                         (unless (eq (current-buffer) buf)
                           (format " in buffer %s " (buffer-name buf)))
                         (concat " ready: " mkb ", " (propertize "RET" 'face 'help-key-binding)
-                                " or " (substitute-command-keys "\\[gptel-menu] to continue.")))))))))))
+                                " or " (substitute-command-keys "\\[gptel-rewrite] to continue.")))))))))))
 
 ;; * Transient Prefixes for rewriting/refactoring
 
@@ -445,8 +445,10 @@ By default, gptel uses the directive associated with the `rewrite'
              'gptel--rewrite-directive "Rewrite directive")))
     :pad-keys t])
 
-;;;###autoload (autoload 'gptel-rewrite-menu "gptel-rewrite" nil t)
-(transient-define-prefix gptel-rewrite-menu ()
+(define-obsolete-function-alias 'gptel-rewrite-menu 'gptel-rewrite "0.9.6")
+
+;;;###autoload (autoload 'gptel-rewrite "gptel-rewrite" nil t)
+(transient-define-prefix gptel-rewrite ()
   "Rewrite or refactor text region using an LLM."
   [:description
    (lambda ()
@@ -499,10 +501,12 @@ By default, gptel uses the directive associated with the `rewrite'
         (gptel--suffix-rewrite gptel--rewrite-message t)
         'json)))]]
   (interactive)
+  (unless (or gptel--rewrite-overlays (use-region-p))
+    (user-error "`gptel-rewrite' requires an active region or rewrite in progress."))
   (unless gptel--rewrite-message
     (setq gptel--rewrite-message
           (concat (gptel--refactor-or-rewrite) ": ")))
-  (transient-setup 'gptel-rewrite-menu))
+  (transient-setup 'gptel-rewrite))
 
 ;; * Transient infixes for rewriting/refactoring
 
@@ -558,8 +562,8 @@ generated from functions."
           (not (y-or-n-p
                 "Rewrite directive is dynamically generated: Edit its current value instead?")))))
   (if cancel (progn (message "Edit canceled")
-                    (call-interactively #'gptel-rewrite-menu))
-    (gptel--edit-directive 'gptel--rewrite-directive #'gptel-rewrite-menu)))
+                    (call-interactively #'gptel-rewrite))
+    (gptel--edit-directive 'gptel--rewrite-directive #'gptel-rewrite)))
 
 (transient-define-suffix gptel--suffix-rewrite (&optional rewrite-message dry-run)
   "Rewrite or refactor region contents."
