@@ -36,9 +36,15 @@ https://user-images.githubusercontent.com/8607532/230516812-86510a09-a2fb-4cbd-b
 
 https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-ad3f-b66fa73c6e45.mp4
 
+#+html: <p align="center">
+https://github.com/user-attachments/assets/1bb0954c-b9a0-4678-9b98-50f91c0e3fcc
+#+html: </p>
+
 *Media support*
 
+#+html: <p align="center">
 https://github.com/user-attachments/assets/1fd947e1-226b-4be2-bc68-7b22b2e3215f
+#+html: </p>
 
 *Multi-LLM support demo*:
 
