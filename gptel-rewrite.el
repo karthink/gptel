@@ -370,7 +370,8 @@ INFO is the async communication channel for the rewrite request."
     (cond
      ((stringp response)                ;partial or fully successful result
       (with-current-buffer proc-buf     ;auxiliary buffer, insert text here and copy to overlay
-        (let ((inhibit-modification-hooks nil))
+        (let ((inhibit-modification-hooks nil)
+              (inhibit-read-only t))
           (when (= (buffer-size) 0)
             (buffer-disable-undo)
             (insert-buffer-substring buf (overlay-start ov) (overlay-end ov))
@@ -394,11 +395,12 @@ INFO is the async communication channel for the rewrite request."
      (t (let ((proc-buf (cdr-safe (plist-get info :context))) ;finished successfully
               (mkb (propertize "<mouse-1>" 'face 'help-key-binding)))
           (with-current-buffer proc-buf
-            (delete-region (point) (point-max))
-            (when (and (plist-get info :newline)
-                       (not (eq (char-before (point-max)) ?\n)))
-              (insert "\n"))
-            (font-lock-ensure)
+            (let ((inhibit-read-only t))
+              (delete-region (point) (point-max))
+              (when (and (plist-get info :newline)
+                         (not (eq (char-before (point-max)) ?\n)))
+                (insert "\n"))
+              (font-lock-ensure))
             (overlay-put ov 'display (buffer-string))
             (kill-buffer proc-buf))
           (when (buffer-live-p buf)
