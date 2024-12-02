@@ -153,7 +153,8 @@ the response is inserted into the current buffer after point."
                                         (gptel--stream-convert-markdown->org)))
                    info))
       (if stream
-          (progn (set-process-sentinel process #'gptel-curl--stream-cleanup)
+          (progn (plist-put info :stream t)
+                 (set-process-sentinel process #'gptel-curl--stream-cleanup)
                  (set-process-filter process #'gptel-curl--stream-filter))
         (set-process-sentinel process #'gptel-curl--sentinel)))))
 
@@ -214,14 +215,17 @@ PROCESS and _STATUS are process parameters."
            (http-msg (plist-get info :status)))
       (when gptel-log-level (gptel-curl--log-response proc-buf info)) ;logging
       (if (member http-status '("200" "100")) ;Finish handling response
-          (with-current-buffer gptel-buffer
-            (if (not tracking-marker)   ;Empty response
-                (when gptel-mode (gptel--update-status " Empty response" 'success))
-              (pulse-momentary-highlight-region start-marker tracking-marker)
-              (when gptel-mode
-                (save-excursion (goto-char tracking-marker)
-                                (insert "\n\n" (gptel-prompt-prefix-string)))
-                (gptel--update-status  " Ready" 'success))))
+          (progn
+            ;; Run the callback one last time to signal that the process has ended
+            (funcall (plist-get info :callback) t info)
+            (with-current-buffer gptel-buffer
+              (if (not tracking-marker)   ;Empty response
+                  (when gptel-mode (gptel--update-status " Empty response" 'success))
+                (pulse-momentary-highlight-region start-marker tracking-marker)
+                (when gptel-mode
+                  (save-excursion (goto-char tracking-marker)
+                                  (insert "\n\n" (gptel-prompt-prefix-string)))
+                  (gptel--update-status  " Ready" 'success)))))
         ;; Or Capture error message
         (with-current-buffer proc-buf
           (goto-char (point-max))
@@ -243,6 +247,7 @@ PROCESS and _STATUS are process parameters."
              ((eq response 'json-read-error)
               (message "%s error (%s): Malformed JSON in response." backend-name http-msg))
              (t (message "%s error (%s): Could not parse HTTP response." backend-name http-msg)))))
+        (funcall (plist-get info :callback) 'error info)
         (with-current-buffer gptel-buffer
           (when gptel-mode
             (gptel--update-status
@@ -265,34 +270,34 @@ PROCESS and _STATUS are process parameters."
 
 INFO is a mutable plist containing information relevant to this buffer.
 See `gptel--url-get-response' for details."
-  (let ((start-marker (plist-get info :position))
-        (tracking-marker (plist-get info :tracking-marker))
-        (transformer (plist-get info :transformer)))
-    (when response
-        (with-current-buffer (marker-buffer start-marker)
-          (save-excursion
-            (unless tracking-marker
-              (gptel--update-status " Typing..." 'success)
-              (goto-char start-marker)
-              (unless (or (bobp) (plist-get info :in-place))
-                (insert "\n\n")
-                (when gptel-mode
-                  ;; Put prefix before AI response.
-                  (insert (gptel-response-prefix-string)))
-                (move-marker start-marker (point)))
-              (setq tracking-marker (set-marker (make-marker) (point)))
-              (set-marker-insertion-type tracking-marker t)
-              (plist-put info :tracking-marker tracking-marker))
-            
-            (when transformer
-              (setq response (funcall transformer response)))
-            
-            (put-text-property
-             0 (length response) 'gptel 'response response)
-            (goto-char tracking-marker)
-            ;; (run-hooks 'gptel-pre-stream-hook)
-            (insert response)
-            (run-hooks 'gptel-post-stream-hook))))))
+  (when (stringp response)
+    (let ((start-marker (plist-get info :position))
+          (tracking-marker (plist-get info :tracking-marker))
+          (transformer (plist-get info :transformer)))
+      (with-current-buffer (marker-buffer start-marker)
+        (save-excursion
+          (unless tracking-marker
+            (gptel--update-status " Typing..." 'success)
+            (goto-char start-marker)
+            (unless (or (bobp) (plist-get info :in-place))
+              (insert "\n\n")
+              (when gptel-mode
+                ;; Put prefix before AI response.
+                (insert (gptel-response-prefix-string)))
+              (move-marker start-marker (point)))
+            (setq tracking-marker (set-marker (make-marker) (point)))
+            (set-marker-insertion-type tracking-marker t)
+            (plist-put info :tracking-marker tracking-marker))
+
+          (when transformer
+            (setq response (funcall transformer response)))
+
+          (put-text-property
+           0 (length response) 'gptel 'response response)
+          (goto-char tracking-marker)
+          ;; (run-hooks 'gptel-pre-stream-hook)
+          (insert response)
+          (run-hooks 'gptel-post-stream-hook))))))
 
 (defun gptel-curl--stream-filter (process output)
   (let* ((proc-info (alist-get process gptel-curl--process-alist)))
