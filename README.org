@@ -812,21 +812,22 @@ The above code makes the backend available to select.  If you want it to be the 
 
 ** Usage
 
-(There is also a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel.)
+gptel provides a few powerful, general purpose and flexible commands.  You can dynamically tweak their behavior to the needs of your task with /directives/, redirection options and more.  There is a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel -- but =gptel-send= might be all you need.
 
-|-------------------+------------------------------------------------------------------------------------------------|
-| *To send queries* | Description                                                                                    |
-|-------------------+------------------------------------------------------------------------------------------------|
-| =gptel-send=      | Send all text up to =(point)=, or the selection if region is active.  Works anywhere in Emacs. |
-| =gptel=           | Create a new dedicated chat buffer.  Not required to use gptel.                                |
-|-------------------+------------------------------------------------------------------------------------------------|
+|-------------------+---------------------------------------------------------------------------------------------------|
+| *To send queries* | Description                                                                                       |
+|-------------------+---------------------------------------------------------------------------------------------------|
+| =gptel-send=      | Send all text up to =(point)=, or the selection if region is active.  Works anywhere in Emacs.    |
+| =gptel=           | Create a new dedicated chat buffer.  Not required to use gptel.                                   |
+| =gptel-rewrite=   | Rewrite, refactor or change the selected region.  Can diff/ediff changes before merging/applying. |
+|-------------------+---------------------------------------------------------------------------------------------------|
 
-|--------------------+---------------------------------------------------------------|
-| *To Set options*   |                                                               |
-|--------------------+---------------------------------------------------------------|
-| =C-u= =gptel-send= | Transient menu for preferences, input/output redirection etc. |
-| =gptel-menu=       | /(Same)/                                                      |
-|--------------------+---------------------------------------------------------------|
+|---------------------+---------------------------------------------------------------|
+| *To tweak behavior* |                                                               |
+|---------------------+---------------------------------------------------------------|
+| =C-u= =gptel-send=  | Transient menu for preferences, input/output redirection etc. |
+| =gptel-menu=        | /(Same)/                                                      |
+|---------------------+---------------------------------------------------------------|
 
 |------------------+--------------------------------------------------------------------------------------------------------|
 | *To add context* |                                                                                                        |
@@ -858,6 +859,8 @@ The above code makes the backend available to select.  If you want it to be the 
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/3562a6e2-7a5c-4f7e-8e57-bf3c11589c73" align="center" alt="Image showing gptel's menu with some of the available query options.">
 
 *** In a dedicated chat buffer:
+
+*Note*: gptel works anywhere in Emacs.  The dedicated chat buffer only adds some conveniences.
 
 1. Run =M-x gptel= to start or switch to the chat buffer. It will ask you for the key if you skipped the previous step. Run it with a prefix-arg (=C-u M-x gptel=) to start a new session.
 
@@ -958,7 +961,7 @@ Saving the file will save the state of the conversation as well.  To resume the 
 Most gptel options can be set from gptel's transient menu, available by calling =gptel-send= with a prefix-argument, or via =gptel-menu=.  To change their default values in your configuration, see [[*Additional Configuration]].  Chat buffer-specific options are also available via the header-line in chat buffers.
 
 # TODO Remove this when writing the manual.
-Selecting a model dand backend can be done interactively via the =-m= command of =gptel-menu=.  Available registered models are prefixed by the name of their backend with a string like =ChatGPT:gpt-4o-mini=, where =ChatGPT= is the backend name you used to register it and =gpt-4o-mini= is the name of the model.
+Selecting a model and backend can be done interactively via the =-m= command of =gptel-menu=.  Available registered models are prefixed by the name of their backend with a string like =ChatGPT:gpt-4o-mini=, where =ChatGPT= is the backend name you used to register it and =gpt-4o-mini= is the name of the model.
 
 *** Include more context with requests
 
@@ -976,25 +979,33 @@ And then browse through or remove context from the context buffer:
 
 *** Rewrite, refactor or fill in a region
 
-In any buffer: with a region selected, you can rewrite prose or refactor code from here:
+In any buffer: with a region selected, you can modify text, rewrite prose or refactor code with `gptel-rewrite`.
 
-***** Prose:
+*Prose*:
 
-#+html: <img src="https://github.com/user-attachments/assets/1024226c-3b60-46bb-948d-04f1e721b0e0" align="center" />
+#+html: <p align="center">
+https://github.com/user-attachments/assets/e3b436b3-9bde-4c1f-b2ce-3f7df1984933
+#+html: </p>
 
-***** Code:
+The result is previewed over the original text.  By default, the buffer is not modified.
 
-#+html: <img src="https://github.com/user-attachments/assets/234a6143-bcac-4567-99f3-b20d982ef8e1" align="center" />
+*Code*:
 
-***** When the refactor is ready, you can apply it or compare against the original:
+Pressing =RET= or clicking in the rewritten region should give you a list of options: you can *diff*, *ediff*, *merge* or *accept* the replacement.
 
-#+html: <img src="https://github.com/user-attachments/assets/7687b2d2-781d-41fd-881d-c01bd9105aa0" align="center" />
+#+html: <p align="center">
+https://github.com/user-attachments/assets/4067fdb8-85d3-4264-9b64-d727353f68f9
+#+html: </p>
 
-***** These actions are also available directly when the cursor is inside the pending rewrite region:
+If you would like one of these things to happen automatically, you can customize =gptel-rewrite-default-action=.
+
+These options are also available from =gptel-rewrite=:
+
+#+html: <img src="https://github.com/user-attachments/assets/589785b9-aa3f-414a-98dd-d26b7509de08" align="center" />
+
+And you can call them directly when the cursor is in the rewritten region:
 
 #+html: <img src="https://github.com/user-attachments/assets/f5b3ca47-e146-45fe-8584-f11035fa4dbc" align="center" />
-
-***** If you want to run one of these actions automatically, you can customize =gptel-rewrite-default-action=.
 
 *** Extra Org mode conveniences
 
