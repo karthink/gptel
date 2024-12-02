@@ -36,8 +36,10 @@ https://user-images.githubusercontent.com/8607532/230516812-86510a09-a2fb-4cbd-b
 
 https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-ad3f-b66fa73c6e45.mp4
 
+*In-place usage*
+
 #+html: <p align="center">
-https://github.com/user-attachments/assets/1bb0954c-b9a0-4678-9b98-50f91c0e3fcc
+https://github.com/user-attachments/assets/cec11aec-52f6-412e-9e7a-9358e8b9b1bf
 #+html: </p>
 
 *Media support*
@@ -985,9 +987,7 @@ And then browse through or remove context from the context buffer:
 
 *** Rewrite, refactor or fill in a region
 
-In any buffer: with a region selected, you can modify text, rewrite prose or refactor code with `gptel-rewrite`.
-
-*Prose*:
+In any buffer: with a region selected, you can modify text, rewrite prose or refactor code with `gptel-rewrite`.  Example with prose:
 
 #+html: <p align="center">
 https://github.com/user-attachments/assets/e3b436b3-9bde-4c1f-b2ce-3f7df1984933
@@ -995,13 +995,13 @@ https://github.com/user-attachments/assets/e3b436b3-9bde-4c1f-b2ce-3f7df1984933
 
 The result is previewed over the original text.  By default, the buffer is not modified.
 
-*Code*:
-
-Pressing =RET= or clicking in the rewritten region should give you a list of options: you can *diff*, *ediff*, *merge* or *accept* the replacement.
+Pressing =RET= or clicking in the rewritten region should give you a list of options: you can *diff*, *ediff*, *merge* or *accept* the replacement.  Example with code:
 
 #+html: <p align="center">
 https://github.com/user-attachments/assets/4067fdb8-85d3-4264-9b64-d727353f68f9
 #+html: </p>
+
+*Acting on the LLM response*:
 
 If you would like one of these things to happen automatically, you can customize =gptel-rewrite-default-action=.
 
@@ -1270,6 +1270,7 @@ gptel is a general-purpose package for chat and ad-hoc LLM interaction.  The fol
 
 ** Acknowledgments
 
+- [[https://github.com/meain][Abin Simon]] for extensive feedback on improving gptel's directives and UI.
 - [[https://github.com/algal][Alexis Gallagher]] and [[https://github.com/d1egoaz][Diego Alvarez]] for fixing a nasty multi-byte bug with =url-retrieve=.
 - [[https://github.com/tarsius][Jonas Bernoulli]] for the Transient library.
 - [[https://github.com/daedsidog][daedsidog]] for adding context support to gptel.
