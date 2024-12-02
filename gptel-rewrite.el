@@ -467,7 +467,17 @@ By default, gptel uses the directive associated with the `rewrite'
     ("-w" "Ignore all whitespace"          ("-w" "--ignore-all-space"))
     ("-i" "Ignore case"                    ("-i" "--ignore-case"))
     (gptel--infix-rewrite-diff:-U)]
-   [:description gptel--refactor-or-rewrite
+   [:description "Accept all"
+    :if (lambda () (gptel--rewrite-sanitize-overlays))
+    (gptel--suffix-rewrite-merge)
+    (gptel--suffix-rewrite-accept)
+    "Reject all"
+    (gptel--suffix-rewrite-reject)]]
+  [[:description (lambda () (concat "Diff " (gptel--refactor-or-rewrite) "s"))
+    :if (lambda () gptel--rewrite-overlays)
+    (gptel--suffix-rewrite-diff)
+    (gptel--suffix-rewrite-ediff)]]
+  [[:description gptel--refactor-or-rewrite
     :if use-region-p
     (gptel--suffix-rewrite)]
    ["Dry Run"
@@ -488,17 +498,6 @@ By default, gptel uses the directive associated with the `rewrite'
        (gptel--inspect-query
         (gptel--suffix-rewrite gptel--rewrite-message t)
         'json)))]]
-  [[:description (lambda () (concat "Diff " (gptel--refactor-or-rewrite) "s"))
-    :if (lambda () gptel--rewrite-overlays)
-    (gptel--suffix-rewrite-diff)
-    (gptel--suffix-rewrite-ediff)]
-   [:description (lambda () (concat "Continue " (gptel--refactor-or-rewrite) "s"))
-    :if (lambda () (gptel--rewrite-sanitize-overlays))
-    (gptel--suffix-rewrite-merge)
-    (gptel--suffix-rewrite-accept)]
-   [:description (lambda () (concat "Reject " (gptel--refactor-or-rewrite) "s"))
-    :if (lambda () (gptel--rewrite-sanitize-overlays))
-    (gptel--suffix-rewrite-reject)]]
   (interactive)
   (unless gptel--rewrite-message
     (setq gptel--rewrite-message
@@ -609,23 +608,23 @@ generated from functions."
 (transient-define-suffix gptel--suffix-rewrite-merge ()
   "Insert LLM output as merge conflicts"
   :if (lambda () gptel--rewrite-overlays)
-  :key "cm"
-  :description "Accept as merge conflicts"
+  :key "M"
+  :description "Merge with conflicts"
   (interactive)
   (gptel--rewrite-merge gptel--rewrite-overlays))
 
 (transient-define-suffix gptel--suffix-rewrite-accept ()
   "Accept pending LLM rewrites."
   :if (lambda () gptel--rewrite-overlays)
-  :key "ca"
-  :description "Accept in-place"
+  :key "A"
+  :description "Accept and replace"
   (interactive)
   (gptel--rewrite-accept gptel--rewrite-overlays))
 
 (transient-define-suffix gptel--suffix-rewrite-reject ()
   "Clear pending LLM rewrites."
   :if (lambda () gptel--rewrite-overlays)
-  :key "ck"
+  :key "K"
   :description (concat "Clear pending "
                        (downcase (gptel--refactor-or-rewrite))
                        "s")
