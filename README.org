@@ -987,7 +987,7 @@ And then browse through or remove context from the context buffer:
 
 *** Rewrite, refactor or fill in a region
 
-In any buffer: with a region selected, you can modify text, rewrite prose or refactor code with `gptel-rewrite`.  Example with prose:
+In any buffer: with a region selected, you can modify text, rewrite prose or refactor code with =gptel-rewrite=.  Example with prose:
 
 #+html: <p align="center">
 https://github.com/user-attachments/assets/e3b436b3-9bde-4c1f-b2ce-3f7df1984933

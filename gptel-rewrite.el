@@ -370,7 +370,7 @@ Show the rewrite result in an overlay over the original text, and
 set up dispatch actions.
 
 RESPONSE is the response received.  It may also be t (to indicate
-success) or the symbol `error' (to indicate failure.)
+success) nil (to indicate failure), or the symbol `abort'.
 
 INFO is the async communication channel for the rewrite request."
   (when-let* ((ov-and-buf (plist-get info :context))
@@ -601,7 +601,7 @@ generated from functions."
       :system gptel--rewrite-directive
       :stream gptel-stream
       :context
-      (let ((ov (make-overlay (region-beginning) (region-end))))
+      (let ((ov (make-overlay (region-beginning) (region-end) nil t)))
         (overlay-put ov 'category 'gptel)
         (overlay-put ov 'evaporate t)
         (cons ov (generate-new-buffer "*gptel-rewrite*")))
