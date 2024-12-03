@@ -107,7 +107,7 @@ Intended for internal use only.")
      (gptel--model-request-params  gptel-model))))
 
 (cl-defmethod gptel--parse-list ((_backend gptel-ollama) prompt-list)
-  (cl-loop for text in (cdr prompt-list)
+  (cl-loop for text in prompt-list
            for role = t then (not role)
            if text collect
            (list :role (if role "user" "assistant") :content text)))
