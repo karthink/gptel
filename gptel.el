@@ -3,7 +3,7 @@
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
-;; Version: 0.9.6
+;; Version: 0.9.7
 ;; Package-Requires: ((emacs "27.1") (transient "0.4.0") (compat "29.1.4.1"))
 ;; Keywords: convenience
 ;; URL: https://github.com/karthink/gptel
@@ -36,7 +36,7 @@
 ;;
 ;; - The services ChatGPT, Azure, Gemini, Anthropic AI, Anyscale, Together.ai,
 ;;   Perplexity, Anyscale, OpenRouter, Groq, PrivateGPT, DeepSeek, Cerebras,
-;;   Github Models and Kagi (FastGPT & Summarizer)
+;;   Github Models, xAI and Kagi (FastGPT & Summarizer)
 ;; - Local models via Ollama, Llama.cpp, Llamafiles or GPT4All
 ;;
 ;;  Additionally, any LLM service (local or remote) that provides an
@@ -176,8 +176,8 @@
   'gptel-set-topic 'gptel-org-set-topic "0.7.5")
 
 (eval-when-compile
-  (require 'subr-x)
-  (require 'cl-lib))
+  (require 'subr-x))
+(require 'cl-lib)
 (require 'compat nil t)
 (require 'url)
 (require 'map)
