@@ -38,6 +38,12 @@
 (defvar-local gptel--rewrite-overlays nil
   "List of active rewrite overlays in the buffer.")
 
+(defun gptel--rewrite-sanitize-overlays ()
+  "Ensure gptel's rewrite overlays in buffer are consistent."
+  (setq gptel--rewrite-overlays
+        (cl-delete-if-not #'overlay-buffer
+                          gptel--rewrite-overlays)))
+
 (defvar gptel--set-buffer-locally nil
   "Set model parameters from `gptel-menu' buffer-locally.
 
@@ -427,7 +433,9 @@ Also format its value in the Transient menu."
                    (concat
                     (and gptel--rewrite-overlays "Continue ")
                     (gptel--refactor-or-rewrite)))
-    :if (lambda () (or gptel--rewrite-overlays (use-region-p)))
+    :if (lambda () (or (use-region-p)
+                  (and gptel--rewrite-overlays
+                       (gptel--rewrite-sanitize-overlays))))
     ("r"
      ;;FIXME: Transient complains if I use `gptel--refactor-or-rewrite' here. It
      ;;reads this function as a suffix instead of a function that returns the

@@ -151,12 +151,6 @@ which see."
 
 ;; * Helper functions
 
-(defun gptel--rewrite-sanitize-overlays ()
-  "Ensure gptel's rewrite overlays in buffer are consistent."
-  (setq gptel--rewrite-overlays
-        (cl-delete-if-not #'overlay-buffer
-                          gptel--rewrite-overlays)))
-
 (defsubst gptel--refactor-or-rewrite ()
   "Rewrite should be refactored into refactor.
 
@@ -484,7 +478,7 @@ By default, gptel uses the directive associated with the `rewrite'
     ("-i" "Ignore case"                    ("-i" "--ignore-case"))
     (gptel--infix-rewrite-diff:-U)]
    [:description "Accept all"
-    :if (lambda () (gptel--rewrite-sanitize-overlays))
+    :if (lambda () gptel--rewrite-overlays)
     (gptel--suffix-rewrite-merge)
     (gptel--suffix-rewrite-accept)
     "Reject all"
@@ -515,6 +509,7 @@ By default, gptel uses the directive associated with the `rewrite'
         (gptel--suffix-rewrite gptel--rewrite-message t)
         'json)))]]
   (interactive)
+  (gptel--rewrite-sanitize-overlays)
   (unless (or gptel--rewrite-overlays (use-region-p))
     (user-error "`gptel-rewrite' requires an active region or rewrite in progress."))
   (unless gptel--rewrite-message
