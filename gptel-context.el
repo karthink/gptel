@@ -184,13 +184,14 @@ ACTION should be either `add' or `remove'."
   (let ((files (directory-files-recursively path "." t)))
     (mapc (lambda (file)
             (unless (file-directory-p file)
-              (if (eq action 'add)
-                  (if (gptel--file-binary-p file)
-                      (gptel-context--handle-binary file)
-                    (cl-pushnew (list file) gptel-context--alist :test #'equal)
-                    (message "File \"%s\" added to context." file))
-                (setf (alist-get file gptel-context--alist nil 'remove #'equal) nil)
-                (message "File \"%s\" removed from context." file))))
+              (pcase action
+		('add (gptel--file-binary-p file)
+		      (gptel-context--handle-binary file)
+		      (cl-pushnew (list file) gptel-context--alist :test #'equal)
+		      (message "File \"%s\" added to context." file))
+		('remove
+		 (setf (alist-get file gptel-context--alist nil 'remove #'equal) nil)
+		 (message "File \"%s\" removed from context." file)))))
           files)))
 
 (defun gptel-context-add-file (path)
