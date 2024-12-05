@@ -169,24 +169,47 @@ context chunk.  This is accessible as, for example:
         (eq buffer-file-coding-system 'no-conversion))
     (file-missing (message "File \"%s\" is not readable." path))))
 
+(defun gptel-context--handle-binary (path)
+  "Add binary file at PATH to context if supported.
+Return PATH if added, nil if ignored."
+  (if-let* (((gptel--model-capable-p 'media))
+            (mime (mailcap-file-name-to-mime-type path))
+            ((gptel--model-mime-capable-p mime)))
+      (prog1 path
+        (cl-pushnew (list path :mime mime)
+                    gptel-context--alist :test #'equal)
+        (message "File \"%s\" added to context." path))
+    (message "Ignoring unsupported binary file \"%s\"." path)
+    nil))
+
+(defun gptel-context--handle-directory (path action)
+  "Process all files in directory at PATH according to ACTION.
+ACTION should be either `add' or `remove'."
+  (let ((files (directory-files-recursively path "." t)))
+    (mapc (lambda (file)
+            (unless (file-directory-p file)
+              (if (eq action 'add)
+                  (if (gptel--file-binary-p file)
+                      (gptel-context--handle-binary file)
+                    (cl-pushnew (list file) gptel-context--alist :test #'equal)
+                    (message "File \"%s\" added to context." file))
+                (setf (alist-get file gptel-context--alist nil 'remove #'equal) nil)
+                (message "File \"%s\" removed from context." file))))
+          files)))
+
 (defun gptel-context-add-file (path)
   "Add the file at PATH to the gptel context.
-
+If PATH is a directory, recursively add all files in it.
 PATH should be readable as text."
   (interactive "fChoose file to add to context: ")
-  (if (gptel--file-binary-p path)   ;Attach if supported
-      (if-let* (((gptel--model-capable-p 'media))
-                (mime (mailcap-file-name-to-mime-type path))
-                ((gptel--model-mime-capable-p mime)))
-          (prog1 path
-            (cl-pushnew (list path :mime mime)
-                        gptel-context--alist :test #'equal)
-            (message "File \"%s\" added to context." path))
-        (message "Ignoring unsupported binary file \"%s\"." path))
-    ;; Add text file
-    (cl-pushnew (list path) gptel-context--alist :test #'equal)
-    (message "File \"%s\" added to context." path)
-    path))
+  (if (file-directory-p path)
+      (gptel-context--handle-directory path 'add)
+    (if (gptel--file-binary-p path)
+        (gptel-context--handle-binary path)
+      ;; Add text file
+      (cl-pushnew (list path) gptel-context--alist :test #'equal)
+      (message "File \"%s\" added to context." path)
+      path)))
 
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
 (defalias 'gptel-add-file #'gptel-context-add-file)
@@ -194,7 +217,8 @@ PATH should be readable as text."
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
 If CONTEXT is nil, removes the context at point.
-If selection is active, removes all contexts within selection."
+If selection is active, removes all contexts within selection.
+If CONTEXT is a directory, recursively removes all files in it."
   (cond
    ((overlayp context)
     (delete-overlay context)
@@ -204,9 +228,11 @@ If selection is active, removes all contexts within selection."
          for ov in (alist-get (current-buffer) gptel-context--alist)
          thereis (overlay-start ov))
       (setf (alist-get (current-buffer) gptel-context--alist nil 'remove) nil)))
-   ((stringp context)                   ;file
-    (setf (alist-get context gptel-context--alist nil 'remove #'equal)
-          nil))
+   ((stringp context)                   ;file or directory
+    (if (file-directory-p context)
+        (gptel-context--handle-directory context 'remove)
+      (setf (alist-get context gptel-context--alist nil 'remove #'equal)
+            nil)))
    ((region-active-p)
     (when-let ((contexts (gptel-context--in-region (current-buffer)
                                                    (region-beginning)
