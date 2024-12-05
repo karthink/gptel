@@ -112,14 +112,10 @@ context chunk.  This is accessible as, for example:
     (message "Current region added as context."))
    ;; If in dired
    ((derived-mode-p 'dired-mode)
-    (let ((files (cl-loop for file in (dired-get-marked-files)
-			  if (file-directory-p file)
-			  append (directory-files-recursively file "." t)
-			  else collect file)))
-      (mapc (if (and arg (< (prefix-numeric-value arg) 0))
-		#'gptel-context-remove
+    (mapc (if (and arg (< (prefix-numeric-value arg) 0))
+              #'gptel-context-remove
               #'gptel-context-add-file)
-            (cl-remove-if #'file-directory-p files))))
+          (dired-get-marked-files)))
    ;; If in an image buffer
    ((and (derived-mode-p 'image-mode)
          (gptel--model-capable-p 'media;)
