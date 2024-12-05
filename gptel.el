@@ -109,7 +109,7 @@
 ;;   Use a prefix argument (`C-u C-c RET') to access a menu.  In this menu you
 ;;   can set chat parameters like the system directives, active backend or
 ;;   model, or choose to redirect the input or output elsewhere (such as to the
-;;   kill ring).
+;;   kill ring or the echo area).
 ;;
 ;; - You can save this buffer to a file.  When opening this file, turn on
 ;;   `gptel-mode' before editing it to restore the conversation state and
@@ -134,8 +134,8 @@
 ;; Rewrite/refactor interface
 ;;
 ;; In any buffer: with a region selected, you can rewrite prose, refactor code
-;; or fill in the region.  Use gptel's menu (C-u M-x `gptel-send') to access
-;; this feature.
+;; or fill in the region.  This is accessible via `gptel-rewrite', and also from
+;; the `gptel-send' menu.
 ;;
 ;; gptel in Org mode:
 ;;
@@ -397,30 +397,39 @@ transient menu interface provided by `gptel-menu'."
 
 ;; Model and interaction parameters
 (defcustom gptel-directives
-  '((default . "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
+  '((default     . "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
     (programming . "You are a large language model and a careful programmer. Provide code and only code as output without any additional text, prompt or note.")
-    (writing . "You are a large language model and a writing assistant. Respond concisely.")
-    (chat . "You are a large language model and a conversation partner. Respond concisely."))
+    (writing     . "You are a large language model and a writing assistant. Respond concisely.")
+    (chat        . "You are a large language model and a conversation partner. Respond concisely."))
   "System prompts or directives for the LLM.
 
-A \"directive\" is the system message (also called system prompt
-or system instruction) sent at the beginning of each request to
-the LLM.
+Each entry in this alist maps a symbol naming the directive to
+the directive itself.  By default, gptel uses the directive with
+the key \\+`default'.
 
-A directive can be
+To set the directive for a chat session interactively call
+`gptel-send' with a prefix argument, or call `gptel-menu'.
+
+A \"directive\" is typically the system message (also called
+system prompt or system instruction) sent at the beginning of
+each request to the LLM.  It is used to set general instructions,
+expectations and the overall tone.
+
+gptel's idea of the directive is more general.  A directive in
+`gptel-directives' can be
+
 - A string, interpreted as the system message.
+
 - A list of strings, whose first (possibly nil) element is
   interpreted as the system message, and the remaining elements
   as (possibly nil) alternating user prompts and LLM responses.
-  This can be used to template the intial part of a conversation.
+  This can be used to template the initial part of a conversation.
+
 - A function that returns a string or a list of strings,
   interpreted as the above.  This can be used to dynamically
   generate a system message and/or conversation template based on
-  the current context.
-
-Each entry in this alist maps a symbol naming the directive to
-the directive itself.  To set the directive for a chat session
-interactively call `gptel-send' with a prefix argument."
+  the current context.  See the definition of
+  `gptel--rewrite-directive-default' for an example."
   :safe #'always
   :type '(alist :key-type symbol :value-type string))
 

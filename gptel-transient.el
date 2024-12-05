@@ -399,13 +399,13 @@ Also format its value in the Transient menu."
      :if (lambda () (and gptel-expert-commands (not gptel-mode))))
     (gptel--infix-track-media
      :if (lambda () (and gptel-mode (gptel--model-capable-p 'media))))]
-   ["Prompt from"
+   [" <Prompt from"
     ("m" "Minibuffer instead" "m")
     ("y" "Kill-ring instead" "y")
     ""
     ("i" "Respond in place" "i")]
-    ["Response to"
-    ("e" "Echo area instead" "e")
+    [" >Response to"
+    ("e" "Echo area" "e")
     ("g" "gptel session" "g"
      :class transient-option
      :prompt "Existing or new gptel session: "
@@ -809,7 +809,7 @@ Or in an extended conversation:
   :format " %k %d %v"
   :key "d"
   :argument ":"
-  :description "Add directive"
+  :description "Add instruction"
   :transient t)
 
 
