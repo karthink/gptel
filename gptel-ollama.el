@@ -121,8 +121,9 @@ Intended for internal use only.")
                 (or (not max-entries) (>= max-entries 0))
                 (setq prop (text-property-search-backward
                             'gptel 'response
-                            (when (get-char-property (max (point-min) (1- (point)))
-                                                     'gptel)
+                            (when (eq (get-char-property (max (point-min) (1- (point)))
+                                                         'gptel)
+                                      'response)
                               t))))
           (if (prop-match-value prop)   ;assistant role
               (push (list :role "assistant"
