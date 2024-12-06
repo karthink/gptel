@@ -120,7 +120,7 @@ will toggle its visibility state."
             (and s (concat (propertize (concat "\n" s "\n") 'face 'shadow)
                            (make-separator-line))))))
          (max-width (- (window-width) (minibuffer-prompt-end)))
-         (max max-mini-window-height)
+         (max (or max-mini-window-height 0.4))
          (max-height (- (or (and (natnump max) max)
                             (floor (* max (frame-height))))
                         5)))
