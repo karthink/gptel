@@ -900,7 +900,7 @@ Or in an extended conversation:
                           (get-char-property (point) 'read-only))
                 (insert reduced-prompt))
               (setq position (point))
-              (when gptel-mode
+              (when (and gptel-mode (not dry-run))
                 (gptel--update-status " Waiting..." 'warning)))))
          ;; Insert into new gptel session
          (t (setq buffer
@@ -918,7 +918,8 @@ Or in an extended conversation:
             (with-current-buffer buffer
               (setq gptel-backend backend)
               (setq gptel-model model)
-              (gptel--update-status " Waiting..." 'warning)
+              (unless dry-run
+                (gptel--update-status " Waiting..." 'warning))
               (setq position (point)))))))
      ((setq gptel-buffer-name
             (cl-some (lambda (s) (and (stringp s) (string-prefix-p "b" s)
@@ -940,7 +941,8 @@ Or in an extended conversation:
              :callback callback
              :dry-run dry-run)
 
-      (gptel--update-status " Waiting..." 'warning)
+      (unless dry-run
+        (gptel--update-status " Waiting..." 'warning))
 
       ;; NOTE: Possible future race condition here if Emacs ever drops the GIL.
       ;; The HTTP request callback might modify the buffer before the in-place
