@@ -100,15 +100,17 @@
                             (when (get-char-property (max (point-min) (1- (point)))
                                                      'gptel)
                               t))))
+          ;; HACK Until we can find a more robust solution for editing
+          ;; responses, ignore prompts containing only whitespace, as the
+          ;; Anthropic API can't handle it.  See #452, #409, #406, #351 and #321
           (if (prop-match-value prop)   ; assistant role
-              (push (list :role "assistant"
-                          :content
-                          (buffer-substring-no-properties (prop-match-beginning prop)
-                                                          (prop-match-end prop)))
-                    prompts)
-            ;; HACK Until we can find a more robust solution for editing
-            ;; responses, ignore user prompts containing only whitespace, as the
-            ;; Anthropic API can't handle it.  See #409, #406, #351 and #321
+              (unless (save-excursion (skip-syntax-forward " ")
+                                      (null (get-char-property (point) 'gptel)))
+                (push (list :role "assistant"
+                            :content
+                            (buffer-substring-no-properties (prop-match-beginning prop)
+                                                            (prop-match-end prop)))
+                      prompts))
             (unless (save-excursion (skip-syntax-forward " ")
                                     (eq (get-char-property (point) 'gptel) 'response))
               (if include-media         ; user role: possibly with media
