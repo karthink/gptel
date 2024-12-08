@@ -1028,6 +1028,15 @@ You can limit the conversation context to an Org heading with the command =gptel
 
 You can have branching conversations in Org mode, where each hierarchical outline path through the document is a separate conversation branch.  This is also useful for limiting the context size of each query.  See the variable =gptel-org-branching-context=.
 
+If this variable is non-nil, you should probably edit =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist= so that the prefix strings for org-mode are not Org headings, e.g.
+
+#+begin_src emacs-lisp
+  (setf (alist-get 'org-mode gptel-prompt-prefix-alist) "@user\n")
+  (setf (alist-get 'org-mode gptel-response-prefix-alist) "@assistant\n")
+#+end_src
+
+Otherwise, the default prompt prefix will make successive prompts sibling headings, and therefore on different conversation branches, which probably isn't what you want.
+
 Note: using this option requires Org 9.6.7 or higher to be available.  The [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]] package uses gptel to provide this branching conversation behavior for older versions of Org.
   
 ***** Save gptel parameters to Org headings (reproducible chats)
