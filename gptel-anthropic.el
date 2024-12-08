@@ -89,7 +89,7 @@
                  :content `[(:type "text" :text ,text)])))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-anthropic) &optional max-entries)
-  (let ((prompts) (prop)
+  (let ((prompts) (prop) (prev-pt (point))
         (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
                                                 (gptel--model-capable-p 'url)))))
     (if (or gptel-mode gptel-track-response)
@@ -103,16 +103,15 @@
           ;; HACK Until we can find a more robust solution for editing
           ;; responses, ignore prompts containing only whitespace, as the
           ;; Anthropic API can't handle it.  See #452, #409, #406, #351 and #321
-          (if (prop-match-value prop)   ; assistant role
-              (unless (save-excursion (skip-syntax-forward " ")
-                                      (null (get-char-property (point) 'gptel)))
+          ;; We check for blank prompts by skipping whitespace and comparing
+          ;; point against the previous.
+          (unless (save-excursion (skip-syntax-forward " ") (>= (point) prev-pt))
+            (if (prop-match-value prop) ; assistant role
                 (push (list :role "assistant"
                             :content
                             (buffer-substring-no-properties (prop-match-beginning prop)
                                                             (prop-match-end prop)))
-                      prompts))
-            (unless (save-excursion (skip-syntax-forward " ")
-                                    (eq (get-char-property (point) 'gptel) 'response))
+                      prompts)
               (if include-media         ; user role: possibly with media
                   (push (list :role "user"
                               :content
@@ -126,6 +125,7 @@
                              (buffer-substring-no-properties (prop-match-beginning prop)
                                                              (prop-match-end prop))))
                       prompts))))
+          (setq prev-pt (point))
           (and max-entries (cl-decf max-entries)))
       (push (list :role "user"
                   :content
