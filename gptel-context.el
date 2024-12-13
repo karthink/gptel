@@ -91,10 +91,9 @@ context chunk.  This is accessible as, for example:
   context.  If there is already a gptel context at point, remove it
   instead.
 
-- If in Dired, add marked files or file at point to the context. If
-  the file at point is a directory, or directories are marked,
-  recursively add all their files. With negative prefix ARG, remove
-  them from the context instead.
+- If in Dired, add marked files or file at point to the context.
+  Directories will have all their files added recursively. With
+  negative prefix ARG, remove them from the context instead.
 
 - Otherwise add the current buffer to the context.  With positive
   prefix ARG, prompt for a buffer name and add it to the context.
