@@ -169,13 +169,6 @@ documention."
   (ignore-errors
     (read-from-minibuffer prompt initial-input read-expression-map t history)))
 
-(defsubst gptel--refactor-or-rewrite ()
-  "Rewrite should be refactored into refactor.
-
-Or is it the other way around?"
-  (if (derived-mode-p 'prog-mode)
-      "Refactor" "Rewrite"))
-
 (defun gptel-system-prompt--format (&optional message)
   "Format the system MESSAGE for display in gptel's transient menus.
 
@@ -429,18 +422,14 @@ Also format its value in the Transient menu."
   [["Send"
     (gptel--suffix-send)
     ("M-RET" "Regenerate" gptel--regenerate :if gptel--in-response-p)]
-   [:description (lambda ()
-                   (concat
-                    (and gptel--rewrite-overlays "Continue ")
-                    (gptel--refactor-or-rewrite)))
+   [:description (lambda () (concat (and gptel--rewrite-overlays "Continue ")
+                               "Rewrite"))
     :if (lambda () (or (use-region-p)
                   (and gptel--rewrite-overlays
                        (gptel--rewrite-sanitize-overlays))))
     ("r"
-     ;;FIXME: Transient complains if I use `gptel--refactor-or-rewrite' here. It
-     ;;reads this function as a suffix instead of a function that returns the
-     ;;description.
-     (lambda () (if (derived-mode-p 'prog-mode) "Refactor" "Rewrite"))
+     (lambda () (if (get-char-property (point) 'gptel-rewrite)
+               "Iterate" "Rewrite"))
      gptel-rewrite)]
    ["Tweak Response" :if gptel--in-response-p :pad-keys t
     ("SPC" "Mark" gptel--mark-response)
@@ -770,7 +759,7 @@ supports.  See `gptel-track-media' for more information."
     (gptel-context-remove-all)
     (transient-setup)))
 
-;; ** Infix for the refactor/rewrite system message
+;; ** Infix for additional directive
 
 (transient-define-infix gptel--infix-add-directive ()
   "Additional directive intended for the next query only.

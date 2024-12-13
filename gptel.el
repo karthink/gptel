@@ -131,7 +131,7 @@
 ;;
 ;; When context is available, gptel will include it with each LLM query.
 ;;
-;; Rewrite/refactor interface
+;; Rewrite interface
 ;;
 ;; In any buffer: with a region selected, you can rewrite prose, refactor code
 ;; or fill in the region.  This is accessible via `gptel-rewrite', and also from
