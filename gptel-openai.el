@@ -138,6 +138,11 @@ with differing settings.")
 
 (cl-defmethod gptel--request-data ((_backend gptel-openai) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
+  (when (and gptel--system-message
+             (not (gptel--model-capable-p 'nosystem)))
+    (push (list :role "system"
+                :content gptel--system-message)
+          prompts))
   (let ((prompts-plist
          `(:model ,(gptel--model-name gptel-model)
            :messages [,@prompts]
@@ -157,6 +162,12 @@ with differing settings.")
      prompts-plist
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
+
+(cl-defmethod gptel--parse-list ((_backend gptel-openai) prompt-list)
+  (cl-loop for text in prompt-list
+           for role = t then (not role)
+           if text collect
+           (list :role (if role "user" "assistant") :content text)))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-openai) &optional max-entries)
   (let ((prompts) (prop)
@@ -195,12 +206,7 @@ with differing settings.")
                   :content
                   (gptel--trim-prefixes (buffer-substring-no-properties (point-min) (point-max))))
             prompts))
-    (if (and (not (gptel--model-capable-p 'nosystem))
-             gptel--system-message)
-        (cons (list :role "system"
-                    :content gptel--system-message)
-              prompts)
-      prompts)))
+    prompts))
 
 ;; TODO This could be a generic function
 (defun gptel--openai-parse-multipart (parts)

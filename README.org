@@ -8,20 +8,20 @@ gptel is a simple Large Language Model chat client for Emacs, with support for m
 | LLM Backend        | Supports | Requires                   |
 |--------------------+----------+----------------------------|
 | ChatGPT            | ✓        | [[https://platform.openai.com/account/api-keys][API key]]                    |
-| Azure              | ✓        | Deployment and API key     |
-| Ollama             | ✓        | [[https://ollama.ai/][Ollama running locally]]     |
-| GPT4All            | ✓        | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
+| Anthropic (Claude) | ✓        | [[https://www.anthropic.com/api][API key]]                    |
 | Gemini             | ✓        | [[https://makersuite.google.com/app/apikey][API key]]                    |
+| Ollama             | ✓        | [[https://ollama.ai/][Ollama running locally]]     |
 | Llama.cpp          | ✓        | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]]  |
 | Llamafile          | ✓        | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
+| GPT4All            | ✓        | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
 | Kagi FastGPT       | ✓        | [[https://kagi.com/settings?p=api][API key]]                    |
 | Kagi Summarizer    | ✓        | [[https://kagi.com/settings?p=api][API key]]                    |
+| Azure              | ✓        | Deployment and API key     |
+| Groq               | ✓        | [[https://console.groq.com/keys][API key]]                    |
+| Perplexity         | ✓        | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
+| OpenRouter         | ✓        | [[https://openrouter.ai/keys][API key]]                    |
 | together.ai        | ✓        | [[https://api.together.xyz/settings/api-keys][API key]]                    |
 | Anyscale           | ✓        | [[https://docs.endpoints.anyscale.com/][API key]]                    |
-| Perplexity         | ✓        | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
-| Anthropic (Claude) | ✓        | [[https://www.anthropic.com/api][API key]]                    |
-| Groq               | ✓        | [[https://console.groq.com/keys][API key]]                    |
-| OpenRouter         | ✓        | [[https://openrouter.ai/keys][API key]]                    |
 | PrivateGPT         | ✓        | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
 | DeepSeek           | ✓        | [[https://platform.deepseek.com/api_keys][API key]]                    |
 | Cerebras           | ✓        | [[https://cloud.cerebras.ai/][API key]]                    |
@@ -36,9 +36,17 @@ https://user-images.githubusercontent.com/8607532/230516812-86510a09-a2fb-4cbd-b
 
 https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-ad3f-b66fa73c6e45.mp4
 
+*In-place usage*
+
+#+html: <p align="center">
+https://github.com/user-attachments/assets/cec11aec-52f6-412e-9e7a-9358e8b9b1bf
+#+html: </p>
+
 *Media support*
 
+#+html: <p align="center">
 https://github.com/user-attachments/assets/1fd947e1-226b-4be2-bc68-7b22b2e3215f
+#+html: </p>
 
 *Multi-LLM support demo*:
 
@@ -88,15 +96,17 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
       - [[#including-media-images-documents-with-requests][Including media (images, documents) with requests]]
       - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
+    - [[#setting-options-backend-model-request-parameters-system-prompts-and-more][Setting options (backend, model, request parameters, system prompts and more)]]
     - [[#include-more-context-with-requests][Include more context with requests]]
     - [[#rewrite-refactor-or-fill-in-a-region][Rewrite, refactor or fill in a region]]
     - [[#extra-org-mode-conveniences][Extra Org mode conveniences]]
   - [[#faq][FAQ]]
+      - [[#i-want-to-use-gptel-in-a-way-thats-not-supported-by-gptel-send-or-the-options-menu][I want to use gptel in a way that's not supported by =gptel-send= or the options menu]]
       - [[#i-want-the-window-to-scroll-automatically-as-the-response-is-inserted][I want the window to scroll automatically as the response is inserted]]
       - [[#i-want-the-cursor-to-move-to-the-next-prompt-after-the-response-is-inserted][I want the cursor to move to the next prompt after the response is inserted]]
       - [[#i-want-to-change-the-formatting-of-the-prompt-and-llm-response][I want to change the formatting of the prompt and LLM response]]
       - [[#i-want-the-transient-menu-options-to-be-saved-so-i-only-need-to-set-them-once][I want the transient menu options to be saved so I only need to set them once]]
-      - [[#i-want-to-use-gptel-in-a-way-thats-not-supported-by-gptel-send-or-the-options-menu][I want to use gptel in a way that's not supported by =gptel-send= or the options menu]]
+      - [[#can-i-change-the-transient-menu-key-bindings][Can I change the transient menu key bindings?]]
       - [[#how-does-gptel-distinguish-between-user-prompts-and-llm-responses][How does gptel distinguish between user prompts and LLM responses?]]
       - [[#doom-emacs-sending-a-query-from-the-gptel-menu-fails-because-of-a-key-conflict-with-org-mode][(Doom Emacs) Sending a query from the gptel menu fails because of a key conflict with Org mode]]
       - [[#chatgpt-i-get-the-error-http2-429-you-exceeded-your-current-quota][(ChatGPT) I get the error "(HTTP/2 429) You exceeded your current quota"]]
@@ -811,21 +821,22 @@ The above code makes the backend available to select.  If you want it to be the 
 
 ** Usage
 
-(There is also a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel.)
+gptel provides a few powerful, general purpose and flexible commands.  You can dynamically tweak their behavior to the needs of your task with /directives/, redirection options and more.  There is a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel -- but =gptel-send= might be all you need.
 
-|-------------------+------------------------------------------------------------------------------------------------|
-| *To send queries* | Description                                                                                    |
-|-------------------+------------------------------------------------------------------------------------------------|
-| =gptel-send=      | Send all text up to =(point)=, or the selection if region is active.  Works anywhere in Emacs. |
-| =gptel=           | Create a new dedicated chat buffer.  Not required to use gptel.                                |
-|-------------------+------------------------------------------------------------------------------------------------|
+|-------------------+---------------------------------------------------------------------------------------------------|
+| *To send queries* | Description                                                                                       |
+|-------------------+---------------------------------------------------------------------------------------------------|
+| =gptel-send=      | Send all text up to =(point)=, or the selection if region is active.  Works anywhere in Emacs.    |
+| =gptel=           | Create a new dedicated chat buffer.  Not required to use gptel.                                   |
+| =gptel-rewrite=   | Rewrite, refactor or change the selected region.  Can diff/ediff changes before merging/applying. |
+|-------------------+---------------------------------------------------------------------------------------------------|
 
-|--------------------+---------------------------------------------------------------|
-| *To Set options*   |                                                               |
-|--------------------+---------------------------------------------------------------|
-| =C-u= =gptel-send= | Transient menu for preferences, input/output redirection etc. |
-| =gptel-menu=       | /(Same)/                                                      |
-|--------------------+---------------------------------------------------------------|
+|---------------------+---------------------------------------------------------------|
+| *To tweak behavior* |                                                               |
+|---------------------+---------------------------------------------------------------|
+| =C-u= =gptel-send=  | Transient menu for preferences, input/output redirection etc. |
+| =gptel-menu=        | /(Same)/                                                      |
+|---------------------+---------------------------------------------------------------|
 
 |------------------+--------------------------------------------------------------------------------------------------------|
 | *To add context* |                                                                                                        |
@@ -848,7 +859,7 @@ The above code makes the backend available to select.  If you want it to be the 
 2. If a region is selected, the conversation will be limited to its contents.
 
 3. Call =M-x gptel-send= with a prefix argument (~C-u~)
-   - to set chat parameters (GPT model, system message etc) for this buffer,
+   - to set chat parameters (GPT model, backend, system message etc) for this buffer,
    - include quick instructions for the next request only,
    - to add additional context -- regions, buffers or files -- to gptel,
    - to read the prompt from or redirect the response elsewhere,
@@ -857,6 +868,8 @@ The above code makes the backend available to select.  If you want it to be the 
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/3562a6e2-7a5c-4f7e-8e57-bf3c11589c73" align="center" alt="Image showing gptel's menu with some of the available query options.">
 
 *** In a dedicated chat buffer:
+
+*Note*: gptel works anywhere in Emacs.  The dedicated chat buffer only adds some conveniences.
 
 1. Run =M-x gptel= to start or switch to the chat buffer. It will ask you for the key if you skipped the previous step. Run it with a prefix-arg (=C-u M-x gptel=) to start a new session.
 
@@ -952,6 +965,13 @@ Similar criteria apply to Markdown chat buffers.
 Saving the file will save the state of the conversation as well.  To resume the chat, open the file and turn on =gptel-mode= before editing the buffer.
 
 #+html: </details>
+*** Setting options (backend, model, request parameters, system prompts and more)
+
+Most gptel options can be set from gptel's transient menu, available by calling =gptel-send= with a prefix-argument, or via =gptel-menu=.  To change their default values in your configuration, see [[#additional-configuration][Additional Configuration]].  Chat buffer-specific options are also available via the header-line in chat buffers.
+
+# TODO Remove this when writing the manual.
+Selecting a model and backend can be done interactively via the =-m= command of =gptel-menu=.  Available registered models are prefixed by the name of their backend with a string like =ChatGPT:gpt-4o-mini=, where =ChatGPT= is the backend name you used to register it and =gpt-4o-mini= is the name of the model.
+
 *** Include more context with requests
 
 By default, gptel will query the LLM with the active region or the buffer contents up to the cursor.  Often it can be helpful to provide the LLM with additional context from outside the current buffer. For example, when you're in a chat buffer but want to ask questions about a (possibly changing) code buffer and auxiliary project files.
@@ -968,42 +988,71 @@ And then browse through or remove context from the context buffer:
 
 *** Rewrite, refactor or fill in a region
 
-In any buffer: with a region selected, you can rewrite prose or refactor code from here:
+In any buffer: with a region selected, you can modify text, rewrite prose or refactor code with =gptel-rewrite=.  Example with prose:
 
-*Prose*:
+#+html: <p align="center">
+https://github.com/user-attachments/assets/e3b436b3-9bde-4c1f-b2ce-3f7df1984933
+#+html: </p>
 
-#+html: <img src="https://github.com/user-attachments/assets/172e75cd-11e9-4f3b-9ab9-b4edfb8f6695" align="center" />
+The result is previewed over the original text.  By default, the buffer is not modified.
 
-# [[https://user-images.githubusercontent.com/8607532/230770352-ee6f45a3-a083-4cf0-b13c-619f7710e9ba.png]]
+Pressing =RET= or clicking in the rewritten region should give you a list of options: you can *diff*, *ediff*, *merge* or *accept* the replacement.  Example with code:
 
-*Code*:
+#+html: <p align="center">
+https://github.com/user-attachments/assets/4067fdb8-85d3-4264-9b64-d727353f68f9
+#+html: </p>
 
-#+html: <img src="https://github.com/user-attachments/assets/8670ddb3-8655-47f4-a70c-8994994e61e3" align="center" />
+*Acting on the LLM response*:
 
-# [[https://user-images.githubusercontent.com/8607532/230770162-1a5a496c-ee57-4a67-9c95-d45f238544ae.png]]
+If you would like one of these things to happen automatically, you can customize =gptel-rewrite-default-action=.
 
-When the refactor is ready, you can apply it or compare against the original:
+These options are also available from =gptel-rewrite=:
 
-#+html: <img src="https://github.com/user-attachments/assets/a0cf33b2-3ad3-4f55-aa7b-4349e54d6771" align="center" />
+#+html: <img src="https://github.com/user-attachments/assets/589785b9-aa3f-414a-98dd-d26b7509de08" align="center" />
 
-These actions are also available directly when the cursor is inside the pending rewrite region:
+And you can call them directly when the cursor is in the rewritten region:
 
-#+html: <img src="https://github.com/user-attachments/assets/57e1fff7-f8e4-47f0-9bda-d0b698443559" align="center" />
-
-If you want to run one of these actions automatically, you can customize =gptel-rewrite-default-action=.
+#+html: <img src="https://github.com/user-attachments/assets/f5b3ca47-e146-45fe-8584-f11035fa4dbc" align="center" />
 
 *** Extra Org mode conveniences
 
 gptel offers a few extra conveniences in Org mode.
 
-- You can limit the conversation context to an Org heading with the command =gptel-org-set-topic=.
+***** Limit conversation context to an Org heading
+
+You can limit the conversation context to an Org heading with the command =gptel-org-set-topic=.
+
+(This sets an Org property (=GPTEL_TOPIC=) under the heading.  You can also add this property manually instead.)
   
-- You can have branching conversations in Org mode, where each hierarchical outline path through the document is a separate conversation branch.  This is also useful for limiting the context size of each query.  See the variable =gptel-org-branching-context=.
-  Note: using this option requires Org 9.6.7 or higher to be available.  The [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]] package uses gptel to provide this branching conversation behavior for older versions of Org.
+***** Use branching context in Org mode (tree of conversations)
+
+You can have branching conversations in Org mode, where each hierarchical outline path through the document is a separate conversation branch.  This is also useful for limiting the context size of each query.  See the variable =gptel-org-branching-context=.
+
+If this variable is non-nil, you should probably edit =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist= so that the prefix strings for org-mode are not Org headings, e.g.
+
+#+begin_src emacs-lisp
+  (setf (alist-get 'org-mode gptel-prompt-prefix-alist) "@user\n")
+  (setf (alist-get 'org-mode gptel-response-prefix-alist) "@assistant\n")
+#+end_src
+
+Otherwise, the default prompt prefix will make successive prompts sibling headings, and therefore on different conversation branches, which probably isn't what you want.
+
+Note: using this option requires Org 9.6.7 or higher to be available.  The [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]] package uses gptel to provide this branching conversation behavior for older versions of Org.
   
-- You can declare the gptel model, backend, temperature, system message and other parameters as Org properties with the command =gptel-org-set-properties=.  gptel queries under the corresponding heading will always use these settings, allowing you to create mostly reproducible LLM chat notebooks, and to have simultaneous chats with different models, model settings and directives under different Org headings.
+***** Save gptel parameters to Org headings (reproducible chats)
+
+You can declare the gptel model, backend, temperature, system message and other parameters as Org properties with the command =gptel-org-set-properties=.  gptel queries under the corresponding heading will always use these settings, allowing you to create mostly reproducible LLM chat notebooks, and to have simultaneous chats with different models, model settings and directives under different Org headings.
 
 ** FAQ
+#+html: <details><summary>
+**** I want to use gptel in a way that's not supported by =gptel-send= or the options menu
+#+html: </summary>
+
+gptel's default usage pattern is simple, and will stay this way: Read input in any buffer and insert the response below it.  Some custom behavior is possible with the transient menu (=C-u M-x gptel-send=).
+
+For more programmable usage, gptel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][wiki]] for examples.
+
+#+html: </details>
 #+html: <details><summary>
 **** I want the window to scroll automatically as the response is inserted
 #+html: </summary>
@@ -1063,15 +1112,13 @@ Or see this [[https://github.com/karthink/gptel/wiki/Commonly-requested-features
 
 #+html: </details>
 #+html: <details><summary>
-**** I want to use gptel in a way that's not supported by =gptel-send= or the options menu
-#+html: </summary>
+**** Can I change the transient menu key bindings?
 
-gptel's default usage pattern is simple, and will stay this way: Read input in any buffer and insert the response below it.  Some custom behavior is possible with the transient menu (=C-u M-x gptel-send=).
+Yes, see =transient-suffix-put=.  This changes the key to select a backend/model from "-m" to "M" in gptel's menu:
+#+begin_src emacs-lisp
+(transient-suffix-put 'gptel-menu (kbd "-m") :key "M")
+#+end_src
 
-For more programmable usage, gptel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][wiki]] for examples.
-
-#+html: </details>
-#+html: <details><summary>
 **** How does gptel distinguish between user prompts and LLM responses?
 #+html: </summary>
 
@@ -1117,11 +1164,12 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 2. Integration with org-mode, not using a walled-off org-babel block, but as regular text.  This way the model can generate code blocks that I can run.
 
 #+html: </details>
-
+#+html: <details><summary>
 ** Additional Configuration
 :PROPERTIES:
 :ID:       f885adac-58a3-4eba-a6b7-91e9e7a17829
 :END:
+#+html: </summary>
 
 #+begin_src emacs-lisp :exports none :results list
 (let ((all))
@@ -1181,6 +1229,8 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-rewrite-default-action=  | Automatically diff, ediff, merge or replace refactored text |
 |---------------------------------+-------------------------------------------------------------|
 
+#+html: </details>
+
 ** COMMENT Will you add feature X?
 
 Maybe, I'd like to experiment a bit more first.  Features added since the inception of this package include
@@ -1209,7 +1259,7 @@ Other Emacs clients for LLMs include
 - [[https://github.com/xenodium/chatgpt-shell][chatgpt-shell]]: comint-shell based interaction with ChatGPT.  Also supports DALL-E, executable code blocks in the responses, and more.
 - [[https://github.com/rksm/org-ai][org-ai]]: Interaction through special =#+begin_ai ... #+end_ai= Org-mode blocks.  Also supports DALL-E, querying ChatGPT with the contents of project files, and more.
 
-There are several more: [[https://github.com/MichaelBurge/leafy-mode][leafy-mode]], [[https://github.com/iwahbe/chat.el][chat.el]]
+There are several more: [[https://github.com/MichaelBurge/leafy-mode][leafy-mode]], [[https://github.com/iwahbe/chat.el][chat.el]], [[https://github.com/stuhlmueller/gpt.el][gpt.el]],  [[https://github.com/AnselmC/le-gpt.el][le-gpt]], [[https://github.com/stevemolitor/robby][robby]].
 
 *** Packages using gptel
 
@@ -1223,6 +1273,7 @@ gptel is a general-purpose package for chat and ad-hoc LLM interaction.  The fol
 - [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate Commit Messages within magit-status Buffer using gptel
 - [[https://github.com/armindarvish/consult-omni][consult-omni]]: Versatile multi-source search package.  It includes gptel as one of its many sources.
 - [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  (Note that gptel includes this feature as well (see =gptel-org-branching-context=), but requires a recent version of Org mode (9.67 or later) to be installed.)
+- [[https://github.com/rob137/Corsair][Corsair]]: Helps gather text to populate LLM prompts for gptel.
 
 ** COMMENT Older Breaking Changes
 
@@ -1236,6 +1287,7 @@ gptel is a general-purpose package for chat and ad-hoc LLM interaction.  The fol
 
 ** Acknowledgments
 
+- [[https://github.com/meain][Abin Simon]] for extensive feedback on improving gptel's directives and UI.
 - [[https://github.com/algal][Alexis Gallagher]] and [[https://github.com/d1egoaz][Diego Alvarez]] for fixing a nasty multi-byte bug with =url-retrieve=.
 - [[https://github.com/tarsius][Jonas Bernoulli]] for the Transient library.
 - [[https://github.com/daedsidog][daedsidog]] for adding context support to gptel.

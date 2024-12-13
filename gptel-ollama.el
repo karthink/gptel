@@ -102,6 +102,12 @@ Intended for internal use only.")
             (plist-put options-plist :num_predict gptel-max-tokens)))
     (plist-put prompts-plist :options options-plist)))
 
+(cl-defmethod gptel--parse-list ((_backend gptel-ollama) prompt-list)
+  (cl-loop for text in prompt-list
+           for role = t then (not role)
+           if text collect
+           (list :role (if role "user" "assistant") :content text)))
+
 (cl-defmethod gptel--parse-buffer ((_backend gptel-ollama) &optional max-entries)
   (let ((prompts) (prop)
         (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
@@ -136,12 +142,7 @@ Intended for internal use only.")
                   :content
                   (string-trim (buffer-substring-no-properties (point-min) (point-max))))
             prompts))
-    (if (and (not (gptel--model-capable-p 'nosystem))
-             gptel--system-message)
-        (cons (list :role "system"
-                    :content gptel--system-message)
-              prompts)
-      prompts)))
+    prompts))
 
 (defun gptel--ollama-parse-multipart (parts)
   "Convert a multipart prompt PARTS to the Ollama API format.

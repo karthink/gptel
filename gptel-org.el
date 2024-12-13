@@ -49,6 +49,7 @@
 (declare-function gptel--get-buffer-bounds "gptel")
 (declare-function gptel-backend-name "gptel")
 (declare-function gptel--parse-buffer "gptel")
+(declare-function gptel--parse-directive "gptel")
 (declare-function org-entry-get "org")
 (declare-function org-entry-put "org")
 (declare-function org-with-wide-buffer "org-macs")
@@ -395,7 +396,10 @@ non-nil (default), display a message afterwards."
     (org-entry-put pt "GPTEL_NUM_MESSAGES_TO_SEND"
                    (number-to-string gptel--num-messages-to-send)))
   (org-entry-put pt "GPTEL_SYSTEM"
-                 (string-replace "\n" "\\n" gptel--system-message))
+                 (and-let* ((msg (car-safe
+                                  (gptel--parse-directive
+                                   gptel--system-message))))
+                   (string-replace "\n" "\\n" msg)))
   (when gptel-max-tokens
     (org-entry-put
      pt "GPTEL_MAX_TOKENS" (number-to-string gptel-max-tokens)))

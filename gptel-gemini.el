@@ -61,6 +61,14 @@
 
 (cl-defmethod gptel--request-data ((_backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
+  ;; HACK (backwards compatibility) Prepend the system message to the first user
+  ;; prompt, but only for gemini-pro.
+  (when (and (equal gptel-model 'gemini-pro) gptel--system-message)
+    (cl-callf
+        (lambda (msg)
+          (vconcat `((:text ,(concat gptel--system-message "\n\n"))) msg))
+        (thread-first (car prompts)
+                      (plist-get :parts))))
   (let ((prompts-plist
          `(:contents [,@prompts]
            :safetySettings [(:category "HARM_CATEGORY_HARASSMENT"
@@ -95,6 +103,15 @@
      prompts-plist
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
+
+(cl-defmethod gptel--parse-list ((_backend gptel-gemini) prompt-list)
+  (cl-loop for text in prompt-list
+           for role = t then (not role)
+           if text
+           if role
+           collect (list :role "user" :parts `[(:text ,text)]) into prompts
+           else collect (list :role "model" :parts `(:text ,text)) into prompts
+           finally return prompts))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-gemini) &optional max-entries)
   (let ((prompts) (prop)
@@ -131,15 +148,6 @@
                   :parts
                   `[(:text ,(string-trim (buffer-substring-no-properties (point-min) (point-max))))])
             prompts))
-    ;; HACK Prepend the system message to the first user prompt, but only for
-    ;; this model.
-    (when (and (equal gptel-model 'gemini-pro)
-               gptel--system-message)
-      (cl-callf
-          (lambda (msg)
-            (vconcat `((:text ,(concat gptel--system-message "\n\n"))) msg))
-          (thread-first (car prompts)
-                        (plist-get :parts))))
     prompts))
 
 (defun gptel--gemini-parse-multipart (parts)
