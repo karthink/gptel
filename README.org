@@ -967,7 +967,7 @@ Saving the file will save the state of the conversation as well.  To resume the 
 #+html: </details>
 *** Setting options (backend, model, request parameters, system prompts and more)
 
-Most gptel options can be set from gptel's transient menu, available by calling =gptel-send= with a prefix-argument, or via =gptel-menu=.  To change their default values in your configuration, see [[*Additional Configuration]].  Chat buffer-specific options are also available via the header-line in chat buffers.
+Most gptel options can be set from gptel's transient menu, available by calling =gptel-send= with a prefix-argument, or via =gptel-menu=.  To change their default values in your configuration, see [[#additional-configuration][Additional Configuration]].  Chat buffer-specific options are also available via the header-line in chat buffers.
 
 # TODO Remove this when writing the manual.
 Selecting a model and backend can be done interactively via the =-m= command of =gptel-menu=.  Available registered models are prefixed by the name of their backend with a string like =ChatGPT:gpt-4o-mini=, where =ChatGPT= is the backend name you used to register it and =gpt-4o-mini= is the name of the model.
