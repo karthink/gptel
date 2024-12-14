@@ -199,15 +199,23 @@ files in the context."
         (plist-get (car (last prompts)) :parts))))
 
 (defconst gptel--gemini-models
-  '((gemini-pro
-     :description "The previous generation of Google's multimodal AI model"
+  '((gemini-1.5-pro-latest
+     :description "Google's latest model with enhanced capabilities across various tasks"
      :capabilities (tool json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
-     :context-window 32
-     :input-cost 0.50
-     :output-cost 1.50
-     :cutoff-date "2023-02")
+     :context-window 2000
+     ;; input & output price is halved for prompts of 128k tokens or less
+     :input-cost 2.50
+     :output-cost 10
+     :cutoff-date "2024-05")
+    (gemini-2.0-flash-exp
+     :description "Next generation features, superior speed, native tool use"
+     :capabilities (tool json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1000
+     :cutoff-date "2024-12")
     (gemini-1.5-flash
      :description "A faster, more efficient version of Gemini 1.5 optimized for speed"
      :capabilities (tool json media)
@@ -218,16 +226,31 @@ files in the context."
      :input-cost 0.15
      :output-cost 0.60
      :cutoff-date "2024-05")
-    (gemini-1.5-pro-latest
-     :description "Google's latest model with enhanced capabilities across various tasks"
+    (gemini-1.5-flash-8b
+     :description "High volume and lower intelligence tasks"
+     :capabilities (tool json media)
+     :context-window 1000
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     ;; input & output price is halved for prompts of 128k tokens or less
+     :input-cost 0.075
+     :output-cost 0.30
+     :cutoff-date "2024-10")
+    (gemini-exp-1206
+     :description "Improved coding, reasoning and vision capabilities"
      :capabilities (tool json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
-     :context-window 2000
-     ;; input & output price is halved for prompts of 128k tokens or less
-     :input-cost 2.50
-     :output-cost 10
-     :cutoff-date "2024-05"))
+     :cutoff-date "2024-12")
+    (gemini-pro
+     :description "The previous generation of Google's multimodal AI model"
+     :capabilities (tool json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 32
+     :input-cost 0.50
+     :output-cost 1.50
+     :cutoff-date "2023-02"))
   "List of available Gemini models and associated properties.
 Keys:
 
