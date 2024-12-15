@@ -183,7 +183,7 @@ ACTION should be either `add' or `remove'."
   (let ((files (directory-files-recursively path "." t)))
     (mapc (lambda (file)
             (unless (file-directory-p file)
-              (pcase action
+              (pcase-exhaustive action
 		('add (gptel--file-binary-p file)
 		      (gptel-context--handle-binary file)
 		      (cl-pushnew (list file) gptel-context--alist :test #'equal)
