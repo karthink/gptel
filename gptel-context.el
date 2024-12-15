@@ -198,14 +198,14 @@ ACTION should be either `add' or `remove'."
 If PATH is a directory, recursively add all files in it.
 PATH should be readable as text."
   (interactive "fChoose file to add to context: ")
-  (if (file-directory-p path)
-      (gptel-context--handle-directory path 'add)
-    (if (gptel--file-binary-p path)
-        (gptel-context--handle-binary path)
-      ;; Add text file
-      (cl-pushnew (list path) gptel-context--alist :test #'equal)
-      (message "File \"%s\" added to context." path)
-      path)))
+  (cond ((file-directory-p path)
+	 (gptel-context--handle-directory path 'add))
+	((gptel--file-binary-p path)
+         (gptel-context--handle-binary path))
+	;; Add text file
+	((cl-pushnew (list path) gptel-context--alist :test #'equal)
+	 (message "File \"%s\" added to context." path)
+	 path)))
 
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
 (defalias 'gptel-add-file #'gptel-context-add-file)
