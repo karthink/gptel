@@ -180,18 +180,23 @@ Return PATH if added, nil if ignored."
 (defun gptel-context--handle-directory (path action)
   "Process all files in directory at PATH according to ACTION.
 ACTION should be either `add' or `remove'."
-  (let ((files (directory-files-recursively path "." t)))
-    (mapc (lambda (file)
-            (unless (file-directory-p file)
-              (pcase-exhaustive action
-		('add (if (gptel--file-binary-p file)
-			  (gptel-context--handle-binary file)
-			(cl-pushnew (list file) gptel-context--alist :test #'equal)
-			(message "File \"%s\" added to context." file)))
-		('remove
-		 (setf (alist-get file gptel-context--alist nil 'remove #'equal) nil)
-		 (message "File \"%s\" removed from context." file)))))
-          files)))
+  (cl-block gptel-context--handle-directory
+    (when (eq action 'add)
+      (unless (y-or-n-p (format "Recursively add all files from directory %s? " path))
+        (cl-return-from gptel-context--handle-directory)))
+    (let ((files (directory-files-recursively path "." t)))
+      (mapc (lambda (file)
+              (unless (file-directory-p file)
+                (pcase-exhaustive action
+                  ('add
+                   (if (gptel--file-binary-p file)
+                       (gptel-context--handle-binary file)
+                     (cl-pushnew (list file) gptel-context--alist :test #'equal)
+                     (message "File \"%s\" added to context." file)))
+                  ('remove
+                   (setf (alist-get file gptel-context--alist nil 'remove #'equal) nil)
+                   (message "File \"%s\" removed from context." file)))))
+            files))))
 
 (defun gptel-context-add-file (path)
   "Add the file at PATH to the gptel context.
