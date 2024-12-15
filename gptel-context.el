@@ -184,10 +184,10 @@ ACTION should be either `add' or `remove'."
     (mapc (lambda (file)
             (unless (file-directory-p file)
               (pcase-exhaustive action
-		('add (gptel--file-binary-p file)
-		      (gptel-context--handle-binary file)
-		      (cl-pushnew (list file) gptel-context--alist :test #'equal)
-		      (message "File \"%s\" added to context." file))
+		('add (if (gptel--file-binary-p file)
+			  (gptel-context--handle-binary file)
+			(cl-pushnew (list file) gptel-context--alist :test #'equal)
+			(message "File \"%s\" added to context." file)))
 		('remove
 		 (setf (alist-get file gptel-context--alist nil 'remove #'equal) nil)
 		 (message "File \"%s\" removed from context." file)))))
