@@ -1265,12 +1265,7 @@ file."
                (system gptel--system-message))
   "Request a response from the `gptel-backend' for PROMPT.
 
-The request is asynchronous, the function immediately returns
-with the data that was sent.
-
-Note: This function is not fully self-contained.  Consider
-let-binding the parameters `gptel-backend', `gptel-model' and
-`gptel-use-context' around calls to it as required.
+The request is asynchronous, the function returns immediately.
 
 If PROMPT is
 - a string, it is used to create a full prompt suitable for
@@ -1280,7 +1275,6 @@ If PROMPT is
 - nil but region is active, the region contents are used.
 - nil, the current buffer's contents up to (point) are used.
   Previous responses from the LLM are identified as responses.
-- A list of plists, it is used as is.
 
 Keyword arguments:
 
@@ -1373,7 +1367,14 @@ streaming callbacks is slightly different:
 If DRY-RUN is non-nil, construct and return the full
 query data as usual, but do not send the request.
 
-Model parameters can be let-bound around calls to this function."
+Note:
+
+1. This function is not fully self-contained.  Consider
+let-binding the parameters `gptel-backend', `gptel-model' and
+`gptel-use-context' around calls to it as required.
+
+2. The return value of this function is a list of data that may
+be used to rerun or continue the request at a later time."
   (declare (indent 1))
   ;; TODO Remove this check in version 1.0
   (gptel--sanitize-model)
@@ -1410,8 +1411,7 @@ Model parameters can be let-bound around calls to this function."
                  (insert prompt)
                  (gptel--create-prompt))))
             ((consp prompt) (gptel--parse-list gptel-backend prompt)))))
-         (request-data (gptel--request-data gptel-backend full-prompt))
-         (info (list :data request-data
+         (info (list :data (gptel--request-data gptel-backend full-prompt)
                      :buffer buffer
                      :position start-marker)))
     ;; This context should not be confused with the context aggregation context!
@@ -1421,7 +1421,7 @@ Model parameters can be let-bound around calls to this function."
       (funcall (if gptel-use-curl
                    #'gptel-curl-get-response #'gptel--url-get-response)
                info callback))
-    request-data))
+    (list stream info callback)))
 
 (defvar gptel--request-alist nil "Alist of active gptel requests.")
 
@@ -1477,27 +1477,75 @@ waiting for the response."
   (gptel--update-status " Waiting..." 'warning)))
 
 (declare-function json-pretty-print-buffer "json")
-(defun gptel--inspect-query (request-data &optional arg)
-  "Show REQUEST-DATA, the full LLM query to be sent, in a buffer.
+(defun gptel--inspect-query (request-args &optional format)
+  "Show REQUEST-ARGS, the full LLM query to be sent, in a buffer.
 
-This functions as a dry run of `gptel-send'.  If ARG is
+This functions as a dry run of `gptel-send'.  If FORMAT is
 the symbol json, show the encoded JSON query instead of the Lisp
-structure gptel uses."
+structure gptel uses.
+
+The request data may be edited and the query continued from this
+buffer."
   (with-current-buffer (get-buffer-create "*gptel-query*")
-    (let ((standard-output (current-buffer))
-          (inhibit-read-only t))
+    (let* ((standard-output (current-buffer))
+           (inhibit-read-only t)
+           (request-info (cadr request-args))
+           (request-data (plist-get request-info :data)))
       (buffer-disable-undo)
       (erase-buffer)
-      (if (eq arg 'json)
+      (if (eq format 'json)
           (progn (fundamental-mode)
                  (insert (gptel--json-encode request-data))
                  (json-pretty-print-buffer))
         (lisp-data-mode)
         (prin1 request-data)
         (pp-buffer))
+      (plist-put request-info :data nil)
+      ;; HACK: Reuse `gptel--bounds' to store request args.
+      ;; Not ideal, but less fragile than an overlay.
+      (setq-local gptel-stream  (car request-args)
+                  gptel--bounds (cdr request-args))
       (goto-char (point-min))
       (view-mode 1)
+      (setq buffer-undo-list nil)
+      (use-local-map
+       (make-composed-keymap
+        (define-keymap
+          "C-c C-c" #'gptel--continue-query
+          "C-c C-k" #'quit-window)
+        (current-local-map)))
+      (unless header-line-format
+        (setq header-line-format
+              (substitute-command-keys
+               (concat
+                "Edit request: \\[read-only-mode],"
+                " Send request: \\[gptel--continue-query],"
+                " Quit: \\[quit-window]"))))
       (display-buffer (current-buffer) gptel-display-buffer-action))))
+
+(defun gptel--continue-query ()
+  "Continue sending the gptel query displayed in this buffer.
+
+The request is continued with the same parameters as originally
+specified."
+  (interactive nil lisp-data-mode fundamental-mode)
+  (unless (equal (buffer-name) "*gptel-query*")
+    (user-error "This command is meant for use in a gptel dry-run buffer."))
+  (save-excursion
+    (goto-char (point-min))
+    (condition-case-unless-debug nil
+        (when-let* ((data (if (eq major-mode 'lisp-data-mode)
+                              (read (current-buffer))
+                            (gptel--json-read)))
+                    (info (car-safe gptel--bounds)))
+          (plist-put info :data data)
+          (apply (if gptel-use-curl
+                     #'gptel-curl-get-response
+                   #'gptel--url-get-response)
+                 gptel--bounds)
+          (quit-window))
+      (error
+       (user-error "Could not read request data from buffer!")))))
 
 (defun gptel--insert-response (response info)
   "Insert the LLM RESPONSE into the gptel buffer.
