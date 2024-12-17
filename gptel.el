@@ -1438,7 +1438,9 @@ BUF defaults to the current buffer."
               (info (cdr proc-attrs)))
     ;; Run callback with abort signal
     (with-demoted-errors "Callback error: %S"
-      (funcall (plist-get info :callback) 'abort info))
+      (and-let* ((cb (plist-get info :callback))
+                 ((functionp cb)))
+           (funcall cb 'abort info)))
     (if gptel-use-curl
         (progn                        ;Clean up Curl process
           (setf (alist-get proc gptel--request-alist nil 'remove) nil)
@@ -1818,7 +1820,7 @@ the response is inserted into the current buffer after point."
                               (funcall backend-url) backend-url))
                         (lambda (_)
                           (pcase-let ((`(,response ,http-msg ,error)
-                                       (gptel--url-parse-response backend (current-buffer)))
+                                       (gptel--url-parse-response backend info))
                                       (buf (current-buffer)))
                             (plist-put info :status http-msg)
                             (when error (plist-put info :error error))
@@ -1844,52 +1846,49 @@ See `gptel-curl--get-response' for its contents.")
 
 (defvar url-http-end-of-headers)
 (defvar url-http-response-status)
-(defun gptel--url-parse-response (backend response-buffer)
+(defun gptel--url-parse-response (backend proc-info)
   "Parse response from BACKEND in RESPONSE-BUFFER."
-  (when (buffer-live-p response-buffer)
-    (with-current-buffer response-buffer
-      (when gptel-log-level             ;logging
-        (save-excursion
-          (goto-char url-http-end-of-headers)
-          (when (eq gptel-log-level 'debug)
-            (gptel--log (gptel--json-encode (buffer-substring-no-properties (point-min) (point)))
-                        "response headers"))
-          (gptel--log (buffer-substring-no-properties (point) (point-max))
-                      "response body")))
-      (if-let* ((http-msg (string-trim (buffer-substring (line-beginning-position)
-                                                         (line-end-position))))
-                (response (progn (goto-char url-http-end-of-headers)
-                                 (condition-case nil
-                                     (gptel--json-read)
-                                   (error 'json-read-error)))))
-          (cond
-            ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
-           ((or (memq url-http-response-status '(200 100))
-                (string-match-p "\\(?:1\\|2\\)00 OK" http-msg))
-            (list (string-trim (gptel--parse-response backend response
-                                             `(:buffer ,response-buffer
-                                               :backend ,backend)))
-                   http-msg))
-           ((plist-get response :error)
-            (let* ((error-data (plist-get response :error))
-                   (error-msg (plist-get error-data :message))
-                   (error-type (plist-get error-data :type))
-                   (backend-name (gptel-backend-name backend)))
-              (if (stringp error-data)
-                  (progn
-		    (message "%s error: (%s) %s" backend-name http-msg error-data)
-                    (setq error-msg (string-trim error-data)))
-                (when (stringp error-msg)
-                  (message "%s error: (%s) %s" backend-name http-msg (string-trim error-msg)))
-                (when error-type
-		  (setq http-msg (concat "("  http-msg ") " (string-trim error-type)))))
-              (list nil (concat "(" http-msg ") " (or error-msg "")))))
-           ((eq response 'json-read-error)
-            (list nil (concat "(" http-msg ") Malformed JSON in response.") "json-read-error"))
-           (t (list nil (concat "(" http-msg ") Could not parse HTTP response.")
-                    "Could not parse HTTP response.")))
-        (list nil (concat "(" http-msg ") Could not parse HTTP response.")
-              "Could not parse HTTP response.")))))
+  (when gptel-log-level             ;logging
+    (save-excursion
+      (goto-char url-http-end-of-headers)
+      (when (eq gptel-log-level 'debug)
+        (gptel--log (gptel--json-encode (buffer-substring-no-properties (point-min) (point)))
+                    "response headers"))
+      (gptel--log (buffer-substring-no-properties (point) (point-max))
+                  "response body")))
+  (if-let* ((http-msg (string-trim (buffer-substring (line-beginning-position)
+                                                     (line-end-position))))
+            (response (progn (goto-char url-http-end-of-headers)
+                             (condition-case nil
+                                 (gptel--json-read)
+                               (error 'json-read-error)))))
+      (cond
+       ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
+       ((or (memq url-http-response-status '(200 100))
+            (string-match-p "\\(?:1\\|2\\)00 OK" http-msg))
+        (list (string-trim (gptel--parse-response backend response
+                                                  proc-info))
+              http-msg))
+       ((plist-get response :error)
+        (let* ((error-data (plist-get response :error))
+               (error-msg (plist-get error-data :message))
+               (error-type (plist-get error-data :type))
+               (backend-name (gptel-backend-name backend)))
+          (if (stringp error-data)
+              (progn
+		(message "%s error: (%s) %s" backend-name http-msg error-data)
+                (setq error-msg (string-trim error-data)))
+            (when (stringp error-msg)
+              (message "%s error: (%s) %s" backend-name http-msg (string-trim error-msg)))
+            (when error-type
+	      (setq http-msg (concat "("  http-msg ") " (string-trim error-type)))))
+          (list nil (concat "(" http-msg ") " (or error-msg "")))))
+       ((eq response 'json-read-error)
+        (list nil (concat "(" http-msg ") Malformed JSON in response.") "json-read-error"))
+       (t (list nil (concat "(" http-msg ") Could not parse HTTP response.")
+                "Could not parse HTTP response.")))
+    (list nil (concat "(" http-msg ") Could not parse HTTP response.")
+          "Could not parse HTTP response.")))
 
 (cl-defun gptel--sanitize-model (&key (backend gptel-backend)
                                       (model gptel-model)
