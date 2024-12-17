@@ -1146,6 +1146,7 @@ file."
   :keymap
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c RET") #'gptel-send)
+    (define-key map (kbd "RET") #'gptel-return-dwim)
     map)
   (if gptel-mode
       (progn
@@ -1477,6 +1478,18 @@ waiting for the response."
   (gptel--sanitize-model)
   (gptel-request nil :stream gptel-stream)
   (gptel--update-status " Waiting..." 'warning)))
+
+;;;###autoload
+(defun gptel-return-dwim (&optional arg)
+  "If cursor at prompt line, call `gptel-send', otherwise call RET function."
+  (interactive "P")
+  (let ((in-prompt-line-p
+         (save-excursion
+           (beginning-of-line)
+           (search-forward-regexp "^#+\\s-" (line-end-position) t))))
+    (if in-prompt-line-p
+        (gptel-send arg)
+      (call-interactively (key-binding (kbd "C-m"))))))
 
 (declare-function json-pretty-print-buffer "json")
 (defun gptel--inspect-query (request-args &optional format)
