@@ -23,8 +23,7 @@
 
 ;;; Code:
 (require 'cl-generic)
-(eval-when-compile
-  (require 'cl-lib))
+(require 'cl-lib)
 (require 'map)
 (require 'gptel)
 
@@ -41,25 +40,114 @@
                                (:copier nil)
                                (:include gptel-backend)))
 
-(cl-defmethod gptel-curl--parse-stream ((_backend gptel-anthropic) _info)
+;; NOTE the crucial difference between
+;; - (push val (plist-get info :key)) and
+;;   (plist-put (plist-get info :key) (cons val ...)), and
+;;
+;; - (setf (plist-get info :key) val) and
+;;   (plist-put info :key val)
+;;
+;; in the following function.  The first variant conses at the head of info, the
+;; second one at the tail.  This means only the second option is viable for
+;; mutating a plist function argument that's passed by reference.
+;; Do NOT change the plist-put to push or setf!
+
+(cl-defmethod gptel-curl--parse-stream ((_backend gptel-anthropic) info)
+  "Parse an Anthropic data stream.
+
+Return the text response accumulated since the last call to this
+function.  Additionally, mutate INFO to add tool-use information
+if the stream contains it.  Not my best work, I know."
   (let* ((content-strs)
          (pt (point)))
-    (condition-case nil
+    (condition-case-unless-debug nil
         (while (re-search-forward "^event: " nil t)
           (setq pt (match-beginning 0))
           (if (equal (line-end-position) (point-max))
               (error "Data block incomplete"))
-          (when (looking-at "content_block_\\(?:start\\|delta\\|stop\\)")
+          (cond
+           ((looking-at "content_block_delta") ;collect incremental
+            (forward-line 1) (forward-char 5)  ;text or tool responses
+            (when-let* ((delta (plist-get (gptel--json-read) :delta)))
+              (if-let* ((content (plist-get delta :text)))
+                  (push content content-strs) ;collect text
+                (if-let* ((partial-json (plist-get delta :partial_json)))
+                    (plist-put          ;collect partial tool input
+                     info :partial_json
+                     (cons partial-json (plist-get info :partial_json)))))))
+           
+           ((looking-at "content_block_start") ;Is the following block text or tool-use?
             (forward-line 1) (forward-char 5)
-            (when-let* ((response (gptel--json-read))
-                        (content (map-nested-elt
-                                  response '(:delta :text))))
-              (push content content-strs))))
+            (when-let* ((cblock (plist-get (gptel--json-read) :content_block)))
+              (pcase (plist-get cblock :type)
+                ("text" (push (plist-get cblock :text) content-strs))
+                ("tool_use" (plist-put info :tool-use
+                                       (cons (list :id (plist-get cblock :id)
+                                                   :name (plist-get cblock :name))
+                                             (plist-get info :tool-use)))))))
+           
+           ((and (looking-at "content_block_stop") (plist-get info :partial_json))
+            (condition-case-unless-debug nil ;Assemble partial tool inputs
+                (let* ((args-decoded
+                       (gptel--json-read-string
+                        (apply #'concat (nreverse (plist-get info :partial_json)))))
+                       (data (plist-get info :data))
+                       (prompts (plist-get data :messages)))
+                  ;; First, add the tool call to the prompts list
+                  (plist-put            ; TODO(fsm) capture text too, not just tool calls
+                   data :messages
+                   (vconcat prompts
+                            `((:role "assistant"
+                               :content [,(append ;copied, so can mutate below
+                                           (list :type "tool_use")
+                                           (car (plist-get info :tool-use))
+                                           (list :input args-decoded))]))))
+                  ;; Then capture the tool call data for running the tool
+                  (cl-callf (lambda (tl) (plist-put tl :args args-decoded))
+                      (car (plist-get info :tool-use))))
+              (error (pop (plist-get info :tool-use)))) ;TODO: nreverse :tool-use list
+            (plist-put info :partial_json nil))
+           
+           ((looking-at "message_delta") ;collect stop_reason and usage_tokens
+            (forward-line 1) (forward-char 5)
+            (when-let* ((response (gptel--json-read)))
+              (plist-put info :output-tokens
+                         (map-nested-elt response '(:usage :output_tokens)))
+              (plist-put info :stop-reason
+                         (map-nested-elt response '(:delta :stop_reason)))))))
       (error (goto-char pt)))
     (apply #'concat (nreverse content-strs))))
 
-(cl-defmethod gptel--parse-response ((_backend gptel-anthropic) response _info)
-  (map-nested-elt response '(:content 0 :text)))
+(cl-defmethod gptel--parse-response ((_backend gptel-anthropic) response info)
+  (plist-put info :stop-reason (plist-get response :stop_reason))
+  (plist-put info :output-tokens
+             (map-nested-elt response '(:usage :output_tokens)))
+  (cl-loop
+   with content = (plist-get response :content)
+   for cblock across content
+   for type = (plist-get cblock :type)
+   if (equal type "text")
+   collect (plist-get cblock :text) into content-strs
+   else if (equal type "tool_use")
+   collect cblock into tool-use
+   finally do
+   (when tool-use
+     ;; First, add the tool call to the prompts list
+     (let* ((data (plist-get info :data))
+            (prompts (plist-get data :messages)))
+       (plist-put
+        data :messages
+        (vconcat prompts `((:role "assistant" :content ,content)))))
+     ;; Then capture the tool call data for running the tool
+     (cl-loop
+      for call-raw in tool-use
+      for call = (copy-sequence call-raw) do
+      (plist-put call :args (plist-get call :input))
+      (plist-put call :input nil)
+      collect call into calls
+      finally do (plist-put info :tool-use calls)))
+   finally return
+   (and content-strs (apply #'concat content-strs))))
 
 (cl-defmethod gptel--request-data ((_backend gptel-anthropic) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
@@ -80,6 +168,61 @@
      prompts-plist
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
+
+(cl-defmethod gptel--parse-tools ((_backend gptel-anthropic) tools)
+  ";TODO: "
+  (cl-map
+   'vector
+   (lambda (tool)
+     (list :name (gptel-tool-name tool)
+           :description (gptel-tool-description tool)
+           :input_schema
+           (list :type "object"
+                 :properties
+                 (cl-loop
+                  for arg in (gptel-tool-args tool)
+                  for name = (plist-get arg :name)
+                  for newname = (or (and (keywordp name) name)
+                                    (make-symbol (concat ":" name)))
+                  for enum = (plist-get arg :enum)
+                  append (list newname
+                               `(:type ,(plist-get arg :type)
+                                 ,@(if enum (list :enum (vconcat enum)))
+                                 :description ,(plist-get arg :description))))
+                 :required
+                 (vconcat
+                  (delq nil (mapcar
+                             (lambda (arg) (and (not (plist-get arg :optional))
+                                           (plist-get arg :name)))
+                             (gptel-tool-args tool)))))))
+   (ensure-list tools)))
+
+(cl-defmethod gptel--parse-tool-results ((_backend gptel-anthropic) tool-use)
+  "Return a prompt containing tool call results in TOOL-USE."
+  ;; (declare (side-effect-free t))
+  (list
+   :role "user"
+   :content 
+   (vconcat
+    (mapcar
+     (lambda (tool-call)
+       (let* ((result (plist-get tool-call :result))
+              (formatted
+               (list :type "tool_result"
+                     :tool_use_id (plist-get tool-call :id)
+                     :content (if (stringp result) result
+                                (prin1-to-string result)))))
+         (prog1 formatted
+           (when (plist-get tool-call :error)
+             (plist-put formatted :is_error t)))))
+     tool-use))))
+
+;; FIXME(fsm) unify this with `gptel--wrap-user-prompt', which is a mess
+(cl-defmethod gptel--wrap-prompts ((_backend gptel-anthropic) data new-prompt &optional _position)
+  "Append NEW to existing PROMPTS. If POSITION is a number insert it
+at the position in PROMPTS."
+  (let* ((prompts (plist-get data :messages)))
+    (plist-put data :messages (vconcat prompts (list new-prompt)))))
 
 (cl-defmethod gptel--parse-list ((_backend gptel-anthropic) prompt-list)
   (cl-loop for text in prompt-list

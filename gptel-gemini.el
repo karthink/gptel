@@ -56,8 +56,20 @@
        (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
-(cl-defmethod gptel--parse-response ((_backend gptel-gemini) response _info)
-  (map-nested-elt response '(:candidates 0 :content :parts 0 :text)))
+(cl-defmethod gptel--parse-response ((_backend gptel-gemini) response info)
+  (let* ((cand0 (map-nested-elt response '(:candidates 0)))
+         (part0 (map-nested-elt cand0 '(:content :parts 0)))
+         (text  (plist-get cand0 :text)))
+    (plist-put info :stop-reason (plist-get cand0 :finishReason))
+    (plist-put info :output-tokens
+               (map-nested-elt
+                response '(:usageMetadata :candidatesTokenCount)))
+    (if (and text (not (string-empty-p text)))
+        text
+      ;; Look for function calls
+      (prog1 nil
+        (if-let* ((tool-use (plist-get part0 :functionCall)))
+            (plist-put info :tool-use (list tool-use)))))))
 
 (cl-defmethod gptel--request-data ((_backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
@@ -103,6 +115,39 @@
      prompts-plist
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
+
+(cl-defmethod gptel--parse-tools ((backend gptel-gemini) tools)
+  "Parse TOOLS and return a list of prompts.
+
+BACKEND is the LLM backend in use.  This is the default
+implementation, used by OpenAI-compatible APIs."
+  (cl-loop
+   for tool in (ensure-list tools)
+   collect
+   (list 
+    :name (gptel-tool-name tool)
+    :description (gptel-tool-description tool)
+    :parameters
+    (list :type "object"
+          :properties
+          (cl-loop
+           for arg in (gptel-tool-args tool)
+           for name = (plist-get arg :name)
+           for newname = (or (and (keywordp name) name)
+                             (make-symbol (concat ":" name)))
+           for enum = (plist-get arg :enum)
+           append (list newname
+                        `(:type ,(plist-get arg :type)
+                          ,@(if enum (list :enum (vconcat enum)))
+                          :description ,(plist-get arg :description))))
+          :required
+          (vconcat
+           (delq nil (mapcar
+                      (lambda (arg) (and (not (plist-get arg :optional))
+                                         (plist-get arg :name)))
+                      (gptel-tool-args tool))))))
+   into tool-specs
+   finally return `[(:function_declarations ,(vconcat tool-specs))]))
 
 (cl-defmethod gptel--parse-list ((_backend gptel-gemini) prompt-list)
   (cl-loop for text in prompt-list

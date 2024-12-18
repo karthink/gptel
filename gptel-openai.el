@@ -66,6 +66,18 @@
     `(let ((json-object-type 'plist))
       (json-read))))
 
+(defmacro gptel--json-read-string (str)
+  (if (fboundp 'json-parse-string)
+      `(json-parse-string ,str
+        :object-type 'plist
+        :null-object nil
+        :false-object :json-false)
+    (require 'json)
+    (defvar json-object-type)
+    (declare-function json-read-from-string "json" ())
+    `(let ((json-object-type 'plist))
+      (json-read-from-string ,str))))
+
 (defmacro gptel--json-encode (object)
   (if (fboundp 'json-serialize)
       `(json-serialize ,object
@@ -133,8 +145,32 @@ with differing settings.")
        (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
-(cl-defmethod gptel--parse-response ((_backend gptel-openai) response _info)
-  (map-nested-elt response '(:choices 0 :message :content)))
+(cl-defmethod gptel--parse-response ((_backend gptel-openai) response info)
+  (let* ((choice0 (map-nested-elt response '(:choices 0)))
+         (message (plist-get choice0 :message))
+         (content (plist-get message :content)))
+    (plist-put info :stop-reason
+               (plist-get choice0 :finish_reason))
+    (plist-put info :output-tokens
+               (map-nested-elt response '(:usage :completion_tokens)))
+    ;; OpenAI returns either non-blank text content or a tool call, not both
+    (if (and content (not (string-empty-p content)))
+        content
+      ;; Look for tool calls only if no content
+      (prog1 nil
+        (when-let* ((tool-calls (plist-get message :tool_calls)))
+          (cl-loop
+           for tool-call across tool-calls ;replace ":arguments" with ":args"
+           for call-spec = (plist-get tool-call :function)
+           do (plist-put                ;args are returned as JSON in JSON
+               call-spec :args
+               (condition-case nil
+                   (gptel--json-read-string
+                    (plist-get call-spec :arguments))
+                 (error nil)))
+           (plist-put call-spec :arguments nil)
+           collect call-spec into tool-use
+           finally (plist-put info :tool-use tool-use)))))))
 
 (cl-defmethod gptel--request-data ((_backend gptel-openai) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
@@ -162,6 +198,9 @@ with differing settings.")
      prompts-plist
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
+
+;; NOTE: No `gptel--parse-tool' method required for gptel-openai, since this is
+;; handled by its defgeneric implementation
 
 (cl-defmethod gptel--parse-list ((_backend gptel-openai) prompt-list)
   (cl-loop for text in prompt-list
