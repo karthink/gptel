@@ -258,8 +258,8 @@ BUF is the buffer to modify, defaults to the overlay buffer."
                do (overlay-put ov 'before-string nil)
                (with-current-buffer buf
                  (goto-char ov-beg)
-                 (delete-region ov-beg ov-end)
-                 (insert response))))
+                 (insert response)
+                 (delete-region (point) (+ (point) (- ov-end ov-beg))))))
     (message "Replaced region(s) with LLM output in buffer: %s."
              (buffer-name ov-buf))))
 
