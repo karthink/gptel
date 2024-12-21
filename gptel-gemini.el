@@ -40,24 +40,47 @@
                   (:copier nil)
                   (:include gptel-backend)))
 
-(cl-defmethod gptel-curl--parse-stream ((_backend gptel-gemini) _info)
+(cl-defmethod gptel-curl--parse-stream ((_backend gptel-gemini) info)
   (let* ((content-strs))
-    (condition-case nil
-        ;; while-let is Emacs 29.1+ only
-        (while (prog1 (search-forward "{" nil t)
+    (condition-case-unless-debug nil
+        (while (prog1 (search-forward "{" nil t) ; while-let is Emacs 29.1+ only
                  (backward-char 1))
           (save-match-data
-            (when-let*
-                ((response (gptel--json-read))
-                 (text (map-nested-elt
-                        response '(:candidates 0 :content :parts 0 :text))))
-              (push text content-strs))))
+            (when-let* ((response (gptel--json-read)))
+              (if-let* ((text (map-nested-elt
+                               response '(:candidates 0 :content
+                                          :parts 0 :text))))
+                  (push text content-strs) ;text block, capture and return
+                ;; tool-use block, capture via side-effects
+                (gptel--parse-response
+                 (plist-get info :backend) response info)))))
       (error
        (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
-(cl-defmethod gptel--parse-response ((_backend gptel-gemini) response _info)
-  (map-nested-elt response '(:candidates 0 :content :parts 0 :text)))
+(cl-defmethod gptel--parse-response ((_backend gptel-gemini) response info)
+  (let* ((cand0 (map-nested-elt response '(:candidates 0)))
+         (parts (map-nested-elt cand0 '(:content :parts)))
+         (text  (plist-get (aref parts 0) :text)))
+    (plist-put info :stop-reason (plist-get cand0 :finishReason))
+    (plist-put info :output-tokens
+               (map-nested-elt
+                response '(:usageMetadata :candidatesTokenCount)))
+    (if (and text (not (string-empty-p text)))
+        text
+      (prog1 nil                        ; Look for function calls
+        (when (plist-get (aref parts 0) :functionCall)
+          ;; First, add the tool call to the prompts list
+          (let* ((data (plist-get info :data))
+                 (prompts (plist-get data :contents)))
+            (plist-put
+             data :contents
+             (vconcat prompts `((:role "model" :parts ,parts)))))
+          ;; Then capture the tool call data for running the tool
+          (plist-put info :tool-use
+                     (mapcar (lambda (p) (copy-sequence
+                                     (plist-get p :functionCall)))
+                             parts)))))))
 
 (cl-defmethod gptel--request-data ((_backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
@@ -85,8 +108,8 @@
     (if (and gptel--system-message
              (not (gptel--model-capable-p 'nosystem))
              (not (equal gptel-model 'gemini-pro)))
-      (plist-put prompts-plist :system_instruction
-                 `(:parts (:text ,gptel--system-message))))
+        (plist-put prompts-plist :system_instruction
+                   `(:parts (:text ,gptel--system-message))))
     (when gptel-temperature
       (setq params
             (plist-put params
@@ -103,6 +126,58 @@
      prompts-plist
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
+
+(cl-defmethod gptel--parse-tools ((backend gptel-gemini) tools)
+  "Parse TOOLS and return a list of prompts.
+
+BACKEND is the LLM backend in use."
+  (cl-loop
+   for tool in (ensure-list tools)
+   collect
+   (list 
+    :name (gptel-tool-name tool)
+    :description (gptel-tool-description tool)
+    :parameters
+    (list :type "object"
+          :properties
+          (cl-loop
+           for arg in (gptel-tool-args tool)
+           for name = (plist-get arg :name)
+           for newname = (or (and (keywordp name) name)
+                             (make-symbol (concat ":" name)))
+           for enum = (plist-get arg :enum)
+           append (list newname
+                        `(:type ,(plist-get arg :type)
+                          ,@(if enum (list :enum (vconcat enum)))
+                          :description ,(plist-get arg :description))))
+          :required
+          (vconcat
+           (delq nil (mapcar
+                      (lambda (arg) (and (not (plist-get arg :optional))
+                                         (plist-get arg :name)))
+                      (gptel-tool-args tool))))))
+   into tool-specs
+   finally return `[(:function_declarations ,(vconcat tool-specs))]))
+
+(cl-defmethod gptel--parse-tool-results ((backend gptel-gemini) tool-use)
+  "Return a prompt containing tool call results in TOOL-USE."
+  (list
+   :role "user"
+   :parts
+   (vconcat
+    (mapcar
+     (lambda (tool-call)
+       (let ((result (plist-get tool-call :result))
+             (name (plist-get tool-call :name)))
+         `(:functionResponse
+           (:name ,name :response
+            (:name ,name :content ,result)))))
+     tool-use))))
+
+(cl-defmethod gptel--inject-prompt ((_backend gptel-gemini) data new-prompt &optional _position)
+  ";TODO: "
+  (let ((prompts (plist-get data :contents)))
+    (plist-put data :contents (vconcat prompts (list new-prompt)))))
 
 (cl-defmethod gptel--parse-list ((_backend gptel-gemini) prompt-list)
   (cl-loop for text in prompt-list

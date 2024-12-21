@@ -57,6 +57,7 @@
                     else collect (format "- %s" file-name) into source-items
                     finally return (mapconcat #'identity (cons "\n\nSources:" source-items) "\n"))))
 
+;; FIXME(tool) add tool use
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-privategpt) info)
   (let* ((content-strs))
     (condition-case nil
@@ -72,10 +73,11 @@
 		(let* ((delta (map-nested-elt response '(:choices 0 :delta)))
 		       (content (plist-get delta :content)))
 		  (push content content-strs))))))
-    (error
-     (goto-char (match-beginning 0))))
-  (apply #'concat (nreverse content-strs))))
+      (error
+       (goto-char (match-beginning 0))))
+    (apply #'concat (nreverse content-strs))))
 
+;; FIXME(tool) add tool use
 (cl-defmethod gptel--parse-response ((_backend gptel-privategpt) response info)
   (let ((response-string (map-nested-elt response '(:choices 0 :message :content)))
         (sources-string (and (gptel-privategpt-sources (plist-get info :backend))

@@ -36,6 +36,7 @@
                             (:copier nil)
                             (:include gptel-backend)))
 
+;; FIXME(fsm) Remove this variable
 (defvar-local gptel--ollama-token-count 0
   "Token count for ollama conversations.
 
@@ -66,12 +67,28 @@ Intended for internal use only.")
 
 (cl-defmethod gptel--parse-response ((_backend gptel-ollama) response info)
   "Parse a one-shot RESPONSE from the Ollama API."
-  (when-let ((context
-              (+ (or (map-elt response :prompt_eval_count) 0)
-                 (or (map-elt response :eval_count) 0))))
-    (with-current-buffer (plist-get info :buffer)
-      (cl-incf gptel--ollama-token-count context)))
-  (map-nested-elt response '(:message :content)))
+  (plist-put info :stop-reason (plist-get response :done_reason))
+  (plist-put info :output-tokens (plist-get response :eval_count))
+  (let* ((message (plist-get response :message))
+         (content (plist-get message :content)))
+    (if (and content (not (string-empty-p content)))
+        content
+      ;; Look for tool calls only if no content
+      (prog1 nil
+        (when-let* ((tool-calls (plist-get message :tool_calls)))
+          ;; First add the tool call to the prompts list
+          (let* ((data (plist-get info :data))
+                 (prompts (plist-get data :messages)))
+            (plist-put data :messages (vconcat prompts `(,message))))
+          ;; Then capture the tool call data for running the tool
+          (cl-loop
+           for tool-call across tool-calls ;replace ":arguments" with ":args"
+           for call-spec = (copy-sequence (plist-get tool-call :function))
+           do (plist-put call-spec :args
+                         (plist-get call-spec :arguments))
+           (plist-put call-spec :arguments nil)
+           collect call-spec into tool-use
+           finally (plist-put info :tool-use tool-use)))))))
 
 (cl-defmethod gptel--request-data ((_backend gptel-ollama) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
@@ -101,6 +118,22 @@ Intended for internal use only.")
       (setq options-plist
             (plist-put options-plist :num_predict gptel-max-tokens)))
     (plist-put prompts-plist :options options-plist)))
+
+;; NOTE: No `gptel--parse-tool' method required for gptel-ollama, since this is
+;; handled by its defgeneric implementation
+
+(cl-defmethod gptel--parse-tool-results ((_backend gptel-ollama) tool-use)
+  "Return a prompt containing tool call results in TOOL-USE."
+  (mapcar (lambda (tool-call)
+            (list :role "tool" :content (plist-get tool-call :result)))
+   tool-use))
+
+(cl-defmethod gptel--inject-prompt ((_backend gptel-ollama) data new-prompt &optional _position)
+  ;; ;TODO(fsm): implement POSITION
+  (when (keywordp (car-safe new-prompt)) ;Is new-prompt one or many?
+    (setq new-prompt (list new-prompt)))
+  (let ((prompts (plist-get data :messages)))
+    (plist-put data :messages (vconcat prompts new-prompt))))
 
 (cl-defmethod gptel--parse-list ((_backend gptel-ollama) prompt-list)
   (cl-loop for text in prompt-list
