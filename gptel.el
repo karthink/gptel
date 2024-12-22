@@ -1390,10 +1390,14 @@ OpenAI-compatible and Ollama message formats."
 ;;; State machine for driving requests
 
 (defvar gptel-request--transitions
-  `((INIT . ((t                 . WAIT)))
-    (WAIT . ((t                 . TYPE)))
-    (TYPE . ((,#'gptel--error-p . ERRS)
-             (t                 . DONE))))
+  `((INIT . ((t                       . WAIT)))
+    (WAIT . ((t                       . TYPE)))
+    (TYPE . ((,#'gptel--error-p       . ERRS)
+             (,#'gptel--tool-use-p    . TOOL)
+             (t                       . DONE)))
+    (TOOL . ((,#'gptel--error-p       . ERRS)
+             (,#'gptel--tool-result-p . WAIT)
+             (t                       . DONE))))
   "Alist specifying gptel's default state transition table for requests.
 
 Each entry is a list whose car is a request state (any symbol)
@@ -1408,6 +1412,7 @@ considered a success and acts as a default.")
   `((WAIT ,#'gptel--handle-wait)
     (TYPE ,#'gptel--handle-pre-insert)
     (ERRS ,#'gptel--handle-error)
+    (TOOL ,#'gptel--handle-tool-use)
     (DONE ,#'gptel--handle-post-insert))
   "Alist specifying handlers for gptel's default state transitions.
 
@@ -1488,7 +1493,7 @@ MACHINE is an instance of `gptel-fsm'"
   ;; a second network request: gptel tests for the presence of these flags to
   ;; handle state transitions.  (NOTE: Don't add :token to this.)
   (let ((info (gptel-fsm-info fsm)))
-    (dolist (key '(:error :http-status))
+    (dolist (key '(:tool-success :tool-use :error :http-status))
       (when (plist-get info key)
         (plist-put info key nil))))
   (funcall
@@ -1594,11 +1599,74 @@ Run post-response hooks."
          'gptel-post-response-functions
          (marker-position start-marker) (marker-position tracking-marker))))))
 
+(defun gptel--handle-tool-use (fsm)
+  "Run tool calls captured in FSM, and advance the state machine with the results."
+  (when-let* ((info (gptel-fsm-info fsm))
+              (backend (plist-get info :backend))
+              ;; This function might run many times, so only act on the remaining tool calls.
+              (tool-use (cl-remove-if (lambda (tc) (plist-get tc :result))
+                                      (plist-get info :tool-use)))
+              (ntools (length tool-use))
+              (tool-idx 0))
+    (with-current-buffer (plist-get info :buffer)
+      (when gptel-mode
+        (gptel--update-status
+         (format " Calling tool..." ) 'mode-line-emphasis)))
+
+    (let ((result-alist))
+      (mapc                             ; Construct function calls
+       (lambda (tool-call)
+         (letrec ((name (plist-get tool-call :name))
+                  (args (plist-get tool-call :args))
+                  (arg-values)
+                  (process-tool-result
+                   (lambda (result)
+                     (when result
+                       (plist-put info :tool-success t)
+                       (plist-put tool-call :result
+                                  (gptel--to-string result))
+                       (push (cons name result) result-alist))
+                     (cl-incf tool-idx)
+                     (when (>= tool-idx ntools) ; All tools have run
+                       (gptel--inject-prompt
+                        backend (plist-get info :data)
+                        (gptel--parse-tool-results
+                         backend (plist-get info :tool-use)))
+                       (funcall (plist-get info :callback)
+                                result-alist info)
+                       (gptel--fsm-transition fsm)))))
+           (when-let* ((tool-spec
+                        (cl-find-if
+                         (lambda (ts) (equal (gptel-tool-name ts) name))
+                         (plist-get info :tools))))
+             (setq arg-values
+                   (mapcar
+                    (lambda (arg)
+                      (let ((key (intern
+                                  (concat ":" (plist-get arg :name)))))
+                        (plist-get args key)))
+                    (gptel-tool-args tool-spec)))
+             (if (gptel-tool-async tool-spec)
+                 (apply (gptel-tool-function tool-spec)
+                        process-tool-result arg-values)
+               (let ((result
+                      (condition-case-unless-debug errdata
+                          (apply (gptel-tool-function tool-spec) arg-values)
+                        (error (mapconcat #'gptel--to-string errdata " ")))))
+                 (funcall process-tool-result result))))))
+       tool-use))))
+
 ;;;; State machine predicates
 ;; Predicates used to find the next state to transition to, see
 ;; `gptel-request--transitions'.
 
 (defun gptel--error-p (info) (plist-get info :error))
+
+(defun gptel--tool-use-p (info)
+  (and gptel-use-tools (plist-get info :tool-use)))
+
+(defun gptel--tool-result-p (info)
+  (and gptel-use-tools (plist-get info :tool-success)))
 
 
 ;;; Send queries, handle responses
