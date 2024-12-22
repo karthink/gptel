@@ -58,6 +58,7 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/8607532/278854024-a
 - Supports multiple independent conversations and one-off ad hoc interactions.
 - Supports multi-modal models (include images, documents)
 - Save chats as regular Markdown/Org/Text files and resume them later.
+- Supports introspection, so you can see exactly what will be sent.  You can inspect and modify queries before sending them.
 - You can go back and edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.
 - Don't like gptel's workflow? Use it to create your own for any supported model/backend with a [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][simple API]].
 
@@ -996,7 +997,7 @@ https://github.com/user-attachments/assets/e3b436b3-9bde-4c1f-b2ce-3f7df1984933
 
 The result is previewed over the original text.  By default, the buffer is not modified.
 
-Pressing =RET= or clicking in the rewritten region should give you a list of options: you can *diff*, *ediff*, *merge* or *accept* the replacement.  Example with code:
+Pressing =RET= or clicking in the rewritten region should give you a list of options: you can *iterate* on, *diff*, *ediff*, *merge* or *accept* the replacement.  Example with code:
 
 #+html: <p align="center">
 https://github.com/user-attachments/assets/4067fdb8-85d3-4264-9b64-d727353f68f9
@@ -1113,12 +1114,14 @@ Or see this [[https://github.com/karthink/gptel/wiki/Commonly-requested-features
 #+html: </details>
 #+html: <details><summary>
 **** Can I change the transient menu key bindings?
+#+html: </summary>
 
 Yes, see =transient-suffix-put=.  This changes the key to select a backend/model from "-m" to "M" in gptel's menu:
 #+begin_src emacs-lisp
 (transient-suffix-put 'gptel-menu (kbd "-m") :key "M")
 #+end_src
 
+#+html: <details><summary>
 **** How does gptel distinguish between user prompts and LLM responses?
 #+html: </summary>
 
