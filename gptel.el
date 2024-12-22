@@ -1982,9 +1982,11 @@ against if required."
   (with-current-buffer (or buf (current-buffer))
     (letrec ((gptel--attach-after
               (lambda (b e)
-                (put-text-property b e 'gptel-history
-                                   (append (ensure-list history)
-                                           (get-char-property (1- e) 'gptel-history)))
+                (when (and b e)
+                  (put-text-property
+                   b e 'gptel-history
+                   (append (ensure-list history)
+                           (get-char-property (1- e) 'gptel-history))))
                 (remove-hook 'gptel-post-response-functions
                              gptel--attach-after 'local))))
       (add-hook 'gptel-post-response-functions gptel--attach-after
