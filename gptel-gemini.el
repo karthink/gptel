@@ -100,7 +100,7 @@ Mutate state INFO with response metadata."
                                      (plist-get p :functionCall)))
                              parts)))))))
 
-(cl-defmethod gptel--request-data ((_backend gptel-gemini) prompts)
+(cl-defmethod gptel--request-data ((backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
   ;; HACK (backwards compatibility) Prepend the system message to the first user
   ;; prompt, but only for gemini-pro.
@@ -127,6 +127,9 @@ Mutate state INFO with response metadata."
              (not (equal gptel-model 'gemini-pro)))
         (plist-put prompts-plist :system_instruction
                    `(:parts (:text ,gptel--system-message))))
+    (when (and gptel-use-tools gptel-tools)
+      (plist-put prompts-plist :tools
+                 (gptel--parse-tools backend gptel-tools)))
     (when gptel-temperature
       (setq params
             (plist-put params

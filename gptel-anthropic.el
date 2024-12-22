@@ -164,7 +164,7 @@ Mutate state INFO with response metadata."
    finally return
    (and content-strs (apply #'concat content-strs))))
 
-(cl-defmethod gptel--request-data ((_backend gptel-anthropic) prompts)
+(cl-defmethod gptel--request-data ((backend gptel-anthropic) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
   (let ((prompts-plist
          `(:model ,(gptel--model-name gptel-model)
@@ -175,6 +175,9 @@ Mutate state INFO with response metadata."
       (plist-put prompts-plist :system gptel--system-message))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
+    (when (and gptel-use-tools gptel-tools)
+      (plist-put prompts-plist :tools
+                 (gptel--parse-tools backend gptel-tools)))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
      prompts-plist
