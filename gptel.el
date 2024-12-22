@@ -1460,7 +1460,8 @@ Transition to the next state after."
                (buffer (current-buffer))
                position context dry-run
                (stream nil) (in-place nil)
-               (system gptel--system-message))
+               (system gptel--system-message)
+               (fsm (gptel-make-fsm)))
   "Request a response from the `gptel-backend' for PROMPT.
 
 The request is asynchronous, the function returns immediately.
@@ -1565,6 +1566,11 @@ streaming callbacks is slightly different:
 If DRY-RUN is non-nil, construct and return the full
 query data as usual, but do not send the request.
 
+FSM is the state machine driving the request.  This can be used
+to define a custom request control flow, see `gptel-fsm' for
+details.  You can safely ignore this -- FSM is an unstable
+feature and subject to change.
+
 Note:
 
 1. This function is not fully self-contained.  Consider
@@ -1597,8 +1603,8 @@ be used to rerun or continue the request at a later time."
             (set-marker (make-marker) position buffer))))
          (full-prompt
           (nconc
-           (cdr directive)              ;prompt constructed from directive/template
-           (cond                        ;prompt from buffer or explicitly supplied
+           (cdr directive)           ;prompt constructed from directive/template
+           (cond                     ;prompt from buffer or explicitly supplied
             ((null prompt)
              (gptel--create-prompt start-marker))
             ((stringp prompt)
@@ -1613,13 +1619,13 @@ be used to rerun or continue the request at a later time."
                      :buffer buffer
                      :position start-marker)))
     ;; This context should not be confused with the context aggregation context!
+    (when callback (plist-put info :callback callback))
     (when context (plist-put info :context context))
     (when in-place (plist-put info :in-place in-place))
-    (unless dry-run
-      (funcall (if gptel-use-curl
-                   #'gptel-curl-get-response #'gptel--url-get-response)
-               info callback))
-    (list stream info callback)))
+    ;; Add info to state machine context
+    (setf (gptel-fsm-info fsm) info)
+    (unless dry-run (gptel--fsm-transition fsm)) ;INIT -> WAIT
+    (list stream fsm)))
 
 (defvar gptel--request-alist nil "Alist of active gptel requests.")
 
@@ -1629,11 +1635,15 @@ be used to rerun or continue the request at a later time."
 BUF defaults to the current buffer."
   (interactive (list (current-buffer)))
   (when-let* ((proc-attrs
-               (cl-find-if (lambda (proc-list)
-                             (eq (plist-get (cdr proc-list) :buffer) buf))
-                           gptel--request-alist))
+               (cl-find-if
+                (lambda (proc-list)
+                  (eq (thread-first (cdr proc-list)
+                                    (gptel-fsm-info)
+                                    (plist-get :buffer))
+                      buf))
+                gptel--request-alist))
               (proc (car proc-attrs))
-              (info (cdr proc-attrs)))
+              (info (gptel-fsm-info (cdr proc-attrs))))
     ;; Run callback with abort signal
     (with-demoted-errors "Callback error: %S"
       (and-let* ((cb (plist-get info :callback))
@@ -1671,10 +1681,10 @@ waiting for the response."
   (interactive "P")
   (if (and arg (require 'gptel-transient nil t))
       (call-interactively #'gptel-menu)
-  (message "Querying %s..." (gptel-backend-name gptel-backend))
-  (gptel--sanitize-model)
-  (gptel-request nil :stream gptel-stream)
-  (gptel--update-status " Waiting..." 'warning)))
+    (message "Querying %s..." (gptel-backend-name gptel-backend))
+    (gptel--sanitize-model)
+    (gptel-request nil :stream gptel-stream)
+    (gptel--update-status " Waiting..." 'warning)))
 
 (declare-function json-pretty-print-buffer "json")
 (defun gptel--inspect-query (request-args &optional format)
@@ -1752,56 +1762,31 @@ specified."
 
 INFO is a plist containing information relevant to this buffer.
 See `gptel--url-get-response' for details."
-  (let* ((status-str  (plist-get info :status))
-         (gptel-buffer (plist-get info :buffer))
+  (let* ((gptel-buffer (plist-get info :buffer))
          (start-marker (plist-get info :position))
-         response-beg response-end)
-    ;; Handle read-only buffers
-    (when (with-current-buffer gptel-buffer
-            (or buffer-read-only
-                (get-char-property start-marker 'read-only)))
-      (message "Buffer is read only, displaying reply in buffer \"*LLM response*\"")
-      (display-buffer
-       (with-current-buffer (get-buffer-create "*LLM response*")
-         (visual-line-mode 1)
-         (goto-char (point-max))
-         (move-marker start-marker (point) (current-buffer))
-         (current-buffer))
-       '((display-buffer-reuse-window
-          display-buffer-pop-up-window)
-         (reusable-frames . visible))))
-    ;; Insert response and status message/error message
-    (with-current-buffer gptel-buffer
-      (if response
-          (progn
-            (setq response (gptel--transform-response
-                               response gptel-buffer))
-            (save-excursion
-              (put-text-property
-               0 (length response) 'gptel 'response response)
-              (with-current-buffer (marker-buffer start-marker)
-                (goto-char start-marker)
-                (run-hooks 'gptel-pre-response-hook)
-                (unless (or (bobp) (plist-get info :in-place))
-                  (insert "\n\n")
-                  (when gptel-mode
-                    (insert (gptel-response-prefix-string))))
-                (setq response-beg (point)) ;Save response start position
-                (insert response)
-                (setq response-end (point))
-                (pulse-momentary-highlight-region response-beg response-end)
-                (when gptel-mode (insert "\n\n" (gptel-prompt-prefix-string)))) ;Save response end position
-              (when gptel-mode (gptel--update-status " Ready" 'success))))
-        (gptel--update-status
-         (format " Response Error: %s" status-str) 'error)
-        (message "gptel response error: (%s) %s"
-                 status-str (plist-get info :error))))
-    ;; Run hook in visible window to set window-point, BUG #269
-    (if-let ((gptel-window (get-buffer-window gptel-buffer 'visible)))
-        (with-selected-window gptel-window
-          (run-hook-with-args 'gptel-post-response-functions response-beg response-end))
+         (tracking-marker (plist-get info :tracking-marker)))
+    (when (stringp response)
       (with-current-buffer gptel-buffer
-        (run-hook-with-args 'gptel-post-response-functions response-beg response-end)))))
+        (setq response (gptel--transform-response
+                        response gptel-buffer))
+        (when tracking-marker           ;separate from previous response
+          (setq response (concat "\n\n" response)))
+        (save-excursion
+          (put-text-property
+           0 (length response) 'gptel 'response response)
+          (with-current-buffer (marker-buffer start-marker)
+            (goto-char (or tracking-marker start-marker))
+            ;; (run-hooks 'gptel-pre-response-hook)
+            (unless (or (bobp) (plist-get info :in-place)
+                        tracking-marker)
+              (insert "\n\n")
+              (when gptel-mode
+                (insert (gptel-response-prefix-string)))
+              (move-marker start-marker (point)))
+            (insert response)
+            (plist-put info :tracking-marker (setq tracking-marker (point-marker)))
+            ;; for uniformity with streaming responses
+            (set-marker-insertion-type tracking-marker t)))))))
 
 (defun gptel--create-prompt (&optional prompt-end)
   "Return a full conversation prompt from the contents of this buffer.
@@ -1981,13 +1966,16 @@ BUFFER is the LLM interaction buffer."
       (gptel--convert-markdown->org content)
     content))
 
-(defun gptel--url-get-response (info &optional callback)
-  "Fetch response to prompt in INFO from the LLM.
+(defun gptel--url-get-response (fsm)
+  "Fetch response to prompt in state FSM from the LLM.
 
-INFO is a plist with the following keys:
+FSM is the state machine driving this request.  Its INFO slot
+contains the data required for setting up the request.  INFO is a
+plist with the following keys, among others:
 - :data     (the data being sent)
 - :buffer   (the gptel buffer)
 - :position (marker at which to insert the response).
+- :callback (optional, the request callback)
 
 Call CALLBACK with the response and INFO afterwards.  If omitted
 the response is inserted into the current buffer after point."
@@ -2000,11 +1988,15 @@ the response is inserted into the current buffer after point."
                   (when-let ((header (gptel-backend-header gptel-backend)))
                     (if (functionp header)
                         (funcall header) header))))
+        (info (gptel-fsm-info fsm))
+        (callback (or (plist-get info :callback) ;if not the first run
+                       #'gptel--insert-response)) ;default callback
         (url-request-data
          (encode-coding-string
           (gptel--json-encode (plist-get info :data))
           'utf-8)))
-    ;; why do these checks not occur inside of `gptel--log'?
+    (plist-put info :callback callback)
+    (plist-put info :backend backend)
     (when gptel-log-level               ;logging
       (when (eq gptel-log-level 'debug)
         (gptel--log (gptel--json-encode
@@ -2017,20 +2009,21 @@ the response is inserted into the current buffer after point."
                           (if (functionp backend-url)
                               (funcall backend-url) backend-url))
                         (lambda (_)
-                          (pcase-let ((`(,response ,http-msg ,error)
+                          (pcase-let ((`(,response ,http-status ,http-msg ,error)
                                        (gptel--url-parse-response backend info))
                                       (buf (current-buffer)))
+                            (plist-put info :http-status http-status)
                             (plist-put info :status http-msg)
+                            (gptel--fsm-transition fsm) ;WAIT -> TYPE
                             (when error (plist-put info :error error))
                             (with-demoted-errors "gptel callback error: %S"
-                              (funcall (or callback #'gptel--insert-response)
-                                       response info))
+                              (funcall callback response info))
+                            (gptel--fsm-transition fsm) ;TYPE -> next
                             (setf (alist-get buf gptel--request-alist nil 'remove) nil)
                             (kill-buffer buf)))
                         nil t nil)))
-      (setf (alist-get proc-buf gptel--request-alist)
-          ;; TODO: Add transformer here.  NOTE: We need info to be mutated here.
-          (nconc info (list :callback callback :backend backend))))))
+       ;; TODO: Add transformer here.
+      (setf (alist-get proc-buf gptel--request-alist) fsm))))
 
 (cl-defgeneric gptel--parse-response (backend response proc-info)
   "Response extractor for LLM requests.
@@ -2045,7 +2038,7 @@ See `gptel-curl--get-response' for its contents.")
 (defvar url-http-end-of-headers)
 (defvar url-http-response-status)
 (defun gptel--url-parse-response (backend proc-info)
-  "Parse response from BACKEND in RESPONSE-BUFFER."
+  "Parse response from BACKEND with PROC-INFO."
   (when gptel-log-level             ;logging
     (save-excursion
       (goto-char url-http-end-of-headers)
@@ -2056,6 +2049,10 @@ See `gptel-curl--get-response' for its contents.")
                   "response body")))
   (if-let* ((http-msg (string-trim (buffer-substring (line-beginning-position)
                                                      (line-end-position))))
+            (http-status
+             (save-match-data
+               (and (string-match "HTTP/[.0-9]+ +\\([0-9]+\\)" http-msg)
+                    (match-string 1 http-msg))))
             (response (progn (goto-char url-http-end-of-headers)
                              (condition-case nil
                                  (gptel--json-read)
@@ -2064,26 +2061,14 @@ See `gptel-curl--get-response' for its contents.")
        ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
        ((or (memq url-http-response-status '(200 100))
             (string-match-p "\\(?:1\\|2\\)00 OK" http-msg))
-        (list (string-trim (gptel--parse-response backend response
-                                                  proc-info))
-              http-msg))
+        (list (and-let* ((resp (gptel--parse-response backend response proc-info)))
+                (string-trim resp))
+              http-status http-msg))
        ((plist-get response :error)
-        (let* ((error-data (plist-get response :error))
-               (error-msg (plist-get error-data :message))
-               (error-type (plist-get error-data :type))
-               (backend-name (gptel-backend-name backend)))
-          (if (stringp error-data)
-              (progn
-		(message "%s error: (%s) %s" backend-name http-msg error-data)
-                (setq error-msg (string-trim error-data)))
-            (when (stringp error-msg)
-              (message "%s error: (%s) %s" backend-name http-msg (string-trim error-msg)))
-            (when error-type
-	      (setq http-msg (concat "("  http-msg ") " (string-trim error-type)))))
-          (list nil (concat "(" http-msg ") " (or error-msg "")))))
+        (list nil http-status http-msg (plist-get response :error)))
        ((eq response 'json-read-error)
-        (list nil (concat "(" http-msg ") Malformed JSON in response.") "json-read-error"))
-       (t (list nil (concat "(" http-msg ") Could not parse HTTP response.")
+        (list nil http-status (concat "(" http-msg ") Malformed JSON in response.") "json-read-error"))
+       (t (list nil http-status (concat "(" http-msg ") Could not parse HTTP response.")
                 "Could not parse HTTP response.")))
     (list nil (concat "(" http-msg ") Could not parse HTTP response.")
           "Could not parse HTTP response.")))
