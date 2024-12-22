@@ -1276,6 +1276,117 @@ file."
 (declare-function gptel-context--wrap "gptel-context")
 
 
+;;; Tool use
+
+(cl-defstruct (gptel-tool (:constructor gptel-make-tool)
+                          (:copier gptel-copy-tool))
+  "Struct to specify tools for LLMs to run.
+
+A tool is a function specification sent to the LLM along with
+a (plain language) task.  If the LLM decides to use the tool to
+accomplish the task, gptel will run the tool and (optionally)
+feed the LLM the results.  You can add tools via
+`gptel-make-tool', which takes the following keyword arguments:
+
+FUNCTION: The function itself (lambda or symbol) that runs the tool.
+
+NAME: The name of the tool -- recommended to be in Javascript style snake_case.
+
+DESCRIPTION: A verbose description of what the tool does, how to
+call it and what it returns.
+
+ARGS: A list of plists specifying the arguments.  Each plist
+specifies the :name, :description and :type of the argument.  For
+arguments that are enums, you can include an additional :enum
+key.
+
+ASYNC: boolean indicating if the elisp function is asynchronous.
+
+See `gptel-tools' for an example."
+  function name
+  description args async)
+
+;; (cl-defstruct (gptel-tool-arg (:constructor gptel-make-tool-arg)
+;;                               (:copier gptel-copy-tool-arg))
+;;   name description type optional)
+
+(cl-defgeneric gptel--parse-tools (_backend tools)
+  "Parse TOOLS and return a list of prompts.
+
+TOOLS is a list of `gptel-tool' structs, which see.
+
+_BACKEND is the LLM backend in use.  This is the default
+implementation, used by OpenAI-compatible APIs and Ollama."
+  (vconcat
+   (mapcar
+    (lambda (tool)
+      (list
+       :type "function"
+       :function
+       (append
+        (list
+         :name (gptel-tool-name tool)
+         :description (gptel-tool-description tool))
+        (and (gptel-tool-args tool)     ;no parameters if args is nil
+             (list
+              :parameters
+              (list :type "object"
+                    :properties
+                    (cl-loop
+                     for arg in (gptel-tool-args tool)
+                     for name = (plist-get arg :name)
+                     for type = (plist-get arg :type)
+                     for newname = (or (and (keywordp name) name)
+                                       (make-symbol (concat ":" name)))
+                     for enum = (plist-get arg :enum)
+                     append
+                     (list newname
+                           `(:type ,type
+                             :description ,(plist-get arg :description)
+                             ,@(if enum (list :enum (vconcat enum)))
+                             ,@(cond
+                                ((equal type "object")
+                                 (list :parameters (plist-get arg :parameters)
+                                  :additionalProperties :json-false))
+                                ((equal type "array")
+                                 ;; TODO(tool) If the item type is an object,
+                                 ;; add :additionalProperties to it
+                                 (list :items (plist-get arg :items)))))))
+                    :required
+                    (vconcat
+                     (delq nil (mapcar
+                                (lambda (arg) (and (not (plist-get arg :optional))
+                                              (plist-get arg :name)))
+                                (gptel-tool-args tool))))
+                    :additionalProperties :json-false))))))
+    (ensure-list tools))))
+
+(cl-defgeneric gptel--parse-tool-results (backend results)
+  "Return a BACKEND-appropriate prompt containing tool call RESULTS.
+
+This will be injected into the messages list in the prompt to
+send to the LLM.")
+
+;; FIXME(fsm) unify this with `gptel--wrap-user-prompt', which is a mess
+(cl-defgeneric gptel--inject-prompt
+  (_backend data new-prompt &optional _position)
+  "Append NEW-PROMPT to existing prompts in query DATA.
+
+NEW-PROMPT can be a single message or a list of messages.
+
+Not implemented: if POSITION is
+- a non-negative number, insert it at that position in PROMPTS.
+- a negative number, insert it there counting from the end.
+
+This generic implementation handles the Anthropic,
+OpenAI-compatible and Ollama message formats."
+  ;; ;TODO(fsm): implement _POSITION
+  (when (keywordp (car-safe new-prompt)) ;Is new-prompt one or many?
+    (setq new-prompt (list new-prompt)))
+  (let ((prompts (plist-get data :messages)))
+    (plist-put data :messages (vconcat prompts new-prompt))))
+
+
 ;;; State machine for driving requests
 
 (defvar gptel-request--transitions
