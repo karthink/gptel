@@ -257,7 +257,6 @@ See `gptel--url-get-response' for details."
       (with-current-buffer (marker-buffer start-marker)
         (save-excursion
           (unless tracking-marker
-            (gptel--update-status " Typing..." 'success)
             (goto-char start-marker)
             (unless (or (bobp) (plist-get info :in-place))
               (insert "\n\n")
