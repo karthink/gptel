@@ -36,6 +36,7 @@
                             (:copier nil)
                             (:include gptel-backend)))
 
+;; FIXME(fsm) Remove this variable
 (defvar-local gptel--ollama-token-count 0
   "Token count for ollama conversations.
 
@@ -65,13 +66,31 @@ Intended for internal use only.")
     (apply #'concat (nreverse content-strs))))
 
 (cl-defmethod gptel--parse-response ((_backend gptel-ollama) response info)
-  "Parse a one-shot RESPONSE from the Ollama API."
-  (when-let ((context
-              (+ (or (map-elt response :prompt_eval_count) 0)
-                 (or (map-elt response :eval_count) 0))))
-    (with-current-buffer (plist-get info :buffer)
-      (cl-incf gptel--ollama-token-count context)))
-  (map-nested-elt response '(:message :content)))
+  "Parse a one-shot RESPONSE from the Ollama API and return text.
+
+Store response metadata in state INFO."
+  (plist-put info :stop-reason (plist-get response :done_reason))
+  (plist-put info :output-tokens (plist-get response :eval_count))
+  (let* ((message (plist-get response :message))
+         (content (plist-get message :content)))
+    (if (and content (not (string-empty-p content)))
+        content
+      ;; Look for tool calls only if no content
+      (prog1 nil
+        (when-let* ((tool-calls (plist-get message :tool_calls)))
+          ;; First add the tool call to the prompts list
+          (let* ((data (plist-get info :data))
+                 (prompts (plist-get data :messages)))
+            (plist-put data :messages (vconcat prompts `(,message))))
+          ;; Then capture the tool call data for running the tool
+          (cl-loop
+           for tool-call across tool-calls ;replace ":arguments" with ":args"
+           for call-spec = (copy-sequence (plist-get tool-call :function))
+           do (plist-put call-spec :args
+                         (plist-get call-spec :arguments))
+           (plist-put call-spec :arguments nil)
+           collect call-spec into tool-use
+           finally (plist-put info :tool-use tool-use)))))))
 
 (cl-defmethod gptel--request-data ((_backend gptel-ollama) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."

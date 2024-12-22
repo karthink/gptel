@@ -66,6 +66,18 @@
     `(let ((json-object-type 'plist))
       (json-read))))
 
+(defmacro gptel--json-read-string (str)
+  (if (fboundp 'json-parse-string)
+      `(json-parse-string ,str
+        :object-type 'plist
+        :null-object nil
+        :false-object :json-false)
+    (require 'json)
+    (defvar json-object-type)
+    (declare-function json-read-from-string "json" ())
+    `(let ((json-object-type 'plist))
+      (json-read-from-string ,str))))
+
 (defmacro gptel--json-encode (object)
   (if (fboundp 'json-serialize)
       `(json-serialize ,object
@@ -118,23 +130,84 @@ with differing settings.")
                             (:copier nil)
                             (:include gptel-backend)))
 
-(cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai) _info)
+(cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai) info)
+  "Parse an OpenAI API data stream.
+
+Return the text response accumulated since the last call to this
+function.  Additionally, mutate state INFO to add tool-use
+information if the stream contains it."
   (let* ((content-strs))
-    (condition-case nil
+    (condition-case-unless-debug nil
         (while (re-search-forward "^data:" nil t)
           (save-match-data
-            (unless (looking-at " *\\[DONE\\]")
+            (if (looking-at " *\\[DONE\\]")
+                (when-let* ((tool-use (plist-get info :tool-use))
+                            (args (apply #'concat (nreverse (plist-get info :partial_json))))
+                            (func (map-nested-elt (car tool-use) '(:tool_calls 0 :function))))
+                  (plist-put func :arguments args)
+                  (gptel--inject-prompt
+                   (plist-get info :backend) (plist-get info :data) tool-use)
+                  (cl-loop for delta in tool-use ; Construct the call specs for running the function calls
+                           for tool-call = (map-nested-elt delta '(:tool_calls 0))
+                           for spec = (plist-get tool-call :function)
+                           collect (list :id (plist-get tool-call :id)
+                                         :name (plist-get spec :name)
+                                         :args (ignore-errors (gptel--json-read-string
+                                                               (plist-get spec :arguments))))
+                           into call-specs
+                           finally (plist-put info :tool-use call-specs)))
               (when-let* ((response (gptel--json-read))
-                          (delta (map-nested-elt
-                                  response '(:choices 0 :delta)))
-                          (content (plist-get delta :content)))
-                (push content content-strs)))))
-      (error
-       (goto-char (match-beginning 0))))
+                          (delta (map-nested-elt response '(:choices 0 :delta))))
+                (if-let* ((content (plist-get delta :content)))
+                    (push content content-strs)
+                  ;; Look for tool call
+                  (when-let* ((tool-call (map-nested-elt delta '(:tool_calls 0)))
+                              (func (plist-get tool-call :function)))
+                    (if (plist-get func :name) ;new tool block
+                        (progn
+                          (if-let* ((partial (plist-get info :partial_json)))
+                              (progn
+                                (plist-put func :arguments ;update args for old tool block
+                                           (apply #'concat (nreverse (plist-get info :partial_json))))
+                                (plist-put info :partial_json nil)) ;clear out finished chain of partial args
+                            ;; Start new chain of partial argument strings
+                            (plist-put info :partial_json (list (plist-get func :arguments))))
+                          ;; Some OpenAI "compatible" services don't include the role with the delta.
+                          (unless (plist-get delta :role) (plist-put delta :role "assistant"))
+                          ;; NOTE: Do NOT use `push' for this, it prepends and we lose the reference
+                          (plist-put info :tool-use (cons delta (plist-get info :tool-use))))
+                      (push (plist-get func :arguments) (plist-get info :partial_json)))))))))
+      (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
-(cl-defmethod gptel--parse-response ((_backend gptel-openai) response _info)
-  (map-nested-elt response '(:choices 0 :message :content)))
+(cl-defmethod gptel--parse-response ((_backend gptel-openai) response info)
+  "Parse an OpenAI (non-streaming) RESPONSE and return response text.
+
+Mutate state INFO with response metadata."
+  (let* ((choice0 (map-nested-elt response '(:choices 0)))
+         (message (plist-get choice0 :message))
+         (content (plist-get message :content)))
+    (plist-put info :stop-reason
+               (plist-get choice0 :finish_reason))
+    (plist-put info :output-tokens
+               (map-nested-elt response '(:usage :completion_tokens)))
+    ;; OpenAI returns either non-blank text content or a tool call, not both
+    (if (and content (not (string-empty-p content)))
+        content
+      (prog1 nil                        ; Look for tool calls only if no content
+        (when-let* ((tool-calls (plist-get message :tool_calls)))
+          (gptel--inject-prompt    ; First add the tool call to the prompts list
+           (plist-get info :backend) (plist-get info :data) message)
+          (cl-loop         ;Then capture the tool call data for running the tool
+           for tool-call across tool-calls ;replace ":arguments" with ":args"
+           for call-spec = (copy-sequence (plist-get tool-call :function))
+           do (ignore-errors (plist-put call-spec :args
+                                        (gptel--json-read-string
+                                         (plist-get call-spec :arguments))))
+           (plist-put call-spec :arguments nil)
+           (plist-put call-spec :id (plist-get tool-call :id))
+           collect call-spec into tool-use
+           finally (plist-put info :tool-use tool-use)))))))
 
 (cl-defmethod gptel--request-data ((_backend gptel-openai) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
