@@ -92,7 +92,7 @@ Store response metadata in state INFO."
            collect call-spec into tool-use
            finally (plist-put info :tool-use tool-use)))))))
 
-(cl-defmethod gptel--request-data ((_backend gptel-ollama) prompts)
+(cl-defmethod gptel--request-data ((backend gptel-ollama) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
   (when (and gptel--system-message
              (not (gptel--model-capable-p 'nosystem)))
@@ -111,6 +111,10 @@ Store response metadata in state INFO."
          ;; the initial options (if any) from request params
          (options-plist (plist-get prompts-plist :options)))
 
+    (when (and gptel-use-tools gptel-tools)
+      (plist-put prompts-plist :tools
+                 (gptel--parse-tools backend gptel-tools))
+      (plist-put prompts-plist :stream :json-false))
     ;; if the temperature and max-tokens aren't set as
     ;; backend/model-specific, use the global settings
     (when (and gptel-temperature (not (plist-get options-plist :temperature)))
