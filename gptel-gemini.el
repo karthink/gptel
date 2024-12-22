@@ -144,6 +144,62 @@ Mutate state INFO with response metadata."
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
 
+(cl-defmethod gptel--parse-tools ((_backend gptel-gemini) tools)
+  "Parse TOOLS to the Gemini API tool definition spec.
+
+TOOLS is a list of `gptel-tool' structs, which see."
+  (cl-loop
+   for tool in (ensure-list tools)
+   collect
+   (list
+    :name (gptel-tool-name tool)
+    :description (gptel-tool-description tool)
+    :parameters
+    (if (not (gptel-tool-args tool))
+         :null           ;NOTE: Gemini wants :null if the function takes no args
+      (list :type "object"
+            :properties
+            (cl-loop
+             for arg in (gptel-tool-args tool)
+             for name = (plist-get arg :name)
+             for newname = (or (and (keywordp name) name)
+                               (make-symbol (concat ":" name)))
+             for enum = (plist-get arg :enum)
+             append (list newname
+                          `(:type ,(plist-get arg :type)
+                            ,@(if enum (list :enum (vconcat enum)))
+                            :description ,(plist-get arg :description))))
+            :required
+            (vconcat
+             (delq nil (mapcar
+                        (lambda (arg) (and (not (plist-get arg :optional))
+                                      (plist-get arg :name)))
+                        (gptel-tool-args tool)))))))
+   into tool-specs
+   finally return `[(:function_declarations ,(vconcat tool-specs))]))
+
+(cl-defmethod gptel--parse-tool-results ((_backend gptel-gemini) tool-use)
+  "Return a prompt containing tool call results in TOOL-USE."
+  (list
+   :role "user"
+   :parts
+   (vconcat
+    (mapcar
+     (lambda (tool-call)
+       (let ((result (plist-get tool-call :result))
+             (name (plist-get tool-call :name)))
+         `(:functionResponse
+           (:name ,name :response
+            (:name ,name :content ,result)))))
+     tool-use))))
+
+(cl-defmethod gptel--inject-prompt ((_backend gptel-gemini) data new-prompt &optional _position)
+  "Append NEW-PROMPT to existing prompts in query DATA.
+
+See generic implementation for full documentation."
+  (let ((prompts (plist-get data :contents)))
+    (plist-put data :contents (vconcat prompts (list new-prompt)))))
+
 (cl-defmethod gptel--parse-list ((_backend gptel-gemini) prompt-list)
   (cl-loop for text in prompt-list
            for role = t then (not role)

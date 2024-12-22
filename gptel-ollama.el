@@ -118,6 +118,18 @@ Store response metadata in state INFO."
             (plist-put options-plist :num_predict gptel-max-tokens)))
     (plist-put prompts-plist :options options-plist)))
 
+;; NOTE: No `gptel--parse-tools' method required for gptel-ollama, since this is
+;; handled by its defgeneric implementation
+
+(cl-defmethod gptel--parse-tool-results ((_backend gptel-ollama) tool-use)
+  "Return a prompt containing tool call results in TOOL-USE."
+  (mapcar (lambda (tool-call)
+            (list :role "tool" :content (plist-get tool-call :result)))
+          tool-use))
+
+;; NOTE: No `gptel--inject-prompt' method required for gptel-ollama, since this is
+;; handled by its defgeneric implementation
+
 (cl-defmethod gptel--parse-list ((_backend gptel-ollama) prompt-list)
   (cl-loop for text in prompt-list
            for role = t then (not role)

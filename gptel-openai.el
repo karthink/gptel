@@ -268,6 +268,23 @@ Mutate state INFO with response metadata."
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
 
+;; NOTE: No `gptel--parse-tools' method required for gptel-openai, since this is
+;; handled by its defgeneric implementation
+
+(cl-defmethod gptel--parse-tool-results ((_backend gptel-openai) tool-use)
+  "Return a prompt containing tool call results in TOOL-USE."
+  ;; (declare (side-effect-free t))
+  (mapcar
+   (lambda (tool-call)
+     (list
+      :role "tool"
+      :content (plist-get tool-call :result)
+      :tool_call_id (plist-get tool-call :id)))
+   tool-use))
+
+;; NOTE: No `gptel--inject-prompt' method required for gptel-openai, since this
+;; is handled by its defgeneric implementation
+
 (cl-defmethod gptel--parse-list ((_backend gptel-openai) prompt-list)
   (cl-loop for text in prompt-list
            for role = t then (not role)

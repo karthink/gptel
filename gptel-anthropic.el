@@ -181,6 +181,61 @@ Mutate state INFO with response metadata."
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
 
+(cl-defmethod gptel--parse-tools ((_backend gptel-anthropic) tools)
+  "Parse TOOLS to the Anthropic API tool definition spec.
+
+TOOLS is a list of `gptel-tool' structs, which see."
+  (vconcat
+   (mapcar
+    (lambda (tool)
+      (list :name (gptel-tool-name tool)
+            :description (gptel-tool-description tool)
+            :input_schema ;NOTE: Anthropic wants "{}" if the function takes no args, not null
+            (list :type "object"
+                  :properties
+                  (cl-loop
+                   for arg in (gptel-tool-args tool)
+                   for name = (plist-get arg :name)
+                   for newname = (or (and (keywordp name) name)
+                                     (make-symbol (concat ":" name)))
+                   for enum = (plist-get arg :enum)
+                   append (list newname
+                                `(:type ,(plist-get arg :type)
+                                  ,@(if enum (list :enum (vconcat enum)))
+                                  :description ,(plist-get arg :description))))
+                  :required
+                  (vconcat
+                   (delq nil (mapcar
+                              (lambda (arg) (and (not (plist-get arg :optional))
+                                            (plist-get arg :name)))
+                              (gptel-tool-args tool)))))))
+    (ensure-list tools))))
+
+(cl-defmethod gptel--parse-tool-results ((_backend gptel-anthropic) tool-use)
+  "Return a prompt containing tool call results in TOOL-USE.
+
+TOOL-USE is a list of plists containing tool names, arguments and call results."
+  ;; (declare (side-effect-free t))
+  (list
+   :role "user"
+   :content
+   (vconcat
+    (mapcar
+     (lambda (tool-call)
+       (let* ((result (plist-get tool-call :result))
+              (formatted
+               (list :type "tool_result"
+                     :tool_use_id (plist-get tool-call :id)
+                     :content (if (stringp result) result
+                                (prin1-to-string result)))))
+         (prog1 formatted
+           (when (plist-get tool-call :error)
+             (plist-put formatted :is_error t)))))
+     tool-use))))
+
+;; NOTE: No `gptel--inject-prompt' method required for gptel-anthropic, since
+;; this is handled by its defgeneric implementation
+
 (cl-defmethod gptel--parse-list ((_backend gptel-anthropic) prompt-list)
   (cl-loop for text in prompt-list
            for role = t then (not role)
