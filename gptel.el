@@ -1699,8 +1699,9 @@ buffer."
   (with-current-buffer (get-buffer-create "*gptel-query*")
     (let* ((standard-output (current-buffer))
            (inhibit-read-only t)
-           (request-info (cadr request-args))
-           (request-data (plist-get request-info :data)))
+           (request-fsm (cadr request-args))
+           (request-data
+            (plist-get (gptel-fsm-info request-fsm) :data)))
       (buffer-disable-undo)
       (erase-buffer)
       (if (eq format 'json)
@@ -1710,7 +1711,7 @@ buffer."
         (lisp-data-mode)
         (prin1 request-data)
         (pp-buffer))
-      (plist-put request-info :data nil)
+      (plist-put (gptel-fsm-info request-fsm) :data nil)
       ;; HACK: Reuse `gptel--bounds' to store request args.
       ;; Not ideal, but less fragile than an overlay.
       (setq-local gptel-stream  (car request-args)
@@ -1747,12 +1748,10 @@ specified."
         (when-let* ((data (if (eq major-mode 'lisp-data-mode)
                               (read (current-buffer))
                             (gptel--json-read)))
-                    (info (car-safe gptel--bounds)))
-          (plist-put info :data data)
-          (apply (if gptel-use-curl
-                     #'gptel-curl-get-response
-                   #'gptel--url-get-response)
-                 gptel--bounds)
+                    (fsm (car-safe gptel--bounds)))
+          (cl-assert (cl-typep fsm 'gptel-fsm))
+          (plist-put (gptel-fsm-info fsm) :data data)
+          (gptel--fsm-transition fsm)   ;INIT -> WAIT
           (quit-window))
       (error
        (user-error "Could not read request data from buffer!")))))
