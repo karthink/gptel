@@ -1276,6 +1276,90 @@ file."
 (declare-function gptel-context--wrap "gptel-context")
 
 
+;;; State machine for driving requests
+
+(defvar gptel-request--transitions nil
+  "Alist specifying gptel's default state transition table for requests.
+
+Each entry is a list whose car is a request state (any symbol)
+and whose cdr is an alist listing possible next states.  Each key
+is either a predicate function or `t'.  When `gptel--fsm-next' is
+called, the predicates are called in the order they appear here
+to find the next state.  Each predicate is called with the state
+machine's INFO, see `gptel-fsm'.  A predicate of `t' is
+considered a success and acts as a default.")
+
+(defvar gptel-request--handlers nil
+  "Alist specifying handlers for gptel's default state transitions.
+
+Each entry is a list whose car is a request state (a symbol) and
+whose cdr is a list of handler functions called when
+transitioning to that state.  The handlers are called in the
+sequence that they appear in the list, and each function receives
+the state machine as its only argument.  Information about the
+request state can be retrieved via the machine's INFO slot, see
+`gptel-fsm'.
+
+Handlers are responsible for doing state-related tasks (like
+logging errors or inserting responses) and transitioning to the
+next state by calling `gptel--fsm-transition'.
+
+Handlers can be asynchronous, in which case the transition call
+should typically be placed in its callback.")
+
+(cl-defstruct (gptel-fsm (:constructor gptel-make-fsm)
+                         (:copier gptel-copy-fsm))
+  "State machine for gptel requests.
+
+STATE: The current state of the machine, can be any symbol.
+
+TABLE: Alist mapping states to possible next states
+along with predicates to determine the next state.  See
+`gptel-request--transitions' for an example.
+
+HANDLERS: Alist mapping states to state handler functions.
+Handlers are called when entering each state.  See
+`gptel-request--handlers' for an example
+
+INFO: The state machine's current context.  This is a plist
+holding all the information required for the ongoing request, and
+can be used to tweak and resume a paused request.  This should be
+called \"context\", but context means too many things already in
+gptel's code!
+
+Each gptel request is passed an instance of this
+state machine and driven by it."
+  (state 'INIT)
+  (table gptel-request--transitions)
+  (handlers gptel-request--handlers) info)
+
+(defun gptel--fsm-transition (machine &optional new-state)
+  "Move MACHINE to its next state.
+
+MACHINE is an instance of `gptel-fsm'.
+
+The next state is NEW-STATE if given.  Otherwise it is determined
+automatically from MACHINE's transition table."
+  (unless new-state (setq new-state (gptel--fsm-next machine)))
+  (push (gptel-fsm-state machine)
+        (plist-get (gptel-fsm-info machine) :history))
+  (setf (gptel-fsm-state machine) new-state)
+  (when-let ((handlers (alist-get new-state (gptel-fsm-handlers machine))))
+    (mapc (lambda (h) (funcall h machine)) handlers)))
+
+(defun gptel--fsm-next (machine)
+  "Determine MACHINE's next state according to its transition table.
+
+MACHINE is an instance of `gptel-fsm'"
+  (let* ((current (gptel-fsm-state machine))
+         (transitions (alist-get current (gptel-fsm-table machine))))
+    (cl-loop
+     with info = (gptel-fsm-info machine)
+     for (pred . next) in transitions
+     when (or (eq pred t) (funcall pred info))
+     return next)))
+
+
 ;;; Send queries, handle responses
 (cl-defun gptel-request
     (&optional prompt &key callback
