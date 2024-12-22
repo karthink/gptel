@@ -1278,7 +1278,11 @@ file."
 
 ;;; State machine for driving requests
 
-(defvar gptel-request--transitions nil
+(defvar gptel-request--transitions
+  `((INIT . ((t                 . WAIT)))
+    (WAIT . ((t                 . TYPE)))
+    (TYPE . ((,#'gptel--error-p . ERRS)
+             (t                 . DONE))))
   "Alist specifying gptel's default state transition table for requests.
 
 Each entry is a list whose car is a request state (any symbol)
@@ -1289,7 +1293,11 @@ to find the next state.  Each predicate is called with the state
 machine's INFO, see `gptel-fsm'.  A predicate of `t' is
 considered a success and acts as a default.")
 
-(defvar gptel-request--handlers nil
+(defvar gptel-request--handlers
+  `((WAIT ,#'gptel--handle-wait)
+    (TYPE ,#'gptel--handle-pre-insert)
+    (ERRS ,#'gptel--handle-error)
+    (DONE ,#'gptel--handle-post-insert))
   "Alist specifying handlers for gptel's default state transitions.
 
 Each entry is a list whose car is a request state (a symbol) and
@@ -1358,6 +1366,128 @@ MACHINE is an instance of `gptel-fsm'"
      for (pred . next) in transitions
      when (or (eq pred t) (funcall pred info))
      return next)))
+
+;;;; State machine handlers
+;; The next few functions are default state handlers for gptel's state machine,
+;; see `gptel-request--handlers'.
+
+(defun gptel--handle-wait (fsm)
+  "Fire the request contained in state machine FSM's info."
+  ;; Reset some flags in info.  This is necessary when reusing fsm's context for
+  ;; a second network request: gptel tests for the presence of these flags to
+  ;; handle state transitions.  (NOTE: Don't add :token to this.)
+  (let ((info (gptel-fsm-info fsm)))
+    (dolist (key '(:error :http-status))
+      (when (plist-get info key)
+        (plist-put info key nil))))
+  (funcall
+   (if gptel-use-curl
+       #'gptel-curl-get-response
+     #'gptel--url-get-response)
+   fsm)
+  (run-hooks 'gptel-post-request-hook)
+  (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
+    (gptel--update-status " Waiting..." 'warning)))
+
+(defun gptel--handle-pre-insert (fsm)
+  "Tasks before inserting the LLM response for state FSM.
+
+Handle read-only buffers and run pre-response hooks (but only if
+the request succeeded)."
+  (let* ((info (gptel-fsm-info fsm))
+         (start-marker (plist-get info :position)))
+    (when (with-current-buffer (plist-get info :buffer)
+            (or buffer-read-only
+                (get-char-property start-marker 'read-only)))
+      (message "Buffer is read only, displaying reply in buffer \"*LLM response*\"")
+      (display-buffer
+       (with-current-buffer (get-buffer-create "*LLM response*")
+         (visual-line-mode 1)
+         (goto-char (point-max))
+         (move-marker start-marker (point) (current-buffer))
+         (current-buffer))
+       '((display-buffer-reuse-window
+          display-buffer-pop-up-window)
+         (reusable-frames . visible))))
+    (with-current-buffer (marker-buffer start-marker)
+      (when (plist-get info :stream)
+        (gptel--update-status " Typing..." 'success))
+      (save-excursion
+        (goto-char start-marker)
+        (when (and (member (plist-get info :http-status) '("200" "100"))
+                   gptel-pre-response-hook)
+          (run-hooks 'gptel-pre-response-hook))))))
+
+(defun gptel--handle-post-insert (fsm)
+  "Tasks after successfully inserting the LLM response with state FSM.
+
+Indicate gptel status, pulse the inserted text and run post-response hooks.
+
+No state transition here since that's handled by the process sentinels."
+  (let* ((info (gptel-fsm-info fsm))
+         (start-marker (plist-get info :position))
+         (tracking-marker (or (plist-get info :tracking-marker)
+                              start-marker))
+         ;; start-marker may have been moved if :buffer was read-only
+         (gptel-buffer (marker-buffer start-marker)))
+    (with-current-buffer gptel-buffer
+      (if (not tracking-marker)         ;Empty response
+          (when gptel-mode (gptel--update-status " Empty response" 'success))
+        (pulse-momentary-highlight-region start-marker tracking-marker)
+        (when gptel-mode
+          (save-excursion (goto-char tracking-marker)
+                          (insert "\n\n" (gptel-prompt-prefix-string)))
+          (gptel--update-status  " Ready" 'success))))
+    ;; Run hook in visible window to set window-point, BUG #269
+    (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
+        (with-selected-window gptel-window
+          (run-hook-with-args
+           'gptel-post-response-functions
+           (marker-position start-marker) (marker-position tracking-marker)))
+      (with-current-buffer gptel-buffer
+        (run-hook-with-args
+         'gptel-post-response-functions
+         (marker-position start-marker) (marker-position tracking-marker))))))
+
+(defun gptel--handle-error (fsm)
+  "Check for errors in request state FSM perform UI updates.
+
+Run post-response hooks."
+  (when-let* ((info (gptel-fsm-info fsm))
+              (error-data (plist-get info :error))
+              (http-msg   (plist-get info :status))
+              (gptel-buffer (plist-get info :buffer))
+              (start-marker (plist-get info :position))
+              (tracking-marker (or (plist-get info :tracking-marker)
+                              start-marker))
+              (backend-name
+               (gptel-backend-name
+                (buffer-local-value 'gptel-backend gptel-buffer))))
+    (if (stringp error-data)
+        (message "%s error: (%s) %s" backend-name http-msg (string-trim error-data))
+      (when-let ((error-type (plist-get error-data :type)))
+        (setq http-msg (concat "("  http-msg ") " (string-trim error-type))))
+      (when-let ((error-msg (plist-get error-data :message)))
+        (message "%s error: (%s) %s" backend-name http-msg (string-trim error-msg))))
+    (with-current-buffer gptel-buffer
+      (when gptel-mode
+        (gptel--update-status
+         (format " Error: %s" http-msg) 'error)))
+    (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
+        (with-selected-window gptel-window
+          (run-hook-with-args
+           'gptel-post-response-functions
+           (marker-position start-marker) (marker-position tracking-marker)))
+      (with-current-buffer gptel-buffer
+        (run-hook-with-args
+         'gptel-post-response-functions
+         (marker-position start-marker) (marker-position tracking-marker))))))
+
+;;;; State machine predicates
+;; Predicates used to find the next state to transition to, see
+;; `gptel-request--transitions'.
+
+(defun gptel--error-p (info) (plist-get info :error))
 
 
 ;;; Send queries, handle responses
