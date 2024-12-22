@@ -1121,6 +1121,7 @@ Yes, see =transient-suffix-put=.  This changes the key to select a backend/model
 (transient-suffix-put 'gptel-menu (kbd "-m") :key "M")
 #+end_src
 
+#+html: </details>
 #+html: <details><summary>
 **** How does gptel distinguish between user prompts and LLM responses?
 #+html: </summary>
