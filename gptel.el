@@ -1737,20 +1737,21 @@ waiting for the response."
     (gptel--update-status " Waiting..." 'warning)))
 
 (declare-function json-pretty-print-buffer "json")
-(defun gptel--inspect-query (request-args &optional format)
-  "Show REQUEST-ARGS, the full LLM query to be sent, in a buffer.
+(defun gptel--inspect-query (&optional request-fsm format)
+  "Show the full LLM query that will be sent in a buffer.
 
-This functions as a dry run of `gptel-send'.  If FORMAT is
-the symbol json, show the encoded JSON query instead of the Lisp
-structure gptel uses.
+This functions as a dry run of `gptel-send'.  The request data
+may be edited and the query continued from this buffer.
 
-The request data may be edited and the query continued from this
-buffer."
+REQUEST-FSM is the state of the request, as returned by
+`gptel-request'.  If FORMAT is the symbol json, show the encoded
+JSON query instead of the Lisp structure gptel uses."
+  (unless request-fsm (setq request-fsm gptel--fsm-last))
   (with-current-buffer (get-buffer-create "*gptel-query*")
     (let* ((standard-output (current-buffer))
            (inhibit-read-only t)
-           (request-info (cadr request-args))
-           (request-data (plist-get request-info :data)))
+           (request-data
+            (plist-get (gptel-fsm-info request-fsm) :data)))
       (buffer-disable-undo)
       (erase-buffer)
       (if (eq format 'json)
@@ -1760,11 +1761,7 @@ buffer."
         (lisp-data-mode)
         (prin1 request-data)
         (pp-buffer))
-      (plist-put request-info :data nil)
-      ;; HACK: Reuse `gptel--bounds' to store request args.
-      ;; Not ideal, but less fragile than an overlay.
-      (setq-local gptel-stream  (car request-args)
-                  gptel--bounds (cdr request-args))
+      (setq-local gptel--fsm-last request-fsm)
       (goto-char (point-min))
       (view-mode 1)
       (setq buffer-undo-list nil)
@@ -1796,16 +1793,13 @@ specified."
     (condition-case-unless-debug nil
         (when-let* ((data (if (eq major-mode 'lisp-data-mode)
                               (read (current-buffer))
-                            (gptel--json-read)))
-                    (info (car-safe gptel--bounds)))
-          (plist-put info :data data)
-          (apply (if gptel-use-curl
-                     #'gptel-curl-get-response
-                   #'gptel--url-get-response)
-                 gptel--bounds)
+                            (gptel--json-read))))
+          (cl-assert (cl-typep gptel--fsm-last 'gptel-fsm))
+          (plist-put (gptel-fsm-info gptel--fsm-last) :data data)
+          (gptel--fsm-transition gptel--fsm-last)   ;INIT -> WAIT
           (quit-window))
       (error
-       (user-error "Could not read request data from buffer!")))))
+       (user-error "Can not resume request: could not read data from buffer!")))))
 
 (defun gptel--insert-response (response info)
   "Insert the LLM RESPONSE into the gptel buffer.
