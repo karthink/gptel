@@ -75,6 +75,18 @@
            (json-null :null))
       (json-read))))
 
+(defmacro gptel--json-read-string (str)
+  (if (fboundp 'json-parse-string)
+      `(json-parse-string ,str
+        :object-type 'plist
+        :null-object nil
+        :false-object :json-false)
+    (require 'json)
+    (defvar json-object-type)
+    (declare-function json-read-from-string "json" ())
+    `(let ((json-object-type 'plist))
+      (json-read-from-string ,str))))
+
 (defmacro gptel--json-encode (object)
   (if (fboundp 'json-serialize)
       `(json-serialize ,object
@@ -129,23 +141,108 @@ with differing settings.")
                             (:copier nil)
                             (:include gptel-backend)))
 
-(cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai) _info)
+;; How the following function works:
+;;
+;; The OpenAI API returns a stream of data chunks.  Each data chunk has a
+;; component that can be parsed as JSON.  Besides metadata, each chunk has
+;; either some text or part of a tool call.
+;;
+;; If we find text, we collect it in a list, concat them at the end and return
+;; it.
+;;
+;; If we find part of a tool call, we begin collecting the pieces in
+;; INFO -> :tool-use.
+;;
+;; Tool call arguments are themselves JSON encoded strings can be spread across
+;; chunks.  We collect them in INFO -> :partial_json.  The end of a tool call
+;; chunk is marked by the beginning of another, or by the end of the stream.  In
+;; either case we flaten the :partial_json we have thus far, add it to the tool
+;; call spec in :tool-use and reset it.  Finally we append the tool calls to the
+;; (INFO -> :data -> :messages) list of prompts.
+
+(cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai) info)
+  "Parse an OpenAI API data stream.
+
+Return the text response accumulated since the last call to this
+function.  Additionally, mutate state INFO to add tool-use
+information if the stream contains it."
   (let* ((content-strs))
-    (condition-case nil
+    (condition-case-unless-debug nil
         (while (re-search-forward "^data:" nil t)
           (save-match-data
-            (unless (looking-at " *\\[DONE\\]")
+            (if (looking-at " *\\[DONE\\]")
+                ;; The stream has ended, so we do the following thing (if we found tool calls)
+                ;; - pack tool calls into the messages prompts list to send (INFO -> :data -> :messages)
+                ;; - collect tool calls (formatted differently) into (INFO -> :tool-use)
+                (when-let* ((tool-use (plist-get info :tool-use))
+                            (args (apply #'concat (nreverse (plist-get info :partial_json))))
+                            (func (plist-get (car tool-use) :function)))
+                  (plist-put func :arguments args) ;Update arguments for last recorded tool
+                  (gptel--inject-prompt
+                   (plist-get info :backend) (plist-get info :data)
+                   `(:role "assistant" :content :null :tool_calls ,(vconcat tool-use))) ; :refusal :null
+                  (cl-loop
+                   for tool-call in tool-use ; Construct the call specs for running the function calls
+                   for spec = (plist-get tool-call :function)
+                   collect (list :id (plist-get tool-call :id)
+                                 :name (plist-get spec :name)
+                                 :args (ignore-errors (gptel--json-read-string
+                                                       (plist-get spec :arguments))))
+                   into call-specs
+                   finally (plist-put info :tool-use call-specs)))
               (when-let* ((response (gptel--json-read))
-                          (delta (map-nested-elt
-                                  response '(:choices 0 :delta)))
-                          (content (plist-get delta :content)))
-                (push content content-strs)))))
-      (error
-       (goto-char (match-beginning 0))))
+                          (delta (map-nested-elt response '(:choices 0 :delta))))
+                (if-let* ((content (plist-get delta :content))
+                          ((not (eq content :null))))
+                    (push content content-strs)
+                  ;; No text content, so look for tool calls
+                  (when-let* ((tool-call (map-nested-elt delta '(:tool_calls 0)))
+                              (func (plist-get tool-call :function)))
+                    (if (plist-get func :name) ;new tool block begins
+                        (progn
+                          (when-let* ((partial (plist-get info :partial_json)))
+                            (let* ((prev-tool-call (car (plist-get info :tool-use)))
+                                   (prev-func (plist-get prev-tool-call :function)))
+                              (plist-put prev-func :arguments ;update args for old tool block
+                                         (apply #'concat (nreverse (plist-get info :partial_json)))))
+                            (plist-put info :partial_json nil)) ;clear out finished chain of partial args
+                          ;; Start new chain of partial argument strings
+                          (plist-put info :partial_json (list (plist-get func :arguments)))
+                          ;; NOTE: Do NOT use `push' for this, it prepends and we lose the reference
+                          (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
+                      ;; old tool block continues, so continue collecting arguments in :partial_json 
+                      (push (plist-get func :arguments) (plist-get info :partial_json)))))))))
+      (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
-(cl-defmethod gptel--parse-response ((_backend gptel-openai) response _info)
-  (map-nested-elt response '(:choices 0 :message :content)))
+(cl-defmethod gptel--parse-response ((_backend gptel-openai) response info)
+  "Parse an OpenAI (non-streaming) RESPONSE and return response text.
+
+Mutate state INFO with response metadata."
+  (let* ((choice0 (map-nested-elt response '(:choices 0)))
+         (message (plist-get choice0 :message))
+         (content (plist-get message :content)))
+    (plist-put info :stop-reason
+               (plist-get choice0 :finish_reason))
+    (plist-put info :output-tokens
+               (map-nested-elt response '(:usage :completion_tokens)))
+    ;; OpenAI returns either non-blank text content or a tool call, not both
+    (if (and content (not (or (eq content :null) (string-empty-p content))))
+        content
+      (prog1 nil                        ; Look for tool calls only if no content
+        (when-let* ((tool-calls (plist-get message :tool_calls)))
+          (gptel--inject-prompt    ; First add the tool call to the prompts list
+           (plist-get info :backend) (plist-get info :data) message)
+          (cl-loop         ;Then capture the tool call data for running the tool
+           for tool-call across tool-calls ;replace ":arguments" with ":args"
+           for call-spec = (copy-sequence (plist-get tool-call :function))
+           do (ignore-errors (plist-put call-spec :args
+                                        (gptel--json-read-string
+                                         (plist-get call-spec :arguments))))
+           (plist-put call-spec :arguments nil)
+           (plist-put call-spec :id (plist-get tool-call :id))
+           collect call-spec into tool-use
+           finally (plist-put info :tool-use tool-use)))))))
 
 (cl-defmethod gptel--request-data ((_backend gptel-openai) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."

@@ -40,34 +40,65 @@
                   (:copier nil)
                   (:include gptel-backend)))
 
-(cl-defmethod gptel-curl--parse-stream ((_backend gptel-gemini) _info)
+(cl-defmethod gptel-curl--parse-stream ((_backend gptel-gemini) info)
+  "Parse a Gemini data stream.
+
+Return the text response accumulated since the last call to this
+function.  Additionally, mutate state INFO to add tool-use
+information if the stream contains it."
   (let* ((content-strs))
-    (condition-case nil
-        ;; while-let is Emacs 29.1+ only
-        (while (prog1 (search-forward "{" nil t)
+    (condition-case-unless-debug nil
+        (while (prog1 (search-forward "{" nil t) ; while-let is Emacs 29.1+ only
                  (backward-char 1))
           (save-match-data
-            (when-let*
-                ((response (gptel--json-read))
-                 (parts (map-nested-elt
-                         response '(:candidates 0 :content :parts)))
-                 (text (cl-loop for part across parts
-                                for tx = (plist-get part :text)
-                                when tx collect tx into txs
-                                finally return
-                                (and txs (mapconcat #'identity txs "\n\n")))))
-              (push text content-strs))))
+            (when-let* ((response (gptel--json-read)))
+              (if-let* ((parts (map-nested-elt
+                                response '(:candidates 0 :content :parts)))
+                        (text (cl-loop for part across parts
+                                       for tx = (plist-get part :text)
+                                       never (eq tx :null)
+                                       when tx collect tx into txs
+                                       finally return
+                                       (and txs (mapconcat #'identity txs "\n\n")))))
+                  (push text content-strs) ;text block, capture and return
+                ;; tool-use block, capture via side-effects
+                (gptel--parse-response
+                 (plist-get info :backend) response info)))))
       (error
        (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
-(cl-defmethod gptel--parse-response ((_backend gptel-gemini) response _info)
-  (let ((parts (map-nested-elt response '(:candidates 0 :content :parts))))
-    (cl-loop for part across parts
-             for tx = (plist-get part :text)
-             when tx collect tx into txs
-             finally return
-             (and txs (mapconcat #'identity txs "\n\n")))))
+(cl-defmethod gptel--parse-response ((_backend gptel-gemini) response info)
+  "Parse an Gemini (non-streaming) RESPONSE and return response text.
+
+Mutate state INFO with response metadata."
+  (let* ((cand0 (map-nested-elt response '(:candidates 0)))
+         (parts (map-nested-elt cand0 '(:content :parts)))
+         (text (cl-loop for part across parts
+                        for tx = (plist-get part :text)
+                        never (eq tx :null)
+                        when tx collect tx into txs
+                        finally return
+                        (and txs (mapconcat #'identity txs "\n\n")))))
+    (plist-put info :stop-reason (plist-get cand0 :finishReason))
+    (plist-put info :output-tokens
+               (map-nested-elt
+                response '(:usageMetadata :candidatesTokenCount)))
+    (if (and text (not (string-empty-p text)))
+        text
+      (prog1 nil                        ; Look for function calls
+        (when (plist-get (aref parts 0) :functionCall)
+          ;; First, add the tool call to the prompts list
+          (let* ((data (plist-get info :data))
+                 (prompts (plist-get data :contents)))
+            (plist-put
+             data :contents
+             (vconcat prompts `((:role "model" :parts ,parts)))))
+          ;; Then capture the tool call data for running the tool
+          (plist-put info :tool-use
+                     (mapcar (lambda (p) (copy-sequence
+                                     (plist-get p :functionCall)))
+                             parts)))))))
 
 (cl-defmethod gptel--request-data ((_backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
@@ -94,8 +125,8 @@
     ;; way to do this.
     (if (and gptel--system-message
              (not (equal gptel-model 'gemini-pro)))
-      (plist-put prompts-plist :system_instruction
-                 `(:parts (:text ,gptel--system-message))))
+        (plist-put prompts-plist :system_instruction
+                   `(:parts (:text ,gptel--system-message))))
     (when gptel-temperature
       (setq params
             (plist-put params
