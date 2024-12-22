@@ -46,13 +46,18 @@
       "-XPOST" "-y300" "-Y1" "-D-"))
   "Arguments always passed to Curl for gptel queries.")
 
-(defun gptel-curl--get-args (data token)
+(defun gptel-curl--get-args (info token)
   "Produce list of arguments for calling Curl.
 
 REQUEST-DATA is the data to send, TOKEN is a unique identifier."
-  (let* ((url (let ((backend-url (gptel-backend-url gptel-backend)))
-                    (if (functionp backend-url)
-                        (funcall backend-url) backend-url)))
+  (let* ((data (plist-get info :data))
+         ;; We have to let-bind the following two variables since their dynamic
+         ;; values are used for key lookup and url resoloution
+         (gptel-backend (plist-get info :backend))
+         (gptel-stream (plist-get info :stream))
+         (url (let ((backend-url (gptel-backend-url gptel-backend)))
+                (if (functionp backend-url)
+                    (funcall backend-url) backend-url)))
          (data-json (encode-coding-string (gptel--json-encode data) 'utf-8))
          (headers
           (append '(("Content-Type" . "application/json"))
@@ -92,31 +97,28 @@ REQUEST-DATA is the data to send, TOKEN is a unique identifier."
 ;;TODO: The :transformer argument here is an alternate implementation of
 ;;`gptel-response-filter-functions'. The two need to be unified.
 ;;;###autoload
-(defun gptel-curl-get-response (info &optional callback)
-  "Retrieve response to prompt in INFO.
+(defun gptel-curl-get-response (fsm)
+  "Fetch response to prompt in state FSM from the LLM using Curl.
 
-INFO is a plist with the following keys:
-- :data (the data being sent)
-- :buffer (the gptel buffer)
+FSM is the state machine driving this request.
+
+FSM is the state machine driving this request.  Its INFO slot
+contains the data required for setting up the request.  INFO is a
+plist with the following keys, among others:
+- :data     (the data being sent)
+- :buffer   (the gptel buffer)
 - :position (marker at which to insert the response).
+- :callback (optional, the request callback)
 
 Call CALLBACK with the response and INFO afterwards.  If omitted
 the response is inserted into the current buffer after point."
   (let* ((token (md5 (format "%s%s%s%s"
                              (random) (emacs-pid) (user-full-name)
                              (recent-keys))))
-         (args (gptel-curl--get-args (plist-get info :data) token))
-         (stream (and ;; Check model-specific request-params for streaming preference
-                  (let* ((model-params (gptel--model-request-params gptel-model))
-                         (stream-spec (plist-get model-params :stream)))
-                    ;; If not present, there is no model-specific preference
-                    (or (not (memq :stream model-params))
-                        ;; If present, it must not be :json-false or nil
-                        (and stream-spec (not (eq stream-spec :json-false)))))
-                  ;; Check global and backend-specific streaming settings
-                  gptel-stream
-                  (gptel-backend-stream gptel-backend)))
-         (backend (buffer-local-value 'gptel-backend (plist-get info :buffer)))
+         (info (gptel-fsm-info fsm))
+         (args (gptel-curl--get-args info token))
+         (stream (plist-get info :stream))
+         (backend (plist-get info :backend))
          (process (apply #'start-process "gptel-curl"
                          (generate-new-buffer "*gptel-curl*") "curl" args)))
     (when (memq system-type '(windows-nt ms-dos))
@@ -128,34 +130,35 @@ the response is inserted into the current buffer after point."
                   "request Curl command" 'no-json))
     (with-current-buffer (process-buffer process)
       (set-process-query-on-exit-flag process nil)
-      (setf (alist-get process gptel--request-alist)
-            (nconc (list :token token
-                         :backend backend
-                         ;; FIXME `aref' breaks `cl-struct' abstraction boundary
-                         ;; FIXME `cl--generic-method' is an internal `cl-struct'
-                         :parser (cl--generic-method-function
-                                  (if stream
+      (if (plist-get info :token)    ;not the first run, set only the token
+          (plist-put info :token token)
+        (setf (gptel-fsm-info fsm)      ;fist run, set all process parameters
+              (nconc (list :token token
+                           ;; FIXME `aref' breaks `cl-struct' abstraction boundary
+                           ;; FIXME `cl--generic-method' is an internal `cl-struct'
+                           :parser (cl--generic-method-function
+                                    (if stream
+                                        (cl-find-method
+                                         'gptel-curl--parse-stream nil
+                                         (list (aref backend 0) t))
                                       (cl-find-method
-                                       'gptel-curl--parse-stream nil
-                                       (list (aref backend 0) t))
-                                    (cl-find-method
-                                     'gptel--parse-response nil
-                                     (list (aref backend 0) t t))))
-                         :callback (or callback
-                                       (if stream
+                                       'gptel--parse-response nil
+                                       (list (aref backend 0) t t))))
+                           :transformer (when (and gptel-org-convert-response
+                                                   (with-current-buffer (plist-get info :buffer)
+                                                     (derived-mode-p 'org-mode)))
+                                          (gptel--stream-convert-markdown->org
+                                           (plist-get info :position))))
+                     (unless (plist-get info :callback)
+                       (list :callback (if stream
                                            #'gptel-curl--stream-insert-response
-                                         #'gptel--insert-response))
-                         :transformer (when (and gptel-org-convert-response
-                                                 (with-current-buffer (plist-get info :buffer)
-                                                   (derived-mode-p 'org-mode)))
-                                        (gptel--stream-convert-markdown->org
-                                         (plist-get info :position))))
-                   info))
+                                         #'gptel--insert-response)))
+                     info)))
       (if stream
-          (progn (plist-put info :stream t)
-                 (set-process-sentinel process #'gptel-curl--stream-cleanup)
+          (progn (set-process-sentinel process #'gptel-curl--stream-cleanup)
                  (set-process-filter process #'gptel-curl--stream-filter))
-        (set-process-sentinel process #'gptel-curl--sentinel)))))
+        (set-process-sentinel process #'gptel-curl--sentinel))
+      (setf (alist-get process gptel--request-alist) fsm))))
 
 (defun gptel-curl--log-response (proc-buf proc-info)
   "Parse response buffer PROC-BUF and log response.
@@ -182,31 +185,15 @@ PROC-INFO is the plist containing process metadata."
 
 PROCESS and _STATUS are process parameters."
   (let ((proc-buf (process-buffer process)))
-    (let* ((info (alist-get process gptel--request-alist))
-           (gptel-buffer (plist-get info :buffer))
-           (backend-name
-            (gptel-backend-name
-             (buffer-local-value 'gptel-backend gptel-buffer)))
-           (tracking-marker (plist-get info :tracking-marker))
-           (start-marker (plist-get info :position))
-           (http-status (plist-get info :http-status))
-           (http-msg (plist-get info :status)))
+    (let* ((fsm (alist-get process gptel--request-alist))
+           (info (gptel-fsm-info fsm))
+           (http-status (plist-get info :http-status)))
       (when gptel-log-level (gptel-curl--log-response proc-buf info)) ;logging
       (if (member http-status '("200" "100")) ;Finish handling response
-          (progn
-            ;; Run the callback one last time to signal that the process has ended
-            (with-demoted-errors "gptel callback error: %S"
-              (funcall (plist-get info :callback) t info))
-            (with-current-buffer gptel-buffer
-              (if (not tracking-marker)   ;Empty response
-                  (when gptel-mode (gptel--update-status " Empty response" 'success))
-                (pulse-momentary-highlight-region start-marker tracking-marker)
-                (when gptel-mode
-                  (save-excursion (goto-char tracking-marker)
-                                  (insert "\n\n" (gptel-prompt-prefix-string)))
-                  (gptel--update-status  " Ready" 'success)))))
-        ;; Or Capture error message
-        (with-current-buffer proc-buf
+          ;; Run the callback one last time to signal that the process has ended
+          (with-demoted-errors "gptel callback error: %S"
+            (funcall (plist-get info :callback) t info))
+        (with-current-buffer proc-buf   ; Or Capture error message
           (goto-char (point-max))
           (search-backward (plist-get info :token))
           (backward-char)
@@ -217,31 +204,13 @@ PROCESS and _STATUS are process parameters."
                        (error-data (plist-get response :error)))
             (cond
              (error-data
-              (if (stringp error-data)
-                  (message "%s error: (%s) %s" backend-name http-msg error-data)
-                (when-let ((error-msg (plist-get error-data :message)))
-                    (message "%s error: (%s) %s" backend-name http-msg error-msg))
-                (when-let ((error-type (plist-get error-data :type)))
-                    (setq http-msg (concat "("  http-msg ") " (string-trim error-type))))))
+              (plist-put info :error error-data))
              ((eq response 'json-read-error)
-              (message "%s error (%s): Malformed JSON in response." backend-name http-msg))
-             (t (message "%s error (%s): Could not parse HTTP response." backend-name http-msg)))))
+              (plist-put info :error "Malformed JSON in response."))
+             (t (plist-put info :error "Could not parse HTTP response.")))))
         (with-demoted-errors "gptel callback error: %S"
-          (funcall (plist-get info :callback) nil info))
-        (with-current-buffer gptel-buffer
-          (when gptel-mode
-            (gptel--update-status
-             (format " Response Error: %s" http-msg) 'error))))
-      ;; Run hook in visible window to set window-point, BUG #269
-      (if-let ((gptel-window (get-buffer-window gptel-buffer 'visible)))
-          (with-selected-window gptel-window
-            (run-hook-with-args 'gptel-post-response-functions
-                                (marker-position start-marker)
-                                (marker-position (or tracking-marker start-marker))))
-        (with-current-buffer gptel-buffer
-          (run-hook-with-args 'gptel-post-response-functions
-                              (marker-position start-marker)
-                              (marker-position (or tracking-marker start-marker))))))
+          (funcall (plist-get info :callback) nil info)))
+      (gptel--fsm-transition fsm))      ; Move to next state
     (setf (alist-get process gptel--request-alist nil 'remove) nil)
     (kill-buffer proc-buf)))
 
@@ -280,7 +249,8 @@ See `gptel--url-get-response' for details."
           (run-hooks 'gptel-post-stream-hook))))))
 
 (defun gptel-curl--stream-filter (process output)
-  (let* ((proc-info (alist-get process gptel--request-alist)))
+  (let* ((fsm (alist-get process gptel--request-alist))
+         (proc-info (gptel-fsm-info fsm)))
     (with-current-buffer (process-buffer process)
       ;; Insert output
       (save-excursion
@@ -300,26 +270,8 @@ See `gptel--url-get-response' for details."
                          (and (string-match "HTTP/[.0-9]+ +\\([0-9]+\\)" http-msg)
                               (match-string 1 http-msg)))))
             (plist-put proc-info :http-status http-status)
-            (plist-put proc-info :status (string-trim http-msg))))
-        ;; Handle read-only gptel buffer
-        (when (with-current-buffer (plist-get proc-info :buffer)
-                (or buffer-read-only
-                    (get-char-property (plist-get proc-info :position) 'read-only)))
-          (message "Buffer is read only, displaying reply in buffer \"*LLM response*\"")
-          (display-buffer
-           (with-current-buffer (get-buffer-create "*LLM response*")
-             (visual-line-mode 1)
-             (goto-char (point-max))
-             (move-marker (plist-get proc-info :position) (point) (current-buffer))
-             (current-buffer))
-           '((display-buffer-reuse-window
-              display-buffer-pop-up-window)
-             (reusable-frames . visible))))
-        ;; Run pre-response hook
-        (when (and (member (plist-get proc-info :http-status) '("200" "100"))
-                   gptel-pre-response-hook)
-          (with-current-buffer (marker-buffer (plist-get proc-info :position))
-            (run-hooks 'gptel-pre-response-hook))))
+            (plist-put proc-info :status (string-trim http-msg))
+            (gptel--fsm-transition fsm))))
       
       (when-let ((http-msg (plist-get proc-info :status))
                  (http-status (plist-get proc-info :http-status)))
@@ -350,16 +302,20 @@ See `gptel-curl--get-response' for its contents.")
 PROCESS and _STATUS are process parameters."
   (let ((proc-buf (process-buffer process)))
     (when-let* (((eq (process-status process) 'exit))
-                (proc-info (alist-get process gptel--request-alist))
+                (fsm (alist-get process gptel--request-alist))
+                (proc-info (gptel-fsm-info fsm))
                 (proc-callback (plist-get proc-info :callback)))
       (when gptel-log-level (gptel-curl--log-response proc-buf proc-info)) ;logging
-      (pcase-let ((`(,response ,http-msg ,error)
+      (pcase-let ((`(,response ,http-status ,http-msg ,error)
                    (with-current-buffer proc-buf
                      (gptel-curl--parse-response proc-info))))
+        (plist-put proc-info :http-status http-status)
         (plist-put proc-info :status http-msg)
+        (gptel--fsm-transition fsm)     ;WAIT -> TYPE
         (when error (plist-put proc-info :error error))
         (with-demoted-errors "gptel callback error: %S"
-          (funcall proc-callback response proc-info))))
+          (funcall proc-callback response proc-info)))
+      (gptel--fsm-transition fsm))      ;TYPE -> next
     (setf (alist-get process gptel--request-alist nil 'remove) nil)
     (kill-buffer proc-buf)))
 
@@ -389,29 +345,17 @@ PROC-INFO is a plist with contextual information."
           (cond
            ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
            ((member http-status '("200" "100"))
-            (list (string-trim
-                   (funcall parser nil response proc-info))
-                  http-msg))
+            (list (and-let* ((resp (funcall parser nil response proc-info)))
+                    (string-trim resp))
+                  http-status http-msg))
            ((plist-get response :error)
-            (let* ((error-data (plist-get response :error))
-                   (error-msg (plist-get error-data :message))
-                   (error-type (plist-get error-data :type))
-                   (backend-name
-                    (gptel-backend-name
-                     (buffer-local-value 'gptel-backend (plist-get proc-info :buffer)))))
-              (if (stringp error-data)
-                  (progn (message "%s error: (%s) %s" backend-name http-msg error-data)
-                         (setq error-msg (string-trim error-data)))
-                (when (stringp error-msg)
-                  (message "%s error: (%s) %s" backend-name http-msg (string-trim error-msg)))
-                (when error-type (setq http-msg (concat "("  http-msg ") " (string-trim error-type)))))
-              (list nil (concat "(" http-msg ") " (or error-msg "")))))
+            (list nil http-status http-msg (plist-get response :error)))
            ((eq response 'json-read-error)
-            (list nil (concat "(" http-msg ") Malformed JSON in response.")
+            (list nil http-status (concat "(" http-msg ") Malformed JSON in response.")
                   "Malformed JSON in response"))
-           (t (list nil (concat "(" http-msg ") Could not parse HTTP response.")
+           (t (list nil http-status (concat "(" http-msg ") Could not parse HTTP response.")
                     "Could not parse HTTP response.")))
-        (list nil (concat "(" http-msg ") Could not parse HTTP response.")
+        (list nil http-status (concat "(" http-msg ") Could not parse HTTP response.")
               "Could not parse HTTP response.")))))
 
 (provide 'gptel-curl)
