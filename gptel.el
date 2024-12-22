@@ -1278,6 +1278,48 @@ file."
 
 ;;; Tool use
 
+(defcustom gptel-use-tools t
+  "Whether gptel should use tools."
+  :group 'gptel
+  :type 'boolean)
+
+(defcustom gptel-tools nil
+  "A list of tools to include with gptel requests.
+
+Each tool should be a `gptel-tool' struct, which see.  To specify
+a tool, use `gptel-make-tool'.  Here is an example definition to
+get you started:
+
+  (gptel-make-tool
+   :function (lambda (location unit)
+                (url-retrieve-synchronously \"api.weather.com/...\"
+                                            location unit))
+   :name \"get_weather\"
+   :description \"Get the current weather in a given location\"
+   :args (list \\='(:name \"location\"
+                 :type \"string\"
+                 :description \"The city and state, e.g. San Francisco, CA\")
+               \\='(:name \"unit\"
+                 :type \"string\"
+                 :enum (\"celsius\" \"farenheit\")
+                 :description
+                 \"The unit of temperature, either \\='celsius\\=' or \\='fahrenheit\\='\"
+                 :optional t)))
+
+Tools can be asynchronous, in which case the above constructor
+should include \":async t\", and the elisp function should take
+an additional callback argument:
+
+   (lambda (callback location unit)
+     (url-retrieve \"api.weather.com/...\"
+                   (lambda (_)
+                     (let ((result (parse-this-buffer)))
+                       (funcall callback result)))))
+
+and call the callback with the tool result for gptel to continue the request."
+  :group 'gptel
+  :type '(repeat gptel-tool))
+
 (cl-defstruct (gptel-tool (:constructor gptel-make-tool)
                           (:copier gptel-copy-tool))
   "Struct to specify tools for LLMs to run.
@@ -1703,6 +1745,8 @@ RESPONSE is
 - nil if there was no response or an error.
 - The symbol `abort' if the request was aborted, see
   `gptel-abort'.
+- An alist of called tools and tool results when the LLM runs a
+  tool
 
 The INFO plist has (at least) the following keys:
 :data         - The request data included with the query
@@ -1851,6 +1895,8 @@ be used to rerun or continue the request at a later time."
     (when callback (plist-put info :callback callback))
     (when context (plist-put info :context context))
     (when in-place (plist-put info :in-place in-place))
+    (when (and gptel-use-tools gptel-tools)
+      (plist-put info :tools gptel-tools))
     ;; Add info to state machine context
     (setf (gptel-fsm-info fsm) info))
   (unless dry-run (gptel--fsm-transition fsm)) ;INIT -> WAIT

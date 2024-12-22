@@ -38,6 +38,8 @@
 (defvar gptel-mode)
 (defvar gptel-track-response)
 (defvar gptel-track-media)
+(defvar gptel-use-tools)
+(defvar gptel-tools)
 (declare-function gptel-context--collect-media "gptel-context")
 (declare-function gptel--base64-encode "gptel")
 (declare-function gptel--trim-prefixes "gptel")
@@ -53,6 +55,8 @@
 (declare-function gptel--merge-plists "gptel")
 (declare-function gptel--model-request-params "gptel")
 (declare-function gptel-context--wrap "gptel-context")
+(declare-function gptel--inject-prompt "gptel")
+(declare-function gptel--parse-tools "gptel")
 
 ;; JSON conversion semantics used by gptel
 ;; empty object "{}" => empty list '() == nil
@@ -244,7 +248,7 @@ Mutate state INFO with response metadata."
            collect call-spec into tool-use
            finally (plist-put info :tool-use tool-use)))))))
 
-(cl-defmethod gptel--request-data ((_backend gptel-openai) prompts)
+(cl-defmethod gptel--request-data ((backend gptel-openai) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
   (when gptel--system-message
     (push (list :role "system"
@@ -256,6 +260,10 @@ Mutate state INFO with response metadata."
            :stream ,(or gptel-stream :json-false))))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
+    (when (and gptel-use-tools gptel-tools)
+      (plist-put prompts-plist :tools
+                 (gptel--parse-tools backend gptel-tools))
+      (plist-put prompts-plist :parallel_tool_calls t))
     (when gptel-max-tokens
       ;; HACK: The OpenAI API has deprecated max_tokens, but we still need it
       ;; for OpenAI-compatible APIs like GPT4All (#485)
