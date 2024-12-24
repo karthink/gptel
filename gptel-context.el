@@ -173,6 +173,12 @@ context chunk.  This is accessible as, for example:
         (eq buffer-file-coding-system 'no-conversion))
     (file-missing (message "File \"%s\" is not readable." path))))
 
+(defun gptel-context--add-text-file (path)
+  "Add text file at PATH to context."
+  (cl-pushnew (list path) gptel-context--alist :test #'equal)
+  (message "File \"%s\" added to context." path)
+  path)
+
 (defun gptel-context--handle-binary (path)
   "Add binary file at PATH to context if supported.
 Return PATH if added, nil if ignored."
@@ -196,8 +202,7 @@ ACTION should be either `add' or `remove'."
                 ('add
                  (if (gptel--file-binary-p file)
                      (gptel-context--handle-binary file)
-                   (cl-pushnew (list file) gptel-context--alist :test #'equal)
-                   (message "File \"%s\" added to context." file)))
+                   (gptel-context--add-text-file file)))
                 ('remove
                  (setf (alist-get file gptel-context--alist nil 'remove #'equal) nil)
                  (message "File \"%s\" removed from context." file)))))
@@ -212,10 +217,7 @@ PATH should be readable as text."
 	 (gptel-context--handle-directory path 'add))
 	((gptel--file-binary-p path)
          (gptel-context--handle-binary path))
-	;; Add text file
-	((cl-pushnew (list path) gptel-context--alist :test #'equal)
-	 (message "File \"%s\" added to context." path)
-	 path)))
+	((gptel-context--add-text-file path))))
 
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
 (defalias 'gptel-add-file #'gptel-context-add-file)
