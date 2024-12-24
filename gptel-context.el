@@ -204,8 +204,7 @@ ACTION should be either `add' or `remove'."
                      (gptel-context--handle-binary file)
                    (gptel-context--add-text-file file)))
                 ('remove
-                 (setf (alist-get file gptel-context--alist nil 'remove #'equal) nil)
-                 (message "File \"%s\" removed from context." file)))))
+                 (gptel-context--remove-file file)))))
           files)))
 
 (defun gptel-context-add-file (path)
@@ -239,8 +238,7 @@ If CONTEXT is a directory, recursively removes all files in it."
    ((stringp context)                   ;file or directory
     (if (file-directory-p context)
         (gptel-context--handle-directory context 'remove)
-      (setf (alist-get context gptel-context--alist nil 'remove #'equal)
-            nil)))
+      (gptel-context--remove-file context)))
    ((region-active-p)
     (when-let ((contexts (gptel-context--in-region (current-buffer)
                                                    (region-beginning)
@@ -249,6 +247,12 @@ If CONTEXT is a directory, recursively removes all files in it."
    (t
     (when-let ((ctx (gptel-context--at-point)))
       (delete-overlay ctx)))))
+
+(defun gptel-context--remove-file (path)
+  "Remove the file at PATH from the gptel context."
+  (setf (alist-get path gptel-context--alist nil 'remove #'equal)
+	nil)
+  (message "File \"%s\" removed from context." path))
 
 (defun gptel-context--make-overlay (start end &optional advance)
   "Highlight the region from START to END.
