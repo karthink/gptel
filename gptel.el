@@ -239,7 +239,8 @@ all at once.  This wait is asynchronous.
   "Whether gptel should prefer Curl when available."
   :type 'boolean)
 
-(defcustom gptel-curl-file-size-threshold 130000
+(defcustom gptel-curl-file-size-threshold
+  (if (memq system-type '(windows-nt ms-dos)) 32766 130000)
   "Size threshold for using file input with Curl.
 
 Specifies the size threshold for when to use a temporary file to pass data to
