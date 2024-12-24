@@ -116,7 +116,7 @@ context chunk.  This is accessible as, for example:
           (dired-get-marked-files)))
    ;; If in an image buffer
    ((and (derived-mode-p 'image-mode)
-         (gptel--model-capable-p 'media;)
+         (gptel--model-capable-p 'media)
          (buffer-file-name))
     (funcall (if (and arg (< (prefix-numeric-value arg) 0))
               #'gptel-context-remove
