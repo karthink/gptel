@@ -179,7 +179,7 @@ context chunk.  This is accessible as, for example:
   (message "File \"%s\" added to context." path)
   path)
 
-(defun gptel-context--handle-binary (path)
+(defun gptel-context--add-binary-file (path)
   "Add binary file at PATH to context if supported.
 Return PATH if added, nil if ignored."
   (if-let* (((gptel--model-capable-p 'media))
@@ -192,7 +192,7 @@ Return PATH if added, nil if ignored."
     (message "Ignoring unsupported binary file \"%s\"." path)
     nil))
 
-(defun gptel-context--handle-directory (path action)
+(defun gptel-context--add-directory (path action)
   "Process all files in directory at PATH according to ACTION.
 ACTION should be either `add' or `remove'."
   (let ((files (directory-files-recursively path "." t)))
@@ -201,7 +201,7 @@ ACTION should be either `add' or `remove'."
               (pcase-exhaustive action
                 ('add
                  (if (gptel--file-binary-p file)
-                     (gptel-context--handle-binary file)
+                     (gptel-context--add-binary-file file)
                    (gptel-context--add-text-file file)))
                 ('remove
                  (gptel-context--remove-file file)))))
@@ -213,9 +213,9 @@ If PATH is a directory, recursively add all files in it.
 PATH should be readable as text."
   (interactive "fChoose file to add to context: ")
   (cond ((file-directory-p path)
-	 (gptel-context--handle-directory path 'add))
+	 (gptel-context--add-directory path 'add))
 	((gptel--file-binary-p path)
-         (gptel-context--handle-binary path))
+         (gptel-context--add-binary-file path))
 	((gptel-context--add-text-file path))))
 
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
@@ -237,7 +237,7 @@ If CONTEXT is a directory, recursively removes all files in it."
       (setf (alist-get (current-buffer) gptel-context--alist nil 'remove) nil)))
    ((stringp context)                   ;file or directory
     (if (file-directory-p context)
-        (gptel-context--handle-directory context 'remove)
+        (gptel-context--add-directory context 'remove)
       (gptel-context--remove-file context)))
    ((region-active-p)
     (when-let ((contexts (gptel-context--in-region (current-buffer)
