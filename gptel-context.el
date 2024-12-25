@@ -91,11 +91,11 @@ context chunk.  This is accessible as, for example:
   context.  If there is already a gptel context at point, remove it
   instead.
 
-- If in Dired, add marked files or file at point to the context. With
-  negative prefix ARG, remove them from the context instead. If the
-  selection includes directories, add all their files recursively,
+- If in Dired, add marked files or file at point to the context. If
+  the selection includes directories, add all their files recursively,
   prompting the user for confirmation if called interactively or
-  CONFIRM is non-nil.
+  CONFIRM is non-nil. With negative prefix ARG, remove all files from
+  the context instead.
 
 - Otherwise add the current buffer to the context.  With positive
   prefix ARG, prompt for a buffer name and add it to the context.
