@@ -120,21 +120,19 @@ context chunk.  This is accessible as, for example:
 	   (action-fn (if remove-p
 			  #'gptel-context-remove
 			#'gptel-context-add-file)))
-      (when (or remove-p
-		(null dirs)
-		(null confirm)
+      (when (or remove-p (null dirs) (null confirm)
 		(y-or-n-p (format "Recursively add files from %d director%s? "
 				  (length dirs)
 				  (if (= (length dirs) 1) "y" "ies"))))
 	(mapc action-fn files))))
    ;; If in an image buffer
    ((and (derived-mode-p 'image-mode)
-         (gptel--model-capable-p 'media;)
+         (gptel--model-capable-p 'media)
          (buffer-file-name))
     (funcall (if (and arg (< (prefix-numeric-value arg) 0))
               #'gptel-context-remove
               #'gptel-context-add-file)
-          (buffer-file-name))))
+          (buffer-file-name)))
    ;; No region is selected, and ARG is positive.
    ((and arg (> (prefix-numeric-value arg) 0))
     (let* ((buffer-name (read-buffer "Choose buffer to add as context: " nil t))
@@ -145,9 +143,8 @@ context chunk.  This is accessible as, for example:
       (message "Buffer '%s' added as context." buffer-name)))
    ;; No region is selected, and ARG is negative.
    ((and arg (< (prefix-numeric-value arg) 0))
-    (when (or
-	   (null confirm)
-	   (y-or-n-p "Remove all contexts from this buffer? "))
+    (when (or (null confirm)
+	      (y-or-n-p "Remove all contexts from this buffer? "))
       (let ((removed-contexts 0))
         (cl-loop for cov in
                  (gptel-context--in-region (current-buffer) (point-min) (point-max))
@@ -214,6 +211,7 @@ ACTION should be either `add' or `remove'."
 
 (defun gptel-context-add-file (path)
   "Add the file at PATH to the gptel context.
+
 If PATH is a directory, recursively add all files in it.
 PATH should be readable as text."
   (interactive "fChoose file to add to context: ")
@@ -228,6 +226,7 @@ PATH should be readable as text."
 
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
+
 If CONTEXT is nil, removes the context at point.
 If selection is active, removes all contexts within selection.
 If CONTEXT is a directory, recursively removes all files in it."
