@@ -84,22 +84,26 @@ context chunk.  This is accessible as, for example:
   :group 'gptel
   :type 'function)
 
-(defun gptel-context-add (&optional arg)
+(defun gptel-context-add (&optional arg confirm)
   "Add context to gptel in a DWIM fashion.
 
 - If a region is selected, add the selected region to the
   context.  If there is already a gptel context at point, remove it
   instead.
 
-- If in Dired, add marked files or file at point to the context.
-  With negative prefix ARG, remove them from the context instead.
+- If in Dired, add marked files or file at point to the context. If
+  the selection includes directories, add all their files recursively,
+  prompting the user for confirmation if called interactively or
+  CONFIRM is non-nil. With negative prefix ARG, remove all files from
+  the context instead.
 
 - Otherwise add the current buffer to the context.  With positive
   prefix ARG, prompt for a buffer name and add it to the context.
 
-- With negative prefix ARG, remove all gptel contexts from the
-  current buffer."
-  (interactive "P")
+- With negative prefix ARG, remove all gptel contexts from the current
+  buffer, prompting the user for confirmation if called interactively
+  or CONFIRM is non-nil."
+  (interactive "P\np")
   (cond
    ;; A region is selected.
    ((use-region-p)
@@ -110,10 +114,17 @@ context chunk.  This is accessible as, for example:
     (message "Current region added as context."))
    ;; If in dired
    ((derived-mode-p 'dired-mode)
-    (mapc (if (and arg (< (prefix-numeric-value arg) 0))
-              #'gptel-context-remove
-              #'gptel-context-add-file)
-          (dired-get-marked-files)))
+    (let* ((files (dired-get-marked-files))
+           (dirs (cl-remove-if-not #'file-directory-p files))
+           (remove-p (< (prefix-numeric-value arg) 0))
+	   (action-fn (if remove-p
+			  #'gptel-context-remove
+			#'gptel-context-add-file)))
+      (when (or remove-p (null dirs) (null confirm)
+		(y-or-n-p (format "Recursively add files from %d director%s? "
+				  (length dirs)
+				  (if (= (length dirs) 1) "y" "ies"))))
+	(mapc action-fn files))))
    ;; If in an image buffer
    ((and (derived-mode-p 'image-mode)
          (gptel--model-capable-p 'media)
@@ -132,7 +143,8 @@ context chunk.  This is accessible as, for example:
       (message "Buffer '%s' added as context." buffer-name)))
    ;; No region is selected, and ARG is negative.
    ((and arg (< (prefix-numeric-value arg) 0))
-    (when (y-or-n-p "Remove all contexts from this buffer? ")
+    (when (or (null confirm)
+	      (y-or-n-p "Remove all contexts from this buffer? "))
       (let ((removed-contexts 0))
         (cl-loop for cov in
                  (gptel-context--in-region (current-buffer) (point-min) (point-max))
@@ -163,32 +175,63 @@ context chunk.  This is accessible as, for example:
         (eq buffer-file-coding-system 'no-conversion))
     (file-missing (message "File \"%s\" is not readable." path))))
 
+(defun gptel-context--add-text-file (path)
+  "Add text file at PATH to context."
+  (cl-pushnew (list path) gptel-context--alist :test #'equal)
+  (message "File \"%s\" added to context." path)
+  path)
+
+(defun gptel-context--add-binary-file (path)
+  "Add binary file at PATH to context if supported.
+Return PATH if added, nil if ignored."
+  (if-let* (((gptel--model-capable-p 'media))
+            (mime (mailcap-file-name-to-mime-type path))
+            ((gptel--model-mime-capable-p mime)))
+      (prog1 path
+        (cl-pushnew (list path :mime mime)
+                    gptel-context--alist :test #'equal)
+        (message "File \"%s\" added to context." path))
+    (message "Ignoring unsupported binary file \"%s\"." path)
+    nil))
+
+(defun gptel-context--add-directory (path action)
+  "Process all files in directory at PATH according to ACTION.
+ACTION should be either `add' or `remove'."
+  (let ((files (directory-files-recursively path "." t)))
+    (mapc (lambda (file)
+            (unless (file-directory-p file)
+              (pcase-exhaustive action
+                ('add
+                 (if (gptel--file-binary-p file)
+                     (gptel-context--add-binary-file file)
+                   (gptel-context--add-text-file file)))
+                ('remove
+                 (setf (alist-get file gptel-context--alist nil 'remove #'equal) nil)))))
+          files)
+    (when (eq action 'remove)
+      (message "Directory \"%s\" removed from context." path))))
+
 (defun gptel-context-add-file (path)
   "Add the file at PATH to the gptel context.
 
+If PATH is a directory, recursively add all files in it.
 PATH should be readable as text."
   (interactive "fChoose file to add to context: ")
-  (if (gptel--file-binary-p path)   ;Attach if supported
-      (if-let* (((gptel--model-capable-p 'media))
-                (mime (mailcap-file-name-to-mime-type path))
-                ((gptel--model-mime-capable-p mime)))
-          (prog1 path
-            (cl-pushnew (list path :mime mime)
-                        gptel-context--alist :test #'equal)
-            (message "File \"%s\" added to context." path))
-        (message "Ignoring unsupported binary file \"%s\"." path))
-    ;; Add text file
-    (cl-pushnew (list path) gptel-context--alist :test #'equal)
-    (message "File \"%s\" added to context." path)
-    path))
+  (cond ((file-directory-p path)
+	 (gptel-context--add-directory path 'add))
+	((gptel--file-binary-p path)
+         (gptel-context--add-binary-file path))
+	((gptel-context--add-text-file path))))
 
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
 (defalias 'gptel-add-file #'gptel-context-add-file)
 
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
+
 If CONTEXT is nil, removes the context at point.
-If selection is active, removes all contexts within selection."
+If selection is active, removes all contexts within selection.
+If CONTEXT is a directory, recursively removes all files in it."
   (cond
    ((overlayp context)
     (delete-overlay context)
@@ -198,9 +241,11 @@ If selection is active, removes all contexts within selection."
          for ov in (alist-get (current-buffer) gptel-context--alist)
          thereis (overlay-start ov))
       (setf (alist-get (current-buffer) gptel-context--alist nil 'remove) nil)))
-   ((stringp context)                   ;file
-    (setf (alist-get context gptel-context--alist nil 'remove #'equal)
-          nil))
+   ((stringp context)                   ;file or directory
+    (if (file-directory-p context)
+        (gptel-context--add-directory context 'remove)
+      (setf (alist-get context gptel-context--alist nil 'remove #'equal) nil)
+      (message "File \"%s\" removed from context." context)))
    ((region-active-p)
     (when-let ((contexts (gptel-context--in-region (current-buffer)
                                                    (region-beginning)

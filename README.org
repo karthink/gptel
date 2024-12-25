@@ -979,7 +979,7 @@ By default, gptel will query the LLM with the active region or the buffer conten
 
 You can include additional text regions, buffers or files with gptel's queries.  This additional context is "live" and not a snapshot.  Once added, the regions, buffers or files are scanned and included at the time of each query.  When using multi-modal models, added files can be of any supported type -- typically images.
 
-You can add a selected region, buffer or file to gptel's context from the menu, or call =gptel-add=.  (To add a file use =gptel-add= in Dired or use the dedicated =gptel-add-file= command.)
+You can add a selected region, buffer or file to gptel's context from the menu, or call =gptel-add=.  To add a file use =gptel-add= in Dired, or use the dedicated =gptel-add-file= command.  Directories will have their files added recursively after prompting for confirmation.
 
 You can examine the active context from the menu:
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/63cd7fc8-6b3e-42ae-b6ca-06ff935bae9c" align="center" alt="Image showing gptel's menu with the "inspect context" command.">
