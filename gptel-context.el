@@ -84,23 +84,26 @@ context chunk.  This is accessible as, for example:
   :group 'gptel
   :type 'function)
 
-(defun gptel-context-add (&optional arg)
+(defun gptel-context-add (&optional arg confirm)
   "Add context to gptel in a DWIM fashion.
 
 - If a region is selected, add the selected region to the
   context.  If there is already a gptel context at point, remove it
   instead.
 
-- If in Dired, add marked files or file at point to the context.
-  Directories will have all their files added recursively. With
-  negative prefix ARG, remove them from the context instead.
+- If in Dired, add marked files or file at point to the context. With
+  negative prefix ARG, remove them from the context instead. If the
+  selection includes directories, add all their files recursively,
+  prompting the user for confirmation if called interactively or
+  CONFIRM is non-nil.
 
 - Otherwise add the current buffer to the context.  With positive
   prefix ARG, prompt for a buffer name and add it to the context.
 
-- With negative prefix ARG, remove all gptel contexts from the
-  current buffer."
-  (interactive "P")
+- With negative prefix ARG, remove all gptel contexts from the current
+  buffer, prompting the user for confirmation if called interactively
+  or CONFIRM is non-nil."
+  (interactive "P\np")
   (cond
    ;; A region is selected.
    ((use-region-p)
@@ -119,7 +122,7 @@ context chunk.  This is accessible as, for example:
 			#'gptel-context-add-file)))
       (when (or remove-p
 		(null dirs)
-		(not (called-interactively-p 'any))
+		(null confirm)
 		(y-or-n-p (format "Recursively add files from %d director%s? "
 				  (length dirs)
 				  (if (= (length dirs) 1) "y" "ies"))))
@@ -142,7 +145,9 @@ context chunk.  This is accessible as, for example:
       (message "Buffer '%s' added as context." buffer-name)))
    ;; No region is selected, and ARG is negative.
    ((and arg (< (prefix-numeric-value arg) 0))
-    (when (y-or-n-p "Remove all contexts from this buffer? ")
+    (when (or
+	   (null confirm)
+	   (y-or-n-p "Remove all contexts from this buffer? "))
       (let ((removed-contexts 0))
         (cl-loop for cov in
                  (gptel-context--in-region (current-buffer) (point-min) (point-max))
