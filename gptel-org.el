@@ -436,52 +436,54 @@ elements."
   (interactive)
   (with-temp-buffer
     (insert str)
+    (org-mode)
     (goto-char (point-min))
     (while (re-search-forward "`+\\|\\*\\{1,2\\}\\|_\\|^#+" nil t)
-      (pcase (match-string 0)
-        ;; Handle backticks
-        ((and (guard (eq (char-before) ?`)) ticks)
-         (gptel--replace-source-marker (length ticks))
-         (save-match-data
-           (catch 'block-end
-             (while (search-forward ticks nil t)
-               (unless (or (eq (char-before (match-beginning 0)) ?`)
-                           (eq (char-after) ?`))
+      (unless (org-in-src-block-p)
+        (pcase (match-string 0)
+          ;; Handle backticks
+          ((and (guard (eq (char-before) ?`)) ticks)
+           (gptel--replace-source-marker (length ticks))
+           (save-match-data
+             (catch 'block-end
+               (while (search-forward ticks nil t)
+                 (unless (or (eq (char-before (match-beginning 0)) ?`)
+                             (eq (char-after) ?`))
                    (gptel--replace-source-marker (length ticks) 'end)
                    (throw 'block-end nil))))))
-        ;; Handle headings
-        ((and (guard (eq (char-before) ?#)) heading)
-         (when (looking-at "[[:space:]]")
-           (delete-region (line-beginning-position) (point))
-           (insert (make-string (length heading) ?*))))
-        ;; Handle emphasis
-        ("**" (cond
-               ;; ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)")
-               ;;  (delete-char 1))
-               ((looking-back "\\(?:[[:word:][:punct:]\n]\\|\s\\)\\*\\{2\\}"
-                              (max (- (point) 3) (point-min)))
-                (delete-char -1))))
-        ("*"
-         (cond
-          ((save-match-data
-             (and (looking-back "\\(?:[[:space:]]\\|\s\\)\\(?:_\\|\\*\\)"
-                                (max (- (point) 2) (point-min)))
-                  (not (looking-at "[[:space:]]\\|\s"))))
-           ;; Possible beginning of emphasis
-           (and
-            (save-excursion
-              (when (and (re-search-forward (regexp-quote (match-string 0))
-                                            (line-end-position) t)
-                         (looking-at "[[:space]]\\|\s")
-                         (not (looking-back "\\(?:[[:space]]\\|\s\\)\\(?:_\\|\\*\\)"
-                                            (max (- (point) 2) (point-min)))))
-                (delete-char -1) (insert "/") t))
-            (progn (delete-char -1) (insert "/"))))
-          ((save-excursion
-             (ignore-errors (backward-char 2))
-             (looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]"))
-           ;; Bullet point, replace with hyphen
-           (delete-char -1) (insert "-"))))))
+          ;; Handle headings
+          ((and (guard (eq (char-before) ?#)) heading)
+           (when (looking-at "[[:space:]]")
+             (delete-region (line-beginning-position) (point))
+             (insert (make-string (length heading) ?*))))
+          ;; Handle emphasis
+          ("**" (cond
+                 ;; ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)")
+                 ;;  (delete-char 1))
+                 ((looking-back "\\(?:[[:word:][:punct:]\n]\\|\s\\)\\*\\{2\\}"
+                                (max (- (point) 3) (point-min)))
+                  (delete-char -1))))
+          ("*"
+           (cond
+            ((save-match-data
+               (and (looking-back "\\(?:[[:space:]]\\|\s\\)\\(?:_\\|\\*\\)"
+                                  (max (- (point) 2) (point-min)))
+                    (not (looking-at "[[:space:]]\\|\s"))))
+             ;; Possible beginning of emphasis
+             (and
+              (save-excursion
+                (when (and (re-search-forward (regexp-quote (match-string 0))
+                                              (line-end-position) t)
+                           (looking-at "[[:space]]\\|\s")
+                           (not (looking-back "\\(?:[[:space]]\\|\s\\)\\(?:_\\|\\*\\)"
+                                              (max (- (point) 2) (point-min)))))
+                  (delete-char -1) (insert "/") t))
+              (progn (delete-char -1) (insert "/"))))
+            ((save-excursion
+               (ignore-errors (backward-char 2))
+               (looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]"))
+             ;; Bullet point, replace with hyphen
+             (delete-char -1) (insert "-")))))))
     (buffer-string)))
 
 (defun gptel--replace-source-marker (num-ticks &optional end)
