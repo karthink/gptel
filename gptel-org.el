@@ -507,7 +507,7 @@ This function parses a stream of Markdown text to Org
 continuously when it is called with successive chunks of the
 text stream."
   (letrec ((in-src-block nil)           ;explicit nil to address BUG #183
-           (temp-buf (generate-new-buffer-name "*gptel-temp*"))
+           (temp-buf (generate-new-buffer "*gptel-temp*"))
            (start-pt (make-marker))
            (ticks-total 0)
            (cleanup-fn
@@ -519,7 +519,7 @@ text stream."
     (add-hook 'gptel-post-response-functions cleanup-fn)
     (lambda (str)
       (let ((noop-p) (ticks 0))
-        (with-current-buffer (get-buffer-create temp-buf)
+        (with-current-buffer (get-buffer temp-buf)
           (save-excursion (goto-char (point-max)) (insert str))
           (when (marker-position start-pt) (goto-char start-pt))
           (when in-src-block (setq ticks ticks-total))
