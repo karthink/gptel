@@ -500,19 +500,23 @@ This is intended for use in the markdown to org stream converter."
         (insert (if end "#+end_src" "#+begin_src "))
       (insert "="))))
 
-(defun gptel--stream-convert-markdown->org ()
+(defun gptel--stream-convert-markdown->org (start-marker)
   "Return a Markdown to Org converter.
 
 This function parses a stream of Markdown text to Org
 continuously when it is called with successive chunks of the
-text stream."
+text stream.
+
+START-MARKER is used to identify the corresponding process when
+cleaning up after."
   (letrec ((in-src-block nil)           ;explicit nil to address BUG #183
            (temp-buf (generate-new-buffer "*gptel-temp*"))
            (start-pt (make-marker))
            (ticks-total 0)
            (cleanup-fn
-            (lambda (&rest _)
-              (when (buffer-live-p (get-buffer temp-buf))
+            (lambda (beg _)
+              (when (and (buffer-live-p (get-buffer temp-buf))
+                         (equal beg (marker-position start-marker)))
                 (set-marker start-pt nil)
                 (kill-buffer temp-buf))
               (remove-hook 'gptel-post-response-functions cleanup-fn))))

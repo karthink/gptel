@@ -147,7 +147,8 @@ the response is inserted into the current buffer after point."
                                          #'gptel--insert-response))
                          :transformer (when (with-current-buffer (plist-get info :buffer)
                                               (derived-mode-p 'org-mode))
-                                        (gptel--stream-convert-markdown->org)))
+                                        (gptel--stream-convert-markdown->org
+                                         (plist-get info :position))))
                    info))
       (if stream
           (progn (plist-put info :stream t)
