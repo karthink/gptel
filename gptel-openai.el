@@ -54,27 +54,38 @@
 (declare-function gptel--model-request-params "gptel")
 (declare-function gptel-context--wrap "gptel-context")
 
+;; JSON conversion semantics used by gptel
+;; empty object "{}" => empty list '() == nil
+;; null              => :null
+;; false             => :json-false
+
+;; TODO(tool) Except when reading JSON from a string, where null => nil
+
 (defmacro gptel--json-read ()
   (if (fboundp 'json-parse-buffer)
       `(json-parse-buffer
         :object-type 'plist
-        :null-object nil
+        :null-object :null
         :false-object :json-false)
     (require 'json)
     (defvar json-object-type)
+    (defvar json-null)
     (declare-function json-read "json" ())
-    `(let ((json-object-type 'plist))
+    `(let ((json-object-type 'plist)
+           (json-null :null))
       (json-read))))
 
 (defmacro gptel--json-encode (object)
   (if (fboundp 'json-serialize)
       `(json-serialize ,object
-        :null-object nil
+        :null-object :null
         :false-object :json-false)
     (require 'json)
     (defvar json-false)
+    (defvar json-null)
     (declare-function json-encode "json" (object))
-    `(let ((json-false :json-false))
+    `(let ((json-false :json-false)
+           (json-null  :null))
       (json-encode ,object))))
 
 (defun gptel--process-models (models)
