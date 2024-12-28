@@ -515,7 +515,8 @@ cleaning up after."
            (ticks-total 0)
            (cleanup-fn
             (lambda (beg _)
-              (when (equal beg (marker-position start-marker))
+              (when (and (equal beg (marker-position start-marker))
+                         (eq (current-buffer) (marker-buffer start-marker)))
                 (when (buffer-live-p (get-buffer temp-buf))
                   (set-marker start-pt nil)
                   (kill-buffer temp-buf))
