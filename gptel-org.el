@@ -510,7 +510,7 @@ text stream.
 START-MARKER is used to identify the corresponding process when
 cleaning up after."
   (letrec ((in-src-block nil)           ;explicit nil to address BUG #183
-           (temp-buf (generate-new-buffer "*gptel-temp*"))
+           (temp-buf (generate-new-buffer " *gptel-temp*" t))
            (start-pt (make-marker))
            (ticks-total 0)
            (cleanup-fn
