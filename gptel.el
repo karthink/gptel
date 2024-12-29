@@ -261,6 +261,12 @@ The default for windows comes from Microsoft documentation located here:
 https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa"
   :type 'natnum)
 
+(defcustom gptel-post-request-hook nil
+  "Hook run after sending a gptel request.
+
+This runs (possibly) before any response is received."
+  :type 'hook)
+
 (defcustom gptel-response-filter-functions
   (list #'gptel--convert-org)
   "Abnormal hook for transforming the response from an LLM.
@@ -1424,7 +1430,8 @@ be used to rerun or continue the request at a later time."
     (unless dry-run
       (funcall (if gptel-use-curl
                    #'gptel-curl-get-response #'gptel--url-get-response)
-               info callback))
+               info callback)
+      (run-hooks 'gptel-post-request-hook))
     (list stream info callback)))
 
 (defvar gptel--request-alist nil "Alist of active gptel requests.")
