@@ -52,12 +52,25 @@ Affects the system message too.")
 (defun gptel--set-with-scope (sym value &optional scope)
   "Set SYMBOL's symbol-value to VALUE with SCOPE.
 
-If SCOPE is non-nil, set it buffer-locally, else clear any
-buffer-local value and set its default global value."
-  (if scope
-      (set (make-local-variable sym) value)
-    (kill-local-variable sym)
-    (set sym value)))
+If SCOPE is t, set it buffer-locally.
+If SCOPE is 1, reset it after the next gptel-request. (oneshot)
+Otherwise, clear any buffer-local value and set its default
+global value."
+  (pcase scope
+    (1 (put sym 'gptel-history (symbol-value sym))
+       (set sym value)
+       (letrec ((restore-value
+                 (lambda ()
+                   (remove-hook 'gptel-post-request-hook restore-value)
+                   (run-at-time         ; Required to work around let bindings
+                    0 nil (lambda (s)        ; otherwise this change is overwritten!
+                            (set s (get s 'gptel-history))
+                            (put s 'gptel-history nil))
+                    sym))))
+         (add-hook 'gptel-post-request-hook restore-value)))
+    ('t (set (make-local-variable sym) value))
+    (_ (kill-local-variable sym)
+       (set sym value))))
 
 (defun gptel--get-directive (args)
   "Find the additional directive in the transient ARGS.
@@ -286,11 +299,34 @@ which see."
                     'face (if value 'transient-value 'transient-inactive-value))))))
 
 (defclass gptel--scope (gptel--switches)
-  ((display-if-true :initarg :display-if-true :initform "for this buffer")
-   (display-if-false :initarg :display-if-false :initform "globally"))
+  ((display-if-true :initarg :display-if-true :initform "buffer")
+   (display-if-false :initarg :display-if-false :initform "global"))
   "Singleton lisp variable class for `gptel--set-buffer-locally'.
 
 This is used only for setting this variable via `gptel-menu'.")
+
+(cl-defmethod transient-infix-read ((obj gptel--scope))
+  "Cycle through the mutually exclusive switches."
+  (with-slots (value) obj
+    (pcase value
+      ('t (message "Parameters will be set for the next request only"))
+      ('nil (message "Parameters will be set buffer-locally"))
+      (1 (message "Parameters will be set globally")))
+    (pcase value ('t 1) ('nil t) (1 nil))))
+
+(cl-defmethod transient-format-value ((obj gptel--scope))
+  (with-slots (value display-if-true display-if-false) obj
+      (format
+       (propertize "(%s)" 'face 'transient-delimiter)
+       (concat
+        (propertize display-if-false
+                    'face (if (null value) 'transient-value 'transient-inactive-value))
+        (propertize "|" 'face 'transient-delimiter)
+        (propertize display-if-true
+                    'face (if (eq value t) 'transient-value 'transient-inactive-value))
+        (propertize "|" 'face 'transient-delimiter)
+        (propertize "oneshot" 'face
+                    (if (eql value 1) 'transient-value 'transient-inactive-value))))))
 
 (cl-defmethod transient-infix-set ((obj gptel--scope) value)
   (funcall (oref obj set-value)
@@ -578,7 +614,7 @@ value of `gptel-use-context', set from here."
   :class 'gptel--scope
   :format "  %k %d %v"
   :key "="
-  :description (propertize "Set" 'face 'transient-inactive-argument))
+  :description (propertize "Scope" 'face 'transient-inactive-argument))
 
 (transient-define-infix gptel--infix-num-messages-to-send ()
   "Number of recent messages to send with each exchange.
