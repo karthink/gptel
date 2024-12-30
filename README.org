@@ -309,6 +309,25 @@ The above code makes the backend available to select.  If you want it to be the 
 
 #+html: <details>
 #+html: <summary>
+***** (Optional) Add new Gemini models
+
+You can add any new Gemini models that are not included with gptel with this code:
+#+begin_src emacs-lisp
+(require 'gptel-gemini)
+(setq my-gemini-models
+      (append gptel--gemini-models
+              '(
+                (gemini-2.0-flash-thinking-exp
+                 :description "Thinking Mode is capable of stronger reasoning capabilities in its responses than the Gemini 2.0 Flash Experimental model."
+                 :context-window 32
+                 :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                              "text/plain" "text/csv" "text/html")
+                 :input-cost 0.075
+                 :output-cost 0.30
+                 :cutoff-date "2024-08")
+                )))
+(gptel-make-gemini "Gemini" :key "YOUR_GEMINI_API_KEY" :stream t)
+#+end_src
 **** Llama.cpp or Llamafile
 #+html: </summary>
 
