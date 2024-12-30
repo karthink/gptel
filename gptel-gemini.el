@@ -93,7 +93,6 @@
     ;; HACK only gemini-pro doesn't support system messages.  Need a less hacky
     ;; way to do this.
     (if (and gptel--system-message
-             (not (gptel--model-capable-p 'nosystem))
              (not (equal gptel-model 'gemini-pro)))
       (plist-put prompts-plist :system_instruction
                  `(:parts (:text ,gptel--system-message))))

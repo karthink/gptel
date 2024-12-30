@@ -138,17 +138,14 @@ with differing settings.")
 
 (cl-defmethod gptel--request-data ((_backend gptel-openai) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
-  (when (and gptel--system-message
-             (not (gptel--model-capable-p 'nosystem)))
+  (when gptel--system-message
     (push (list :role "system"
                 :content gptel--system-message)
           prompts))
   (let ((prompts-plist
          `(:model ,(gptel--model-name gptel-model)
            :messages [,@prompts]
-           :stream ,(or (and gptel-stream gptel-use-curl
-                         (gptel-backend-stream gptel-backend))
-                     :json-false))))
+           :stream ,(or gptel-stream :json-false))))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-max-tokens
