@@ -260,10 +260,13 @@ Mutate state INFO with response metadata."
            :stream ,(or gptel-stream :json-false))))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
-    (when (and gptel-use-tools gptel-tools)
-      (plist-put prompts-plist :tools
-                 (gptel--parse-tools backend gptel-tools))
-      (plist-put prompts-plist :parallel_tool_calls t))
+    (when gptel-use-tools
+      (when (eq gptel-use-tools 'force)
+        (plist-put prompts-plist :tool_choice "required"))
+      (when gptel-tools
+        (plist-put prompts-plist :tools
+                   (gptel--parse-tools backend gptel-tools))
+        (plist-put prompts-plist :parallel_tool_calls t)))
     (when gptel-max-tokens
       ;; HACK: The OpenAI API has deprecated max_tokens, but we still need it
       ;; for OpenAI-compatible APIs like GPT4All (#485)

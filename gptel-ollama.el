@@ -109,6 +109,7 @@ Store response metadata in state INFO."
          (options-plist (plist-get prompts-plist :options)))
 
     (when (and gptel-use-tools gptel-tools)
+      ;; TODO(tool): Find out how to force tool use for Ollama
       (plist-put prompts-plist :tools
                  (gptel--parse-tools backend gptel-tools))
       (plist-put prompts-plist :stream :json-false))

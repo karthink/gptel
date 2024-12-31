@@ -130,9 +130,13 @@ list."
              (not (equal gptel-model 'gemini-pro)))
         (plist-put prompts-plist :system_instruction
                    `(:parts (:text ,gptel--system-message))))
-    (when (and gptel-use-tools gptel-tools)
-      (plist-put prompts-plist :tools
-                 (gptel--parse-tools backend gptel-tools)))
+    (when gptel-use-tools
+      (when (eq gptel-use-tools 'force)
+        (plist-put prompts-plist :tool_config
+                   '(:function_calling_config (:mode "ANY"))))
+      (when gptel-tools
+        (plist-put prompts-plist :tools
+                   (gptel--parse-tools backend gptel-tools))))
     (when gptel-temperature
       (setq params
             (plist-put params

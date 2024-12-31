@@ -186,9 +186,12 @@ Mutate state INFO with response metadata."
       (plist-put prompts-plist :system gptel--system-message))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
-    (when (and gptel-use-tools gptel-tools)
-      (plist-put prompts-plist :tools
-                 (gptel--parse-tools backend gptel-tools)))
+    (when gptel-use-tools
+      (when (eq gptel-use-tools 'force)
+        (plist-put prompts-plist :tool_choice '(:type "any")))
+      (when gptel-tools
+        (plist-put prompts-plist :tools
+                   (gptel--parse-tools backend gptel-tools))))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
      prompts-plist

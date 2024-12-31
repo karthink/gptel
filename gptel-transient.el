@@ -199,6 +199,14 @@ Handle formatting for system messages when the active
          message (max (- (window-width) 12) 14) "⮐ ")
       "[No system message set]")))
 
+(defun gptel--tools-init-value (obj)
+  "Set the initial state of a tool OBJ in `gptel-tools'.
+
+OBJ is a tool-infix of type `gptel--switch'."
+  (when-let* ((name (car (member (oref obj argument)
+                                 (mapcar #'gptel-tool-name gptel-tools)))))
+    (oset obj value (list (oref obj category) name))))
+
 (defvar gptel--crowdsourced-prompts-url
   "https://raw.githubusercontent.com/f/awesome-chatgpt-prompts/main/prompts.csv"
   "URL for crowdsourced LLM system prompts.")
@@ -277,6 +285,40 @@ which see."
            (oref obj variable)
            (oset obj value value)
            gptel--set-buffer-locally))
+
+(defclass gptel--switch (transient-switch)
+  ((category :initarg :category))
+  "Class used for arguments that share a category.")
+
+(cl-defmethod transient-infix-set ((obj gptel--switch) value)
+  "The VALUE of a gptel--switch OBJ is a list of the category
+ and argument, e.g. (\"filesystem\" \"read_file\")."
+  (if value
+      (oset obj value (list (oref obj category) value))
+    (oset obj value nil)))
+
+(defclass gptel--switch-category (transient-switch)
+  ((category :initarg :category))
+  "Class used for arguments that switch a group of other arguments.
+
+Their own value is ignored")
+
+(cl-defmethod transient-infix-set ((obj gptel--switch-category) value)
+  "When setting VALUE, set all options in the category of OBJ."
+  (dolist (suffix-obj transient--suffixes)
+    ;; Find all suffixes that have this category
+    (when-let* (((cl-typep suffix-obj 'gptel--switch))
+                ((equal (oref suffix-obj category)
+                        (oref obj category)))
+                (arg (if (slot-boundp suffix-obj 'argument)
+                         (oref suffix-obj argument)
+                       (oref obj argument-format))))
+      ;; Turn on/off all members in category
+      (if value
+          (transient-infix-set suffix-obj arg)
+        (transient-infix-set suffix-obj nil))))
+  ;; Finally set the "value" of the category itself
+  (oset obj value value))
 
 (defclass gptel--switches (gptel-lisp-variable)
   ((display-if-true :initarg :display-if-true :initform "True")
@@ -414,7 +456,19 @@ Also format its value in the Transient menu."
     (gptel--infix-context-add-buffer)
     (gptel--infix-context-add-file)
     (gptel--infix-context-remove-all)
-    (gptel--suffix-context-buffer)]]
+    (gptel--suffix-context-buffer)]
+   [:pad-keys t
+    :if (lambda () (and gptel-use-tools gptel--known-tools))
+    "" (:info
+        (lambda () (concat "Tools" (and gptel-tools
+                                   (format " (%d selected)"
+                                           (length gptel-tools)))))
+        :format "%d" :face transient-heading)
+    ("t" "Select tools" gptel-tools :transient t)
+    ("T" "Continue tool calls"
+     (lambda () (interactive) (gptel--handle-tool-use gptel--fsm-last))
+     :if (lambda () (and gptel--fsm-last
+                    (eq (gptel-fsm-state gptel--fsm-last) 'TOOL))))]]
   [["Request Parameters"
     :pad-keys t
     (gptel--infix-variable-scope)
@@ -425,6 +479,7 @@ Also format its value in the Transient menu."
                     (or gptel-mode gptel-track-response))))
     (gptel--infix-temperature :if (lambda () gptel-expert-commands))
     (gptel--infix-use-context)
+    (gptel--infix-use-tools)
     (gptel--infix-track-response
      :if (lambda () (and gptel-expert-commands (not gptel-mode))))
     (gptel--infix-track-media
@@ -575,6 +630,82 @@ Customize `gptel-directives' for task-specific prompts."
              'gptel--system-message "Directive" t)))
     :pad-keys t])
 
+;; ** Prefix for selecting tools
+
+;;;###autoload (autoload 'gptel-tools "gptel-transient" nil t)
+(transient-define-prefix gptel-tools ()
+  "Select tools to include with gptel requests.
+
+Tools are organized into categories.  Selecting the category
+toggles all the tools with that category.
+
+To add tools to this list, use `gptel-make-tool', which see.
+
+Using the scope option, you can set tools to use with gptel
+requests globally, in this buffer or for the next request
+only (\"oneshot\")."
+  [:description "Provide the LLM with tools to run tasks for you"
+   [(gptel--infix-variable-scope)]]
+  [:class transient-column
+   :setup-children
+   (lambda (_)
+     (transient-parse-suffixes
+      'gptel-tools
+      (cdr
+       (cl-loop          ;loop through gptel--known tools and collect categories
+        for (category . tools-alist) in gptel--known-tools
+        with unused-keys = (delete ?q (number-sequence ?a ?z))
+        for category-key = (seq-find (lambda (k) (member k unused-keys)) category
+                                     (seq-first unused-keys))
+        do (setq unused-keys (delete category-key unused-keys))
+        nconc
+        (cl-loop                    ;for each category, collect tools as infixes
+         for (name . tool) in tools-alist
+         with tool-keys = (delete category-key (number-sequence ?a ?z))
+         for tool-key = (seq-find (lambda (k) (member k tool-keys)) name
+                                  (seq-first tool-keys))
+         do (setq tool-keys (delete tool-key tool-keys))
+         collect           ;Each list is a transient infix of type gptel--switch
+         (list (key-description (list category-key tool-key))
+               (concat (make-string (max (- 20 (length name)) 0) ? )
+                       (propertize
+                        (concat "(" (gptel--describe-directive
+                                     (gptel-tool-description tool) (- (window-width) 40))
+                                ")")
+                        'face 'shadow))
+               (gptel-tool-name tool)
+               :format " %k %v %d"
+               :init-value #'gptel--tools-init-value
+               :class 'gptel--switch
+               :category category)
+         into infixes-for-category
+         finally return
+         (identity ;TODO(tool): Replace with vconcat for groups separated by category
+          ;; Add a category header that can be used to toggle all tools in that category
+          (nconc (list " " (list (key-description (list category-key category-key))
+                                 (concat (propertize (concat (capitalize category) " tools")
+                                                     'face 'transient-heading)
+                                         (make-string (max (- 14 (length category)) 0) ? ))
+                                 "(*)"
+                                 :format " %k %d %v"
+                                 :class 'gptel--switch-category
+                                 :category category))
+                 infixes-for-category)))))))]
+  [[("RET" "Confirm tools"
+     (lambda (args)
+       (interactive (list (transient-args transient-current-command)))
+       ;; There are two kinds of ARGS: categories with value "(*)", and lists of
+       ;; the type '("category" "tool_name").  We only want the latter, to use an
+       ;; index into `gptel--known-backends.'
+       (gptel--set-with-scope
+        'gptel-tools
+        (mapcar (lambda (category-and-name)
+                  (map-nested-elt gptel--known-tools category-and-name))
+                (cl-delete-if-not #'consp args))
+        gptel--set-buffer-locally))
+     :transient transient--do-return)]
+   [("q" "Cancel" transient-quit-one)]])
+
 
 ;; * Transient Infixes
 
@@ -700,7 +831,7 @@ responses."
   :class 'gptel-lisp-variable
   :variable 'gptel-temperature
   :set-value #'gptel--set-with-scope
-  :key "-t"
+  :key "-T"
   :prompt "Temperature controls the response randomness (0.0-2.0, leave empty for default): "
   :reader 'gptel--transient-read-variable)
 
@@ -837,6 +968,39 @@ Or in an extended conversation:
   :argument ":"
   :description "Add instruction"
   :transient t)
+
+;; ** Infixes for tool use
+
+(transient-define-infix gptel--infix-use-tools ()
+  "Whether LLM tool use with gptel is enabled.
+
+This is a three-way toggle.  Assuming one or more tools to be
+sent with requests have been selected, tool use can be
+
+- disabled,
+- enabled, where the LLM may choose to respond with tool calls
+- forced, where the LLM must respond with one or more tool calls.
+
+You can set this here or by customizing `gptel-use-tools', which
+see."
+  :description "Use tools"
+  :class 'gptel-lisp-variable
+  :variable 'gptel-use-tools
+  :set-value (lambda (sym value scope)
+               (gptel--set-with-scope sym value scope)
+               (transient-setup))
+  :display-nil "off"
+  :display-map '((nil   . "off")
+                 (t     . "on")
+                 (force . "force"))
+  :prompt "Use tools? "
+  :reader (lambda (prompt &rest _)
+            (let* ((choices '(("disable" . nil)
+                              ("enable"  . t)
+                              ("force"   . force)))
+                   (pref (completing-read prompt choices nil t)))
+              (cdr (assoc pref choices))))
+  :key "-t")
 
 
 ;; * Transient Suffixes
