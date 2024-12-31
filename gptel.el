@@ -161,6 +161,7 @@
 (declare-function gptel-curl-get-response "gptel-curl")
 (declare-function gptel-menu "gptel-transient")
 (declare-function gptel-system-prompt "gptel-transient")
+(declare-function gptel-tools "gptel-transient")
 (declare-function pulse-momentary-highlight-region "pulse")
 
 (declare-function ediff-make-cloned-buffer "ediff-util")
@@ -1234,16 +1235,28 @@ file."
                                      'help-echo
                                      "Sending media from standalone links/urls when supported.\nClick to toggle")
                                   (propertize
-                                     (buttonize "[Ignoring media]" toggle-track-media)
-                                     'mouse-face 'highlight
-                                     'help-echo
-                                     "Ignoring images from standalone links/urls.\nClick to toggle")))))
+                                   (buttonize "[Ignoring media]" toggle-track-media)
+                                   'mouse-face 'highlight
+                                   'help-echo
+                                   "Ignoring images from standalone links/urls.\nClick to toggle"))))
+                              (toggle-tools (lambda (&rest _) (interactive)
+                                              (run-at-time 0 nil
+                                               (lambda () (call-interactively #'gptel-tools)))))
+                              (tools (when (and gptel-use-tools gptel-tools)
+                                      (propertize
+                                       (buttonize (pcase (length gptel-tools)
+                                                   (0 "[No tools]") (1 "[1 tool]")
+                                                   (len (format "[%d tools]" len)))
+                                        toggle-tools)
+                                       'mouse-face 'highlight
+                                       'help-echo "Select tools"))))
                          (concat
                           (propertize
                            " " 'display
-                           `(space :align-to (- right ,(+ 5 (length model) (length system)
-                                                        (length track-media) (length context)))))
-                          track-media (and context " ") context " " system " "
+                           `(space :align-to (- right
+                                              ,(+ 5 (length model) (length system)
+                                                (length track-media) (length context) (length tools)))))
+                          tools (and track-media " ") track-media (and context " ") context " " system " "
                           (propertize
                            (buttonize (concat "[" model "]")
                             (lambda (&rest _) (gptel-menu)))
