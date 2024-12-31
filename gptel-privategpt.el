@@ -92,6 +92,9 @@
            :stream ,(or (and gptel-stream gptel-use-curl
                          (gptel-backend-stream gptel-backend))
                      :json-false))))
+    (when (and gptel--system-message
+               (not (gptel--model-capable-p 'nosystem)))
+      (plist-put prompts-plist :system gptel--system-message))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-max-tokens
