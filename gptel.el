@@ -1293,8 +1293,82 @@ file."
   "A list of tools to include with gptel requests.
 
 Each tool should be a `gptel-tool' struct, which see.  To specify
-a tool, use `gptel-make-tool'.  Here is an example definition to
-get you started:
+a tool, use `gptel-make-tool', which see."
+  :group 'gptel
+  :type '(repeat gptel-tool))
+
+(cl-defstruct (gptel-tool (:constructor gptel--make-tool)
+                          (:copier gptel--copy-tool))
+  "Struct to specify tools for LLMs to run.
+
+A tool is a function specification sent to the LLM along with
+a (plain language) task.  If the LLM decides to use the tool to
+accomplish the task, gptel will run the tool and (optionally)
+feed the LLM the results.  You can add tools via
+`gptel-make-tool', which see."
+  function name description args async category confirm include)
+
+(defvar gptel--known-tools nil
+  "Alist of gptel tools arranged by category.
+
+A \"tool\" is a function spec (definition and description)
+provided by gptel to an LLM.  See `gptel-tool'.  Each tool is
+assigned a category when it is created, with a category of
+\"misc\" if none is specified.
+
+This is a two-level alist mapping categories and tool names to
+the tool itself.  It is used as a global register of available
+tools and in gptel's UI, see `gptel-tools'.
+
+In this example structure, cat-tool and the rest are cl-structs
+of type `gptel-tool':
+
+   CATEGORY         TOOL NAME          TOOL
+ ((\"filesystem\" . ((\"read_file\"      . cat-tool)
+                   (\"list_directory\" . ls-tool)))
+  (\"emacs\"      . ((\"read_buffer\"    . buffer-substring-tool)
+                   (\"send_message\"   . message-tool))))
+
+This variable is for internal use only, to define a tool use
+`gptel-make-tool'.")
+
+(defun gptel-make-tool (&rest slots)
+  "Make a gptel tool for LLM use.
+
+The following keyword arguments are available, of which the first
+four are required.
+
+NAME: The name of the tool -- recommended to be in Javascript style snake_case.
+
+FUNCTION: The function itself (lambda or symbol) that runs the tool.
+
+DESCRIPTION: A verbose description of what the tool does, how to
+call it and what it returns.
+
+ARGS: A list of plists specifying the arguments.  Each plist
+specifies the :name, :description and :type of the argument.  For
+arguments that are enums, you can include an additional :enum
+key.  Using :optional indicates that the argument is optional.
+ARGS must be nil for a function that takes no arguments.
+
+ASYNC: boolean indicating if the elisp function is asynchronous.
+
+The following keys are optional
+
+CATEGORY: A string indicating a category for the tool.  This is
+used only for grouping in gptel's UI.  Defaults to \"misc\".
+
+CONFIRM: Whether the tool call should wait for the user to run
+it.  In gptel chat buffers this produces a prompt that showing
+the tentative tool call that can be examined, accepted or
+canceled.
+
+INCLUDE: Whether the tool results should be included in chat
+buffers.  This is useful if the tool might be called multiple
+times in a conversation.  This has no effect outside of chat
+buffers.
+
+Here is an example definition:
 
   (gptel-make-tool
    :function (lambda (location unit)
@@ -1322,37 +1396,15 @@ an additional callback argument:
                      (let ((result (parse-this-buffer)))
                        (funcall callback result)))))
 
-and call the callback with the tool result for gptel to continue the request."
-  :group 'gptel
-  :type '(repeat gptel-tool))
-
-(cl-defstruct (gptel-tool (:constructor gptel-make-tool)
-                          (:copier gptel-copy-tool))
-  "Struct to specify tools for LLMs to run.
-
-A tool is a function specification sent to the LLM along with
-a (plain language) task.  If the LLM decides to use the tool to
-accomplish the task, gptel will run the tool and (optionally)
-feed the LLM the results.  You can add tools via
-`gptel-make-tool', which takes the following keyword arguments:
-
-FUNCTION: The function itself (lambda or symbol) that runs the tool.
-
-NAME: The name of the tool -- recommended to be in Javascript style snake_case.
-
-DESCRIPTION: A verbose description of what the tool does, how to
-call it and what it returns.
-
-ARGS: A list of plists specifying the arguments.  Each plist
-specifies the :name, :description and :type of the argument.  For
-arguments that are enums, you can include an additional :enum
-key.
-
-ASYNC: boolean indicating if the elisp function is asynchronous.
-
-See `gptel-tools' for an example."
-  function name
-  description args async)
+The callback must be called with the tool result for gptel to
+continue the request."
+  (let* ((tool (apply #'gptel--make-tool slots))
+         (category (or (gptel-tool-category tool) "misc")))
+    (setf (alist-get
+           (gptel-tool-name tool)
+           (alist-get category gptel--known-tools nil nil #'equal)
+           nil nil #'equal)
+          tool)))
 
 ;; (cl-defstruct (gptel-tool-arg (:constructor gptel-make-tool-arg)
 ;;                               (:copier gptel-copy-tool-arg))
