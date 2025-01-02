@@ -1162,8 +1162,7 @@ file."
     map)
   (if gptel-mode
       (progn
-        (unless (or (derived-mode-p 'org-mode 'markdown-mode)
-                    (eq major-mode 'text-mode))
+        (unless (derived-mode-p 'org-mode 'markdown-mode 'text-mode)
           (gptel-mode -1)
           (user-error (format "`gptel-mode' is not supported in `%s'." major-mode)))
         (add-hook 'before-save-hook #'gptel--save-state nil t)
