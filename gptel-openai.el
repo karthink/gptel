@@ -317,7 +317,7 @@ ENDPOINT (optional) is the API endpoint for completions, defaults to
 \"/v1/chat/completions\".
 
 HEADER (optional) is for additional headers to send with each
-request.  It should be an alist or a function that retuns an
+request.  It should be an alist or a function that returns an
 alist, like:
  ((\"Content-Type\" . \"application/json\"))
 
