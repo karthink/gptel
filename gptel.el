@@ -1009,7 +1009,9 @@ MODE-SYM is typically a major-mode symbol."
 ;;;; Directive handling
 
 
-(defvar gptel--system-message (alist-get 'default gptel-directives)
+(defvar gptel--system-message
+  (or (alist-get 'default gptel-directives)
+      "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
   "The system message used by gptel.")
 (put 'gptel--system-message 'safe-local-variable #'always)
 
