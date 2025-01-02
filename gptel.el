@@ -239,6 +239,12 @@ all at once.  This wait is asynchronous.
   "Whether gptel should prefer Curl when available."
   :type 'boolean)
 
+(defcustom gptel-org-convert-response t
+  "Whether gptel should convert Markdown responses to Org markup.
+
+This only affects requests originating from Org mode buffers."
+  :type 'boolean)
+
 (defcustom gptel-curl-file-size-threshold
   (if (memq system-type '(windows-nt ms-dos)) 32766 130000)
   "Size threshold for using file input with Curl.
@@ -1784,8 +1790,9 @@ the response is inserted into the current buffer after point."
          (encode-coding-string
           (gptel--json-encode (plist-get info :data))
           'utf-8)))
-    (when (with-current-buffer (plist-get info :buffer)
-            (derived-mode-p 'org-mode))
+    (when (and gptel-org-convert-response
+               (with-current-buffer (plist-get info :buffer)
+                 (derived-mode-p 'org-mode)))
       (plist-put info :transformer #'gptel--convert-markdown->org))
     ;; why do these checks not occur inside of `gptel--log'?
     (when gptel-log-level               ;logging
