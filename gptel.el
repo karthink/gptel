@@ -267,22 +267,15 @@ https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-process
 This runs (possibly) before any response is received."
   :type 'hook)
 
-(defcustom gptel-response-filter-functions
-  (list #'gptel--convert-org)
-  "Abnormal hook for transforming the response from an LLM.
-
-This is used to format the response in some way, such as filling
-paragraphs, adding annotations or recording information in the
-response like links.
-
-Each function in this hook receives two arguments, the response
-string to transform and the LLM interaction buffer.  It
-should return the transformed string.
-
-NOTE: This is only used for non-streaming responses.  To
-transform streaming responses, use `gptel-post-stream-hook' and
-`gptel-post-response-functions'."
-  :type 'hook)
+;; TODO(v1.0): Remove this.
+(defvar gptel-response-filter-functions nil)
+(make-obsolete-variable
+ 'gptel-response-filter-functions
+ "Response filtering is no longer supported in gptel.  To toggle
+markdown to Org conversion, see `gptel-org-convert-response'.  To
+filter LLM response text, either use `gptel-request' with a
+custom callback, or use `gptel-post-response-functions'."
+ "0.9.7")
 
 (defcustom gptel-pre-response-hook nil
   "Hook run before inserting the LLM response into the current buffer.
@@ -1589,8 +1582,8 @@ See `gptel--url-get-response' for details."
     (with-current-buffer gptel-buffer
       (if response
           (progn
-            (setq response (gptel--transform-response
-                               response gptel-buffer))
+            (when-let* ((transformer (plist-get info :transformer)))
+              (setq response (funcall transformer response)))
             (save-excursion
               (put-text-property
                0 (length response) 'gptel 'response response)
@@ -1768,34 +1761,6 @@ BACKEND is the LLM backend in use.
 
 PROMPTS is the plist of previous user queries and LLM responses.")
 
-;; TODO: Use `run-hook-wrapped' with an accumulator instead to handle
-;; buffer-local hooks, etc.
-(defun gptel--transform-response (content-str buffer)
-  "Filter CONTENT-STR through `gptel-response-filter-functions`.
-
-BUFFER is passed along with CONTENT-STR to each function in this
-hook."
-  (let ((filtered-str content-str))
-    (dolist (filter-func gptel-response-filter-functions filtered-str)
-      (condition-case nil
-          (when (functionp filter-func)
-            (setq filtered-str
-                  (funcall filter-func filtered-str buffer)))
-        (error
-         (display-warning '(gptel filter-functions)
-                          (format "Function %S returned an error"
-                                  filter-func)))))))
-
-(defun gptel--convert-org (content buffer)
-  "Transform CONTENT according to required major-mode.
-
-Currently only `org-mode' is handled.
-
-BUFFER is the LLM interaction buffer."
-  (if (with-current-buffer buffer (derived-mode-p 'org-mode))
-      (gptel--convert-markdown->org content)
-    content))
-
 (defun gptel--url-get-response (info &optional callback)
   "Fetch response to prompt in INFO from the LLM.
 
@@ -1819,6 +1784,9 @@ the response is inserted into the current buffer after point."
          (encode-coding-string
           (gptel--json-encode (plist-get info :data))
           'utf-8)))
+    (when (with-current-buffer (plist-get info :buffer)
+            (derived-mode-p 'org-mode))
+      (plist-put info :transformer #'gptel--convert-markdown->org))
     ;; why do these checks not occur inside of `gptel--log'?
     (when gptel-log-level               ;logging
       (when (eq gptel-log-level 'debug)
