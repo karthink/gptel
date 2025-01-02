@@ -421,7 +421,8 @@ Also format its value in the Transient menu."
     (gptel--infix-provider)
     (gptel--infix-max-tokens)
     (gptel--infix-num-messages-to-send
-     :if (lambda () (or gptel-mode gptel-track-response)))
+     :if (lambda () (and gptel-expert-commands
+                    (or gptel-mode gptel-track-response))))
     (gptel--infix-temperature :if (lambda () gptel-expert-commands))
     (gptel--infix-use-context)
     (gptel--infix-track-response
