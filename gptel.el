@@ -378,7 +378,8 @@ When set to nil, use the mode line for (minimal) status
 information and the echo area for messages."
   :type 'boolean)
 
-(defcustom gptel-display-buffer-action '(pop-to-buffer)
+;; Set minimally to avoid display-buffer action alist conflicts (#533)
+(defcustom gptel-display-buffer-action `(nil (body-function . ,#'select-window))
   "The action used to display gptel chat buffers.
 
 The gptel buffer is displayed in a window using
