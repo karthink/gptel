@@ -259,7 +259,7 @@ files in the context."
                        (string `((:type "text" :text ,current)))
                        (vector current)
                        (t current))))
-            (plist-get (cadr prompts) :content)))
+            (plist-get (car prompts) :content)))
     ;; Wrap the last user prompt with included text contexts
     (cl-callf (lambda (current)
                 (cl-etypecase current
