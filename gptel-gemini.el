@@ -236,6 +236,13 @@ files in the context."
      :input-cost 0.075
      :output-cost 0.30
      :cutoff-date "2024-10")
+    (gemini-2.0-flash-thinking-exp
+     :description "Stronger reasoning capabilities."
+     :capabilities (tool media)
+     :context-window 32
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "text/plain" "text/csv" "text/html")
+     :cutoff-date "2024-08")
     (gemini-exp-1206
      :description "Improved coding, reasoning and vision capabilities"
      :capabilities (tool json media)
