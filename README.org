@@ -103,6 +103,7 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
     - [[#extra-org-mode-conveniences][Extra Org mode conveniences]]
   - [[#faq][FAQ]]
       - [[#i-want-to-use-gptel-in-a-way-thats-not-supported-by-gptel-send-or-the-options-menu][I want to use gptel in a way that's not supported by =gptel-send= or the options menu]]
+      - [[#adding-models-to-gptel-backends][Adding models to gptel backends]]
       - [[#i-want-the-window-to-scroll-automatically-as-the-response-is-inserted][I want the window to scroll automatically as the response is inserted]]
       - [[#i-want-the-cursor-to-move-to-the-next-prompt-after-the-response-is-inserted][I want the cursor to move to the next prompt after the response is inserted]]
       - [[#i-want-to-change-the-formatting-of-the-prompt-and-llm-response][I want to change the formatting of the prompt and LLM response]]
@@ -309,25 +310,6 @@ The above code makes the backend available to select.  If you want it to be the 
 
 #+html: <details>
 #+html: <summary>
-***** (Optional) Add new Gemini models
-
-You can add any new Gemini models that are not included with gptel with this code:
-#+begin_src emacs-lisp
-(require 'gptel-gemini)
-(setq my-gemini-models
-      (append gptel--gemini-models
-              '(
-                (gemini-2.0-flash-thinking-exp
-                 :description "Thinking Mode is capable of stronger reasoning capabilities in its responses than the Gemini 2.0 Flash Experimental model."
-                 :context-window 32
-                 :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                              "text/plain" "text/csv" "text/html")
-                 :input-cost 0.075
-                 :output-cost 0.30
-                 :cutoff-date "2024-08")
-                )))
-(gptel-make-gemini "Gemini" :key "YOUR_GEMINI_API_KEY" :stream t)
-#+end_src
 **** Llama.cpp or Llamafile
 #+html: </summary>
 
@@ -1072,6 +1054,42 @@ gptel's default usage pattern is simple, and will stay this way: Read input in a
 
 For more programmable usage, gptel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][wiki]] for examples.
 
+#+html: </details>
+#+html: <details><summary>
+**** Adding models to gptel backends
+#+html: </summary>
+
+While gptel tries to keep up with new models for the major LLM API providers,
+you don't have to wait.  You can add compatiable models to any gptel backend in
+the following way:
+
+- Find the name of the model you want to add.  In this example we will add
+  =gemini-2.0-flash-thinking-exp= to a Gemini backend.
+- Obtain a reference to the backend.  For ChatGPT, this is just
+  `gptel-backend`. For other backends, this should be the return value of the
+  (gptel-make-<backend-name>) function.
+- Push a model onto the backend's list of models with
+  #+begin_src emacs-lisp
+  (defvar my-gemini-backend (gptel-make-gemini "Gemini"
+                              :key my-gemini-api-key :stream t)
+    "Reference to the Gemini gptel Backend")
+  (push 'gemini-2.0-flash-thinking-exp
+        (gptel-backend-models my-gemini-backend))
+  #+end_src
+
+*Optional*:
+
+You can specify model metadata and capabilities (like vision or tool-use) as
+properties of the model symbol:
+
+#+begin_src emacs-lisp
+(put 'gemini-2.0-flash-thinking-exp :capabilities '(media tool-use))
+(put 'gemini-2.0-flash-thinking-exp :description
+"Thinking Mode is capable of stronger reasoning capabilities.")
+(put 'gemini-2.0-flash-thinking-exp :context-window 32)
+#+end_src
+
+See =gptel-make-gemini= (or equivalent) for recognized metadata fields.
 #+html: </details>
 #+html: <details><summary>
 **** I want the window to scroll automatically as the response is inserted
