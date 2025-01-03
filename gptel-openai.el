@@ -33,6 +33,7 @@
 (defvar gptel-backend)
 (defvar gptel-temperature)
 (defvar gptel-max-tokens)
+(defvar gptel-callable-functions)
 (defvar gptel--system-message)
 (defvar json-object-type)
 (defvar gptel-mode)
@@ -134,7 +135,13 @@ with differing settings.")
     (apply #'concat (nreverse content-strs))))
 
 (cl-defmethod gptel--parse-response ((_backend gptel-openai) response _info)
-  (map-nested-elt response '(:choices 0 :message :content)))
+  ;; If the reply specifies a function call, parse and return it instead of the message
+  (let* ((choices-path '(:choices 0 :message))
+         (tool-calls (map-nested-elt response (append choices-path '(:tool_calls))))
+         (content (map-nested-elt response (append choices-path '(:content)))))
+    (if tool-calls
+        (prin1-to-string tool-calls)
+      content)))
 
 (cl-defmethod gptel--request-data ((_backend gptel-openai) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
@@ -147,8 +154,10 @@ with differing settings.")
          `(:model ,(gptel--model-name gptel-model)
            :messages [,@prompts]
            :stream ,(or (and gptel-stream gptel-use-curl
-                         (gptel-backend-stream gptel-backend))
-                     :json-false))))
+                             (gptel-backend-stream gptel-backend))
+                        :json-false))))
+    (when gptel-callable-functions
+      (plist-put prompts-plist :tools gptel-callable-functions))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-max-tokens
@@ -275,7 +284,7 @@ files in the context."
     (name &key curl-args models stream key request-params
           (header
            (lambda () (when-let (key (gptel--get-api-key))
-                   `(("Authorization" . ,(concat "Bearer " key))))))
+                    `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.openai.com")
           (protocol "https")
           (endpoint "/v1/chat/completions"))
