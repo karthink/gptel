@@ -49,15 +49,25 @@
           (save-match-data
             (when-let*
                 ((response (gptel--json-read))
-                 (text (map-nested-elt
-                        response '(:candidates 0 :content :parts 0 :text))))
+                 (parts (map-nested-elt
+                         response '(:candidates 0 :content :parts)))
+                 (text (cl-loop for part across parts
+                                for tx = (plist-get part :text)
+                                when tx collect tx into txs
+                                finally return
+                                (and txs (mapconcat #'identity txs "\n\n")))))
               (push text content-strs))))
       (error
        (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
 (cl-defmethod gptel--parse-response ((_backend gptel-gemini) response _info)
-  (map-nested-elt response '(:candidates 0 :content :parts 0 :text)))
+  (let ((parts (map-nested-elt response '(:candidates 0 :content :parts))))
+    (cl-loop for part across parts
+             for tx = (plist-get part :text)
+             when tx collect tx into txs
+             finally return
+             (and txs (mapconcat #'identity txs "\n\n")))))
 
 (cl-defmethod gptel--request-data ((_backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
