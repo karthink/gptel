@@ -241,9 +241,6 @@ files in the context."
      :context-window 32
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "text/plain" "text/csv" "text/html")
-     ;; input & output price is halved for prompts of 128k tokens or less
-     :input-cost 0.075
-     :output-cost 0.30
      :cutoff-date "2024-08")
     (gemini-exp-1206
      :description "Improved coding, reasoning and vision capabilities"
