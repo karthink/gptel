@@ -237,7 +237,8 @@ files in the context."
      :output-cost 0.30
      :cutoff-date "2024-10")
     (gemini-2.0-flash-thinking-exp
-     :description "Thinking Mode is capable of stronger reasoning capabilities in its responses than the Gemini 2.0 Flash Experimental model."
+     :description "Stronger reasoning capabilities."
+     :capabilities (tool media)
      :context-window 32
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "text/plain" "text/csv" "text/html")
