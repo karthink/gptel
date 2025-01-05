@@ -1106,19 +1106,24 @@ This sets the variable `gptel-include-tool-results', which see."
       (setq stream nil)
       (setq callback
             (lambda (resp info)
-              (if resp
-                  (message "%s response: %s" backend-name resp)
-                (message "%s response error: %s" backend-name (plist-get info :status))))))
+              (cond
+               ((stringp resp) (message "%s response: %s" backend-name resp))
+               ((consp resp) (gptel--display-tool-calls resp info 'minibuffer))
+               ((and (null resp) (plist-get info :error))
+                (message "%s response error: %s"
+                         backend-name (plist-get info :status)))))))
      ((member "k" args)
       (setq stream nil)
       (setq callback
             (lambda (resp info)
-              (if (not resp)
-                  (message "%s response error: %s" backend-name (plist-get info :status))
-                (kill-new resp)
-                (message "%s response: \"%s\" copied to kill-ring."
-                         backend-name
-                         (truncate-string-to-width resp 30))))))
+              (cond
+               ((stringp resp) (kill-new resp)
+                (message "%s response: \"%s\" copied to kill-ring." backend-name
+                         (truncate-string-to-width resp 30)))
+               ((consp resp) (gptel--display-tool-calls resp info 'minibuffer))
+               ((and (null resp) (plist-get info :error))
+                (message "%s response error: %s" backend-name
+                         (plist-get info :status)))))))
      ((setq gptel-buffer-name
             (cl-some (lambda (s) (and (stringp s) (string-prefix-p "g" s)
                                  (substring s 1)))

@@ -219,7 +219,8 @@ PROCESS and _STATUS are process parameters."
 
 INFO is a mutable plist containing information relevant to this buffer.
 See `gptel--url-get-response' for details."
-  (when (stringp response)
+  (cond
+   ((stringp response)
     (let ((start-marker (plist-get info :position))
           (tracking-marker (plist-get info :tracking-marker))
           (transformer (plist-get info :transformer)))
@@ -246,7 +247,9 @@ See `gptel--url-get-response' for details."
           (goto-char tracking-marker)
           ;; (run-hooks 'gptel-pre-stream-hook)
           (insert response)
-          (run-hooks 'gptel-post-stream-hook))))))
+          (run-hooks 'gptel-post-stream-hook)))))
+   ((consp response)
+    (gptel--display-tool-calls response info))))
 
 (defun gptel-curl--stream-filter (process output)
   (let* ((fsm (alist-get process gptel--request-alist))
