@@ -1319,6 +1319,34 @@ If nil, tool use is turned off."
           (const :tag "Force tool use" force)
           (const :tag "Turn Off" nil)))
 
+(defcustom gptel-confirm-tool-calls 'auto
+  "Whether tool calls should wait for the user to run them.
+
+If set to t or nil, tool calls always or never seek confirmation
+from the user before running.
+
+If set to the symbol auto (the default), a tool call will seek
+confirmation only when the corresponding tool spec has a non-nil
+:confirm slot.  See `gptel-make-tool'."
+  :type '(choice
+          (const :tag "Tool decides" auto)
+          (const :tag "Always" t)
+          (const :tag "Never" nil)))
+
+(defcustom gptel-include-tool-results 'auto
+  "Whether tool call results should be included in the buffer.
+
+If set to t or nil, results of tool calls are always or never
+included in the LLM response, respectively.
+
+If set to the symbol auto (the default), a tool call result is
+included only when the corresponding tool spec has a non-nil
+:include slot.  See `gptel-make-tool'."
+  :type '(choice
+          (const :tag "Tool decides" auto)
+          (const :tag "Always" t)
+          (const :tag "Never" nil)))
+
 (defcustom gptel-tools nil
   "A list of tools to include with gptel requests.
 
