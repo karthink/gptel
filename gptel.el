@@ -1887,7 +1887,7 @@ Run post-response hooks."
         (gptel--update-status
          (format " Calling tool..." ) 'mode-line-emphasis)))
 
-    (let ((result-alist))
+    (let ((result-alist) (pending-calls))
       (mapc                             ; Construct function calls
        (lambda (tool-call)
          (letrec ((name (plist-get tool-call :name))
@@ -1920,15 +1920,27 @@ Run post-response hooks."
                                   (concat ":" (plist-get arg :name)))))
                         (plist-get args key)))
                     (gptel-tool-args tool-spec)))
-             (if (gptel-tool-async tool-spec)
-                 (apply (gptel-tool-function tool-spec)
-                        process-tool-result arg-values)
-               (let ((result
-                      (condition-case-unless-debug errdata
-                          (apply (gptel-tool-function tool-spec) arg-values)
-                        (error (mapconcat #'gptel--to-string errdata " ")))))
-                 (funcall process-tool-result result))))))
-       tool-use))))
+             ;; Check if tool requires confirmation
+             (if (and gptel-confirm-tool-calls (or (eq gptel-confirm-tool-calls t)
+                                                 (gptel-tool-confirm tool-spec)))
+                 (push (list tool-spec process-tool-result arg-values)
+                       pending-calls)
+               ;; If not, run the tool
+               (if (gptel-tool-async tool-spec)
+                   (apply (gptel-tool-function tool-spec)
+                          process-tool-result arg-values)
+                 (let ((result
+                        (condition-case-unless-debug errdata
+                            (apply (gptel-tool-function tool-spec) arg-values)
+                          (error (mapconcat #'gptel--to-string errdata " ")))))
+                   (funcall process-tool-result result)))))))
+       tool-use)
+      (when pending-calls
+        (with-current-buffer (plist-get info :buffer)
+          (setq gptel--fsm-last fsm)
+          (when gptel-mode (gptel--update-status
+                            (format " Run tools?" ) 'mode-line-emphasis)))
+        (funcall (plist-get info :callback) pending-calls info)))))
 
 ;;;; State machine predicates
 ;; Predicates used to find the next state to transition to, see
@@ -1953,7 +1965,7 @@ Run post-response hooks."
                (fsm (gptel-make-fsm)))
   "Request a response from the `gptel-backend' for PROMPT.
 
-The request is asynchronous, the function returns immediately.
+The request is asynchronous, this function returns immediately.
 
 If PROMPT is
 - a string, it is used to create a full prompt suitable for
@@ -1975,10 +1987,27 @@ RESPONSE is
 
 - A string if the request was successful
 - nil if there was no response or an error.
-- The symbol `abort' if the request was aborted, see
-  `gptel-abort'.
-- An alist of called tools and tool results when the LLM runs a
-  tool
+
+These are the only two cases you typically need to consider,
+unless you need to clean up after aborted requests, use LLM tools
+or streaming responses (see STREAM).  In these cases, RESPONSE
+can be
+
+- The symbol `abort' if the request is aborted, see `gptel-abort'.
+- An alist of tool names and tool results after the LLM runs a tool.
+- An alist of `gptel-tool' structs and tool call arguments if tools
+  require confirmation to run.
+
+STREAM is a boolean that determines if the response should be
+streamed, as in `gptel-stream'.  If the model or the backend does
+not support streaming, this will be ignored.
+
+When streaming responses
+
+- CALLBACK will be called repeatedly with each RESPONSE text
+  chunk (a string) as it is received.
+- When the HTTP request ends successfully, CALLBACK will be
+  called with a RESPONSE argument of t to indicate success.
 
 The INFO plist has (at least) the following keys:
 :data         - The request data included with the query
@@ -1986,8 +2015,8 @@ The INFO plist has (at least) the following keys:
                 POSITION is specified.
 :buffer       - The buffer current when the request was sent,
                 unless BUFFER is specified.
-:status       - Short string describing the result of the request, including
-                possible HTTP errors.
+:status       - Short string describing the result of the request,
+                including possible HTTP errors.
 
 Example of a callback that messages the user with the response
 and info:
@@ -2022,6 +2051,8 @@ active.
 
 CONTEXT is any additional data needed for the callback to run. It
 is included in the INFO argument to the callback.
+Note: This is intended for storing Emacs state to be used by
+CALLBACK, and unrelated to the context supplied to the LLM.
 
 SYSTEM is the system message or extended chat directive sent to
 the LLM.  This can be a string, a list of strings or a function
@@ -2035,29 +2066,8 @@ IN-PLACE is a boolean used by the default callback when inserting
 the response to determine if delimiters are needed between the
 prompt and the response.
 
-STREAM is a boolean that determines if the response should be
-streamed, as in `gptel-stream'.  If the model or the backend does
-not support streaming, this will be ignored.
-
-When streaming responses, the callback is called as
-
- (funcall CALLBACK RESPONSE INFO)
-
-- CALLBACK will be called with each response text chunk (a
-  string) as it is received.
-
-- When the HTTP request ends successfully, CALLBACK will be
-  called with a RESPONSE argument of t to indicate success.
-
-- If the HTTP request throws an error, CALLBACK will be called
-  with a RESPONSE argument of nil.  You can find the error via
-  (plist-get INFO :status).
-
-- If the request is aborted, CALLBACK will be called with a
-  RESPONSE argument of `abort'.
-
-If DRY-RUN is non-nil, construct and return the full
-query data as usual, but do not send the request.
+If DRY-RUN is non-nil, construct and return the full query data
+as usual, but do not send the request.
 
 FSM is the state machine driving the request.  This can be used
 to define a custom request control flow, see `gptel-fsm' for
@@ -2067,8 +2077,9 @@ feature and subject to change.
 Note:
 
 1. This function is not fully self-contained.  Consider
-let-binding the parameters `gptel-backend', `gptel-model' and
-`gptel-use-context' around calls to it as required.
+let-binding the parameters `gptel-backend', `gptel-model',
+`gptel-use-tools' and `gptel-use-context' around calls to it as
+required.
 
 2. The return value of this function is a state machine that may
 be used to rerun or continue the request at a later time."
