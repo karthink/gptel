@@ -357,7 +357,8 @@ ARGS are the original function call arguments."
         (progn
           (when-let ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
             (mapc (pcase-lambda (`(,beg . ,end))
-                    (put-text-property beg end 'gptel 'response))
+                    (add-text-properties
+                     beg end '(gptel response front-sticky (gptel))))
                   (read bounds)))
           (pcase-let ((`(,system ,backend ,model ,temperature ,tokens ,num)
                        (gptel-org--entry-properties (point-min))))

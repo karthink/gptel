@@ -1098,7 +1098,8 @@ Valid JSON unless NO-JSON is t."
           (gptel-org--restore-state))
       (when gptel--bounds
         (mapc (pcase-lambda (`(,beg . ,end))
-                (put-text-property beg end 'gptel 'response))
+                (add-text-properties
+                 beg end '(gptel response front-sticky (gptel))))
               gptel--bounds)
         (message "gptel chat restored."))
       (when gptel--backend-name
@@ -1591,8 +1592,8 @@ See `gptel--url-get-response' for details."
             (when-let* ((transformer (plist-get info :transformer)))
               (setq response (funcall transformer response)))
             (save-excursion
-              (put-text-property
-               0 (length response) 'gptel 'response response)
+              (add-text-properties
+               0 (length response) '(gptel response front-sticky (gptel)) response)
               (with-current-buffer (marker-buffer start-marker)
                 (goto-char start-marker)
                 (run-hooks 'gptel-pre-response-hook)
@@ -1971,10 +1972,11 @@ against if required."
     (letrec ((gptel--attach-after
               (lambda (b e)
                 (when (and b e)
-                  (put-text-property
-                   b e 'gptel-history
-                   (append (ensure-list history)
-                           (get-char-property (1- e) 'gptel-history))))
+                  (add-text-properties
+                   b e `(gptel-history
+                         ,(append (ensure-list history)
+                           (get-char-property (1- e) 'gptel-history))
+                         front-sticky (gptel gptel-history))))
                 (remove-hook 'gptel-post-response-functions
                              gptel--attach-after 'local))))
       (add-hook 'gptel-post-response-functions gptel--attach-after
