@@ -271,6 +271,7 @@ BUF is the buffer to modify, defaults to the overlay buffer."
   (interactive (list (gptel--rewrite-overlay-at)))
   (when-let* ((ov-buf (overlay-buffer (or (car-safe ovs) ovs)))
               ((buffer-live-p ov-buf)))
+    (require 'diff)
     (let* ((newbuf (gptel--rewrite-prepare-buffer ovs))
            (diff-buf (diff-no-select
                       (if-let ((buf-file (buffer-file-name ov-buf)))
