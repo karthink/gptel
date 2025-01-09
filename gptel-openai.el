@@ -154,7 +154,7 @@ with differing settings.")
     (when gptel-max-tokens
       ;; HACK: The OpenAI API has deprecated max_tokens, but we still need it
       ;; for OpenAI-compatible APIs like GPT4All (#485)
-      (plist-put prompts-plist (if (memq gptel-model '(o1-preview o1-mini))
+      (plist-put prompts-plist (if (memq gptel-model '(o1 o1-preview o1-mini))
                                    :max_completion_tokens :max_tokens)
                  gptel-max-tokens))
     ;; Merge request params with model and backend params.

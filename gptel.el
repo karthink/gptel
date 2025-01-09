@@ -545,8 +545,16 @@ To set the temperature for a chat session interactively call
      :input-cost 10
      :output-cost 30
      :cutoff-date "2023-12")
-    (o1-preview
+    (o1
      :description "Reasoning model designed to solve hard problems across domains"
+     :context-window 200
+     :input-cost 15
+     :output-cost 60
+     :cutoff-date "2023-10"
+     :capabilities (nosystem)
+     :request-params (:stream :json-false))
+    (o1-preview
+     :description "DEPRECATED: PLEASE USE o1"
      :context-window 128
      :input-cost 15
      :output-cost 60
