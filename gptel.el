@@ -832,8 +832,8 @@ Note: This will move the cursor."
 
 (defun gptel-beginning-of-response (&optional _ _ arg)
   "Move point to the beginning of the LLM response ARG times."
-  (interactive "p")
-  ;; FIXME: Only works for arg == 1
+  (interactive (list nil nil
+                     (prefix-numeric-value current-prefix-arg)))
   (gptel-end-of-response nil nil (- (or arg 1))))
 
 (defun gptel-end-of-response (&optional _ _ arg)
