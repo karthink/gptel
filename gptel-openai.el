@@ -154,7 +154,7 @@ with differing settings.")
     (when gptel-max-tokens
       ;; HACK: The OpenAI API has deprecated max_tokens, but we still need it
       ;; for OpenAI-compatible APIs like GPT4All (#485)
-      (plist-put prompts-plist (if (memq gptel-model '(o1-preview o1-mini))
+      (plist-put prompts-plist (if (memq gptel-model '(o1 o1-preview o1-mini))
                                    :max_completion_tokens :max_tokens)
                  gptel-max-tokens))
     ;; Merge request params with model and backend params.
@@ -259,7 +259,7 @@ files in the context."
                        (string `((:type "text" :text ,current)))
                        (vector current)
                        (t current))))
-            (plist-get (cadr prompts) :content)))
+            (plist-get (car prompts) :content)))
     ;; Wrap the last user prompt with included text contexts
     (cl-callf (lambda (current)
                 (cl-etypecase current
@@ -317,7 +317,7 @@ ENDPOINT (optional) is the API endpoint for completions, defaults to
 \"/v1/chat/completions\".
 
 HEADER (optional) is for additional headers to send with each
-request.  It should be an alist or a function that retuns an
+request.  It should be an alist or a function that returns an
 alist, like:
  ((\"Content-Type\" . \"application/json\"))
 

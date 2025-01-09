@@ -49,15 +49,25 @@
           (save-match-data
             (when-let*
                 ((response (gptel--json-read))
-                 (text (map-nested-elt
-                        response '(:candidates 0 :content :parts 0 :text))))
+                 (parts (map-nested-elt
+                         response '(:candidates 0 :content :parts)))
+                 (text (cl-loop for part across parts
+                                for tx = (plist-get part :text)
+                                when tx collect tx into txs
+                                finally return
+                                (and txs (mapconcat #'identity txs "\n\n")))))
               (push text content-strs))))
       (error
        (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
 (cl-defmethod gptel--parse-response ((_backend gptel-gemini) response _info)
-  (map-nested-elt response '(:candidates 0 :content :parts 0 :text)))
+  (let ((parts (map-nested-elt response '(:candidates 0 :content :parts))))
+    (cl-loop for part across parts
+             for tx = (plist-get part :text)
+             when tx collect tx into txs
+             finally return
+             (and txs (mapconcat #'identity txs "\n\n")))))
 
 (cl-defmethod gptel--request-data ((_backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
@@ -236,6 +246,13 @@ files in the context."
      :input-cost 0.075
      :output-cost 0.30
      :cutoff-date "2024-10")
+    (gemini-2.0-flash-thinking-exp
+     :description "Stronger reasoning capabilities."
+     :capabilities (tool media)
+     :context-window 32
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "text/plain" "text/csv" "text/html")
+     :cutoff-date "2024-08")
     (gemini-exp-1206
      :description "Improved coding, reasoning and vision capabilities"
      :capabilities (tool json media)

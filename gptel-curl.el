@@ -145,9 +145,11 @@ the response is inserted into the current buffer after point."
                                        (if stream
                                            #'gptel-curl--stream-insert-response
                                          #'gptel--insert-response))
-                         :transformer (when (with-current-buffer (plist-get info :buffer)
-                                              (derived-mode-p 'org-mode))
-                                        (gptel--stream-convert-markdown->org)))
+                         :transformer (when (and gptel-org-convert-response
+                                                 (with-current-buffer (plist-get info :buffer)
+                                                   (derived-mode-p 'org-mode)))
+                                        (gptel--stream-convert-markdown->org
+                                         (plist-get info :position))))
                    info))
       (if stream
           (progn (plist-put info :stream t)
@@ -270,8 +272,9 @@ See `gptel--url-get-response' for details."
           (when transformer
             (setq response (funcall transformer response)))
 
-          (put-text-property
-           0 (length response) 'gptel 'response response)
+          (add-text-properties
+           0 (length response) '(gptel response front-sticky (gptel))
+           response)
           (goto-char tracking-marker)
           ;; (run-hooks 'gptel-pre-stream-hook)
           (insert response)

@@ -239,6 +239,12 @@ all at once.  This wait is asynchronous.
   "Whether gptel should prefer Curl when available."
   :type 'boolean)
 
+(defcustom gptel-org-convert-response t
+  "Whether gptel should convert Markdown responses to Org markup.
+
+This only affects requests originating from Org mode buffers."
+  :type 'boolean)
+
 (defcustom gptel-curl-file-size-threshold
   (if (memq system-type '(windows-nt ms-dos)) 32766 130000)
   "Size threshold for using file input with Curl.
@@ -255,25 +261,27 @@ Adjusting this value may be necessary depending on the environment
 and the typical size of the data being sent in GPTel queries.
 A larger value may improve performance by avoiding the overhead of creating
 temporary files for small data payloads, while a smaller value may be needed
-if the command-line argument size is limited by the operating system."
+if the command-line argument size is limited by the operating system.
+
+The default for windows comes from Microsoft documentation located here:
+https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa"
   :type 'natnum)
 
-(defcustom gptel-response-filter-functions
-  (list #'gptel--convert-org)
-  "Abnormal hook for transforming the response from an LLM.
+(defcustom gptel-post-request-hook nil
+  "Hook run after sending a gptel request.
 
-This is used to format the response in some way, such as filling
-paragraphs, adding annotations or recording information in the
-response like links.
-
-Each function in this hook receives two arguments, the response
-string to transform and the LLM interaction buffer.  It
-should return the transformed string.
-
-NOTE: This is only used for non-streaming responses.  To
-transform streaming responses, use `gptel-post-stream-hook' and
-`gptel-post-response-functions'."
+This runs (possibly) before any response is received."
   :type 'hook)
+
+;; TODO(v1.0): Remove this.
+(defvar gptel-response-filter-functions nil)
+(make-obsolete-variable
+ 'gptel-response-filter-functions
+ "Response filtering is no longer supported in gptel.  To toggle
+markdown to Org conversion, see `gptel-org-convert-response'.  To
+filter LLM response text, either use `gptel-request' with a
+custom callback, or use `gptel-post-response-functions'."
+ "0.9.7")
 
 (defcustom gptel-pre-response-hook nil
   "Hook run before inserting the LLM response into the current buffer.
@@ -369,7 +377,8 @@ When set to nil, use the mode line for (minimal) status
 information and the echo area for messages."
   :type 'boolean)
 
-(defcustom gptel-display-buffer-action '(pop-to-buffer)
+;; Set minimally to avoid display-buffer action alist conflicts (#533)
+(defcustom gptel-display-buffer-action `(nil (body-function . ,#'select-window))
   "The action used to display gptel chat buffers.
 
 The gptel buffer is displayed in a window using
@@ -536,8 +545,16 @@ To set the temperature for a chat session interactively call
      :input-cost 10
      :output-cost 30
      :cutoff-date "2023-12")
-    (o1-preview
+    (o1
      :description "Reasoning model designed to solve hard problems across domains"
+     :context-window 200
+     :input-cost 15
+     :output-cost 60
+     :cutoff-date "2023-10"
+     :capabilities (nosystem)
+     :request-params (:stream :json-false))
+    (o1-preview
+     :description "DEPRECATED: PLEASE USE o1"
      :context-window 128
      :input-cost 15
      :output-cost 60
@@ -823,8 +840,8 @@ Note: This will move the cursor."
 
 (defun gptel-beginning-of-response (&optional _ _ arg)
   "Move point to the beginning of the LLM response ARG times."
-  (interactive "p")
-  ;; FIXME: Only works for arg == 1
+  (interactive (list nil nil
+                     (prefix-numeric-value current-prefix-arg)))
   (gptel-end-of-response nil nil (- (or arg 1))))
 
 (defun gptel-end-of-response (&optional _ _ arg)
@@ -999,7 +1016,9 @@ MODE-SYM is typically a major-mode symbol."
 ;;;; Directive handling
 
 
-(defvar gptel--system-message (alist-get 'default gptel-directives)
+(defvar gptel--system-message
+  (or (alist-get 'default gptel-directives)
+      "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
   "The system message used by gptel.")
 (put 'gptel--system-message 'safe-local-variable #'always)
 
@@ -1087,7 +1106,8 @@ Valid JSON unless NO-JSON is t."
           (gptel-org--restore-state))
       (when gptel--bounds
         (mapc (pcase-lambda (`(,beg . ,end))
-                (put-text-property beg end 'gptel 'response))
+                (add-text-properties
+                 beg end '(gptel response front-sticky (gptel))))
               gptel--bounds)
         (message "gptel chat restored."))
       (when gptel--backend-name
@@ -1150,8 +1170,7 @@ file."
     map)
   (if gptel-mode
       (progn
-        (unless (or (derived-mode-p 'org-mode 'markdown-mode)
-                    (eq major-mode 'text-mode))
+        (unless (derived-mode-p 'org-mode 'markdown-mode 'text-mode)
           (gptel-mode -1)
           (user-error (format "`gptel-mode' is not supported in `%s'." major-mode)))
         (add-hook 'before-save-hook #'gptel--save-state nil t)
@@ -1421,7 +1440,8 @@ be used to rerun or continue the request at a later time."
     (unless dry-run
       (funcall (if gptel-use-curl
                    #'gptel-curl-get-response #'gptel--url-get-response)
-               info callback))
+               info callback)
+      (run-hooks 'gptel-post-request-hook))
     (list stream info callback)))
 
 (defvar gptel--request-alist nil "Alist of active gptel requests.")
@@ -1577,11 +1597,11 @@ See `gptel--url-get-response' for details."
     (with-current-buffer gptel-buffer
       (if response
           (progn
-            (setq response (gptel--transform-response
-                               response gptel-buffer))
+            (when-let* ((transformer (plist-get info :transformer)))
+              (setq response (funcall transformer response)))
             (save-excursion
-              (put-text-property
-               0 (length response) 'gptel 'response response)
+              (add-text-properties
+               0 (length response) '(gptel response front-sticky (gptel)) response)
               (with-current-buffer (marker-buffer start-marker)
                 (goto-char start-marker)
                 (run-hooks 'gptel-pre-response-hook)
@@ -1756,34 +1776,6 @@ BACKEND is the LLM backend in use.
 
 PROMPTS is the plist of previous user queries and LLM responses.")
 
-;; TODO: Use `run-hook-wrapped' with an accumulator instead to handle
-;; buffer-local hooks, etc.
-(defun gptel--transform-response (content-str buffer)
-  "Filter CONTENT-STR through `gptel-response-filter-functions`.
-
-BUFFER is passed along with CONTENT-STR to each function in this
-hook."
-  (let ((filtered-str content-str))
-    (dolist (filter-func gptel-response-filter-functions filtered-str)
-      (condition-case nil
-          (when (functionp filter-func)
-            (setq filtered-str
-                  (funcall filter-func filtered-str buffer)))
-        (error
-         (display-warning '(gptel filter-functions)
-                          (format "Function %S returned an error"
-                                  filter-func)))))))
-
-(defun gptel--convert-org (content buffer)
-  "Transform CONTENT according to required major-mode.
-
-Currently only `org-mode' is handled.
-
-BUFFER is the LLM interaction buffer."
-  (if (with-current-buffer buffer (derived-mode-p 'org-mode))
-      (gptel--convert-markdown->org content)
-    content))
-
 (defun gptel--url-get-response (info &optional callback)
   "Fetch response to prompt in INFO from the LLM.
 
@@ -1807,6 +1799,10 @@ the response is inserted into the current buffer after point."
          (encode-coding-string
           (gptel--json-encode (plist-get info :data))
           'utf-8)))
+    (when (and gptel-org-convert-response
+               (with-current-buffer (plist-get info :buffer)
+                 (derived-mode-p 'org-mode)))
+      (plist-put info :transformer #'gptel--convert-markdown->org))
     ;; why do these checks not occur inside of `gptel--log'?
     (when gptel-log-level               ;logging
       (when (eq gptel-log-level 'debug)
@@ -1984,10 +1980,11 @@ against if required."
     (letrec ((gptel--attach-after
               (lambda (b e)
                 (when (and b e)
-                  (put-text-property
-                   b e 'gptel-history
-                   (append (ensure-list history)
-                           (get-char-property (1- e) 'gptel-history))))
+                  (add-text-properties
+                   b e `(gptel-history
+                         ,(append (ensure-list history)
+                           (get-char-property (1- e) 'gptel-history))
+                         front-sticky (gptel gptel-history))))
                 (remove-hook 'gptel-post-response-functions
                              gptel--attach-after 'local))))
       (add-hook 'gptel-post-response-functions gptel--attach-after

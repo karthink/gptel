@@ -357,7 +357,8 @@ ARGS are the original function call arguments."
         (progn
           (when-let ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
             (mapc (pcase-lambda (`(,beg . ,end))
-                    (put-text-property beg end 'gptel 'response))
+                    (add-text-properties
+                     beg end '(gptel response front-sticky (gptel))))
                   (read bounds)))
           (pcase-let ((`(,system ,backend ,model ,temperature ,tokens ,num)
                        (gptel-org--entry-properties (point-min))))
@@ -502,26 +503,31 @@ This is intended for use in the markdown to org stream converter."
         (insert (if end "#+end_src" "#+begin_src "))
       (insert "="))))
 
-(defun gptel--stream-convert-markdown->org ()
+(defun gptel--stream-convert-markdown->org (start-marker)
   "Return a Markdown to Org converter.
 
 This function parses a stream of Markdown text to Org
 continuously when it is called with successive chunks of the
-text stream."
+text stream.
+
+START-MARKER is used to identify the corresponding process when
+cleaning up after."
   (letrec ((in-src-block nil)           ;explicit nil to address BUG #183
-           (temp-buf (generate-new-buffer-name "*gptel-temp*"))
+           (temp-buf (generate-new-buffer " *gptel-temp*" t))
            (start-pt (make-marker))
            (ticks-total 0)
            (cleanup-fn
-            (lambda (&rest _)
-              (when (buffer-live-p (get-buffer temp-buf))
-                (set-marker start-pt nil)
-                (kill-buffer temp-buf))
-              (remove-hook 'gptel-post-response-functions cleanup-fn))))
+            (lambda (beg _)
+              (when (and (equal beg (marker-position start-marker))
+                         (eq (current-buffer) (marker-buffer start-marker)))
+                (when (buffer-live-p (get-buffer temp-buf))
+                  (set-marker start-pt nil)
+                  (kill-buffer temp-buf))
+                (remove-hook 'gptel-post-response-functions cleanup-fn)))))
     (add-hook 'gptel-post-response-functions cleanup-fn)
     (lambda (str)
       (let ((noop-p) (ticks 0))
-        (with-current-buffer (get-buffer-create temp-buf)
+        (with-current-buffer (get-buffer temp-buf)
           (save-excursion (goto-char (point-max)) (insert str))
           (when (marker-position start-pt) (goto-char start-pt))
           (when in-src-block (setq ticks ticks-total))
