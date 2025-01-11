@@ -452,9 +452,12 @@ elements."
                    (throw 'block-end nil))))))
         ;; Handle headings
         ((and (guard (eq (char-before) ?#)) heading)
-         (when (looking-at "[[:space:]]")
+         (cond
+          ((looking-at "[[:space:]]")   ;Handle headings
            (delete-region (line-beginning-position) (point))
-           (insert (make-string (length heading) ?*))))
+           (insert (make-string (length heading) ?*)))
+          ((looking-at "\\+begin_src") ;Overeager LLM switched to using Org src blocks
+           (save-match-data (re-search-forward "^#\\+end_src" nil t)))))
         ;; Handle emphasis
         ("**" (cond
                ;; ((looking-at "\\*\\(?:[[:word:]]\\|\s\\)")
@@ -511,9 +514,10 @@ text stream.
 START-MARKER is used to identify the corresponding process when
 cleaning up after."
   (letrec ((in-src-block nil)           ;explicit nil to address BUG #183
+           (in-org-src-block nil)
            (temp-buf (generate-new-buffer " *gptel-temp*" t))
            (start-pt (make-marker))
-           (ticks-total 0)
+           (ticks-total 0)      ;MAYBE should we let-bind case-fold-search here?
            (cleanup-fn
             (lambda (beg _)
               (when (and (equal beg (marker-position start-marker))
@@ -562,15 +566,28 @@ cleaning up after."
                     ;; Negative number of ticks or in a src block already,
                     ;; reset ticks
                     (t (setq ticks ticks-total)))))
-                ;; Handle other chars: heading, emphasis, bold and bullet items
-                ((and (guard (and (not in-src-block) (eq (char-before) ?#))) heading)
-                 (if (eobp)
-                     ;; Not enough information about the heading yet
-                     (progn (setq noop-p t) (set-marker start-pt (match-beginning 0)))
-                   ;; Convert markdown heading to Org heading
-                   (when (looking-at "[[:space:]]")
+                ;; Handle headings and misguided #+begin_src text
+                ((and (guard (and (eq (char-before) ?#) (or (not in-src-block) in-org-src-block)))
+                      heading)
+                 (if in-org-src-block
+                     ;; If we are inside an Org-style src block, look for #+end_src
+                     (cond
+                      ((< (- (point-max) (point)) 8) ;not enough information to close Org src block
+                       (setq noop-t) (set-marker start-pt (match-beginning 0)))
+                      ((looking-at "\\+end_src") ;Close Org src block
+                       (setq in-src-block nil in-org-src-block nil)))
+                   ;; Otherwise check for Markdown headings, or for #+begin_src
+                   (cond
+                    ((eobp)       ; Not enough information about the heading yet
+                     (setq noop-p t) (set-marker start-pt (match-beginning 0)))
+                    ((looking-at "[[:space:]]") ; Convert markdown heading to Org heading
                      (delete-region (line-beginning-position) (point))
-                     (insert (make-string (length heading) ?*)))))
+                     (insert (make-string (length heading) ?*)))
+                    ((< (- (point-max) (point)) 11) ;Not enough information to check if Org src block
+                     (setq noop-p t) (set-marker start-pt (match-beginning 0)))
+                    ((looking-at "\\+begin_src ") ;Overeager LLM switched to using Org src blocks
+                     (setq in-src-block t in-org-src-block t)))))
+                ;; Handle other chars: emphasis, bold and bullet items
                 ((and "**" (guard (not in-src-block)))
                  (cond
                   ;; TODO Not sure why this branch was needed
