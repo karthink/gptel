@@ -716,11 +716,13 @@ Register a backend with
   ;; Github Models offers an OpenAI compatible API
   (gptel-make-openai "Github Models" ;Any name you want
     :host "models.inference.ai.azure.com"
-    :endpoint "/chat/completions"
+    :endpoint "/chat/completions?api-version=2024-05-01-preview"
     :stream t
     :key "your-github-token"
     :models '(gpt-4o))
 #+end_src
+
+You will need to create a github [[https://github.com/settings/personal-access-tokens][token]].
 
 For all the available models, check the [[https://github.com/marketplace/models][marketplace]].
 
@@ -735,7 +737,7 @@ The above code makes the backend available to select.  If you want it to be the 
         gptel-backend
         (gptel-make-openai "Github Models" ;Any name you want
           :host "models.inference.ai.azure.com"
-          :endpoint "/chat/completions"
+          :endpoint "/chat/completions?api-version=2024-05-01-preview"
           :stream t
           :key "your-github-token"
           :models '(gpt-4o))
