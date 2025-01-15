@@ -965,6 +965,7 @@ Or in an extended conversation:
                  (gptel--merge-additional-directive system-extra)
                gptel--system-message)
              :callback callback
+             :fsm (gptel-make-fsm :handlers gptel-send--handlers)
              :dry-run dry-run)
 
       (unless dry-run

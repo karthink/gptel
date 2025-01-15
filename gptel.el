@@ -1458,10 +1458,7 @@ considered a success and acts as a default.")
 
 (defvar gptel-request--handlers
   `((WAIT ,#'gptel--handle-wait)
-    (TYPE ,#'gptel--handle-pre-insert)
-    (ERRS ,#'gptel--handle-error ,#'gptel--fsm-last)
-    (TOOL ,#'gptel--handle-tool-use)
-    (DONE ,#'gptel--handle-post-insert ,#'gptel--fsm-last))
+    (TOOL ,#'gptel--handle-tool-use))
   "Alist specifying handlers for gptel's default state transitions.
 
 Each entry is a list whose car is a request state (a symbol) and
@@ -1478,6 +1475,16 @@ next state by calling `gptel--fsm-transition'.
 
 Handlers can be asynchronous, in which case the transition call
 should typically be placed in its callback.")
+
+(defvar gptel-send--handlers
+  `((WAIT ,#'gptel--handle-wait)
+    (TYPE ,#'gptel--handle-pre-insert)
+    (ERRS ,#'gptel--handle-error ,#'gptel--fsm-last)
+    (TOOL ,#'gptel--handle-tool-use)
+    (DONE ,#'gptel--handle-post-insert ,#'gptel--fsm-last))
+  "Alist specifying handlers for `gptel-send' state transitions.
+
+See `gptel-request--handlers' for details.")
 
 (cl-defstruct (gptel-fsm (:constructor gptel-make-fsm)
                          (:copier gptel-copy-fsm))
@@ -2044,7 +2051,9 @@ waiting for the response."
       (call-interactively #'gptel-menu)
     (message "Querying %s..." (gptel-backend-name gptel-backend))
     (gptel--sanitize-model)
-    (gptel-request nil :stream gptel-stream)
+    (gptel-request nil
+      :stream gptel-stream
+      :fsm (gptel-make-fsm :handlers gptel-send--handlers))
     (gptel--update-status " Waiting..." 'warning)))
 
 (declare-function json-pretty-print-buffer "json")
