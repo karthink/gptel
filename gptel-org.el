@@ -573,7 +573,7 @@ cleaning up after."
                      ;; If we are inside an Org-style src block, look for #+end_src
                      (cond
                       ((< (- (point-max) (point)) 8) ;not enough information to close Org src block
-                       (setq noop-t) (set-marker start-pt (match-beginning 0)))
+                       (setq noop-p t) (set-marker start-pt (match-beginning 0)))
                       ((looking-at "\\+end_src") ;Close Org src block
                        (setq in-src-block nil in-org-src-block nil)))
                    ;; Otherwise check for Markdown headings, or for #+begin_src
