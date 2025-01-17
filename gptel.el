@@ -658,6 +658,12 @@ This opens up advanced options in `gptel-menu'.")
 (defvar-local gptel--bounds nil)
 (put 'gptel--bounds 'safe-local-variable #'always)
 
+(defvar-local gptel--edit-response-buffer nil
+  "Original buffer for gptel response being edited.")
+
+(defvar-local gptel--edit-response-pos nil
+  "Original position in `gptel--edit-response-buffer' where editing started.")
+
 (defvar gptel--num-messages-to-send nil)
 (put 'gptel--num-messages-to-send 'safe-local-variable #'always)
 
@@ -2079,6 +2085,61 @@ context for the ediff session."
   "Switch to next gptel-response at this point, if it exists."
   (interactive "p")
   (gptel--previous-variant (- arg)))
+
+(defun gptel-edit-response ()
+  "Edit the LLM response at point in a separate buffer."
+  (interactive)
+  (unless (gptel--in-response-p)
+    (user-error "No gptel response at point"))
+  (let ((response (gptel--current-response))
+        (mode (buffer-local-value 'major-mode (current-buffer))))
+    (gptel--setup-edit-buffer)))
+
+(defun gptel--setup-edit-buffer ()
+  "Set up an edit buffer for the response at point."
+  (let* ((response (gptel--current-response))
+         (mode (buffer-local-value 'major-mode (current-buffer)))
+         (orig-buf (current-buffer))
+         (orig-point (point))
+         (bounds (gptel--get-bounds))
+         (offset (- orig-point (car bounds))))
+    (with-current-buffer (get-buffer-create "*gptel-edit*")
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (funcall mode)
+        (insert response)
+        (use-local-map (make-composed-keymap
+                        (define-keymap
+                          "C-c C-c" #'gptel--commit-edit
+                          "C-c C-k" #'quit-window)
+                        (current-local-map)))
+        (setq header-line-format
+              (substitute-command-keys
+               "Edit response. \\[gptel--commit-edit]: Save changes, \\[quit-window]: Cancel")
+              gptel--edit-response-buffer orig-buf
+              gptel--edit-response-pos orig-point)
+        (goto-char (point-min))
+        (forward-char offset)
+        (switch-to-buffer (current-buffer))))))
+
+(defun gptel--commit-edit ()
+  "Commit edited response back to the original buffer."
+  (interactive)
+  (unless (equal (buffer-name) "*gptel-edit*")
+    (user-error "This command is meant for use in a gptel edit buffer"))
+  (let* ((edited-text (buffer-substring (point-min) (point-max)))
+         (orig-buf gptel--edit-response-buffer)
+         (orig-pos gptel--edit-response-pos))    
+    (quit-window t)
+    (with-current-buffer orig-buf
+      (goto-char orig-pos)
+      (when-let ((bounds (gptel--get-bounds)))
+        (let ((beg (car bounds))
+              (end (cdr bounds)))
+          (delete-region beg end)
+          (goto-char beg)
+          (insert edited-text)
+          (goto-char orig-pos))))))
 
 (provide 'gptel)
 ;;; gptel.el ends here
