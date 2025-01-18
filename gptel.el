@@ -1308,6 +1308,28 @@ feed the LLM the results.  You can add tools via
 `gptel-make-tool', which see."
   function name description args async category confirm include)
 
+(define-advice gptel--make-tool (:filter-args (rest) preprocess-args)
+  "Convert symbol :type values to strings in the args in REST."
+  (cl-callf gptel--preprocess-tool-args (plist-get rest :args))
+  rest)
+
+(defun gptel--preprocess-tool-args (spec)
+  "Convert symbol :type values in tool SPEC to strings destructively."
+  (cond ((not (listp spec)) spec)
+        ((keywordp (car spec))
+         (let ((tail spec))
+           (while tail
+             (when (and (eq (car tail) :type) (symbolp (cadr tail)))
+               (setcar (cdr tail) (symbol-name (cadr tail))))
+             (when (listp (cadr tail))
+               (gptel--preprocess-tool-args (cadr tail)))
+             (setq tail (cddr tail)))
+           spec))
+        (t (dolist (element spec)
+             (when (listp element)
+               (gptel--preprocess-tool-args element)))
+           spec)))
+
 (defvar gptel--known-tools nil
   "Alist of gptel tools arranged by category.
 
@@ -1338,20 +1360,34 @@ This variable is for internal use only, to define a tool use
 The following keyword arguments are available, of which the first
 four are required.
 
-NAME: The name of the tool -- recommended to be in Javascript style snake_case.
+NAME: The name of the tool, recommended to be in Javascript style snake_case.
 
 FUNCTION: The function itself (lambda or symbol) that runs the tool.
 
 DESCRIPTION: A verbose description of what the tool does, how to
 call it and what it returns.
 
-ARGS: A list of plists specifying the arguments.  Each plist
-specifies the :name, :description and :type of the argument.  For
-arguments that are enums, you can include an additional :enum
-key.  Using :optional indicates that the argument is optional.
-ARGS must be nil for a function that takes no arguments.
+ARGS: A list of plists specifying the arguments, or nil for a function that
+takes no arguments.  Each plist in ARGS requires the following keys:
+- argument :name and :description, as strings.
+- argument :type, as a symbol.  Allowed types are those understood by the JSON
+  schema: string, number, integer, boolean, array, object or null
+
+The following plist keys are conditional/optional:
+- :optional, boolean indicating if argument is optional
+- :enum for enumerated types, whose value is a vector of strings representing
+  allowed values.  Note that :type is still required for enums.
+- :items, if the :type is array.  Its value must be a plist including at least
+  the item's :type.
+- :properties, if the type is object.  Its value must be a plist that can be
+  serialized into a JSON object specification by `json-serialize'.
 
 ASYNC: boolean indicating if the elisp function is asynchronous.
+If ASYNC is t, the function should take a callback as its first
+argument, along with the arguments specified in ARGS, and run the
+callback with the tool call result when it's ready.  The callback
+itself is an implementation detail and must not be included in
+ARGS.
 
 The following keys are optional
 
@@ -1359,14 +1395,13 @@ CATEGORY: A string indicating a category for the tool.  This is
 used only for grouping in gptel's UI.  Defaults to \"misc\".
 
 CONFIRM: Whether the tool call should wait for the user to run
-it.  In gptel chat buffers this produces a prompt that showing
-the tentative tool call that can be examined, accepted or
-canceled.
+it.  If true, the user will be prompted with the proposed tool
+call, which can be examined, accepted, deferred or canceled.
 
-INCLUDE: Whether the tool results should be included in chat
-buffers.  This is useful if the tool might be called multiple
-times in a conversation.  This has no effect outside of chat
-buffers.
+INCLUDE: Whether the tool results should be included as part of
+the LLM output.  This is useful for logging and as context for
+subsequent requests in the same buffer.  This is primarily useful
+in chat buffers.
 
 Here is an example definition:
 
@@ -1377,27 +1412,23 @@ Here is an example definition:
    :name \"get_weather\"
    :description \"Get the current weather in a given location\"
    :args (list \\='(:name \"location\"
-                 :type \"string\"
+                 :type string
                  :description \"The city and state, e.g. San Francisco, CA\")
                \\='(:name \"unit\"
-                 :type \"string\"
-                 :enum (\"celsius\" \"farenheit\")
+                 :type string
+                 :enum [\"celsius\" \"farenheit\"]
                  :description
                  \"The unit of temperature, either \\='celsius\\=' or \\='fahrenheit\\='\"
                  :optional t)))
 
-Tools can be asynchronous, in which case the above constructor
-should include \":async t\", and the elisp function should take
-an additional callback argument:
+If the tool is asynchronous, the function is modified to take a
+callback as its first argument, which it runs with the result:
 
    (lambda (callback location unit)
      (url-retrieve \"api.weather.com/...\"
                    (lambda (_)
                      (let ((result (parse-this-buffer)))
-                       (funcall callback result)))))
-
-The callback must be called with the tool result for gptel to
-continue the request."
+                       (funcall callback result)))))"
   (let* ((tool (apply #'gptel--make-tool slots))
          (category (or (gptel-tool-category tool) "misc")))
     (setf (alist-get
@@ -1405,10 +1436,6 @@ continue the request."
            (alist-get category gptel--known-tools nil nil #'equal)
            nil nil #'equal)
           tool)))
-
-;; (cl-defstruct (gptel-tool-arg (:constructor gptel-make-tool-arg)
-;;                               (:copier gptel-copy-tool-arg))
-;;   name description type optional)
 
 (cl-defgeneric gptel--parse-tools (_backend tools)
   "Parse TOOLS and return a list of prompts.
