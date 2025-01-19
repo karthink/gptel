@@ -313,7 +313,7 @@ files in the context."
 (defconst gptel--gemini-models
   '((gemini-1.5-pro-latest
      :description "Google's latest model with enhanced capabilities across various tasks"
-     :capabilities (tool json media)
+     :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
      :context-window 2000
@@ -323,14 +323,14 @@ files in the context."
      :cutoff-date "2024-05")
     (gemini-2.0-flash-exp
      :description "Next generation features, superior speed, native tool use"
-     :capabilities (tool json media)
+     :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
      :context-window 1000
      :cutoff-date "2024-12")
     (gemini-1.5-flash
      :description "A faster, more efficient version of Gemini 1.5 optimized for speed"
-     :capabilities (tool json media)
+     :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
      :context-window 1000
@@ -340,7 +340,7 @@ files in the context."
      :cutoff-date "2024-05")
     (gemini-1.5-flash-8b
      :description "High volume and lower intelligence tasks"
-     :capabilities (tool json media)
+     :capabilities (tool-use json media)
      :context-window 1000
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
@@ -350,20 +350,20 @@ files in the context."
      :cutoff-date "2024-10")
     (gemini-2.0-flash-thinking-exp
      :description "Stronger reasoning capabilities."
-     :capabilities (tool media)
+     :capabilities (tool-use media)
      :context-window 32
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "text/plain" "text/csv" "text/html")
      :cutoff-date "2024-08")
     (gemini-exp-1206
      :description "Improved coding, reasoning and vision capabilities"
-     :capabilities (tool json media)
+     :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
      :cutoff-date "2024-12")
     (gemini-pro
      :description "The previous generation of Google's multimodal AI model"
-     :capabilities (tool json media)
+     :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
      :context-window 32

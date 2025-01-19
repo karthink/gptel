@@ -506,7 +506,7 @@ To set the temperature for a chat session interactively call
 (defconst gptel--openai-models
   '((gpt-4o
      :description "Advanced model for complex tasks; cheaper & faster than GPT-Turbo"
-     :capabilities (media tool json url)
+     :capabilities (media tool-use json url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 128
      :input-cost 2.50
@@ -514,7 +514,7 @@ To set the temperature for a chat session interactively call
      :cutoff-date "2023-10")
     (gpt-4o-mini
      :description "Cheap model for fast tasks; cheaper & more capable than GPT-3.5 Turbo"
-     :capabilities (media tool json url)
+     :capabilities (media tool-use json url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 128
      :input-cost 0.15
@@ -522,7 +522,7 @@ To set the temperature for a chat session interactively call
      :cutoff-date "2023-10")
     (gpt-4-turbo
      :description "Previous high-intelligence model"
-     :capabilities (media tool url)
+     :capabilities (media tool-use url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 128
      :input-cost 10
@@ -531,32 +531,41 @@ To set the temperature for a chat session interactively call
     ;; points to gpt-4-0613
     (gpt-4
      :description "GPT-4 snapshot from June 2023 with improved function calling support"
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :capabilities (media tool-use url)
      :context-window 8.192
      :input-cost 30
      :output-cost 60
      :cutoff-date "2023-09")
     (gpt-4-turbo-preview
      :description "Points to gpt-4-0125-preview"
+     :capabilities (media tool-use url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 128
      :input-cost 10
      :output-cost 30
      :cutoff-date "2023-12")
     (gpt-4-0125-preview
      :description "GPT-4 Turbo preview model intended to reduce cases of “laziness”"
+     :capabilities (media tool-use url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 128
      :input-cost 10
      :output-cost 30
      :cutoff-date "2023-12")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
+     :capabilities (nosystem media)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 15
      :output-cost 60
      :cutoff-date "2023-10"
-     :capabilities (nosystem)
      :request-params (:stream :json-false))
     (o1-preview
      :description "DEPRECATED: PLEASE USE o1"
+     :capabilities (nosystem media)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 128
      :input-cost 15
      :output-cost 60
@@ -573,25 +582,26 @@ To set the temperature for a chat session interactively call
      :request-params (:stream :json-false))
     ;; limited information available
     (gpt-4-32k
+     :capabilities (tool-use)
      :input-cost 60
      :output-cost 120)
     (gpt-4-1106-preview
      :description "Preview model with improved function calling support"
+     :capabilities (tool-use)
      :context-window 128
      :input-cost 10
      :output-cost 30
      :cutoff-date "2023-04")
     (gpt-3.5-turbo
      :description "More expensive & less capable than GPT-4o-mini; use that instead"
-     :capabilities (tool)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :capabilities (tool-use)
      :context-window 16.358
      :input-cost 0.50
      :output-cost 1.50
      :cutoff-date "2021-09")
     (gpt-3.5-turbo-16k
      :description "More expensive & less capable than GPT-4o-mini; use that instead"
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :capabilities (tool-use)
      :context-window 16.385
      :input-cost 3
      :output-cost 4

@@ -392,7 +392,7 @@ files in the context."
 (defconst gptel--anthropic-models
   '((claude-3-5-sonnet-20241022
      :description "Highest level of intelligence and capability"
-     :capabilities (media tool cache)
+     :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
      :input-cost 3
@@ -400,7 +400,7 @@ files in the context."
      :cutoff-date "2024-04")
     (claude-3-5-sonnet-20240620
      :description "Highest level of intelligence and capability (earlier version)"
-     :capabilities (media tool cache)
+     :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 3
@@ -408,15 +408,14 @@ files in the context."
      :cutoff-date "2024-04")
     (claude-3-5-haiku-20241022
      :description "Intelligence at blazing speeds"
-     :capabilities (media tool)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :capabilities (tool-use)
      :context-window 200
      :input-cost 1.00
      :output-cost 5.00
      :cutoff-date "2024-07")
     (claude-3-opus-20240229
      :description "Top-level performance, intelligence, fluency, and understanding"
-     :capabilities (media tool cache)
+     :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 15
@@ -424,7 +423,7 @@ files in the context."
      :cutoff-date "2023-08")
     (claude-3-sonnet-20240229
      :description "Balance of intelligence and speed (legacy model)"
-     :capabilities (media tool)
+     :capabilities (media tool-use)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 3
@@ -432,8 +431,7 @@ files in the context."
      :cutoff-date "2023-08")
     (claude-3-haiku-20240307
      :description "Fast and most compact model for near-instant responsiveness"
-     :capabilities (media tool)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :capabilities (tool-use)
      :context-window 200
      :input-cost 0.25
      :output-cost 1.25
