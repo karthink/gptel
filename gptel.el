@@ -2096,7 +2096,12 @@ be used to rerun or continue the request at a later time."
                      (eq gptel-use-context 'system))
                 (gptel-context--wrap (car directive))
               (car directive))))
+         ;; TODO(tool) Limit tool use to capable models after documenting :capabilities
+         ;; (gptel-use-tools (and (gptel--model-capable-p 'tool-use) gptel-use-tools))
          (stream (and stream gptel-use-curl
+                      ;; HACK(tool): no stream if Ollama + tools.  Need to find a better way
+                      (not (and (eq (type-of gptel-backend) 'gptel-ollama)
+                                gptel-tools gptel-use-tools))
                       ;; Check model-specific request-params for streaming preference
                       (let* ((model-params (gptel--model-request-params gptel-model))
                              (stream-spec (plist-get model-params :stream)))
