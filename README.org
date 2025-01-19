@@ -42,27 +42,43 @@ https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-a
 https://github.com/user-attachments/assets/cec11aec-52f6-412e-9e7a-9358e8b9b1bf
 #+html: </p>
 
-*Media support*
+*Tool use* (experimental)
 
 #+html: <p align="center">
-https://github.com/user-attachments/assets/1fd947e1-226b-4be2-bc68-7b22b2e3215f
+https://github.com/user-attachments/assets/5f993659-4cfd-49fa-b5cd-19c55766b9b2
 #+html: </p>
 
-*Multi-LLM support demo*:
+#+html: <p align="center">
+https://github.com/user-attachments/assets/8f57c20b-e1b0-4d86-b972-f46fb90ae1e7
+#+html: </p>
 
-https://github-production-user-asset-6210df.s3.amazonaws.com/8607532/278854024-ae1336c4-5b87-41f2-83e9-e415349d6a43.mp4
+See also [[https://youtu.be/g1VMGhC5gRU][this youtube demo (2 minutes)]] by Armin Darvish.
 
-- It's async and fast, streams responses.
+# *Media support*
+
+# #+html: <p align="center">
+# https://github.com/user-attachments/assets/1fd947e1-226b-4be2-bc68-7b22b2e3215f
+# #+html: </p>
+
+# *Multi-LLM support demo*:
+
+# https://github-production-user-asset-6210df.s3.amazonaws.com/8607532/278854024-ae1336c4-5b87-41f2-83e9-e415349d6a43.mp4
+
+------
+
+- gptel is async and fast, streams responses.
 - Interact with LLMs from anywhere in Emacs (any buffer, shell, minibuffer, wherever)
 - LLM responses are in Markdown or Org markup.
 - Supports multiple independent conversations and one-off ad hoc interactions.
-- Supports multi-modal models (include images, documents)
+- Supports tool-use to equip LLMs with agentic capabilities (experimental feature)
+- Supports multi-modal input (include images, documents)
 - Save chats as regular Markdown/Org/Text files and resume them later.
-- Supports introspection, so you can see exactly what will be sent.  You can inspect and modify queries before sending them.
-- You can go back and edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.
+- Edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.
+- Supports introspection, so you can see /exactly/ what will be sent.  Inspect and modify queries before sending them.
+- Pause multi-stage requests at an intermediate stage and resume them later.
 - Don't like gptel's workflow? Use it to create your own for any supported model/backend with a [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][simple API]].
 
-gptel uses Curl if available, but falls back to url-retrieve to work without external dependencies.
+gptel uses Curl if available, but falls back to the built-in url-retrieve to work without external dependencies.
 
 ** Contents :toc:
   - [[#breaking-changes][Breaking changes!]]
@@ -99,6 +115,9 @@ gptel uses Curl if available, but falls back to url-retrieve to work without ext
       - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
     - [[#setting-options-backend-model-request-parameters-system-prompts-and-more][Setting options (backend, model, request parameters, system prompts and more)]]
     - [[#include-more-context-with-requests][Include more context with requests]]
+    - [[#tool-use-experimental][Tool use (experimental)]]
+      - [[#defining-gptel-tools][Defining gptel tools]]
+      - [[#selecting-tools][Selecting tools]]
     - [[#rewrite-refactor-or-fill-in-a-region][Rewrite, refactor or fill in a region]]
     - [[#extra-org-mode-conveniences][Extra Org mode conveniences]]
   - [[#faq][FAQ]]
@@ -989,6 +1008,84 @@ You can examine the active context from the menu:
 And then browse through or remove context from the context buffer:
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/79a5ffe8-3d63-4bf7-9bf6-0457ab61bf2a" align="center" alt="Image showing gptel's context buffer.">
 
+*** Tool use (experimental)
+
+gptel can provide the LLM with client-side elisp "tools", or function specifications, along with the request.  If the LLM decides to run the tool, it supplies the tool call arguments, which gptel uses to run the tool in your Emacs session.  The result is optionally returned to the LLM to complete the task.
+
+This exchange can be used to equip the LLM with capabilities or knowledge beyond what is available out of the box -- for instance, you can get the LLM to control your Emacs frame, create or modify files and directories, or look up information relevant to your request via web search or in a local database.  Here is a very simple example:
+
+#+html: <p align="center">
+https://github.com/user-attachments/assets/d1f8e2ac-62bb-49bc-850d-0a67aa0cd4c3
+#+html: </p>
+
+This feature is currently experimental.
+
+To use tools in gptel, you need
+- a model that supports this usage.  All the flagship models support tool use, as do many of the smaller open models.
+- Tool specifications that gptel understands.  gptel does not currently include any tools out of the box.
+
+#+html: <details><summary>
+**** Defining gptel tools
+#+html: </summary>
+
+Defining a gptel tool requires an elisp function and associated metadata.  Here are two simple tool definitions:
+
+*To read the contents of an Emacs buffer*:
+
+#+begin_src emacs-lisp
+(gptel-make-tool
+ :name "read_buffer"                    ; javascript-style snake_case name
+ :function (lambda (buffer)                  ; the function that will run
+             (unless (buffer-live-p (get-buffer buffer))
+               (error "error: buffer %s is not live." buffer))
+             (with-current-buffer  buffer
+               (buffer-substring-no-properties (point-min) (point-max))))
+ :description "return the contents of an emacs buffer"
+ :args (list '(:name "buffer"
+               :type 'string            ; :type value must be a symbol
+               :description "the name of the buffer whose contents are to be retrieved"))
+ :category "emacs")                     ; An arbitrary label for grouping
+#+end_src
+
+Besides the function itself, which can be named or anonymous (as above), the tool specification requires a =:name=, =:description= and a list of argument specifications in =:args=.  Each argument specification is a plist with atleast the keys =:name=, =:type= and =:description=.
+
+*To create a text file*:
+
+#+begin_src emacs-lisp
+(gptel-make-tool
+ :name "create_file"                    ; javascript-style  snake_case name
+ :function (lambda (path filename content)   ; the function that runs
+             (let ((full-path (expand-file-name filename path)))
+               (with-temp-buffer
+                 (insert content)
+                 (write-file full-path))
+               (format "Created file %s in %s" filename path)))
+ :description "Create a new file with the specified content"
+ :args (list '(:name "path"             ; a list of argument specifications
+	       :type string
+	       :description "The directory where to create the file")
+             '(:name "filename"
+	       :type string
+	       :description "The name of the file to create")
+             '(:name "content"
+	       :type string
+	       :description "The content to write to the file"))
+ :category "filesystem")                ; An arbitrary label for grouping
+#+end_src
+
+With some prompting, you can get an LLM to write these tools for you.
+
+Tools can also be asynchronous, use optional arguments and arguments with more structure (enums, arrays, objects etc).  See =gptel-make-tool= for details.
+
+#+html: </details>
+**** Selecting tools
+
+Once defined, tools can be selected (globally, buffer-locally or for the next request only) from gptel's transient menu:
+
+#+html: <img src="https://github.com/user-attachments/assets/fd878596-b313-4385-b675-3d6546909d8b" align="center" alt="Image showing gptel's tool selection menu.">
+
+From here you can also require confirmation for all tool calls, and decide if tool call results should be included in the LLM response.  See [[#additional-configuration][Additional Configuration]] for doing these things via elisp.
+
 *** Rewrite, refactor or fill in a region
 
 In any buffer: with a region selected, you can modify text, rewrite prose or refactor code with =gptel-rewrite=.  Example with prose:
@@ -1204,19 +1301,23 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-max-tokens=    | Maximum token count (in query + response).              |
 | =gptel-temperature=   | Randomness in response text, 0 to 2.                    |
 | =gptel-use-context=   | How/whether to include additional context               |
+| =gptel-use-tools=     | Disable, allow or force LLM tool-use                    |
+| =gptel-tools=         | List of tools to include with requests                  |
 |-----------------------+---------------------------------------------------------|
 
-|--------------------------------+----------------------------------------------------------------|
-| *Chat UI options*              |                                                                |
-|--------------------------------+----------------------------------------------------------------|
-| =gptel-default-mode=           | Major mode for dedicated chat buffers.                         |
-| =gptel-track-response=         | Distinguish between user messages and LLM responses?           |
-| =gptel-track-media=            | Send images or other media from links?                         |
-| =gptel-prompt-prefix-alist=    | Text inserted before queries.                                  |
-| =gptel-response-prefix-alist=  | Text inserted before responses.                                |
-| =gptel-use-header-line=        | Display status messages in header-line (default) or minibuffer |
-| =gptel-display-buffer-action=  | Placement of the gptel chat buffer.                            |
-|--------------------------------+----------------------------------------------------------------|
+|-------------------------------+----------------------------------------------------------------|
+| *Chat UI options*             |                                                                |
+|-------------------------------+----------------------------------------------------------------|
+| =gptel-default-mode=          | Major mode for dedicated chat buffers.                         |
+| =gptel-prompt-prefix-alist=   | Text inserted before queries.                                  |
+| =gptel-response-prefix-alist= | Text inserted before responses.                                |
+| =gptel-track-response=        | Distinguish between user messages and LLM responses?           |
+| =gptel-track-media=           | Send images or other media from links?                         |
+| =gptel-confirm-tool-calls=    | Confirm all tool calls?                                        |
+| =gptel-include-tool-results=  | Include tool results should in the LLM response?               |
+| =gptel-use-header-line=       | Display status messages in header-line (default) or minibuffer |
+| =gptel-display-buffer-action= | Placement of the gptel chat buffer.                            |
+|-------------------------------+----------------------------------------------------------------|
 
 |-------------------------------+-------------------------------------------------------|
 | *Org mode UI options*         |                                                       |
