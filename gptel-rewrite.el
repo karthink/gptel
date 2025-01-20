@@ -586,17 +586,20 @@ generated from functions."
       (setcar prompt (concat (car-safe (gptel--parse-directive
                                         gptel--rewrite-directive 'raw))
                              "\n\n" (car prompt))))
-    (gptel-request prompt
-      :dry-run dry-run
-      :system gptel--rewrite-directive
-      :stream gptel-stream
-      :context
-      (let ((ov (or (cdr-safe (get-char-property-and-overlay (point) 'gptel-rewrite))
-                    (make-overlay (region-beginning) (region-end) nil t))))
-        (overlay-put ov 'category 'gptel)
-        (overlay-put ov 'evaporate t)
-        (cons ov (generate-new-buffer "*gptel-rewrite*")))
-      :callback #'gptel--rewrite-callback)))
+    (prog1 (gptel-request prompt
+             :dry-run dry-run
+             :system gptel--rewrite-directive
+             :stream gptel-stream
+             :context
+             (let ((ov (or (cdr-safe (get-char-property-and-overlay (point) 'gptel-rewrite))
+                           (make-overlay (region-beginning) (region-end) nil t))))
+               (overlay-put ov 'category 'gptel)
+               (overlay-put ov 'evaporate t)
+               (cons ov (generate-new-buffer "*gptel-rewrite*")))
+             :callback #'gptel--rewrite-callback)
+      ;; Move back so that the cursor is on the overlay when done.
+      (unless (get-char-property (point) 'gptel-rewrite)
+        (when (= (point) (region-end)) (backward-char 1))))))
 
 (transient-define-suffix gptel--suffix-rewrite-diff (&optional switches)
   "Diff LLM output against buffer."
