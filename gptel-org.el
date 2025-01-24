@@ -468,8 +468,9 @@ elements."
         ("*"
          (cond
           ((save-match-data
-             (and (looking-back "\\(?:[[:space:]]\\|\s\\)\\(?:_\\|\\*\\)"
-                                (max (- (point) 2) (point-min)))
+             (and (or (= (point) 2)
+                      (looking-back "\\(?:[[:space:]]\\|\s\\)\\(?:_\\|\\*\\)"
+                                    (max (- (point) 2) (point-min))))
                   (not (looking-at "[[:space:]]\\|\s"))))
            ;; Possible beginning of emphasis
            (and
@@ -483,7 +484,8 @@ elements."
             (progn (delete-char -1) (insert "/"))))
           ((save-excursion
              (ignore-errors (backward-char 2))
-             (looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]"))
+             (or (and (bobp) (looking-at "\\*[[:space:]]"))
+                 (looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]")))
            ;; Bullet point, replace with hyphen
            (delete-char -1) (insert "-"))))))
     (buffer-string)))
@@ -605,16 +607,18 @@ cleaning up after."
                    (save-match-data
                      (save-excursion
                        (ignore-errors (backward-char 2))
-                       (cond
-                        ((or (looking-at
+                       (cond      ; At bob, underscore/asterisk followed by word
+                        ((or (and (bobp) (looking-at "\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
+                             (looking-at ; word followed by underscore/asterisk
                               "[^[:space:][:punct:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
-                             (looking-at
+                             (looking-at ; underscore/asterisk followed by word
                               "\\(?:[[:space:][:punct:]]\\)\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
                          ;; Emphasis, replace with slashes
-                         (forward-char 2) (delete-char -1) (insert "/"))
-                        ((looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]")
+                         (forward-char (if (bobp) 1 2)) (delete-char -1) (insert "/"))
+                        ((or (and (bobp) (looking-at "\\*[[:space:]]"))
+                             (looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]"))
                          ;; Bullet point, replace with hyphen
-                         (forward-char 2) (delete-char -1) (insert "-"))))))))))
+                         (forward-char (if (bobp) 1 2)) (delete-char -1) (insert "-"))))))))))
           (if noop-p
               (buffer-substring (point) start-pt)
             (prog1 (buffer-substring (point) (point-max))
