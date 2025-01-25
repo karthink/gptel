@@ -181,9 +181,13 @@ for."
   "Parse Perplexity response RESPONSE with INFO."
   (let ((response-string (map-nested-elt response '(:choices 0 :message :content)))
         (citations-string (when-let ((citations (map-elt response :citations)))
-			    (concat "\n\nSources:\n"
-				    (mapconcat (lambda (url) (format "- %s" url))
-					       citations "\n")))))
+			    (let ((counter 0))
+			      (concat "\n\nCitations:\n"
+				      (mapconcat
+				       (lambda (url)
+					 (setq counter (1+ counter))
+					 (format "[%d] %s" counter url))
+				       citations "\n"))))))
     (concat response-string citations-string)))
 
 (cl-defmethod gptel--request-data ((_backend gptel-perplexity) prompts)
