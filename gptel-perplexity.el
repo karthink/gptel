@@ -34,17 +34,13 @@
 				(:copier nil)
 				(:include gptel-openai)))
 
-(defun gptel--perplexity-parse-citations (response)
-  "Parse citations from Perplexity RESPONSE."
-  (when-let ((citations (map-elt response :citations)))
-    (concat "\n\nSources:\n"
-            (mapconcat (lambda (url) (format "- %s" url))
-                      citations "\n"))))
-
 (cl-defmethod gptel--parse-response ((_backend gptel-perplexity) response info)
   "Parse Perplexity response RESPONSE with INFO."
   (let ((response-string (map-nested-elt response '(:choices 0 :message :content)))
-        (citations-string (gptel--perplexity-parse-citations response)))
+        (citations-string (when-let ((citations (map-elt response :citations)))
+			    (concat "\n\nSources:\n"
+				    (mapconcat (lambda (url) (format "- %s" url))
+					       citations "\n")))))
     (concat response-string citations-string)))
 
 (cl-defmethod gptel--request-data ((_backend gptel-perplexity) prompts)
