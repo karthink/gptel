@@ -1908,17 +1908,15 @@ Run post-response hooks."
                    (lambda (result)
                      (when result
                        (plist-put info :tool-success t)
-                       (plist-put tool-call :result
-                                  (gptel--to-string result))
-                       (push (cons name result) result-alist))
+                       (plist-put tool-call :result (gptel--to-string result))
+                       (push (list name arg-values result) result-alist))
                      (cl-incf tool-idx)
                      (when (>= tool-idx ntools) ; All tools have run
                        (gptel--inject-prompt
                         backend (plist-get info :data)
                         (gptel--parse-tool-results
                          backend (plist-get info :tool-use)))
-                       (funcall (plist-get info :callback)
-                                result-alist info)
+                       (funcall (plist-get info :callback) result-alist info)
                        (gptel--fsm-transition fsm)))))
            (when-let* ((tool-spec
                         (cl-find-if
@@ -1927,14 +1925,13 @@ Run post-response hooks."
              (setq arg-values
                    (mapcar
                     (lambda (arg)
-                      (let ((key (intern
-                                  (concat ":" (plist-get arg :name)))))
+                      (let ((key (intern (concat ":" (plist-get arg :name)))))
                         (plist-get args key)))
                     (gptel-tool-args tool-spec)))
              ;; Check if tool requires confirmation
              (if (and gptel-confirm-tool-calls (or (eq gptel-confirm-tool-calls t)
                                                  (gptel-tool-confirm tool-spec)))
-                 (push (list tool-spec process-tool-result arg-values)
+                 (push (list tool-spec arg-values process-tool-result)
                        pending-calls)
                ;; If not, run the tool
                (if (gptel-tool-async tool-spec)
@@ -2005,9 +2002,10 @@ or streaming responses (see STREAM).  In these cases, RESPONSE
 can be
 
 - The symbol `abort' if the request is aborted, see `gptel-abort'.
-- An alist of tool names and tool results after the LLM runs a tool.
+- An alist of tool names, arguments and tool call results after the LLM
+  runs a tool: ((name arguments result) ...)
 - An alist of `gptel-tool' structs and tool call arguments if tools
-  require confirmation to run.
+  require confirmation to run: ((tool arguments tool-call-func) ...)
 
 STREAM is a boolean that determines if the response should be
 streamed, as in `gptel-stream'.  If the model or the backend does
@@ -2665,7 +2663,7 @@ INTERACTIVEP is t when gptel is called interactively."
 RESPONSE should be a list of tool call specifications or results,
 structured as:
 
- ((tool callback args) ...)
+ ((tool args callback) ...)
 
 for tool call specifications to be confirmed.  To prompt for tool
 call confirmation, use either an overlay in the request buffer or
@@ -2673,7 +2671,7 @@ the minibuffer (if USE-MINIBUFFER is non-nil).
 
 RESPONSE is
 
- ((name . result) ...)
+ ((name args result) ...)
 
 for tool call results.  INFO contains the state of the request."
   (let* ((start-marker (plist-get info :position))
@@ -2731,21 +2729,8 @@ for tool call results.  INFO contains the state of the request."
                    (ov (or (cdr-safe (get-char-property-and-overlay
                                       start-marker 'gptel-tool))
                            (make-overlay ov-start (or tracking-marker start-marker)))))
-              (pcase-dolist (`(,tool-spec _ ,arg-values) response)
-                (push (format "(%s %s)\n"
-                              (propertize (gptel-tool-name tool-spec) 'face 'font-lock-keyword-face)
-                              (propertize
-                               (mapconcat
-                                (lambda (arg)
-                                  (cond ((stringp arg)
-                                         (prin1-to-string
-                                          (replace-regexp-in-string
-                                           "\n" "⮐" (truncate-string-to-width
-                                                     arg (floor (window-width) 4)
-                                                     nil nil t))))
-                                        (t (prin1-to-string arg))))
-                                arg-values " ")
-                               'face 'font-lock-constant-face))
+              (pcase-dolist (`(,tool-spec ,arg-values _) response)
+                (push (gptel--format-tool-call (gptel-tool-name tool-spec) arg-values)
                       confirm-strings))
               (push (concat (propertize "\n" 'face '(:inherit font-lock-string-face
                                                      :underline t :extend t)))
@@ -2775,17 +2760,18 @@ for tool call results.  INFO contains the state of the request."
       (when gptel-include-tool-results
         (with-current-buffer (marker-buffer start-marker)
           (cl-loop
-           for (name . result) in response
+           for (name args result) in response
            with include-names =
            (mapcar #'gptel-tool-name
                    (cl-remove-if-not #'gptel-tool-include (plist-get info :tools)))
            if (or (eq gptel-include-tool-results t) (member name include-names))
-           do (funcall (plist-get info :callback)
-                       (if (derived-mode-p 'org-mode)
-                           (concat "\n:TOOL_CALL:\n" name "\n"
-                                   (gptel--to-string result) "\n:END:\n")
-                         (concat "\n```\n" name "\n" (gptel--to-string result) "\n```"))
-                       info)
+           do (funcall
+               (plist-get info :callback)
+               (if (derived-mode-p 'org-mode)
+                   (concat "\n:TOOL_CALL:\n" (gptel--format-tool-call name args)
+                           "\n" (gptel--to-string result) "\n:END:\n")
+                 (concat "\n```\n" name "\n" (gptel--to-string result) "\n```"))
+               info)
            (when (derived-mode-p 'org-mode) ;fold drawer
              (ignore-errors
                (save-excursion
@@ -2793,13 +2779,31 @@ for tool call results.  INFO contains the state of the request."
                  (forward-line -1) ;org-fold-hide-drawer-toggle requires Emacs 29.1
                  (when (looking-at "^:END:") (org-cycle)))))))))))
 
+(defun gptel--format-tool-call (name arg-values)
+  "Format a tool call for display in the buffer.
+
+NAME and ARG-VALUES are the name and arguments for the call."
+  (format "(%s %s)\n"
+          (propertize name 'face 'font-lock-keyword-face)
+          (propertize
+           (mapconcat (lambda (arg)
+                        (cond ((stringp arg)
+                               (prin1-to-string
+                                (replace-regexp-in-string
+                                 "\n" "⮐" (truncate-string-to-width
+                                           arg (floor (window-width) 4)
+                                           nil nil t))))
+                              (t (prin1-to-string arg))))
+                      arg-values " ")
+           'face 'font-lock-constant-face)))
+
 (defun gptel--accept-tool-calls (&optional response ov)
   (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
                                            (point) 'gptel-tool)))
                  (list resp o)))
   (gptel--update-status " Calling tool..." 'mode-line-emphasis)
   (message "Continuing query...")
-  (cl-loop for (tool-spec process-tool-result arg-values) in response
+  (cl-loop for (tool-spec arg-values process-tool-result) in response
            do
            (if (gptel-tool-async tool-spec)
                (apply (gptel-tool-function tool-spec)
