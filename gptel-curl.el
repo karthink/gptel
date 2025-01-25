@@ -134,16 +134,23 @@ the response is inserted into the current buffer after point."
           (plist-put info :token token)
         (setf (gptel-fsm-info fsm)      ;fist run, set all process parameters
               (nconc (list :token token
-                           ;; FIXME `aref' breaks `cl-struct' abstraction boundary
-                           ;; FIXME `cl--generic-method' is an internal `cl-struct'
-                           :parser (cl--generic-method-function
-                                    (if stream
-                                        (cl-find-method
-                                         'gptel-curl--parse-stream nil
-                                         (list (aref backend 0) t))
-                                      (cl-find-method
-                                       'gptel--parse-response nil
-                                       (list (aref backend 0) t t))))
+                           :parser ; FIXME `cl--generic-*' are internal functions
+                           (cl--generic-method-function
+                            (if stream
+                                (cl-loop
+                                 for type in
+                                 (cl--class-allparents (get (type-of backend) 'cl--class))
+                                 with methods = (cl--generic-method-table
+                                                 (cl--generic 'gptel-curl--parse-stream))
+                                 when (cl--generic-member-method `(,type t) nil methods)
+                                 return (car it))
+                              (cl-loop
+                               for type in
+                               (cl--class-allparents (get (type-of backend) 'cl--class))
+                               with methods = (cl--generic-method-table
+                                               (cl--generic 'gptel--parse-response))
+                               when (cl--generic-member-method `(,type t t) nil methods)
+                               return (car it))))
                            :transformer (when (and gptel-org-convert-response
                                                    (with-current-buffer (plist-get info :buffer)
                                                      (derived-mode-p 'org-mode)))
