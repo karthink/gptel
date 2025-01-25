@@ -1,8 +1,9 @@
-;;; gptel-privategpt.el ---  Privategpt AI suppport for gptel  -*- lexical-binding: t; -*-
+;;; gptel-openai-extras.el --- Extensions to the OpenAI API -*-
+;;; lexical-binding: t; -*-
 
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
-;; Author: Karthik Chikmagalur <karthikchikmagalur@gmail.com>
+;; Authors: Karthik Chikmagalur <karthikchikmagalur@gmail.com> and pirminj
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -173,6 +174,8 @@ for."
                        nil nil #'equal)
                   backend))))
 
+
+;;; Perplexity
 (cl-defstruct (gptel-perplexity (:constructor gptel--make-perplexity)
 				(:copier nil)
 				(:include gptel-openai)))
@@ -189,24 +192,6 @@ for."
 					 (format "[%d] %s" counter url))
 				       citations "\n"))))))
     (concat response-string citations-string)))
-
-(cl-defmethod gptel--request-data ((_backend gptel-perplexity) prompts)
-  "JSON encode PROMPTS for sending to Perplexity."
-  (let ((prompts-plist
-         `(:model ,(gptel--model-name gptel-model)
-           :messages [,@prompts]
-           :stream ,(or gptel-stream :json-false))))
-    (when (and gptel--system-message
-               (not (gptel--model-capable-p 'nosystem)))
-      (plist-put prompts-plist :system gptel--system-message))
-    (when gptel-temperature
-      (plist-put prompts-plist :temperature gptel-temperature))
-    (when gptel-max-tokens
-      (plist-put prompts-plist :max_tokens gptel-max-tokens))
-    (gptel--merge-plists
-     prompts-plist
-     (gptel-backend-request-params gptel-backend)
-     (gptel--model-request-params gptel-model))))
 
 ;;;###autoload
 (cl-defun gptel-make-perplexity
@@ -264,5 +249,5 @@ parameters."
                        nil nil #'equal)
             backend))))
 
-(provide 'gptel-privategpt)
-;;; gptel-backends.el ends here
+(provide 'gptel-openai-extras)
+;;; gptel-openai-extras.el ends here
