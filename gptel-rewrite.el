@@ -581,7 +581,6 @@ generated from functions."
                            (buffer-substring-no-properties (region-beginning) (region-end)))
                        "What is the required change?"
                        (or rewrite-message gptel--rewrite-message))))
-    (deactivate-mark)
     (when nosystem
       (setcar prompt (concat (car-safe (gptel--parse-directive
                                         gptel--rewrite-directive 'raw))
@@ -599,7 +598,8 @@ generated from functions."
              :callback #'gptel--rewrite-callback)
       ;; Move back so that the cursor is on the overlay when done.
       (unless (get-char-property (point) 'gptel-rewrite)
-        (when (= (point) (region-end)) (backward-char 1))))))
+        (when (= (point) (region-end)) (backward-char 1)))
+      (deactivate-mark))))
 
 (transient-define-suffix gptel--suffix-rewrite-diff (&optional switches)
   "Diff LLM output against buffer."
