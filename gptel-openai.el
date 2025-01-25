@@ -133,6 +133,19 @@ see `gptel-backend'.
 You can have more than one backend pointing to the same resource
 with differing settings.")
 
+(defun gptel-get-backend (name)
+  "Return gptel backend with NAME.
+
+Throw an error if there is no match."
+  (or (alist-get name gptel--known-backends nil nil #'equal)
+      (user-error "Backend %s is not known to be defined"
+                  name)))
+
+(gv-define-setter gptel-get-backend (val name)
+  `(setf (alist-get ,name gptel--known-backends
+          nil nil #'equal)
+    ,val))
+
 (cl-defstruct
     (gptel-backend (:constructor gptel--make-backend)
                    (:copier gptel--copy-backend))

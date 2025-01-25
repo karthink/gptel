@@ -1423,6 +1423,28 @@ of type `gptel-tool':
 This variable is for internal use only, to define a tool use
 `gptel-make-tool'.")
 
+(defun gptel-get-tool (path)
+  "Find tool in gptel's tool registry at PATH.
+
+PATH can be specified
+- as a string representing the tool name, like \"search_db\",
+- or as a list representing a category and tool name,
+  like \\='(\"emacs\" \"read_buffer\").
+In both cases, the first matching gptel-tool is returned.
+
+- as a string representing a category, like \"filesystem\".
+In this case a list of all gptel-tools with this category is
+returned."
+  (or (cl-etypecase path
+        (cons (let ((tc (map-nested-elt gptel--known-tools path)))
+                (if (consp tc) (map-values tc) tc)))
+        (string (if-let* ((category (assoc path gptel--known-tools)))
+                    (map-values (cdr category))
+                  (cl-loop for (_ . tools) in gptel--known-tools
+                           if (assoc path tools)
+                           return (cdr it)))))
+      (user-error "No tool matches for %S" path)))
+
 (defun gptel-make-tool (&rest slots)
   "Make a gptel tool for LLM use.
 
