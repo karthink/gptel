@@ -167,38 +167,68 @@ current heading and the cursor position."
                                  50))))))
   (when (stringp topic) (org-set-property "GPTEL_TOPIC" topic)))
 
-(defcustom gptel-org-hide t
-  "Hide property drawers when creating a conversation prompt.
 
-When non-nil, property drawers are removed from the text sent to the LLM."
-  :type 'boolean
-  :group 'gptel)
+;; FIXME: should this be -- or -?
+;; FIXME: custom or var?
+(defcustom gptel-org--delete-regex-alist '((org-property-drawer-re))
+  "An alist of regular expressions to hide when creating a conversation prompt.
 
-(defcustom gptel-org-hide-re-list '(org-property-drawer-re)
-  "List of regular expressions to hide when creating a conversation prompt.
-
-When `gptel-org-hide' is non-nil, these are
-applied the prompt text before sending it to the LLM."
+These are used by `gptel-org--delete-regex-alist` to delete
+parts of the prompt text before sending it to the LLM."
   :type '(repeat regexp)
   :group 'gptel)
 
+(defun gptel-org--delete-regex-alist ()
+  "Delete matches from regular expressions in`gptel-org--delete-regex-alist'.
+
+Usually this would be called in a temporary buffer before `gptel--parse-buffer`."
+  (cl-loop
+   for (regex . replacement) in gptel-org--delete-regex-alist
+   do (save-excursion
+        (goto-char (point-min))
+        (let ((case-fold-search nil))
+          (let ((regex (if (symbolp regex) (symbol-value regex) regex)))
+            (while (re-search-forward regex nil t)
+              (replace-match (or replacement ""))))))))
+
+(defun gptel-org--delete-file-local-variable-prop-line ()
+  "Delete the line that `add-file-local-variable-prop-line` inserts."
+  (interactive)
+  (save-excursion
+    (goto-char (point-min))
+    (let ((start-pos (set-auto-mode-1)))
+      (when start-pos
+        (save-excursion
+          (goto-char start-pos)
+          (beginning-of-line)
+          (setq start-pos (point)))
+        (end-of-line)
+        (forward-char)
+        (delete-region start-pos (point))))))
+
+(defvar gptel-org-before-parse-buffer-hook
+  '(gptel-org--delete-regex-alist
+    gptel-org--delete-file-local-variable-prop-line)
+  "Apply functions to the buffer before parsing it for the backend to create a prompt.
+
+Each function in this hook needs to maintain position of point.")
 
 (defun gptel-org--parse-buffer (backend max-entries)
-  "Exactly like `gptel--parse-buffer`, but apply some filters on the org buffers first"
-  (if gptel-org-hide
+  "Exactly like `gptel--parse-buffer`, but apply some filters to the org buffers first."
+  (if gptel-org-before-parse-buffer-hook
       (let ((org-buffer (current-buffer)))
+        ;; FIXME: is there a better way than copying buffer into temp-buffer and deleting from it?
         (with-temp-buffer
-         ;; save-current-buffer
-         ;;  (set-buffer (get-buffer-create " *gptel-org-temp*" t))
+          ;; for debug
+          ;; save-current-buffer
+          ;;  (set-buffer (get-buffer-create " *gptel-org-temp*" t))
           ;; (erase-buffer)
           (insert-buffer-substring org-buffer)
-          (cl-loop
-            for re in gptel-org-hide-re-list
-            do (save-excursion
-            (goto-char (point-min))
-            (let ((case-fold-search nil))
-              (while (re-search-forward org-property-drawer-re nil t)
-                (replace-match "")))))
+          (let ((assert-marker (point-marker)))
+            (run-hooks 'gptel-org-before-parse-buffer-hook)
+            (cl-assert (= (marker-position assert-marker) (point)) t
+                       "gptel-org--parse-buffer: one of the functions in gptel-org-before-parse-buffer-hook modified point.")
+            (goto-char (marker-position assert-marker)))
           (gptel--parse-buffer backend max-entries)))
     (gptel--parse-buffer backend max-entries)))
 
