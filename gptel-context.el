@@ -240,16 +240,31 @@ PATH should be readable as text."
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
 (defalias 'gptel-add-file #'gptel-context-add-file)
 
+(defvar gptel-context--git-cache (make-hash-table :test 'equal)
+  "Cache of git ignore status per directory.")
+
+(defun gptel-context--git-files (dir)
+  "Get list of unignored files in git repo at DIR."
+  (let ((default-directory dir))
+    ;; Get all files that git tracks or could track (excludes ignored files)
+    (split-string (shell-command-to-string
+                   "git ls-files --cached --others --exclude-standard")
+                  "\n" t)))
+
 (defun gptel-context--skip-file-p (file)
   "Return t if FILE should be skipped due to being git-ignored."
-  (and gptel-context-exclude-gitignored
-       (executable-find "git")
-       (when-let ((git-root (locate-dominating-file file ".git")))
-         (= 0 (let ((default-directory git-root))
-                (call-process "git" nil nil nil 
-                              "check-ignore"
-                              "--no-index"
-                              (file-relative-name file git-root)))))))
+  (when (and gptel-context-exclude-gitignored
+             (executable-find "git"))
+    (when-let* ((git-root (locate-dominating-file file ".git"))
+                (rel-path (file-relative-name file git-root)))
+      (let ((cached (gethash git-root gptel-context--git-cache)))
+        (if cached
+            ;; Return t if file is NOT in the unignored files list
+            (not (member rel-path cached))
+          ;; Cache miss - build cache and check
+          (let ((unignored (gptel-context--git-files git-root)))
+            (puthash git-root unignored gptel-context--git-cache)
+            (not (member rel-path unignored))))))))
 
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
