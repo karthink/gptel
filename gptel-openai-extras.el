@@ -183,14 +183,38 @@ for."
   "Parse Perplexity response RESPONSE with INFO."
   (let ((response-string (map-nested-elt response '(:choices 0 :message :content)))
         (citations-string (when-let ((citations (map-elt response :citations)))
-			    (let ((counter 0))
-			      (concat "\n\nCitations:\n"
-				      (mapconcat
-				       (lambda (url)
-					 (setq counter (1+ counter))
-					 (format "[%d] %s" counter url))
-				       citations "\n"))))))
+			    (gptel--perplexity-parse-citations citations))))
     (concat response-string citations-string)))
+
+(cl-defmethod gptel-curl--parse-stream ((backend gptel-perplexity) info)
+  "Parse a Perplexity API data stream for BACKEND with INFO.
+
+If available, collect citations at the end and include them with
+the response."
+  (let ((resp (cl-call-next-method)))
+    (unless (plist-get info :citations)
+      (save-excursion
+        (goto-char (point-max))
+        (when (search-backward (plist-get info :token)
+                               (line-beginning-position) t)
+          (forward-line 0)
+          (when (re-search-backward "^data: " nil t)
+            (goto-char (match-end 0))
+            (ignore-errors
+              (when-let* ((chunk (gptel--json-read))
+                          (citations (map-elt chunk :citations)))
+                (plist-put info :citations t)
+                (setq resp (concat resp (gptel--perplexity-parse-citations
+                                         citations)))))))))
+    resp))
+
+(defsubst gptel--perplexity-parse-citations (citations)
+  (let ((counter 0))
+    (concat "\n\nCitations:\n"
+            (mapconcat (lambda (url)
+                         (setq counter (1+ counter))
+                         (format "[%d] %s" counter url))
+                       citations "\n"))))
 
 ;;;###autoload
 (cl-defun gptel-make-perplexity
