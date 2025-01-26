@@ -167,6 +167,41 @@ current heading and the cursor position."
                                  50))))))
   (when (stringp topic) (org-set-property "GPTEL_TOPIC" topic)))
 
+(defcustom gptel-org-hide t
+  "Hide property drawers when creating a conversation prompt.
+
+When non-nil, property drawers are removed from the text sent to the LLM."
+  :type 'boolean
+  :group 'gptel)
+
+(defcustom gptel-org-hide-re-list '(org-property-drawer-re)
+  "List of regular expressions to hide when creating a conversation prompt.
+
+When `gptel-org-hide' is non-nil, these are
+applied the prompt text before sending it to the LLM."
+  :type '(repeat regexp)
+  :group 'gptel)
+
+
+(defun gptel-org--parse-buffer (backend max-entries)
+  "Exactly like `gptel--parse-buffer`, but apply some filters on the org buffers first"
+  (if gptel-org-hide
+      (let ((org-buffer (current-buffer)))
+        (with-temp-buffer
+         ;; save-current-buffer
+         ;;  (set-buffer (get-buffer-create " *gptel-org-temp*" t))
+          ;; (erase-buffer)
+          (insert-buffer-substring org-buffer)
+          (cl-loop
+            for re in gptel-org-hide-re-list
+            do (save-excursion
+            (goto-char (point-min))
+            (let ((case-fold-search nil))
+              (while (re-search-forward org-property-drawer-re nil t)
+                (replace-match "")))))
+          (gptel--parse-buffer backend max-entries)))
+    (gptel--parse-buffer backend max-entries)))
+
 ;; NOTE: This can be converted to a cl-defmethod for `gptel--parse-buffer'
 ;; (conceptually cleaner), but will cause load-order issues in gptel.el and
 ;; might be harder to debug.
@@ -228,13 +263,13 @@ value of `gptel-org-branching-context', which see."
                            (goto-char (point-min)))
                   (goto-char (point-max))
                   (let ((major-mode 'org-mode))
-                    (gptel--parse-buffer gptel-backend max-entries)))))
+                    (gptel-org--parse-buffer gptel-backend max-entries)))))
           (display-warning
              '(gptel org)
              "Using `gptel-org-branching-context' requires Org version 9.7 or higher, it will be ignored.")
-          (gptel--parse-buffer gptel-backend max-entries))
+          (gptel-org--parse-buffer gptel-backend max-entries))
       ;; Create prompt the usual way
-      (gptel--parse-buffer gptel-backend max-entries))))
+      (gptel-org--parse-buffer gptel-backend max-entries))))
 
 ;; Handle media links in the buffer
 (cl-defmethod gptel--parse-media-links ((_mode (eql 'org-mode)) beg end)
