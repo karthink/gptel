@@ -84,6 +84,16 @@ context chunk.  This is accessible as, for example:
   :group 'gptel
   :type 'function)
 
+(defcustom gptel-context-exclude-gitignored t
+  "When non-nil, exclude files that are ignored by Git from gptel context.
+
+This is checked by calling \"git check-ignore -q FILE\" for each file
+when adding a directory.  If the command succeeds, gptel will not add
+that file to its context.  Requires Git installed and accessible from
+Emacs."
+  :group 'gptel
+  :type 'boolean)
+
 (defun gptel-context-add (&optional arg confirm)
   "Add context to gptel in a DWIM fashion.
 
@@ -127,8 +137,9 @@ context chunk.  This is accessible as, for example:
 	(mapc action-fn files))))
    ;; If in an image buffer
    ((and (derived-mode-p 'image-mode)
-         (gptel--model-capable-p 'media)
-         (buffer-file-name))
+	 (gptel--model-capable-p 'media)
+	 (not (gptel-context--skip-file-p (buffer-file-name)))
+	 (buffer-file-name))
     (funcall (if (and arg (< (prefix-numeric-value arg) 0))
               #'gptel-context-remove
               #'gptel-context-add-file)
@@ -199,7 +210,8 @@ Return PATH if added, nil if ignored."
 ACTION should be either `add' or `remove'."
   (let ((files (directory-files-recursively path "." t)))
     (mapc (lambda (file)
-            (unless (file-directory-p file)
+            (unless (or (file-directory-p file)
+			(gptel-context--skip-file-p file))
               (pcase-exhaustive action
                 ('add
                  (if (gptel--file-binary-p file)
@@ -219,12 +231,25 @@ PATH should be readable as text."
   (interactive "fChoose file to add to context: ")
   (cond ((file-directory-p path)
 	 (gptel-context--add-directory path 'add))
+	((gptel-context--skip-file-p path)
+	 (message "Skipping git-ignored file: %s" path))
 	((gptel--file-binary-p path)
          (gptel-context--add-binary-file path))
-	((gptel-context--add-text-file path))))
+	(t (gptel-context--add-text-file path))))
 
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
 (defalias 'gptel-add-file #'gptel-context-add-file)
+
+(defun gptel-context--skip-file-p (file)
+  "Return t if FILE should be skipped due to being git-ignored."
+  (and gptel-context-exclude-gitignored
+       (executable-find "git")
+       (when-let ((git-root (locate-dominating-file file ".git")))
+         (= 0 (let ((default-directory git-root))
+                (call-process "git" nil nil nil 
+                              "check-ignore"
+                              "--no-index"
+                              (file-relative-name file git-root)))))))
 
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
