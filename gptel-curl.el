@@ -134,28 +134,12 @@ the response is inserted into the current buffer after point."
           (plist-put info :token token)
         (setf (gptel-fsm-info fsm)      ;fist run, set all process parameters
               (nconc (list :token token
-                           :parser ; FIXME `cl--generic-*' are internal functions
-                           (cl--generic-method-function
-                            (if stream
-                                (cl-loop
-                                 for type in
-                                 (cl--class-allparents (get (type-of backend) 'cl--class))
-                                 with methods = (cl--generic-method-table
-                                                 (cl--generic 'gptel-curl--parse-stream))
-                                 when (cl--generic-member-method `(,type t) nil methods)
-                                 return (car it))
-                              (cl-loop
-                               for type in
-                               (cl--class-allparents (get (type-of backend) 'cl--class))
-                               with methods = (cl--generic-method-table
-                                               (cl--generic 'gptel--parse-response))
-                               when (cl--generic-member-method `(,type t t) nil methods)
-                               return (car it))))
-                           :transformer (when (and gptel-org-convert-response
-                                                   (with-current-buffer (plist-get info :buffer)
-                                                     (derived-mode-p 'org-mode)))
-                                          (gptel--stream-convert-markdown->org
-                                           (plist-get info :position))))
+                           :transformer
+                           (when (and gptel-org-convert-response
+                                      (with-current-buffer (plist-get info :buffer)
+                                        (derived-mode-p 'org-mode)))
+                             (gptel--stream-convert-markdown->org
+                              (plist-get info :position))))
                      (unless (plist-get info :callback)
                        (list :callback (if stream
                                            #'gptel-curl--stream-insert-response
@@ -166,6 +150,25 @@ the response is inserted into the current buffer after point."
                  (set-process-filter process #'gptel-curl--stream-filter))
         (set-process-sentinel process #'gptel-curl--sentinel))
       (setf (alist-get process gptel--request-alist) fsm))))
+
+;; ;; Ahead-Of-Time dispatch code for the parsers
+;; :parser ; FIXME `cl--generic-*' are internal functions
+;; (cl--generic-method-function
+;;  (if stream
+;;      (cl-loop
+;;       for type in
+;;       (cl--class-allparents (get (type-of backend) 'cl--class))
+;;       with methods = (cl--generic-method-table
+;;                       (cl--generic 'gptel-curl--parse-stream))
+;;       when (cl--generic-member-method `(,type t) nil methods)
+;;       return (car it))
+;;    (cl-loop
+;;     for type in
+;;     (cl--class-allparents (get (type-of backend) 'cl--class))
+;;     with methods = (cl--generic-method-table
+;;                     (cl--generic 'gptel--parse-response))
+;;     when (cl--generic-member-method `(,type t t) nil methods)
+;;     return (car it))))
 
 (defun gptel-curl--log-response (proc-buf proc-info)
   "Parse response buffer PROC-BUF and log response.
@@ -288,7 +291,8 @@ See `gptel--url-get-response' for details."
         ;; Find data chunk(s) and run callback
         ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
         (when-let (((member http-status '("200" "100")))
-                   (response (funcall (plist-get proc-info :parser) nil proc-info))
+                   (response ;; (funcall (plist-get proc-info :parser) nil proc-info)
+                    (gptel-curl--parse-stream (plist-get proc-info :backend) proc-info))
                    ((not (equal response ""))))
           (funcall (or (plist-get proc-info :callback)
                        #'gptel-curl--stream-insert-response)
@@ -355,7 +359,9 @@ PROC-INFO is a plist with contextual information."
           (cond
            ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
            ((member http-status '("200" "100"))
-            (list (and-let* ((resp (funcall parser nil response proc-info)))
+            (list (and-let* ((resp ;; (funcall parser nil response proc-info)
+                              (gptel--parse-response (plist-get proc-info :backend)
+                                                     response proc-info)))
                     (string-trim resp))
                   http-status http-msg))
            ((plist-get response :error)
