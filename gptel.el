@@ -2697,12 +2697,6 @@ RESPONSE is
 
 for tool call results.  INFO contains the state of the request."
   (let* ((start-marker (plist-get info :position))
-         ;; FIXME(tool) use a wrapper instead of a manual text-property search,
-         ;; this is fragile
-         (ov-start (save-excursion
-                     (goto-char start-marker)
-                     (text-property-search-backward 'gptel 'response)
-                     (point)))
          (tracking-marker (plist-get info :tracking-marker)))
     (if (cl-typep (caar response) 'gptel-tool) ;tool calls
         ;; pending tool calls look like ((tool callback args) ...)
@@ -2748,9 +2742,18 @@ for tool call results.  INFO contains the state of the request."
                                   (format (propertize "\n%s wants to run:\n"
                                                       'face 'font-lock-string-face)
                                           backend-name))))
+                   ;; FIXME(tool) use a wrapper instead of a manual text-property search,
+                   ;; this is fragile
+                   (ov-start (save-excursion
+                               (goto-char start-marker)
+                               (text-property-search-backward 'gptel 'response)
+                               (point)))
                    (ov (or (cdr-safe (get-char-property-and-overlay
                                       start-marker 'gptel-tool))
                            (make-overlay ov-start (or tracking-marker start-marker)))))
+              ;; If the cursor is at the overlay-end, it ends up outside, so move it back
+              (unless tracking-marker
+                (when (= (point) start-marker) (ignore-errors (backward-char))))
               (pcase-dolist (`(,tool-spec ,arg-values _) response)
                 (push (gptel--format-tool-call (gptel-tool-name tool-spec) arg-values)
                       confirm-strings))
