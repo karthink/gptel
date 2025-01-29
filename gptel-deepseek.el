@@ -60,13 +60,21 @@ information if the stream contains it."
                 ;; Handle reasoning content and main content
                 (let ((reasoning-content (plist-get delta :reasoning_content))
                       (main-content (plist-get delta :content)))
-                  (when (and reasoning-content (not (equal reasoning-content :null)))
+                  ;; Add reasoning content if available
+                  (when (and reasoning-content
+                             (not (equal reasoning-content :null))
+                             gptel-deepseek-show-reasoning)
+                    (unless (plist-get info :header-printed)
+                      (push "\n\n*Chain of Thought*\n\n" content-strs)
+                      (plist-put info :header-printed t))
                     (plist-put info :has-reasoning t)
                     (push reasoning-content content-strs))
+                  ;; Add main content if available
                   (when (and main-content (not (equal main-content :null)))
                     (when (and (plist-get info :has-reasoning)
-                               (not (plist-get info :separator-added)))
-                      (push "\n\n*Chain of Thought Complete*" content-strs)
+                               (not (plist-get info :separator-added))
+                               gptel-deepseek-show-reasoning)
+                      (push "\n\n*Chain of Thought Complete*\n\n" content-strs)
                       (plist-put info :separator-added t))
                     (push main-content content-strs))
                   (cond
