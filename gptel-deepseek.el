@@ -62,6 +62,8 @@ information if the stream contains it."
                       (main-content (plist-get delta :content)))
                   (message "Reasoning content: %s" reasoning-content)
                   (message "Main content: %s" main-content)
+                  (when (and main-content (not (equal main-content :null)))
+                    (push main-content content-strs))
                   (cond
                    ;; Reasoning content present
                    (reasoning-content
