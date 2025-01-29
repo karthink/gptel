@@ -63,7 +63,7 @@ information if the stream contains it."
                 (message "Delta: %s" delta)
                 (if-let* ((reasoning_content (plist-get delta :reasoning_content)))
                     (if (and (equal reasoning_content :null)
-                             (not (equal (plist-get delta :content) :null)))
+                             (equal (plist-get delta :content) :null))
                         (push "\n\n*Chain of Thought Complete" content-strs)
                         (push reasoning_content content-strs)))
                 (if-let* ((content (plist-get delta :content))
