@@ -60,6 +60,8 @@ information if the stream contains it."
                 ;; Handle reasoning content and main content
                 (let ((reasoning-content (plist-get delta :reasoning_content))
                       (main-content (plist-get delta :content)))
+                  (message "Reasoning content: %s" reasoning-content)
+                  (message "Main content: %s" main-content)
                   (cond
                    ;; Reasoning content present
                    (reasoning-content
@@ -67,7 +69,7 @@ information if the stream contains it."
                       (push reasoning-content content-strs)
                       (plist-put info :has-reasoning t)))
                    ;; Main content present
-                   ((and main-content (not (eq main-content :null)))
+                   ((and main-content (not (equal main-content :null)))
                     (when (and (plist-get info :has-reasoning)
                                (not (plist-get info :separator-added)))
                       (push "\n\n*Chain of Thought Complete*" content-strs)
