@@ -70,17 +70,6 @@ information if the stream contains it."
                       (plist-put info :separator-added t))
                     (push main-content content-strs))
                   (cond
-                   ;; Main content present
-                   (main-content
-                     (unless (eq main-content :null)
-                       (push main-content content-strs)
-                       (plist-put info :has-reasoning nil)))
-                   ((and main-content (not (equal main-content :null)))
-                    (progn (when (and (plist-get info :has-reasoning)
-                                      (not (plist-get info :separator-added)))
-                             (push "\n\n*Chain of Thought Complete*" content-strs)
-                             (plist-put info :separator-added t))
-                           (push main-content content-strs)))
                    ;; Tool calls
                    (t
                     (when-let* ((tool-call (map-nested-elt delta '(:tool_calls 0)))
