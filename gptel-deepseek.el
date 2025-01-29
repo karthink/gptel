@@ -28,67 +28,64 @@
                               (:copier nil)
                               (:constructor gptel--make-deepseek)))
 
-(cl-defmethod gptel--parse-response ((_backend gptel-deepseek) response info)
-  "Parse a DeepSeek API response."
-  (let* ((choice0 (map-nested-elt response '(:choices 0)))
-         (message (plist-get choice0 :message))
-         (content (plist-get message :content))
-         (reasoning (plist-get message :reasoning_content)))
-    (plist-put info :stop-reason (plist-get choice0 :finish_reason))
-    (plist-put info :output-tokens (map-nested-elt response '(:usage :completion_tokens)))
-    (if (and content (not (or (eq content :null) (string-empty-p content))))
-        (if (and gptel-deepseek-show-reasoning reasoning (not (string-empty-p reasoning)))
-            (concat content "\n\n---\n**Reasoning**\n" reasoning)
-          content)
-      nil)))
+(cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai) info)
+  "Parse an OpenAI API data stream.
 
-(cl-defmethod gptel-curl--parse-stream ((backend gptel-deepseek) info)
-  "Parse a streaming DeepSeek API response."
-  (let* ((content-acc)
-         (reasoning-acc)
-         (in-tool-call nil)
-         (partial-json))
+Return the text response accumulated since the last call to this
+function.  Additionally, mutate state INFO to add tool-use
+information if the stream contains it."
+  (let* ((content-strs))
     (condition-case nil
         (while (re-search-forward "^data:" nil t)
           (save-match-data
             (if (looking-at " *\\[DONE\\]")
-                (progn
-                  (when-let ((tool-use (plist-get info :tool-use)))
-                    (gptel--inject-prompt
-                     backend (plist-get info :data)
-                     `(:role "assistant" :content :null :tool_calls ,(vconcat tool-use))))
-                  (setq content-acc nil reasoning-acc nil))
+                ;; The stream has ended, so we do the following thing (if we found tool calls)
+                ;; - pack tool calls into the messages prompts list to send (INFO -> :data -> :messages)
+                ;; - collect tool calls (formatted differently) into (INFO -> :tool-use)
+                (when-let* ((tool-use (plist-get info :tool-use))
+                            (args (apply #'concat (nreverse (plist-get info :partial_json))))
+                            (func (plist-get (car tool-use) :function)))
+                  (plist-put func :arguments args) ;Update arguments for last recorded tool
+                  (gptel--inject-prompt
+                   (plist-get info :backend) (plist-get info :data)
+                   `(:role "assistant" :content :null :tool_calls ,(vconcat tool-use))) ; :refusal :null
+                  (cl-loop
+                   for tool-call in tool-use ; Construct the call specs for running the function calls
+                   for spec = (plist-get tool-call :function)
+                   collect (list :id (plist-get tool-call :id)
+                                 :name (plist-get spec :name)
+                                 :args (ignore-errors (gptel--json-read-string
+                                                       (plist-get spec :arguments))))
+                   into call-specs
+                   finally (plist-put info :tool-use call-specs)))
               (when-let* ((response (gptel--json-read))
                           (delta (map-nested-elt response '(:choices 0 :delta))))
-                (cond
-                 ((plist-get delta :tool_calls)
-                  (setq in-tool-call t)
-                  (let ((tool-call (map-nested-elt delta '(:tool_calls 0))))
-                    (if (plist-get tool-call :id)
+                (message "Delta: %s" delta)
+                (if-let* ((reasoning_content (plist-get delta :reasoning_content))
+                          ((not (eq reasoning_content :null))))
+                    (push reasoning_content content-strs))
+                (if-let* ((content (plist-get delta :content))
+                          ((not (eq content :null))))
+                    (push content content-strs)
+                  ;; No text content, so look for tool calls
+                  (when-let* ((tool-call (map-nested-elt delta '(:tool_calls 0)))
+                              (func (plist-get tool-call :function)))
+                    (if (plist-get func :name) ;new tool block begins
                         (progn
-                          (when partial-json
-                            (let* ((prev-tool (car (plist-get info :tool-use)))
-                                   (prev-func (plist-get prev-tool :function)))
-                              (plist-put prev-func :arguments
-                                         (apply #'concat (nreverse partial-json)))))
-                          (plist-put info :tool-use (cons tool-call (plist-get info :tool-use)))
-                          (setq partial-json nil))
-                      (when-let ((func (plist-get tool-call :function)))
-                        (push (plist-get func :arguments) partial-json)))))
-
-                 ((plist-get delta :content)
-                  (push (plist-get delta :content) content-acc))
-
-                 ((plist-get delta :reasoning_content)
-                  (push (plist-get delta :reasoning_content) reasoning-acc)))))))
+                          (when-let* ((partial (plist-get info :partial_json)))
+                            (let* ((prev-tool-call (car (plist-get info :tool-use)))
+                                   (prev-func (plist-get prev-tool-call :function)))
+                              (plist-put prev-func :arguments ;update args for old tool block
+                                         (apply #'concat (nreverse (plist-get info :partial_json)))))
+                            (plist-put info :partial_json nil)) ;clear out finished chain of partial args
+                          ;; Start new chain of partial argument strings
+                          (plist-put info :partial_json (list (plist-get func :arguments)))
+                          ;; NOTE: Do NOT use `push' for this, it prepends and we lose the reference
+                          (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
+                      ;; old tool block continues, so continue collecting arguments in :partial_json
+                      (push (plist-get func :arguments) (plist-get info :partial_json)))))))))
       (error (goto-char (match-beginning 0))))
-
-    (let* ((content (apply #'concat (nreverse content-acc)))
-           (reasoning (and gptel-deepseek-show-reasoning
-                           (apply #'concat (nreverse reasoning-acc)))))
-      (if (and reasoning (not (string-empty-p reasoning)))
-          (concat content "\n\n---\n**Reasoning**\n" reasoning)
-        content))))
+    (apply #'concat (nreverse content-strs))))
 
 ;;;###autoload
 (cl-defun gptel-make-deepseek
