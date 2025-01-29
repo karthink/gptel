@@ -69,6 +69,10 @@ information if the stream contains it."
                       (push reasoning-content content-strs)
                       (plist-put info :has-reasoning t)))
                    ;; Main content present
+                   (main-content
+                     (unless (eq main-content :null)
+                       (push main-content content-strs)
+                       (plist-put info :has-reasoning nil)))
                    ((and main-content (not (equal main-content :null)))
                     (progn (when (and (plist-get info :has-reasoning)
                                       (not (plist-get info :separator-added)))
