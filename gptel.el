@@ -1931,10 +1931,9 @@ Run post-response hooks."
                   (arg-values)
                   (process-tool-result
                    (lambda (result)
-                     (when result
-                       (plist-put info :tool-success t)
-                       (plist-put tool-call :result (gptel--to-string result))
-                       (push (list name arg-values result) result-alist))
+                     (plist-put info :tool-success t)
+                     (plist-put tool-call :result (gptel--to-string result))
+                     (push (list name arg-values result) result-alist)
                      (cl-incf tool-idx)
                      (when (>= tool-idx ntools) ; All tools have run
                        (gptel--inject-prompt
