@@ -28,11 +28,6 @@
 (eval-when-compile
   (require 'cl-lib))
 
-(defgroup gptel-deepseek nil
-  "DeepSeek backend for gptel."
-  :group 'gptel)
-
-
 (cl-defstruct (gptel-deepseek (:include gptel-openai)
                               (:copier nil)
                               (:constructor gptel--make-deepseek))
