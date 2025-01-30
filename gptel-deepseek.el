@@ -65,7 +65,7 @@ information if the stream contains it."
                              (not (equal reasoning-content :null))
                              gptel-deepseek-show-reasoning)
                     (unless (plist-get info :header-printed)
-                      (push "\n\n*Chain of Thought*\n\n" content-strs)
+                      (push "*Chain of Thought*\n\n" content-strs)
                       (plist-put info :header-printed t))
                     (plist-put info :has-reasoning t)
                     (push reasoning-content content-strs))
@@ -74,7 +74,7 @@ information if the stream contains it."
                     (when (and (plist-get info :has-reasoning)
                                (not (plist-get info :separator-added))
                                gptel-deepseek-show-reasoning)
-                      (push "\n\n*Chain of Thought Complete*\n\n" content-strs)
+                      (push "\n*Chain of Thought Complete*\n\n" content-strs)
                       (plist-put info :separator-added t))
                     (push main-content content-strs))
                   (cond
