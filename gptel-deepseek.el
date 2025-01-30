@@ -13,7 +13,11 @@
 
 ;;; Code:
 
+(require 'gptel)
 (require 'gptel-openai)
+(require 'cl-generic)
+(eval-when-compile
+  (require 'cl-lib))
 
 (defgroup gptel-deepseek nil
   "DeepSeek backend for gptel."
@@ -77,22 +81,20 @@ information if the stream contains it."
                       (push "\n*Chain of Thought Complete*\n\n" content-strs)
                       (plist-put info :separator-added t))
                     (push main-content content-strs))
-                  (cond
-                   ;; Tool calls
-                   (t
-                    (when-let* ((tool-call (map-nested-elt delta '(:tool_calls 0)))
-                                (func (plist-get tool-call :function)))
-                      (if (plist-get func :name)
-                          (progn
-                            (when-let* ((partial (plist-get info :partial_json)))
-                              (let* ((prev-tool-call (car (plist-get info :tool-use)))
-                                     (prev-func (plist-get prev-tool-call :function)))
-                                (plist-put prev-func :arguments
-                                           (apply #'concat (nreverse (plist-get info :partial_json)))))
-                              (plist-put info :partial_json nil))
-                            (plist-put info :partial_json (list (plist-get func :arguments)))
-                            (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
-                        (push (plist-get func :arguments) (plist-get info :partial_json)))))))))))
+                  ;; Tool calls
+                  (when-let* ((tool-call (map-nested-elt delta '(:tool_calls 0)))
+                              (func (plist-get tool-call :function)))
+                    (if (plist-get func :name)
+                        (progn
+                          (when-let* ((partial (plist-get info :partial_json)))
+                            (let* ((prev-tool-call (car (plist-get info :tool-use)))
+                                   (prev-func (plist-get prev-tool-call :function)))
+                              (plist-put prev-func :arguments
+                                         (apply #'concat (nreverse (plist-get info :partial_json)))))
+                            (plist-put info :partial_json nil))
+                          (plist-put info :partial_json (list (plist-get func :arguments)))
+                          (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
+                      (push (plist-get func :arguments) (plist-get info :partial_json)))))))))
       (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
