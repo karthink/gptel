@@ -23,6 +23,31 @@
   "DeepSeek backend for gptel."
   :group 'gptel)
 
+(cl-defmethod gptel--parse-response ((backend gptel-deepseek) response info)
+  "Parse a DeepSeek non-streaming RESPONSE and return response text."
+  (let* ((choice0 (map-nested-elt response '(:choices 0)))
+         (message (plist-get choice0 :message))
+         (reasoning (plist-get message :reasoning_content))
+         (content (plist-get message :content))
+         (show-reasoning (gptel-deepseek-show-reasoning backend)))
+    (plist-put info :stop-reason (plist-get choice0 :finish_reason))
+    (plist-put info :output-tokens (map-nested-elt response '(:usage :completion_tokens)))
+    (cond
+     ((or content reasoning)
+      (concat (when (and show-reasoning reasoning (not (string-empty-p reasoning)))
+                (concat "*Chain of Thought*\n\n" reasoning "\n*Chain of Thought Complete*\n\n"))
+              content))
+     (t
+      (when-let ((tool-calls (plist-get message :tool_calls)))
+        (gptel--inject-prompt backend (plist-get info :data) message)
+        (cl-loop for tool-call across tool-calls
+                 collect (list :id (plist-get tool-call :id)
+                               :name (plist-get (plist-get tool-call :function) :name)
+                               :args (gptel--json-read-string
+                                      (plist-get (plist-get tool-call :function) :arguments)))
+                 into tool-use
+                 finally (plist-put info :tool-use tool-use)))
+      nil))))
 
 (cl-defstruct (gptel-deepseek (:include gptel-openai)
                               (:copier nil)
