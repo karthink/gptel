@@ -33,11 +33,11 @@
                               (:constructor gptel--make-deepseek)))
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai) info)
-  "Parse an OpenAI API data stream.
+  "Parse a DeepSeek API data stream.
 
 Return the text response accumulated since the last call to this
-function.  Additionally, mutate state INFO to add tool-use
-information if the stream contains it."
+function.  Additionally, mutate state INFO to add reasoning formatting,
+tool-use information if the stream contains it."
   (let* ((content-strs))
     (condition-case nil
         (while (re-search-forward "^data:" nil t)
