@@ -46,6 +46,18 @@ for a particular major-mode or project."
   :group 'gptel
   :type 'hook)
 
+(defcustom gptel-post-rewrite-functions nil
+  "Abnormal hook run after a `gptel-rewrite' action.
+
+This hook is called after the LLM response for the rewrite action
+has been fully received in a temporary buffer.  Each function is
+called with two arguments: the response beginning and end
+positions.
+
+Note: this hook only runs if the rewrite request succeeds."
+  :type 'hook
+  :group 'gptel)
+
 (defcustom gptel-rewrite-default-action nil
   "Action to take when rewriting a text region using gptel.
 
@@ -400,6 +412,8 @@ INFO is the async communication channel for the rewrite request."
           (with-current-buffer proc-buf
             (let ((inhibit-read-only t))
               (delete-region (point) (point-max))
+              ;; Run post-rewrite-functions on rewritten text in its buffer
+              (run-hook-with-args 'gptel-post-rewrite-functions (point-min) (point-max))
               (when (and (plist-get info :newline)
                          (not (eq (char-before (point-max)) ?\n)))
                 (insert "\n"))
