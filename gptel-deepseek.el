@@ -23,13 +23,19 @@
   "DeepSeek backend for gptel."
   :group 'gptel)
 
+
+(cl-defstruct (gptel-deepseek (:include gptel-openai)
+                              (:copier nil)
+                              (:constructor gptel--make-deepseek))
+  show-reasoning)
+
 (cl-defmethod gptel--parse-response ((_backend gptel-deepseek) response info)
   "Parse a DeepSeek non-streaming RESPONSE and return response text."
   (let* ((choice0 (map-nested-elt response '(:choices 0)))
          (message (plist-get choice0 :message))
          (reasoning (plist-get message :reasoning_content))
          (content (plist-get message :content))
-         (show-reasoning (gptel-deepseek-show-reasoning backend)))
+         (show-reasoning (gptel-deepseek-show-reasoning (plist-get info :backend))))
     (plist-put info :stop-reason (plist-get choice0 :finish_reason))
     (plist-put info :output-tokens (map-nested-elt response '(:usage :completion_tokens)))
     (cond
@@ -39,7 +45,7 @@
               content))
      (t
       (when-let ((tool-calls (plist-get message :tool_calls)))
-        (gptel--inject-prompt backend (plist-get info :data) message)
+        (gptel--inject-prompt (plist-get info :backend) (plist-get info :data) message)
         (cl-loop for tool-call across tool-calls
                  collect (list :id (plist-get tool-call :id)
                                :name (plist-get (plist-get tool-call :function) :name)
@@ -48,11 +54,6 @@
                  into tool-use
                  finally (plist-put info :tool-use tool-use)))
       nil))))
-
-(cl-defstruct (gptel-deepseek (:include gptel-openai)
-                              (:copier nil)
-                              (:constructor gptel--make-deepseek))
-  show-reasoning)
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai) info)
   "Parse a DeepSeek API data stream.
@@ -78,9 +79,9 @@ tool-use information if the stream contains it."
                            collect (list :id (plist-get tool-call :id)
                                          :name (plist-get spec :name)
                                          :args (ignore-errors (gptel--json-read-string
-                                                               (plist-get spec :arguments)))
-                                         into call-specs
-                                         finally (plist-put info :tool-use call-specs))))
+                                                               (plist-get spec :arguments))))
+                            into call-specs
+                            finally (plist-put info :tool-use call-specs)))
               (when-let* ((response (gptel--json-read))
                           (delta (map-nested-elt response '(:choices 0 :delta))))
                 ;; Handle reasoning content and main content
