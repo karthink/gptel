@@ -23,14 +23,11 @@
   "DeepSeek backend for gptel."
   :group 'gptel)
 
-(defcustom gptel-deepseek-show-reasoning t
-  "Whether to include DeepSeek's reasoning_content in responses."
-  :type 'boolean
-  :group 'gptel-deepseek)
 
 (cl-defstruct (gptel-deepseek (:include gptel-openai)
                               (:copier nil)
-                              (:constructor gptel--make-deepseek)))
+                              (:constructor gptel--make-deepseek))
+  show-reasoning)
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai) info)
   "Parse a DeepSeek API data stream.
@@ -67,7 +64,7 @@ tool-use information if the stream contains it."
                   ;; Add reasoning content if available
                   (when (and reasoning-content
                              (not (equal reasoning-content :null))
-                             gptel-deepseek-show-reasoning)
+                             (gptel-deepseek-show-reasoning (plist-get info :backend)))
                     (unless (plist-get info :header-printed)
                       (push "*Chain of Thought*\n\n" content-strs)
                       (plist-put info :header-printed t))
@@ -77,7 +74,7 @@ tool-use information if the stream contains it."
                   (when (and main-content (not (equal main-content :null)))
                     (when (and (plist-get info :has-reasoning)
                                (not (plist-get info :separator-added))
-                               gptel-deepseek-show-reasoning)
+                               (gptel-deepseek-show-reasoning(plist-get info :backend)))
                       (push "\n*Chain of Thought Complete*\n\n" content-strs)
                       (plist-put info :separator-added t))
                     (push main-content content-strs))
@@ -101,6 +98,7 @@ tool-use information if the stream contains it."
 ;;;###autoload
 (cl-defun gptel-make-deepseek
     (name &key curl-args models stream key request-params
+          (show-reasoning t)
           (header
            (lambda () (when-let (key (gptel--get-api-key)))
                    `(("Authorization" . ,(concat "Bearer " key)))))
@@ -120,6 +118,7 @@ tool-use information if the stream contains it."
                   :stream stream
                   :request-params request-params
                   :curl-args curl-args
+                  :show-reasoning show-reasoning
                   :url (concat protocol "://" host endpoint))))
     (setf (alist-get name gptel--known-backends nil nil #'equal) backend)
     backend))

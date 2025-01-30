@@ -651,6 +651,7 @@ Register a backend with
   :endpoint "/chat/completions"
   :stream t
   :key "your-api-key"               ;can be a function that returns the key
+  :show-reasoning t ; whether to include the chain of thought in output
   :models '(deepseek-chat deepseek-reasoner))
 
 #+end_src
@@ -669,6 +670,7 @@ The above code makes the backend available to select.  If you want it to be the 
         :endpoint "/chat/completions"
         :stream t
         :key "your-api-key"             ;can be a function that returns the key
+        :show-reasoning t
         :models '(deepseek-chat deepseek-coder)))
 
 #+end_src
