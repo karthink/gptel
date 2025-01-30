@@ -23,7 +23,7 @@
   "DeepSeek backend for gptel."
   :group 'gptel)
 
-(cl-defmethod gptel--parse-response ((backend gptel-deepseek) response info)
+(cl-defmethod gptel--parse-response ((_backend gptel-deepseek) response info)
   "Parse a DeepSeek non-streaming RESPONSE and return response text."
   (let* ((choice0 (map-nested-elt response '(:choices 0)))
          (message (plist-get choice0 :message))
