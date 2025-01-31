@@ -327,6 +327,15 @@ ARGS are the original function call arguments."
 ;; (advice-add 'gptel-request :around #'gptel-org--send-with-props)
 
 
+
+(defconst gptel-org-property-names '("GPTEL_SYSTEM" "GPTEL_BACKEND" "GPTEL_MODEL"
+                                     "GPTEL_TEMPERATURE" "GPTEL_MAX_TOKENS"
+                                     "GPTEL_NUM_MESSAGES_TO_SEND" "GPTEL_TOPIC")
+  "Org property names that are relevant to gptel configuration.
+
+These could be useful e.g. to add to `org-use-property-inheritance' to enable
+inheritance of gptel configuration.")
+
 ;;; Saving and restoring state
 (defun gptel-org--entry-properties (&optional pt)
   "Find gptel configuration properties stored at PT."
@@ -334,9 +343,7 @@ ARGS are the original function call arguments."
       ((`(,system ,backend ,model ,temperature ,tokens ,num)
          (mapcar
           (lambda (prop) (org-entry-get (or pt (point)) prop 'selective))
-          '("GPTEL_SYSTEM" "GPTEL_BACKEND" "GPTEL_MODEL"
-            "GPTEL_TEMPERATURE" "GPTEL_MAX_TOKENS"
-            "GPTEL_NUM_MESSAGES_TO_SEND"))))
+          gptel-org-property-names)))
     (when system
       (setq system (string-replace "\\n" "\n" system)))
     (when backend
