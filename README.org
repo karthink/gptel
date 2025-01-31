@@ -1319,6 +1319,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-post-stream-hook=        | Runs after each streaming insertion                         |
 | =gptel-context-wrap-function=   | To include additional context formatted your way            |
 | =gptel-rewrite-default-action=  | Automatically diff, ediff, merge or replace refactored text |
+| =gptel-post-rewrite-functions=  | Runs after a =gptel-rewrite= request succeeds               |
 |---------------------------------+-------------------------------------------------------------|
 
 #+html: </details>
