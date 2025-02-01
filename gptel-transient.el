@@ -510,6 +510,7 @@ Also format its value in the Transient menu."
      :reader
      (lambda (prompt _ _history)
        (read-buffer prompt (buffer-name (other-buffer)) nil)))
+	("t" "*scratch* buffer" "t")
     ("k" "Kill-ring" "k")]]
   [["Send"
     (gptel--suffix-send)
@@ -1184,6 +1185,13 @@ This sets the variable `gptel-include-tool-results', which see."
                      args))
       (setq output-to-other-buffer-p t)
       (setq buffer (get-buffer-create gptel-buffer-name))
+      (with-current-buffer buffer (setq position (point))))
+	 ((setq gptel-buffer-name
+            (cl-some (lambda (s) (and (stringp s) (string-prefix-p "t" s)
+									  (substring s 1)))
+                     args))
+      (setq output-to-other-buffer-p t)
+      (setq buffer (get-buffer-create "*scratch*"))
       (with-current-buffer buffer (setq position (point)))))
 
     (prog1 (gptel-request prompt
