@@ -231,7 +231,7 @@ value of `gptel-org-branching-context', which see."
                     (gptel--parse-buffer gptel-backend max-entries)))))
           (display-warning
              '(gptel org)
-             "Using `gptel-org-branching-context' requires Org version 9.6.7 or higher, it will be ignored.")
+             "Using `gptel-org-branching-context' requires Org version 9.7 or higher, it will be ignored.")
           (gptel--parse-buffer gptel-backend max-entries))
       ;; Create prompt the usual way
       (gptel--parse-buffer gptel-backend max-entries))))

@@ -1120,7 +1120,7 @@ If this variable is non-nil, you should probably edit =gptel-prompt-prefix-alist
 
 Otherwise, the default prompt prefix will make successive prompts sibling headings, and therefore on different conversation branches, which probably isn't what you want.
 
-Note: using this option requires Org 9.6.7 or higher to be available.  The [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]] package uses gptel to provide this branching conversation behavior for older versions of Org.
+Note: using this option requires Org 9.7 or higher to be available.  The [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]] package uses gptel to provide this branching conversation behavior for older versions of Org.
   
 ***** Save gptel parameters to Org headings (reproducible chats)
 
