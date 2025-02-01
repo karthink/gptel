@@ -270,8 +270,10 @@ Mutate state INFO with response metadata."
   (let ((prompts-plist
          `(:model ,(gptel--model-name gptel-model)
            :messages [,@prompts]
-           :stream ,(or gptel-stream :json-false))))
-    (when gptel-temperature
+           :stream ,(or gptel-stream :json-false)))
+        (reasoning-model-p ; TODO: Embed this capability in the model's properties
+         (memq gptel-model '(o1 o1-preview o1-mini o3-mini o3))))
+    (when (and gptel-temperature (not reasoning-model-p))
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-use-tools
       (when (eq gptel-use-tools 'force)
@@ -279,12 +281,13 @@ Mutate state INFO with response metadata."
       (when gptel-tools
         (plist-put prompts-plist :tools
                    (gptel--parse-tools backend gptel-tools))
-        (plist-put prompts-plist :parallel_tool_calls t)))
+        (unless reasoning-model-p
+          (plist-put prompts-plist :parallel_tool_calls t))))
     (when gptel-max-tokens
       ;; HACK: The OpenAI API has deprecated max_tokens, but we still need it
       ;; for OpenAI-compatible APIs like GPT4All (#485)
-      (plist-put prompts-plist (if (memq gptel-model '(o1 o1-preview o1-mini o3-mini))
-                                   :max_completion_tokens :max_tokens)
+      (plist-put prompts-plist
+                 (if reasoning-model-p :max_completion_tokens :max_tokens)
                  gptel-max-tokens))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
