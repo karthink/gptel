@@ -239,7 +239,7 @@ See `gptel--url-get-response' for details."
           (unless tracking-marker
             (goto-char start-marker)
             (unless (or (bobp) (plist-get info :in-place))
-              (insert "\n\n")
+              (insert gptel-response-separator)
               (when gptel-mode
                 ;; Put prefix before AI response.
                 (insert (gptel-response-prefix-string)))

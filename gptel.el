@@ -372,6 +372,9 @@ This is an alist mapping major modes to the reply prefix strings.  This
 is only inserted in dedicated gptel buffers before the AI's response."
   :type '(alist :key-type symbol :value-type string))
 
+(defcustom gptel-response-separator "\n\n"
+  "String inserted before responses.")
+
 (defcustom gptel-use-header-line t
   "Whether `gptel-mode' should use header-line for status information.
 
@@ -2331,7 +2334,7 @@ See `gptel--url-get-response' for details."
         (when-let* ((transformer (plist-get info :transformer)))
           (setq response (funcall transformer response)))
         (when tracking-marker           ;separate from previous response
-          (setq response (concat "\n\n" response)))
+          (setq response (concat gptel-response-separator response)))
         (save-excursion
           (add-text-properties
            0 (length response) '(gptel response front-sticky (gptel)) response)
@@ -2340,7 +2343,7 @@ See `gptel--url-get-response' for details."
             ;; (run-hooks 'gptel-pre-response-hook)
             (unless (or (bobp) (plist-get info :in-place)
                         tracking-marker)
-              (insert "\n\n")
+              (insert gptel-response-separator)
               (when gptel-mode
                 (insert (gptel-response-prefix-string)))
               (move-marker start-marker (point)))
