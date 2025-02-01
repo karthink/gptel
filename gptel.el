@@ -1567,8 +1567,8 @@ implementation, used by OpenAI-compatible APIs and Ollama."
                              ,@(if enum (list :enum (vconcat enum)))
                              ,@(cond
                                 ((equal type "object")
-                                 (list :parameters (plist-get arg :parameters)
                                   :additionalProperties :json-false))
+                                 (list :properties (plist-get arg :properties)
                                 ((equal type "array")
                                  ;; TODO(tool) If the item type is an object,
                                  ;; add :additionalProperties to it
