@@ -555,7 +555,7 @@ To set the temperature for a chat session interactively call
      :cutoff-date "2023-12")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
-     :capabilities (nosystem media)
+     :capabilities (nosystem media reasoning)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 15
@@ -570,7 +570,7 @@ To set the temperature for a chat session interactively call
      :input-cost 15
      :output-cost 60
      :cutoff-date "2023-10"
-     :capabilities (nosystem)
+     :capabilities (nosystem reasoning)
      :request-params (:stream :json-false))
     (o1-mini
      :description "Faster and cheaper reasoning model good at coding, math, and science"
@@ -578,7 +578,15 @@ To set the temperature for a chat session interactively call
      :input-cost 3
      :output-cost 12
      :cutoff-date "2023-10"
-     :capabilities (nosystem)
+     :capabilities (nosystem reasoning)
+     :request-params (:stream :json-false))
+    (o3-mini
+     :description "High intelligence at the same cost and latency targets of o1-mini"
+     :context-window 200
+     :input-cost 3
+     :output-cost 12
+     :cutoff-date "2023-10"
+     :capabilities (nosystem reasoning)
      :request-params (:stream :json-false))
     ;; limited information available
     (gpt-4-32k
