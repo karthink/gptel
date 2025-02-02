@@ -574,7 +574,7 @@ To set the temperature for a chat session interactively call
      :cutoff-date "2023-10"
      :capabilities (nosystem reasoning))
     (o1-mini
-     :description "Faster and cheaper reasoning model good at coding, math, and science"
+     :description "DEPRECATED: PLEASE USE o3-mini"
      :context-window 128
      :input-cost 3
      :output-cost 12
