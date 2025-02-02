@@ -293,7 +293,7 @@ for inclusion into the user prompt for the gptel request."
             (save-excursion
               (goto-char (and par (org-element-property :contents-begin par)))
               (skip-chars-forward "\t ")
-              (point)))                 ;account for leading space
+              (point)))                 ;account for leading space before object
          (<= (- (and par (org-element-property :contents-end par))
                 (org-element-property :end object))
              1))))
