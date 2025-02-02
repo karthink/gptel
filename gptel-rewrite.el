@@ -46,6 +46,18 @@ for a particular major-mode or project."
   :group 'gptel
   :type 'hook)
 
+(defcustom gptel-post-rewrite-functions nil
+  "Abnormal hook run after a `gptel-rewrite' action.
+
+This hook is called after the LLM response for the rewrite action
+has been fully received in a temporary buffer.  Each function is
+called with two arguments: the response beginning and end
+positions.
+
+Note: this hook only runs if the rewrite request succeeds."
+  :type 'hook
+  :group 'gptel)
+
 (defcustom gptel-rewrite-default-action nil
   "Action to take when rewriting a text region using gptel.
 
@@ -53,10 +65,15 @@ When the LLM response with the rewritten text is received, you can
 - merge it with the current region, possibly creating a merge conflict,
 - diff or ediff against the original region,
 - or accept it in place, replacing the original region.
+- display a dispatch menu with the above choices.
 
 If this option is nil (the default), gptel waits for an explicit
-command.  Set it to the symbol `merge', `diff', `ediff' or
-`accept' to automatically do one of these things instead."
+command.  Set it to the symbol `merge', `diff', `ediff', `accept'
+or `dispatch' to automatically do one of these things instead.
+
+You can also set it to a function of your choosing for a custom
+action.  This function receives one argument, the rewrite
+overlay."
   :group 'gptel
   :type '(choice
           (const :tag "Wait" nil)
@@ -64,6 +81,7 @@ command.  Set it to the symbol `merge', `diff', `ediff' or
           (const :tag  "Diff against current region" diff)
           (const :tag "Ediff against current region" ediff)
           (const :tag "Accept rewrite" accept)
+          (const :tag "Dispatch" dispatch)
           (function :tag "Custom action")))
 
 (defface gptel-rewrite-highlight-face
@@ -329,29 +347,30 @@ BUF is the buffer to modify, defaults to the overlay buffer."
         (when changed (smerge-mode 1)))
       (gptel--rewrite-reject ovs))))
 
-(defun gptel--rewrite-dispatch (choice)
-  "Dispatch actions for gptel rewrites."
-  (interactive
-   (list
-    (if-let* ((ov (cdr-safe (get-char-property-and-overlay (point) 'gptel-rewrite))))
-      (unwind-protect
-          (pcase-let ((choices '((?a "accept") (?k "reject") (?r "iterate")
-                                 (?m "merge") (?d "diff") (?e "ediff")))
-                      (hint-str (concat "[" (gptel--model-name gptel-model) "]\n")))
-            (overlay-put
-             ov 'before-string
-             (concat
-              (unless (eq (char-before (overlay-start ov)) ?\n) "\n")
-              (propertize "REWRITE READY: " 'face 'success)
-              (mapconcat (lambda (e) (cdr e)) (mapcar #'rmc--add-key-description choices) ", ")
-              (propertize
-               " " 'display `(space :align-to (- right ,(1+ (length hint-str)))))
-              (propertize hint-str 'face 'success)))
-            (read-multiple-choice "Action: " choices))
-        (overlay-put ov 'before-string nil))
-      (user-error "No gptel rewrite at point!"))))
-  (call-interactively
-   (intern (concat "gptel--rewrite-" (cadr choice)))))
+(defun gptel--rewrite-dispatch (&optional ov ci)
+  "Dispatch actions for gptel rewrites.
+
+OV is the rewrite overlay, CI is true for interactive calls."
+  (interactive (list (gptel--rewrite-overlay-at) t))
+  (let ((choice))
+    (unwind-protect
+        (pcase-let ((choices '((?a "accept") (?k "reject") (?r "iterate")
+                               (?m "merge") (?d "diff") (?e "ediff")))
+                    (hint-str (concat "[" (gptel--model-name gptel-model) "]\n")))
+          (overlay-put
+           ov 'before-string
+           (concat
+            (unless (eq (char-before (overlay-start ov)) ?\n) "\n")
+            (propertize "REWRITE READY: " 'face 'success)
+            (mapconcat (lambda (e) (cdr e)) (mapcar #'rmc--add-key-description choices) ", ")
+            (propertize
+             " " 'display `(space :align-to (- right ,(1+ (length hint-str)))))
+            (propertize hint-str 'face 'success)))
+          (setq choice (read-multiple-choice "Action: " choices)))
+      (overlay-put ov 'before-string nil))
+    (if ci
+        (call-interactively (intern (concat "gptel--rewrite-" (cadr choice))))
+      (funcall (intern (concat "gptel--rewrite-" (cadr choice))) ov))))
 
 (defun gptel--rewrite-callback (response info)
   "Callback for gptel rewrite actions.
@@ -384,7 +403,6 @@ INFO is the async communication channel for the rewrite request."
           (insert response)
           (unless (eobp) (ignore-errors (delete-char (length response))))
           (font-lock-ensure)
-          (cl-callf concat (overlay-get ov 'gptel-rewrite) response)
           (overlay-put ov 'display (buffer-string))))
       (unless (plist-get info :stream) (gptel--rewrite-callback t info)))
      ((eq response 'abort)              ;request aborted
@@ -400,11 +418,14 @@ INFO is the async communication channel for the rewrite request."
           (with-current-buffer proc-buf
             (let ((inhibit-read-only t))
               (delete-region (point) (point-max))
+              ;; Run post-rewrite-functions on rewritten text in its buffer
+              (run-hook-with-args 'gptel-post-rewrite-functions (point-min) (point-max))
               (when (and (plist-get info :newline)
                          (not (eq (char-before (point-max)) ?\n)))
                 (insert "\n"))
               (font-lock-ensure))
             (overlay-put ov 'display (buffer-string))
+            (overlay-put ov 'gptel-rewrite (buffer-string))
             (kill-buffer proc-buf))
           (when (buffer-live-p buf)
             (with-current-buffer buf

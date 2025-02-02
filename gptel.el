@@ -372,6 +372,9 @@ This is an alist mapping major modes to the reply prefix strings.  This
 is only inserted in dedicated gptel buffers before the AI's response."
   :type '(alist :key-type symbol :value-type string))
 
+(defcustom gptel-response-separator "\n\n"
+  "String inserted before responses.")
+
 (defcustom gptel-use-header-line t
   "Whether `gptel-mode' should use header-line for status information.
 
@@ -555,7 +558,7 @@ To set the temperature for a chat session interactively call
      :cutoff-date "2023-12")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
-     :capabilities (nosystem media)
+     :capabilities (nosystem media reasoning)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 15
@@ -570,7 +573,7 @@ To set the temperature for a chat session interactively call
      :input-cost 15
      :output-cost 60
      :cutoff-date "2023-10"
-     :capabilities (nosystem)
+     :capabilities (nosystem reasoning)
      :request-params (:stream :json-false))
     (o1-mini
      :description "Faster and cheaper reasoning model good at coding, math, and science"
@@ -578,7 +581,15 @@ To set the temperature for a chat session interactively call
      :input-cost 3
      :output-cost 12
      :cutoff-date "2023-10"
-     :capabilities (nosystem)
+     :capabilities (nosystem reasoning)
+     :request-params (:stream :json-false))
+    (o3-mini
+     :description "High intelligence at the same cost and latency targets of o1-mini"
+     :context-window 200
+     :input-cost 3
+     :output-cost 12
+     :cutoff-date "2023-10"
+     :capabilities (nosystem reasoning)
      :request-params (:stream :json-false))
     ;; limited information available
     (gpt-4-32k
@@ -1188,6 +1199,9 @@ file."
           (gptel-mode -1)
           (user-error (format "`gptel-mode' is not supported in `%s'." major-mode)))
         (add-hook 'before-save-hook #'gptel--save-state nil t)
+        (when (derived-mode-p 'org-mode)
+          ;; Work around bug in `org-fontify-extend-region'.
+          (add-hook 'gptel-post-response-functions #'font-lock-fontify-region nil t))
         (gptel--restore-state)
         (if gptel-use-header-line
           (setq gptel--old-header-line header-line-format
@@ -1564,8 +1578,10 @@ implementation, used by OpenAI-compatible APIs and Ollama."
                              ,@(if enum (list :enum (vconcat enum)))
                              ,@(cond
                                 ((equal type "object")
-                                 (list :parameters (plist-get arg :parameters)
-                                  :additionalProperties :json-false))
+                                 (list :properties (plist-get arg :properties)
+                                       :required (or (plist-get arg :required)
+                                                     (vector))
+                                       :additionalProperties :json-false))
                                 ((equal type "array")
                                  ;; TODO(tool) If the item type is an object,
                                  ;; add :additionalProperties to it
@@ -1928,10 +1944,9 @@ Run post-response hooks."
                   (arg-values)
                   (process-tool-result
                    (lambda (result)
-                     (when result
-                       (plist-put info :tool-success t)
-                       (plist-put tool-call :result (gptel--to-string result))
-                       (push (list name arg-values result) result-alist))
+                     (plist-put info :tool-success t)
+                     (plist-put tool-call :result (gptel--to-string result))
+                     (push (list name arg-values result) result-alist)
                      (cl-incf tool-idx)
                      (when (>= tool-idx ntools) ; All tools have run
                        (gptel--inject-prompt
@@ -2319,7 +2334,7 @@ See `gptel--url-get-response' for details."
         (when-let* ((transformer (plist-get info :transformer)))
           (setq response (funcall transformer response)))
         (when tracking-marker           ;separate from previous response
-          (setq response (concat "\n\n" response)))
+          (setq response (concat gptel-response-separator response)))
         (save-excursion
           (add-text-properties
            0 (length response) '(gptel response front-sticky (gptel)) response)
@@ -2328,7 +2343,7 @@ See `gptel--url-get-response' for details."
             ;; (run-hooks 'gptel-pre-response-hook)
             (unless (or (bobp) (plist-get info :in-place)
                         tracking-marker)
-              (insert "\n\n")
+              (insert gptel-response-separator)
               (when gptel-mode
                 (insert (gptel-response-prefix-string)))
               (move-marker start-marker (point)))
@@ -2697,12 +2712,6 @@ RESPONSE is
 
 for tool call results.  INFO contains the state of the request."
   (let* ((start-marker (plist-get info :position))
-         ;; FIXME(tool) use a wrapper instead of a manual text-property search,
-         ;; this is fragile
-         (ov-start (save-excursion
-                     (goto-char start-marker)
-                     (text-property-search-backward 'gptel 'response)
-                     (point)))
          (tracking-marker (plist-get info :tracking-marker)))
     (if (cl-typep (caar response) 'gptel-tool) ;tool calls
         ;; pending tool calls look like ((tool callback args) ...)
@@ -2748,9 +2757,18 @@ for tool call results.  INFO contains the state of the request."
                                   (format (propertize "\n%s wants to run:\n"
                                                       'face 'font-lock-string-face)
                                           backend-name))))
+                   ;; FIXME(tool) use a wrapper instead of a manual text-property search,
+                   ;; this is fragile
+                   (ov-start (save-excursion
+                               (goto-char start-marker)
+                               (text-property-search-backward 'gptel 'response)
+                               (point)))
                    (ov (or (cdr-safe (get-char-property-and-overlay
                                       start-marker 'gptel-tool))
                            (make-overlay ov-start (or tracking-marker start-marker)))))
+              ;; If the cursor is at the overlay-end, it ends up outside, so move it back
+              (unless tracking-marker
+                (when (= (point) start-marker) (ignore-errors (backward-char))))
               (pcase-dolist (`(,tool-spec ,arg-values _) response)
                 (push (gptel--format-tool-call (gptel-tool-name tool-spec) arg-values)
                       confirm-strings))

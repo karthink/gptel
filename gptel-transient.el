@@ -833,11 +833,12 @@ responses."
 (transient-define-infix gptel--infix-temperature ()
   "Temperature of request."
   :description "Temperature (0 - 2.0)"
+  :display-nil "default"
   :class 'gptel-lisp-variable
   :variable 'gptel-temperature
   :set-value #'gptel--set-with-scope
   :key "-T"
-  :prompt "Temperature controls the response randomness (0.0-2.0, leave empty for default): "
+  :prompt "Temperature controls the response randomness (0.0-2.0, leave empty for API default): "
   :reader 'gptel--transient-read-variable)
 
 (transient-define-infix gptel--infix-track-response ()

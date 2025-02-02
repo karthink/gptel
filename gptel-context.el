@@ -146,7 +146,8 @@ Emacs."
           (buffer-file-name)))
    ;; No region is selected, and ARG is positive.
    ((and arg (> (prefix-numeric-value arg) 0))
-    (let* ((buffer-name (read-buffer "Choose buffer to add as context: " nil t))
+    (let* ((buffer-name (read-buffer "Choose buffer to add as context: "
+                                     (current-buffer) t))
            (start (with-current-buffer buffer-name (point-min)))
            (end (with-current-buffer buffer-name (point-max))))
       (gptel-context--add-region
@@ -177,7 +178,7 @@ Emacs."
 
 ;;;###autoload (autoload 'gptel-add "gptel-context" "Add/remove regions or buffers from gptel's context." t)
 (defalias 'gptel-add #'gptel-context-add)
-  
+
 (defun gptel--file-binary-p (path)
   "Check if file at PATH is readable and binary."
   (condition-case nil
@@ -404,7 +405,7 @@ START and END signify the region delimiters."
   "Return the context overlay at point, if any."
   (cl-find-if (lambda (ov) (overlay-get ov 'gptel-context))
               (overlays-at (point))))
-    
+
 ;;;###autoload
 (defun gptel-context--collect ()
   "Get the list of all active context overlays."
@@ -511,13 +512,14 @@ context overlays, see `gptel-context--alist'."
     (let ((inhibit-read-only t))
       (erase-buffer)
       (setq header-line-format
-            (concat
-             (propertize "d" 'face 'help-key-binding) ": Mark/unmark deletion, "
-             (propertize "n" 'face 'help-key-binding) "/"
-             (propertize "p" 'face 'help-key-binding) ": jump to next/previous, "
-             (propertize "C-c C-c" 'face 'help-key-binding) ": apply, "
-             (propertize "C-c C-k" 'face 'help-key-binding) ": cancel, "
-             (propertize "q" 'face 'help-key-binding) ": quit"))
+            (substitute-command-keys
+             (concat
+              "\\[gptel-context-flag-deletion]: Mark/unmark deletion, "
+              "\\[gptel-context-next]/\\[gptel-context-previous]: next/previous, "
+              "\\[gptel-context-visit]: visit, "
+              "\\[gptel-context-confirm]: apply, "
+              "\\[gptel-context-quit]: cancel, "
+              "\\[quit-window]: quit")))
       (save-excursion
         (let ((contexts gptel-context--alist))
           (if (length> contexts 0)

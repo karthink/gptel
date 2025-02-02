@@ -470,17 +470,9 @@ The above code makes the backend available to select.  If you want it to be the 
 
 Register a backend with
 #+begin_src emacs-lisp
-;; Perplexity offers an OpenAI compatible API
-(gptel-make-openai "Perplexity"         ;Any name you want
-  :host "api.perplexity.ai"
+(gptel-make-perplexity "Perplexity"     ;Any name you want
   :key "your-api-key"                   ;can be a function that returns the key
-  :endpoint "/chat/completions"
-  :stream t
-  :models '(;; has many more, check perplexity.ai
-            pplx-7b-chat
-            pplx-70b-chat
-            pplx-7b-online
-            pplx-70b-online))
+  :stream t)                            ;If you want responses to be streamed
 #+end_src
 
 You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
@@ -491,18 +483,9 @@ The above code makes the backend available to select.  If you want it to be the 
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
 (setq
- gptel-model   'pplx-7b-chat
- gptel-backend
- (gptel-make-openai "Perplexity"
-   :host "api.perplexity.ai"
-   :key "your-api-key"
-   :endpoint "/chat/completions"
-   :stream t
-   :models '(;; has many more, check perplexity.ai
-             pplx-7b-chat
-             pplx-70b-chat
-             pplx-7b-online
-             pplx-70b-online)))
+ gptel-model   'sonar
+ gptel-backend (gptel-make-perplexity "Perplexity"
+                 :key "your-api-key" :stream t))
 #+end_src
 
 #+html: </details>
@@ -1137,7 +1120,7 @@ If this variable is non-nil, you should probably edit =gptel-prompt-prefix-alist
 
 Otherwise, the default prompt prefix will make successive prompts sibling headings, and therefore on different conversation branches, which probably isn't what you want.
 
-Note: using this option requires Org 9.6.7 or higher to be available.  The [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]] package uses gptel to provide this branching conversation behavior for older versions of Org.
+Note: using this option requires Org 9.7 or higher to be available.  The [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]] package uses gptel to provide this branching conversation behavior for older versions of Org.
   
 ***** Save gptel parameters to Org headings (reproducible chats)
 
@@ -1334,6 +1317,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-post-stream-hook=        | Runs after each streaming insertion                         |
 | =gptel-context-wrap-function=   | To include additional context formatted your way            |
 | =gptel-rewrite-default-action=  | Automatically diff, ediff, merge or replace refactored text |
+| =gptel-post-rewrite-functions=  | Runs after a =gptel-rewrite= request succeeds               |
 |---------------------------------+-------------------------------------------------------------|
 
 #+html: </details>

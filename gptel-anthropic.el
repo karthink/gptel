@@ -223,7 +223,9 @@ TOOLS is a list of `gptel-tool' structs, which see."
                                   ,@(if enum (list :enum (vconcat enum)))
                                   ,@(cond
                                      ((equal type "object")
-                                      (list :properties (plist-get arg :properties)))
+                                      (list
+                                       :properties (plist-get arg :properties)
+                                       :required (or (plist-get arg :required) [])))
                                      ((equal type "array")
                                       (list :items (plist-get arg :items)))))))
                   :required
