@@ -135,7 +135,8 @@ context chunk.  This is accessible as, for example:
           (buffer-file-name)))
    ;; No region is selected, and ARG is positive.
    ((and arg (> (prefix-numeric-value arg) 0))
-    (let* ((buffer-name (read-buffer "Choose buffer to add as context: " nil t))
+    (let* ((buffer-name (read-buffer "Choose buffer to add as context: "
+                                     (current-buffer) t))
            (start (with-current-buffer buffer-name (point-min)))
            (end (with-current-buffer buffer-name (point-max))))
       (gptel-context--add-region
