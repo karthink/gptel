@@ -586,7 +586,7 @@ To set the temperature for a chat session interactively call
      :input-cost 3
      :output-cost 12
      :cutoff-date "2023-10"
-     :capabilities (nosystem reasoning)
+     :capabilities (structured-outputs tool-use json url function-calling developer-message)
      :request-params (:developer :reasoning_effort))
     ;; limited information available
     (gpt-4-32k
