@@ -288,13 +288,12 @@ for inclusion into the user prompt for the gptel request."
 (defun gptel-org--link-standalone-p (object)
   "Check if link OBJECT is on a line by itself."
   ;; Specify ancestor TYPES as list (#245)
-  (let ((par (org-element-lineage object '(paragraph))))
+  (when-let* ((par (org-element-lineage object '(paragraph))))
     (and (= (gptel-org--element-begin object)
             (save-excursion
               (goto-char (org-element-property :contents-begin par))
               (skip-chars-forward "\t ")
-              (point)))                 ;account for leading space
-                                        ;before object
+              (point)))                 ;account for leading space before object
          (<= (- (org-element-property :contents-end par)
                 (org-element-property :end object))
              1))))
