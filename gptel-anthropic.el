@@ -269,42 +269,37 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
                  :content `[(:type "text" :text ,text)])))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-anthropic) &optional max-entries)
-  (let ((prompts) (prop) (prev-pt (point))
+  (let ((prompts) (prev-pt (point))
         (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
-                                                (gptel--model-capable-p 'url)))))
+                                                  (gptel--model-capable-p 'url)))))
     (if (or gptel-mode gptel-track-response)
-        (while (and
-                (or (not max-entries) (>= max-entries 0))
-                (setq prop (text-property-search-backward
-                            'gptel 'response
-                            (when (get-char-property (max (point-min) (1- (point)))
-                                                     'gptel)
-                              t))))
+        (while (and (or (not max-entries) (>= max-entries 0))
+                    (goto-char (previous-single-property-change
+                                (point) 'gptel nil (point-min)))
+                    (not (= (point) prev-pt)))
           ;; HACK Until we can find a more robust solution for editing
           ;; responses, ignore prompts containing only whitespace, as the
           ;; Anthropic API can't handle it.  See #452, #409, #406, #351 and #321
           ;; We check for blank prompts by skipping whitespace and comparing
           ;; point against the previous.
           (unless (save-excursion (skip-syntax-forward " ") (>= (point) prev-pt))
-            (if (prop-match-value prop) ; assistant role
-                (push (list :role "assistant"
-                            :content
-                            (buffer-substring-no-properties (prop-match-beginning prop)
-                                                            (prop-match-end prop)))
-                      prompts)
-              (if include-media         ; user role: possibly with media
-                  (push (list :role "user"
-                              :content
-                              (gptel--anthropic-parse-multipart
-                               (gptel--parse-media-links
-                                major-mode (prop-match-beginning prop) (prop-match-end prop))))
-                        prompts)
-                (push (list :role "user"
-                            :content
-                            (gptel--trim-prefixes
-                             (buffer-substring-no-properties (prop-match-beginning prop)
-                                                             (prop-match-end prop))))
-                      prompts))))
+            (pcase (get-char-property (point) 'gptel)
+              ('response
+               (push (list :role "assistant"
+                           :content (buffer-substring-no-properties (point) prev-pt))
+                     prompts))
+              ('nil                     ; user role: possibly with media
+               (if include-media       
+                   (push (list :role "user"
+                               :content
+                               (gptel--anthropic-parse-multipart
+                                (gptel--parse-media-links major-mode (point) prev-pt)))
+                         prompts)
+                 (push (list :role "user"
+                             :content
+                             (gptel--trim-prefixes
+                              (buffer-substring-no-properties (point) prev-pt)))
+                       prompts)))))
           (setq prev-pt (point))
           (and max-entries (cl-decf max-entries)))
       (push (list :role "user"
