@@ -461,38 +461,6 @@ call `gptel-send' with a prefix argument."
   :type '(choice (natnum :tag "Specify Token count")
                  (const :tag "Default" nil)))
 
-(defcustom gptel-model 'gpt-4o-mini
-  "GPT Model for chat.
-
-The name of the model, as a symbol.  This is the name as expected
-by the LLM provider's API.
-
-The current options for ChatGPT are
-- `gpt-3.5-turbo'
-- `gpt-3.5-turbo-16k'
-- `gpt-4o-mini'
-- `gpt-4'
-- `gpt-4o'
-- `gpt-4-turbo'
-- `gpt-4-turbo-preview'
-- `gpt-4-32k'
-- `gpt-4-1106-preview'
-
-To set the model for a chat session interactively call
-`gptel-send' with a prefix argument."
-  :safe #'always
-  :type '(choice
-          (symbol :tag "Specify model name")
-          (const :tag "GPT 4 omni mini" gpt-4o-mini)
-          (const :tag "GPT 3.5 turbo" gpt-3.5-turbo)
-          (const :tag "GPT 3.5 turbo 16k" gpt-3.5-turbo-16k)
-          (const :tag "GPT 4" gpt-4)
-          (const :tag "GPT 4 omni" gpt-4o)
-          (const :tag "GPT 4 turbo" gpt-4-turbo)
-          (const :tag "GPT 4 turbo (preview)" gpt-4-turbo-preview)
-          (const :tag "GPT 4 32k" gpt-4-32k)
-          (const :tag "GPT 4 1106 (preview)" gpt-4-1106-preview)))
-
 (defcustom gptel-temperature 1.0
   "\"Temperature\" of the LLM response.
 
@@ -642,6 +610,23 @@ sources:
 
 - <https://openai.com/pricing>
 - <https://platform.openai.com/docs/models>")
+
+(defcustom gptel-model 'gpt-4o-mini
+  (concat
+   "GPT Model for chat.
+
+The name of the model, as a symbol.  This is the name as expected
+by the LLM provider's API.
+
+To set the model for a chat session interactively call
+`gptel-send' with a prefix argument.")
+  :safe #'always
+  :type `(choice
+	  (symbol :tag "Specify model name")
+	  ,@(mapcar (lambda (model)
+		      (list 'const :tag (symbol-name (car model))
+			    (car model)))
+		    gptel--openai-models)))
 
 (defvar gptel--openai
   (gptel-make-openai
