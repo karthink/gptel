@@ -30,8 +30,7 @@
 
 (cl-defstruct (gptel-deepseek (:include gptel-openai)
                               (:copier nil)
-                              (:constructor gptel--make-deepseek))
-  show-reasoning)
+                              (:constructor gptel--make-deepseek)))
 
 (cl-defmethod gptel--parse-response ((_backend gptel-deepseek) response info)
   "Parse a DeepSeek non-streaming RESPONSE and return response text."
@@ -39,7 +38,7 @@
          (message (plist-get choice0 :message))
          (reasoning (plist-get message :reasoning_content))
          (content (plist-get message :content))
-         (show-reasoning (gptel-deepseek-show-reasoning (plist-get info :backend))))
+         (show-reasoning gptel-include-reasoning))
     (plist-put info :stop-reason (plist-get choice0 :finish_reason))
     (plist-put info :output-tokens (map-nested-elt response '(:usage :completion_tokens)))
     (cond
@@ -94,7 +93,7 @@ tool-use information if the stream contains it."
                   ;; Add reasoning content if available
                   (when (and reasoning-content
                              (not (equal reasoning-content :null))
-                             (gptel-deepseek-show-reasoning (plist-get info :backend)))
+                             gptel-include-reasoning)
                     (unless (plist-get info :header-printed)
                       (push "*Chain of Thought*\n\n" content-strs)
                       (plist-put info :header-printed t))
@@ -104,7 +103,7 @@ tool-use information if the stream contains it."
                   (when (and main-content (not (equal main-content :null)))
                     (when (and (plist-get info :has-reasoning)
                                (not (plist-get info :separator-added))
-                               (gptel-deepseek-show-reasoning(plist-get info :backend)))
+                               gptel-include-reasoning)
                       (push "\n*Chain of Thought Complete*\n\n" content-strs)
                       (plist-put info :separator-added t))
                     (push main-content content-strs))
@@ -128,10 +127,9 @@ tool-use information if the stream contains it."
 ;;;###autoload
 (cl-defun gptel-make-deepseek
     (name &key curl-args models stream key request-params
-          (show-reasoning t)
           (header
-           (lambda () (when-let (key (gptel--get-api-key)))
-                   `(("Authorization" . ,(concat "Bearer " key)))))
+           (lambda () (when-let (key (gptel--get-api-key))
+                        `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.deepseek.com")
           (protocol "https")
           (endpoint "/v1/chat/completions"))
@@ -148,7 +146,6 @@ tool-use information if the stream contains it."
                   :stream stream
                   :request-params request-params
                   :curl-args curl-args
-                  :show-reasoning show-reasoning
                   :url (concat protocol "://" host endpoint))))
     (setf (alist-get name gptel--known-backends nil nil #'equal) backend)
     backend))

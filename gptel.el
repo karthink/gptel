@@ -1588,6 +1588,10 @@ implementation, used by OpenAI-compatible APIs and Ollama."
 This will be injected into the messages list in the prompt to
 send to the LLM.")
 
+(defcustom gptel-include-reasoning t
+  "Whether to include reasoning content in responses."
+  :type 'boolean)
+
 ;; FIXME(fsm) unify this with `gptel--wrap-user-prompt', which is a mess
 (cl-defgeneric gptel--inject-prompt
   (_backend data new-prompt &optional _position)
