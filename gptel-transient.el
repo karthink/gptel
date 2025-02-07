@@ -1305,8 +1305,10 @@ This uses the prompts in the variable
                   (complete-with-action action gptel--crowdsourced-prompts str pred)))
               nil t)))
         (when-let ((prompt (gethash choice gptel--crowdsourced-prompts)))
-            (setq gptel--system-message prompt)
-            (call-interactively #'gptel--suffix-system-message)))
+            (gptel--set-with-scope
+             'gptel--system-message prompt gptel--set-buffer-locally)
+            (gptel--edit-directive 'gptel--system-message)
+            (deactivate-mark)))
     (message "No prompts available.")))
 
 (transient-define-suffix gptel--suffix-system-message (&optional cancel)
