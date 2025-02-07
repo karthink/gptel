@@ -1366,7 +1366,8 @@ it is run after exiting the edit."
           ;; If it's a list, insert only the system message part
           (insert (car-safe (gptel--parse-directive directive 'raw)))
           (push-mark nil 'nomsg))
-        (activate-mark))
+        (activate-mark)
+	(visual-line-mode 1))
       (display-buffer (current-buffer)
                       `((display-buffer-below-selected)
                         (body-function . ,#'select-window)
