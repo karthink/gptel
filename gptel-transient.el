@@ -929,9 +929,8 @@ supports.  See `gptel-track-media' for more information."
   :key "-d"
   :description "Remove all"
   (interactive)
-  (when (y-or-n-p "Remove all context? ")
-    (gptel-context-remove-all)
-    (transient-setup)))
+  (gptel-context-remove-all t)
+  (transient-setup))
 
 ;; ** Infix for additional directive
 
