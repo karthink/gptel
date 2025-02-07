@@ -231,7 +231,7 @@ value of `gptel-org-branching-context', which see."
                     (gptel--parse-buffer gptel-backend max-entries)))))
           (display-warning
              '(gptel org)
-             "Using `gptel-org-branching-context' requires Org version 9.6.7 or higher, it will be ignored.")
+             "Using `gptel-org-branching-context' requires Org version 9.7 or higher, it will be ignored.")
           (gptel--parse-buffer gptel-backend max-entries))
       ;; Create prompt the usual way
       (gptel--parse-buffer gptel-backend max-entries))))
@@ -288,13 +288,12 @@ for inclusion into the user prompt for the gptel request."
 (defun gptel-org--link-standalone-p (object)
   "Check if link OBJECT is on a line by itself."
   ;; Specify ancestor TYPES as list (#245)
-  (let ((par (org-element-lineage object '(paragraph))))
+  (when-let* ((par (org-element-lineage object '(paragraph))))
     (and (= (gptel-org--element-begin object)
             (save-excursion
               (goto-char (org-element-property :contents-begin par))
               (skip-chars-forward "\t ")
-              (point)))                 ;account for leading space
-                                        ;before object
+              (point)))                 ;account for leading space before object
          (<= (- (org-element-property :contents-end par)
                 (org-element-property :end object))
              1))))
@@ -468,8 +467,9 @@ elements."
         ("*"
          (cond
           ((save-match-data
-             (and (looking-back "\\(?:[[:space:]]\\|\s\\)\\(?:_\\|\\*\\)"
-                                (max (- (point) 2) (point-min)))
+             (and (or (= (point) 2)
+                      (looking-back "\\(?:[[:space:]]\\|\s\\)\\(?:_\\|\\*\\)"
+                                    (max (- (point) 2) (point-min))))
                   (not (looking-at "[[:space:]]\\|\s"))))
            ;; Possible beginning of emphasis
            (and
@@ -483,7 +483,8 @@ elements."
             (progn (delete-char -1) (insert "/"))))
           ((save-excursion
              (ignore-errors (backward-char 2))
-             (looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]"))
+             (or (and (bobp) (looking-at "\\*[[:space:]]"))
+                 (looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]")))
            ;; Bullet point, replace with hyphen
            (delete-char -1) (insert "-"))))))
     (buffer-string)))
@@ -573,7 +574,7 @@ cleaning up after."
                      ;; If we are inside an Org-style src block, look for #+end_src
                      (cond
                       ((< (- (point-max) (point)) 8) ;not enough information to close Org src block
-                       (setq noop-t) (set-marker start-pt (match-beginning 0)))
+                       (setq noop-p t) (set-marker start-pt (match-beginning 0)))
                       ((looking-at "\\+end_src") ;Close Org src block
                        (setq in-src-block nil in-org-src-block nil)))
                    ;; Otherwise check for Markdown headings, or for #+begin_src
@@ -605,16 +606,18 @@ cleaning up after."
                    (save-match-data
                      (save-excursion
                        (ignore-errors (backward-char 2))
-                       (cond
-                        ((or (looking-at
+                       (cond      ; At bob, underscore/asterisk followed by word
+                        ((or (and (bobp) (looking-at "\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
+                             (looking-at ; word followed by underscore/asterisk
                               "[^[:space:][:punct:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
-                             (looking-at
+                             (looking-at ; underscore/asterisk followed by word
                               "\\(?:[[:space:][:punct:]]\\)\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
                          ;; Emphasis, replace with slashes
-                         (forward-char 2) (delete-char -1) (insert "/"))
-                        ((looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]")
+                         (forward-char (if (bobp) 1 2)) (delete-char -1) (insert "/"))
+                        ((or (and (bobp) (looking-at "\\*[[:space:]]"))
+                             (looking-at "\\(?:$\\|\\`\\)\n\\*[[:space:]]"))
                          ;; Bullet point, replace with hyphen
-                         (forward-char 2) (delete-char -1) (insert "-"))))))))))
+                         (forward-char (if (bobp) 1 2)) (delete-char -1) (insert "-"))))))))))
           (if noop-p
               (buffer-substring (point) start-pt)
             (prog1 (buffer-substring (point) (point-max))

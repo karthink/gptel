@@ -41,7 +41,27 @@
                                (:copier nil)
                                (:include gptel-backend)))
 
-(cl-defmethod gptel-curl--parse-stream ((_backend gptel-anthropic) _info)
+;; NOTE the crucial difference between
+;; - (push val (plist-get info :key)) and
+;;   (plist-put (plist-get info :key) (cons val ...))
+;;
+;; - (setf (plist-get info :key) val) and
+;;   (plist-put info :key val)
+;;
+;; in the following function.  The first variant conses at the head of info, the
+;; second one at the tail.  This means only the second option is viable for
+;; mutating a plist function argument that's passed by reference.
+;; Do NOT change the plist-put to push or setf!
+
+;; NOTE: The stream parser looks complicated only because it handles streaming
+;; tool calls.  Stream parsing is simple: if you are studying this code, look at
+;; a commit from before tool-use support was added to gptel.
+(cl-defmethod gptel-curl--parse-stream ((_backend gptel-anthropic) info)
+  "Parse an Anthropic data stream.
+
+Return the text response accumulated since the last call to this
+function.  Additionally, mutate state INFO to add tool-use
+information if the stream contains it.  Not my best work, I know."
   (let* ((content-strs)
          (pt (point)))
     (condition-case nil
@@ -49,37 +69,197 @@
           (setq pt (match-beginning 0))
           (if (equal (line-end-position) (point-max))
               (error "Data block incomplete"))
-          (when (looking-at "content_block_\\(?:start\\|delta\\|stop\\)")
+          (cond
+           ((looking-at "content_block_delta") ;collect incremental
+            (forward-line 1) (forward-char 5)  ;text or tool responses
+            (when-let* ((delta (plist-get (gptel--json-read) :delta)))
+              (if-let* ((content (plist-get delta :text))
+                        ((not (eq content :null))))
+                  (push content content-strs) ;collect text
+                (if-let* ((partial-json (plist-get delta :partial_json)))
+                    (plist-put          ;collect partial tool input
+                     info :partial_json
+                     (cons partial-json (plist-get info :partial_json)))))))
+           
+           ((looking-at "content_block_start") ;Is the following block text or tool-use?
             (forward-line 1) (forward-char 5)
-            (when-let* ((response (gptel--json-read))
-                        (content (map-nested-elt
-                                  response '(:delta :text))))
-              (push content content-strs))))
+            (when-let* ((cblock (plist-get (gptel--json-read) :content_block)))
+              (pcase (plist-get cblock :type)
+                ("text" (push (plist-get cblock :text) content-strs))
+                ("tool_use" (plist-put info :tool-use
+                                       (cons (list :id (plist-get cblock :id)
+                                                   :name (plist-get cblock :name))
+                                             (plist-get info :tool-use)))))))
+           
+           ((and (looking-at "content_block_stop") (plist-get info :partial_json))
+            (condition-case-unless-debug nil ;Combine partial tool inputs
+                (let* ((args-json (apply #'concat (nreverse (plist-get info :partial_json))))
+                       (args-decoded    ;Handle blank argument strings
+                        (if (string-empty-p args-json)
+                            nil (gptel--json-read-string args-json))))
+                  ;; Add the input to the tool-call spec
+                  (plist-put (car (plist-get info :tool-use)) :input args-decoded))
+              ;; If there was an error in reading that tool, we ignore it:
+              ;; TODO(tool) handle this error better
+              (error (pop (plist-get info :tool-use)))) ;TODO: nreverse :tool-use list
+            (plist-put info :partial_json nil))
+           
+           ((looking-at "message_delta")
+            ;; collect stop_reason, usage_tokens and prepare tools
+            (forward-line 1) (forward-char 5)
+            (when-let* ((tool-use (plist-get info :tool-use)))
+              (let* ((data (plist-get info :data))
+                     (prompts (plist-get data :messages)))
+                (plist-put ; Append a COPY of response text + tool-use to the prompts list
+                 data :messages
+                 (vconcat
+                  prompts
+                  `((:role "assistant"
+                     :content ,(vconcat ;Insert any LLM text
+                                (and-let* ((strs (plist-get info :partial_text)))
+                                 (list (list :type "text" :text (apply #'concat (nreverse strs)))))
+                                (mapcar (lambda (tool-call) ;followed by the tool calls
+                                          (append (list :type "tool_use")
+                                           (copy-sequence tool-call)))
+                                 tool-use))))))
+                (plist-put info :partial_text nil) ; Clear any captured text
+                ;; Then shape the tool-use block by adding args so we can call the functions
+                (mapc (lambda (tool-call)
+                        (plist-put tool-call :args (plist-get tool-call :input))
+                        (plist-put tool-call :input nil))
+                      tool-use)))
+            (when-let* ((response (gptel--json-read)))
+              (plist-put info :output-tokens
+                         (map-nested-elt response '(:usage :output_tokens)))
+              (plist-put info :stop-reason
+                         (map-nested-elt response '(:delta :stop_reason)))))))
       (error (goto-char pt)))
-    (apply #'concat (nreverse content-strs))))
+    (let ((response-text (apply #'concat (nreverse content-strs))))
+      (unless (string-empty-p response-text)
+        (plist-put info :partial_text
+                   (cons response-text (plist-get info :partial_text))))
+      response-text)))
 
-(cl-defmethod gptel--parse-response ((_backend gptel-anthropic) response _info)
-  (map-nested-elt response '(:content 0 :text)))
+(cl-defmethod gptel--parse-response ((_backend gptel-anthropic) response info)
+  "Parse an Anthropic (non-streaming) RESPONSE and return response text.
 
-(cl-defmethod gptel--request-data ((_backend gptel-anthropic) prompts)
+Mutate state INFO with response metadata."
+  (plist-put info :stop-reason (plist-get response :stop_reason))
+  (plist-put info :output-tokens
+             (map-nested-elt response '(:usage :output_tokens)))
+  (cl-loop
+   with content = (plist-get response :content)
+   for cblock across content
+   for type = (plist-get cblock :type)
+   if (equal type "text")
+   ;; TODO(tool) can :text be :null?
+   collect (plist-get cblock :text) into content-strs
+   else if (equal type "tool_use")
+   collect cblock into tool-use
+   finally do
+   (when tool-use
+     ;; First, add the tool call to the prompts list
+     (let* ((data (plist-get info :data))
+            (prompts (plist-get data :messages)))
+       (plist-put
+        data :messages
+        (vconcat prompts `((:role "assistant" :content ,content)))))
+     ;; Then capture the tool call data for running the tool
+     (cl-loop
+      for call-raw in tool-use
+      for call = (copy-sequence call-raw) do
+      (plist-put call :args (plist-get call :input))
+      (plist-put call :input nil)
+      collect call into calls
+      finally do (plist-put info :tool-use calls)))
+   finally return
+   (and content-strs (apply #'concat content-strs))))
+
+(cl-defmethod gptel--request-data ((backend gptel-anthropic) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
   (let ((prompts-plist
          `(:model ,(gptel--model-name gptel-model)
-           :stream ,(or (and gptel-stream gptel-use-curl
-                         (gptel-backend-stream gptel-backend))
-                     :json-false)
+           :stream ,(or gptel-stream :json-false)
            :max_tokens ,(or gptel-max-tokens 1024)
            :messages [,@prompts])))
-    (when (and gptel--system-message
-               (not (gptel--model-capable-p 'nosystem)))
+    (when gptel--system-message
       (plist-put prompts-plist :system gptel--system-message))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
+    (when gptel-use-tools
+      (when (eq gptel-use-tools 'force)
+        (plist-put prompts-plist :tool_choice '(:type "any")))
+      (when gptel-tools
+        (plist-put prompts-plist :tools
+                   (gptel--parse-tools backend gptel-tools))))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
      prompts-plist
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
+
+(cl-defmethod gptel--parse-tools ((_backend gptel-anthropic) tools)
+  "Parse TOOLS to the Anthropic API tool definition spec.
+
+TOOLS is a list of `gptel-tool' structs, which see."
+  (vconcat
+   (mapcar
+    (lambda (tool)
+      (list :name (gptel-tool-name tool)
+            :description (gptel-tool-description tool)
+            :input_schema ;NOTE: Anthropic wants "{}" if the function takes no args, not null
+            (list :type "object"
+                  :properties
+                  (cl-loop
+                   for arg in (gptel-tool-args tool)
+                   for name = (plist-get arg :name)
+                   for type = (plist-get arg :type)
+                   for newname = (or (and (keywordp name) name)
+                                     (make-symbol (concat ":" name)))
+                   for enum = (plist-get arg :enum)
+                   append (list newname
+                                `(:type ,(plist-get arg :type)
+                                  :description ,(plist-get arg :description)
+                                  ,@(if enum (list :enum (vconcat enum)))
+                                  ,@(cond
+                                     ((equal type "object")
+                                      (list
+                                       :properties (plist-get arg :properties)
+                                       :required (or (plist-get arg :required) [])))
+                                     ((equal type "array")
+                                      (list :items (plist-get arg :items)))))))
+                  :required
+                  (vconcat
+                   (delq nil (mapcar
+                              (lambda (arg) (and (not (plist-get arg :optional))
+                                            (plist-get arg :name)))
+                              (gptel-tool-args tool)))))))
+    (ensure-list tools))))
+
+(cl-defmethod gptel--parse-tool-results ((_backend gptel-anthropic) tool-use)
+  "Return a prompt containing tool call results in TOOL-USE.
+
+TOOL-USE is a list of plists containing tool names, arguments and call results."
+  ;; (declare (side-effect-free t))
+  (list
+   :role "user"
+   :content
+   (vconcat
+    (mapcar
+     (lambda (tool-call)
+       (let* ((result (plist-get tool-call :result))
+              (formatted
+               (list :type "tool_result"
+                     :tool_use_id (plist-get tool-call :id)
+                     :content (if (stringp result) result
+                                (prin1-to-string result)))))
+         (prog1 formatted
+           (when (plist-get tool-call :error)
+             (plist-put formatted :is_error t)))))
+     tool-use))))
+
+;; NOTE: No `gptel--inject-prompt' method required for gptel-anthropic, since
+;; this is handled by its defgeneric implementation
 
 (cl-defmethod gptel--parse-list ((_backend gptel-anthropic) prompt-list)
   (cl-loop for text in prompt-list
@@ -89,42 +269,37 @@
                  :content `[(:type "text" :text ,text)])))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-anthropic) &optional max-entries)
-  (let ((prompts) (prop) (prev-pt (point))
+  (let ((prompts) (prev-pt (point))
         (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
-                                                (gptel--model-capable-p 'url)))))
+                                                  (gptel--model-capable-p 'url)))))
     (if (or gptel-mode gptel-track-response)
-        (while (and
-                (or (not max-entries) (>= max-entries 0))
-                (setq prop (text-property-search-backward
-                            'gptel 'response
-                            (when (get-char-property (max (point-min) (1- (point)))
-                                                     'gptel)
-                              t))))
+        (while (and (or (not max-entries) (>= max-entries 0))
+                    (goto-char (previous-single-property-change
+                                (point) 'gptel nil (point-min)))
+                    (not (= (point) prev-pt)))
           ;; HACK Until we can find a more robust solution for editing
           ;; responses, ignore prompts containing only whitespace, as the
           ;; Anthropic API can't handle it.  See #452, #409, #406, #351 and #321
           ;; We check for blank prompts by skipping whitespace and comparing
           ;; point against the previous.
           (unless (save-excursion (skip-syntax-forward " ") (>= (point) prev-pt))
-            (if (prop-match-value prop) ; assistant role
-                (push (list :role "assistant"
-                            :content
-                            (buffer-substring-no-properties (prop-match-beginning prop)
-                                                            (prop-match-end prop)))
-                      prompts)
-              (if include-media         ; user role: possibly with media
-                  (push (list :role "user"
-                              :content
-                              (gptel--anthropic-parse-multipart
-                               (gptel--parse-media-links
-                                major-mode (prop-match-beginning prop) (prop-match-end prop))))
-                        prompts)
-                (push (list :role "user"
-                            :content
-                            (gptel--trim-prefixes
-                             (buffer-substring-no-properties (prop-match-beginning prop)
-                                                             (prop-match-end prop))))
-                      prompts))))
+            (pcase (get-char-property (point) 'gptel)
+              ('response
+               (push (list :role "assistant"
+                           :content (buffer-substring-no-properties (point) prev-pt))
+                     prompts))
+              ('nil                     ; user role: possibly with media
+               (if include-media       
+                   (push (list :role "user"
+                               :content
+                               (gptel--anthropic-parse-multipart
+                                (gptel--parse-media-links major-mode (point) prev-pt)))
+                         prompts)
+                 (push (list :role "user"
+                             :content
+                             (gptel--trim-prefixes
+                              (buffer-substring-no-properties (point) prev-pt)))
+                       prompts)))))
           (setq prev-pt (point))
           (and max-entries (cl-decf max-entries)))
       (push (list :role "user"
@@ -214,7 +389,7 @@ files in the context."
 (defconst gptel--anthropic-models
   '((claude-3-5-sonnet-20241022
      :description "Highest level of intelligence and capability"
-     :capabilities (media tool cache)
+     :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
      :input-cost 3
@@ -222,7 +397,7 @@ files in the context."
      :cutoff-date "2024-04")
     (claude-3-5-sonnet-20240620
      :description "Highest level of intelligence and capability (earlier version)"
-     :capabilities (media tool cache)
+     :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 3
@@ -230,15 +405,14 @@ files in the context."
      :cutoff-date "2024-04")
     (claude-3-5-haiku-20241022
      :description "Intelligence at blazing speeds"
-     :capabilities (media tool)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :capabilities (tool-use)
      :context-window 200
      :input-cost 1.00
      :output-cost 5.00
      :cutoff-date "2024-07")
     (claude-3-opus-20240229
      :description "Top-level performance, intelligence, fluency, and understanding"
-     :capabilities (media tool cache)
+     :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 15
@@ -246,7 +420,7 @@ files in the context."
      :cutoff-date "2023-08")
     (claude-3-sonnet-20240229
      :description "Balance of intelligence and speed (legacy model)"
-     :capabilities (media tool)
+     :capabilities (media tool-use)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 3
@@ -254,8 +428,7 @@ files in the context."
      :cutoff-date "2023-08")
     (claude-3-haiku-20240307
      :description "Fast and most compact model for near-instant responsiveness"
-     :capabilities (media tool)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :capabilities (tool-use)
      :context-window 200
      :input-cost 0.25
      :output-cost 1.25

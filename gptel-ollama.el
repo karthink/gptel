@@ -36,6 +36,7 @@
                             (:copier nil)
                             (:include gptel-backend)))
 
+;; FIXME(fsm) Remove this variable
 (defvar-local gptel--ollama-token-count 0
   "Token count for ollama conversations.
 
@@ -54,7 +55,8 @@ Intended for internal use only.")
           (setq pt (point))
           (let ((done (map-elt content :done))
                 (response (map-nested-elt content '(:message :content))))
-            (push response content-strs)
+            (when (and response (not (eq response :null)))
+              (push response content-strs))
             (unless (eq done :json-false)
               (with-current-buffer (plist-get info :buffer)
                 (cl-incf gptel--ollama-token-count
@@ -65,18 +67,34 @@ Intended for internal use only.")
     (apply #'concat (nreverse content-strs))))
 
 (cl-defmethod gptel--parse-response ((_backend gptel-ollama) response info)
-  "Parse a one-shot RESPONSE from the Ollama API."
-  (when-let ((context
-              (+ (or (map-elt response :prompt_eval_count) 0)
-                 (or (map-elt response :eval_count) 0))))
-    (with-current-buffer (plist-get info :buffer)
-      (cl-incf gptel--ollama-token-count context)))
-  (map-nested-elt response '(:message :content)))
+  "Parse a one-shot RESPONSE from the Ollama API and return text.
 
-(cl-defmethod gptel--request-data ((_backend gptel-ollama) prompts)
+Store response metadata in state INFO."
+  (plist-put info :stop-reason (plist-get response :done_reason))
+  (plist-put info :output-tokens (plist-get response :eval_count))
+  (let* ((message (plist-get response :message))
+         (content (plist-get message :content)))
+    (if (and content (not (or (eq content :null) (string-empty-p content))))
+        content
+      (prog1 nil                        ; Look for tool calls only if no content
+        (when-let* ((tool-calls (plist-get message :tool_calls)))
+          ;; First add the tool call to the prompts list
+          (let* ((data (plist-get info :data))
+                 (prompts (plist-get data :messages)))
+            (plist-put data :messages (vconcat prompts `(,message))))
+          ;; Then capture the tool call data for running the tool
+          (cl-loop
+           for tool-call across tool-calls ;replace ":arguments" with ":args"
+           for call-spec = (copy-sequence (plist-get tool-call :function))
+           do (plist-put call-spec :args
+                         (plist-get call-spec :arguments))
+           (plist-put call-spec :arguments nil)
+           collect call-spec into tool-use
+           finally (plist-put info :tool-use tool-use)))))))
+
+(cl-defmethod gptel--request-data ((backend gptel-ollama) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
-  (when (and gptel--system-message
-             (not (gptel--model-capable-p 'nosystem)))
+  (when gptel--system-message
     (push (list :role "system"
                 :content gptel--system-message)
           prompts))
@@ -84,14 +102,17 @@ Intended for internal use only.")
           (gptel--merge-plists
            `(:model ,(gptel--model-name gptel-model)
              :messages [,@prompts]
-             :stream ,(or (and gptel-stream gptel-use-curl
-                               (gptel-backend-stream gptel-backend))
-                          :json-false))
+             :stream ,(or gptel-stream :json-false))
            (gptel-backend-request-params gptel-backend)
            (gptel--model-request-params  gptel-model)))
          ;; the initial options (if any) from request params
          (options-plist (plist-get prompts-plist :options)))
 
+    (when (and gptel-use-tools gptel-tools)
+      ;; TODO(tool): Find out how to force tool use for Ollama
+      (plist-put prompts-plist :tools
+                 (gptel--parse-tools backend gptel-tools))
+      (plist-put prompts-plist :stream :json-false))
     ;; if the temperature and max-tokens aren't set as
     ;; backend/model-specific, use the global settings
     (when (and gptel-temperature (not (plist-get options-plist :temperature)))
@@ -102,6 +123,18 @@ Intended for internal use only.")
             (plist-put options-plist :num_predict gptel-max-tokens)))
     (plist-put prompts-plist :options options-plist)))
 
+;; NOTE: No `gptel--parse-tools' method required for gptel-ollama, since this is
+;; handled by its defgeneric implementation
+
+(cl-defmethod gptel--parse-tool-results ((_backend gptel-ollama) tool-use)
+  "Return a prompt containing tool call results in TOOL-USE."
+  (mapcar (lambda (tool-call)
+            (list :role "tool" :content (plist-get tool-call :result)))
+          tool-use))
+
+;; NOTE: No `gptel--inject-prompt' method required for gptel-ollama, since this is
+;; handled by its defgeneric implementation
+
 (cl-defmethod gptel--parse-list ((_backend gptel-ollama) prompt-list)
   (cl-loop for text in prompt-list
            for role = t then (not role)
@@ -109,34 +142,31 @@ Intended for internal use only.")
            (list :role (if role "user" "assistant") :content text)))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-ollama) &optional max-entries)
-  (let ((prompts) (prop)
+  (let ((prompts) (prev-pt (point))
         (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
                                                   (gptel--model-capable-p 'url)))))
     (if (or gptel-mode gptel-track-response)
-        (while (and
-                (or (not max-entries) (>= max-entries 0))
-                (setq prop (text-property-search-backward
-                            'gptel 'response
-                            (when (get-char-property (max (point-min) (1- (point)))
-                                                     'gptel)
-                              t))))
-          (if (prop-match-value prop)   ;assistant role
-              (push (list :role "assistant"
-                          :content (buffer-substring-no-properties (prop-match-beginning prop)
-                                                                   (prop-match-end prop)))
-                    prompts)
-            (if include-media
-                (push (append '(:role "user")
-                             (gptel--ollama-parse-multipart
-                              (gptel--parse-media-links
-                               major-mode (prop-match-beginning prop) (prop-match-end prop))))
-                      prompts)
-              (push (list :role "user"
-                          :content
-                          (gptel--trim-prefixes
-                           (buffer-substring-no-properties (prop-match-beginning prop)
-                                                           (prop-match-end prop))))
-                    prompts)))
+        (while (and (or (not max-entries) (>= max-entries 0))
+                    (goto-char (previous-single-property-change
+                                (point) 'gptel nil (point-min)))
+                    (not (= (point) prev-pt)))
+          (pcase (get-char-property (point) 'gptel)
+            ('response
+             (push (list :role "assistant"
+                         :content (buffer-substring-no-properties (point) prev-pt))
+                   prompts))
+            ('nil
+             (if include-media
+                 (push (append '(:role "user")
+                               (gptel--ollama-parse-multipart
+                                (gptel--parse-media-links major-mode (point) prev-pt)))
+                       prompts)
+               (push (list :role "user"
+                           :content
+                           (gptel--trim-prefixes
+                            (buffer-substring-no-properties (point) prev-pt)))
+                     prompts))))
+          (setq prev-pt (point))
           (and max-entries (cl-decf max-entries)))
       (push (list :role "user"
                   :content
