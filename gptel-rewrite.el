@@ -587,7 +587,7 @@ generated from functions."
                 "Rewrite directive is dynamically generated: Edit its current value instead?")))))
   (if cancel (progn (message "Edit canceled")
                     (call-interactively #'gptel-rewrite))
-    (gptel--edit-directive 'gptel--rewrite-directive #'gptel-rewrite)))
+    (gptel--edit-directive 'gptel--rewrite-directive #'gptel-rewrite t)))
 
 (transient-define-suffix gptel--suffix-rewrite (&optional rewrite-message dry-run)
   "Rewrite or refactor region contents."

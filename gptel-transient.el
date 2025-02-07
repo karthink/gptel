@@ -1304,10 +1304,9 @@ This uses the prompts in the variable
                   (complete-with-action action gptel--crowdsourced-prompts str pred)))
               nil t)))
         (when-let ((prompt (gethash choice gptel--crowdsourced-prompts)))
-            (gptel--set-with-scope
-             'gptel--system-message prompt gptel--set-buffer-locally)
-            (gptel--edit-directive 'gptel--system-message)
-            (deactivate-mark)))
+          (gptel--set-with-scope
+           'gptel--system-message prompt gptel--set-buffer-locally)
+          (gptel--edit-directive 'gptel--system-message)))
     (message "No prompts available.")))
 
 (transient-define-suffix gptel--suffix-system-message (&optional cancel)
@@ -1325,15 +1324,16 @@ generated from functions."
                     "Active directive is dynamically generated: Edit its current value instead?")))))
   (if cancel (progn (message "Edit canceled")
                     (call-interactively #'gptel-menu))
-    (gptel--edit-directive 'gptel--system-message)))
+    (gptel--edit-directive 'gptel--system-message nil t)))
 
 ;; MAYBE: Eventually can be simplified with string-edit, after we drop support
 ;; for Emacs 28.2.
-(defun gptel--edit-directive (sym &optional callback-cmd)
+(defun gptel--edit-directive (sym &optional callback-cmd activate)
   "Edit a gptel directive in a dedicated buffer.
 
 Store the result in SYM, a symbol.  If CALLBACK-CMD is specified,
-it is run after exiting the edit."
+it is run after exiting the edit.  If ACTIVATE is specified,
+activate the mark."
   (let ((orig-buf (current-buffer))
         (msg-start (make-marker))
         (directive (symbol-value sym)))
@@ -1365,7 +1365,7 @@ it is run after exiting the edit."
           ;; If it's a list, insert only the system message part
           (insert (car-safe (gptel--parse-directive directive 'raw)))
           (push-mark nil 'nomsg))
-        (activate-mark)
+        (when activate (activate-mark))
 	(visual-line-mode 1))
       (display-buffer (current-buffer)
                       `((display-buffer-below-selected)
