@@ -364,3 +364,7 @@ for."
 
 (provide 'gptel-gh)
 ;;; gptel-gh.el ends here
+
+;; Local Variables:
+;; byte-compile-warnings: (not docstrings)
+;; End:

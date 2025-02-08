@@ -190,3 +190,7 @@ Example:
 
 (provide 'gptel-kagi)
 ;;; gptel-kagi.el ends here
+
+;; Local Variables:
+;; byte-compile-warnings: (not docstrings)
+;; End:
