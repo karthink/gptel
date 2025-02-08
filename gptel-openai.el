@@ -143,7 +143,7 @@ Throw an error if there is no match."
 
 (gv-define-setter gptel-get-backend (val name)
   `(setf (alist-get ,name gptel--known-backends
-          nil nil #'equal)
+          nil t #'equal)
     ,val))
 
 (cl-defstruct
