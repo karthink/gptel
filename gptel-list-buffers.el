@@ -1,9 +1,9 @@
 ;;; gptel-list-buffers.el --- Provide a buffer list of gptel buffers
 
-;; Copyright (C) 2023  Karthik Chikmagalur
+;; Copyright (C) 2025  Karthik Chikmagalur
 
 ;; Author: Brett Hutley <brett@hutley.net>
-;; Keywords: buffer-list
+;; Keywords: convenience
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
