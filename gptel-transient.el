@@ -112,11 +112,11 @@ Meant to be called when `gptel-menu' is active."
   (concat
    (propertize "(" 'face 'default)
    (propertize "TAB" 'face 'help-key-binding)
-   (propertize " to expand, " 'face 'default)
+   (propertize ": expand, " 'face 'default)
    (propertize "M-n" 'face 'help-key-binding)
    (propertize "/" 'face 'default)
    (propertize "M-p" 'face 'help-key-binding)
-   (propertize " for next/previous): " 'face 'default))
+   (propertize ": next/previous) " 'face 'default))
   "Help string ;TODO: ")
 
 (defun gptel--read-with-prefix (prefix)
@@ -1324,37 +1324,42 @@ generated from functions."
                     "Active directive is dynamically generated: Edit its current value instead?")))))
   (if cancel (progn (message "Edit canceled")
                     (call-interactively #'gptel-menu))
-    (gptel--edit-directive 'gptel--system-message nil t)))
+    (gptel--edit-directive 'gptel--system-message :setup #'activate-mark)))
 
 ;; MAYBE: Eventually can be simplified with string-edit, after we drop support
 ;; for Emacs 28.2.
-(defun gptel--edit-directive (sym &optional callback-cmd activate)
+(cl-defun gptel--edit-directive (sym &key prompt initial callback setup buffer)
   "Edit a gptel directive in a dedicated buffer.
 
-Store the result in SYM, a symbol.  If CALLBACK-CMD is specified,
-it is run after exiting the edit.  If ACTIVATE is specified,
-activate the mark."
-  (let ((orig-buf (current-buffer))
+Store the result in SYM, a symbol.  PROMPT and INITIAL are the
+heading and initial text.  If CALLBACK is specified, it is run
+after exiting the edit.  If SETUP is a function, run it after
+setting up the buffer."
+  (declare (indent 1))
+  (let ((orig-buf (or buffer (current-buffer)))
         (msg-start (make-marker))
         (directive (symbol-value sym)))
     (when (functionp directive)
       (setq directive (funcall directive)))
     ;; TODO: Handle editing list-of-strings directives
     (with-current-buffer (get-buffer-create "*gptel-system*")
-      (let ((inhibit-read-only t))
+      (let ((inhibit-read-only t) (inhibit-message t))
         (erase-buffer)
         (text-mode)
+        (visual-line-mode 1)
         (setq header-line-format
-              (concat
-               "Edit your system message below and press "
-               (propertize "C-c C-c" 'face 'help-key-binding)
-               " when ready, or "
-               (propertize "C-c C-k" 'face 'help-key-binding)
-               " to abort."))
+              (concat "Edit your instructions below and press "
+                      (propertize "C-c C-c" 'face 'help-key-binding)
+                      " when ready, or "
+                      (propertize "C-c C-k" 'face 'help-key-binding)
+                      " to abort."))
         (insert
-         "# Example: You are a helpful assistant. Answer as concisely as possible.\n"
-         "# Example: Reply only with shell commands and no prose.\n"
-         "# Example: You are a poet. Reply only in verse.\n\n")
+         (or prompt
+             (concat
+              "# Example: You are a helpful assistant. Answer as concisely as possible.\n"
+              "# Example: Reply only with shell commands and no prose.\n"
+              "# Example: You are a poet. Reply only in verse."))
+         "\n\n")
         (add-text-properties
          (point-min) (1- (point))
          (list 'read-only t 'face 'font-lock-comment-face))
@@ -1363,10 +1368,9 @@ activate the mark."
         (set-marker msg-start (point))
         (save-excursion
           ;; If it's a list, insert only the system message part
-          (insert (car-safe (gptel--parse-directive directive 'raw)))
+          (insert (or initial (car-safe (gptel--parse-directive directive 'raw))))
           (push-mark nil 'nomsg))
-        (when activate (activate-mark))
-	(visual-line-mode 1))
+        (and (functionp setup) (funcall setup)))
       (display-buffer (current-buffer)
                       `((display-buffer-below-selected)
                         (body-function . ,#'select-window)
@@ -1376,28 +1380,29 @@ activate the mark."
                "Cancel system message update and return."
                (interactive)
                (quit-window)
-               (display-buffer
-                orig-buf
-                `((display-buffer-reuse-window
-                   display-buffer-use-some-window)
-                  (body-function . ,#'select-window)))
-               (when (commandp callback-cmd)
-                 (call-interactively callback-cmd)))))
+               (unless (minibufferp)
+                 (display-buffer orig-buf
+                                 `((display-buffer-reuse-window
+                                    display-buffer-use-some-window)
+                                   (body-function . ,#'select-window))))
+               (cond ((commandp callback) (call-interactively callback))
+                     ((functionp callback) (funcall callback))))))
         (use-local-map
          (make-composed-keymap
           (define-keymap
-            "C-c C-c" (lambda ()
-                        "Confirm system message and return."
-                        (interactive)
-                        (let ((system-message
-                               (buffer-substring-no-properties msg-start (point-max))))
-                          (with-current-buffer orig-buf
-                            (gptel--set-with-scope sym
-                                                   (if (cdr-safe directive) ;Handle list of strings
-                                                       (prog1 directive (setcar directive system-message))
-                                                     system-message)
-                                                   gptel--set-buffer-locally)))
-                        (funcall quit-to-menu))
+            "C-c C-c"
+            (lambda ()
+              "Confirm system message and return."
+              (interactive)
+              (let ((system-message
+                     (buffer-substring-no-properties msg-start (point-max))))
+                (with-current-buffer orig-buf
+                  (gptel--set-with-scope sym
+                                         (if (cdr-safe directive) ;Handle list of strings
+                                             (prog1 directive (setcar directive system-message))
+                                           system-message)
+                                         gptel--set-buffer-locally)))
+              (funcall quit-to-menu))
             "C-c C-k" quit-to-menu)
           text-mode-map))))))
 
