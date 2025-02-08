@@ -609,3 +609,7 @@ Example:
 
 (provide 'gptel-openai)
 ;;; gptel-openai.el ends here
+
+;; Local Variables:
+;; byte-compile-warnings: (not docstrings)
+;; End:

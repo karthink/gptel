@@ -274,3 +274,7 @@ parameters."
 
 (provide 'gptel-openai-extras)
 ;;; gptel-openai-extras.el ends here
+
+;; Local Variables:
+;; byte-compile-warnings: (not docstrings)
+;; End:
