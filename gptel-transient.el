@@ -1361,10 +1361,8 @@ setting up the buffer."
               "# Example: You are a poet. Reply only in verse."))
          "\n\n")
         (add-text-properties
-         (point-min) (1- (point))
-         (list 'read-only t 'face 'font-lock-comment-face))
-        ;; TODO: make-separator-line requires Emacs 28.1+.
-        ;; (insert (propertize (make-separator-line) 'rear-nonsticky t))
+         (point-min) (point)
+         (list 'read-only t 'face 'font-lock-comment-face 'front-sticky t 'rear-nonsticky t))
         (set-marker msg-start (point))
         (save-excursion
           ;; If it's a list, insert only the system message part
