@@ -215,6 +215,22 @@ OBJ is a tool-infix of type `gptel--switch'."
   (make-hash-table :test #'equal)
   "Crowdsourced LLM system prompts.")
 
+(defun gptel--read-csv-column ()
+  "Read next CSV column in the current buffer.
+
+Supports both quoted and non-quoted columns (RFC 4180)."
+  (let ((start (point)))
+    (unless (eolp)
+      (let ((column
+	     (if (eq (char-after) ?\")
+		 (when (re-search-forward "\",\\|\"$" nil t)
+		   (let ((end (match-beginning 0)))
+		     (buffer-substring-no-properties (+ start 1) (if (eolp) (- end 1) end))))
+	       (when (search-forward "," (line-end-position) t)
+		 (let ((end (match-beginning 0)))
+		   (buffer-substring-no-properties start end))))))
+	(string-replace "\"\"" "\"" column)))))
+
 (defun gptel--crowdsourced-prompts ()
   "Acquire and read crowdsourced LLM system prompts.
 
@@ -252,14 +268,10 @@ which see."
           (goto-char (point-min))
           (forward-line 1)
           (while (not (eobp))
-            (when-let ((act (read (current-buffer))))
-              (forward-char)
-              (save-excursion
-                (while (re-search-forward "\"\"" (line-end-position) t)
-                  (replace-match "\\\\\"")))
-              (when-let ((prompt (read (current-buffer))))
-                (puthash act prompt gptel--crowdsourced-prompts)))
-            (forward-line 1)))))
+	    (when-let* ((act (gptel--read-csv-column))
+			(prompt (gptel--read-csv-column)))
+		(puthash act prompt gptel--crowdsourced-prompts))
+	      (forward-line 1)))))
     gptel--crowdsourced-prompts))
 
 
