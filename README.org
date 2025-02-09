@@ -1,6 +1,6 @@
 #+title: gptel: A simple LLM client for Emacs
 
-[[https://elpa.nongnu.org/nongnu/gptel.svg][file:https://elpa.nongnu.org/nongnu/gptel.svg]] [[https://stable.melpa.org/packages/gptel-badge.svg][file:https://stable.melpa.org/packages/gptel-badge.svg]] [[https://melpa.org/#/gptel][file:https://melpa.org/packages/gptel-badge.svg]]
+[[https://elpa.nongnu.org/nongnu/gptel.html][file:https://elpa.nongnu.org/nongnu/gptel.svg]] [[https://stable.melpa.org/#/gptel][file:https://stable.melpa.org/packages/gptel-badge.svg]] [[https://melpa.org/#/gptel][file:https://melpa.org/packages/gptel-badge.svg]]
 
 gptel is a simple Large Language Model chat client for Emacs, with support for multiple models and backends.  It works in the spirit of Emacs, available at any time and uniformly in any buffer.
 
@@ -67,11 +67,11 @@ See also [[https://youtu.be/g1VMGhC5gRU][this youtube demo (2 minutes)]] by Armi
 ------
 
 - gptel is async and fast, streams responses.
-- Interact with LLMs from anywhere in Emacs (any buffer, shell, minibuffer, wherever)
+- Interact with LLMs from anywhere in Emacs (any buffer, shell, minibuffer, wherever).
 - LLM responses are in Markdown or Org markup.
 - Supports multiple independent conversations and one-off ad hoc interactions.
-- Supports tool-use to equip LLMs with agentic capabilities (experimental feature)
-- Supports multi-modal input (include images, documents)
+- Supports tool-use to equip LLMs with agentic capabilities (experimental feature).
+- Supports multi-modal input (include images, documents).
 - Save chats as regular Markdown/Org/Text files and resume them later.
 - Edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.
 - Supports introspection, so you can see /exactly/ what will be sent.  Inspect and modify queries before sending them.
@@ -154,15 +154,11 @@ If you want the stable version instead, add NonGNU-devel ELPA or MELPA-stable to
 #+begin_src emacs-lisp
   (straight-use-package 'gptel)
 #+end_src
-
-Installing the =markdown-mode= package is optional.
 #+html: </details>
 #+html: <details><summary>
 **** Manual
 #+html: </summary>
 Clone or download this repository and run =M-x package-install-file⏎= on the repository directory.
-
-Installing the =markdown-mode= package is optional.
 #+html: </details>
 #+html: <details><summary>
 **** Doom Emacs
@@ -1325,21 +1321,21 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 ** COMMENT Will you add feature X?
 
 Maybe, I'd like to experiment a bit more first.  Features added since the inception of this package include
-- Curl support (=gptel-use-curl=)
-- Streaming responses (=gptel-stream=)
+- Curl support (=gptel-use-curl=).
+- Streaming responses (=gptel-stream=).
 - Cancelling requests in progress (=gptel-abort=)
 - General API for writing your own commands (=gptel-request=, [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][wiki]])
-- Dispatch menus using Transient (=gptel-send= with a prefix arg)
-- Specifying the conversation context size
-- GPT-4 support
-- Response redirection (to the echo area, another buffer, etc)
-- A built-in refactor/rewrite prompt
-- Limiting conversation context to Org headings using properties (#58)
-- Saving and restoring chats (#17)
+- Dispatch menus using Transient (=gptel-send= with a prefix arg).
+- Specifying the conversation context size.
+- GPT-4 support.
+- Response redirection (to the echo area, another buffer, etc).
+- A built-in refactor/rewrite prompt.
+- Limiting conversation context to Org headings using properties (#58).
+- Saving and restoring chats (#17).
 - Support for local LLMs.
 
 Features being considered or in the pipeline:
-- Fully stateless design (#17)
+- Fully stateless design ([[https://github.com/karthink/gptel/discussions/119][discussion #119]]).
 
 ** Alternatives
 
@@ -1357,12 +1353,12 @@ There are several more: [[https://github.com/MichaelBurge/leafy-mode][leafy-mode
 gptel is a general-purpose package for chat and ad-hoc LLM interaction.  The following packages use gptel to provide additional or specialized functionality:
 
 - [[https://github.com/karthink/gptel-quick][gptel-quick]]: Quickly look up the region or text at point.
-- [[https://github.com/daedsidog/evedel][Evedel]]: Instructed LLM Programmer/Assistant
-- [[https://github.com/lanceberge/elysium][Elysium]]: Automatically apply AI-generated changes as you code
-- [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo
-- [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate Commit Messages within magit-status Buffer using gptel
+- [[https://github.com/daedsidog/evedel][Evedel]]: Instructed LLM Programmer/Assistant.
+- [[https://github.com/lanceberge/elysium][Elysium]]: Automatically apply AI-generated changes as you code.
+- [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
+- [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate Commit Messages within magit-status Buffer using gptel.
 - [[https://github.com/armindarvish/consult-omni][consult-omni]]: Versatile multi-source search package.  It includes gptel as one of its many sources.
-- [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  (Note that gptel includes this feature as well (see =gptel-org-branching-context=), but requires a recent version of Org mode (9.67 or later) to be installed.)
+- [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  (Note that gptel includes this feature as well (see =gptel-org-branching-context=), but requires a recent version of Org mode 9.7 or later to be installed.)
 - [[https://github.com/rob137/Corsair][Corsair]]: Helps gather text to populate LLM prompts for gptel.
 
 ** COMMENT Older Breaking Changes
