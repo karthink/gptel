@@ -48,6 +48,7 @@
 ;;   wherever)
 ;; - LLM responses are in Markdown or Org markup.
 ;; - Supports conversations and multiple independent sessions.
+;; - Supports tool-use to equip LLMs with agentic capabilities.
 ;; - Supports multi-modal models (send images, documents).
 ;; - Save chats as regular Markdown/Org/Text files and resume them later.
 ;; - You can go back and edit your previous prompts or LLM responses when
@@ -373,7 +374,8 @@ is only inserted in dedicated gptel buffers before the AI's response."
   :type '(alist :key-type symbol :value-type string))
 
 (defcustom gptel-response-separator "\n\n"
-  "String inserted before responses.")
+  "String inserted before responses."
+  :type 'string)
 
 (defcustom gptel-use-header-line t
   "Whether `gptel-mode' should use header-line for status information.
@@ -2016,7 +2018,7 @@ If PROMPT is
 Keyword arguments:
 
 CALLBACK, if supplied, is a function of two arguments, called
-with the RESPONSE (a string) and INFO (a plist):
+with the RESPONSE (usually a string) and INFO (a plist):
 
  (funcall CALLBACK RESPONSE INFO)
 
@@ -2787,7 +2789,7 @@ for tool call results.  INFO contains the state of the request."
                                  (when (search-forward-regexp "^:tool-use" nil t)
                                    (forward-line 0)
                                    (hl-line-highlight)))))))))
-      ;; finished tool call results look like ((name . result) ...)
+      ;; finished tool call results look like ((name args result) ...)
       ;; Insert tool results
       (when gptel-include-tool-results
         (with-current-buffer (marker-buffer start-marker)

@@ -179,15 +179,23 @@ for."
 				(:copier nil)
 				(:include gptel-openai)))
 
-(cl-defmethod gptel--parse-response ((_backend gptel-perplexity) response info)
-  "Parse Perplexity response RESPONSE with INFO."
+(defsubst gptel--perplexity-parse-citations (citations)
+  (let ((counter 0))
+    (concat "\n\nCitations:\n"
+            (mapconcat (lambda (url)
+                         (setq counter (1+ counter))
+                         (format "[%d] %s" counter url))
+                       citations "\n"))))
+
+(cl-defmethod gptel--parse-response ((_backend gptel-perplexity) response _info)
+  "Parse Perplexity response RESPONSE."
   (let ((response-string (map-nested-elt response '(:choices 0 :message :content)))
         (citations-string (when-let ((citations (map-elt response :citations)))
 			    (gptel--perplexity-parse-citations citations))))
     (concat response-string citations-string)))
 
-(cl-defmethod gptel-curl--parse-stream ((backend gptel-perplexity) info)
-  "Parse a Perplexity API data stream for BACKEND with INFO.
+(cl-defmethod gptel-curl--parse-stream ((_backend gptel-perplexity) info)
+  "Parse a Perplexity API data stream with INFO.
 
 If available, collect citations at the end and include them with
 the response."
@@ -208,20 +216,12 @@ the response."
                                          citations)))))))))
     resp))
 
-(defsubst gptel--perplexity-parse-citations (citations)
-  (let ((counter 0))
-    (concat "\n\nCitations:\n"
-            (mapconcat (lambda (url)
-                         (setq counter (1+ counter))
-                         (format "[%d] %s" counter url))
-                       citations "\n"))))
-
 ;;;###autoload
 (cl-defun gptel-make-perplexity
     (name &key curl-args stream key
           (header 
            (lambda () (when-let (key (gptel--get-api-key))
-                       `(("Authorization" . ,(concat "Bearer " key))))))
+                   `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.perplexity.ai")
           (protocol "https")
           (models '(sonar sonar-pro))
@@ -254,19 +254,19 @@ REQUEST-PARAMS (optional) is a plist of additional HTTP request
 parameters."
   (declare (indent 1))
   (let ((backend (gptel--make-perplexity
-                 :curl-args curl-args
-                 :name name
-                 :host host
-                 :header header
-                 :key key
-                 :models models
-                 :protocol protocol
-                 :endpoint endpoint
-                 :stream stream
-                 :request-params request-params
-                 :url (if protocol
-                         (concat protocol "://" host endpoint)
-                       (concat host endpoint)))))
+                  :curl-args curl-args
+                  :name name
+                  :host host
+                  :header header
+                  :key key
+                  :models models
+                  :protocol protocol
+                  :endpoint endpoint
+                  :stream stream
+                  :request-params request-params
+                  :url (if protocol
+                           (concat protocol "://" host endpoint)
+                         (concat host endpoint)))))
     (prog1 backend
       (setf (alist-get name gptel--known-backends
                        nil nil #'equal)

@@ -118,7 +118,6 @@ the response is inserted into the current buffer after point."
          (info (gptel-fsm-info fsm))
          (args (gptel-curl--get-args info token))
          (stream (plist-get info :stream))
-         (backend (plist-get info :backend))
          (process (apply #'start-process "gptel-curl"
                          (generate-new-buffer "*gptel-curl*") "curl" args)))
     (when (memq system-type '(windows-nt ms-dos))
@@ -337,8 +336,7 @@ PROCESS and _STATUS are process parameters."
   "Parse the buffer BUF with curl's response.
 
 PROC-INFO is a plist with contextual information."
-  (let ((token (plist-get proc-info :token))
-        (parser (plist-get proc-info :parser)))
+  (let ((token (plist-get proc-info :token)))
     (goto-char (point-max))
     (search-backward token)
     (backward-char)
