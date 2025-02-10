@@ -174,13 +174,19 @@ will toggle its visibility state."
                                  prefix max-width nil nil
                                  'ellipsis))))))))
 
-(defun gptel--transient-read-variable (prompt initial-input history)
-  "Read value from minibuffer and interpret the result as a Lisp object.
+(defun gptel--transient-read-number (prompt initial-input history)
+  "Read a numeric value from the minibuffer.
 
-PROMPT, INITIAL-INPUT and HISTORY are as in the Transient reader
-documention."
-  (ignore-errors
-    (read-from-minibuffer prompt initial-input read-expression-map t history)))
+PROMPT, INITIAL-INPUT and HISTORY are as in the transient reader
+documention.  Return nil if user does not provide a number, for default."
+  ;; Workaround for buggy transient behaviour when dealing with
+  ;; non-string values.  See: https://github.com/magit/transient/issues/172
+  (when-let ((val (symbol-value history)))
+    (when (not (stringp (car val)))
+      (setcar val (number-to-string (car val)))))
+  (let* ((minibuffer-default-prompt-format "")
+	 (num (read-number prompt -1 history)))
+    (if (= num -1) nil num)))
 
 (defun gptel-system-prompt--format (&optional message)
   "Format the system MESSAGE for display in gptel's transient menus.
@@ -868,7 +874,7 @@ include."
   :format " %k %v %d"
   :key "-n"
   :prompt "Number of past messages to include for context (leave empty for all): "
-  :reader 'gptel--transient-read-variable)
+  :reader 'gptel--transient-read-number)
 
 (transient-define-infix gptel--infix-max-tokens ()
   "Max tokens per response.
@@ -883,7 +889,7 @@ responses."
   :display-nil 'auto
   :key "-c"
   :prompt "Response length in tokens (leave empty: default, 80-200: short, 200-500: long): "
-  :reader 'gptel--transient-read-variable)
+  :reader 'gptel--transient-read-number)
 
 (transient-define-infix gptel--infix-provider ()
   "AI Provider for Chat."
@@ -939,7 +945,7 @@ responses."
   :set-value #'gptel--set-with-scope
   :key "-T"
   :prompt "Temperature controls the response randomness (0.0-2.0, leave empty for API default): "
-  :reader 'gptel--transient-read-variable)
+  :reader 'gptel--transient-read-number)
 
 (transient-define-infix gptel--infix-track-response ()
   "Distinguish between user messages and LLM responses.
