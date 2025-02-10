@@ -1025,7 +1025,7 @@ Defining a gptel tool requires an elisp function and associated metadata.  Here 
                (buffer-substring-no-properties (point-min) (point-max))))
  :description "return the contents of an emacs buffer"
  :args (list '(:name "buffer"
-               :type 'string            ; :type value must be a symbol
+               :type string            ; :type value must be a symbol
                :description "the name of the buffer whose contents are to be retrieved"))
  :category "emacs")                     ; An arbitrary label for grouping
 #+end_src
