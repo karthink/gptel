@@ -172,7 +172,8 @@ will toggle its visibility state."
           (_ (overlay-put ov 'gptel 'partial)
              (funcall update ov (truncate-string-to-width
                                  prefix max-width nil nil
-                                 'ellipsis))))))))
+                                 'ellipsis)))))
+      (goto-char (point-max)))))
 
 (defun gptel--transient-read-variable (prompt initial-input history)
   "Read value from minibuffer and interpret the result as a Lisp object.
