@@ -761,9 +761,9 @@ value of `gptel-use-context', set from here."
   :argument "scope"
   :variable 'gptel--set-buffer-locally
   :class 'gptel--scope
-  :format "  %k %d %v"
+  :format " %k %d %v"
   :key "="
-  :description (propertize "Scope" 'face 'transient-inactive-argument))
+  :description "Scope")
 
 (transient-define-infix gptel--infix-num-messages-to-send ()
   "Number of recent messages to send with each exchange.
