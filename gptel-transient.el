@@ -196,7 +196,7 @@ Handle formatting for system messages when the active
               (propertize "]" 'face 'transient-heading))
     (if message
         (gptel--describe-directive
-         message (max (- (window-width) 12) 14) "⮐ ")
+         message (max (- (window-width transient--window) 12) 14) "⮐ ")
       "[No system message set]")))
 
 (defun gptel--tools-init-value (obj)
@@ -579,7 +579,7 @@ If EXTERNAL is non-nil, include external sources of directives."
   (cl-loop for (type . prompt) in gptel-directives
            ;; Avoid clashes with the custom directive key
            with unused-keys = (delete ?s (number-sequence ?a ?z))
-           with width = (window-width)
+           with width = (window-width transient--window)
            for name = (symbol-name type)
            for key = (seq-find (lambda (k) (member k unused-keys)) name (seq-first unused-keys))
            do (setq unused-keys (delete key unused-keys))
@@ -701,7 +701,7 @@ only (\"oneshot\")."
                (concat (make-string (max (- 20 (length name)) 0) ? )
                        (propertize
                         (concat "(" (gptel--describe-directive
-                                     (gptel-tool-description tool) (- (window-width) 40))
+                                     (gptel-tool-description tool) (- (window-width transient--window) 40))
                                 ")")
                         'face 'shadow))
                (gptel-tool-name tool)
