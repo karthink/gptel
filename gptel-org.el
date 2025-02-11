@@ -433,7 +433,6 @@ non-nil (default), display a message afterwards."
 
 This is a very basic converter that handles only a few markup
 elements."
-  (interactive)
   (with-temp-buffer
     (insert str)
     (goto-char (point-min))
@@ -447,8 +446,8 @@ elements."
              (while (search-forward ticks nil t)
                (unless (or (eq (char-before (match-beginning 0)) ?`)
                            (eq (char-after) ?`))
-                   (gptel--replace-source-marker (length ticks) 'end)
-                   (throw 'block-end nil))))))
+                 (gptel--replace-source-marker (length ticks) 'end)
+                 (throw 'block-end nil))))))
         ;; Handle headings
         ((and (guard (eq (char-before) ?#)) heading)
          (cond
