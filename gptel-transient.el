@@ -274,6 +274,93 @@ which see."
 	      (forward-line 1)))))
     gptel--crowdsourced-prompts))
 
+(defun gptel--describe-infix-context ()
+  (if (null gptel-context--alist) "Context"
+    (pcase-let*
+        ((contexts (gptel-context--collect))
+         (buffer-count (length contexts))
+         (`(,file-count ,ov-count)
+          (if (> buffer-count 0)
+              (cl-loop for (buf-file . ovs) in contexts
+                       if (bufferp buf-file)
+                       sum (length ovs) into ov-count
+                       else count (stringp buf-file) into file-count
+                       finally return (list file-count ov-count))
+            (list 0 0))))
+      (concat "Context ("
+              (propertize
+               (concat
+                (and (> ov-count 0)
+                     (format "%d region%s in %d buffer%s"
+                             ov-count (if (> ov-count 1) "s" "")
+                             (- buffer-count file-count)
+                             (if (> ( - buffer-count file-count) 1) "s" "")))
+                (and (> file-count 0)
+                     (format "%s%d file%s"
+                             (if (> ov-count 0) ", " "") file-count
+                             (if (> file-count 1) "s" ""))))
+               'face 'warning)
+              ")"))))
+
+(defun gptel--describe-suffix-send ()
+  "Describe the action of `gptel--suffix-send'."
+  (cl-flet ((ptv (s) (propertize s 'face 'warning))
+            (pth (s) (propertize s 'face 'transient-heading)))
+    (let* ((args (or (and transient-current-command
+                          (transient-args transient-current-command))
+	             ;; Not yet exported, simulate.  HACK: We are accessing
+	             ;; Transient's internal variables here for live updates.
+	             (let* ((transient-current-command (oref transient--prefix command))
+	                    (transient-current-suffixes transient--suffixes))
+	               (transient-args transient-current-command))))
+           (lbeg (line-number-at-pos (if (use-region-p) (region-beginning)
+                                       (point-min))))
+           (lend (line-number-at-pos (if (use-region-p) (region-end)
+                                       (point))))
+           (ltext (ptv (if (> lend lbeg)
+                           (format " (lines %d-%d)" lbeg lend)
+                         (format " (line %d)" lbeg))))
+           (dest) (context))
+      (setq dest (cond
+                  ((member "e" args) (ptv "echo area"))
+                  ((member "k" args) (ptv "kill-ring"))
+                  ((cl-some (lambda (s)
+                              (and (stringp s) (memq (aref s 0) '(?g ?b))
+                                   (not (equal (substring s 1) (buffer-name)))
+                                   (concat (pth "buffer ") (ptv (substring s 1)))))
+                            args))))
+      (setq context
+            (and gptel-context--alist
+                 (let ((lc (length gptel-context--alist)))
+                   (concat (pth " along with ") (ptv (format "%d" lc))
+                           (pth (concat " context source" (and (/= lc 1) "s")))))))
+      (cond ((member "m" args)
+             (concat (pth "Read prompt from ") (ptv "minibuffer")
+                     context
+                     (if dest (concat (pth ", response to ") dest)
+                       (concat (pth ", insert response at point")))))
+            ((member "y" args)
+             (concat (pth "Send prompt from ") (ptv "kill-ring")
+                     context
+                     (if dest (concat (pth ", response to ") dest)
+                       (concat (pth ", insert response at point")))))
+            ((member "i" args)
+             (let* ((reg (use-region-p))
+                    (src (ptv (if reg "selection" (buffer-name)))))
+               (if dest (concat (pth "Send ") src ltext context (pth ", with response to ")
+                                (ptv dest) (pth "; kill") ltext
+                                (and (not reg) (concat (pth " in ") src)))
+                 (concat (pth "Replace ") src ltext (pth " with response")
+                         (and context
+                              (concat (pth " ( with") (substring context 11) " )"))))))
+            ((use-region-p)
+             (concat (pth "Send ") (ptv "selection") ltext
+                     context (if dest (concat (pth ", with response to ") dest)
+                               (concat (pth ", insert response at region end")))))
+            (t (concat (pth "Send ") (ptv (buffer-name)) ltext
+                       context (if dest (concat (pth ", with response to ") dest)
+                                 (concat (pth ", insert response at point")))))))))
+
 
 ;; * Transient classes and methods for gptel
 
@@ -450,20 +537,20 @@ Also format its value in the Transient menu."
 
 (define-obsolete-function-alias 'gptel-send-menu 'gptel-menu "0.3.2")
 
-;; BUG: The `:incompatible' spec doesn't work if there's a `:description' below it.
 ;;;###autoload (autoload 'gptel-menu "gptel-transient" nil t)
 (transient-define-prefix gptel-menu ()
   "Change parameters of prompt to send to the LLM."
-  ;; :incompatible '(("-m" "-n" "-k" "-e"))
+  :incompatible '(("m" "y" "i") ("e" "g" "b" "k"))
+  ;; :value (list (concat "b" (buffer-name)))
   [:description gptel-system-prompt--format
    [""
     :if (lambda () (not (gptel--model-capable-p 'nosystem)))
     "Instructions"
     ("s" "Set system message" gptel-system-prompt :transient t)
     (gptel--infix-add-directive)]
-   [:pad-keys t
-    ""
-    "Context"
+   [:pad-keys t ""
+    (:info #'gptel--describe-infix-context
+     :face 'transient-heading :format "%d")
     (gptel--infix-context-add-region)
     (gptel--infix-context-add-buffer)
     (gptel--infix-context-add-file)
@@ -472,9 +559,13 @@ Also format its value in the Transient menu."
    [:pad-keys t
     :if (lambda () (and gptel-use-tools gptel--known-tools))
     "" (:info
-        (lambda () (concat "Tools" (and gptel-tools
-                                   (format " (%d selected)"
-                                           (length gptel-tools)))))
+        (lambda ()
+          (concat
+           "Tools" (and gptel-tools
+                        (concat " (" (propertize (format "%d selected"
+                                                         (length gptel-tools))
+                                                 'face 'warning)
+                                ")"))))
         :format "%d" :face transient-heading)
     ("t" "Select tools" gptel-tools :transient t)
     ("T" "Continue tool calls"
@@ -482,7 +573,6 @@ Also format its value in the Transient menu."
      :if (lambda () (and gptel--fsm-last
                     (eq (gptel-fsm-state gptel--fsm-last) 'TOOL))))]]
   [["Request Parameters"
-    :pad-keys t
     (gptel--infix-variable-scope)
     (gptel--infix-provider)
     (gptel--infix-max-tokens)
@@ -501,8 +591,13 @@ Also format its value in the Transient menu."
     ("y" "Kill-ring instead" "y")
     ""
     ("i" "Respond in place" "i")]
-    [" >Response to"
+   [" >Response to"
     ("e" "Echo area" "e")
+    ("b" "Other buffer" "b"
+     :class transient-option
+     :prompt "Output to buffer: "
+     :reader (lambda (prompt _ _history)
+               (read-buffer prompt (buffer-name (other-buffer)) nil)))
     ("g" "gptel session" "g"
      :class transient-option
      :prompt "Existing or new gptel session: "
@@ -516,17 +611,8 @@ Also format its value in the Transient menu."
               (let ((buf (get-buffer buf-name)))
                 (and (buffer-local-value 'gptel-mode buf)
                      (not (eq (current-buffer) buf))))))))
-    ("b" "Any buffer" "b"
-     :class transient-option
-     :prompt "Output to buffer: "
-     :reader
-     (lambda (prompt _ _history)
-       (read-buffer prompt (buffer-name (other-buffer)) nil)))
     ("k" "Kill-ring" "k")]]
-  [["Send"
-    (gptel--suffix-send)
-    ("M-RET" "Regenerate" gptel--regenerate :if gptel--in-response-p)]
-   [:description (lambda () (concat (and gptel--rewrite-overlays "Continue ")
+  [[:description (lambda () (concat (and gptel--rewrite-overlays "Continue ")
                                "Rewrite"))
     :if (lambda () (or (use-region-p)
                   (and gptel--rewrite-overlays
@@ -537,6 +623,7 @@ Also format its value in the Transient menu."
      gptel-rewrite)]
    ["Tweak Response" :if gptel--in-response-p :pad-keys t
     ("SPC" "Mark" gptel--mark-response)
+    ("M-RET" "Regenerate" gptel--regenerate :if gptel--in-response-p)
     ("P" "Previous variant" gptel--previous-variant
      :if gptel--at-response-history-p
      :transient t)
@@ -563,6 +650,7 @@ Also format its value in the Transient menu."
         (gptel--suffix-send
          (cons "I" (transient-args transient-current-command)))
         'json)))]]
+  [(gptel--suffix-send)]
   (interactive)
   (gptel--sanitize-model)
   (transient-setup 'gptel-menu))
@@ -1083,7 +1171,7 @@ This sets the variable `gptel-include-tool-results', which see."
 (transient-define-suffix gptel--suffix-send (args)
   "Send ARGS."
   :key "RET"
-  :description "Send prompt"
+  :description #'gptel--describe-suffix-send
   (interactive (list (transient-args
                       (or transient-current-command 'gptel-menu))))
   (let ((stream gptel-stream)
@@ -1425,37 +1513,7 @@ setting up the buffer."
   :transient 'transient--do-exit
   :key " C"
   :if (lambda () gptel-context--alist)
-  :description
-  (lambda ()
-    (pcase-let*
-        ((contexts (and gptel-context--alist (gptel-context--collect)))
-         (buffer-count (length contexts))
-         (`(,file-count ,ov-count)
-          (if (> buffer-count 0)
-              (cl-loop for (buf-file . ovs) in contexts
-                       if (bufferp buf-file)
-                       sum (length ovs) into ov-count
-                       else count (stringp buf-file) into file-count
-                       finally return (list file-count ov-count))
-            (list 0 0))))
-      (concat "Inspect "
-              (format
-               (propertize "(%s)" 'face 'transient-delimiter)
-               (propertize
-                (concat
-                 (and (> ov-count 0)
-                      (format "%d region%s in %d buffer%s"
-                              ov-count (if (> ov-count 1) "s" "")
-                              (- buffer-count file-count)
-                              (if (> ( - buffer-count file-count) 1) "s" "")))
-                 (and (> file-count 0)
-                      (propertize
-                       (format "%s%d file%s"
-                               (if (> ov-count 0) ", " "") file-count
-                               (if (> file-count 1) "s" "")))))
-                'face (if (zerop (length contexts))
-                          'transient-inactive-value
-                        'transient-value))))))
+  :description "Inspect context"
   (interactive)
   (gptel-context--buffer-setup))
 
