@@ -1969,7 +1969,7 @@ Run post-response hooks."
                    (apply (gptel-tool-function tool-spec)
                           process-tool-result arg-values)
                  (let ((result
-                        (condition-case-unless-debug errdata
+                        (condition-case errdata
                             (apply (gptel-tool-function tool-spec) arg-values)
                           (error (mapconcat #'gptel--to-string errdata " ")))))
                    (funcall process-tool-result result)))))))
@@ -2844,7 +2844,7 @@ NAME and ARG-VALUES are the name and arguments for the call."
                (apply (gptel-tool-function tool-spec)
                       process-tool-result arg-values)
              (let ((result
-                    (condition-case-unless-debug errdata
+                    (condition-case errdata
                         (apply (gptel-tool-function tool-spec) arg-values)
                       (error (mapconcat #'gptel--to-string errdata " ")))))
                (funcall process-tool-result result))))
