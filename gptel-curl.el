@@ -326,8 +326,9 @@ PROCESS and _STATUS are process parameters."
         (plist-put proc-info :status http-msg)
         (gptel--fsm-transition fsm)     ;WAIT -> TYPE
         (when error (plist-put proc-info :error error))
-        (with-demoted-errors "gptel callback error: %S"
-          (funcall proc-callback response proc-info)))
+        (when (or response (not (member http-status '("200" "100"))))
+          (with-demoted-errors "gptel callback error: %S"
+            (funcall proc-callback response proc-info))))
       (gptel--fsm-transition fsm))      ;TYPE -> next
     (setf (alist-get process gptel--request-alist nil 'remove) nil)
     (kill-buffer proc-buf)))

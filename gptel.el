@@ -2551,8 +2551,9 @@ the response is inserted into the current buffer after point."
                              (plist-put info :status http-msg)
                              (gptel--fsm-transition fsm) ;WAIT -> TYPE
                              (when error (plist-put info :error error))
-                             (with-demoted-errors "gptel callback error: %S"
-                               (funcall callback response info))
+                             (when (or response (not (member http-status '("200" "100"))))
+                               (with-demoted-errors "gptel callback error: %S"
+                                 (funcall callback response info)))
                              (gptel--fsm-transition fsm) ;TYPE -> next
                              (setf (alist-get buf gptel--request-alist nil 'remove) nil)
                              (kill-buffer buf)))
