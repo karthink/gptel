@@ -129,14 +129,14 @@ the response is inserted into the current buffer after point."
                   "request Curl command" 'no-json))
     (with-current-buffer (process-buffer process)
       (set-process-query-on-exit-flag process nil)
-      (if (plist-get info :token)    ;not the first run, set only the token
+      (if (plist-get info :token)       ;not the first run, set only the token
           (plist-put info :token token)
         (setf (gptel-fsm-info fsm)      ;fist run, set all process parameters
               (nconc (list :token token
                            :transformer
-                           (when (and gptel-org-convert-response
-                                      (with-current-buffer (plist-get info :buffer)
-                                        (derived-mode-p 'org-mode)))
+                           (when (with-current-buffer (plist-get info :buffer)
+                                   (and (derived-mode-p 'org-mode)
+                                        gptel-org-convert-response))
                              (gptel--stream-convert-markdown->org
                               (plist-get info :position))))
                      (unless (plist-get info :callback)

@@ -2529,9 +2529,9 @@ the response is inserted into the current buffer after point."
           (encode-coding-string
            (gptel--json-encode (plist-get info :data))
            'utf-8)))
-    (when (and gptel-org-convert-response
-               (with-current-buffer (plist-get info :buffer)
-                 (derived-mode-p 'org-mode)))
+    (when (with-current-buffer (plist-get info :buffer)
+            (and (derived-mode-p 'org-mode)
+                 gptel-org-convert-response))
       (plist-put info :transformer #'gptel--convert-markdown->org))
     (plist-put info :callback callback)
     (when gptel-log-level               ;logging
