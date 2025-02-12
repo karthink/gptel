@@ -361,7 +361,7 @@ START and END signify the region delimiters."
     (let ((is-top-snippet t)
           (previous-line 1))
       (insert (format "In buffer `%s`:" (buffer-name buffer))
-              "\n\n```" (gptel--strip-mode-suffix (buffer-local-value
+              "\n\n```" (gptel--pretty-mode-name (buffer-local-value
                                                    'major-mode buffer))
               "\n")
       (dolist (context contexts)
