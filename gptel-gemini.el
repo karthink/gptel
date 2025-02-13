@@ -397,6 +397,13 @@ files in the context."
      :context-window 1000
      :input-cost 0.00
      :output-cost 0.00
+     :cutoff-date "2024-08")
+    (gemini-2.0-flash-thinking-exp
+     :description "DEPRECATED: Please use gemini-2.0-flash-thinking-exp-01-21 instead."
+     :capabilities (tool-use media)
+     :context-window 32
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "text/plain" "text/csv" "text/html")
      :cutoff-date "2024-08"))
   "List of available Gemini models and associated properties.
 Keys:
