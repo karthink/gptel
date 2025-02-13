@@ -186,55 +186,64 @@ value of `gptel-org-branching-context', which see."
     (when topic-start
       ;; narrow to GPTEL_TOPIC property scope
       (narrow-to-region topic-start prompt-end))
-    (if gptel-org-branching-context
+    (if (and gptel-org-branching-context
+             (or (fboundp 'org-element-lineage-map)
+                 (prog1 nil
+                   (display-warning
+                    '(gptel org)
+                    "Using `gptel-org-branching-context' requires Org version 9.7 or higher, it will be ignored."))))
         ;; Create prompt from direct ancestors of point
-        (if (fboundp 'org-element-lineage-map)
-            (save-excursion
-              (let* ((org-buf (current-buffer))
-                     (start-bounds (gptel-org--element-lineage-map
-                                       (org-element-at-point) #'gptel-org--element-begin
-                                     '(headline org-data) 'with-self))
-                     (end-bounds
-                      (cl-loop
-                       for (pos . rest) on (cdr start-bounds)
-                       while
-                       (and (>= pos (point-min)) ;respect narrowing
-                            (goto-char pos)
-                            ;; org-element-lineage always returns an extra
-                            ;; (org-data) element at point 1.  If there is also a
-                            ;; heading here, it is either a false positive or we
-                            ;; would be double counting it.  So we reject this node
-                            ;; when also at a heading.
-                            (not (and (eq pos 1) (org-at-heading-p)
-                                      ;; Skip if at the last element of start-bounds,
-                                      ;; since we captured this heading already (#476)
-                                      (null rest))))
-                       do (outline-next-heading)
-                       collect (point) into ends
-                       finally return (cons prompt-end ends))))
-                (with-temp-buffer
-                  (setq-local gptel-backend (buffer-local-value 'gptel-backend org-buf)
-                              gptel--system-message
-                              (buffer-local-value 'gptel--system-message org-buf)
-                              gptel-model (buffer-local-value 'gptel-model org-buf)
-                              gptel-mode (buffer-local-value 'gptel-mode org-buf)
-                              gptel-track-response
-                              (buffer-local-value 'gptel-track-response org-buf)
-                              gptel-track-media
-                              (buffer-local-value 'gptel-track-media org-buf))
-                  (cl-loop for start in start-bounds
-                           for end   in end-bounds
-                           do (insert-buffer-substring org-buf start end)
-                           (goto-char (point-min)))
-                  (goto-char (point-max))
-                  (let ((major-mode 'org-mode))
-                    (gptel--parse-buffer gptel-backend max-entries)))))
-          (display-warning
-             '(gptel org)
-             "Using `gptel-org-branching-context' requires Org version 9.7 or higher, it will be ignored.")
-          (gptel--parse-buffer gptel-backend max-entries))
+        (save-excursion
+          (let* ((org-buf (current-buffer))
+                 (start-bounds (gptel-org--element-lineage-map
+                                   (org-element-at-point) #'gptel-org--element-begin
+                                 '(headline org-data) 'with-self))
+                 (end-bounds
+                  (cl-loop
+                   for (pos . rest) on (cdr start-bounds)
+                   while
+                   (and (>= pos (point-min)) ;respect narrowing
+                        (goto-char pos)
+                        ;; org-element-lineage always returns an extra
+                        ;; (org-data) element at point 1.  If there is also a
+                        ;; heading here, it is either a false positive or we
+                        ;; would be double counting it.  So we reject this node
+                        ;; when also at a heading.
+                        (not (and (eq pos 1) (org-at-heading-p)
+                                  ;; Skip if at the last element of start-bounds,
+                                  ;; since we captured this heading already (#476)
+                                  (null rest))))
+                   do (outline-next-heading)
+                   collect (point) into ends
+                   finally return (cons prompt-end ends))))
+            (with-temp-buffer
+              (setq-local gptel-backend (buffer-local-value 'gptel-backend org-buf)
+                          gptel--system-message
+                          (buffer-local-value 'gptel--system-message org-buf)
+                          gptel-model (buffer-local-value 'gptel-model org-buf)
+                          gptel-mode (buffer-local-value 'gptel-mode org-buf)
+                          gptel-track-response
+                          (buffer-local-value 'gptel-track-response org-buf)
+                          gptel-track-media
+                          (buffer-local-value 'gptel-track-media org-buf))
+              (cl-loop for start in start-bounds
+                       for end in end-bounds
+                       do (insert-buffer-substring org-buf start end)
+                       (goto-char (point-min)))
+              (goto-char (point-max))
+              (gptel--org-unescape-tool-results)
+              (gptel--org-strip-tool-headers)
+              (let ((major-mode 'org-mode))
+                (gptel--parse-buffer gptel-backend max-entries)))))
       ;; Create prompt the usual way
-      (gptel--parse-buffer gptel-backend max-entries))))
+      (let ((source (current-buffer))
+            (beg (point-min))
+            (end (point-max)))
+        (with-temp-buffer
+          (insert-buffer-substring source beg end)
+          (gptel--org-unescape-tool-results)
+          (gptel--org-strip-tool-headers)
+          (gptel--parse-buffer gptel-backend max-entries))))))
 
 ;; Handle media links in the buffer
 (cl-defmethod gptel--parse-media-links ((_mode (eql 'org-mode)) beg end)
@@ -621,6 +630,45 @@ cleaning up after."
               (buffer-substring (point) start-pt)
             (prog1 (buffer-substring (point) (point-max))
                    (set-marker start-pt (point-max)))))))))
+
+(defun gptel--org-strip-tool-headers ()
+  "Remove all tool_call block headers and footers."
+  (save-excursion
+    (goto-char (point-min))
+    (while (re-search-forward (rx (or (literal "^#+begin_tool_call")
+                                      (literal "^#+end_tool_call")))
+                              nil t)
+      (delete-region (match-beginning 0) (line-end-position)))))
+
+(defun gptel--org-unescape-tool-results ()
+  "Undo escapes done to keep results from escaping blocks.
+Scans backward for gptel tool text property, reads the arguments, then
+unescapes the remainder."
+  (save-excursion
+    (goto-char (point-max))
+    (let ((prev-pt (point)))
+      (while (> prev-pt (point-min))
+        (goto-char
+         (previous-single-char-property-change (point) 'gptel))
+        (let ((prop (get-text-property (point) 'gptel))
+              (backward-progress (point)))
+          (when (eq (car-safe prop) 'tool)
+            ;; User edits to clean up can potentially insert a tool-call header
+            ;; that is propertized.  Tool call headers should not be
+            ;; propertized.
+            (when (looking-at "[[:space:]]*#\\+begin_tool_call")
+              (goto-char (match-end 0)))
+            (condition-case _err
+                (read (current-buffer))
+              ((end-of-file invalid-read-syntax)
+               (message "Could not read tool arguments")))
+            ;; XXX this code is able to put the point behind prev-pt, which
+            ;; makes the region inverted.  The `max' catches this, but really
+            ;; `read' and `looking-at' are the culprits.  Badly formed tool
+            ;; blocks can lead to this being necessary.
+            (org-unescape-code-in-region
+             (max prev-pt (point)) prev-pt))
+          (goto-char (setq prev-pt backward-progress)))))))
 
 (provide 'gptel-org)
 ;;; gptel-org.el ends here
