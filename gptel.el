@@ -998,12 +998,18 @@ FILE is assumed to exist and be a regular file."
     (save-restriction
       (widen)
       (goto-char (point-max))
-      (let ((prop) (bounds))
-        (while (setq prop (text-property-search-backward
-                           'gptel 'response t))
-          (push (cons (prop-match-beginning prop)
-                      (prop-match-end prop))
-                bounds))
+      (let ((bounds) (prev-pt (point)))
+        (while (and (/= prev-pt (point-min))
+                    (goto-char (previous-single-property-change
+                                (point) 'gptel nil (point-min))))
+          (when-let* ((prop (get-char-property (point) 'gptel)))
+            (let* ((prop-name (if (symbolp prop) prop (car prop)))
+                   (val (when (consp prop) (cdr prop)))
+                   (bound (if val
+                              (list (point) prev-pt val)
+                            (list (point) prev-pt))))
+              (push bound (alist-get prop-name bounds))))
+          (setq prev-pt (point)))
         bounds))))
 
 (define-obsolete-function-alias
@@ -1022,7 +1028,7 @@ FILE is assumed to exist and be a regular file."
 
 (defun gptel--in-response-p (&optional pt)
   "Check if position PT is inside a gptel response."
-  (get-char-property (or pt (point)) 'gptel))
+  (eq (get-char-property (or pt (point)) 'gptel) 'response))
 
 (defun gptel--at-response-history-p (&optional pt)
   "Check if gptel response at position PT has variants."
@@ -1139,6 +1145,39 @@ Valid JSON unless NO-JSON is t."
 
 ;;; Saving and restoring state
 
+(defun gptel--restore-props (bounds-alist)
+  "Restore text properties from BOUNDS-ALIST.
+BOUNDS-ALIST is (PROP . BOUNDS).  BOUNDS is a list of BOUND.  Each BOUND
+is either (BEG END VAL) or (BEG END).
+
+For (BEG END VAL) forms, even if VAL is nil, the gptel property will be
+set to (PROP . VAL).  For (BEG END) forms, except when PROP is response,
+the gptel property is set to just PROP.
+
+The legacy structure, a list of (BEG . END) is also supported and will be
+applied before being re-persisted in the new structure."
+  (if (symbolp (caar bounds-alist))
+      (mapc
+       (lambda (bounds)
+         (let* ((prop (pop bounds)))
+           (mapc
+            (lambda (bound)
+              (let ((prop-has-val (> (length bound) 2)))
+                (add-text-properties
+                 (pop bound) (pop bound)
+                 (if (eq prop 'response)
+                     '(gptel response front-sticky (gptel))
+                   (list 'gptel
+                         (if prop-has-val
+                             (cons prop (pop bound))
+                           prop))))))
+            bounds)))
+       bounds-alist)
+    (mapc (lambda (bound)
+            (add-text-properties
+             (car bound) (cdr bound) '(gptel response front-sticky (gptel))))
+          bounds-alist)))
+
 (defun gptel--restore-state ()
   "Restore gptel state when turning on `gptel-mode'."
   (when (buffer-file-name)
@@ -1147,10 +1186,7 @@ Valid JSON unless NO-JSON is t."
           (require 'gptel-org)
           (gptel-org--restore-state))
       (when gptel--bounds
-        (mapc (pcase-lambda (`(,beg . ,end))
-                (add-text-properties
-                 beg end '(gptel response front-sticky (gptel))))
-              gptel--bounds)
+        (gptel--restore-props gptel--bounds)
         (message "gptel chat restored."))
       (when gptel--backend-name
         (if-let* ((backend (alist-get
