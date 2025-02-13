@@ -201,7 +201,7 @@ information if the stream contains it."
                   (cl-loop
                    for tool-call in tool-use ; Construct the call specs for running the function calls
                    for spec = (plist-get tool-call :function)
-                   collect (list :id (plist-get tool-call :id)
+                   collect (list :id (gptel--openai-unformat-tool-id (plist-get tool-call :id))
                                  :name (plist-get spec :name)
                                  :args (ignore-errors (gptel--json-read-string
                                                        (plist-get spec :arguments))))
@@ -257,7 +257,7 @@ Mutate state INFO with response metadata."
                                         (gptel--json-read-string
                                          (plist-get call-spec :arguments))))
            (plist-put call-spec :arguments nil)
-           (plist-put call-spec :id (plist-get tool-call :id))
+           (plist-put call-spec :id (gptel--openai-unformat-tool-id (plist-get tool-call :id)))
            collect call-spec into tool-use
            finally (plist-put info :tool-use tool-use)))))))
 
@@ -306,8 +306,19 @@ Mutate state INFO with response metadata."
      (list
       :role "tool"
       :content (plist-get tool-call :result)
-      :tool_call_id (plist-get tool-call :id)))
+      :tool_call_id (gptel--openai-format-tool-id
+                     (plist-get tool-call :id))))
    tool-use))
+
+(defun gptel--openai-format-tool-id (tool-id)
+  (format "call_%s" tool-id))
+
+(defun gptel--openai-unformat-tool-id (tool-id)
+  (or (and (string-match "call_\\(.+\\)" tool-id)
+           (match-string 1 tool-id))
+      (progn
+        (message "Unexpected tool_call_id format: %s" tool-id)
+        tool-id)))
 
 ;; NOTE: No `gptel--inject-prompt' method required for gptel-openai, since this
 ;; is handled by its defgeneric implementation
