@@ -996,7 +996,7 @@ FILE is assumed to exist and be a regular file."
                 bounds))
         bounds))))
 
-(defun gptel--get-bounds ()
+(defun gptel--get-response-bounds ()
   "Return the gptel response boundaries around point."
   (let (prop)
     (save-excursion
@@ -1005,7 +1005,7 @@ FILE is assumed to exist and be a regular file."
         (when (setq prop (text-property-search-forward
                           'gptel 'response t))
           (cons (prop-match-beginning prop)
-                      (prop-match-end prop)))))))
+                (prop-match-end prop)))))))
 
 (defun gptel--in-response-p (&optional pt)
   "Check if position PT is inside a gptel response."
@@ -2917,7 +2917,7 @@ response at point.  This can be used to include additional
 context for the ediff session."
   (interactive "P")
   (when (gptel--at-response-history-p)
-    (pcase-let* ((`(,beg . ,end) (funcall (or bounds-func #'gptel--get-bounds)))
+    (pcase-let* ((`(,beg . ,end) (funcall (or bounds-func #'gptel--get-response-bounds)))
                  (prev-response
                   (if arg
                       (completing-read "Choose response variant to diff against: "
@@ -2962,13 +2962,13 @@ context for the ediff session."
   "Mark gptel response at point, if any."
   (interactive)
   (unless (gptel--in-response-p) (user-error "No gptel response at point"))
-  (pcase-let ((`(,beg . ,end) (gptel--get-bounds)))
+  (pcase-let ((`(,beg . ,end) (gptel--get-response-bounds)))
     (goto-char beg) (push-mark) (goto-char end) (activate-mark)))
 
 (defun gptel--previous-variant (&optional arg)
   "Switch to previous gptel-response at this point, if it exists."
   (interactive "p")
-  (pcase-let* ((`(,beg . ,end) (gptel--get-bounds))
+  (pcase-let* ((`(,beg . ,end) (gptel--get-response-bounds))
                (history (get-char-property (point) 'gptel-history))
                (alt-response (car-safe history))
                (offset))
