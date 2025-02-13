@@ -2866,7 +2866,7 @@ for tool call results.  INFO contains the state of the request."
                     separator
                     "#+begin_tool_call "
                     (truncate-string-to-width
-                     display-call (floor (* (window-width) 0.6)) 0 nil " ...)")
+                     display-call (floor (* (window-width) 0.6)) 0 nil " …)")
                     (propertize
                      (concat "\n" call "\n\n"
                              (org-escape-code-in-string (prin1-to-string result)))
