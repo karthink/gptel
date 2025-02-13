@@ -1379,7 +1379,7 @@ for details."
   "Regenerate gptel response at point."
   (interactive)
   (when (gptel--in-response-p)
-    (pcase-let* ((`(,beg . ,end) (gptel--get-bounds))
+    (pcase-let* ((`(,beg . ,end) (gptel--get-response-bounds))
                  (history (get-char-property (point) 'gptel-history))
                  (prev-responses (cons (buffer-substring-no-properties beg end)
                                        history)))
