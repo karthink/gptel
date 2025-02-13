@@ -50,6 +50,7 @@
 (declare-function gptel-backend-name "gptel")
 (declare-function gptel--parse-buffer "gptel")
 (declare-function gptel--parse-directive "gptel")
+(declare-function gptel--restore-props "gptel")
 (declare-function org-entry-get "org")
 (declare-function org-entry-put "org")
 (declare-function org-with-wide-buffer "org-macs")
@@ -364,10 +365,7 @@ ARGS are the original function call arguments."
     (condition-case status
         (progn
           (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
-            (mapc (pcase-lambda (`(,beg . ,end))
-                    (add-text-properties
-                     beg end '(gptel response front-sticky (gptel))))
-                  (read bounds)))
+            (gptel--restore-props (read bounds)))
           (pcase-let ((`(,system ,backend ,model ,temperature ,tokens ,num)
                        (gptel-org--entry-properties (point-min))))
             (when system (setq-local gptel--system-message system))
@@ -426,7 +424,7 @@ non-nil (default), display a message afterwards."
    (letrec ((write-bounds
              (lambda (attempts)
                (let* ((bounds (gptel--get-buffer-bounds))
-                      (offset (caar bounds))
+                      (offset (caadar bounds))
                       (offset-marker (set-marker (make-marker) offset)))
                  (org-entry-put (point-min) "GPTEL_BOUNDS"
                                 (prin1-to-string (gptel--get-buffer-bounds)))
