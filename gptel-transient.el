@@ -556,7 +556,7 @@ Also format its value in the Transient menu."
     (gptel--infix-add-directive)]
    [:pad-keys t ""
     (:info #'gptel--describe-infix-context
-     :face 'transient-heading :format "%d")
+     :face transient-heading :format "%d")
     (gptel--infix-context-add-region)
     (gptel--infix-context-add-buffer)
     (gptel--infix-context-add-file)
