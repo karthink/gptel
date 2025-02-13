@@ -642,12 +642,13 @@ The above code makes the backend available to select.  If you want it to be the 
 Register a backend with
 #+begin_src emacs-lisp
 ;; DeepSeek offers an OpenAI compatible API
-(gptel-make-openai "DeepSeek"       ;Any name you want
+(gptel-make-deepseek "DeepSeek"       ;Any name you want
   :host "api.deepseek.com"
   :endpoint "/chat/completions"
   :stream t
   :key "your-api-key"               ;can be a function that returns the key
-  :models '(deepseek-chat deepseek-coder))
+  :show-reasoning t ; whether to include the chain of thought in output
+  :models '(deepseek-chat deepseek-reasoner))
 
 #+end_src
 
@@ -660,11 +661,12 @@ The above code makes the backend available to select.  If you want it to be the 
 ;; OPTIONAL configuration
 (setq gptel-model   'deepseek-chat
       gptel-backend
-      (gptel-make-openai "DeepSeek"     ;Any name you want
+      (gptel-make-deepseek "DeepSeek"     ;Any name you want
         :host "api.deepseek.com"
         :endpoint "/chat/completions"
         :stream t
         :key "your-api-key"             ;can be a function that returns the key
+        :show-reasoning t
         :models '(deepseek-chat deepseek-coder)))
 
 #+end_src
