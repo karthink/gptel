@@ -345,13 +345,6 @@ files in the context."
      :input-cost 0.075
      :output-cost 0.30
      :cutoff-date "2024-10")
-    (gemini-2.0-flash-thinking-exp
-     :description "Stronger reasoning capabilities."
-     :capabilities (tool-use media)
-     :context-window 32
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "text/plain" "text/csv" "text/html")
-     :cutoff-date "2024-08")
     (gemini-exp-1206
      :description "Improved coding, reasoning and vision capabilities"
      :capabilities (tool-use json media)
@@ -366,7 +359,52 @@ files in the context."
      :context-window 32
      :input-cost 0.50
      :output-cost 1.50
-     :cutoff-date "2023-02"))
+     :cutoff-date "2023-02")
+    (gemini-2.0-flash
+     :description "Next gen, high speed, multimodal for a diverse variety of tasks"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1000
+     :input-cost 0.10
+     :output-cost 0.40
+     :cutoff-date "2024-08")
+    (gemini-2.0-flash-lite-preview-02-05
+     :description "Gemini 2.0 Flash model optimized for cost efficiency and low latency"
+     :capabilities (json)
+     :context-window 1000
+     :input-cost 0.075
+     :output-cost 0.30
+     :cutoff-date "2024-08")
+    (gemini-2.0-pro-exp-02-05
+     :description "Next gen, high speed, multimodal for a diverse variety of tasks"
+     :capabilities (tool-use json)
+     :context-window 2000
+     :input-cost 0.00
+     :output-cost 0.00
+     :cutoff-date "2024-08")
+    (gemini-2.0-flash-thinking-exp-01-21
+     :description "Next gen, high speed, multimodal for a diverse variety of tasks"
+     :capabilities (json)
+     :input-cost 0.00
+     :output-cost 0.00
+     :cutoff-date "2024-08")
+    (gemini-2.0-flash-exp
+     :description "Multi-modal, streaming, tool use 2000 RPM"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1000
+     :input-cost 0.00
+     :output-cost 0.00
+     :cutoff-date "2024-08")
+    (gemini-2.0-flash-thinking-exp
+     :description "DEPRECATED: Please use gemini-2.0-flash-thinking-exp-01-21 instead."
+     :capabilities (tool-use media)
+     :context-window 32
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "text/plain" "text/csv" "text/html")
+     :cutoff-date "2024-08"))
   "List of available Gemini models and associated properties.
 Keys:
 
