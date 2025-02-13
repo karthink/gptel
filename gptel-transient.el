@@ -512,7 +512,7 @@ This is used only for setting this variable via `gptel-menu'.")
   "Transient options for overlays displayed in the working buffer.")
 
 (cl-defmethod transient-format-value ((obj gptel-option-overlaid))
-  "set up the in-buffer overlay for additional directive, a string.
+  "Set up the in-buffer overlay for additional directive, a string.
 
 Also format its value in the Transient menu."
   (let ((value (oref obj value))
@@ -532,7 +532,7 @@ Also format its value in the Transient menu."
         (add-hook 'transient-exit-hook ov-clear-hook)))
     ;; Updating transient menu display
     (if value
-        (propertize (concat argument (truncate-string-to-width value 25 nil nil "..."))
+        (propertize (concat argument (truncate-string-to-width value 35 nil nil t))
                     'face 'transient-value)
       (propertize
        (concat "(" (symbol-name (oref obj display-nil)) ")")
