@@ -331,9 +331,40 @@ Mutate state INFO with response metadata."
           (pcase (get-char-property (point) 'gptel)
             ('response
              (push (list :role "assistant"
-                         :content (buffer-substring-no-properties (point) prev-pt))
+                         :content
+                         (gptel--trim-prefixes
+                          (buffer-substring-no-properties (point) prev-pt)))
                    prompts))
+            (`(tool ,id)
+             (save-excursion
+               (condition-case-unless-debug _err
+                   (let* ((tool-call (read (current-buffer)))
+                          (id (gptel--openai-format-tool-id id))
+                          (function (or (car tool-call) nil))
+                          (name (plist-get function :name))
+                          (arguments (json-serialize (plist-get function :arguments)
+                                                     :null-object nil
+                                                     :false-object :json-false)))
+                     (push (list :role "assistant"
+                                 :tool_calls
+                                 (vector (list :type "function" :id id
+                                               :function `( :name ,name
+                                                            :arguments ,arguments))))
+                           prompts)
+                     (push (list :role "tool"
+                                 :tool_call_id id
+                                 :content
+                                 (string-trim
+                                  (buffer-substring-no-properties (point) prev-pt)))
+                           prompts))
+                 ((end-of-file invalid-read-syntax)
+                  (delay-warning '(gptel gptel-openai gptel-tool )
+                                 (format "Could not parse tool-call %s" id)
+                                 'error
+                                 (current-buffer))))))
+            ('ignore)
             ('nil
+             (and max-entries (cl-decf max-entries))
              (if include-media
                  (push (list :role "user"
                              :content
@@ -345,8 +376,7 @@ Mutate state INFO with response metadata."
                            (gptel--trim-prefixes
                             (buffer-substring-no-properties (point) prev-pt)))
                      prompts))))
-          (setq prev-pt (point))
-          (and max-entries (cl-decf max-entries)))
+          (setq prev-pt (point)))
       (push (list :role "user"
                   :content
                   (gptel--trim-prefixes (buffer-substring-no-properties
