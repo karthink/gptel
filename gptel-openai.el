@@ -377,22 +377,19 @@ Mutate state INFO with response metadata."
             ('nil
              (and max-entries (cl-decf max-entries))
              (if include-media
-                 (push (list :role "user"
-                             :content
-                             (gptel--openai-parse-multipart
-                              (gptel--parse-media-links major-mode (point) prev-pt)))
-                       prompts)
-               (push (list :role "user"
-                           :content
-                           (gptel--trim-prefixes
-                            (buffer-substring-no-properties (point) prev-pt)))
-                     prompts))))
+                 (when-let* ((content (gptel--openai-parse-multipart
+                                      (gptel--parse-media-links major-mode (point) prev-pt))))
+                   (push (list :role "user" :content content) prompts))
+               (when-let* ((content (gptel--trim-prefixes
+                                     (buffer-substring-no-properties (point)
+                                                                     prev-pt)))
+                           (content (when (not (string-empty-p content)) content)))
+                 (push (list :role "user" :content content) prompts)))))
           (setq prev-pt (point)))
-      (push (list :role "user"
-                  :content
-                  (gptel--trim-prefixes (buffer-substring-no-properties
-                                         (point-min) (point-max))))
-            prompts))
+      (when-let* ((content (gptel--trim-prefixes (buffer-substring-no-properties
+                                                  (point-min) (point-max))))
+                  (content (when (not (string-empty-p content)) content)))
+        (push (list :role "user" :content content) prompts)))
     prompts))
 
 ;; TODO This could be a generic function
