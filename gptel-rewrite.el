@@ -147,9 +147,9 @@ which see."
   (or (save-mark-and-excursion
         (run-hook-with-args-until-success
          'gptel-rewrite-directives-hook))
-      (let* ((lang (downcase (gptel--strip-mode-suffix major-mode)))
-             (article (if (and lang (not (string-empty-p lang))
-                               (memq (aref lang 0) '(?a ?e ?i ?o ?u)))
+      (let* ((lang (gptel--pretty-mode-name major-mode))
+	     (article (if (and lang (not (string-empty-p lang))
+                               (memq (aref (downcase lang) 0) '(?a ?e ?i ?o ?u)))
                           "an" "a")))
         (if (derived-mode-p 'prog-mode)
             (format (concat "You are %s %s programmer.  "
