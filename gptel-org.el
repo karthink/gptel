@@ -658,7 +658,7 @@ unescapes the remainder."
             ;; User edits to clean up can potentially insert a tool-call header
             ;; that is propertized.  Tool call headers should not be
             ;; propertized.
-            (when (looking-at "[[:space:]]*#\\+begin_tool_call")
+            (when (looking-at-p "[[:space:]]*#\\+begin_tool_call")
               (goto-char (match-end 0)))
             (condition-case _err
                 (read (current-buffer))
