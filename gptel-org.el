@@ -669,7 +669,7 @@ unescapes the remainder."
             ;; `read' and `looking-at' are the culprits.  Badly formed tool
             ;; blocks can lead to this being necessary.
             (org-unescape-code-in-region
-             (max prev-pt (point)) prev-pt))
+             (min prev-pt (point)) prev-pt))
           (goto-char (setq prev-pt backward-progress)))))))
 
 (provide 'gptel-org)
