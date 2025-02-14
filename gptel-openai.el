@@ -355,17 +355,17 @@ Mutate state INFO with response metadata."
                           (arguments (json-serialize (plist-get tool-call :arg)
                                                      :null-object nil
                                                      :false-object :json-false)))
-                     (push (list :role "assistant"
-                                 :tool_calls
-                                 (vector (list :type "function" :id id
-                                               :function `( :name ,name
-                                                            :arguments ,arguments))))
-                           prompts)
                      (push (list :role "tool"
                                  :tool_call_id id
                                  :content
                                  (string-trim
                                   (buffer-substring-no-properties (point) prev-pt)))
+                           prompts)
+                     (push (list :role "assistant"
+                                 :tool_calls
+                                 (vector (list :type "function" :id id
+                                               :function `( :name ,name
+                                                            :arguments ,arguments))))
                            prompts))
                  ((end-of-file invalid-read-syntax)
                   (delay-warning '(gptel gptel-openai gptel-tool )
