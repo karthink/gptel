@@ -351,9 +351,8 @@ Mutate state INFO with response metadata."
                (condition-case-unless-debug _err
                    (let* ((tool-call (read (current-buffer)))
                           (id (gptel--openai-format-tool-id id))
-                          (function (or (car tool-call) nil))
-                          (name (plist-get function :name))
-                          (arguments (json-serialize (plist-get function :arguments)
+                          (name (plist-get tool-call :name))
+                          (arguments (json-serialize (plist-get tool-call :arg)
                                                      :null-object nil
                                                      :false-object :json-false)))
                      (push (list :role "assistant"
