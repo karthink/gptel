@@ -631,13 +631,16 @@ cleaning up after."
                    (set-marker start-pt (point-max)))))))))
 
 (defun gptel--org-strip-tool-headers ()
-  "Remove all tool_call block headers and footers."
+  "Remove all tool_call block headers and footers.
+Every line that matches will be removed entirely."
   (save-excursion
     (goto-char (point-min))
-    (while (re-search-forward (rx (or (literal "^#+begin_tool_call")
-                                      (literal "^#+end_tool_call")))
+    (while (re-search-forward (rx line-start (literal "#+")
+                                  (or (literal "begin") (literal "end"))
+                                  (literal "_tool_call"))
                               nil t)
-      (delete-region (match-beginning 0) (line-end-position)))))
+      (delete-region (match-beginning 0)
+                     (min (point-max) (1+ (line-end-position)))))))
 
 (defun gptel--org-unescape-tool-results ()
   "Undo escapes done to keep results from escaping blocks.
