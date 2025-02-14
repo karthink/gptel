@@ -244,7 +244,8 @@ value of `gptel-org-branching-context', which see."
           (insert-buffer-substring source beg end)
           (gptel--org-unescape-tool-results)
           (gptel--org-strip-tool-headers)
-          (gptel--parse-buffer gptel-backend max-entries))))))
+          (let ((major-mode 'org-mode))
+            (gptel--parse-buffer gptel-backend max-entries)))))))
 
 ;; Handle media links in the buffer
 (cl-defmethod gptel--parse-media-links ((_mode (eql 'org-mode)) beg end)
