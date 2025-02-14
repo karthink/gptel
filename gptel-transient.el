@@ -311,7 +311,8 @@ which see."
 (defun gptel--describe-suffix-send ()
   "Describe the action of `gptel--suffix-send'."
   (cl-flet ((ptv (s) (propertize s 'face 'warning))
-            (pth (s) (propertize s 'face 'transient-heading)))
+            (pth (s) (propertize s 'face 'transient-heading))
+	    (pte (s) (propertize s 'face 'error)))
     (let* ((args (or (and transient-current-command
                           (transient-args transient-current-command))
 	             ;; Not yet exported, simulate.  HACK: We are accessing
@@ -346,7 +347,24 @@ which see."
                      (if dest (concat (pth ", response to ") dest)
                        (concat (pth ", insert response at point")))))
             ((member "y" args)
-             (concat (pth "Send prompt from ") (ptv "kill-ring")
+             (concat (pth "Send prompt from ")
+		     (concat (ptv "kill-ring (")
+			     (if-let* ((val (car-safe kill-ring))
+				       (val (substring-no-properties val))
+				       (len (length val)))
+				 (ptv (concat "\""
+					      (string-replace
+					       "\n" "⮐"
+					       (truncate-string-to-width
+						val 20 nil nil t))
+					      "\""
+					      (when (> len 20)
+						(concat
+						 ", "
+						 (file-size-human-readable len 'si " ")
+						 " chars"))))
+			     (pte "empty!"))
+			   (ptv ")"))
                      context
                      (if dest (concat (pth ", response to ") dest)
                        (concat (pth ", insert response at point")))))
