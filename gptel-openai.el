@@ -346,7 +346,7 @@ Mutate state INFO with response metadata."
                          (gptel--trim-prefixes
                           (buffer-substring-no-properties (point) prev-pt)))
                    prompts))
-            (`(tool ,id)
+            (`(tool . ,id)
              (save-excursion
                (condition-case-unless-debug _err
                    (let* ((tool-call (read (current-buffer)))
