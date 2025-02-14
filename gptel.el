@@ -906,9 +906,9 @@ Note: This will move the cursor."
   "Remove prompt/response prefixes from string S."
   (string-trim (string-trim s)
    (format "\\(%s\\)[\t\r\n ]*"
-             (regexp-quote (gptel-prompt-prefix-string)))
+           (regexp-quote (string-trim (gptel-prompt-prefix-string))))
    (format "[\t\r\n ]*\\(%s\\)"
-           (regexp-quote (gptel-response-prefix-string)))))
+           (regexp-quote (string-trim (gptel-response-prefix-string))))))
 
 (defsubst gptel--link-standalone-p (beg end)
   "Return non-nil if positions BEG and END are isolated.
