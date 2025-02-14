@@ -237,11 +237,20 @@ value of `gptel-org-branching-context', which see."
               (let ((major-mode 'org-mode))
                 (gptel--parse-buffer gptel-backend max-entries)))))
       ;; Create prompt the usual way
-      (let ((source (current-buffer))
+      (let ((org-buf (current-buffer))
             (beg (point-min))
             (end (point-max)))
         (with-temp-buffer
-          (insert-buffer-substring source beg end)
+          (setq-local gptel-backend (buffer-local-value 'gptel-backend org-buf)
+                          gptel--system-message
+                          (buffer-local-value 'gptel--system-message org-buf)
+                          gptel-model (buffer-local-value 'gptel-model org-buf)
+                          gptel-mode (buffer-local-value 'gptel-mode org-buf)
+                          gptel-track-response
+                          (buffer-local-value 'gptel-track-response org-buf)
+                          gptel-track-media
+                          (buffer-local-value 'gptel-track-media org-buf))
+          (insert-buffer-substring org-buf beg end)
           (gptel--org-unescape-tool-results)
           (gptel--org-strip-tool-headers)
           (let ((major-mode 'org-mode))
