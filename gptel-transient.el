@@ -174,7 +174,7 @@ will toggle its visibility state."
                                  prefix max-width nil nil
                                  'ellipsis))))))))
 
-(defun gptel--transient-read-number (prompt initial-input history)
+(defun gptel--transient-read-number (prompt _initial-input history)
   "Read a numeric value from the minibuffer.
 
 PROMPT, INITIAL-INPUT and HISTORY are as in the transient reader
@@ -1366,7 +1366,7 @@ for details."
   "Regenerate gptel response at point."
   (interactive)
   (when (gptel--in-response-p)
-    (pcase-let* ((`(,beg . ,end) (gptel--get-bounds))
+    (pcase-let* ((`(,beg . ,end) (gptel--get-response-bounds))
                  (history (get-char-property (point) 'gptel-history))
                  (prev-responses (cons (buffer-substring-no-properties beg end)
                                        history)))
