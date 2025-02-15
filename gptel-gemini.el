@@ -238,6 +238,36 @@ See generic implementation for full documentation."
             ('response
              (when-let* ((content (buffer-substring-no-properties (point) prev-pt)))
                (push (list :role "model" :parts (list :text content)) prompts)))
+            (`(tool . ,_id)
+             (save-excursion
+               ;; XXX has not been tested at all 🤠
+               (condition-case-unless-debug _err
+                   (let* ((tool-call (read (current-buffer)))
+                          (name (plist-get tool-call :name))
+                          (arguments (json-serialize (plist-get tool-call :args)
+                                                     :null-object nil
+                                                     :false-object :json-false)))
+                     (push
+                      (list :role "user"
+                            :parts `(:functionResponse
+                                     ;; XXX if the response is supposed to be
+                                     ;; JSON, we have to de-serialize tool's
+                                     ;; return value as JSON into the response
+                                     ;; section of the tool result, then
+                                     ;; re-serialize it from Elisp here.
+                                     (vector (string-trim
+                                              (buffer-substring-no-properties
+                                               (point) prev-pt)))))
+                      prompts)
+                     (push (list :role "model"
+                                 :parts
+                                 (vector `(:functionCall ( :name ,name
+                                                           :args ,arguments))))
+                           prompts))
+                 ((end-of-file invalid-read-syntax)
+                  (message (format "Could not parse tool-call %s on line %s"
+                                   id (line-number-at-pos (point))))))))
+            ('ignore)
             ('nil
              (if include-media
                  (when-let* ((content (gptel--gemini-parse-multipart
