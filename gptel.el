@@ -995,9 +995,7 @@ FILE is assumed to exist and be a regular file."
                    (bound (if val
                               (list (point) prev-pt val)
                             (list (point) prev-pt))))
-              (if-let ((prop-bounds (assq prop-name bounds)))
-                  (setcdr prop-bounds (cons bound (cdr prop-bounds)))
-                (push (cons prop-name (list bound)) bounds))))
+              (push bound (alist-get prop-name bounds))))
           (setq prev-pt (point)))
         bounds))))
 
