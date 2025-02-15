@@ -434,6 +434,7 @@ non-nil (default), display a message afterwards."
    (letrec ((write-bounds
              (lambda (attempts)
                (let* ((bounds (gptel--get-buffer-bounds))
+                      ;; first value of ((prop . ((beg end val)...))...)
                       (offset (caadar bounds))
                       (offset-marker (set-marker (make-marker) offset)))
                  (org-entry-put (point-min) "GPTEL_BOUNDS"
