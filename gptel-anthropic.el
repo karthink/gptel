@@ -300,7 +300,7 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
       (when-let* ((content (string-trim (buffer-substring-no-properties
                                          (point-min) (point-max)))))
         ;; XXX Remove this comment if empty `prompts' is fine.
-        (when (length content)
+        (when (not (string-empty-p content))
           (push (list :role "user" :content content) prompts))))
     prompts))
 
