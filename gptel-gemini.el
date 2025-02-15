@@ -266,8 +266,8 @@ See generic implementation for full documentation."
                                                            :args ,arguments))))
                            prompts))
                  ((end-of-file invalid-read-syntax)
-                  (message (format "Could not parse tool-call %s on line %s"
-                                   id (line-number-at-pos (point))))))))
+                  (message (format "Could not parse tool-call on line %s"
+                                   (line-number-at-pos (point))))))))
             ('ignore)
             ('nil
              (if include-media
