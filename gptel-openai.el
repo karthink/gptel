@@ -381,7 +381,7 @@ Mutate state INFO with response metadata."
                                                            (point) prev-pt))))
                  (push (list :role "user" :content content) prompts)))))
           (setq prev-pt (point)))
-      (let* ((content (string-trim (buffer-substring-no-properties
+      (let ((content (string-trim (buffer-substring-no-properties
                                     (point-min) (point-max)))))
         (push (list :role "user" :content content) prompts)))
     prompts))
