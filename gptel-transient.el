@@ -334,7 +334,10 @@ which see."
                               (and (stringp s) (memq (aref s 0) '(?g ?b))
                                    (not (equal (substring s 1) (buffer-name)))
                                    (concat (pth "buffer ") (ptv (substring s 1)))))
-                            args))))
+                            args))
+		  (buffer-read-only (concat (pth "buffer ")
+					    (ptv gptel-read-only-response-buffer)))))
+      (when buffer-read-only (setq dest (concat dest (pth " (source read only)"))))
       (setq context
             (and gptel-context--alist
                  (let ((lc (length gptel-context--alist)))
@@ -370,8 +373,8 @@ which see."
              (let* ((reg (use-region-p))
                     (src (ptv (if reg "selection" (buffer-name)))))
                (if dest (concat (pth "Send ") src ltext context (pth ", with response to ")
-                                (ptv dest) (pth "; kill") ltext
-                                (and (not reg) (concat (pth " in ") src)))
+                                dest (unless buffer-read-only (concat (pth "; kill") ltext
+					     (and (not reg) (concat (pth " in ") src)))))
                  (concat (pth "Replace ") src ltext (pth " with response")
                          (and context
                               (concat (pth " ( with") (substring context 11) " )"))))))
@@ -1343,7 +1346,7 @@ This sets the variable `gptel-include-tool-results', which see."
             ;; store the killed text in gptel-history
             (gptel--attach-response-history
              (list (buffer-substring-no-properties beg end))))
-          (kill-region beg end)))
+          (unless buffer-read-only (kill-region beg end))))
 
       (when output-to-other-buffer-p
         (message (concat "Prompt sent to buffer: "
