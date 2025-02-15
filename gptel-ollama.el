@@ -159,7 +159,7 @@ Store response metadata in state INFO."
              (if include-media
                  (when-let* ((content (gptel--ollama-parse-multipart
                                        (gptel--parse-media-links major-mode (point) prev-pt))))
-                   (when (length (content))
+                   (when (> (length content) 0)
                      (push (append '(:role "user") content) prompts)))
                (when-let* ((content (gptel--trim-prefixes (buffer-substring-no-properties
                                                            (point) prev-pt))))

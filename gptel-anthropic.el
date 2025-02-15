@@ -290,7 +290,7 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
                (if include-media
                    (when-let* ((content (gptel--anthropic-parse-multipart
                                          (gptel--parse-media-links major-mode (point) prev-pt))))
-                     (when (length content)
+                     (when (> (length content) 0)
                        (push (list :role "user" :content content) prompts)))
                  (when-let* ((content (gptel--trim-prefixes
                                        (buffer-substring-no-properties (point) prev-pt))))
