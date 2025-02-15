@@ -152,8 +152,8 @@ Store response metadata in state INFO."
                     (not (= (point) prev-pt)))
           (pcase (get-char-property (point) 'gptel)
             ('response
-             (when-let ((content (gptel--trim-prefixes
-                                  (buffer-substring-no-properties (point) prev-pt))))
+             (when-let* ((content (gptel--trim-prefixes
+                                   (buffer-substring-no-properties (point) prev-pt))))
                (push (list :role "assistant" :content content) prompts)))
             ('nil
              (if include-media
