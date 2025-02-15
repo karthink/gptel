@@ -277,35 +277,30 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
                     (goto-char (previous-single-property-change
                                 (point) 'gptel nil (point-min)))
                     (not (= (point) prev-pt)))
-          ;; HACK Until we can find a more robust solution for editing
-          ;; responses, ignore prompts containing only whitespace, as the
-          ;; Anthropic API can't handle it.  See #452, #409, #406, #351 and #321
-          ;; We check for blank prompts by skipping whitespace and comparing
-          ;; point against the previous.
+          ;; XXX update for tools
           (unless (save-excursion (skip-syntax-forward " ") (>= (point) prev-pt))
             (pcase (get-char-property (point) 'gptel)
               ('response
-               (push (list :role "assistant"
-                           :content (buffer-substring-no-properties (point) prev-pt))
-                     prompts))
+               (when-let* ((content
+                            (gptel--trim-prefixes
+                             (buffer-substring-no-properties (point) prev-pt))))
+                 (when (not (string-blank-p content))
+                   (push (list :role "assistant" :content content) prompts))))
               ('nil                     ; user role: possibly with media
-               (if include-media       
-                   (push (list :role "user"
-                               :content
-                               (gptel--anthropic-parse-multipart
-                                (gptel--parse-media-links major-mode (point) prev-pt)))
-                         prompts)
-                 (push (list :role "user"
-                             :content
-                             (gptel--trim-prefixes
-                              (buffer-substring-no-properties (point) prev-pt)))
-                       prompts)))))
+               (if include-media
+                   (when-let* ((content (gptel--anthropic-parse-multipart
+                                         (gptel--parse-media-links major-mode (point) prev-pt))))
+                     (when (length content)
+                       (push (list :role "user" :content content) prompts)))
+                 (when-let* ((content (gptel--trim-prefixes
+                                       (buffer-substring-no-properties (point) prev-pt))))
+                   (push (list :role "user" :content content) prompts))))))
           (setq prev-pt (point))
           (and max-entries (cl-decf max-entries)))
-      (push (list :role "user"
-                  :content
-                  (string-trim (buffer-substring-no-properties (point-min) (point-max))))
-            prompts))
+      (let ((content (or (gptel--trim-prefixes (buffer-substring-no-properties
+                                                (point-min) (point-max)))
+                         "")))
+        (push (list :role "user" :content content) prompts)))
     prompts))
 
 (defun gptel--anthropic-parse-multipart (parts)
@@ -328,7 +323,7 @@ format."
    for media = (plist-get part :media)
    if text do
    (and (or (= n 1) (= n last)) (setq text (gptel--trim-prefixes text))) and
-   unless (string-empty-p text)
+   if text
    collect `(:type "text" :text ,text) into parts-array end
    else if media
    do
