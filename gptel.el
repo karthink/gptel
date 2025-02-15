@@ -1987,8 +1987,11 @@ Run post-response hooks."
                   (process-tool-result
                    (lambda (result)
                      (plist-put info :tool-success t)
-                     (plist-put tool-call :result (prin1-to-string result))
-                     (push (list tool-spec args result) result-alist)
+                     ;; XXX re-introduce the string type function
+                     (let ((result (if (stringp result) result
+                                     (prin1-to-string result))))
+                       (plist-put tool-call :result result)
+                       (push (list tool-spec args result) result-alist))
                      (cl-incf tool-idx)
                      (when (>= tool-idx ntools) ; All tools have run
                        (gptel--inject-prompt
@@ -2868,7 +2871,8 @@ for tool call results.  INFO contains the state of the request."
                       (lambda (tu) (equal (plist-get tu :name) name))
                       (plist-get info :tool-use)))
                     (id (plist-get tool-use :id))
-                    (display-call (format "(%s '%S)" name args))
+                    (display-call (if args (format "(%s '%S)" name args)
+                                    (format "(%s nil)" name)))
                     (call (prin1-to-string `(:name ,name :args ,args))))
                (if (derived-mode-p 'org-mode)
                    (concat
@@ -2877,8 +2881,8 @@ for tool call results.  INFO contains the state of the request."
                     (truncate-string-to-width
                      display-call (floor (* (window-width) 0.6)) 0 nil " …)")
                     (propertize
-                     (concat "\n" call "\n\n"
-                             (org-escape-code-in-string (prin1-to-string result)))
+                     ;; XXX result type decided upstream, when gathering the result
+                     (concat "\n" call "\n\n" (org-escape-code-in-string result))
                      'gptel `(tool . ,id))
                     "\n#+end_tool_call\n")
                  ;; TODO(tool) else branch is handling all front-ends as markdown.
