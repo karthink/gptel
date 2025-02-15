@@ -783,13 +783,13 @@ or
   "Lookup api key in the auth source.
 By default, the LLM host for the active backend is used as HOST,
 and \"apikey\" as USER."
-  (if-let ((secret
-            (plist-get
-             (car (auth-source-search
-                   :host (or host (gptel-backend-host gptel-backend))
-                   :user (or user "apikey")
-                   :require '(:secret)))
-                              :secret)))
+  (if-let* ((secret
+             (plist-get
+              (car (auth-source-search
+                    :host (or host (gptel-backend-host gptel-backend))
+                    :user (or user "apikey")
+                    :require '(:secret)))
+              :secret)))
       (if (functionp secret)
           (encode-coding-string (funcall secret) 'utf-8)
         secret)
@@ -798,11 +798,11 @@ and \"apikey\" as USER."
 ;; FIXME Should we utf-8 encode the api-key here?
 (defun gptel--get-api-key (&optional key)
   "Get api key from KEY, or from `gptel-api-key'."
-  (when-let ((key-sym (or key (gptel-backend-key gptel-backend))))
+  (when-let* ((key-sym (or key (gptel-backend-key gptel-backend))))
     (cl-typecase key-sym
       (function (string-trim-right (funcall key-sym) "[\n\r]+"))
       (string (string-trim-right key-sym "[\n\r]+"))
-      (symbol (if-let ((val (symbol-value key-sym)))
+      (symbol (if-let* ((val (symbol-value key-sym)))
                   (gptel--get-api-key val)
                 (error "`gptel-api-key' is not valid")))
       (t (error "`gptel-api-key' is not valid")))))
@@ -851,9 +851,9 @@ Later plists in the sequence take precedence over earlier ones."
   "Scroll window if LLM response continues below viewport.
 
 Note: This will move the cursor."
-  (when-let ((win (get-buffer-window (current-buffer) 'visible))
-             ((not (pos-visible-in-window-p (point) win)))
-             (scroll-error-top-bottom t))
+  (when-let* ((win (get-buffer-window (current-buffer) 'visible))
+              ((not (pos-visible-in-window-p (point) win)))
+              (scroll-error-top-bottom t))
     (condition-case nil
         (with-selected-window win
           (scroll-up-command))
@@ -1132,9 +1132,9 @@ Valid JSON unless NO-JSON is t."
               gptel--bounds)
         (message "gptel chat restored."))
       (when gptel--backend-name
-        (if-let ((backend (alist-get
-                           gptel--backend-name gptel--known-backends
-                           nil nil #'equal)))
+        (if-let* ((backend (alist-get
+                            gptel--backend-name gptel--known-backends
+                            nil nil #'equal)))
             (setq-local gptel-backend backend)
           (message
            (substitute-command-keys
@@ -1705,7 +1705,7 @@ automatically from MACHINE's transition table."
   (push (gptel-fsm-state machine)
         (plist-get (gptel-fsm-info machine) :history))
   (setf (gptel-fsm-state machine) new-state)
-  (when-let ((handlers (alist-get new-state (gptel-fsm-handlers machine))))
+  (when-let* ((handlers (alist-get new-state (gptel-fsm-handlers machine))))
     (mapc (lambda (h) (funcall h machine)) handlers)))
 
 (defun gptel--fsm-next (machine)
@@ -1900,9 +1900,9 @@ Run post-response hooks."
                 (buffer-local-value 'gptel-backend gptel-buffer))))
     (if (stringp error-data)
         (message "%s error: (%s) %s" backend-name http-msg (string-trim error-data))
-      (when-let ((error-type (plist-get error-data :type)))
+      (when-let* ((error-type (plist-get error-data :type)))
         (setq http-msg (concat "("  http-msg ") " (string-trim error-type))))
-      (when-let ((error-msg (plist-get error-data :message)))
+      (when-let* ((error-msg (plist-get error-data :message)))
         (message "%s error: (%s) %s" backend-name http-msg (string-trim error-msg))))
     (with-current-buffer gptel-buffer
       (when gptel-mode
@@ -2518,7 +2518,7 @@ the response is inserted into the current buffer after point."
          (url-request-method "POST")
          (url-request-extra-headers
           (append '(("Content-Type" . "application/json"))
-                  (when-let ((header (gptel-backend-header gptel-backend)))
+                  (when-let* ((header (gptel-backend-header gptel-backend)))
                     (if (functionp header)
                         (funcall header) header))))
          (info (gptel-fsm-info fsm))

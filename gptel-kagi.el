@@ -112,8 +112,8 @@
              ;; If the entire contents of the prompt looks like a url, send the url
              ;; Else send the text of the region
              (setq prompts
-                   (if-let (((prop-match-p prop))
-                            (engine (substring model 10)))
+                   (if-let* (((prop-match-p prop))
+                             (engine (substring model 10)))
                        ;; It's a region of text
                        (list :text prompts)
                      ""))))

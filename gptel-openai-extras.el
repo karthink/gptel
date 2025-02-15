@@ -65,7 +65,7 @@
         (while (re-search-forward "^data:" nil t)
           (save-match-data
             (if (looking-at " *\\[DONE\\]")
-                (when-let ((sources-string (plist-get info :sources)))
+                (when-let* ((sources-string (plist-get info :sources)))
                   (push sources-string content-strs))
               (let ((response (gptel--json-read)))
 		(unless (or (plist-get info :sources)
@@ -111,8 +111,8 @@
 (cl-defun gptel-make-privategpt
     (name &key curl-args stream key request-params
           (header
-           (lambda () (when-let (key (gptel--get-api-key))
-			`(("Authorization" . ,(concat "Bearer " key))))))
+           (lambda () (when-let* ((key (gptel--get-api-key)))
+		   `(("Authorization" . ,(concat "Bearer " key))))))
           (host "localhost:8001")
           (protocol "http")
 	  (models '(private-gpt))
@@ -171,7 +171,7 @@ for."
     (prog1 backend
       (setf (alist-get name gptel--known-backends
                        nil nil #'equal)
-                  backend))))
+            backend))))
 
 
 ;;; Perplexity
@@ -190,7 +190,7 @@ for."
 (cl-defmethod gptel--parse-response ((_backend gptel-perplexity) response _info)
   "Parse Perplexity response RESPONSE."
   (let ((response-string (map-nested-elt response '(:choices 0 :message :content)))
-        (citations-string (when-let ((citations (map-elt response :citations)))
+        (citations-string (when-let* ((citations (map-elt response :citations)))
 			    (gptel--perplexity-parse-citations citations))))
     (concat response-string citations-string)))
 
@@ -220,7 +220,7 @@ the response."
 (cl-defun gptel-make-perplexity
     (name &key curl-args stream key
           (header 
-           (lambda () (when-let (key (gptel--get-api-key))
+           (lambda () (when-let* ((key (gptel--get-api-key)))
                    `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.perplexity.ai")
           (protocol "https")

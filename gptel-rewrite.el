@@ -292,7 +292,7 @@ BUF is the buffer to modify, defaults to the overlay buffer."
     (require 'diff)
     (let* ((newbuf (gptel--rewrite-prepare-buffer ovs))
            (diff-buf (diff-no-select
-                      (if-let ((buf-file (buffer-file-name ov-buf)))
+                      (if-let* ((buf-file (buffer-file-name ov-buf)))
                           (expand-file-name buf-file) ov-buf)
                       newbuf switches)))
       (with-current-buffer diff-buf
@@ -309,7 +309,7 @@ BUF is the buffer to modify, defaults to the overlay buffer."
              (hideshow
               (lambda (&optional restore)
                 (dolist (ov (ensure-list ovs))
-                  (when-let ((overlay-buffer ov))
+                  (when-let* ((overlay-buffer ov))
                     (let ((disp (overlay-get ov 'display))
                           (stored (overlay-get ov 'gptel--ediff)))
                       (overlay-put ov 'display (and restore stored))
@@ -333,7 +333,7 @@ BUF is the buffer to modify, defaults to the overlay buffer."
       (let ((changed))
         (dolist (ov (ensure-list ovs))
           (save-excursion
-            (when-let (new-str (overlay-get ov 'gptel-rewrite))
+            (when-let* ((new-str (overlay-get ov 'gptel-rewrite)))
               ;; Insert merge
               (goto-char (overlay-start ov))
               (unless (bolp) (insert "\n"))

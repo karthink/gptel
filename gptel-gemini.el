@@ -295,14 +295,14 @@ If INJECT-MEDIA is non-nil wrap it with base64-encoded media
 files in the context."
   (if inject-media
       ;; Wrap the first user prompt with included media files/contexts
-      (when-let ((media-list (gptel-context--collect-media)))
+      (when-let* ((media-list (gptel-context--collect-media)))
         (cl-callf (lambda (current)
                     (vconcat (gptel--gemini-parse-multipart media-list)
                              current))
             (plist-get (car prompts) :parts)))
     ;; Wrap the last user prompt with included text contexts
     (cl-callf (lambda (current)
-                (if-let ((wrapped (gptel-context--wrap nil)))
+                (if-let* ((wrapped (gptel-context--wrap nil)))
                     (vconcat `((:text ,wrapped)) current)
                   current))
         (plist-get (car (last prompts)) :parts))))

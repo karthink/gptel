@@ -61,7 +61,7 @@ REQUEST-DATA is the data to send, TOKEN is a unique identifier."
          (data-json (encode-coding-string (gptel--json-encode data) 'utf-8))
          (headers
           (append '(("Content-Type" . "application/json"))
-                  (when-let ((header (gptel-backend-header gptel-backend)))
+                  (when-let* ((header (gptel-backend-header gptel-backend)))
                     (if (functionp header)
                         (funcall header) header)))))
     (when gptel-log-level
@@ -285,14 +285,14 @@ See `gptel--url-get-response' for details."
             (plist-put proc-info :status (string-trim http-msg))
             (gptel--fsm-transition fsm))))
       
-      (when-let ((http-msg (plist-get proc-info :status))
-                 (http-status (plist-get proc-info :http-status)))
+      (when-let* ((http-msg (plist-get proc-info :status))
+                  (http-status (plist-get proc-info :http-status)))
         ;; Find data chunk(s) and run callback
         ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
-        (when-let (((member http-status '("200" "100")))
-                   (response ;; (funcall (plist-get proc-info :parser) nil proc-info)
-                    (gptel-curl--parse-stream (plist-get proc-info :backend) proc-info))
-                   ((not (equal response ""))))
+        (when-let* (((member http-status '("200" "100")))
+                    (response ;; (funcall (plist-get proc-info :parser) nil proc-info)
+                     (gptel-curl--parse-stream (plist-get proc-info :backend) proc-info))
+                    ((not (equal response ""))))
           (funcall (or (plist-get proc-info :callback)
                        #'gptel-curl--stream-insert-response)
                    response proc-info))))))

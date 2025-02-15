@@ -174,14 +174,14 @@ will toggle its visibility state."
                                  prefix max-width nil nil
                                  'ellipsis))))))))
 
-(defun gptel--transient-read-number (prompt initial-input history)
+(defun gptel--transient-read-number (prompt _initial-input history)
   "Read a numeric value from the minibuffer.
 
-PROMPT, INITIAL-INPUT and HISTORY are as in the transient reader
+PROMPT, _INITIAL-INPUT and HISTORY are as in the transient reader
 documention.  Return nil if user does not provide a number, for default."
   ;; Workaround for buggy transient behaviour when dealing with
   ;; non-string values.  See: https://github.com/magit/transient/issues/172
-  (when-let ((val (symbol-value history)))
+  (when-let* ((val (symbol-value history)))
     (when (not (stringp (car val)))
       (setcar val (number-to-string (car val)))))
   (let* ((minibuffer-default-prompt-format "")
@@ -1425,7 +1425,7 @@ This uses the prompts in the variable
                           cands))))
                   (complete-with-action action gptel--crowdsourced-prompts str pred)))
               nil t)))
-        (when-let ((prompt (gethash choice gptel--crowdsourced-prompts)))
+        (when-let* ((prompt (gethash choice gptel--crowdsourced-prompts)))
           (gptel--set-with-scope
            'gptel--system-message prompt gptel--set-buffer-locally)
           (gptel--edit-directive 'gptel--system-message)))

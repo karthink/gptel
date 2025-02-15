@@ -248,12 +248,12 @@ If CONTEXT is a directory, recursively removes all files in it."
       (setf (alist-get context gptel-context--alist nil 'remove #'equal) nil)
       (message "File \"%s\" removed from context." context)))
    ((region-active-p)
-    (when-let ((contexts (gptel-context--in-region (current-buffer)
-                                                   (region-beginning)
-                                                   (region-end))))
+    (when-let* ((contexts (gptel-context--in-region (current-buffer)
+                                                    (region-beginning)
+                                                    (region-end))))
       (cl-loop for ctx in contexts do (delete-overlay ctx))))
    (t
-    (when-let ((ctx (gptel-context--at-point)))
+    (when-let* ((ctx (gptel-context--at-point)))
       (delete-overlay ctx)))))
 
 (defun gptel-context-remove-all (&optional verbose)
@@ -481,14 +481,14 @@ context overlays, see `gptel-context--alist'."
                     (insert (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
                                         'face 'bold))
                     (setq beg (point))
-                    (if-let ((mime (plist-get ovs :mime)))
+                    (if-let* ((mime (plist-get ovs :mime)))
                         ;; BUF is a binary file
-                        (if-let  (((string-match-p (image-file-name-regexp) buf))
+                        (if-let* (((string-match-p (image-file-name-regexp) buf))
                                   (img (create-image buf)))
                             (insert-image img "*") ; Can be displayed
                           (insert
                            buf " " (propertize "(No preview for binary file)"
-                                                'face '(:inherit shadow :slant italic))))
+                                               'face '(:inherit shadow :slant italic))))
                       (insert-file-contents buf))
                     (goto-char (point-max))
                     (insert "\n")
@@ -605,13 +605,13 @@ If non-nil, indicates backward movement.")
   "Confirm pending operations and return to gptel's menu."
   (interactive)
   ;; Delete all the context overlays that have been marked for deletion.
-  (when-let ((deletion-marks
-              (delq nil (mapcar
-                         (lambda (ov)
-                           (and
-                            (overlay-get ov 'gptel-context-deletion-mark)
-                            (overlay-get ov 'gptel-context)))
-                         (overlays-in (point-min) (point-max))))))
+  (when-let* ((deletion-marks
+               (delq nil (mapcar
+                          (lambda (ov)
+                            (and
+                             (overlay-get ov 'gptel-context-deletion-mark)
+                             (overlay-get ov 'gptel-context)))
+                          (overlays-in (point-min) (point-max))))))
     (mapc #'gptel-context-remove deletion-marks)
     (gptel-context--collect)           ;Update contexts and revert buffer (#482)
     (revert-buffer))

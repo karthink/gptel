@@ -358,7 +358,7 @@ If INJECT-MEDIA is non-nil wrap it with base64-encoded media
 files in the context."
   (if inject-media
       ;; Wrap the first user prompt with included media files/contexts
-      (when-let ((media-list (gptel-context--collect-media)))
+      (when-let* ((media-list (gptel-context--collect-media)))
         (cl-callf (lambda (current)
                     (vconcat
                      (gptel--anthropic-parse-multipart media-list)
@@ -371,13 +371,13 @@ files in the context."
     (cl-callf (lambda (current)
                 (cl-etypecase current
                   (string (gptel-context--wrap current))
-                  (vector (if-let ((wrapped (gptel-context--wrap nil)))
+                  (vector (if-let* ((wrapped (gptel-context--wrap nil)))
                               (vconcat `((:type "text" :text ,wrapped))
                                        current)
                             current))))
         (plist-get (car (last prompts)) :content))))
 
-;; (if-let ((context-string (gptel-context--string gptel-context--alist)))
+;; (if-let* ((context-string (gptel-context--string gptel-context--alist)))
 ;;     (cl-callf (lambda (previous)
 ;;                 (cl-typecase previous
 ;;                   (string (concat context-string previous))
@@ -462,7 +462,7 @@ comparison table:
 (cl-defun gptel-make-anthropic
     (name &key curl-args stream key request-params
           (header
-           (lambda () (when-let (key (gptel--get-api-key))
+           (lambda () (when-let* ((key (gptel--get-api-key)))
                    `(("x-api-key" . ,key)
                      ("anthropic-version" . "2023-06-01")
                      ("anthropic-beta" . "pdfs-2024-09-25")

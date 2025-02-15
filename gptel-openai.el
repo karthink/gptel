@@ -397,7 +397,7 @@ If INJECT-MEDIA is non-nil wrap it with base64-encoded media
 files in the context."
   (if inject-media
       ;; Wrap the first user prompt with included media files/contexts
-      (when-let ((media-list (gptel-context--collect-media)))
+      (when-let* ((media-list (gptel-context--collect-media)))
         (cl-callf (lambda (current)
                     (vconcat
                      (gptel--openai-parse-multipart media-list)
@@ -410,7 +410,7 @@ files in the context."
     (cl-callf (lambda (current)
                 (cl-etypecase current
                   (string (gptel-context--wrap current))
-                  (vector (if-let ((wrapped (gptel-context--wrap nil)))
+                  (vector (if-let* ((wrapped (gptel-context--wrap nil)))
                               (vconcat `((:type "text" :text ,wrapped))
                                        current)
                             current))))
@@ -420,7 +420,7 @@ files in the context."
 (cl-defun gptel-make-openai
     (name &key curl-args models stream key request-params
           (header
-           (lambda () (when-let (key (gptel--get-api-key))
+           (lambda () (when-let* ((key (gptel--get-api-key)))
                    `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.openai.com")
           (protocol "https")

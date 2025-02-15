@@ -268,16 +268,16 @@ for inclusion into the user prompt for the gptel request."
             (when (file-readable-p path)
               ;; Collect text up to this image, and
               ;; Collect this image
-              (when-let ((text (string-trim (buffer-substring-no-properties
-                                             from-pt (gptel-org--element-begin link)))))
+              (when-let* ((text (string-trim (buffer-substring-no-properties
+                                              from-pt (gptel-org--element-begin link)))))
                 (unless (string-empty-p text) (push (list :text text) parts)))
               (push (list :media path :mime mime) parts)
               (setq from-pt (point))))
            ((member type '("http" "https" "ftp"))
             ;; Collect text up to this image, and
             ;; Collect this image url
-            (when-let ((text (string-trim (buffer-substring-no-properties
-                                             from-pt (gptel-org--element-begin link)))))
+            (when-let* ((text (string-trim (buffer-substring-no-properties
+                                            from-pt (gptel-org--element-begin link)))))
               (unless (string-empty-p text) (push (list :text text) parts)))
             (push (list :url raw-link :mime mime) parts)
             (setq from-pt (point))))))
@@ -354,7 +354,7 @@ ARGS are the original function call arguments."
     (widen)
     (condition-case status
         (progn
-          (when-let ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
+          (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
             (mapc (pcase-lambda (`(,beg . ,end))
                     (add-text-properties
                      beg end '(gptel response front-sticky (gptel))))
