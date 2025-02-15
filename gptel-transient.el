@@ -332,8 +332,8 @@ which see."
                   ((member "k" args) (ptv "kill-ring"))
                   ((cl-some (lambda (s)
                               (and (stringp s) (memq (aref s 0) '(?g ?b))
-                                   (not (equal (substring s 1) (buffer-name)))
-                                   (concat (pth "buffer ") (ptv (substring s 1)))))
+                                   (not (equal (substring s 2) (buffer-name)))
+                                   (concat (pth "buffer ") (ptv (substring s 2)))))
                             args))))
       (setq context
             (and gptel-context--alist
@@ -615,12 +615,12 @@ Also format its value in the Transient menu."
     ("i" "Respond in place" "i")]
    [" >Response to"
     ("e" "Echo area" "e")
-    ("b" "Other buffer" "b"
+    ("b" "Other buffer" "b="
      :class transient-option
      :prompt "Output to buffer: "
      :reader (lambda (prompt _ _history)
                (read-buffer prompt (buffer-name (other-buffer)) nil)))
-    ("g" "gptel session" "g"
+    ("g" "gptel session" "g="
      :class transient-option
      :prompt "Existing or new gptel session: "
      :reader
@@ -1247,8 +1247,8 @@ This sets the variable `gptel-include-tool-results', which see."
                 (message "%s response error: %s" backend-name
                          (plist-get info :status)))))))
      ((setq gptel-buffer-name
-            (cl-some (lambda (s) (and (stringp s) (string-prefix-p "g" s)
-                                 (substring s 1)))
+            (cl-some (lambda (s) (and (stringp s) (string-prefix-p "g=" s)
+                                 (substring s 2)))
                      args))
       (setq output-to-other-buffer-p t)
       (let ((reduced-prompt             ;For inserting into the gptel buffer as
@@ -1300,8 +1300,8 @@ This sets the variable `gptel-include-tool-results', which see."
                 (gptel--update-status " Waiting..." 'warning))
               (setq position (point)))))))
      ((setq gptel-buffer-name
-            (cl-some (lambda (s) (and (stringp s) (string-prefix-p "b" s)
-                                 (substring s 1)))
+            (cl-some (lambda (s) (and (stringp s) (string-prefix-p "b=" s)
+                                 (substring s 2)))
                      args))
       (setq output-to-other-buffer-p t)
       (setq buffer (get-buffer-create gptel-buffer-name))
