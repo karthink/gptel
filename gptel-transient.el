@@ -1327,23 +1327,20 @@ This sets the variable `gptel-include-tool-results', which see."
       ;; The HTTP request callback might modify the buffer before the in-place
       ;; text is killed below.
       (when in-place
-        ;; Kill the latest prompt
-        (let ((beg
-               (if (use-region-p)
-                   (region-beginning)
-                 (save-excursion
-                   (text-property-search-backward
-                    'gptel 'response
-                    (when (get-char-property (max (point-min) (1- (point)))
-                                             'gptel)
-                      t))
-                   (point))))
-              (end (if (use-region-p) (region-end) (point))))
-          (unless output-to-other-buffer-p
-            ;; store the killed text in gptel-history
-            (gptel--attach-response-history
-             (list (buffer-substring-no-properties beg end))))
-          (kill-region beg end)))
+        (if (or buffer-read-only (get-char-property (point) 'read-only))
+            (message "Not replacing prompt: region is read-only")
+          (let ((beg (if (use-region-p)
+                         (region-beginning)
+                       (max (previous-single-property-change
+                             (point) 'gptel nil (point-min))
+                            (previous-single-property-change
+                             (point) 'read-only nil (point-min)))))
+                (end (if (use-region-p) (region-end) (point))))
+            (unless output-to-other-buffer-p
+              ;; store the killed text in gptel-history
+              (gptel--attach-response-history
+               (list (buffer-substring-no-properties beg end))))
+            (kill-region beg end))))
 
       (when output-to-other-buffer-p
         (message (concat "Prompt sent to buffer: "
