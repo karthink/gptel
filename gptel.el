@@ -1133,23 +1133,30 @@ Valid JSON unless NO-JSON is t."
 
 (defun gptel--restore-props (bounds-alist)
   "Restore text properties from BOUNDS-ALIST.
-BOUNDS-ALIST is a alist of PROP BOUNDS where BOUNDS is a list of BOUND
-and each BOUND is either (BEG END VAL) or (BEG END).  Except for
-response, the resulting gptel text property value is (PROP . VAL) over
-BEG END.
+BOUNDS-ALIST is (PROP . BOUNDS).  BOUNDS is a list of BOUND.  Each BOUND
+is either (BEG END VAL) or (BEG END).
 
-The legacy (BEG . END) is also supported."
+For (BEG END VAL) forms, even if VAL is nil, the gptel property will be
+set to (PROP . VAL).  For (BEG END) forms, except when PROP is response,
+the gptel property is set to just PROP.
+
+The legacy structure, a list of (BEG . END) is also supported and will be
+applied before being re-persisted in the new structure."
   (if (symbolp (caar bounds-alist))
       (mapc
        (lambda (bounds)
          (let* ((prop (pop bounds)))
            (mapc
             (lambda (bound)
-              (add-text-properties
-               (pop bound) (pop bound)
-               (if (eq prop 'response)
-                   '(gptel response front-sticky (gptel))
-                 (list 'gptel `(,prop . ,(pop bound))))))
+              (let ((prop-has-val (> (length bound) 2)))
+                (add-text-properties
+                 (pop bound) (pop bound)
+                 (if (eq prop 'response)
+                     '(gptel response front-sticky (gptel))
+                   (list 'gptel
+                         (if prop-has-val
+                             (cons prop (pop bound))
+                           prop))))))
             bounds)))
        bounds-alist)
     (mapc (lambda (bound)
