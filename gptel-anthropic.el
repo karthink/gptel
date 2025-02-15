@@ -297,10 +297,11 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
                    (push (list :role "user" :content content) prompts))))))
           (setq prev-pt (point))
           (and max-entries (cl-decf max-entries)))
-      (let ((content (or (gptel--trim-prefixes (buffer-substring-no-properties
-                                                (point-min) (point-max)))
-                         "")))
-        (push (list :role "user" :content content) prompts)))
+      (when-let* ((content (string-trim (buffer-substring-no-properties
+                                         (point-min) (point-max)))))
+        ;; XXX Remove this comment if empty `prompts' is fine.
+        (when (length content)
+          (push (list :role "user" :content content) prompts))))
     prompts))
 
 (defun gptel--anthropic-parse-multipart (parts)
