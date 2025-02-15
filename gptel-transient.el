@@ -909,7 +909,7 @@ responses."
 
 (transient-define-infix gptel--infix-provider ()
   "AI Provider for Chat."
-  :description "GPT Model"
+  :description "Model"
   :class 'gptel-provider-variable
   :prompt "Model: "
   :variable 'gptel-backend
