@@ -346,7 +346,23 @@ which see."
                      (if dest (concat (pth ", response to ") dest)
                        (concat (pth ", insert response at point")))))
             ((member "y" args)
-             (concat (pth "Send prompt from ") (ptv "kill-ring")
+             (concat (pth "Send prompt from ")
+		     (concat (ptv "kill-ring (")
+			     (if-let* ((val (car-safe kill-ring))
+				       (val (substring-no-properties val))
+				       (len (length val)))
+				 (ptv (concat
+                                       "\"" (string-replace
+					     "\n" "⮐"
+					     (truncate-string-to-width
+					      val 20 nil nil t))
+				       "\"" (when (> len 20)
+					      (concat
+					       ", "
+					       (file-size-human-readable len 'si " ")
+					       " chars"))))
+			     (propertize "empty" 'face 'error))
+			   (ptv ")"))
                      context
                      (if dest (concat (pth ", response to ") dest)
                        (concat (pth ", insert response at point")))))
