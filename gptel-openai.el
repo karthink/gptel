@@ -366,10 +366,8 @@ Mutate state INFO with response metadata."
                                                             :arguments ,arguments))))
                            prompts))
                  ((end-of-file invalid-read-syntax)
-                  (delay-warning '(gptel gptel-openai gptel-tool )
-                                 (format "Could not parse tool-call %s" id)
-                                 'error
-                                 (current-buffer))))))
+                  (message (format "Could not parse tool-call %s on line %s"
+                                   id (line-number-at-pos (point))))))))
             ('ignore)
             ('nil
              (and max-entries (cl-decf max-entries))
