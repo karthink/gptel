@@ -414,6 +414,10 @@ These are prompts cached from an online source (see
 transient menu interface provided by `gptel-menu'."
   :type 'file)
 
+(defcustom gptel-read-only-response-buffer "*LLM response*"
+  "Name of buffer to send responses when the source buffer is read only."
+  :type 'string)
+
 ;; Model and interaction parameters
 (defcustom gptel-directives
   '((default     . "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
@@ -1834,9 +1838,10 @@ the request succeeded)."
     (when (with-current-buffer (plist-get info :buffer)
             (or buffer-read-only
                 (get-char-property start-marker 'read-only)))
-      (message "Buffer is read only, displaying reply in buffer \"*LLM response*\"")
+      (message "Buffer is read only, displaying reply in buffer \"%s\""
+	       gptel-read-only-response-buffer)
       (display-buffer
-       (with-current-buffer (get-buffer-create "*LLM response*")
+       (with-current-buffer (get-buffer-create gptel-read-only-response-buffer)
          (visual-line-mode 1)
          (goto-char (point-max))
          (move-marker start-marker (point) (current-buffer))
