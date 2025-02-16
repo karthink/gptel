@@ -647,7 +647,7 @@ Every line that matches will be removed entirely."
     (goto-char (point-min))
     (while (re-search-forward (rx line-start (literal "#+")
                                   (or (literal "begin") (literal "end"))
-                                  (literal "_tool_call"))
+                                  (literal "_tool"))
                               nil t)
       (delete-region (match-beginning 0)
                      (min (point-max) (1+ (line-end-position)))))))
@@ -668,7 +668,7 @@ unescapes the remainder."
             ;; User edits to clean up can potentially insert a tool-call header
             ;; that is propertized.  Tool call headers should not be
             ;; propertized.
-            (when (looking-at-p "[[:space:]]*#\\+begin_tool_call")
+            (when (looking-at-p "[[:space:]]*#\\+begin_tool")
               (goto-char (match-end 0)))
             (condition-case _err
                 (read (current-buffer))

@@ -2882,13 +2882,12 @@ for tool call results.  INFO contains the state of the request."
                (if (derived-mode-p 'org-mode)
                    (concat
                     separator
-                    "#+begin_tool_call "
-                    (truncate-string-to-width
-                     display-call (floor (* (window-width) 0.6)) 0 nil " ...)")
+                    "#+begin_tool "
+                    truncated-call
                     (propertize
                      (concat "\n" call "\n\n" (org-escape-code-in-string result))
                      'gptel `(tool . ,id))
-                    "\n#+end_tool_call")
+                    "\n#+end_tool")
                  ;; TODO(tool) else branch is handling all front-ends as markdown.
                  ;; At least escape markdown.
                  (concat
@@ -2912,7 +2911,7 @@ for tool call results.  INFO contains the state of the request."
                ;; this is the first response
                (goto-char (plist-get info :tracking-marker))
                (beginning-of-line)
-               (when (looking-at "^#\\+end_tool_call")
+               (when (looking-at "^#\\+end_tool")
                  (org-cycle))))))))))
 
 (defun gptel--format-tool-call (name arg-values)
