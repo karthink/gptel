@@ -2909,8 +2909,9 @@ for tool call results.  INFO contains the state of the request."
                   (propertize 'gptel 'ignore "\n```"))))
              info
              'raw)
-         (setf (plist-get (plist-get info :sub-state) :tools-separated)
-               (setq separated t))
+         (unless separated
+           (setf (plist-get (plist-get info :sub-state) :tools-separated)
+                 (setq separated t)))
          (when (derived-mode-p 'org-mode) ;fold drawer
            (ignore-errors
              (save-excursion
