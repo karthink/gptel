@@ -377,7 +377,8 @@ is only inserted in dedicated gptel buffers before the AI's response."
   :type '(alist :key-type symbol :value-type string))
 
 (defcustom gptel-response-separator "\n\n"
-  "String inserted before responses."
+  "String inserted before responses.
+Also inserted before and after non-consecutive tool calls."
   :type 'string)
 
 (defcustom gptel-use-header-line t
@@ -1742,12 +1743,17 @@ MACHINE is an instance of `gptel-fsm'.
 
 The next state is NEW-STATE if given.  Otherwise it is determined
 automatically from MACHINE's transition table."
-  (unless new-state (setq new-state (gptel--fsm-next machine)))
-  (push (gptel-fsm-state machine)
-        (plist-get (gptel-fsm-info machine) :history))
-  (setf (gptel-fsm-state machine) new-state)
-  (when-let* ((handlers (alist-get new-state (gptel-fsm-handlers machine))))
-    (mapc (lambda (h) (funcall h machine)) handlers)))
+  (let* ((old-state (gptel-fsm-state machine))
+         (next-state (gptel--fsm-next machine))
+         (new-state (or new-state next-state)))
+    (setf (plist-get (gptel-fsm-info machine) :state) new-state)
+    (unless (eq new-state old-state)
+      (setf (plist-get (gptel-fsm-info machine) :sub-state) nil))
+    (push (gptel-fsm-state machine)
+          (plist-get (gptel-fsm-info machine) :history))
+    (setf (gptel-fsm-state machine) new-state)
+    (when-let* ((handlers (alist-get new-state (gptel-fsm-handlers machine))))
+      (mapc (lambda (h) (funcall h machine)) handlers))))
 
 (defun gptel--fsm-next (machine)
   "Determine MACHINE's next state according to its transition table.
@@ -2849,7 +2855,8 @@ TOOL-RESULTS is
 for tool call results.  INFO contains the state of the request."
 
   (let* ((start-marker (plist-get info :position))
-         (tracking-marker (plist-get info :tracking-marker)))
+         (separated (plist-get (plist-get info :sub-state)
+                               :tools-separated)))
     ;; Insert tool results
     (when gptel-include-tool-results
       (with-current-buffer (marker-buffer start-marker)
@@ -2858,33 +2865,30 @@ for tool call results.  INFO contains the state of the request."
          with include-names =
          (mapcar #'gptel-tool-name
                  (cl-remove-if-not #'gptel-tool-include (plist-get info :tools)))
-         with separator = (save-excursion
-                            (goto-char (or tracking-marker start-marker))
-                            (unless (looking-at-p "^$") "\n"))
          if (or (eq gptel-include-tool-results t)
                 (member (gptel-tool-name tool) include-names))
          do (funcall
              (plist-get info :callback)
              (let* ((name (gptel-tool-name tool))
+                    (separator (if separated "\n" gptel-response-separator))
                     (tool-use
                      (cl-find-if
                       (lambda (tu) (equal (plist-get tu :name) name))
                       (plist-get info :tool-use)))
                     (id (plist-get tool-use :id))
-                    (display-call (if args (format "(%s '%S)" name args)
-                                    (format "(%s nil)" name)))
+                    (display-call (format "(%s %s)" name
+                                          (string-trim (prin1-to-string args) "(" ")")))
                     (call (prin1-to-string `(:name ,name :args ,args))))
                (if (derived-mode-p 'org-mode)
                    (concat
                     separator
                     "#+begin_tool_call "
                     (truncate-string-to-width
-                     display-call (floor (* (window-width) 0.6)) 0 nil " …)")
+                     display-call (floor (* (window-width) 0.6)) 0 nil " ...)")
                     (propertize
-                     ;; XXX result type decided upstream, when gathering the result
                      (concat "\n" call "\n\n" (org-escape-code-in-string result))
                      'gptel `(tool . ,id))
-                    "\n#+end_tool_call\n")
+                    "\n#+end_tool_call")
                  ;; TODO(tool) else branch is handling all front-ends as markdown.
                  ;; At least escape markdown.
                  (concat
@@ -2899,13 +2903,15 @@ for tool call results.  INFO contains the state of the request."
                   (propertize 'gptel 'ignore "\n```"))))
              info
              'raw)
+         (setf (plist-get (plist-get info :sub-state) :tools-separated)
+               (setq separated t))
          (when (derived-mode-p 'org-mode) ;fold drawer
            (ignore-errors
              (save-excursion
                ;; Tracking marker may have been initialized since binding if
                ;; this is the first response
                (goto-char (plist-get info :tracking-marker))
-               (forward-line -1) ;org-fold-hide-drawer-toggle requires Emacs 29.1
+               (beginning-of-line)
                (when (looking-at "^#\\+end_tool_call")
                  (org-cycle))))))))))
 

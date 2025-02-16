@@ -234,27 +234,31 @@ Optional RAW disables text properties and transformation."
     ((pred stringp)
      (let ((start-marker (plist-get info :position))
            (tracking-marker (plist-get info :tracking-marker))
-           (transformer (plist-get info :transformer)))
+           (transformer (plist-get info :transformer))
+           (in-place (plist-get info :in-place)))
        (with-current-buffer (marker-buffer start-marker)
          (save-excursion
            (unless tracking-marker
              (goto-char start-marker)
-             (unless (or (bobp) (plist-get info :in-place))
-               (insert gptel-response-separator)
-               (when gptel-mode
-                 ;; Put prefix before AI response.
-                 (insert (gptel-response-prefix-string)))
-               (move-marker start-marker (point)))
              (setq tracking-marker (set-marker (make-marker) (point)))
              (set-marker-insertion-type tracking-marker t)
              (plist-put info :tracking-marker tracking-marker))
+           (goto-char tracking-marker)
+           (when (and gptel-mode (not (or raw in-place)))
+             (unless (plist-get (plist-get info :sub-state) :message-separated)
+               (setf (plist-get (plist-get info :sub-state) :message-separated) t)
+               (unless (bobp)
+                 (insert gptel-response-separator)
+                 (move-marker start-marker (point))))
+             (unless (plist-get info :prefix-done)
+               (insert (gptel-response-prefix-string))
+               (plist-put info :prefix-done t)))
            (unless raw
              (when transformer
                (setq response (funcall transformer response)))
              (add-text-properties
               0 (length response) '(gptel response front-sticky (gptel))
               response))
-           (goto-char tracking-marker)
            ;; (run-hooks 'gptel-pre-stream-hook)
            (insert response)
            (run-hooks 'gptel-post-stream-hook)))))
