@@ -2885,7 +2885,10 @@ for tool call results.  INFO contains the state of the request."
                     (id (plist-get tool-use :id))
                     (display-call (format "(%s %s)" name
                                           (string-trim (prin1-to-string args) "(" ")")))
-                    (call (prin1-to-string `(:name ,name :args ,args))))
+                    (call (prin1-to-string `(:name ,name :args ,args)))
+                    (truncated-call (truncate-string-to-width
+                                     display-call
+                                     (floor (* (window-width) 0.6)) 0 nil " ...)")))
                (if (derived-mode-p 'org-mode)
                    (concat
                     separator
@@ -2899,13 +2902,13 @@ for tool call results.  INFO contains the state of the request."
                  ;; At least escape markdown.
                  (concat
                   separator
-                  ;; TODO(tool) remove properties and strip instead
-                  (propertize "```" 'gptel 'ignore)
+                  ;; TODO(tool) remove properties and strip instead of ignoring
+                  (propertize (format "``` tool %s" truncated-call) 'gptel 'ignore)
                   (propertize
                    ;; TODO(tool) escape markdown in result
                    (concat "\n" call "\n\n" result)
                    'gptel `(tool . ,id))
-                  ;; TODO(tool) remove properties and strip instead
+                  ;; TODO(tool) remove properties and strip instead of ignoring
                   (propertize 'gptel 'ignore "\n```"))))
              info
              'raw)
