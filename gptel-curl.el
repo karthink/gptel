@@ -258,7 +258,9 @@ See `gptel--url-get-response' for details."
            (insert response)
            (run-hooks 'gptel-post-stream-hook)))))
     ((pred consp)
-     (gptel--display-tool-calls response info))))
+     (gptel--display-tool-calls response info))
+    (_                                  ; placeholder for later condition
+     (gptel--display-tool-results response info))))
 
 (defun gptel-curl--stream-filter (process output)
   (let* ((fsm (alist-get process gptel--request-alist))

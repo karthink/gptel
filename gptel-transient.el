@@ -1230,6 +1230,7 @@ This sets the variable `gptel-include-tool-results', which see."
             (lambda (resp info)
               (cond
                ((stringp resp) (message "%s response: %s" backend-name resp))
+               ;; XXX Check types
                ((consp resp) (gptel--display-tool-calls resp info 'minibuffer))
                ((and (null resp) (plist-get info :error))
                 (message "%s response error: %s"
@@ -1242,6 +1243,7 @@ This sets the variable `gptel-include-tool-results', which see."
                ((stringp resp) (kill-new resp)
                 (message "%s response: \"%s\" copied to kill-ring." backend-name
                          (truncate-string-to-width resp 30)))
+               ;; XXX Check types
                ((consp resp) (gptel--display-tool-calls resp info 'minibuffer))
                ((and (null resp) (plist-get info :error))
                 (message "%s response error: %s" backend-name
