@@ -330,28 +330,48 @@ Mutate state INFO with response metadata."
                                 (point) 'gptel nil (point-min))))
           (pcase (get-char-property (point) 'gptel)
             ('response
-             (push (list :role "assistant"
-                         :content (buffer-substring-no-properties (point) prev-pt))
-                   prompts))
+             (when-let* ((content (gptel--trim-prefixes
+                                   (buffer-substring-no-properties (point) prev-pt))))
+               (push (list :role "assistant" :content content) prompts)))
+            (`(tool . ,id)
+             (save-excursion
+               (condition-case-unless-debug _err
+                   (let* ((tool-call (read (current-buffer)))
+                          (id (gptel--openai-format-tool-id id))
+                          (name (plist-get tool-call :name))
+                          (arguments (gptel--json-encode (plist-get tool-call :args))))
+                     (push (list :role "tool"
+                                 :tool_call_id id
+                                 :content
+                                 (string-trim
+                                  (buffer-substring-no-properties (point) prev-pt)))
+                           prompts)
+                     (push (list :role "assistant"
+                                 :tool_calls
+                                 (vector (list :type "function" :id id
+                                               :function `( :name ,name
+                                                            :arguments ,arguments))))
+                           prompts))
+                 ((end-of-file invalid-read-syntax)
+                  (message (format "Could not parse tool-call %s on line %s"
+                                   id (line-number-at-pos (point))))))))
+            ('ignore)
             ('nil
+             (and max-entries (cl-decf max-entries))
              (if include-media
-                 (push (list :role "user"
-                             :content
-                             (gptel--openai-parse-multipart
-                              (gptel--parse-media-links major-mode (point) prev-pt)))
-                       prompts)
-               (push (list :role "user"
-                           :content
-                           (gptel--trim-prefixes
-                            (buffer-substring-no-properties (point) prev-pt)))
-                     prompts))))
-          (setq prev-pt (point))
-          (and max-entries (cl-decf max-entries)))
-      (push (list :role "user"
-                  :content
-                  (gptel--trim-prefixes (buffer-substring-no-properties
-                                         (point-min) (point-max))))
-            prompts))
+                 (when-let* ((content (gptel--openai-parse-multipart
+                                      (gptel--parse-media-links major-mode (point) prev-pt))))
+                   (push (list :role "user" :content content) prompts))
+               (when-let* ((content (gptel--trim-prefixes
+                                     (buffer-substring-no-properties (point)
+                                                                     prev-pt)))
+                           (content (when (not (string-empty-p content)) content)))
+                 (push (list :role "user" :content content) prompts)))))
+          (setq prev-pt (point)))
+      (when-let* ((content (gptel--trim-prefixes (buffer-substring-no-properties
+                                                  (point-min) (point-max))))
+                  (content (when (not (string-empty-p content)) content)))
+        (push (list :role "user" :content content) prompts)))
     prompts))
 
 ;; TODO This could be a generic function

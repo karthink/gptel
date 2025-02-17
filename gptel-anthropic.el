@@ -283,6 +283,7 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
           ;; We check for blank prompts by skipping whitespace and comparing
           ;; point against the previous.
           (unless (save-excursion (skip-syntax-forward " ") (>= (point) prev-pt))
+            ;; XXX update for tools
             (pcase (get-char-property (point) 'gptel)
               ('response
                (push (list :role "assistant"
