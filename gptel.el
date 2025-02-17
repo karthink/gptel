@@ -2336,31 +2336,31 @@ See `gptel--url-get-response' for details."
   (let* ((gptel-buffer (plist-get info :buffer))
          (start-marker (plist-get info :position))
          (tracking-marker (plist-get info :tracking-marker)))
-    (cond
-     ((stringp response)                ;Response text
-      (with-current-buffer gptel-buffer
-        (when-let* ((transformer (plist-get info :transformer)))
-          (setq response (funcall transformer response)))
-        (when tracking-marker           ;separate from previous response
-          (setq response (concat gptel-response-separator response)))
-        (save-excursion
-          (add-text-properties
-           0 (length response) '(gptel response front-sticky (gptel)) response)
-          (with-current-buffer (marker-buffer start-marker)
-            (goto-char (or tracking-marker start-marker))
-            ;; (run-hooks 'gptel-pre-response-hook)
-            (unless (or (bobp) (plist-get info :in-place)
-                        tracking-marker)
-              (insert gptel-response-separator)
-              (when gptel-mode
-                (insert (gptel-response-prefix-string)))
-              (move-marker start-marker (point)))
-            (insert response)
-            (plist-put info :tracking-marker (setq tracking-marker (point-marker)))
-            ;; for uniformity with streaming responses
-            (set-marker-insertion-type tracking-marker t)))))
-     ((consp response)                  ;tool call or tool result?
-      (gptel--display-tool-calls response info)))))
+    (pcase response
+      ((pred stringp)                ;Response text
+       (with-current-buffer gptel-buffer
+         (when-let* ((transformer (plist-get info :transformer)))
+           (setq response (funcall transformer response)))
+         (when tracking-marker           ;separate from previous response
+           (setq response (concat gptel-response-separator response)))
+         (save-excursion
+           (add-text-properties
+            0 (length response) '(gptel response front-sticky (gptel)) response)
+           (with-current-buffer (marker-buffer start-marker)
+             (goto-char (or tracking-marker start-marker))
+             ;; (run-hooks 'gptel-pre-response-hook)
+             (unless (or (bobp) (plist-get info :in-place)
+                         tracking-marker)
+               (insert gptel-response-separator)
+               (when gptel-mode
+                 (insert (gptel-response-prefix-string)))
+               (move-marker start-marker (point)))
+             (insert response)
+             (plist-put info :tracking-marker (setq tracking-marker (point-marker)))
+             ;; for uniformity with streaming responses
+             (set-marker-insertion-type tracking-marker t)))))
+      ((pred consp)                  ;tool call or tool result?
+       (gptel--display-tool-calls response info)))))
 
 (defun gptel--create-prompt (&optional prompt-end)
   "Return a full conversation prompt from the contents of this buffer.
