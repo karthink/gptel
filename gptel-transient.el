@@ -760,19 +760,23 @@ Customize `gptel-directives' for task-specific prompts."
 ;; ** Prefix for selecting tools
 (defun gptel--completing-read-multiple-tools (prompt candidate-tools)
   (cl-loop for selection in
-           (completing-read-multiple
-            prompt
-            (lambda (string pred action)
-              (if (eq action 'metadata)
-                  '(metadata
-                    ;; (annotation-function . gptel-annotation-function)
-                    (category . gptel-tool))
-                (complete-with-action
-                 action
-                 candidate-tools
-                 string
-                 pred)))
-            nil t)
+           ;; Without this, when duplicate values are selected in
+           ;; `completing-read-multiple', it will result in a circular-list error
+           (seq-uniq
+            (completing-read-multiple
+             prompt
+             (lambda (string pred action)
+               (if (eq action 'metadata)
+                   '(metadata
+                     ;; (annotation-function . gptel-annotation-function)
+                     (category . gptel-tool))
+                 (complete-with-action
+                  action
+                  candidate-tools
+                  string
+                  pred)))
+             nil t)
+            #'string-equal)
            nconc (alist-get selection candidate-tools nil nil #'string-equal)))
 
 (transient-define-infix gptel--infix-set-tools ()
@@ -786,17 +790,22 @@ Customize `gptel-directives' for task-specific prompts."
   :set-value #'gptel--set-with-scope
   :key "tt"
   :reader (lambda (prompt &rest _)
-            (append gptel-tools
-                    (gptel--completing-read-multiple-tools
-                     prompt
-                     (cl-loop for (cat . tools-alist) in gptel--known-tools
-                              nconc `(,(cons cat
-                                             (map-values tools-alist)))
-                              nconc
-                              (cl-loop for (tool_name . tool) in tools-alist
-                                       nconc
-                                       `(,(cons tool_name
-                                                `(,tool)))))))))
+            (seq-uniq
+             (append gptel-tools
+                     (gptel--completing-read-multiple-tools
+                      prompt
+                      (let ((gptel-tools--names (mapcar (lambda (tool) (gptel-tool-name tool)) gptel-tools)))
+                        (cl-loop for (cat . tools-alist) in gptel--known-tools
+                                 for filtered-tools-alist = (cl-loop for (tool_name . tool) in tools-alist
+                                                                     unless (memq tool_name gptel-tools--names)
+                                                                     nconc
+                                                                     `(,(cons (concat cat "::" tool_name)
+                                                                              `(,tool))))
+                                 if (length> filtered-tools-alist 0)
+                                 nconc `(,(cons cat
+                                                (flatten-list (map-values filtered-tools-alist))))
+                                 and nconc filtered-tools-alist))))
+             #'equal)))
 
 (transient-define-infix gptel--infix-remove-tools ()
   "Remove tools being used."
@@ -813,9 +822,17 @@ Customize `gptel-directives' for task-specific prompts."
              gptel-tools
              (gptel--completing-read-multiple-tools
               prompt
-              (mapcar (lambda (tool)
-                        (list (gptel-tool-name tool) tool))
-                      gptel-tools)))))
+              (let ((category-candidates))
+                (append
+                 (mapcar
+                  (lambda (tool)
+                    (let ((category (gptel-tool-category tool)))
+                      (push tool
+                            (alist-get category category-candidates
+                                       nil nil #'string-equal))
+                      (list (concat category "::" (gptel-tool-name tool)) tool)))
+                  gptel-tools)
+                 category-candidates))))))
 
 (transient-define-infix gptel--infix-remove-all-tools ()
   "Remove tools being used."
