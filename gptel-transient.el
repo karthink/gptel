@@ -561,6 +561,7 @@ Also format its value in the Transient menu."
 (transient-define-prefix gptel-menu ()
   "Change parameters of prompt to send to the LLM."
   :incompatible '(("m" "y" "i") ("e" "g" "b" "k"))
+  :refresh-suffixes t
   ;; :value (list (concat "b" (buffer-name)))
   [:description gptel-system-prompt--format
    [""
@@ -587,7 +588,11 @@ Also format its value in the Transient menu."
                                                  'face 'warning)
                                 ")"))))
         :format "%d" :face transient-heading)
-    ("t" "Select tools" gptel-tools :transient t)
+    (gptel--infix-set-tools)
+    (gptel--infix-remove-tools
+     :if (lambda () (length> gptel-tools 0)))
+    (gptel--infix-remove-all-tools
+     :if (lambda () (length> gptel-tools 0)))
     ("T" "Continue tool calls"
      (lambda () (interactive) (gptel--handle-tool-use gptel--fsm-last))
      :if (lambda () (and gptel--fsm-last
@@ -753,6 +758,76 @@ Customize `gptel-directives' for task-specific prompts."
     :pad-keys t])
 
 ;; ** Prefix for selecting tools
+(defun gptel--completing-read-multiple-tools (prompt candidate-tools)
+  (cl-loop for selection in
+           (completing-read-multiple
+            prompt
+            (lambda (string pred action)
+              (if (eq action 'metadata)
+                  '(metadata
+                    ;; (annotation-function . gptel-annotation-function)
+                    (category . gptel-tool))
+                (complete-with-action
+                 action
+                 candidate-tools
+                 string
+                 pred)))
+            nil t)
+           nconc (alist-get selection candidate-tools nil nil #'string-equal)))
+
+(transient-define-infix gptel--infix-set-tools ()
+  "Set tools to use."
+  :description "Select tools"
+  :class 'gptel-lisp-variable
+  :prompt "Select tools: "
+  :display-nil ""
+  :format " %k %d"
+  :variable 'gptel-tools
+  :set-value #'gptel--set-with-scope
+  :key "tt"
+  :reader (lambda (prompt &rest _)
+            (append gptel-tools
+                    (gptel--completing-read-multiple-tools
+                     prompt
+                     (cl-loop for (cat . tools-alist) in gptel--known-tools
+                              nconc `(,(cons cat
+                                             (map-values tools-alist)))
+                              nconc
+                              (cl-loop for (tool_name . tool) in tools-alist
+                                       nconc
+                                       `(,(cons tool_name
+                                                `(,tool)))))))))
+
+(transient-define-infix gptel--infix-remove-tools ()
+  "Remove tools being used."
+  :description "Remove tools"
+  :class 'gptel-lisp-variable
+  :prompt "Remove tools: "
+  :display-nil "none"
+  :format " %k %d"
+  :variable 'gptel-tools
+  :set-value #'gptel--set-with-scope
+  :key "tr"
+  :reader (lambda (prompt &rest _)
+            (seq-difference
+             gptel-tools
+             (gptel--completing-read-multiple-tools
+              prompt
+              (mapcar (lambda (tool)
+                        (list (gptel-tool-name tool) tool))
+                      gptel-tools)))))
+
+(transient-define-infix gptel--infix-remove-all-tools ()
+  "Remove tools being used."
+  :description "Remove tools"
+  :class 'gptel-lisp-variable
+  :prompt "Remove tools: "
+  :display-nil "none"
+  :format " %k %d"
+  :variable 'gptel-tools
+  :set-value (lambda (&rest _) (interactive) (gptel--set-with-scope 'gptel-tools nil gptel--set-buffer-locally))
+  :key "tR"
+  :reader (lambda (&rest _) (interactive)))
 
 ;;;###autoload (autoload 'gptel-tools "gptel-transient" nil t)
 (transient-define-prefix gptel-tools ()
