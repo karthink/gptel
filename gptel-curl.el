@@ -88,7 +88,8 @@ REQUEST-DATA is the data to send, TOKEN is a unique identifier."
     (append
      gptel-curl--common-args
      gptel-curl-extra-args
-     (gptel-backend-curl-args gptel-backend)
+     (let ((curl-args (gptel-backend-curl-args gptel-backend)))
+       (if (functionp curl-args) (funcall curl-args) curl-args))
      (list (format "-w(%s . %%{size_header})" token))
      (if (length< data-json gptel-curl-file-size-threshold)
          (list (format "-d%s" data-json))
@@ -291,7 +292,7 @@ Optional RAW disables text properties and transformation."
         (goto-char (process-mark process))
         (insert output)
         (set-marker (process-mark process) (point)))
-      
+
       ;; Find HTTP status
       (unless (plist-get proc-info :http-status)
         (save-excursion
@@ -306,7 +307,7 @@ Optional RAW disables text properties and transformation."
             (plist-put proc-info :http-status http-status)
             (plist-put proc-info :status (string-trim http-msg))
             (gptel--fsm-transition fsm))))
-      
+
       (when-let* ((http-msg (plist-get proc-info :status))
                   (http-status (plist-get proc-info :http-status)))
         ;; Find data chunk(s) and run callback
