@@ -90,7 +90,8 @@ REQUEST-DATA is the data to send, TOKEN is a unique identifier."
     (append
      gptel-curl--common-args
      gptel-curl-extra-args
-     (gptel-backend-curl-args gptel-backend)
+     (and-let* ((curl-args (gptel-backend-curl-args gptel-backend)))
+       (if (functionp curl-args) (funcall curl-args) curl-args))
      (list (format "-w(%s . %%{size_header})" token))
      (if (length< data-json gptel-curl-file-size-threshold)
          (list (format "-d%s" data-json))
