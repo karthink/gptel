@@ -248,10 +248,7 @@ Optional RAW disables text properties and transformation."
            (when (and gptel-mode (not (or raw in-place)))
              (unless (and message-marker (= tracking-marker message-marker))
                (unless (bobp)
-                 (insert gptel-response-separator))
-               (unless message-marker
-                 (setq message-marker (point-marker))
-                 (plist-put info :message-marker message-marker)))
+                 (insert gptel-response-separator)))
              (unless (plist-get info :prefix-done)
                (insert (gptel-response-prefix-string))
                (plist-put info :prefix-done t)
@@ -265,7 +262,9 @@ Optional RAW disables text properties and transformation."
            ;; (run-hooks 'gptel-pre-stream-hook)
            (insert response)
            (when (and gptel-mode (not raw))
-             (move-marker message-marker (point)))
+               (if message-marker
+                   (move-marker message-marker (point))
+                 (plist-put info :message-marker (point-marker))))
            (run-hooks 'gptel-post-stream-hook)))))
     (`(reasoning . ,_text)
        (display-warning '(gptel gptel-reasoning)

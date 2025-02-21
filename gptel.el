@@ -2397,10 +2397,7 @@ See `gptel--url-get-response' for details."
              (when (and gptel-mode (not (or raw in-place)))
                (unless (and message-marker (= tracking-marker message-marker))
                  (unless (bobp)
-                   (insert gptel-response-separator))
-                 (unless message-marker
-                   (setq message-marker (point-marker))
-                   (plist-put info :message-marker message-marker)))
+                   (insert gptel-response-separator)))
                (unless (plist-get info :prefix-done)
                  (insert (gptel-response-prefix-string))
                  (plist-put info :prefix-done t)
@@ -2413,7 +2410,9 @@ See `gptel--url-get-response' for details."
                 response))
              (insert response)
              (when (and gptel-mode (not raw))
-               (move-marker message-marker (point)))))))
+               (if message-marker
+                   (move-marker message-marker (point))
+                 (plist-put info :message-marker (point-marker))))))))
       (`(reasoning . ,_text)
        (display-warning '(gptel gptel-reasoning)
                         "Reasoning unsupported." :warning))
@@ -2867,7 +2866,8 @@ TOOL-RESULTS is
 for tool call results.  INFO contains the state of the request."
 
   (let* ((start-marker (plist-get info :position))
-         (tool-marker (plist-get info :tool-marker)))
+         (tool-marker (plist-get info :tool-marker))
+         (tracking-marker (plist-get info :tracking-marker)))
     ;; Insert tool results
     (when gptel-include-tool-results
       (with-current-buffer (marker-buffer start-marker)
@@ -2881,7 +2881,8 @@ for tool call results.  INFO contains the state of the request."
          do (funcall
              (plist-get info :callback)
              (let* ((name (gptel-tool-name tool))
-                    (separator (if (and tool-marker (= (point) tool-marker))
+                    (separator (if (and tool-marker tracking-marker
+                                        (= tracking-marker tool-marker))
                                    "\n"
                                  gptel-response-separator))
                     (tool-use
@@ -2918,13 +2919,20 @@ for tool call results.  INFO contains the state of the request."
                   (propertize "\n```" 'gptel 'ignore))))
              info
              'raw)
-         (plist-put info :tool-marker (setq tool-marker (point-marker)))
+         ;; insertion has updated the tracking marker
+         (unless tracking-marker
+           (setq tracking-marker (plist-get info :tracking-marker)))
+         (if tool-marker
+               (move-marker tool-marker tracking-marker)
+             (setq tool-marker (make-marker))
+             (set-marker tool-marker
+                         (marker-position tracking-marker)
+                         (marker-buffer tracking-marker))
+             (plist-put info :tool-marker tool-marker))
          (when (derived-mode-p 'org-mode) ;fold drawer
            (ignore-errors
              (save-excursion
-               ;; Tracking marker may have been initialized since binding if
-               ;; this is the first response
-               (goto-char (plist-get info :tracking-marker))
+               (goto-char tracking-marker)
                (beginning-of-line)
                (when (looking-at "^#\\+end_tool")
                  (org-cycle))))))))))
