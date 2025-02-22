@@ -30,6 +30,7 @@
 (defvar diff-entire-buffers)
 
 (declare-function diff-no-select "diff")
+(declare-function rmc--add-key-description "rmc")
 
 ;; * User options
 
@@ -636,6 +637,9 @@ generated from functions."
       (unless (get-char-property (point) 'gptel-rewrite)
         (when (= (point) (region-end)) (backward-char 1)))
       (deactivate-mark))))
+
+;; Allow this to be called non-interactively for dry runs
+(put 'gptel--suffix-rewrite 'interactive-only nil)
 
 (transient-define-suffix gptel--suffix-rewrite-diff (&optional switches)
   "Diff LLM output against buffer."
