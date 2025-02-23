@@ -304,9 +304,9 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
           (and max-entries (cl-decf max-entries)))
       (when-let* ((content (string-trim (buffer-substring-no-properties
                                          (point-min) (point-max)))))
-        ;; XXX Remove this comment if empty `prompts' is fine.
-        (when (not (string-empty-p content))
-          (push (list :role "user" :content content) prompts))))
+        ;; XXX fails if content is empty.  The correct error behavior is left to
+        ;; a future discussion.
+        (push (list :role "user" :content content) prompts)))
     prompts))
 
 (defun gptel--anthropic-parse-multipart (parts)
