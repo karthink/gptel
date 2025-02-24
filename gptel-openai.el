@@ -346,7 +346,7 @@ Mutate state INFO with response metadata."
                (push (list :role "assistant" :content content) prompts)))
             (`(tool . ,id)
              (save-excursion
-               (condition-case-unless-debug _err
+               (condition-case _err
                    (let* ((tool-call (read (current-buffer)))
                           (id (gptel--openai-format-tool-id id))
                           (name (plist-get tool-call :name))
