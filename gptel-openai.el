@@ -350,9 +350,7 @@ Mutate state INFO with response metadata."
                    (let* ((tool-call (read (current-buffer)))
                           (id (gptel--openai-format-tool-id id))
                           (name (plist-get tool-call :name))
-                          (arguments (json-serialize (plist-get tool-call :args)
-                                                     :null-object nil
-                                                     :false-object :json-false)))
+                          (arguments (gptel--json-encode (plist-get tool-call :args))))
                      (push (list :role "tool"
                                  :tool_call_id id
                                  :content
