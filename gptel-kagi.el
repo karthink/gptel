@@ -98,13 +98,10 @@
           (user-error "No user prompt found!")
         (let ((prompts
                (if (or gptel-mode gptel-track-response)
-                   (string-trim
-                    (buffer-substring-no-properties (prop-match-beginning prop)
-                                                    (prop-match-end prop))
-                    (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                            (regexp-quote (gptel-prompt-prefix-string)))
-                    (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-                            (regexp-quote (gptel-response-prefix-string))))
+                   (or (gptel--trim-prefixes
+                        (buffer-substring-no-properties (prop-match-beginning prop)
+                                                        (prop-match-end prop)))
+                       "")
                  (string-trim (buffer-substring-no-properties (point-min) (point-max))))))
           (pcase-exhaustive (gptel--model-name gptel-model)
             ("fastgpt" (setq prompts (list :query (if (prop-match-p prop) prompts ""))))

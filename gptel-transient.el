@@ -1227,25 +1227,27 @@ This sets the variable `gptel-include-tool-results', which see."
      ((member "e" args)
       (setq stream nil)
       (setq callback
-            (lambda (resp info)
-              (cond
-               ((stringp resp) (message "%s response: %s" backend-name resp))
-               ((consp resp) (gptel--display-tool-calls resp info 'minibuffer))
-               ((and (null resp) (plist-get info :error))
-                (message "%s response error: %s"
-                         backend-name (plist-get info :status)))))))
+            (lambda (resp info &optional _raw)
+              (pcase resp
+                ((pred stringp) (message "%s response: %s" backend-name resp))
+                (`(tool-call . ,tool-calls) (gptel--display-tool-calls tool-calls info 'minibuffer))
+                (`(tool-result . ,tool-results) (gptel--display-tool-results tool-results info))
+                (_ (when (and (null resp) (plist-get info :error))
+                     (message "%s response error: %s"
+                              backend-name (plist-get info :status))))))))
      ((member "k" args)
       (setq stream nil)
       (setq callback
-            (lambda (resp info)
-              (cond
-               ((stringp resp) (kill-new resp)
-                (message "%s response: \"%s\" copied to kill-ring." backend-name
-                         (truncate-string-to-width resp 30)))
-               ((consp resp) (gptel--display-tool-calls resp info 'minibuffer))
-               ((and (null resp) (plist-get info :error))
-                (message "%s response error: %s" backend-name
-                         (plist-get info :status)))))))
+            (lambda (resp info &optional _raw)
+              (pcase resp
+                ((pred stringp) (kill-new resp)
+                 (message "%s response: \"%s\" copied to kill-ring." backend-name
+                          (truncate-string-to-width resp 30)))
+                (`(tool-call . ,tool-calls) (gptel--display-tool-calls tool-calls info 'minibuffer))
+                (`(tool-result . ,tool-results) (gptel--display-tool-results tool-results info))
+                (_ (when (and (null resp) (plist-get info :error))
+                     (message "%s response error: %s" backend-name
+                              (plist-get info :status))))))))
      ((setq gptel-buffer-name
             (cl-some (lambda (s) (and (stringp s) (string-prefix-p "g" s)
                                  (substring s 1)))
@@ -1379,7 +1381,7 @@ for details."
   "Regenerate gptel response at point."
   (interactive)
   (when (gptel--in-response-p)
-    (pcase-let* ((`(,beg . ,end) (gptel--get-bounds))
+    (pcase-let* ((`(,beg . ,end) (gptel--get-response-bounds))
                  (history (get-char-property (point) 'gptel-history))
                  (prev-responses (cons (buffer-substring-no-properties beg end)
                                        history)))
