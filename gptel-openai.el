@@ -341,8 +341,8 @@ Mutate state INFO with response metadata."
                                 (point) 'gptel nil (point-min))))
           (pcase (get-char-property (point) 'gptel)
             ('response
-             (when-let ((content (gptel--trim-prefixes
-                                  (buffer-substring-no-properties (point) prev-pt))))
+             (when-let* ((content (gptel--trim-prefixes
+                                   (buffer-substring-no-properties (point) prev-pt))))
                (push (list :role "assistant" :content content) prompts)))
             (`(tool . ,id)
              (save-excursion
