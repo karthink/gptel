@@ -758,26 +758,51 @@ Customize `gptel-directives' for task-specific prompts."
     :pad-keys t])
 
 ;; ** Prefix for selecting tools
+(defun gptel--tools-annotation-function (cand)
+  "Annotation function used in `gptel--completing-read-multiple-tools'"
+  (propertize
+   (get-text-property 0 'description cand)
+   'face 'shadow))
+
 (defun gptel--completing-read-multiple-tools (prompt candidate-tools)
-  (cl-loop for selection in
-           ;; Without this, when duplicate values are selected in
-           ;; `completing-read-multiple', it will result in a circular-list error
-           (seq-uniq
-            (completing-read-multiple
-             prompt
-             (lambda (string pred action)
-               (if (eq action 'metadata)
-                   '(metadata
-                     ;; (annotation-function . gptel-annotation-function)
-                     (category . gptel-tool))
-                 (complete-with-action
-                  action
-                  candidate-tools
-                  string
-                  pred)))
-             nil t)
-            #'string-equal)
-           nconc (alist-get selection candidate-tools nil nil #'string-equal)))
+  "completing-read-multiple with tools."
+  (let ((padded-candidate-len
+         (+ 3 (apply #'max (map-keys-apply #'length candidate-tools)))))
+    (cl-loop for selection in
+             ;; Without this, when duplicate values are selected in
+             ;; `completing-read-multiple', it will result in a circular-list error
+             (seq-uniq
+              (completing-read-multiple
+               prompt
+               (lambda (string pred action)
+                 (if (eq action 'metadata)
+                     '(metadata
+                       (annotation-function . gptel--tools-annotation-function)
+                       (category . gptel-tool))
+                   (complete-with-action
+                    action
+                    (cl-loop for (tool-name . tools) in candidate-tools
+                             collect
+                             (propertize
+                              (string-pad tool-name padded-candidate-len)
+                              'description
+                              (if (length= tools 1)
+                                  (gptel--describe-directive
+                                   (gptel-tool-description (car tools))
+                                   (- (window-width) 40))
+                                (concat
+                                 "category: ("
+                                 (string-join (mapcar
+                                               (lambda (tool)
+                                                 (gptel-tool-name tool))
+                                               tools)
+                                              ", ")
+                                 ")"))))
+                    string
+                    pred)))
+               nil t)
+              #'string-equal)
+             nconc (alist-get (string-trim-right selection) candidate-tools nil nil #'string-equal))))
 
 (transient-define-infix gptel--infix-set-tools ()
   "Set tools to use."
@@ -835,10 +860,10 @@ Customize `gptel-directives' for task-specific prompts."
                  category-candidates))))))
 
 (transient-define-infix gptel--infix-remove-all-tools ()
-  "Remove tools being used."
-  :description "Remove tools"
+  "Remove all tools being used."
+  :description "Remove all tools"
   :class 'gptel-lisp-variable
-  :prompt "Remove tools: "
+  :prompt "Remove tools"
   :display-nil "none"
   :format " %k %d"
   :variable 'gptel-tools
