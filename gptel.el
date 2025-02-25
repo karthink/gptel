@@ -234,8 +234,16 @@ all at once.  This wait is asynchronous.
   :type 'boolean)
 
 (defcustom gptel-use-curl (and (executable-find "curl") t)
-  "Whether gptel should prefer Curl when available."
-  :type 'boolean)
+  "Whether gptel should prefer Curl when available.
+Can be set to t, nil, or a string path to the curl executable."
+  :type '(choice
+          (const nil :tag "Do not use curl")
+          (const t :tag "Use the system curl")
+          (string :tag "Path to the curl executable")))
+
+(defsubst gptel-curl-path ()
+  "Curl executable to use."
+  (if (stringp gptel-use-curl) gptel-use-curl "curl"))
 
 (defcustom gptel-org-convert-response t
   "Whether gptel should convert Markdown responses to Org markup.
