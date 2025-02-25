@@ -513,6 +513,29 @@ The above code makes the backend available to select.  If you want it to be the 
                  :stream t :key "your-api-key"))
 #+end_src
 
+***** (Optional) Interim support for Claude 3.7 Sonnet
+
+gptel does not yet support specifying LLM "reasoning"/"thinking" behaviors dynamically through its interface.  This effort is ongoing, but in the meantime you use the Claude 3.7 Sonnet model in its "thinking" mode by defining a second Claude backend and selecting it in via the UI or elisp:
+
+#+begin_src emacs-lisp
+(gptel-make-anthropic "Claude-thinking" ;Any name you want
+  :key "your-API-key"
+  :stream t
+  :models '(claude-3-7-sonnet-20250219)
+  :header (lambda () (when-let* ((key (gptel--get-api-key)))
+                  `(("x-api-key" . ,key)
+                    ("anthropic-version" . "2023-06-01")
+                    ("anthropic-beta" . "pdfs-2024-09-25")
+                    ("anthropic-beta" . "output-128k-2025-02-19")
+                    ("anthropic-beta" . "prompt-caching-2024-07-31"))))
+  :request-params '(:thinking (:type "enabled" :budget_tokens 2048)
+                    :max_tokens 4096))
+#+end_src
+
+You can set the reasoning budget tokens and max tokens for this usage via the =:budget_tokens= and =:max_tokens= keys here, respectively.
+
+Once proper support for specifying reasoning behaviors is added to gptel's UI this will be unnecessary.
+
 #+html: </details>
 #+html: <details><summary>
 **** Groq
