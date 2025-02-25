@@ -132,18 +132,26 @@ the response is inserted into the current buffer after point."
                              (random) (emacs-pid) (user-full-name)
                              (recent-keys))))
          (info (gptel-fsm-info fsm))
+         (backend (plist-get info :backend))
          (args (gptel-curl--get-args info token))
          (stream (plist-get info :stream))
          (process (apply #'start-process "gptel-curl"
                          (generate-new-buffer "*gptel-curl*") (gptel-curl-path) args)))
-    (when (memq system-type '(windows-nt ms-dos))
-      ;; Don't try to convert cr-lf to cr on Windows so that curl's "header size
-      ;; in bytes" stays correct
-      (set-process-coding-system process 'utf-8-unix 'utf-8-unix))
     (when (eq gptel-log-level 'debug)
       (gptel--log (mapconcat #'shell-quote-argument (cons (gptel-curl-path) args) " \\\n")
                   "request Curl command" 'no-json))
+
     (with-current-buffer (process-buffer process)
+      (cond
+       ((eq (gptel-backend-coding-system backend) 'binary)
+        ;; set-buffer-file-coding-system is not needed since we don't save this buffer
+        (set-buffer-multibyte nil)
+        (set-process-coding-system process 'binary 'binary))
+       ((memq system-type '(windows-nt ms-dos))
+        ;; Don't try to convert cr-lf to cr on Windows so that curl's "header size
+        ;; in bytes" stays correct
+        (set-process-coding-system process 'utf-8-unix 'utf-8-unix)))
+
       (set-process-query-on-exit-flag process nil)
       (if (plist-get info :token)       ;not the first run, set only the token
           (plist-put info :token token)
