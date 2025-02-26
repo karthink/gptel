@@ -87,7 +87,7 @@ context chunk.  This is accessible as, for example:
 (defcustom gptel-context-exclude-gitignored t
   "Whether to exclude gitignored files from context.
 When non-nil, do not add to the context files or directories listed in
-the `.gitignored' file of their associated repository."
+the `.gitignore' file of their associated repository."
   :group 'gptel
   :type 'boolean)
 
