@@ -1014,6 +1014,8 @@ You can examine the active context from the menu:
 And then browse through or remove context from the context buffer:
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/79a5ffe8-3d63-4bf7-9bf6-0457ab61bf2a" align="center" alt="Image showing gptel's context buffer.">
 
+Additionally, you can exclude files or directories in git repositories listed in the =.gitignore= file by setting the user option =gptel-context-exclude-gitignored= to =t=.  This can be especially useful when adding entire projects to the context.
+
 *** Tool use (experimental)
 
 gptel can provide the LLM with client-side elisp "tools", or function specifications, along with the request.  If the LLM decides to run the tool, it supplies the tool call arguments, which gptel uses to run the tool in your Emacs session.  The result is optionally returned to the LLM to complete the task.
