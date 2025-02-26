@@ -1,6 +1,6 @@
 #+title: gptel: A simple LLM client for Emacs
 
-[[https://elpa.nongnu.org/nongnu/gptel.svg][file:https://elpa.nongnu.org/nongnu/gptel.svg]] [[https://stable.melpa.org/packages/gptel-badge.svg][file:https://stable.melpa.org/packages/gptel-badge.svg]] [[https://melpa.org/#/gptel][file:https://melpa.org/packages/gptel-badge.svg]]
+[[https://elpa.nongnu.org/nongnu/gptel.html][file:https://elpa.nongnu.org/nongnu/gptel.svg]] [[https://stable.melpa.org/#/gptel][file:https://stable.melpa.org/packages/gptel-badge.svg]] [[https://melpa.org/#/gptel][file:https://melpa.org/packages/gptel-badge.svg]]
 
 gptel is a simple Large Language Model chat client for Emacs, with support for multiple models and backends.  It works in the spirit of Emacs, available at any time and uniformly in any buffer.
 
@@ -67,11 +67,11 @@ See also [[https://youtu.be/g1VMGhC5gRU][this youtube demo (2 minutes)]] by Armi
 ------
 
 - gptel is async and fast, streams responses.
-- Interact with LLMs from anywhere in Emacs (any buffer, shell, minibuffer, wherever)
+- Interact with LLMs from anywhere in Emacs (any buffer, shell, minibuffer, wherever).
 - LLM responses are in Markdown or Org markup.
 - Supports multiple independent conversations and one-off ad hoc interactions.
-- Supports tool-use to equip LLMs with agentic capabilities (experimental feature)
-- Supports multi-modal input (include images, documents)
+- Supports tool-use to equip LLMs with agentic capabilities (experimental feature).
+- Supports multi-modal input (include images, documents).
 - Save chats as regular Markdown/Org/Text files and resume them later.
 - Edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.
 - Supports introspection, so you can see /exactly/ what will be sent.  Inspect and modify queries before sending them.
@@ -121,14 +121,18 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
     - [[#rewrite-refactor-or-fill-in-a-region][Rewrite, refactor or fill in a region]]
     - [[#extra-org-mode-conveniences][Extra Org mode conveniences]]
   - [[#faq][FAQ]]
-      - [[#i-want-to-use-gptel-in-a-way-thats-not-supported-by-gptel-send-or-the-options-menu][I want to use gptel in a way that's not supported by =gptel-send= or the options menu]]
+    - [[#chat-buffer-ui][Chat buffer UI]]
       - [[#i-want-the-window-to-scroll-automatically-as-the-response-is-inserted][I want the window to scroll automatically as the response is inserted]]
       - [[#i-want-the-cursor-to-move-to-the-next-prompt-after-the-response-is-inserted][I want the cursor to move to the next prompt after the response is inserted]]
       - [[#i-want-to-change-the-formatting-of-the-prompt-and-llm-response][I want to change the formatting of the prompt and LLM response]]
-      - [[#i-want-the-transient-menu-options-to-be-saved-so-i-only-need-to-set-them-once][I want the transient menu options to be saved so I only need to set them once]]
-      - [[#can-i-change-the-transient-menu-key-bindings][Can I change the transient menu key bindings?]]
       - [[#how-does-gptel-distinguish-between-user-prompts-and-llm-responses][How does gptel distinguish between user prompts and LLM responses?]]
+    - [[#transient-menu-behavior][Transient menu behavior]]
+      - [[#i-want-the-transient-menu-options-to-be-saved-so-i-only-need-to-set-them-once][I want the transient menu options to be saved so I only need to set them once]]
+      - [[#using-the-transient-menu-leaves-behind-extra-windows][Using the transient menu leaves behind extra windows]]
+      - [[#can-i-change-the-transient-menu-key-bindings][Can I change the transient menu key bindings?]]
       - [[#doom-emacs-sending-a-query-from-the-gptel-menu-fails-because-of-a-key-conflict-with-org-mode][(Doom Emacs) Sending a query from the gptel menu fails because of a key conflict with Org mode]]
+    - [[#miscellaneous][Miscellaneous]]
+      - [[#i-want-to-use-gptel-in-a-way-thats-not-supported-by-gptel-send-or-the-options-menu][I want to use gptel in a way that's not supported by =gptel-send= or the options menu]]
       - [[#chatgpt-i-get-the-error-http2-429-you-exceeded-your-current-quota][(ChatGPT) I get the error "(HTTP/2 429) You exceeded your current quota"]]
       - [[#why-another-llm-client][Why another LLM client?]]
   - [[#additional-configuration][Additional Configuration]]
@@ -154,15 +158,11 @@ If you want the stable version instead, add NonGNU-devel ELPA or MELPA-stable to
 #+begin_src emacs-lisp
   (straight-use-package 'gptel)
 #+end_src
-
-Installing the =markdown-mode= package is optional.
 #+html: </details>
 #+html: <details><summary>
 **** Manual
 #+html: </summary>
 Clone or download this repository and run =M-x package-install-file⏎= on the repository directory.
-
-Installing the =markdown-mode= package is optional.
 #+html: </details>
 #+html: <details><summary>
 **** Doom Emacs
@@ -512,6 +512,29 @@ The above code makes the backend available to select.  If you want it to be the 
  gptel-backend (gptel-make-anthropic "Claude"
                  :stream t :key "your-api-key"))
 #+end_src
+
+***** (Optional) Interim support for Claude 3.7 Sonnet
+
+gptel does not yet support specifying LLM "reasoning"/"thinking" behaviors dynamically through its interface.  This effort is ongoing, but in the meantime you use the Claude 3.7 Sonnet model in its "thinking" mode by defining a second Claude backend and selecting it in via the UI or elisp:
+
+#+begin_src emacs-lisp
+(gptel-make-anthropic "Claude-thinking" ;Any name you want
+  :key "your-API-key"
+  :stream t
+  :models '(claude-3-7-sonnet-20250219)
+  :header (lambda () (when-let* ((key (gptel--get-api-key)))
+                  `(("x-api-key" . ,key)
+                    ("anthropic-version" . "2023-06-01")
+                    ("anthropic-beta" . "pdfs-2024-09-25")
+                    ("anthropic-beta" . "output-128k-2025-02-19")
+                    ("anthropic-beta" . "prompt-caching-2024-07-31"))))
+  :request-params '(:thinking (:type "enabled" :budget_tokens 2048)
+                    :max_tokens 4096))
+#+end_src
+
+You can set the reasoning budget tokens and max tokens for this usage via the =:budget_tokens= and =:max_tokens= keys here, respectively.
+
+Once proper support for specifying reasoning behaviors is added to gptel's UI this will be unnecessary.
 
 #+html: </details>
 #+html: <details><summary>
@@ -1025,7 +1048,7 @@ Defining a gptel tool requires an elisp function and associated metadata.  Here 
                (buffer-substring-no-properties (point-min) (point-max))))
  :description "return the contents of an emacs buffer"
  :args (list '(:name "buffer"
-               :type 'string            ; :type value must be a symbol
+               :type string            ; :type value must be a symbol
                :description "the name of the buffer whose contents are to be retrieved"))
  :category "emacs")                     ; An arbitrary label for grouping
 #+end_src
@@ -1127,15 +1150,7 @@ Note: using this option requires Org 9.7 or higher to be available.  The [[https
 You can declare the gptel model, backend, temperature, system message and other parameters as Org properties with the command =gptel-org-set-properties=.  gptel queries under the corresponding heading will always use these settings, allowing you to create mostly reproducible LLM chat notebooks, and to have simultaneous chats with different models, model settings and directives under different Org headings.
 
 ** FAQ
-#+html: <details><summary>
-**** I want to use gptel in a way that's not supported by =gptel-send= or the options menu
-#+html: </summary>
-
-gptel's default usage pattern is simple, and will stay this way: Read input in any buffer and insert the response below it.  Some custom behavior is possible with the transient menu (=C-u M-x gptel-send=).
-
-For more programmable usage, gptel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][wiki]] for examples.
-
-#+html: </details>
+*** Chat buffer UI
 #+html: <details><summary>
 **** I want the window to scroll automatically as the response is inserted
 #+html: </summary>
@@ -1159,7 +1174,6 @@ To be minimally annoying, gptel does not move the cursor by default.  Add the fo
 
 You can also call =gptel-end-of-response= as a command at any time.
 
-
 #+html: </details>
 #+html: <details><summary>
 **** I want to change the formatting of the prompt and LLM response
@@ -1170,6 +1184,18 @@ For dedicated chat buffers: customize =gptel-prompt-prefix-alist= and =gptel-res
 Anywhere in Emacs: Use =gptel-pre-response-hook= and =gptel-post-response-functions=, which see.
 
 #+html: </details>
+#+html: <details><summary>
+**** How does gptel distinguish between user prompts and LLM responses?
+#+html: </summary>
+
+gptel uses [[https://www.gnu.org/software/emacs/manual/html_node/elisp/Text-Properties.html][text-properties]] to watermark LLM responses.  Thus this text is interpreted as a response even if you copy it into another buffer.  In regular buffers (buffers without =gptel-mode= enabled), you can turn off this tracking by unsetting =gptel-track-response=.
+
+When restoring a chat state from a file on disk, gptel will apply these properties from saved metadata in the file when you turn on =gptel-mode=.
+
+gptel does /not/ use any prefix or semantic/syntax element in the buffer (such as headings) to separate prompts and responses.  The reason for this is that gptel aims to integrate as seamlessly as possible into your regular Emacs usage: LLM interaction is not the objective, it's just another tool at your disposal.  So requiring a bunch of "user" and "assistant" tags in the buffer is noisy and restrictive. If you want these demarcations, you can customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=.  Note that these prefixes are for your readability only and purely cosmetic.
+
+#+html: </details>
+*** Transient menu behavior
 #+html: <details><summary>
 **** I want the transient menu options to be saved so I only need to set them once
 #+html: </summary>
@@ -1195,6 +1221,17 @@ Or see this [[https://github.com/karthink/gptel/wiki/Commonly-requested-features
 
 #+html: </details>
 #+html: <details><summary>
+**** Using the transient menu leaves behind extra windows
+#+html: </summary>
+
+If using gptel's transient menus causes new/extra window splits to be created, check your value of =transient-display-buffer-action=.  [[https://github.com/magit/transient/discussions/358][See this discussion]] for more context.
+
+If you are using Helm, see [[https://github.com/magit/transient/discussions/361][Transient#361]].
+
+In general, do not customize this Transient option unless you know what you're doing!
+
+#+html: </details>
+#+html: <details><summary>
 **** Can I change the transient menu key bindings?
 #+html: </summary>
 
@@ -1202,17 +1239,6 @@ Yes, see =transient-suffix-put=.  This changes the key to select a backend/model
 #+begin_src emacs-lisp
 (transient-suffix-put 'gptel-menu (kbd "-m") :key "M")
 #+end_src
-
-#+html: </details>
-#+html: <details><summary>
-**** How does gptel distinguish between user prompts and LLM responses?
-#+html: </summary>
-
-gptel uses [[https://www.gnu.org/software/emacs/manual/html_node/elisp/Text-Properties.html][text-properties]] to watermark LLM responses.  Thus this text is interpreted as a response even if you copy it into another buffer.  In regular buffers (buffers without =gptel-mode= enabled), you can turn off this tracking by unsetting =gptel-track-responses=.
-
-When restoring a chat state from a file on disk, gptel will apply these properties from saved metadata in the file when you turn on =gptel-mode=.
-
-gptel does /not/ use any prefix or semantic/syntax element in the buffer (such as headings) to separate prompts and responses.  The reason for this is that gptel aims to integrate as seamlessly as possible into your regular Emacs usage: LLM interaction is not the objective, it's just another tool at your disposal.  So requiring a bunch of "user" and "assistant" tags in the buffer is noisy and restrictive. If you want these demarcations, you can customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=.  Note that these prefixes are for your readability only and purely cosmetic.
 
 #+html: </details>
 #+html: <details><summary>
@@ -1227,6 +1253,16 @@ Two solutions:
   #+begin_src emacs-lisp
   (transient-suffix-put 'gptel-menu (kbd "RET") :key "<f8>")
   #+end_src
+
+#+html: </details>
+*** Miscellaneous
+#+html: <details><summary>
+**** I want to use gptel in a way that's not supported by =gptel-send= or the options menu
+#+html: </summary>
+
+gptel's default usage pattern is simple, and will stay this way: Read input in any buffer and insert the response below it.  Some custom behavior is possible with the transient menu (=C-u M-x gptel-send=).
+
+For more programmable usage, gptel provides a general =gptel-request= function that accepts a custom prompt and a callback to act on the response. You can use this to build custom workflows not supported by =gptel-send=.  See the documentation of =gptel-request=, and the [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][wiki]] for examples.
 
 #+html: </details>
 #+html: <details><summary>
@@ -1250,7 +1286,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 2. Integration with org-mode, not using a walled-off org-babel block, but as regular text.  This way the model can generate code blocks that I can run.
 
 #+html: </details>
-#+html: <details><summary>
+
 ** Additional Configuration
 :PROPERTIES:
 :ID:       f885adac-58a3-4eba-a6b7-91e9e7a17829
@@ -1325,21 +1361,21 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 ** COMMENT Will you add feature X?
 
 Maybe, I'd like to experiment a bit more first.  Features added since the inception of this package include
-- Curl support (=gptel-use-curl=)
-- Streaming responses (=gptel-stream=)
+- Curl support (=gptel-use-curl=).
+- Streaming responses (=gptel-stream=).
 - Cancelling requests in progress (=gptel-abort=)
 - General API for writing your own commands (=gptel-request=, [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][wiki]])
-- Dispatch menus using Transient (=gptel-send= with a prefix arg)
-- Specifying the conversation context size
-- GPT-4 support
-- Response redirection (to the echo area, another buffer, etc)
-- A built-in refactor/rewrite prompt
-- Limiting conversation context to Org headings using properties (#58)
-- Saving and restoring chats (#17)
+- Dispatch menus using Transient (=gptel-send= with a prefix arg).
+- Specifying the conversation context size.
+- GPT-4 support.
+- Response redirection (to the echo area, another buffer, etc).
+- A built-in refactor/rewrite prompt.
+- Limiting conversation context to Org headings using properties (#58).
+- Saving and restoring chats (#17).
 - Support for local LLMs.
 
 Features being considered or in the pipeline:
-- Fully stateless design (#17)
+- Fully stateless design ([[https://github.com/karthink/gptel/discussions/119][discussion #119]]).
 
 ** Alternatives
 
@@ -1357,12 +1393,12 @@ There are several more: [[https://github.com/MichaelBurge/leafy-mode][leafy-mode
 gptel is a general-purpose package for chat and ad-hoc LLM interaction.  The following packages use gptel to provide additional or specialized functionality:
 
 - [[https://github.com/karthink/gptel-quick][gptel-quick]]: Quickly look up the region or text at point.
-- [[https://github.com/daedsidog/evedel][Evedel]]: Instructed LLM Programmer/Assistant
-- [[https://github.com/lanceberge/elysium][Elysium]]: Automatically apply AI-generated changes as you code
-- [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo
-- [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate Commit Messages within magit-status Buffer using gptel
+- [[https://github.com/daedsidog/evedel][Evedel]]: Instructed LLM Programmer/Assistant.
+- [[https://github.com/lanceberge/elysium][Elysium]]: Automatically apply AI-generated changes as you code.
+- [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
+- [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate Commit Messages within magit-status Buffer using gptel.
 - [[https://github.com/armindarvish/consult-omni][consult-omni]]: Versatile multi-source search package.  It includes gptel as one of its many sources.
-- [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  (Note that gptel includes this feature as well (see =gptel-org-branching-context=), but requires a recent version of Org mode (9.67 or later) to be installed.)
+- [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  (Note that gptel includes this feature as well (see =gptel-org-branching-context=), but requires a recent version of Org mode 9.7 or later to be installed.)
 - [[https://github.com/rob137/Corsair][Corsair]]: Helps gather text to populate LLM prompts for gptel.
 
 ** COMMENT Older Breaking Changes

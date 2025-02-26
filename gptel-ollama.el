@@ -142,34 +142,31 @@ Store response metadata in state INFO."
            (list :role (if role "user" "assistant") :content text)))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-ollama) &optional max-entries)
-  (let ((prompts) (prop)
+  (let ((prompts) (prev-pt (point))
         (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
                                                   (gptel--model-capable-p 'url)))))
     (if (or gptel-mode gptel-track-response)
-        (while (and
-                (or (not max-entries) (>= max-entries 0))
-                (setq prop (text-property-search-backward
-                            'gptel 'response
-                            (when (get-char-property (max (point-min) (1- (point)))
-                                                     'gptel)
-                              t))))
-          (if (prop-match-value prop)   ;assistant role
-              (push (list :role "assistant"
-                          :content (buffer-substring-no-properties (prop-match-beginning prop)
-                                                                   (prop-match-end prop)))
-                    prompts)
-            (if include-media
-                (push (append '(:role "user")
-                             (gptel--ollama-parse-multipart
-                              (gptel--parse-media-links
-                               major-mode (prop-match-beginning prop) (prop-match-end prop))))
-                      prompts)
-              (push (list :role "user"
-                          :content
-                          (gptel--trim-prefixes
-                           (buffer-substring-no-properties (prop-match-beginning prop)
-                                                           (prop-match-end prop))))
-                    prompts)))
+        (while (and (or (not max-entries) (>= max-entries 0))
+                    (goto-char (previous-single-property-change
+                                (point) 'gptel nil (point-min)))
+                    (not (= (point) prev-pt)))
+          (pcase (get-char-property (point) 'gptel)
+            ('response
+             (push (list :role "assistant"
+                         :content (buffer-substring-no-properties (point) prev-pt))
+                   prompts))
+            ('nil
+             (if include-media
+                 (push (append '(:role "user")
+                               (gptel--ollama-parse-multipart
+                                (gptel--parse-media-links major-mode (point) prev-pt)))
+                       prompts)
+               (push (list :role "user"
+                           :content
+                           (gptel--trim-prefixes
+                            (buffer-substring-no-properties (point) prev-pt)))
+                     prompts))))
+          (setq prev-pt (point))
           (and max-entries (cl-decf max-entries)))
       (push (list :role "user"
                   :content

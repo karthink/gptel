@@ -30,6 +30,7 @@
 (defvar diff-entire-buffers)
 
 (declare-function diff-no-select "diff")
+(declare-function rmc--add-key-description "rmc")
 
 ;; * User options
 
@@ -292,7 +293,7 @@ BUF is the buffer to modify, defaults to the overlay buffer."
     (require 'diff)
     (let* ((newbuf (gptel--rewrite-prepare-buffer ovs))
            (diff-buf (diff-no-select
-                      (if-let ((buf-file (buffer-file-name ov-buf)))
+                      (if-let* ((buf-file (buffer-file-name ov-buf)))
                           (expand-file-name buf-file) ov-buf)
                       newbuf switches)))
       (with-current-buffer diff-buf
@@ -309,7 +310,7 @@ BUF is the buffer to modify, defaults to the overlay buffer."
              (hideshow
               (lambda (&optional restore)
                 (dolist (ov (ensure-list ovs))
-                  (when-let ((overlay-buffer ov))
+                  (when-let* ((overlay-buffer ov))
                     (let ((disp (overlay-get ov 'display))
                           (stored (overlay-get ov 'gptel--ediff)))
                       (overlay-put ov 'display (and restore stored))
@@ -333,7 +334,7 @@ BUF is the buffer to modify, defaults to the overlay buffer."
       (let ((changed))
         (dolist (ov (ensure-list ovs))
           (save-excursion
-            (when-let (new-str (overlay-get ov 'gptel-rewrite))
+            (when-let* ((new-str (overlay-get ov 'gptel-rewrite)))
               ;; Insert merge
               (goto-char (overlay-start ov))
               (unless (bolp) (insert "\n"))
@@ -552,13 +553,27 @@ By default, gptel uses the directive associated with the `rewrite'
             (let* ((rewrite-directive
                     (car-safe (gptel--parse-directive gptel--rewrite-directive
                                                       'raw)))
+                   (cb (current-buffer))
                    (cycle-prefix
                     (lambda () (interactive)
                       (gptel--read-with-prefix rewrite-directive)))
+                   (edit-in-buffer
+                    (lambda () (interactive)
+                      (let ((offset (- (point) (minibuffer-prompt-end))))
+                        (gptel--edit-directive 'gptel--rewrite-message
+                          :prompt rewrite-directive :initial (minibuffer-contents)
+                          :buffer cb :setup (lambda () (ignore-errors (forward-char offset)))
+                          :callback
+                          (lambda ()
+                            (run-at-time 0 nil #'transient-setup 'gptel-rewrite)
+                            (push (buffer-local-value 'gptel--rewrite-message cb)
+                                  (alist-get 'gptel--infix-rewrite-extra transient-history))
+                            (when (minibufferp) (minibuffer-quit-recursive-edit)))))))
                    (minibuffer-local-map
-                    (make-composed-keymap
-                     (define-keymap "TAB" cycle-prefix "<tab>" cycle-prefix)
-                     minibuffer-local-map)))
+                    (make-composed-keymap (define-keymap
+                                            "TAB" cycle-prefix "<tab>" cycle-prefix
+                                            "C-c C-e" edit-in-buffer)
+                                          minibuffer-local-map)))
               (minibuffer-with-setup-hook cycle-prefix
                 (read-string
                  prompt (or gptel--rewrite-message "Rewrite: ")
@@ -587,7 +602,8 @@ generated from functions."
                 "Rewrite directive is dynamically generated: Edit its current value instead?")))))
   (if cancel (progn (message "Edit canceled")
                     (call-interactively #'gptel-rewrite))
-    (gptel--edit-directive 'gptel--rewrite-directive #'gptel-rewrite)))
+    (gptel--edit-directive 'gptel--rewrite-directive
+      :callback #'gptel-rewrite :setup #'activate-mark)))
 
 (transient-define-suffix gptel--suffix-rewrite (&optional rewrite-message dry-run)
   "Rewrite or refactor region contents."
@@ -621,6 +637,9 @@ generated from functions."
       (unless (get-char-property (point) 'gptel-rewrite)
         (when (= (point) (region-end)) (backward-char 1)))
       (deactivate-mark))))
+
+;; Allow this to be called non-interactively for dry runs
+(put 'gptel--suffix-rewrite 'interactive-only nil)
 
 (transient-define-suffix gptel--suffix-rewrite-diff (&optional switches)
   "Diff LLM output against buffer."

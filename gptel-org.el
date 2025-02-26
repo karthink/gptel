@@ -268,16 +268,16 @@ for inclusion into the user prompt for the gptel request."
             (when (file-readable-p path)
               ;; Collect text up to this image, and
               ;; Collect this image
-              (when-let ((text (string-trim (buffer-substring-no-properties
-                                             from-pt (gptel-org--element-begin link)))))
+              (when-let* ((text (string-trim (buffer-substring-no-properties
+                                              from-pt (gptel-org--element-begin link)))))
                 (unless (string-empty-p text) (push (list :text text) parts)))
               (push (list :media path :mime mime) parts)
               (setq from-pt (point))))
            ((member type '("http" "https" "ftp"))
             ;; Collect text up to this image, and
             ;; Collect this image url
-            (when-let ((text (string-trim (buffer-substring-no-properties
-                                             from-pt (gptel-org--element-begin link)))))
+            (when-let* ((text (string-trim (buffer-substring-no-properties
+                                            from-pt (gptel-org--element-begin link)))))
               (unless (string-empty-p text) (push (list :text text) parts)))
             (push (list :url raw-link :mime mime) parts)
             (setq from-pt (point))))))
@@ -288,13 +288,12 @@ for inclusion into the user prompt for the gptel request."
 (defun gptel-org--link-standalone-p (object)
   "Check if link OBJECT is on a line by itself."
   ;; Specify ancestor TYPES as list (#245)
-  (let ((par (org-element-lineage object '(paragraph))))
+  (when-let* ((par (org-element-lineage object '(paragraph))))
     (and (= (gptel-org--element-begin object)
             (save-excursion
               (goto-char (org-element-property :contents-begin par))
               (skip-chars-forward "\t ")
-              (point)))                 ;account for leading space
-                                        ;before object
+              (point)))                 ;account for leading space before object
          (<= (- (org-element-property :contents-end par)
                 (org-element-property :end object))
              1))))
@@ -355,7 +354,7 @@ ARGS are the original function call arguments."
     (widen)
     (condition-case status
         (progn
-          (when-let ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
+          (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
             (mapc (pcase-lambda (`(,beg . ,end))
                     (add-text-properties
                      beg end '(gptel response front-sticky (gptel))))
@@ -434,7 +433,6 @@ non-nil (default), display a message afterwards."
 
 This is a very basic converter that handles only a few markup
 elements."
-  (interactive)
   (with-temp-buffer
     (insert str)
     (goto-char (point-min))
@@ -448,8 +446,8 @@ elements."
              (while (search-forward ticks nil t)
                (unless (or (eq (char-before (match-beginning 0)) ?`)
                            (eq (char-after) ?`))
-                   (gptel--replace-source-marker (length ticks) 'end)
-                   (throw 'block-end nil))))))
+                 (gptel--replace-source-marker (length ticks) 'end)
+                 (throw 'block-end nil))))))
         ;; Handle headings
         ((and (guard (eq (char-before) ?#)) heading)
          (cond
