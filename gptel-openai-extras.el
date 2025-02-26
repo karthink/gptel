@@ -224,7 +224,8 @@ the response."
                    `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.perplexity.ai")
           (protocol "https")
-          (models '(sonar sonar-pro))
+          ;; https://docs.perplexity.ai/guides/model-cards
+          (models '(sonar sonar-pro sonar-reasoning sonar-reasoning-pro sonar-deep-research))
           (endpoint "/chat/completions")
           request-params)
   "Register a Perplexity backend for gptel with NAME.
