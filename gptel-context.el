@@ -206,10 +206,19 @@ Return PATH if added, nil if ignored."
 (defun gptel-context--add-directory (path action)
   "Process all files in directory at PATH according to ACTION.
 ACTION should be either `add' or `remove'."
-  (let ((files (directory-files-recursively path "." t)))
+  (let ((files (directory-files-recursively path "." t))
+        (git-root (and gptel-context-exclude-gitignored
+                       (executable-find "git")
+                       (locate-dominating-file path ".git")))
+        unignored-files)
+    ;; Get the list of unignored files once if needed
+    (when git-root
+      (setq unignored-files (gptel-context--git-files git-root)))
     (mapc (lambda (file)
             (unless (or (file-directory-p file)
-			(gptel-context--skip-file-p file))
+                        (and git-root
+                             (not (member (file-relative-name file git-root)
+                                          unignored-files))))
               (pcase-exhaustive action
                 ('add
                  (if (gptel--file-binary-p file)
@@ -228,37 +237,16 @@ If PATH is a directory, recursively add all files in it.
 PATH should be readable as text."
   (interactive "fChoose file to add to context: ")
   (cond ((file-directory-p path)
-	 (gptel-context--add-directory path 'add))
-	((gptel-context--skip-file-p path)
-	 (message "Skipping git-ignored file: %s" path))
-	((gptel--file-binary-p path)
+         (gptel-context--add-directory path 'add))
+        ((and gptel-context-exclude-gitignored
+              (gptel-context--skip-file-p path))
+         (message "Skipping git-ignored file: %s" path))
+        ((gptel--file-binary-p path)
          (gptel-context--add-binary-file path))
-	(t (gptel-context--add-text-file path))))
+        (t (gptel-context--add-text-file path))))
 
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
 (defalias 'gptel-add-file #'gptel-context-add-file)
-
-(defvar gptel-context--git-cache (make-hash-table :test 'equal)
-  "Cache of `.gitignore' hashes and unignored files per Git root.
-Keys are directory paths.  Each value is a plist of the form:
-  (:files <list-of-unignored> :hash <.gitignore-md5-or-nil>)
-
-If the .gitignore changes on disk, we automatically refresh
-the unignored file list and hash.  If you modify the ignores in
-other ways (e.g. .git/info/exclude), you may need a manual reset:
-  (setq gptel-context--git-cache (make-hash-table :test 'equal))")
-
-(defun gptel-context--gitignore-hash (git-root)
-  "Return an MD5 hash of the top-level `.gitignore' file in GIT-ROOT, else nil.
-Ignores other exclude files (like .git/info/exclude). We only track the
-top-level `.gitignore' file for a quick on-disk change check."
-  (let ((ignore-path (expand-file-name ".gitignore" git-root)))
-    (when (file-exists-p ignore-path)
-      (condition-case _
-          (with-temp-buffer
-            (insert-file-contents ignore-path)
-            (secure-hash 'md5 (current-buffer)))
-        (error nil)))))
 
 (defun gptel-context--git-files (dir)
   "Return a list of unignored files in the Git repo at DIR."
@@ -270,33 +258,16 @@ top-level `.gitignore' file for a quick on-disk change check."
        nil))))
 
 (defun gptel-context--skip-file-p (file)
-  "Return non-nil if FILE should be skipped.
-If `gptel-context-exclude-gitignored' is non-nil and Git is found, treat any
-FILE that does not appear in `gptel-context--git-files' as ignored.
-
-Caches unignored files and the MD5 of .gitignore in `gptel-context--git-cache'.
-If the `.gitignore' file changes, automatically re-scan the repo’s unignored
-files. If the Git executable is missing or we’re not inside a Git repo, return
-nil (not skipped)."
+  "Return non-nil if FILE should be skipped due to gitignore rules.
+This function assumes it will be called with a list of unignored files
+available or will make a direct Git call for a single file check."
   (when (and gptel-context-exclude-gitignored
              (executable-find "git"))
     (when-let* ((git-root (locate-dominating-file file ".git"))
                 (rel-path (file-relative-name file git-root)))
-      ;; Look up or populate the cache for this Git root.
-      (let* ((entry (gethash git-root gptel-context--git-cache))
-             (cached-files (plist-get entry :files))
-             (cached-hash  (plist-get entry :hash))
-             (current-hash (gptel-context--gitignore-hash git-root)))
-        (cond
-         ;; If we already have a cached list of files and the .gitignore is unchanged:
-         ((and cached-files (string= cached-hash current-hash))
-          (not (member rel-path cached-files)))
-         ;; Otherwise refresh:
-         (t
-          (let ((unignored (gptel-context--git-files git-root)))
-            (puthash git-root `(:files ,unignored :hash ,current-hash)
-                     gptel-context--git-cache)
-            (not (member rel-path unignored)))))))))
+      ;; Get unignored files directly for this single file
+      (let ((unignored (gptel-context--git-files git-root)))
+        (not (member rel-path unignored))))))
 
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
