@@ -416,14 +416,14 @@ non-nil (default), display a message afterwards."
    ;; Save response boundaries
    (letrec ((write-bounds
              (lambda (attempts)
-               (let* ((bounds (gptel--get-buffer-bounds))
-                      (offset (caar bounds))
-                      (offset-marker (set-marker (make-marker) offset)))
-                 (org-entry-put (point-min) "GPTEL_BOUNDS"
-                                (prin1-to-string (gptel--get-buffer-bounds)))
-                 (when (and (not (= (marker-position offset-marker) offset))
-                            (> attempts 0))
-                   (funcall write-bounds (1- attempts)))))))
+               (when-let* ((bounds (gptel--get-buffer-bounds))
+			   (offset (caar bounds))
+			   (offset-marker (set-marker (make-marker) offset)))
+		 (org-entry-put (point-min) "GPTEL_BOUNDS"
+				(prin1-to-string (gptel--get-buffer-bounds)))
+		 (when (and (not (= (marker-position offset-marker) offset))
+			    (> attempts 0))
+		   (funcall write-bounds (1- attempts)))))))
      (funcall write-bounds 6))))
 
 
