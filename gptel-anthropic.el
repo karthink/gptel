@@ -387,7 +387,15 @@ files in the context."
 ;;         (plist-get (car (last prompts)) :content)))
 
 (defconst gptel--anthropic-models
-  '((claude-3-5-sonnet-20241022
+  '((claude-3-7-sonnet-20250219
+     :description "Hybrid model capable of standard thinking and extended thinking modes"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 3
+     :output-cost 15
+     :cutoff-date "2025-02")
+    (claude-3-5-sonnet-20241022
      :description "Highest level of intelligence and capability"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
