@@ -85,12 +85,9 @@ context chunk.  This is accessible as, for example:
   :type 'function)
 
 (defcustom gptel-context-exclude-gitignored t
-  "When non-nil, exclude files that are ignored by Git from gptel context.
-
-This is checked by calling \"git check-ignore -q FILE\" for each file
-when adding a directory.  If the command succeeds, gptel will not add
-that file to its context.  Requires Git installed and accessible from
-Emacs."
+  "Whether to exclude gitignored files from context.
+When non-nil, do not add to the context files or directories listed in
+the `.gitignored' file of their associated repository."
   :group 'gptel
   :type 'boolean)
 
