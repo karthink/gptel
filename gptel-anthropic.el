@@ -223,7 +223,9 @@ TOOLS is a list of `gptel-tool' structs, which see."
                                   ,@(if enum (list :enum (vconcat enum)))
                                   ,@(cond
                                      ((equal type "object")
-                                      (list :properties (plist-get arg :properties)))
+                                      (list
+                                       :properties (plist-get arg :properties)
+                                       :required (or (plist-get arg :required) [])))
                                      ((equal type "array")
                                       (list :items (plist-get arg :items)))))))
                   :required
@@ -267,42 +269,37 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
                  :content `[(:type "text" :text ,text)])))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-anthropic) &optional max-entries)
-  (let ((prompts) (prop) (prev-pt (point))
+  (let ((prompts) (prev-pt (point))
         (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
-                                                (gptel--model-capable-p 'url)))))
+                                                  (gptel--model-capable-p 'url)))))
     (if (or gptel-mode gptel-track-response)
-        (while (and
-                (or (not max-entries) (>= max-entries 0))
-                (setq prop (text-property-search-backward
-                            'gptel 'response
-                            (when (get-char-property (max (point-min) (1- (point)))
-                                                     'gptel)
-                              t))))
+        (while (and (or (not max-entries) (>= max-entries 0))
+                    (goto-char (previous-single-property-change
+                                (point) 'gptel nil (point-min)))
+                    (not (= (point) prev-pt)))
           ;; HACK Until we can find a more robust solution for editing
           ;; responses, ignore prompts containing only whitespace, as the
           ;; Anthropic API can't handle it.  See #452, #409, #406, #351 and #321
           ;; We check for blank prompts by skipping whitespace and comparing
           ;; point against the previous.
           (unless (save-excursion (skip-syntax-forward " ") (>= (point) prev-pt))
-            (if (prop-match-value prop) ; assistant role
-                (push (list :role "assistant"
-                            :content
-                            (buffer-substring-no-properties (prop-match-beginning prop)
-                                                            (prop-match-end prop)))
-                      prompts)
-              (if include-media         ; user role: possibly with media
-                  (push (list :role "user"
-                              :content
-                              (gptel--anthropic-parse-multipart
-                               (gptel--parse-media-links
-                                major-mode (prop-match-beginning prop) (prop-match-end prop))))
-                        prompts)
-                (push (list :role "user"
-                            :content
-                            (gptel--trim-prefixes
-                             (buffer-substring-no-properties (prop-match-beginning prop)
-                                                             (prop-match-end prop))))
-                      prompts))))
+            (pcase (get-char-property (point) 'gptel)
+              ('response
+               (push (list :role "assistant"
+                           :content (buffer-substring-no-properties (point) prev-pt))
+                     prompts))
+              ('nil                     ; user role: possibly with media
+               (if include-media       
+                   (push (list :role "user"
+                               :content
+                               (gptel--anthropic-parse-multipart
+                                (gptel--parse-media-links major-mode (point) prev-pt)))
+                         prompts)
+                 (push (list :role "user"
+                             :content
+                             (gptel--trim-prefixes
+                              (buffer-substring-no-properties (point) prev-pt)))
+                       prompts)))))
           (setq prev-pt (point))
           (and max-entries (cl-decf max-entries)))
       (push (list :role "user"
@@ -361,7 +358,7 @@ If INJECT-MEDIA is non-nil wrap it with base64-encoded media
 files in the context."
   (if inject-media
       ;; Wrap the first user prompt with included media files/contexts
-      (when-let ((media-list (gptel-context--collect-media)))
+      (when-let* ((media-list (gptel-context--collect-media)))
         (cl-callf (lambda (current)
                     (vconcat
                      (gptel--anthropic-parse-multipart media-list)
@@ -374,13 +371,13 @@ files in the context."
     (cl-callf (lambda (current)
                 (cl-etypecase current
                   (string (gptel-context--wrap current))
-                  (vector (if-let ((wrapped (gptel-context--wrap nil)))
+                  (vector (if-let* ((wrapped (gptel-context--wrap nil)))
                               (vconcat `((:type "text" :text ,wrapped))
                                        current)
                             current))))
         (plist-get (car (last prompts)) :content))))
 
-;; (if-let ((context-string (gptel-context--string gptel-context--alist)))
+;; (if-let* ((context-string (gptel-context--string gptel-context--alist)))
 ;;     (cl-callf (lambda (previous)
 ;;                 (cl-typecase previous
 ;;                   (string (concat context-string previous))
@@ -390,7 +387,15 @@ files in the context."
 ;;         (plist-get (car (last prompts)) :content)))
 
 (defconst gptel--anthropic-models
-  '((claude-3-5-sonnet-20241022
+  '((claude-3-7-sonnet-20250219
+     :description "Hybrid model capable of standard thinking and extended thinking modes"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 3
+     :output-cost 15
+     :cutoff-date "2025-02")
+    (claude-3-5-sonnet-20241022
      :description "Highest level of intelligence and capability"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
@@ -465,7 +470,7 @@ comparison table:
 (cl-defun gptel-make-anthropic
     (name &key curl-args stream key request-params
           (header
-           (lambda () (when-let (key (gptel--get-api-key))
+           (lambda () (when-let* ((key (gptel--get-api-key)))
                    `(("x-api-key" . ,key)
                      ("anthropic-version" . "2023-06-01")
                      ("anthropic-beta" . "pdfs-2024-09-25")

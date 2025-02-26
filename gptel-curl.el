@@ -61,7 +61,7 @@ REQUEST-DATA is the data to send, TOKEN is a unique identifier."
          (data-json (encode-coding-string (gptel--json-encode data) 'utf-8))
          (headers
           (append '(("Content-Type" . "application/json"))
-                  (when-let ((header (gptel-backend-header gptel-backend)))
+                  (when-let* ((header (gptel-backend-header gptel-backend)))
                     (if (functionp header)
                         (funcall header) header)))))
     (when gptel-log-level
@@ -118,7 +118,6 @@ the response is inserted into the current buffer after point."
          (info (gptel-fsm-info fsm))
          (args (gptel-curl--get-args info token))
          (stream (plist-get info :stream))
-         (backend (plist-get info :backend))
          (process (apply #'start-process "gptel-curl"
                          (generate-new-buffer "*gptel-curl*") "curl" args)))
     (when (memq system-type '(windows-nt ms-dos))
@@ -130,14 +129,14 @@ the response is inserted into the current buffer after point."
                   "request Curl command" 'no-json))
     (with-current-buffer (process-buffer process)
       (set-process-query-on-exit-flag process nil)
-      (if (plist-get info :token)    ;not the first run, set only the token
+      (if (plist-get info :token)       ;not the first run, set only the token
           (plist-put info :token token)
         (setf (gptel-fsm-info fsm)      ;fist run, set all process parameters
               (nconc (list :token token
                            :transformer
-                           (when (and gptel-org-convert-response
-                                      (with-current-buffer (plist-get info :buffer)
-                                        (derived-mode-p 'org-mode)))
+                           (when (with-current-buffer (plist-get info :buffer)
+                                   (and (derived-mode-p 'org-mode)
+                                        gptel-org-convert-response))
                              (gptel--stream-convert-markdown->org
                               (plist-get info :position))))
                      (unless (plist-get info :callback)
@@ -239,7 +238,7 @@ See `gptel--url-get-response' for details."
           (unless tracking-marker
             (goto-char start-marker)
             (unless (or (bobp) (plist-get info :in-place))
-              (insert "\n\n")
+              (insert gptel-response-separator)
               (when gptel-mode
                 ;; Put prefix before AI response.
                 (insert (gptel-response-prefix-string)))
@@ -286,14 +285,14 @@ See `gptel--url-get-response' for details."
             (plist-put proc-info :status (string-trim http-msg))
             (gptel--fsm-transition fsm))))
       
-      (when-let ((http-msg (plist-get proc-info :status))
-                 (http-status (plist-get proc-info :http-status)))
+      (when-let* ((http-msg (plist-get proc-info :status))
+                  (http-status (plist-get proc-info :http-status)))
         ;; Find data chunk(s) and run callback
         ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
-        (when-let (((member http-status '("200" "100")))
-                   (response ;; (funcall (plist-get proc-info :parser) nil proc-info)
-                    (gptel-curl--parse-stream (plist-get proc-info :backend) proc-info))
-                   ((not (equal response ""))))
+        (when-let* (((member http-status '("200" "100")))
+                    (response ;; (funcall (plist-get proc-info :parser) nil proc-info)
+                     (gptel-curl--parse-stream (plist-get proc-info :backend) proc-info))
+                    ((not (equal response ""))))
           (funcall (or (plist-get proc-info :callback)
                        #'gptel-curl--stream-insert-response)
                    response proc-info))))))
@@ -327,8 +326,9 @@ PROCESS and _STATUS are process parameters."
         (plist-put proc-info :status http-msg)
         (gptel--fsm-transition fsm)     ;WAIT -> TYPE
         (when error (plist-put proc-info :error error))
-        (with-demoted-errors "gptel callback error: %S"
-          (funcall proc-callback response proc-info)))
+        (when (or response (not (member http-status '("200" "100"))))
+          (with-demoted-errors "gptel callback error: %S"
+            (funcall proc-callback response proc-info))))
       (gptel--fsm-transition fsm))      ;TYPE -> next
     (setf (alist-get process gptel--request-alist nil 'remove) nil)
     (kill-buffer proc-buf)))
@@ -337,8 +337,7 @@ PROCESS and _STATUS are process parameters."
   "Parse the buffer BUF with curl's response.
 
 PROC-INFO is a plist with contextual information."
-  (let ((token (plist-get proc-info :token))
-        (parser (plist-get proc-info :parser)))
+  (let ((token (plist-get proc-info :token)))
     (goto-char (point-max))
     (search-backward token)
     (backward-char)

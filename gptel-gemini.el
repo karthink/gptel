@@ -226,35 +226,32 @@ See generic implementation for full documentation."
            finally return prompts))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-gemini) &optional max-entries)
-  (let ((prompts) (prop)
+  (let ((prompts) (prev-pt (point))
         (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
                                                   (gptel--model-capable-p 'url)))))
     (if (or gptel-mode gptel-track-response)
-        (while (and
-                (or (not max-entries) (>= max-entries 0))
-                (setq prop (text-property-search-backward
-                            'gptel 'response
-                            (when (get-char-property (max (point-min) (1- (point)))
-                                                     'gptel)
-                              t))))
-          (if (prop-match-value prop)   ;assistant role
-              (push (list :role "model"
-                          :parts
-                          (list :text (buffer-substring-no-properties (prop-match-beginning prop)
-                                                                      (prop-match-end prop))))
-                    prompts)
-            (if include-media
-                (push (list :role "user"
-                            :parts (gptel--gemini-parse-multipart
-                                    (gptel--parse-media-links
-                                     major-mode (prop-match-beginning prop) (prop-match-end prop))))
-                      prompts)
-              (push (list :role "user"
-                          :parts
-                          `[(:text ,(gptel--trim-prefixes
-                                     (buffer-substring-no-properties (prop-match-beginning prop)
-                                      (prop-match-end prop))))])
-                    prompts)))
+        (while (and (or (not max-entries) (>= max-entries 0))
+                    (goto-char (previous-single-property-change
+                                (point) 'gptel nil (point-min)))
+                    (not (= (point) prev-pt)))
+          (pcase (get-char-property (point) 'gptel)
+            ('response
+             (push (list :role "model"
+                         :parts
+                         (list :text (buffer-substring-no-properties (point) prev-pt)))
+                   prompts))
+            ('nil
+             (if include-media
+                 (push (list :role "user"
+                             :parts (gptel--gemini-parse-multipart
+                                     (gptel--parse-media-links major-mode (point) prev-pt)))
+                       prompts)
+               (push (list :role "user"
+                           :parts
+                           `[(:text ,(gptel--trim-prefixes
+                                      (buffer-substring-no-properties (point) prev-pt)))])
+                     prompts))))
+          (setq prev-pt (point))
           (and max-entries (cl-decf max-entries)))
       (push (list :role "user"
                   :parts
@@ -298,14 +295,14 @@ If INJECT-MEDIA is non-nil wrap it with base64-encoded media
 files in the context."
   (if inject-media
       ;; Wrap the first user prompt with included media files/contexts
-      (when-let ((media-list (gptel-context--collect-media)))
+      (when-let* ((media-list (gptel-context--collect-media)))
         (cl-callf (lambda (current)
                     (vconcat (gptel--gemini-parse-multipart media-list)
                              current))
             (plist-get (car prompts) :parts)))
     ;; Wrap the last user prompt with included text contexts
     (cl-callf (lambda (current)
-                (if-let ((wrapped (gptel-context--wrap nil)))
+                (if-let* ((wrapped (gptel-context--wrap nil)))
                     (vconcat `((:text ,wrapped)) current)
                   current))
         (plist-get (car (last prompts)) :parts))))
@@ -348,13 +345,6 @@ files in the context."
      :input-cost 0.075
      :output-cost 0.30
      :cutoff-date "2024-10")
-    (gemini-2.0-flash-thinking-exp
-     :description "Stronger reasoning capabilities."
-     :capabilities (tool-use media)
-     :context-window 32
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "text/plain" "text/csv" "text/html")
-     :cutoff-date "2024-08")
     (gemini-exp-1206
      :description "Improved coding, reasoning and vision capabilities"
      :capabilities (tool-use json media)
@@ -369,7 +359,52 @@ files in the context."
      :context-window 32
      :input-cost 0.50
      :output-cost 1.50
-     :cutoff-date "2023-02"))
+     :cutoff-date "2023-02")
+    (gemini-2.0-flash
+     :description "Next gen, high speed, multimodal for a diverse variety of tasks"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1000
+     :input-cost 0.10
+     :output-cost 0.40
+     :cutoff-date "2024-08")
+    (gemini-2.0-flash-lite-preview-02-05
+     :description "Gemini 2.0 Flash model optimized for cost efficiency and low latency"
+     :capabilities (json)
+     :context-window 1000
+     :input-cost 0.075
+     :output-cost 0.30
+     :cutoff-date "2024-08")
+    (gemini-2.0-pro-exp-02-05
+     :description "Next gen, high speed, multimodal for a diverse variety of tasks"
+     :capabilities (tool-use json)
+     :context-window 2000
+     :input-cost 0.00
+     :output-cost 0.00
+     :cutoff-date "2024-08")
+    (gemini-2.0-flash-thinking-exp-01-21
+     :description "Next gen, high speed, multimodal for a diverse variety of tasks"
+     :capabilities (json)
+     :input-cost 0.00
+     :output-cost 0.00
+     :cutoff-date "2024-08")
+    (gemini-2.0-flash-exp
+     :description "Multi-modal, streaming, tool use 2000 RPM"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1000
+     :input-cost 0.00
+     :output-cost 0.00
+     :cutoff-date "2024-08")
+    (gemini-2.0-flash-thinking-exp
+     :description "DEPRECATED: Please use gemini-2.0-flash-thinking-exp-01-21 instead."
+     :capabilities (tool-use media)
+     :context-window 32
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "text/plain" "text/csv" "text/html")
+     :cutoff-date "2024-08"))
   "List of available Gemini models and associated properties.
 Keys:
 

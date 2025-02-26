@@ -143,7 +143,7 @@ Throw an error if there is no match."
 
 (gv-define-setter gptel-get-backend (val name)
   `(setf (alist-get ,name gptel--known-backends
-          nil nil #'equal)
+          nil t #'equal)
     ,val))
 
 (cl-defstruct
@@ -270,8 +270,10 @@ Mutate state INFO with response metadata."
   (let ((prompts-plist
          `(:model ,(gptel--model-name gptel-model)
            :messages [,@prompts]
-           :stream ,(or gptel-stream :json-false))))
-    (when gptel-temperature
+           :stream ,(or gptel-stream :json-false)))
+        (reasoning-model-p ; TODO: Embed this capability in the model's properties
+         (memq gptel-model '(o1 o1-preview o1-mini o3-mini o3))))
+    (when (and gptel-temperature (not reasoning-model-p))
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-use-tools
       (when (eq gptel-use-tools 'force)
@@ -279,12 +281,13 @@ Mutate state INFO with response metadata."
       (when gptel-tools
         (plist-put prompts-plist :tools
                    (gptel--parse-tools backend gptel-tools))
-        (plist-put prompts-plist :parallel_tool_calls t)))
+        (unless reasoning-model-p
+          (plist-put prompts-plist :parallel_tool_calls t))))
     (when gptel-max-tokens
       ;; HACK: The OpenAI API has deprecated max_tokens, but we still need it
       ;; for OpenAI-compatible APIs like GPT4All (#485)
-      (plist-put prompts-plist (if (memq gptel-model '(o1 o1-preview o1-mini))
-                                   :max_completion_tokens :max_tokens)
+      (plist-put prompts-plist
+                 (if reasoning-model-p :max_completion_tokens :max_tokens)
                  gptel-max-tokens))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
@@ -316,41 +319,38 @@ Mutate state INFO with response metadata."
            (list :role (if role "user" "assistant") :content text)))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-openai) &optional max-entries)
-  (let ((prompts) (prop)
+  (let ((prompts) (prev-pt (point))
         (include-media (and gptel-track-media
                             (or (gptel--model-capable-p 'media)
                                 (gptel--model-capable-p 'url)))))
     (if (or gptel-mode gptel-track-response)
-        (while (and
-                (or (not max-entries) (>= max-entries 0))
-                (setq prop (text-property-search-backward
-                            'gptel 'response
-                            (when (get-char-property (max (point-min) (1- (point)))
-                                                     'gptel)
-                              t))))
-          (if (prop-match-value prop)   ;assistant role
-              (push (list :role "assistant"
-                          :content
-                          (buffer-substring-no-properties (prop-match-beginning prop)
-                                                          (prop-match-end prop)))
-                    prompts)
-            (if include-media
-                (push (list :role "user"
-                            :content
-                            (gptel--openai-parse-multipart
-                             (gptel--parse-media-links
-                              major-mode (prop-match-beginning prop) (prop-match-end prop))))
-                      prompts)
-              (push (list :role "user"
-                          :content
-                          (gptel--trim-prefixes
-                           (buffer-substring-no-properties (prop-match-beginning prop)
-                                                           (prop-match-end prop))))
-                    prompts)))
+        (while (and (or (not max-entries) (>= max-entries 0))
+                    (/= prev-pt (point-min))
+                    (goto-char (previous-single-property-change
+                                (point) 'gptel nil (point-min))))
+          (pcase (get-char-property (point) 'gptel)
+            ('response
+             (push (list :role "assistant"
+                         :content (buffer-substring-no-properties (point) prev-pt))
+                   prompts))
+            ('nil
+             (if include-media
+                 (push (list :role "user"
+                             :content
+                             (gptel--openai-parse-multipart
+                              (gptel--parse-media-links major-mode (point) prev-pt)))
+                       prompts)
+               (push (list :role "user"
+                           :content
+                           (gptel--trim-prefixes
+                            (buffer-substring-no-properties (point) prev-pt)))
+                     prompts))))
+          (setq prev-pt (point))
           (and max-entries (cl-decf max-entries)))
       (push (list :role "user"
                   :content
-                  (gptel--trim-prefixes (buffer-substring-no-properties (point-min) (point-max))))
+                  (gptel--trim-prefixes (buffer-substring-no-properties
+                                         (point-min) (point-max))))
             prompts))
     prompts))
 
@@ -397,7 +397,7 @@ If INJECT-MEDIA is non-nil wrap it with base64-encoded media
 files in the context."
   (if inject-media
       ;; Wrap the first user prompt with included media files/contexts
-      (when-let ((media-list (gptel-context--collect-media)))
+      (when-let* ((media-list (gptel-context--collect-media)))
         (cl-callf (lambda (current)
                     (vconcat
                      (gptel--openai-parse-multipart media-list)
@@ -410,7 +410,7 @@ files in the context."
     (cl-callf (lambda (current)
                 (cl-etypecase current
                   (string (gptel-context--wrap current))
-                  (vector (if-let ((wrapped (gptel-context--wrap nil)))
+                  (vector (if-let* ((wrapped (gptel-context--wrap nil)))
                               (vconcat `((:type "text" :text ,wrapped))
                                        current)
                             current))))
@@ -420,7 +420,7 @@ files in the context."
 (cl-defun gptel-make-openai
     (name &key curl-args models stream key request-params
           (header
-           (lambda () (when-let (key (gptel--get-api-key))
+           (lambda () (when-let* ((key (gptel--get-api-key)))
                    `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.openai.com")
           (protocol "https")

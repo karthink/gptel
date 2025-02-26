@@ -5,7 +5,7 @@
 ;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
 ;; Version: 0.9.7
 ;; Package-Requires: ((emacs "27.1") (transient "0.7.4") (compat "29.1.4.1"))
-;; Keywords: convenience
+;; Keywords: convenience, tools
 ;; URL: https://github.com/karthink/gptel
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -32,28 +32,30 @@
 ;;
 ;; It works in the spirit of Emacs, available at any time and in any buffer.
 ;;
-;; gptel supports
+;; gptel supports:
 ;;
 ;; - The services ChatGPT, Azure, Gemini, Anthropic AI, Anyscale, Together.ai,
 ;;   Perplexity, Anyscale, OpenRouter, Groq, PrivateGPT, DeepSeek, Cerebras,
-;;   Github Models, xAI and Kagi (FastGPT & Summarizer)
+;;   Github Models, xAI and Kagi (FastGPT & Summarizer).
 ;; - Local models via Ollama, Llama.cpp, Llamafiles or GPT4All
 ;;
-;;  Additionally, any LLM service (local or remote) that provides an
-;;  OpenAI-compatible API is supported.
+;; Additionally, any LLM service (local or remote) that provides an
+;; OpenAI-compatible API is supported.
 ;;
 ;; Features:
+;;
 ;; - It’s async and fast, streams responses.
 ;; - Interact with LLMs from anywhere in Emacs (any buffer, shell, minibuffer,
-;;   wherever)
+;;   wherever).
 ;; - LLM responses are in Markdown or Org markup.
 ;; - Supports conversations and multiple independent sessions.
+;; - Supports tool-use to equip LLMs with agentic capabilities.
 ;; - Supports multi-modal models (send images, documents).
 ;; - Save chats as regular Markdown/Org/Text files and resume them later.
 ;; - You can go back and edit your previous prompts or LLM responses when
 ;;   continuing a conversation.  These will be fed back to the model.
 ;; - Redirect prompts and responses easily
-;; - Rewrite, refactor or fill in regions in buffers
+;; - Rewrite, refactor or fill in regions in buffers.
 ;; - Write your own commands for custom tasks with a simple API.
 ;;
 ;; Requirements for ChatGPT, Azure, Gemini or Kagi:
@@ -62,12 +64,12 @@
 ;;   key or to a function of no arguments that returns the key.  (It tries to
 ;;   use `auth-source' by default)
 ;;
-;;   ChatGPT is configured out of the box.  For the other sources:
+;; ChatGPT is configured out of the box.  For the other sources:
 ;;
 ;; - For Azure: define a gptel-backend with `gptel-make-azure', which see.
 ;; - For Gemini: define a gptel-backend with `gptel-make-gemini', which see.
 ;; - For Anthropic (Claude): define a gptel-backend with `gptel-make-anthropic',
-;;   which see
+;;   which see.
 ;; - For Together.ai, Anyscale, Perplexity, Groq, OpenRouter, DeepSeek, Cerebras or
 ;;   Github Models: define a gptel-backend with `gptel-make-openai', which see.
 ;; - For PrivateGPT: define a backend with `gptel-make-privategpt', which see.
@@ -78,7 +80,7 @@
 ;; - The model has to be running on an accessible address (or localhost)
 ;; - Define a gptel-backend with `gptel-make-ollama' or `gptel-make-gpt4all',
 ;;   which see.
-;; - Llama.cpp or Llamafiles: Define a gptel-backend with `gptel-make-openai',
+;; - Llama.cpp or Llamafiles: Define a gptel-backend with `gptel-make-openai'.
 ;;
 ;; Consult the package README for examples and more help with configuring
 ;; backends.
@@ -103,7 +105,7 @@
 ;;
 ;; To use this in a dedicated buffer:
 ;; 
-;; - M-x gptel: Start a chat session
+;; - M-x gptel: Start a chat session.
 ;;
 ;; - In the chat session: Press `C-c RET' (`gptel-send') to send your prompt.
 ;;   Use a prefix argument (`C-u C-c RET') to access a menu.  In this menu you
@@ -139,7 +141,8 @@
 ;;
 ;; gptel in Org mode:
 ;;
-;; gptel offers a few extra conveniences in Org mode.
+;; gptel offers a few extra conveniences in Org mode:
+;;
 ;; - You can limit the conversation context to an Org heading with
 ;;   `gptel-org-set-topic'.
 ;;   
@@ -372,6 +375,10 @@ This is an alist mapping major modes to the reply prefix strings.  This
 is only inserted in dedicated gptel buffers before the AI's response."
   :type '(alist :key-type symbol :value-type string))
 
+(defcustom gptel-response-separator "\n\n"
+  "String inserted before responses."
+  :type 'string)
+
 (defcustom gptel-use-header-line t
   "Whether `gptel-mode' should use header-line for status information.
 
@@ -458,38 +465,6 @@ call `gptel-send' with a prefix argument."
   :type '(choice (natnum :tag "Specify Token count")
                  (const :tag "Default" nil)))
 
-(defcustom gptel-model 'gpt-4o-mini
-  "GPT Model for chat.
-
-The name of the model, as a symbol.  This is the name as expected
-by the LLM provider's API.
-
-The current options for ChatGPT are
-- `gpt-3.5-turbo'
-- `gpt-3.5-turbo-16k'
-- `gpt-4o-mini'
-- `gpt-4'
-- `gpt-4o'
-- `gpt-4-turbo'
-- `gpt-4-turbo-preview'
-- `gpt-4-32k'
-- `gpt-4-1106-preview'
-
-To set the model for a chat session interactively call
-`gptel-send' with a prefix argument."
-  :safe #'always
-  :type '(choice
-          (symbol :tag "Specify model name")
-          (const :tag "GPT 4 omni mini" gpt-4o-mini)
-          (const :tag "GPT 3.5 turbo" gpt-3.5-turbo)
-          (const :tag "GPT 3.5 turbo 16k" gpt-3.5-turbo-16k)
-          (const :tag "GPT 4" gpt-4)
-          (const :tag "GPT 4 omni" gpt-4o)
-          (const :tag "GPT 4 turbo" gpt-4-turbo)
-          (const :tag "GPT 4 turbo (preview)" gpt-4-turbo-preview)
-          (const :tag "GPT 4 32k" gpt-4-32k)
-          (const :tag "GPT 4 1106 (preview)" gpt-4-1106-preview)))
-
 (defcustom gptel-temperature 1.0
   "\"Temperature\" of the LLM response.
 
@@ -555,7 +530,7 @@ To set the temperature for a chat session interactively call
      :cutoff-date "2023-12")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
-     :capabilities (nosystem media)
+     :capabilities (nosystem media reasoning)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 15
@@ -570,7 +545,7 @@ To set the temperature for a chat session interactively call
      :input-cost 15
      :output-cost 60
      :cutoff-date "2023-10"
-     :capabilities (nosystem)
+     :capabilities (nosystem reasoning)
      :request-params (:stream :json-false))
     (o1-mini
      :description "Faster and cheaper reasoning model good at coding, math, and science"
@@ -578,7 +553,15 @@ To set the temperature for a chat session interactively call
      :input-cost 3
      :output-cost 12
      :cutoff-date "2023-10"
-     :capabilities (nosystem)
+     :capabilities (nosystem reasoning)
+     :request-params (:stream :json-false))
+    (o3-mini
+     :description "High intelligence at the same cost and latency targets of o1-mini"
+     :context-window 200
+     :input-cost 3
+     :output-cost 12
+     :cutoff-date "2023-10"
+     :capabilities (nosystem reasoning)
      :request-params (:stream :json-false))
     ;; limited information available
     (gpt-4-32k
@@ -631,6 +614,23 @@ sources:
 
 - <https://openai.com/pricing>
 - <https://platform.openai.com/docs/models>")
+
+(defcustom gptel-model 'gpt-4o-mini
+  (concat
+   "GPT Model for chat.
+
+The name of the model, as a symbol.  This is the name as expected
+by the LLM provider's API.
+
+To set the model for a chat session interactively call
+`gptel-send' with a prefix argument.")
+  :safe #'always
+  :type `(choice
+	  (symbol :tag "Specify model name")
+	  ,@(mapcar (lambda (model)
+		      (list 'const :tag (symbol-name (car model))
+			    (car model)))
+		    gptel--openai-models)))
 
 (defvar gptel--openai
   (gptel-make-openai
@@ -783,13 +783,13 @@ or
   "Lookup api key in the auth source.
 By default, the LLM host for the active backend is used as HOST,
 and \"apikey\" as USER."
-  (if-let ((secret
-            (plist-get
-             (car (auth-source-search
-                   :host (or host (gptel-backend-host gptel-backend))
-                   :user (or user "apikey")
-                   :require '(:secret)))
-                              :secret)))
+  (if-let* ((secret
+             (plist-get
+              (car (auth-source-search
+                    :host (or host (gptel-backend-host gptel-backend))
+                    :user (or user "apikey")
+                    :require '(:secret)))
+              :secret)))
       (if (functionp secret)
           (encode-coding-string (funcall secret) 'utf-8)
         secret)
@@ -798,11 +798,11 @@ and \"apikey\" as USER."
 ;; FIXME Should we utf-8 encode the api-key here?
 (defun gptel--get-api-key (&optional key)
   "Get api key from KEY, or from `gptel-api-key'."
-  (when-let ((key-sym (or key (gptel-backend-key gptel-backend))))
+  (when-let* ((key-sym (or key (gptel-backend-key gptel-backend))))
     (cl-typecase key-sym
       (function (string-trim-right (funcall key-sym) "[\n\r]+"))
       (string (string-trim-right key-sym "[\n\r]+"))
-      (symbol (if-let ((val (symbol-value key-sym)))
+      (symbol (if-let* ((val (symbol-value key-sym)))
                   (gptel--get-api-key val)
                 (error "`gptel-api-key' is not valid")))
       (t (error "`gptel-api-key' is not valid")))))
@@ -840,13 +840,20 @@ Later plists in the sequence take precedence over earlier ones."
         (setq p (pop ls) v (pop ls))
         (setq rtn (plist-put rtn p v))))
     rtn))
+
+(defun gptel--font-lock-update (beg end)
+  "Force font-lock update between BEG and END."
+  (when font-lock-mode
+    (save-excursion
+      (font-lock-fontify-region beg end))))
+
 (defun gptel-auto-scroll ()
   "Scroll window if LLM response continues below viewport.
 
 Note: This will move the cursor."
-  (when-let ((win (get-buffer-window (current-buffer) 'visible))
-             ((not (pos-visible-in-window-p (point) win)))
-             (scroll-error-top-bottom t))
+  (when-let* ((win (get-buffer-window (current-buffer) 'visible))
+              ((not (pos-visible-in-window-p (point) win)))
+              (scroll-error-top-bottom t))
     (condition-case nil
         (with-selected-window win
           (scroll-up-command))
@@ -1125,9 +1132,9 @@ Valid JSON unless NO-JSON is t."
               gptel--bounds)
         (message "gptel chat restored."))
       (when gptel--backend-name
-        (if-let ((backend (alist-get
-                           gptel--backend-name gptel--known-backends
-                           nil nil #'equal)))
+        (if-let* ((backend (alist-get
+                            gptel--backend-name gptel--known-backends
+                            nil nil #'equal)))
             (setq-local gptel-backend backend)
           (message
            (substitute-command-keys
@@ -1190,7 +1197,7 @@ file."
         (add-hook 'before-save-hook #'gptel--save-state nil t)
         (when (derived-mode-p 'org-mode)
           ;; Work around bug in `org-fontify-extend-region'.
-          (add-hook 'gptel-post-response-functions #'font-lock-fontify-region nil t))
+          (add-hook 'gptel-post-response-functions #'gptel--font-lock-update nil t))
         (gptel--restore-state)
         (if gptel-use-header-line
           (setq gptel--old-header-line header-line-format
@@ -1567,8 +1574,10 @@ implementation, used by OpenAI-compatible APIs and Ollama."
                              ,@(if enum (list :enum (vconcat enum)))
                              ,@(cond
                                 ((equal type "object")
-                                 (list :parameters (plist-get arg :parameters)
-                                  :additionalProperties :json-false))
+                                 (list :properties (plist-get arg :properties)
+                                       :required (or (plist-get arg :required)
+                                                     (vector))
+                                       :additionalProperties :json-false))
                                 ((equal type "array")
                                  ;; TODO(tool) If the item type is an object,
                                  ;; add :additionalProperties to it
@@ -1700,7 +1709,7 @@ automatically from MACHINE's transition table."
   (push (gptel-fsm-state machine)
         (plist-get (gptel-fsm-info machine) :history))
   (setf (gptel-fsm-state machine) new-state)
-  (when-let ((handlers (alist-get new-state (gptel-fsm-handlers machine))))
+  (when-let* ((handlers (alist-get new-state (gptel-fsm-handlers machine))))
     (mapc (lambda (h) (funcall h machine)) handlers)))
 
 (defun gptel--fsm-next (machine)
@@ -1895,9 +1904,9 @@ Run post-response hooks."
                 (buffer-local-value 'gptel-backend gptel-buffer))))
     (if (stringp error-data)
         (message "%s error: (%s) %s" backend-name http-msg (string-trim error-data))
-      (when-let ((error-type (plist-get error-data :type)))
+      (when-let* ((error-type (plist-get error-data :type)))
         (setq http-msg (concat "("  http-msg ") " (string-trim error-type))))
-      (when-let ((error-msg (plist-get error-data :message)))
+      (when-let* ((error-msg (plist-get error-data :message)))
         (message "%s error: (%s) %s" backend-name http-msg (string-trim error-msg))))
     (with-current-buffer gptel-buffer
       (when gptel-mode
@@ -1935,10 +1944,9 @@ Run post-response hooks."
                   (arg-values)
                   (process-tool-result
                    (lambda (result)
-                     (when result
-                       (plist-put info :tool-success t)
-                       (plist-put tool-call :result (gptel--to-string result))
-                       (push (list name arg-values result) result-alist))
+                     (plist-put info :tool-success t)
+                     (plist-put tool-call :result (gptel--to-string result))
+                     (push (list name arg-values result) result-alist)
                      (cl-incf tool-idx)
                      (when (>= tool-idx ntools) ; All tools have run
                        (gptel--inject-prompt
@@ -1967,7 +1975,7 @@ Run post-response hooks."
                    (apply (gptel-tool-function tool-spec)
                           process-tool-result arg-values)
                  (let ((result
-                        (condition-case-unless-debug errdata
+                        (condition-case errdata
                             (apply (gptel-tool-function tool-spec) arg-values)
                           (error (mapconcat #'gptel--to-string errdata " ")))))
                    (funcall process-tool-result result)))))))
@@ -2016,7 +2024,7 @@ If PROMPT is
 Keyword arguments:
 
 CALLBACK, if supplied, is a function of two arguments, called
-with the RESPONSE (a string) and INFO (a plist):
+with the RESPONSE (usually a string) and INFO (a plist):
 
  (funcall CALLBACK RESPONSE INFO)
 
@@ -2326,7 +2334,7 @@ See `gptel--url-get-response' for details."
         (when-let* ((transformer (plist-get info :transformer)))
           (setq response (funcall transformer response)))
         (when tracking-marker           ;separate from previous response
-          (setq response (concat "\n\n" response)))
+          (setq response (concat gptel-response-separator response)))
         (save-excursion
           (add-text-properties
            0 (length response) '(gptel response front-sticky (gptel)) response)
@@ -2335,7 +2343,7 @@ See `gptel--url-get-response' for details."
             ;; (run-hooks 'gptel-pre-response-hook)
             (unless (or (bobp) (plist-get info :in-place)
                         tracking-marker)
-              (insert "\n\n")
+              (insert gptel-response-separator)
               (when gptel-mode
                 (insert (gptel-response-prefix-string)))
               (move-marker start-marker (point)))
@@ -2514,7 +2522,7 @@ the response is inserted into the current buffer after point."
          (url-request-method "POST")
          (url-request-extra-headers
           (append '(("Content-Type" . "application/json"))
-                  (when-let ((header (gptel-backend-header gptel-backend)))
+                  (when-let* ((header (gptel-backend-header gptel-backend)))
                     (if (functionp header)
                         (funcall header) header))))
          (info (gptel-fsm-info fsm))
@@ -2525,9 +2533,9 @@ the response is inserted into the current buffer after point."
           (encode-coding-string
            (gptel--json-encode (plist-get info :data))
            'utf-8)))
-    (when (and gptel-org-convert-response
-               (with-current-buffer (plist-get info :buffer)
-                 (derived-mode-p 'org-mode)))
+    (when (with-current-buffer (plist-get info :buffer)
+            (and (derived-mode-p 'org-mode)
+                 gptel-org-convert-response))
       (plist-put info :transformer #'gptel--convert-markdown->org))
     (plist-put info :callback callback)
     (when gptel-log-level               ;logging
@@ -2549,8 +2557,9 @@ the response is inserted into the current buffer after point."
                              (plist-put info :status http-msg)
                              (gptel--fsm-transition fsm) ;WAIT -> TYPE
                              (when error (plist-put info :error error))
-                             (with-demoted-errors "gptel callback error: %S"
-                               (funcall callback response info))
+                             (when (or response (not (member http-status '("200" "100"))))
+                               (with-demoted-errors "gptel callback error: %S"
+                                 (funcall callback response info)))
                              (gptel--fsm-transition fsm) ;TYPE -> next
                              (setf (alist-get buf gptel--request-alist nil 'remove) nil)
                              (kill-buffer buf)))
@@ -2787,7 +2796,7 @@ for tool call results.  INFO contains the state of the request."
                                  (when (search-forward-regexp "^:tool-use" nil t)
                                    (forward-line 0)
                                    (hl-line-highlight)))))))))
-      ;; finished tool call results look like ((name . result) ...)
+      ;; finished tool call results look like ((name args result) ...)
       ;; Insert tool results
       (when gptel-include-tool-results
         (with-current-buffer (marker-buffer start-marker)
@@ -2841,7 +2850,7 @@ NAME and ARG-VALUES are the name and arguments for the call."
                (apply (gptel-tool-function tool-spec)
                       process-tool-result arg-values)
              (let ((result
-                    (condition-case-unless-debug errdata
+                    (condition-case errdata
                         (apply (gptel-tool-function tool-spec) arg-values)
                       (error (mapconcat #'gptel--to-string errdata " ")))))
                (funcall process-tool-result result))))
