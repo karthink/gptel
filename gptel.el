@@ -1072,7 +1072,7 @@ replaced with REPLACEMENT."
              from-template width)))
     (t "")))
 
-(defun gptel--parse-directive (directive &optional raw)
+(defun gptel--parse-directive (directive &optional raw lambda-prefix)
   "Parse DIRECTIVE into a backend-appropriate form.
 
 DIRECTIVE is a gptel directive: it can be a string, a list or a
@@ -1083,11 +1083,21 @@ and a template consisting of alternating user/LLM
 records (a list of strings or nil).
 
 If RAW is non-nil, the user/LLM records are not processed and are
-returned as a list of strings."
+returned as a list of strings.
+
+If LAMBDA-PREFIX is non-nil, prefix dynamic system message with a
+lambda sign (λ) and the documentation string, if any."
   (and directive
        (cl-etypecase directive
          (string   (list directive))
-         (function (gptel--parse-directive (funcall directive) raw))
+         (function (let ((x (gptel--parse-directive (funcall directive) raw)))
+		     (if lambda-prefix
+			 (cons (concat "[λ"
+					 (and-let* ((doc (documentation directive)))
+					   (concat ": " (substring doc nil
+								   (string-match-p "\n" doc))))
+					 "] " (car-safe x)) (cdr x))
+		     x)))
          (cons     (if raw directive
                      (cons (car directive)
                            (gptel--parse-list
