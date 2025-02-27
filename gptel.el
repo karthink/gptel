@@ -379,6 +379,23 @@ is only inserted in dedicated gptel buffers before the AI's response."
   "String inserted before responses."
   :type 'string)
 
+(defcustom gptel-highlight-assistant-responses nil
+  "Whether or not the assistant responses should be highlighted.
+
+Applies only to the dedicated gptel chat buffer."
+  :type 'boolean
+  :set (lambda (symbol value)
+         (set-default symbol value)
+         (when (bound-and-true-p gptel-mode)
+           (if value
+               (progn
+                 (font-lock-add-keywords
+                  nil '((gptel--response-text-search 0 'gptel-response-highlight-face prepend)) t)
+                 (font-lock-flush))
+             (font-lock-remove-keywords
+              nil '((gptel--response-text-search 0 'gptel-response-highlight-face prepend)))
+             (font-lock-flush)))))
+
 (defcustom gptel-use-header-line t
   "Whether `gptel-mode' should use header-line for status information.
 
@@ -1179,7 +1196,33 @@ file."
 ;;; Minor mode and UI
 
 ;; NOTE: It's not clear that this is the best strategy:
-(add-to-list 'text-property-default-nonsticky '(gptel . t))
+(add-to-list 'text-property-default-nonsticky '(gptel . nil))
+
+(defface gptel-response-highlight-face
+  '((((class color) (min-colors 257) (background light))
+     :background "#e6f2ff" :extend t)
+    (((class color) (min-colors 88) (background light))
+     :background "#cce7ff" :extend t)
+    (((class color) (min-colors 88) (background dark))
+     :background "#202030" :extend t)
+    (((class color) (background dark))
+     :background "#202030" :extend t))
+  "Face used to highlight gptel responses in the dedicated chat buffer."
+  :group 'gptel)
+
+(defun gptel--response-text-search (bound)
+  "Search for text with the `gptel' property set to `response' up to BOUND."
+  (let ((pos (point)))
+    (while (and (< pos bound)
+                (not (eq (get-text-property pos 'gptel) 'response)))
+      (setq pos (next-single-property-change pos 'gptel nil bound)))
+    (if (and (< pos bound) (eq (get-text-property pos 'gptel) 'response))
+        (let ((end (next-single-property-change pos 'gptel nil bound)))
+          (set-match-data (list pos end))
+          (goto-char end)
+          t)
+      (goto-char bound)
+      nil)))
 
 ;;;###autoload
 (define-minor-mode gptel-mode
@@ -1194,6 +1237,10 @@ file."
         (unless (derived-mode-p 'org-mode 'markdown-mode 'text-mode)
           (gptel-mode -1)
           (user-error (format "`gptel-mode' is not supported in `%s'." major-mode)))
+        (when gptel-highlight-assistant-responses
+          (font-lock-add-keywords
+           nil '((gptel--response-text-search 0 'gptel-response-highlight-face prepend)) t)
+          (font-lock-flush))
         (add-hook 'before-save-hook #'gptel--save-state nil t)
         (when (derived-mode-p 'org-mode)
           ;; Work around bug in `org-fontify-extend-region'.
@@ -1288,12 +1335,59 @@ file."
                          (buttonize (gptel--model-name gptel-model)
                             (lambda (&rest _) (gptel-menu))))))))
     (remove-hook 'before-save-hook #'gptel--save-state t)
+    (font-lock-remove-keywords
+     nil '((gptel--response-text-search 0 'gptel-response-highlight-face prepend)))
+    (font-lock-flush)
     (if gptel-use-header-line
         (setq header-line-format gptel--old-header-line
               gptel--old-header-line nil)
       (setq mode-line-process nil))))
 
 (defvar gptel--fsm-last)                ;Defined further below
+
+(defun gptel--response-region-at-point ()
+  "Return cons of response start and end points.
+
+Returns nil if no response is found at the point."
+  (cl-flet ((responsep (point type)
+              (let ((prop (member 'gptel (text-properties-at point))))
+                (and prop (eq (cadr prop) type)))))
+    (let ((type (get-text-property (point) 'gptel)))
+      (if (responsep (point) type)
+          (cons (cl-loop for i from (point) downto (point-min)
+                         while (responsep i type)
+                         finally (cl-return (1+ i)))
+                (cl-loop for i from (point) to (point-max)
+                         while (responsep i type)
+                         finally (cl-return i)))
+        nil))))
+
+(defun gptel-toggle-response-role ()
+  "Toggle the role of the text between the user and the assistant.
+If a region is selected, modifies the region.  Otherwise, modifies at the point."
+  (interactive)
+  (unless gptel-mode
+    (user-error "This command is only usable in the dedicated gptel chat buffer"))
+  (let (start end)
+    (if (region-active-p)
+        (setq start (region-beginning)
+              end (region-end))
+      (let ((response-region (gptel--response-region-at-point)))
+        (setq start (car response-region)
+              end (cdr response-region))))
+    (when (and start end)
+      (let* ((type (get-text-property start 'gptel))
+             ;; If a region has a fragmented role that opposes the current one at the start, we make
+             ;; sure to fill it with the role at the start of the region.
+             (dst-type (cl-loop for i from start while (< i end)
+                                thereis (unless (eq type (get-text-property i 'gptel))
+                                          (unless type
+                                            'query))
+                                finally (cl-return (if (eq type 'response)
+                                                       'query
+                                                     'response)))))
+        (put-text-property start end 'gptel dst-type)))))
+
 (defun gptel--update-status (&optional msg face)
   "Update status MSG in FACE."
   (when gptel-mode
