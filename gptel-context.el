@@ -84,6 +84,13 @@ context chunk.  This is accessible as, for example:
   :group 'gptel
   :type 'function)
 
+(defcustom gptel-context-exclude-gitignored t
+  "Whether to exclude gitignored files from context.
+When non-nil, do not add to the context files or directories listed in
+the `.gitignore' file of their associated repository."
+  :group 'gptel
+  :type 'boolean)
+
 (defun gptel-context-add (&optional arg confirm)
   "Add context to gptel in a DWIM fashion.
 
@@ -127,8 +134,9 @@ context chunk.  This is accessible as, for example:
 	(mapc action-fn files))))
    ;; If in an image buffer
    ((and (derived-mode-p 'image-mode)
-         (gptel--model-capable-p 'media)
-         (buffer-file-name))
+	 (gptel--model-capable-p 'media)
+	 (not (gptel-context--skip-file-p (buffer-file-name)))
+	 (buffer-file-name))
     (funcall (if (and arg (< (prefix-numeric-value arg) 0))
               #'gptel-context-remove
               #'gptel-context-add-file)
@@ -198,9 +206,19 @@ Return PATH if added, nil if ignored."
 (defun gptel-context--add-directory (path action)
   "Process all files in directory at PATH according to ACTION.
 ACTION should be either `add' or `remove'."
-  (let ((files (directory-files-recursively path "." t)))
+  (let ((files (directory-files-recursively path "." t))
+        (git-root (and gptel-context-exclude-gitignored
+                       (executable-find "git")
+                       (locate-dominating-file path ".git")))
+        unignored-files)
+    ;; Get the list of unignored files once if needed
+    (when git-root
+      (setq unignored-files (gptel-context--git-files git-root)))
     (mapc (lambda (file)
-            (unless (file-directory-p file)
+            (unless (or (file-directory-p file)
+                        (and git-root
+                             (not (member (file-relative-name file git-root)
+                                          unignored-files))))
               (pcase-exhaustive action
                 ('add
                  (if (gptel--file-binary-p file)
@@ -219,13 +237,37 @@ If PATH is a directory, recursively add all files in it.
 PATH should be readable as text."
   (interactive "fChoose file to add to context: ")
   (cond ((file-directory-p path)
-	 (gptel-context--add-directory path 'add))
-	((gptel--file-binary-p path)
+         (gptel-context--add-directory path 'add))
+        ((and gptel-context-exclude-gitignored
+              (gptel-context--skip-file-p path))
+         (message "Skipping git-ignored file: %s" path))
+        ((gptel--file-binary-p path)
          (gptel-context--add-binary-file path))
-	((gptel-context--add-text-file path))))
+        (t (gptel-context--add-text-file path))))
 
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
 (defalias 'gptel-add-file #'gptel-context-add-file)
+
+(defun gptel-context--git-files (dir)
+  "Return a list of unignored files in the Git repo at DIR."
+  (let ((default-directory dir))
+    (condition-case err
+        (process-lines "git" "ls-files" "--cached" "--others" "--exclude-standard")
+      (error
+       (message "Error running git ls-files in %s: %S" dir err)
+       nil))))
+
+(defun gptel-context--skip-file-p (file)
+  "Return non-nil if FILE should be skipped due to gitignore rules.
+This function assumes it will be called with a list of unignored files
+available or will make a direct Git call for a single file check."
+  (when (and gptel-context-exclude-gitignored
+             (executable-find "git"))
+    (when-let* ((git-root (locate-dominating-file file ".git"))
+                (rel-path (file-relative-name file git-root)))
+      ;; Get unignored files directly for this single file
+      (let ((unignored (gptel-context--git-files git-root)))
+        (not (member rel-path unignored))))))
 
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
