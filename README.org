@@ -887,7 +887,7 @@ gptel provides a few powerful, general purpose and flexible commands.  You can d
 2. If a region is selected, the conversation will be limited to its contents.
 
 3. Call =M-x gptel-send= with a prefix argument (~C-u~)
-   - to set chat parameters (GPT model, backend, system message etc) for this buffer,
+   - to set chat parameters (model, backend, system message etc) for this buffer,
    - include quick instructions for the next request only,
    - to add additional context -- regions, buffers or files -- to gptel,
    - to read the prompt from or redirect the response elsewhere,

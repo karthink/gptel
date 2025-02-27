@@ -617,7 +617,7 @@ sources:
 
 (defcustom gptel-model 'gpt-4o-mini
   (concat
-   "GPT Model for chat.
+   "Model for chat.
 
 The name of the model, as a symbol.  This is the name as expected
 by the LLM provider's API.
@@ -1282,7 +1282,7 @@ file."
                            (buttonize (concat "[" model "]")
                             (lambda (&rest _) (gptel-menu)))
                            'mouse-face 'highlight
-                           'help-echo "GPT model in use"))))))
+                           'help-echo "Model in use"))))))
           (setq mode-line-process
                 '(:eval (concat " "
                          (buttonize (gptel--model-name gptel-model)
