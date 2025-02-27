@@ -1007,32 +1007,26 @@ FILE is assumed to exist and be a regular file."
   "Check if gptel response at position PT has variants."
   (get-char-property (or pt (point)) 'gptel-history))
 
-(defvar gptel--mode-description-alist
-  '((js2-mode      . "Javascript")
-    (sh-mode       . "Shell")
-    (enh-ruby-mode . "Ruby")
-    (yaml-mode     . "Yaml")
-    (yaml-ts-mode  . "Yaml")
-    (rustic-mode   . "Rust"))
+(defvar gptel--pretty-mode-name-alist
+  '((js2-mode        . "JavaScript")
+    (emacs-lisp-mode . "Emacs Lisp")
+    (cperl-mode      . "Perl")
+    (sh-mode         . "Shell")
+    (enh-ruby-mode   . "Ruby")
+    (rustic-mode     . "Rust"))
   "Mapping from unconventionally named major modes to languages.
 
 This is used when generating system prompts for rewriting and
 when including context from these major modes.")
 
-(defun gptel--strip-mode-suffix (mode-sym)
-  "Remove the -mode suffix from MODE-SYM.
-
-MODE-SYM is typically a major-mode symbol."
+(defun gptel--pretty-mode-name (mode-sym)
+  "Return pretty name of major mode MODE-SYM."
   (or (alist-get mode-sym gptel--mode-description-alist)
-      (let ((mode-name (thread-last
-                         (symbol-name mode-sym)
-                         (string-remove-suffix "-mode")
-                         (string-remove-suffix "-ts"))))
-        ;; NOTE: The advertised calling convention of provided-mode-derived-p
-        ;; has changed in Emacs 30, this needs to be updated eventually
-        (if (provided-mode-derived-p
-             mode-sym 'prog-mode 'text-mode 'tex-mode)
-            mode-name ""))))
+      (with-temp-buffer
+	(when (fboundp mode-sym)
+	  (funcall mode-sym)
+	  (car (split-string (substring-no-properties  ; drop suffixes like /*l
+			      (format-mode-line (list mode-name))) "/"))))))
 
 ;;;; Directive handling
 
