@@ -912,12 +912,17 @@ Note: This will move the cursor."
   (or (alist-get major-mode gptel-response-prefix-alist) ""))
 
 (defsubst gptel--trim-prefixes (s)
-  "Remove prompt/response prefixes from string S."
-  (string-trim s
-   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-             (regexp-quote (gptel-prompt-prefix-string)))
-   (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
-           (regexp-quote (gptel-response-prefix-string)))))
+  "Remove prompt/response prefixes from string S.
+Return nil if string collapses to empty string."
+  (let* ((prompt-regex (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                               (regexp-quote
+                                (string-trim (gptel-prompt-prefix-string)))))
+         (response-regex (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
+                                 (regexp-quote
+                                  (string-trim (gptel-response-prefix-string)))))
+         (trimmed (string-trim s prompt-regex response-regex)))
+    (unless (string-empty-p trimmed)
+      trimmed)))
 
 (defsubst gptel--link-standalone-p (beg end)
   "Return non-nil if positions BEG and END are isolated.

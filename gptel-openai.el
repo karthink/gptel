@@ -346,7 +346,7 @@ Mutate state INFO with response metadata."
                (push (list :role "assistant" :content content) prompts)))
             (`(tool . ,id)
              (save-excursion
-               (condition-case-unless-debug _err
+               (condition-case _err
                    (let* ((tool-call (read (current-buffer)))
                           (id (gptel--openai-format-tool-id id))
                           (name (plist-get tool-call :name))
@@ -371,17 +371,16 @@ Mutate state INFO with response metadata."
              (and max-entries (cl-decf max-entries))
              (if include-media
                  (when-let* ((content (gptel--openai-parse-multipart
-                                      (gptel--parse-media-links major-mode (point) prev-pt))))
-                   (push (list :role "user" :content content) prompts))
-               (when-let* ((content (gptel--trim-prefixes
-                                     (buffer-substring-no-properties (point)
-                                                                     prev-pt)))
-                           (content (when (not (string-empty-p content)) content)))
+                                       (gptel--parse-media-links major-mode
+                                                                 (point) prev-pt))))
+                   (when (> (length content) 0)
+                     (push (list :role "user" :content content) prompts)))
+               (when-let* ((content (gptel--trim-prefixes (buffer-substring-no-properties
+                                                           (point) prev-pt))))
                  (push (list :role "user" :content content) prompts)))))
           (setq prev-pt (point)))
-      (when-let* ((content (gptel--trim-prefixes (buffer-substring-no-properties
-                                                  (point-min) (point-max))))
-                  (content (when (not (string-empty-p content)) content)))
+      (let ((content (string-trim (buffer-substring-no-properties
+                                    (point-min) (point-max)))))
         (push (list :role "user" :content content) prompts)))
     prompts))
 
@@ -403,8 +402,8 @@ format."
    for text = (plist-get part :text)
    for media = (plist-get part :media)
    if text do
-   (and (or (= n 1) (= n last)) (setq text (gptel--trim-prefixes text))) and
-   unless (string-empty-p text)
+   (and (or (= n 1) (= n last)) (setq text (gptel--trim-prefixes text)))
+   and if text
    collect `(:type "text" :text ,text) into parts-array end
    else if media
    collect
