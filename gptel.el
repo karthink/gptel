@@ -215,6 +215,14 @@ Passed to curl via --proxy arg, for example \"proxy.yourorg.com:80\"
 Leave it empty if you don't use a proxy."
   :type 'string)
 
+(defcustom gptel-noproxy nil
+  "How to handle --noproxy argument in curl requests.
+When nil, don't pass --noproxy argument.
+When a string, pass that string as --noproxy value.
+Use this to override noproxy variables set elsewhere in Emacs."
+  :type '(choice (const :tag "Don't set noproxy" nil)
+          (string :tag "Set specific noproxy value")))
+
 (defcustom gptel-api-key #'gptel-api-key-from-auth-source
   "An API key (string) for the default LLM backend.
 
