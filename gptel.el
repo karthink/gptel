@@ -528,6 +528,14 @@ To set the temperature for a chat session interactively call
      :input-cost 10
      :output-cost 30
      :cutoff-date "2023-12")
+    (gpt-4.5-preview
+     :description "Largest and most capable GPT model to date"
+     :capabilities (media tool-use url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 128
+     :input-cost 75
+     :output-cost 150
+     :cutoff-date "2023-10")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
      :capabilities (nosystem media reasoning)
@@ -612,7 +620,7 @@ Keys:
 Information about the OpenAI models was obtained from the following
 sources:
 
-- <https://openai.com/pricing>
+- <https://platform.openai.com/docs/pricing>
 - <https://platform.openai.com/docs/models>")
 
 (defcustom gptel-model 'gpt-4o-mini
