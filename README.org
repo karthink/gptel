@@ -1333,7 +1333,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-track-response=        | Distinguish between user messages and LLM responses?           |
 | =gptel-track-media=           | Send images or other media from links?                         |
 | =gptel-confirm-tool-calls=    | Confirm all tool calls?                                        |
-| =gptel-include-tool-results=  | Include tool results should in the LLM response?               |
+| =gptel-include-tool-results=  | Include tool results in the LLM response?                      |
 | =gptel-use-header-line=       | Display status messages in header-line (default) or minibuffer |
 | =gptel-display-buffer-action= | Placement of the gptel chat buffer.                            |
 |-------------------------------+----------------------------------------------------------------|
