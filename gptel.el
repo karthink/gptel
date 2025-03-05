@@ -1947,26 +1947,30 @@ Run post-response hooks."
     (let ((result-alist) (pending-calls))
       (mapc                             ; Construct function calls
        (lambda (tool-call)
-         (letrec ((name (plist-get tool-call :name))
-                  (args (plist-get tool-call :args))
+         (letrec ((args (plist-get tool-call :args))
+                  (name (plist-get tool-call :name))
                   (arg-values)
+                  (tool-spec
+                   (cl-find-if
+                    (lambda (ts) (equal (gptel-tool-name ts) name))
+                    (plist-get info :tools)))
                   (process-tool-result
                    (lambda (result)
                      (plist-put info :tool-success t)
-                     (plist-put tool-call :result (gptel--to-string result))
-                     (push (list name arg-values result) result-alist)
+                     (let ((result (gptel--to-string result)))
+                       (plist-put tool-call :result result)
+                       (push (list tool-spec args result) result-alist))
                      (cl-incf tool-idx)
                      (when (>= tool-idx ntools) ; All tools have run
                        (gptel--inject-prompt
                         backend (plist-get info :data)
                         (gptel--parse-tool-results
                          backend (plist-get info :tool-use)))
-                       (funcall (plist-get info :callback) result-alist info)
+                       (funcall (plist-get info :callback)
+                                (cons 'tool-result result-alist) info)
                        (gptel--fsm-transition fsm)))))
-           (when-let* ((tool-spec
-                        (cl-find-if
-                         (lambda (ts) (equal (gptel-tool-name ts) name))
-                         (plist-get info :tools))))
+           (if (null tool-spec)
+               (message "Unknown tool called by model: %s" name)
              (setq arg-values
                    (mapcar
                     (lambda (arg)
@@ -1975,7 +1979,7 @@ Run post-response hooks."
                     (gptel-tool-args tool-spec)))
              ;; Check if tool requires confirmation
              (if (and gptel-confirm-tool-calls (or (eq gptel-confirm-tool-calls t)
-                                                 (gptel-tool-confirm tool-spec)))
+                                                   (gptel-tool-confirm tool-spec)))
                  (push (list tool-spec arg-values process-tool-result)
                        pending-calls)
                ;; If not, run the tool
@@ -1993,7 +1997,8 @@ Run post-response hooks."
           (setq gptel--fsm-last fsm)
           (when gptel-mode (gptel--update-status
                             (format " Run tools?" ) 'mode-line-emphasis)))
-        (funcall (plist-get info :callback) pending-calls info)))))
+        (funcall (plist-get info :callback)
+                 (cons 'tool-call pending-calls) info)))))
 
 ;;;; State machine predicates
 ;; Predicates used to find the next state to transition to, see
@@ -2047,10 +2052,16 @@ or streaming responses (see STREAM).  In these cases, RESPONSE
 can be
 
 - The symbol `abort' if the request is aborted, see `gptel-abort'.
-- An alist of tool names, arguments and tool call results after the LLM
-  runs a tool: ((name arguments result) ...)
-- An alist of `gptel-tool' structs and tool call arguments if tools
-  require confirmation to run: ((tool arguments tool-call-func) ...)
+
+- A list beginning with `tool-call'.  The cdr form is (TOOL ARGS
+  CALLBACK) ...) where TOOL is a gptel-tool struct, ARGS is a plist of
+  arguments, and CALLBACK is a function for handling the results.
+
+- A list beginning with `tool-result'.  The cdr form is ((TOOL ARGS
+  RESULT) ...) where TOOL is a gptel-tool struct, ARGS is a plist of
+  arguments, and RESULT was returned from calling the tool function.
+
+See `gptel--insert-response' for an example callback handling all cases.
 
 STREAM is a boolean that determines if the response should be
 streamed, as in `gptel-stream'.  If the model or the backend does
@@ -2359,10 +2370,10 @@ See `gptel--url-get-response' for details."
              (plist-put info :tracking-marker (setq tracking-marker (point-marker)))
              ;; for uniformity with streaming responses
              (set-marker-insertion-type tracking-marker t)))))
-      ((pred consp)
-       (gptel--display-tool-calls response info))
-      (_
-       (gptel--display-tool-results response info)))))
+      (`(tool-call . ,tool-calls)
+       (gptel--display-tool-calls tool-calls info))
+      (`(tool-result . ,tool-results)
+       (gptel--display-tool-results tool-results info)))))
 
 (defun gptel--create-prompt (&optional prompt-end)
   "Return a full conversation prompt from the contents of this buffer.

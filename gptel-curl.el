@@ -257,10 +257,10 @@ See `gptel--url-get-response' for details."
            ;; (run-hooks 'gptel-pre-stream-hook)
            (insert response)
            (run-hooks 'gptel-post-stream-hook)))))
-    ((pred consp)
-     (gptel--display-tool-calls response info))
-    (_                                  ; placeholder for later condition
-     (gptel--display-tool-results response info))))
+    (`(tool-call . ,tool-calls)
+     (gptel--display-tool-calls tool-calls info))
+    (`(tool-result . ,tool-results)
+     (gptel--display-tool-results tool-results info))))
 
 (defun gptel-curl--stream-filter (process output)
   (let* ((fsm (alist-get process gptel--request-alist))
