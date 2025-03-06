@@ -217,15 +217,11 @@ value of `gptel-org-branching-context', which see."
                    collect (point) into ends
                    finally return (cons prompt-end ends))))
             (with-temp-buffer
-              (setq-local gptel-backend (buffer-local-value 'gptel-backend org-buf)
-                          gptel--system-message
-                          (buffer-local-value 'gptel--system-message org-buf)
-                          gptel-model (buffer-local-value 'gptel-model org-buf)
-                          gptel-mode (buffer-local-value 'gptel-mode org-buf)
-                          gptel-track-response
-                          (buffer-local-value 'gptel-track-response org-buf)
-                          gptel-track-media
-                          (buffer-local-value 'gptel-track-media org-buf))
+              ;; TODO(org) duplicated below
+              (dolist (sym '( gptel-backend gptel--system-message gptel-model
+                              gptel-mode gptel-track-response gptel-track-media))
+                (set (make-local-variable sym)
+                     (buffer-local-value sym org-buf)))
               (cl-loop for start in start-bounds
                        for end   in end-bounds
                        do (insert-buffer-substring org-buf start end)
@@ -234,7 +230,18 @@ value of `gptel-org-branching-context', which see."
               (let ((major-mode 'org-mode))
                 (gptel--parse-buffer gptel-backend max-entries)))))
       ;; Create prompt the usual way
-      (gptel--parse-buffer gptel-backend max-entries))))
+      (let ((org-buf (current-buffer))
+            (beg (point-min))
+            (end (point-max)))
+        (with-temp-buffer
+          ;; TODO(org) duplicated above
+          (dolist (sym '( gptel-backend gptel--system-message gptel-model
+                          gptel-mode gptel-track-response gptel-track-media))
+            (set (make-local-variable sym)
+                 (buffer-local-value sym org-buf)))
+          (insert-buffer-substring org-buf beg end)
+          (let ((major-mode 'org-mode))
+            (gptel--parse-buffer gptel-backend max-entries)))))))
 
 ;; Handle media links in the buffer
 (cl-defmethod gptel--parse-media-links ((_mode (eql 'org-mode)) beg end)
