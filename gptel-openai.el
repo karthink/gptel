@@ -201,7 +201,7 @@ information if the stream contains it."
                   (cl-loop
                    for tool-call in tool-use ; Construct the call specs for running the function calls
                    for spec = (plist-get tool-call :function)
-                   collect (list :id (plist-get tool-call :id)
+                   collect (list :id (gptel--openai-unformat-tool-id (plist-get tool-call :id))
                                  :name (plist-get spec :name)
                                  :args (ignore-errors (gptel--json-read-string
                                                        (plist-get spec :arguments))))
@@ -257,7 +257,7 @@ Mutate state INFO with response metadata."
                                         (gptel--json-read-string
                                          (plist-get call-spec :arguments))))
            (plist-put call-spec :arguments nil)
-           (plist-put call-spec :id (plist-get tool-call :id))
+           (plist-put call-spec :id (gptel--openai-unformat-tool-id (plist-get tool-call :id)))
            collect call-spec into tool-use
            finally (plist-put info :tool-use tool-use)))))))
 
@@ -305,9 +305,20 @@ Mutate state INFO with response metadata."
    (lambda (tool-call)
      (list
       :role "tool"
-      :content (plist-get tool-call :result)
-      :tool_call_id (plist-get tool-call :id)))
+      :tool_call_id (gptel--openai-format-tool-id
+                     (plist-get tool-call :id))
+      :content (plist-get tool-call :result)))
    tool-use))
+
+(defun gptel--openai-format-tool-id (tool-id)
+  (format "call_%s" tool-id))
+
+(defun gptel--openai-unformat-tool-id (tool-id)
+  (or (and (string-match "call_\\(.+\\)" tool-id)
+           (match-string 1 tool-id))
+      (progn
+        (message "Unexpected tool_call_id format: %s" tool-id)
+        tool-id)))
 
 ;; NOTE: No `gptel--inject-prompt' method required for gptel-openai, since this
 ;; is handled by its defgeneric implementation
@@ -318,7 +329,7 @@ Mutate state INFO with response metadata."
            if text collect
            (list :role (if role "user" "assistant") :content text)))
 
-(cl-defmethod gptel--parse-buffer ((_backend gptel-openai) &optional max-entries)
+(cl-defmethod gptel--parse-buffer ((backend gptel-openai) &optional max-entries)
   (let ((prompts) (prev-pt (point))
         (include-media (and gptel-track-media
                             (or (gptel--model-capable-p 'media)
@@ -330,28 +341,48 @@ Mutate state INFO with response metadata."
                                 (point) 'gptel nil (point-min))))
           (pcase (get-char-property (point) 'gptel)
             ('response
-             (push (list :role "assistant"
-                         :content (buffer-substring-no-properties (point) prev-pt))
-                   prompts))
+             (when-let* ((content (gptel--trim-prefixes
+                                   (buffer-substring-no-properties (point) prev-pt))))
+               (push (list :role "assistant" :content content) prompts)))
+            (`(tool . ,id)
+             (save-excursion
+               (condition-case nil
+                   (let* ((tool-call (read (current-buffer)))
+                          (name (plist-get tool-call :name))
+                          (arguments (gptel--json-encode (plist-get tool-call :args))))
+                     (plist-put tool-call :id id)
+                     (plist-put tool-call :result
+                                (string-trim (buffer-substring-no-properties
+                                              (point) prev-pt)))
+                     (push (car (gptel--parse-tool-results backend (list tool-call)))
+                           prompts)
+                     (push (list :role "assistant"
+                                 :tool_calls
+                                 (vector (list :type "function"
+                                               :id (gptel--openai-format-tool-id id)
+                                               :function `( :name ,name
+                                                            :arguments ,arguments))))
+                           prompts))
+                 ((end-of-file invalid-read-syntax)
+                  (message (format "Could not parse tool-call %s on line %s"
+                                   id (line-number-at-pos (point))))))))
+            ('ignore)
             ('nil
+             (and max-entries (cl-decf max-entries))
              (if include-media
-                 (push (list :role "user"
-                             :content
-                             (gptel--openai-parse-multipart
-                              (gptel--parse-media-links major-mode (point) prev-pt)))
-                       prompts)
-               (push (list :role "user"
-                           :content
-                           (gptel--trim-prefixes
-                            (buffer-substring-no-properties (point) prev-pt)))
-                     prompts))))
-          (setq prev-pt (point))
-          (and max-entries (cl-decf max-entries)))
-      (push (list :role "user"
-                  :content
-                  (gptel--trim-prefixes (buffer-substring-no-properties
-                                         (point-min) (point-max))))
-            prompts))
+                 (when-let* ((content (gptel--openai-parse-multipart
+                                      (gptel--parse-media-links major-mode (point) prev-pt))))
+                   (push (list :role "user" :content content) prompts))
+               (when-let* ((content (gptel--trim-prefixes
+                                     (buffer-substring-no-properties
+                                      (point) prev-pt))))
+                 (unless (string-empty-p content)
+                   (push (list :role "user" :content content) prompts))))))
+          (setq prev-pt (point)))
+      (when-let* ((content (gptel--trim-prefixes (buffer-substring-no-properties
+                                                  (point-min) (point-max)))))
+        (unless (string-empty-p content)
+          (push (list :role "user" :content content) prompts))))
     prompts))
 
 ;; TODO This could be a generic function
