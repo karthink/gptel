@@ -1602,6 +1602,59 @@ implementation, used by OpenAI-compatible APIs and Ollama."
                     :additionalProperties :json-false))))))
     (ensure-list tools))))
 
+(cl-defmacro gptel-define-tool (function-name
+                                (&rest args-list)
+                                (&key name
+                                      description
+                                      async
+                                      category
+                                      confirm
+                                      include
+                                      &allow-other-keys)
+                                &body body
+                                &aux
+                                (docstring (when (stringp (car body))
+                                             (car body))))
+  "Define an LLM-callable tool, FUNCTION-NAME.
+
+TODO: Write docstring
+
+Note, this macro will define the function, and install it as a tool.  If
+it is re-run, any changes will be made as necessary."
+  (declare (indent 3)
+           (doc-string 4))
+  (let* ((tool-name (or name
+                        (replace-regexp-in-string "-" "_" (format "%s" function-name))))
+         (function-arguments (mapcar (lambda (arg-defn)
+                                       (if (listp arg-defn)
+                                           (car arg-defn)
+                                         arg-defn))
+                                     args-list))
+         (argument-descriptions (mapcar (lambda (arg-defn)
+                                          (when (listp arg-defn)
+                                            (cons :name
+                                                  (cons (replace-regexp-in-string "-" "_" (format "%s" (car arg-defn)))
+                                                        (cdr arg-defn)))))
+                                        args-list))
+         (description (or description
+                          (and (stringp docstring)
+                               (car (string-split docstring "\n"))))))
+    (unless (stringp description)
+      (error "A description of tool %s must be provided" function-name))
+    `(progn
+       (defun ,function-name (,@function-arguments)
+         ,@body)
+       (gptel-make-tool
+        :name ,tool-name
+        :args ',argument-descriptions
+        :description ,description
+        :function ',function-name
+        ,@(when async (list :async async))
+        ,@(when category (list :category category))
+        ,@(when confirm (list :confirm confirm))
+        ,@(when include (list :include include)))
+       ',function-name)))
+
 (cl-defgeneric gptel--parse-tool-results (backend results)
   "Return a BACKEND-appropriate prompt containing tool call RESULTS.
 
