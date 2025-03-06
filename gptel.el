@@ -2392,33 +2392,40 @@ INFO is a plist containing information relevant to this buffer.
 See `gptel--url-get-response' for details.
 
 Optional RAW disables text properties and transformation."
-  (let* ((gptel-buffer (plist-get info :buffer))
-         (start-marker (plist-get info :position))
-         (tracking-marker (plist-get info :tracking-marker)))
+  (let* ((start-marker (plist-get info :position))
+         (tracking-marker (plist-get info :tracking-marker))
+         (message-marker (plist-get info :message-marker))
+         (transformer (plist-get info :transformer))
+         (in-place (plist-get info :in-place)))
     (pcase response
-      ((pred stringp)                ;Response text
-       (with-current-buffer gptel-buffer
-         (when tracking-marker           ;separate from previous response
-           (setq response (concat gptel-response-separator response)))
-         (save-excursion
-           (with-current-buffer (marker-buffer start-marker)
-             (goto-char (or tracking-marker start-marker))
-             ;; (run-hooks 'gptel-pre-response-hook)
-             (unless (or (bobp) (plist-get info :in-place)
-                         tracking-marker)
-               (insert gptel-response-separator)
-               (when gptel-mode
-                 (insert (gptel-response-prefix-string)))
-               (move-marker start-marker (point)))
-             (unless raw
-               (when-let* ((transformer (plist-get info :transformer)))
-                 (setq response (funcall transformer response)))
-               (add-text-properties
-                0 (length response) '(gptel response front-sticky (gptel)) response))
-             (insert response)
-             (plist-put info :tracking-marker (setq tracking-marker (point-marker)))
-             ;; for uniformity with streaming responses
-             (set-marker-insertion-type tracking-marker t)))))
+      ((pred stringp)
+       (with-current-buffer (marker-buffer start-marker)
+         (unless tracking-marker
+           (goto-char start-marker)
+           (setq tracking-marker (set-marker (make-marker) (point)))
+           (set-marker-insertion-type tracking-marker t)
+           (plist-put info :tracking-marker tracking-marker))
+         (goto-char tracking-marker)
+         ;; (run-hooks 'gptel-pre-response-hook)
+         (when (and gptel-mode (not (or raw in-place)))
+           (unless (and message-marker (= tracking-marker message-marker))
+             (unless (bobp)
+               (insert gptel-response-separator)))
+           (unless (plist-get info :prefix-done)
+             (insert (gptel-response-prefix-string))
+             (plist-put info :prefix-done t)
+             (move-marker start-marker (point))))
+         (unless raw
+           (when transformer
+             (setq response (funcall transformer response)))
+           (add-text-properties
+            0 (length response) '(gptel response front-sticky (gptel))
+            response))
+         (insert response)
+         (when (and gptel-mode (not raw))
+           (if message-marker
+               (move-marker message-marker (point))
+             (plist-put info :message-marker (point-marker))))))
       (`(tool-call . ,tool-calls)
        (gptel--display-tool-calls tool-calls info))
       (`(tool-result . ,tool-results)

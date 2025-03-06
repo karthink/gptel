@@ -234,21 +234,25 @@ Optional RAW disables text properties and transformation."
     ((pred stringp)
      (let ((start-marker (plist-get info :position))
            (tracking-marker (plist-get info :tracking-marker))
-           (transformer (plist-get info :transformer)))
+           (message-marker (plist-get info :message-marker))
+           (transformer (plist-get info :transformer))
+           (in-place (plist-get info :in-place)))
        (with-current-buffer (marker-buffer start-marker)
          (save-excursion
            (unless tracking-marker
              (goto-char start-marker)
-             (unless (or (bobp) (plist-get info :in-place))
-               (insert gptel-response-separator)
-               (when gptel-mode
-                 ;; Put prefix before AI response.
-                 (insert (gptel-response-prefix-string)))
-               (move-marker start-marker (point)))
              (setq tracking-marker (set-marker (make-marker) (point)))
              (set-marker-insertion-type tracking-marker t)
              (plist-put info :tracking-marker tracking-marker))
            (goto-char tracking-marker)
+           (when (and gptel-mode (not (or raw in-place)))
+             (unless (and message-marker (= tracking-marker message-marker))
+               (unless (bobp)
+                 (insert gptel-response-separator)))
+             (unless (plist-get info :prefix-done)
+               (insert (gptel-response-prefix-string))
+               (plist-put info :prefix-done t)
+               (move-marker start-marker (point))))
            (unless raw
              (when transformer
                (setq response (funcall transformer response)))
@@ -257,6 +261,10 @@ Optional RAW disables text properties and transformation."
               response))
            ;; (run-hooks 'gptel-pre-stream-hook)
            (insert response)
+           (when (and gptel-mode (not raw))
+             (if message-marker
+                 (move-marker message-marker (point))
+               (plist-put info :message-marker (point-marker))))
            (run-hooks 'gptel-post-stream-hook)))))
     (`(tool-call . ,tool-calls)
      (gptel--display-tool-calls tool-calls info))
