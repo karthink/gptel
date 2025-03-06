@@ -171,6 +171,7 @@
 (declare-function ediff-regions-internal "ediff")
 (declare-function hl-line-highlight "hl-line")
 
+(declare-function org-escape-code-in-string "org-src")
 (declare-function gptel-org--create-prompt "gptel-org")
 (declare-function gptel-org-set-topic "gptel-org")
 (declare-function gptel-org--save-state "gptel-org")
@@ -376,7 +377,9 @@ is only inserted in dedicated gptel buffers before the AI's response."
   :type '(alist :key-type symbol :value-type string))
 
 (defcustom gptel-response-separator "\n\n"
-  "String inserted before responses."
+  "String inserted before responses.
+
+Also inserted before and after non-consecutive tool calls."
   :type 'string)
 
 (defcustom gptel-use-header-line t
@@ -2339,24 +2342,22 @@ specified."
       (error
        (user-error "Can not resume request: could not read data from buffer!")))))
 
-(defun gptel--insert-response (response info)
+(defun gptel--insert-response (response info &optional raw)
   "Insert the LLM RESPONSE into the gptel buffer.
 
 INFO is a plist containing information relevant to this buffer.
-See `gptel--url-get-response' for details."
+See `gptel--url-get-response' for details.
+
+Optional RAW disables text properties and transformation."
   (let* ((gptel-buffer (plist-get info :buffer))
          (start-marker (plist-get info :position))
          (tracking-marker (plist-get info :tracking-marker)))
     (pcase response
       ((pred stringp)                ;Response text
        (with-current-buffer gptel-buffer
-         (when-let* ((transformer (plist-get info :transformer)))
-           (setq response (funcall transformer response)))
          (when tracking-marker           ;separate from previous response
            (setq response (concat gptel-response-separator response)))
          (save-excursion
-           (add-text-properties
-            0 (length response) '(gptel response front-sticky (gptel)) response)
            (with-current-buffer (marker-buffer start-marker)
              (goto-char (or tracking-marker start-marker))
              ;; (run-hooks 'gptel-pre-response-hook)
@@ -2366,6 +2367,11 @@ See `gptel--url-get-response' for details."
                (when gptel-mode
                  (insert (gptel-response-prefix-string)))
                (move-marker start-marker (point)))
+             (unless raw
+               (when-let* ((transformer (plist-get info :transformer)))
+                 (setq response (funcall transformer response)))
+               (add-text-properties
+                0 (length response) '(gptel response front-sticky (gptel)) response))
              (insert response)
              (plist-put info :tracking-marker (setq tracking-marker (point-marker)))
              ;; for uniformity with streaming responses
@@ -2716,25 +2722,21 @@ INTERACTIVEP is t when gptel is called interactively."
 
 
 ;;; Tool use UI
-(defun gptel--display-tool-calls (response info &optional use-minibuffer)
-  "Handle tool call confirmation and result insertion in buffers.
+(defun gptel--display-tool-calls (tool-calls info &optional use-minibuffer)
+  "Handle tool call confirmation.
 
-RESPONSE should be a list of tool call specifications or results,
+TOOL-CALLS should be a list of tool call specifications or results,
 structured as:
 
  ((tool args callback) ...)
 
-for tool call specifications to be confirmed.  To prompt for tool
-call confirmation, use either an overlay in the request buffer or
-the minibuffer (if USE-MINIBUFFER is non-nil).
-
-RESPONSE is
-
- ((name args result) ...)
-
-for tool call results.  INFO contains the state of the request."
+for tool call specifications to be confirmed.  INFO contains the
+state of the request.  To prompt for tool call confirmation, use
+either an overlay in the request buffer or the minibuffer (if
+USE-MINIBUFFER is non-nil)."
   (let* ((start-marker (plist-get info :position))
          (tracking-marker (plist-get info :tracking-marker)))
+    ;; pending tool calls look like ((tool callback args) ...)
     (with-current-buffer (plist-get info :buffer)
       (if use-minibuffer            ;prompt for confirmation from the minibuffer
           (let* ((minibuffer-allow-text-properties t)
@@ -2746,7 +2748,7 @@ for tool call results.  INFO contains the state of the request."
                                           'face 'font-lock-keyword-face)
                        ": "))
              (lambda (tcs) (gptel--accept-tool-calls (list tcs) nil))
-             response '("tool call" "tool calls" "run")
+             tool-calls '("tool call" "tool calls" "run")
              `((?i ,(lambda (_) (save-window-excursion
                              (with-selected-window
                                  (gptel--inspect-fsm gptel--fsm-last)
@@ -2789,7 +2791,7 @@ for tool call results.  INFO contains the state of the request."
           ;; If the cursor is at the overlay-end, it ends up outside, so move it back
           (unless tracking-marker
             (when (= (point) start-marker) (ignore-errors (backward-char))))
-          (pcase-dolist (`(,tool-spec ,arg-values _) response)
+          (pcase-dolist (`(,tool-spec ,arg-values _) tool-calls)
             (push (gptel--format-tool-call (gptel-tool-name tool-spec) arg-values)
                   confirm-strings))
           (push (concat (propertize "\n" 'face '(:inherit font-lock-string-face
@@ -2799,7 +2801,7 @@ for tool call results.  INFO contains the state of the request."
           (overlay-put ov 'after-string
                        (apply #'concat (nreverse confirm-strings)))
           (overlay-put ov 'mouse-face 'highlight)
-          (overlay-put ov 'gptel-tool response)
+          (overlay-put ov 'gptel-tool tool-calls)
           (overlay-put ov 'help-echo
                        (concat "Tool call(s) requested: " actions-string))
           (overlay-put ov 'keymap
@@ -2816,36 +2818,84 @@ for tool call results.  INFO contains the state of the request."
                                (forward-line 0)
                                (hl-line-highlight)))))))))))
 
-(defun gptel--display-tool-results (response info)
-  "Display tool results.
-RESPONSE is
+(defun gptel--display-tool-results (tool-results info)
+  "Insert TOOL-RESULTS into buffer.
 
- ((name args result) ...)
+TOOL-RESULTS is
+
+ ((tool args result) ...)
 
 for tool call results.  INFO contains the state of the request."
   (let* ((start-marker (plist-get info :position))
+         (tool-marker (plist-get info :tool-marker))
          (tracking-marker (plist-get info :tracking-marker)))
+    ;; Insert tool results
     (when gptel-include-tool-results
       (with-current-buffer (marker-buffer start-marker)
         (cl-loop
-         for (name args result) in response
+         for (tool args result) in tool-results
          with include-names =
          (mapcar #'gptel-tool-name
                  (cl-remove-if-not #'gptel-tool-include (plist-get info :tools)))
-         if (or (eq gptel-include-tool-results t) (member name include-names))
+         if (or (eq gptel-include-tool-results t)
+                (member (gptel-tool-name tool) include-names))
          do (funcall
              (plist-get info :callback)
-             (if (derived-mode-p 'org-mode)
-                 (concat "\n:TOOL_CALL:\n" (gptel--format-tool-call name args)
-                         "\n" (gptel--to-string result) "\n:END:\n")
-               (concat "\n```\n" name "\n" (gptel--to-string result) "\n```"))
-             info)
+             (let* ((name (gptel-tool-name tool))
+                    (separator (if (and tool-marker tracking-marker
+                                        (= tracking-marker tool-marker))
+                                   "\n"
+                                 gptel-response-separator))
+                    (tool-use
+                     ;; TODO(tool) also check args since there may be more than
+                     ;; one call/result for the same tool
+                     (cl-find-if
+                      (lambda (tu) (equal (plist-get tu :name) name))
+                      (plist-get info :tool-use)))
+                    (id (plist-get tool-use :id))
+                    (display-call (format "(%s %s)" name
+                                          (string-trim (prin1-to-string args) "(" ")")))
+                    (call (prin1-to-string `(:name ,name :args ,args)))
+                    (truncated-call (truncate-string-to-width
+                                     display-call
+                                     (floor (* (window-width) 0.6)) 0 nil " ...)")))
+               (if (derived-mode-p 'org-mode)
+                   (concat
+                    separator
+                    "#+begin_tool "
+                    truncated-call
+                    (propertize
+                     (concat "\n" call "\n\n" (org-escape-code-in-string result))
+                     'gptel `(tool . ,id))
+                    "\n#+end_tool")
+                 ;; TODO(tool) else branch is handling all front-ends as markdown.
+                 ;; At least escape markdown.
+                 (concat
+                  separator
+                  ;; TODO(tool) remove properties and strip instead of ignoring
+                  (propertize (format "``` tool %s" truncated-call) 'gptel 'ignore)
+                  (propertize
+                   ;; TODO(tool) escape markdown in result
+                   (concat "\n" call "\n\n" result)
+                   'gptel `(tool . ,id))
+                  ;; TODO(tool) remove properties and strip instead of ignoring
+                  (propertize "\n```" 'gptel 'ignore))))
+             info
+             'raw)
+         ;; tool-result insertion has updated the tracking marker
+         (unless tracking-marker
+           (setq tracking-marker (plist-get info :tracking-marker)))
+         (if tool-marker
+               (move-marker tool-marker tracking-marker)
+             (setq tool-marker (copy-marker tracking-marker nil))
+             (plist-put info :tool-marker tool-marker))
          (when (derived-mode-p 'org-mode) ;fold drawer
            (ignore-errors
              (save-excursion
-               (goto-char (plist-get info :tracking-marker))
-               (forward-line -1) ;org-fold-hide-drawer-toggle requires Emacs 29.1
-               (when (looking-at "^:END:") (org-cycle))))))))))
+               (goto-char tracking-marker)
+               (beginning-of-line)
+               (when (looking-at "^#\\+end_tool")
+                 (org-cycle))))))))))
 
 (defun gptel--format-tool-call (name arg-values)
   "Format a tool call for display in the buffer.
@@ -2859,7 +2909,7 @@ NAME and ARG-VALUES are the name and arguments for the call."
                                (prin1-to-string
                                 (replace-regexp-in-string
                                  "\n" "⮐" (truncate-string-to-width
-                                           arg (floor (window-width) 4)
+                                           arg (floor (window-width) 2)
                                            nil nil t))))
                               (t (prin1-to-string arg))))
                       arg-values " ")
