@@ -227,6 +227,8 @@ value of `gptel-org-branching-context', which see."
                        do (insert-buffer-substring org-buf start end)
                        (goto-char (point-min)))
               (goto-char (point-max))
+              (gptel--org-unescape-tool-results)
+              (gptel--org-strip-tool-headers)
               (let ((major-mode 'org-mode))
                 (gptel--parse-buffer gptel-backend max-entries)))))
       ;; Create prompt the usual way
@@ -240,8 +242,52 @@ value of `gptel-org-branching-context', which see."
             (set (make-local-variable sym)
                  (buffer-local-value sym org-buf)))
           (insert-buffer-substring org-buf beg end)
+          (gptel--org-unescape-tool-results)
+          (gptel--org-strip-tool-headers)
           (let ((major-mode 'org-mode))
             (gptel--parse-buffer gptel-backend max-entries)))))))
+
+(defun gptel--org-strip-tool-headers ()
+  "Remove all tool_call block headers and footers.
+Every line that matches will be removed entirely."
+  (save-excursion
+    (goto-char (point-min))
+    (while (re-search-forward (rx line-start (literal "#+")
+                                  (or (literal "begin") (literal "end"))
+                                  (literal "_tool"))
+                              nil t)
+      (delete-region (match-beginning 0)
+                     (min (point-max) (1+ (line-end-position)))))))
+
+(defun gptel--org-unescape-tool-results ()
+  "Undo escapes done to keep results from escaping blocks.
+Scans backward for gptel tool text property, reads the arguments, then
+unescapes the remainder."
+  (save-excursion
+    (goto-char (point-max))
+    (let ((prev-pt (point)))
+      (while (> prev-pt (point-min))
+        (goto-char
+         (previous-single-char-property-change (point) 'gptel))
+        (let ((prop (get-text-property (point) 'gptel))
+              (backward-progress (point)))
+          (when (eq (car-safe prop) 'tool)
+            ;; User edits to clean up can potentially insert a tool-call header
+            ;; that is propertized.  Tool call headers should not be
+            ;; propertized.
+            (when (looking-at-p "[[:space:]]*#\\+begin_tool")
+              (goto-char (match-end 0)))
+            (condition-case nil
+                (read (current-buffer))
+              ((end-of-file invalid-read-syntax)
+               (message "Could not read tool arguments")))
+            ;; TODO this code is able to put the point behind prev-pt, which
+            ;; makes the region inverted.  The `max' catches this, but really
+            ;; `read' and `looking-at' are the culprits.  Badly formed tool
+            ;; blocks can lead to this being necessary.
+            (org-unescape-code-in-region
+             (min prev-pt (point)) prev-pt))
+          (goto-char (setq prev-pt backward-progress)))))))
 
 ;; Handle media links in the buffer
 (cl-defmethod gptel--parse-media-links ((_mode (eql 'org-mode)) beg end)
