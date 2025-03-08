@@ -775,6 +775,29 @@ Currently supported options are:
           (const :tag "With system message" system)
           (const :tag "With user prompt" user)))
 
+(defcustom gptel-include-reasoning t
+  "How to handle LLM reasoning or \"thinking\" text blocks.
+
+Some LLMs include in their response a \"thinking\" section.  This
+text improves the quality of the LLM's final output, but may not
+be interesting to you by itself.
+
+Supported options are the symbols
+
+    t       - Include with the response, the default
+    nil     - Do not include
+    ignore  - Include with the response but ignore on subsequent
+              conversation turns
+
+It can also be a string naming a buffer, in which case the
+reasoning text will be inserted at the end of that buffer."
+  :group 'gptel
+  :type '(choice
+          (const :tag "Include with response" t)
+          (const :tag "Don't include" nil)
+          (const :tag "Include but ignore" ignore)
+          (string :tag "Include in buffer")))
+
 (defvar-local gptel--old-header-line nil)
 
 (defvar gptel-context--alist nil
@@ -2093,21 +2116,38 @@ RESPONSE is
 - nil if there was no response or an error.
 
 These are the only two cases you typically need to consider,
-unless you need to clean up after aborted requests, use LLM tools
-or streaming responses (see STREAM).  In these cases, RESPONSE
-can be
+unless you need to clean up after aborted requests, use LLM
+tools, handle \"reasoning\" content specially or stream
+responses (see STREAM).  In these cases, RESPONSE can be
 
 - The symbol `abort' if the request is aborted, see `gptel-abort'.
 
-- A list beginning with `tool-call'.  The cdr form is (TOOL ARGS
-  CALLBACK) ...) where TOOL is a gptel-tool struct, ARGS is a plist of
-  arguments, and CALLBACK is a function for handling the results.
+- A cons cell of the form
 
-- A list beginning with `tool-result'.  The cdr form is ((TOOL ARGS
-  RESULT) ...) where TOOL is a gptel-tool struct, ARGS is a plist of
-  arguments, and RESULT was returned from calling the tool function.
+  (tool-call . ((TOOL ARGS CB) ...))
 
-See `gptel--insert-response' for an example callback handling all cases.
+  where TOOL is a gptel-tool struct, ARGS is a plist of
+  arguments, and CB is a function for handling the results.  You
+  can call CB with the result of calling the tool to continue the
+  request.
+
+- A cons cell of the form
+
+  (tool-result . ((TOOL ARGS RESULT) ...))
+
+  where TOOL is a gptel-tool struct, ARGS is a plist of
+  arguments, and RESULT was returned from calling the tool
+  function.
+
+- A cons cell of the form
+
+  (reasoning . text)
+
+  where text is the contents of the reasoning block.  (Also see
+  STREAM if you are using streaming.)
+
+See `gptel--insert-response' for an example callback handling all
+cases.
 
 STREAM is a boolean that determines if the response should be
 streamed, as in `gptel-stream'.  If the model or the backend does
@@ -2119,6 +2159,9 @@ When streaming responses
   chunk (a string) as it is received.
 - When the HTTP request ends successfully, CALLBACK will be
   called with a RESPONSE argument of t to indicate success.
+- Similarly, CALLBACK will be called with
+  (reasoning . text-chunk) for each reasoning chunk, and
+  (reasoning . t) to indicate the end of the reasoning block.
 
 The INFO plist has (at least) the following keys:
 :data         - The request data included with the query
@@ -2254,6 +2297,8 @@ be used to rerun or continue the request at a later time."
     (when callback (plist-put info :callback callback))
     (when context (plist-put info :context context))
     (when in-place (plist-put info :in-place in-place))
+    (when gptel-include-reasoning       ;Required for next-request-only scope
+      (plist-put info :include-reasoning gptel-include-reasoning))
     (when (and gptel-use-tools gptel-tools)
       (plist-put info :tools gptel-tools))
     ;; Add info to state machine context
@@ -2419,6 +2464,19 @@ Optional RAW disables text properties and transformation."
              (plist-put info :tracking-marker (setq tracking-marker (point-marker)))
              ;; for uniformity with streaming responses
              (set-marker-insertion-type tracking-marker t)))))
+      (`(reasoning . ,text)
+       (pcase (plist-get info :include-reasoning)
+         ('t (gptel--insert-response text info))
+         ('nil)
+         ('ignore
+          (add-text-properties
+           0 (length text) '(gptel ignore front-sticky (gptel)) text)
+          (gptel--insert-response text info t))
+         ((pred stringp)
+          (with-current-buffer (get-buffer-create
+                                (plist-get info :include-reasoning))
+            (save-excursion (goto-char (point-max))
+                            (insert text))))))
       (`(tool-call . ,tool-calls)
        (gptel--display-tool-calls tool-calls info))
       (`(tool-result . ,tool-results)
@@ -2628,6 +2686,15 @@ the response is inserted into the current buffer after point."
                              (gptel--fsm-transition fsm) ;WAIT -> TYPE
                              (when error (plist-put info :error error))
                              (when (or response (not (member http-status '("200" "100"))))
+                               (when (string-match-p "^ *<think>\n" response)
+                                 (when-let* ((idx (string-search "</think>\n" response)))
+                                   (with-demoted-errors "gptel callback error: %S"
+                                     (funcall callback
+                                              (cons 'reasoning
+                                                    (substring response nil (+ idx 8)))
+                                              info))
+                                   (setq response (string-trim-left
+                                                   (substring response (+ idx 8))))))
                                (with-demoted-errors "gptel callback error: %S"
                                  (funcall callback response info)))
                              (gptel--fsm-transition fsm) ;TYPE -> next

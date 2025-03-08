@@ -115,6 +115,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
     - [[#setting-options-backend-model-request-parameters-system-prompts-and-more][Setting options (backend, model, request parameters, system prompts and more)]]
     - [[#include-more-context-with-requests][Include more context with requests]]
+    - [[#handle-reasoning-content][Handle "reasoning" content]]
     - [[#tool-use-experimental][Tool use (experimental)]]
       - [[#defining-gptel-tools][Defining gptel tools]]
       - [[#selecting-tools][Selecting tools]]
@@ -1013,6 +1014,10 @@ You can examine the active context from the menu:
 
 And then browse through or remove context from the context buffer:
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/79a5ffe8-3d63-4bf7-9bf6-0457ab61bf2a" align="center" alt="Image showing gptel's context buffer.">
+
+*** Handle "reasoning" content
+
+Some LLMs include in their response a "thinking" or "reasoning" block.  This text improves the quality of the LLM’s final output, but may not be interesting to you by itself.  You can decide how you would like this "reasoning" content to be handled by gptel by setting the user option =gptel-include-reasoning=.  You can include it in the LLM response (the default), omit it entirely, include it in the buffer but ignore it on subsequent conversation turns, or redirect it to another buffer.  As with most options, you can specify this behvaior from gptel's transient menu globally, buffer-locally or for the next request only.
 
 *** Tool use (experimental)
 

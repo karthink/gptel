@@ -395,7 +395,7 @@ which see."
   (let ((display-value
          (with-slots (value display-nil display-map) obj
            (cond ((null value) display-nil)
-                 (display-map (cdr (assoc value display-map)))
+                 (display-map (or (cdr (assoc value display-map)) value))
                  (t value)))))
     (propertize
      (if (stringp display-value) display-value (prin1-to-string display-value))
@@ -603,6 +603,7 @@ Also format its value in the Transient menu."
                     (or gptel-mode gptel-track-response))))
     (gptel--infix-temperature :if (lambda () gptel-expert-commands))
     (gptel--infix-use-context)
+    (gptel--infix-include-reasoning)
     (gptel--infix-use-tools)
     (gptel--infix-track-response
      :if (lambda () (and gptel-expert-commands (not gptel-mode))))
@@ -1095,6 +1096,46 @@ Or in an extended conversation:
   :argument ":"
   :description "Add instruction"
   :transient t)
+
+;; ** Infix for reasoning block control
+
+(transient-define-infix gptel--infix-include-reasoning ()
+  "How to handle reasoning/thinking response blocks.
+
+Some LLMs include in their response a \"thinking\" section.  This
+text improves the quality of the LLM's final output, but may not
+be interesting to you by itself.
+
+You can control how gptel should handle the thinking blocks via
+this option, or by setting the variable `gptel-include-reasoning'
+via elisp, which see.
+
+Available behaviors are
+- to include thinking blocks with the response,
+- to omit them entirely,
+- to include them but ignore them in consequent conversation turns, and
+- to append them to a buffer of your choosing."
+  :description "Include reasoning"
+  :class 'gptel-lisp-variable
+  :variable 'gptel-include-reasoning
+  :format " %k %d %v"
+  :set-value #'gptel--set-with-scope
+  :display-nil "No"
+  :display-map '((nil    . "No")
+                 (ignore . "and ignore")
+                 (t      . "with response"))
+  :key "-r"
+  :prompt "Include reasoning: "
+  :reader (lambda (prompt &rest _)
+            (let* ((choices '(("no"     . nil)
+                              ("ignore" . ignore)
+                              ("yes"    . t)
+                              ("other buffer" . buffer)))
+                   (destination
+                    (completing-read prompt choices nil t)))
+              (if (equal destination "other buffer")
+                  (read-buffer "Append reasoning to buffer: ")
+                (cdr (assoc destination choices))))))
 
 ;; ** Infixes for tool use
 
