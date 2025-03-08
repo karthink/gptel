@@ -71,7 +71,7 @@ information if the stream contains it.  Not my best work, I know."
               (error "Data block incomplete"))
           (cond
            ((looking-at "content_block_delta") ;collect incremental
-            (forward-line 1) (forward-char 5)  ;text or tool responses
+            (forward-line 1) (forward-char 5)  ;text, tool or thinking block
             (when-let* ((delta (plist-get (gptel--json-read) :delta)))
               (if-let* ((content (plist-get delta :text))
                         ((not (eq content :null))))
@@ -79,7 +79,10 @@ information if the stream contains it.  Not my best work, I know."
                 (if-let* ((partial-json (plist-get delta :partial_json)))
                     (plist-put          ;collect partial tool input
                      info :partial_json
-                     (cons partial-json (plist-get info :partial_json)))))))
+                     (cons partial-json (plist-get info :partial_json)))
+                  (if-let* ((thinking (plist-get delta :thinking)))
+                      (plist-put info :reasoning
+                                 (concat (plist-get info :reasoning) thinking)))))))
            
            ((looking-at "content_block_start") ;Is the following block text or tool-use?
             (forward-line 1) (forward-char 5)
@@ -89,20 +92,28 @@ information if the stream contains it.  Not my best work, I know."
                 ("tool_use" (plist-put info :tool-use
                                        (cons (list :id (plist-get cblock :id)
                                                    :name (plist-get cblock :name))
-                                             (plist-get info :tool-use)))))))
+                                             (plist-get info :tool-use))))
+                ("thinking" (plist-put info :reasoning (plist-get cblock :thinking))
+                 (plist-put info :thinking-block t)))))
            
-           ((and (looking-at "content_block_stop") (plist-get info :partial_json))
-            (condition-case-unless-debug nil ;Combine partial tool inputs
-                (let* ((args-json (apply #'concat (nreverse (plist-get info :partial_json))))
-                       (args-decoded    ;Handle blank argument strings
-                        (if (string-empty-p args-json)
-                            nil (gptel--json-read-string args-json))))
-                  ;; Add the input to the tool-call spec
-                  (plist-put (car (plist-get info :tool-use)) :input args-decoded))
-              ;; If there was an error in reading that tool, we ignore it:
-              ;; TODO(tool) handle this error better
-              (error (pop (plist-get info :tool-use)))) ;TODO: nreverse :tool-use list
-            (plist-put info :partial_json nil))
+           ((looking-at "content_block_stop")
+            (cond
+             ((plist-get info :partial_json)   ;End of tool block
+              (condition-case-unless-debug nil ;Combine partial tool inputs
+                  (let* ((args-json (apply #'concat (nreverse (plist-get info :partial_json))))
+                         (args-decoded  ;Handle blank argument strings
+                          (if (string-empty-p args-json)
+                              nil (gptel--json-read-string args-json))))
+                    ;; Add the input to the tool-call spec
+                    (plist-put (car (plist-get info :tool-use)) :input args-decoded))
+                ;; If there was an error in reading that tool, we ignore it:
+                ;; TODO(tool) handle this error better
+                (error (pop (plist-get info :tool-use)))) ;TODO: nreverse :tool-use list
+              (plist-put info :partial_json nil))
+
+             ((plist-get info :thinking-block) ;End of reasoning block
+              (plist-put info :thinking-block nil)
+              (plist-put info :reasoning t)))) ;Signal end of reasoning stream to filter
            
            ((looking-at "message_delta")
             ;; collect stop_reason, usage_tokens and prepare tools
@@ -158,6 +169,12 @@ Mutate state INFO with response metadata."
    collect (plist-get cblock :text) into content-strs
    else if (equal type "tool_use")
    collect cblock into tool-use
+   else if (equal type "thinking")
+   do
+   (plist-put
+    info :reasoning
+    (concat (plist-get info :reasoning)
+            (plist-get cblock :thinking)))
    finally do
    (when tool-use
      ;; First, add the tool call to the prompts list
