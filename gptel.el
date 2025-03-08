@@ -2686,15 +2686,18 @@ the response is inserted into the current buffer after point."
                              (gptel--fsm-transition fsm) ;WAIT -> TYPE
                              (when error (plist-put info :error error))
                              (when (or response (not (member http-status '("200" "100"))))
-                               (when (string-match-p "^ *<think>\n" response)
-                                 (when-let* ((idx (string-search "</think>\n" response)))
-                                   (with-demoted-errors "gptel callback error: %S"
-                                     (funcall callback
-                                              (cons 'reasoning
-                                                    (substring response nil (+ idx 8)))
-                                              info))
-                                   (setq response (string-trim-left
-                                                   (substring response (+ idx 8))))))
+                               (if (string-match-p "^ *<think>\n" response) ;Look for a reasoning block
+                                   (when-let* ((idx (string-search "</think>\n" response)))
+                                     (with-demoted-errors "gptel callback error: %S"
+                                       (funcall callback
+                                                (cons 'reasoning
+                                                      (substring response nil (+ idx 8)))
+                                                info))
+                                     (setq response (string-trim-left
+                                                     (substring response (+ idx 8)))))
+                                 (when-let* ((reasoning (plist-get info :reasoning))
+                                             ((stringp reasoning)))
+                                   (funcall callback (cons 'reasoning reasoning) info)))
                                (with-demoted-errors "gptel callback error: %S"
                                  (funcall callback response info)))
                              (gptel--fsm-transition fsm) ;TYPE -> next

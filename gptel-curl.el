@@ -261,13 +261,20 @@ Optional RAW disables text properties and transformation."
     (`(reasoning . ,text)
      (pcase (plist-get info :include-reasoning)
        ('nil)
-       ('t (gptel-curl--stream-insert-response text info))
+       ('t
+        (if (eq text t)
+            (gptel-curl--stream-insert-response
+             gptel-response-separator info t)
+          (gptel-curl--stream-insert-response text info)))
        ('ignore
-        (add-text-properties
-         0 (length text) '(gptel ignore front-sticky (gptel)) text)
+        (if (eq text t)
+            (setq text gptel-response-separator)
+          (add-text-properties
+           0 (length text) '(gptel ignore front-sticky (gptel)) text))
         (gptel-curl--stream-insert-response text info t))
        ((pred stringp)
-        (with-current-buffer (get-buffer-create (plist-get info :reasoning))
+        (with-current-buffer (get-buffer-create
+                              (plist-get info :include-reasoning))
           (save-excursion (goto-char (point-max))
                           (insert text))))))
     (`(tool-call . ,tool-calls)
@@ -277,8 +284,7 @@ Optional RAW disables text properties and transformation."
 
 (defun gptel-curl--stream-filter (process output)
   (let* ((fsm (alist-get process gptel--request-alist))
-         (proc-info (gptel-fsm-info fsm))
-         (thinking (plist-get proc-info :thinking)))
+         (proc-info (gptel-fsm-info fsm)))
     (with-current-buffer (process-buffer process)
       ;; Insert output
       (save-excursion
@@ -305,14 +311,42 @@ Optional RAW disables text properties and transformation."
                   (http-status (plist-get proc-info :http-status)))
         ;; Find data chunk(s) and run callback
         ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
-        (when-let* (((member http-status '("200" "100")))
-                    (response ;; (funcall (plist-get proc-info :parser) nil proc-info)
-                     (gptel-curl--parse-stream (plist-get proc-info :backend) proc-info))
-                    ((not (equal response ""))))
-          ;; :thinking has three states: nil before checking for <think> blocks,
-          ;; t when in a <think> block, 'done after or otherwise.
-          (unless (eq thinking 'done)
-            (if thinking
+        (when (member http-status '("200" "100"))
+          (let ((response (gptel-curl--parse-stream
+                           (plist-get proc-info :backend) proc-info))
+                (reasoning (plist-get proc-info :reasoning)))
+            ;; Depending on the API, there are two ways that reasoning or
+            ;; chain-of-thought content appears: as part of the main response
+            ;; but surrounded by <think>...</think> tags, or as a separate
+            ;; JSON field in the response stream.  Both cases are handled here
+            ;; via dispatch on the value of the :reasoning key. :reasoning has
+            ;; five valid values:
+            ;;
+            ;; - nil before we've checked for <think> blocks or reasoning JSON fields,
+            ;; - 'in when inside a <think> block,
+            ;; - a string containing the reasoning content (separate JSON field), and
+            ;; - t for the end of the reasoning part of the stream (separate JSON field).
+            ;; In all cases, :reasoning is
+            ;; - 'done if the reasoning content is missing or done being parsed.
+            ;;
+            ;; NOTE: We assume here that the reasoning block always
+            ;; precedes the main response block.
+            (unless (eq reasoning 'done)
+              (cond
+               ((or (stringp reasoning) (eq reasoning t))
+                ;; Obtained from separate JSON field in response
+                (funcall (or (plist-get proc-info :callback)
+                             #'gptel-curl--stream-insert-response)
+                         (cons 'reasoning reasoning) proc-info)
+                (if (stringp reasoning)
+                    (plist-put proc-info :reasoning nil) ;Reset for next parsing round
+                  (plist-put proc-info :reasoning 'done)))
+               ((and (null reasoning) (length> response 0))
+                (if (string-match-p "^ *<think>" response)
+                    (progn (setq response (cons 'reasoning response))
+                           (plist-put proc-info :reasoning 'in))
+                  (plist-put proc-info :reasoning 'done)))
+               ((length> response 0)
                 (if-let* ((idx (string-match-p "</think>" response)))
                     (progn (funcall (or (plist-get proc-info :callback)
                                         #'gptel-curl--stream-insert-response)
@@ -321,15 +355,12 @@ Optional RAW disables text properties and transformation."
                                            (substring response nil (+ idx 8))))
                                     proc-info)
                            (setq response (substring response (+ idx 8)))
-                           (plist-put proc-info :thinking 'done))
-                  (setq response (cons 'reasoning response)))
-              (if (string-match-p "^ *<think>" response)
-                  (progn (setq response (cons 'reasoning response))
-                         (plist-put proc-info :thinking t))
-                (plist-put proc-info :thinking 'done))))
-          (funcall (or (plist-get proc-info :callback)
-                       #'gptel-curl--stream-insert-response)
-                   response proc-info))))))
+                           (plist-put proc-info :reasoning 'done))
+                  (setq response (cons 'reasoning response))))))
+            (unless (string= response "") ;Response callback
+              (funcall (or (plist-get proc-info :callback)
+                           #'gptel-curl--stream-insert-response)
+                       response proc-info))))))))
 
 (cl-defgeneric gptel-curl--parse-stream (backend proc-info)
   "Stream parser for gptel-curl.
@@ -361,14 +392,17 @@ PROCESS and _STATUS are process parameters."
         (gptel--fsm-transition fsm)     ;WAIT -> TYPE
         (when error (plist-put proc-info :error error))
         (when (or response (not (member http-status '("200" "100"))))
-          (when (string-match-p "^ *<think>\n" response)
-            (when-let* ((idx (string-search "</think>\n" response)))
-              (with-demoted-errors "gptel callback error: %S"
-                (funcall proc-callback
-                         (cons 'reasoning (substring response nil (+ idx 8)))
-                         proc-info))
-              (setq response
-                    (string-trim-left (substring response (+ idx 8))))))
+          (if (string-match-p "^ *<think>\n" response)
+              (when-let* ((idx (string-search "</think>\n" response)))
+                (with-demoted-errors "gptel callback error: %S"
+                  (funcall proc-callback
+                           (cons 'reasoning (substring response nil (+ idx 8)))
+                           proc-info))
+                (setq response
+                      (string-trim-left (substring response (+ idx 8)))))
+            (when-let* ((reasoning (plist-get proc-info :reasoning))
+                        ((stringp reasoning)))
+              (funcall proc-callback (cons 'reasoning reasoning) proc-info)))
           (with-demoted-errors "gptel callback error: %S"
             (funcall proc-callback response proc-info))))
       (gptel--fsm-transition fsm))      ;TYPE -> next
