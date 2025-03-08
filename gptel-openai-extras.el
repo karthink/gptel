@@ -312,7 +312,7 @@ parameters."
 
 ;;;###autoload
 (cl-defun gptel-make-deepseek
-    (name &key curl-args models stream key request-params
+    (name &key curl-args stream key request-params
           (header (lambda () (when-let (key (gptel--get-api-key))
                           `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.deepseek.com")

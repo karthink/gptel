@@ -357,7 +357,7 @@ Optional RAW disables text properties and transformation."
                            (setq response (substring response (+ idx 8)))
                            (plist-put proc-info :reasoning 'done))
                   (setq response (cons 'reasoning response))))))
-            (unless (string= response "") ;Response callback
+            (unless (equal response "") ;Response callback
               (funcall (or (plist-get proc-info :callback)
                            #'gptel-curl--stream-insert-response)
                        response proc-info))))))))
@@ -391,7 +391,7 @@ PROCESS and _STATUS are process parameters."
         (plist-put proc-info :status http-msg)
         (gptel--fsm-transition fsm)     ;WAIT -> TYPE
         (when error (plist-put proc-info :error error))
-        (when (or response (not (member http-status '("200" "100"))))
+        (when response                  ;Look for a reasoning block
           (if (string-match-p "^ *<think>\n" response)
               (when-let* ((idx (string-search "</think>\n" response)))
                 (with-demoted-errors "gptel callback error: %S"
@@ -402,7 +402,8 @@ PROCESS and _STATUS are process parameters."
                       (string-trim-left (substring response (+ idx 8)))))
             (when-let* ((reasoning (plist-get proc-info :reasoning))
                         ((stringp reasoning)))
-              (funcall proc-callback (cons 'reasoning reasoning) proc-info)))
+              (funcall proc-callback (cons 'reasoning reasoning) proc-info))))
+        (when (or response (not (member http-status '("200" "100"))))
           (with-demoted-errors "gptel callback error: %S"
             (funcall proc-callback response proc-info))))
       (gptel--fsm-transition fsm))      ;TYPE -> next

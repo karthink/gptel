@@ -2685,8 +2685,8 @@ the response is inserted into the current buffer after point."
                              (plist-put info :status http-msg)
                              (gptel--fsm-transition fsm) ;WAIT -> TYPE
                              (when error (plist-put info :error error))
-                             (when (or response (not (member http-status '("200" "100"))))
-                               (if (string-match-p "^ *<think>\n" response) ;Look for a reasoning block
+                             (when response ;Look for a reasoning block
+                               (if (string-match-p "^ *<think>\n" response)
                                    (when-let* ((idx (string-search "</think>\n" response)))
                                      (with-demoted-errors "gptel callback error: %S"
                                        (funcall callback
@@ -2697,7 +2697,8 @@ the response is inserted into the current buffer after point."
                                                      (substring response (+ idx 8)))))
                                  (when-let* ((reasoning (plist-get info :reasoning))
                                              ((stringp reasoning)))
-                                   (funcall callback (cons 'reasoning reasoning) info)))
+                                   (funcall callback (cons 'reasoning reasoning) info))))
+                             (when (or response (not (member http-status '("200" "100"))))
                                (with-demoted-errors "gptel callback error: %S"
                                  (funcall callback response info)))
                              (gptel--fsm-transition fsm) ;TYPE -> next
