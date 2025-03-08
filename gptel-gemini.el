@@ -105,14 +105,6 @@ list."
 
 (cl-defmethod gptel--request-data ((backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
-  ;; HACK (backwards compatibility) Prepend the system message to the first user
-  ;; prompt, but only for gemini-pro.
-  (when (and (equal gptel-model 'gemini-pro) gptel--system-message)
-    (cl-callf
-        (lambda (msg)
-          (vconcat `((:text ,(concat gptel--system-message "\n\n"))) msg))
-        (thread-first (car prompts)
-                      (plist-get :parts))))
   (let ((prompts-plist
          `(:contents [,@prompts]
            :safetySettings [(:category "HARM_CATEGORY_HARASSMENT"
@@ -124,10 +116,7 @@ list."
                             (:category "HARM_CATEGORY_HATE_SPEECH"
                              :threshold "BLOCK_NONE")]))
         params)
-    ;; HACK only gemini-pro doesn't support system messages.  Need a less hacky
-    ;; way to do this.
-    (if (and gptel--system-message
-             (not (equal gptel-model 'gemini-pro)))
+    (if gptel--system-message
         (plist-put prompts-plist :system_instruction
                    `(:parts (:text ,gptel--system-message))))
     (when gptel-use-tools
@@ -368,15 +357,6 @@ files in the context."
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
      :cutoff-date "2024-12")
-    (gemini-pro
-     :description "The previous generation of Google's multimodal AI model"
-     :capabilities (tool-use json media)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html")
-     :context-window 32
-     :input-cost 0.50
-     :output-cost 1.50
-     :cutoff-date "2023-02")
     (gemini-2.0-flash
      :description "Next gen, high speed, multimodal for a diverse variety of tasks"
      :capabilities (tool-use json media)
@@ -478,7 +458,7 @@ For a list of currently recognized plist keys, see
 including both kinds of specs:
 
 :models
-\\='(gemini-pro                            ;Simple specs
+\\='(gemini-2.0-flash-lite              ;Simple specs
   gemini-1.5-flash
   (gemini-1.5-pro-latest                ;Full spec
    :description
