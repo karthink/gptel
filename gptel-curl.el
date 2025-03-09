@@ -273,10 +273,11 @@ Optional RAW disables text properties and transformation."
            0 (length text) '(gptel ignore front-sticky (gptel)) text))
         (gptel-curl--stream-insert-response text info t))
        ((pred stringp)
-        (with-current-buffer (get-buffer-create
-                              (plist-get info :include-reasoning))
-          (save-excursion (goto-char (point-max))
-                          (insert text))))))
+        (unless (eq text t)
+          (with-current-buffer (get-buffer-create
+                                (plist-get info :include-reasoning))
+            (save-excursion (goto-char (point-max))
+                            (insert text)))))))
     (`(tool-call . ,tool-calls)
      (gptel--display-tool-calls tool-calls info))
     (`(tool-result . ,tool-results)
