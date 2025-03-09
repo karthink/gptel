@@ -248,7 +248,6 @@ value of `gptel-org-branching-context', which see."
           (let ((major-mode 'org-mode))
             (gptel--parse-buffer gptel-backend max-entries)))))))
 
-(defun gptel--org-strip-tool-headers ()
 (defun gptel-org--strip-tool-headers ()
   "Remove all tool_call block headers and footers.
 Every line that matches will be removed entirely."
