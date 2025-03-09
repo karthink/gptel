@@ -228,7 +228,20 @@ information if the stream contains it."
                           ;; NOTE: Do NOT use `push' for this, it prepends and we lose the reference
                           (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
                       ;; old tool block continues, so continue collecting arguments in :partial_json 
-                      (push (plist-get func :arguments) (plist-get info :partial_json)))))))))
+                      (push (plist-get func :arguments) (plist-get info :partial_json)))))
+                ;; Check for reasoning blocks, currently only used by Openrouter
+                (unless (eq (plist-get info :reasoning) 'done)
+                  (if-let* ((reasoning-chunk (plist-get delta :reasoning)) ;for openrouter
+                            ((not (eq reasoning-chunk :null))))
+                      (plist-put info :reasoning
+                                 (concat (plist-get info :reasoning) reasoning-chunk))
+                    ;; Done with reasoning if we get non-empty content
+                    (if-let* ((c (plist-get delta :content))
+                              ((not (or (eq c :null) (string-empty-p c)))))
+                        (unless (plist-get info :reasoning) ;Don't overwrite existing value
+                          (if (plist-member info :reasoning) ;Is this a reasoning model?
+                              (plist-put info :reasoning t) ;End of streaming reasoning block
+                            (plist-put info :reasoning 'done)))))))))) ;Not using a reasoning model
       (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
@@ -245,7 +258,10 @@ Mutate state INFO with response metadata."
                (map-nested-elt response '(:usage :completion_tokens)))
     ;; OpenAI returns either non-blank text content or a tool call, not both
     (if (and content (not (or (eq content :null) (string-empty-p content))))
-        content
+        (prog1 content
+          (when-let* ((reasoning (plist-get message :reasoning)) ;look for reasoning blocks
+                      ((and (stringp reasoning) (not (string-empty-p reasoning)))))
+            (plist-put info :reasoning reasoning)))
       (prog1 nil                        ; Look for tool calls only if no content
         (when-let* ((tool-calls (plist-get message :tool_calls)))
           (gptel--inject-prompt    ; First add the tool call to the prompts list
