@@ -228,8 +228,8 @@ value of `gptel-org-branching-context', which see."
                        do (insert-buffer-substring org-buf start end)
                        (goto-char (point-min)))
               (goto-char (point-max))
-              (gptel--org-unescape-tool-results)
-              (gptel--org-strip-tool-headers)
+              (gptel-org--unescape-tool-results)
+              (gptel-org--strip-tool-headers)
               (let ((major-mode 'org-mode))
                 (gptel--parse-buffer gptel-backend max-entries)))))
       ;; Create prompt the usual way
@@ -243,12 +243,13 @@ value of `gptel-org-branching-context', which see."
             (set (make-local-variable sym)
                  (buffer-local-value sym org-buf)))
           (insert-buffer-substring org-buf beg end)
-          (gptel--org-unescape-tool-results)
-          (gptel--org-strip-tool-headers)
+          (gptel-org--unescape-tool-results)
+          (gptel-org--strip-tool-headers)
           (let ((major-mode 'org-mode))
             (gptel--parse-buffer gptel-backend max-entries)))))))
 
 (defun gptel--org-strip-tool-headers ()
+(defun gptel-org--strip-tool-headers ()
   "Remove all tool_call block headers and footers.
 Every line that matches will be removed entirely."
   (save-excursion
@@ -260,7 +261,7 @@ Every line that matches will be removed entirely."
       (delete-region (match-beginning 0)
                      (min (point-max) (1+ (line-end-position)))))))
 
-(defun gptel--org-unescape-tool-results ()
+(defun gptel-org--unescape-tool-results ()
   "Undo escapes done to keep results from escaping blocks.
 Scans backward for gptel tool text property, reads the arguments, then
 unescapes the remainder."
