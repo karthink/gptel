@@ -201,7 +201,7 @@ information if the stream contains it."
                   (cl-loop
                    for tool-call in tool-use ; Construct the call specs for running the function calls
                    for spec = (plist-get tool-call :function)
-                   collect (list :id (plist-get tool-call :id)
+                   collect (list :id (gptel--openai-unformat-tool-id (plist-get tool-call :id))
                                  :name (plist-get spec :name)
                                  :args (ignore-errors (gptel--json-read-string
                                                        (plist-get spec :arguments))))
@@ -228,7 +228,22 @@ information if the stream contains it."
                           ;; NOTE: Do NOT use `push' for this, it prepends and we lose the reference
                           (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
                       ;; old tool block continues, so continue collecting arguments in :partial_json 
-                      (push (plist-get func :arguments) (plist-get info :partial_json)))))))))
+                      (push (plist-get func :arguments) (plist-get info :partial_json)))))
+                ;; Check for reasoning blocks, currently only used by Openrouter
+                ;; FIXME: Should this be moved to a dedicated Openrouter backend?
+                (unless (or (eq (plist-get info :reasoning) 'done)
+                            (not (plist-member delta :reasoning)))
+                  (if-let* ((reasoning-chunk (plist-get delta :reasoning)) ;for openrouter
+                            ((not (eq reasoning-chunk :null))))
+                      (plist-put info :reasoning
+                                 (concat (plist-get info :reasoning) reasoning-chunk))
+                    ;; Done with reasoning if we get non-empty content
+                    (if-let* ((c (plist-get delta :content))
+                              ((not (or (eq c :null) (string-empty-p c)))))
+                        (unless (plist-get info :reasoning) ;Don't overwrite existing value
+                          (if (plist-member info :reasoning) ;Is this a reasoning model?
+                              (plist-put info :reasoning t) ;End of streaming reasoning block
+                            (plist-put info :reasoning 'done)))))))))) ;Not using a reasoning model
       (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
@@ -245,7 +260,10 @@ Mutate state INFO with response metadata."
                (map-nested-elt response '(:usage :completion_tokens)))
     ;; OpenAI returns either non-blank text content or a tool call, not both
     (if (and content (not (or (eq content :null) (string-empty-p content))))
-        content
+        (prog1 content
+          (when-let* ((reasoning (plist-get message :reasoning)) ;look for reasoning blocks
+                      ((and (stringp reasoning) (not (string-empty-p reasoning)))))
+            (plist-put info :reasoning reasoning)))
       (prog1 nil                        ; Look for tool calls only if no content
         (when-let* ((tool-calls (plist-get message :tool_calls)))
           (gptel--inject-prompt    ; First add the tool call to the prompts list
@@ -257,7 +275,7 @@ Mutate state INFO with response metadata."
                                         (gptel--json-read-string
                                          (plist-get call-spec :arguments))))
            (plist-put call-spec :arguments nil)
-           (plist-put call-spec :id (plist-get tool-call :id))
+           (plist-put call-spec :id (gptel--openai-unformat-tool-id (plist-get tool-call :id)))
            collect call-spec into tool-use
            finally (plist-put info :tool-use tool-use)))))))
 
@@ -305,9 +323,20 @@ Mutate state INFO with response metadata."
    (lambda (tool-call)
      (list
       :role "tool"
-      :content (plist-get tool-call :result)
-      :tool_call_id (plist-get tool-call :id)))
+      :tool_call_id (gptel--openai-format-tool-id
+                     (plist-get tool-call :id))
+      :content (plist-get tool-call :result)))
    tool-use))
+
+(defun gptel--openai-format-tool-id (tool-id)
+  (format "call_%s" tool-id))
+
+(defun gptel--openai-unformat-tool-id (tool-id)
+  (or (and (string-match "call_\\(.+\\)" tool-id)
+           (match-string 1 tool-id))
+      (progn
+        (message "Unexpected tool_call_id format: %s" tool-id)
+        tool-id)))
 
 ;; NOTE: No `gptel--inject-prompt' method required for gptel-openai, since this
 ;; is handled by its defgeneric implementation
@@ -318,7 +347,7 @@ Mutate state INFO with response metadata."
            if text collect
            (list :role (if role "user" "assistant") :content text)))
 
-(cl-defmethod gptel--parse-buffer ((_backend gptel-openai) &optional max-entries)
+(cl-defmethod gptel--parse-buffer ((backend gptel-openai) &optional max-entries)
   (let ((prompts) (prev-pt (point))
         (include-media (and gptel-track-media
                             (or (gptel--model-capable-p 'media)
@@ -330,28 +359,47 @@ Mutate state INFO with response metadata."
                                 (point) 'gptel nil (point-min))))
           (pcase (get-char-property (point) 'gptel)
             ('response
-             (push (list :role "assistant"
-                         :content (buffer-substring-no-properties (point) prev-pt))
-                   prompts))
+             (when-let* ((content (gptel--trim-prefixes
+                                   (buffer-substring-no-properties (point) prev-pt))))
+               (push (list :role "assistant" :content content) prompts)))
+            (`(tool . ,id)
+             (save-excursion
+               (condition-case nil
+                   (let* ((tool-call (read (current-buffer)))
+                          (name (plist-get tool-call :name))
+                          (arguments (gptel--json-encode (plist-get tool-call :args))))
+                     (plist-put tool-call :id id)
+                     (plist-put tool-call :result
+                                (string-trim (buffer-substring-no-properties
+                                              (point) prev-pt)))
+                     (push (car (gptel--parse-tool-results backend (list tool-call)))
+                           prompts)
+                     (push (list :role "assistant"
+                                 :tool_calls
+                                 (vector (list :type "function"
+                                               :id (gptel--openai-format-tool-id id)
+                                               :function `( :name ,name
+                                                            :arguments ,arguments))))
+                           prompts))
+                 ((end-of-file invalid-read-syntax)
+                  (message (format "Could not parse tool-call %s on line %s"
+                                   id (line-number-at-pos (point))))))))
+            ('ignore)
             ('nil
+             (and max-entries (cl-decf max-entries))
              (if include-media
-                 (push (list :role "user"
-                             :content
-                             (gptel--openai-parse-multipart
-                              (gptel--parse-media-links major-mode (point) prev-pt)))
-                       prompts)
-               (push (list :role "user"
-                           :content
-                           (gptel--trim-prefixes
-                            (buffer-substring-no-properties (point) prev-pt)))
-                     prompts))))
-          (setq prev-pt (point))
-          (and max-entries (cl-decf max-entries)))
-      (push (list :role "user"
-                  :content
-                  (gptel--trim-prefixes (buffer-substring-no-properties
-                                         (point-min) (point-max))))
-            prompts))
+                 (when-let* ((content (gptel--openai-parse-multipart
+                                       (gptel--parse-media-links major-mode
+                                                                 (point) prev-pt))))
+                   (when (> (length content) 0)
+                     (push (list :role "user" :content content) prompts)))
+               (when-let* ((content (gptel--trim-prefixes (buffer-substring-no-properties
+                                                           (point) prev-pt))))
+                 (push (list :role "user" :content content) prompts)))))
+          (setq prev-pt (point)))
+      (let ((content (string-trim (buffer-substring-no-properties
+                                    (point-min) (point-max)))))
+        (push (list :role "user" :content content) prompts)))
     prompts))
 
 ;; TODO This could be a generic function
@@ -372,8 +420,8 @@ format."
    for text = (plist-get part :text)
    for media = (plist-get part :media)
    if text do
-   (and (or (= n 1) (= n last)) (setq text (gptel--trim-prefixes text))) and
-   unless (string-empty-p text)
+   (and (or (= n 1) (= n last)) (setq text (gptel--trim-prefixes text)))
+   and if text
    collect `(:type "text" :text ,text) into parts-array end
    else if media
    collect

@@ -141,7 +141,7 @@ Store response metadata in state INFO."
            if text collect
            (list :role (if role "user" "assistant") :content text)))
 
-(cl-defmethod gptel--parse-buffer ((_backend gptel-ollama) &optional max-entries)
+(cl-defmethod gptel--parse-buffer ((backend gptel-ollama) &optional max-entries)
   (let ((prompts) (prev-pt (point))
         (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
                                                   (gptel--model-capable-p 'url)))))
@@ -152,26 +152,42 @@ Store response metadata in state INFO."
                     (not (= (point) prev-pt)))
           (pcase (get-char-property (point) 'gptel)
             ('response
-             (push (list :role "assistant"
-                         :content (buffer-substring-no-properties (point) prev-pt))
-                   prompts))
+             (when-let* ((content (gptel--trim-prefixes
+                                   (buffer-substring-no-properties (point) prev-pt))))
+               (push (list :role "assistant" :content content) prompts)))
+            (`(tool . ,_id)
+             (save-excursion
+               (condition-case nil
+                   (let* ((tool-call (read (current-buffer)))
+                          (name (plist-get tool-call :name))
+                          (arguments (plist-get tool-call :args)))
+                     (plist-put tool-call :result
+                                (string-trim (buffer-substring-no-properties
+                                              (point) prev-pt)))
+                     (push (car (gptel--parse-tool-results backend (list tool-call)))
+                           prompts)
+                     (push (list :role "assistant"
+                                 :content ""
+                                 :tool_calls `[(:function (:name ,name :arguments ,arguments))])
+                           prompts))
+                 ((end-of-file invalid-read-syntax)
+                  (message (format "Could not parse tool-call on line %s"
+                                   (line-number-at-pos (point))))))))
+            ('ignore)
             ('nil
              (if include-media
-                 (push (append '(:role "user")
-                               (gptel--ollama-parse-multipart
-                                (gptel--parse-media-links major-mode (point) prev-pt)))
-                       prompts)
-               (push (list :role "user"
-                           :content
-                           (gptel--trim-prefixes
-                            (buffer-substring-no-properties (point) prev-pt)))
-                     prompts))))
+                 (when-let* ((content (gptel--ollama-parse-multipart
+                                       (gptel--parse-media-links major-mode (point) prev-pt))))
+                   (when (> (length content) 0)
+                     (push (append '(:role "user") content) prompts)))
+               (when-let* ((content (gptel--trim-prefixes (buffer-substring-no-properties
+                                                           (point) prev-pt))))
+                 (push (list :role "user" :content content) prompts)))))
           (setq prev-pt (point))
           (and max-entries (cl-decf max-entries)))
-      (push (list :role "user"
-                  :content
-                  (string-trim (buffer-substring-no-properties (point-min) (point-max))))
-            prompts))
+      (let ((content (string-trim (buffer-substring-no-properties
+                                   (point-min) (point-max)))))
+        (push (list :role "user" :content content) prompts)))
     prompts))
 
 (defun gptel--ollama-parse-multipart (parts)
@@ -192,7 +208,7 @@ format."
    for media = (plist-get part :media)
    if text do
    (and (or (= n 1) (= n last)) (setq text (gptel--trim-prefixes text))) and
-   unless (string-empty-p text)
+   if text
    collect text into text-array end
    else if media
    collect (gptel--base64-encode media) into media-array end

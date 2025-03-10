@@ -105,14 +105,6 @@ list."
 
 (cl-defmethod gptel--request-data ((backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
-  ;; HACK (backwards compatibility) Prepend the system message to the first user
-  ;; prompt, but only for gemini-pro.
-  (when (and (equal gptel-model 'gemini-pro) gptel--system-message)
-    (cl-callf
-        (lambda (msg)
-          (vconcat `((:text ,(concat gptel--system-message "\n\n"))) msg))
-        (thread-first (car prompts)
-                      (plist-get :parts))))
   (let ((prompts-plist
          `(:contents [,@prompts]
            :safetySettings [(:category "HARM_CATEGORY_HARASSMENT"
@@ -124,10 +116,7 @@ list."
                             (:category "HARM_CATEGORY_HATE_SPEECH"
                              :threshold "BLOCK_NONE")]))
         params)
-    ;; HACK only gemini-pro doesn't support system messages.  Need a less hacky
-    ;; way to do this.
-    (if (and gptel--system-message
-             (not (equal gptel-model 'gemini-pro)))
+    (if gptel--system-message
         (plist-put prompts-plist :system_instruction
                    `(:parts (:text ,gptel--system-message))))
     (when gptel-use-tools
@@ -225,7 +214,7 @@ See generic implementation for full documentation."
            else collect (list :role "model" :parts `(:text ,text)) into prompts
            finally return prompts))
 
-(cl-defmethod gptel--parse-buffer ((_backend gptel-gemini) &optional max-entries)
+(cl-defmethod gptel--parse-buffer ((backend gptel-gemini) &optional max-entries)
   (let ((prompts) (prev-pt (point))
         (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
                                                   (gptel--model-capable-p 'url)))))
@@ -236,27 +225,44 @@ See generic implementation for full documentation."
                     (not (= (point) prev-pt)))
           (pcase (get-char-property (point) 'gptel)
             ('response
-             (push (list :role "model"
-                         :parts
-                         (list :text (buffer-substring-no-properties (point) prev-pt)))
-                   prompts))
+             (when-let* ((content (gptel--trim-prefixes
+                                   (buffer-substring-no-properties (point) prev-pt))))
+               (push (list :role "model" :parts (list :text content)) prompts)))
+            (`(tool . ,_id)
+             (save-excursion
+               (condition-case nil
+                   (let* ((tool-call (read (current-buffer)))
+                          (name (plist-get tool-call :name))
+                          (arguments  (plist-get tool-call :args)))
+                     (plist-put tool-call :result
+                                (string-trim (buffer-substring-no-properties
+                                              (point) prev-pt)))
+                     (push (gptel--parse-tool-results backend (list tool-call))
+                           prompts)
+                     (push (list :role "model"
+                                 :parts
+                                 (vector `(:functionCall ( :name ,name
+                                                           :args ,arguments))))
+                           prompts))
+                 ((end-of-file invalid-read-syntax)
+                  (message (format "Could not parse tool-call on line %s"
+                                   (line-number-at-pos (point))))))))
+            ('ignore)
             ('nil
              (if include-media
-                 (push (list :role "user"
-                             :parts (gptel--gemini-parse-multipart
-                                     (gptel--parse-media-links major-mode (point) prev-pt)))
-                       prompts)
-               (push (list :role "user"
-                           :parts
-                           `[(:text ,(gptel--trim-prefixes
-                                      (buffer-substring-no-properties (point) prev-pt)))])
-                     prompts))))
+                 (when-let* ((content (gptel--gemini-parse-multipart
+                                       (gptel--parse-media-links major-mode (point) prev-pt))))
+                   (when (> (length content) 0)
+                     (push (list :role "user" :parts content) prompts)))
+               (when-let* ((content (gptel--trim-prefixes
+                                     (buffer-substring-no-properties
+                                      (point) prev-pt))))
+                 (push (list :role "user" :parts `[(:text ,content)]) prompts)))))
           (setq prev-pt (point))
           (and max-entries (cl-decf max-entries)))
-      (push (list :role "user"
-                  :parts
-                  `[(:text ,(string-trim (buffer-substring-no-properties (point-min) (point-max))))])
-            prompts))
+      (let ((content (string-trim (buffer-substring-no-properties
+                                   (point-min) (point-max)))))
+        (push (list :role "user" :parts `[(:text ,content)]) prompts)))
     prompts))
 
 (defun gptel--gemini-parse-multipart (parts)
@@ -277,7 +283,7 @@ format."
    for media = (plist-get part :media)
    if text do
    (and (or (= n 1) (= n last)) (setq text (gptel--trim-prefixes text))) and
-   unless (string-empty-p text)
+   if text
    collect (list :text text) into parts-array end
    else if media
    collect
@@ -351,15 +357,6 @@ files in the context."
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
      :cutoff-date "2024-12")
-    (gemini-pro
-     :description "The previous generation of Google's multimodal AI model"
-     :capabilities (tool-use json media)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html")
-     :context-window 32
-     :input-cost 0.50
-     :output-cost 1.50
-     :cutoff-date "2023-02")
     (gemini-2.0-flash
      :description "Next gen, high speed, multimodal for a diverse variety of tasks"
      :capabilities (tool-use json media)
@@ -461,7 +458,7 @@ For a list of currently recognized plist keys, see
 including both kinds of specs:
 
 :models
-\\='(gemini-pro                            ;Simple specs
+\\='(gemini-2.0-flash-lite              ;Simple specs
   gemini-1.5-flash
   (gemini-1.5-pro-latest                ;Full spec
    :description

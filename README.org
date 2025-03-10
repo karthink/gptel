@@ -115,6 +115,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
     - [[#setting-options-backend-model-request-parameters-system-prompts-and-more][Setting options (backend, model, request parameters, system prompts and more)]]
     - [[#include-more-context-with-requests][Include more context with requests]]
+    - [[#handle-reasoning-content][Handle "reasoning" content]]
     - [[#tool-use-experimental][Tool use (experimental)]]
       - [[#defining-gptel-tools][Defining gptel tools]]
       - [[#selecting-tools][Selecting tools]]
@@ -668,14 +669,9 @@ The above code makes the backend available to select.  If you want it to be the 
 
 Register a backend with
 #+begin_src emacs-lisp
-;; DeepSeek offers an OpenAI compatible API
-(gptel-make-openai "DeepSeek"       ;Any name you want
-  :host "api.deepseek.com"
-  :endpoint "/chat/completions"
-  :stream t
-  :key "your-api-key"               ;can be a function that returns the key
-  :models '(deepseek-chat deepseek-coder))
-
+(gptel-make-deepseek "DeepSeek"       ;Any name you want
+  :stream t                           ;for streaming responses
+  :key "your-api-key")               ;can be a function that returns the key
 #+end_src
 
 You can pick this backend from the menu when using gptel (see [[#usage][Usage]]).
@@ -685,15 +681,10 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq gptel-model   'deepseek-chat
-      gptel-backend
-      (gptel-make-openai "DeepSeek"     ;Any name you want
-        :host "api.deepseek.com"
-        :endpoint "/chat/completions"
-        :stream t
-        :key "your-api-key"             ;can be a function that returns the key
-        :models '(deepseek-chat deepseek-coder)))
-
+(setq gptel-model   'deepseek-reasoner
+      gptel-backend (gptel-make-deepseek "DeepSeek"
+                      :stream t
+                      :key "your-api-key"))
 #+end_src
 
 #+html: </details>
@@ -887,7 +878,7 @@ gptel provides a few powerful, general purpose and flexible commands.  You can d
 2. If a region is selected, the conversation will be limited to its contents.
 
 3. Call =M-x gptel-send= with a prefix argument (~C-u~)
-   - to set chat parameters (GPT model, backend, system message etc) for this buffer,
+   - to set chat parameters (model, backend, system message etc) for this buffer,
    - include quick instructions for the next request only,
    - to add additional context -- regions, buffers or files -- to gptel,
    - to read the prompt from or redirect the response elsewhere,
@@ -1015,6 +1006,9 @@ And then browse through or remove context from the context buffer:
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/79a5ffe8-3d63-4bf7-9bf6-0457ab61bf2a" align="center" alt="Image showing gptel's context buffer.">
 
 Additionally, you can exclude files or directories in git repositories listed in the =.gitignore= file by setting the user option =gptel-context-exclude-gitignored= to =t=.  This can be especially useful when adding entire projects to the context.
+*** Handle "reasoning" content
+
+Some LLMs include in their response a "thinking" or "reasoning" block.  This text improves the quality of the LLM’s final output, but may not be interesting to you by itself.  You can decide how you would like this "reasoning" content to be handled by gptel by setting the user option =gptel-include-reasoning=.  You can include it in the LLM response (the default), omit it entirely, include it in the buffer but ignore it on subsequent conversation turns, or redirect it to another buffer.  As with most options, you can specify this behvaior from gptel's transient menu globally, buffer-locally or for the next request only.
 
 *** Tool use (experimental)
 
@@ -1335,7 +1329,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-track-response=        | Distinguish between user messages and LLM responses?           |
 | =gptel-track-media=           | Send images or other media from links?                         |
 | =gptel-confirm-tool-calls=    | Confirm all tool calls?                                        |
-| =gptel-include-tool-results=  | Include tool results should in the LLM response?               |
+| =gptel-include-tool-results=  | Include tool results in the LLM response?                      |
 | =gptel-use-header-line=       | Display status messages in header-line (default) or minibuffer |
 | =gptel-display-buffer-action= | Placement of the gptel chat buffer.                            |
 |-------------------------------+----------------------------------------------------------------|
