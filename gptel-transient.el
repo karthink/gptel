@@ -982,7 +982,7 @@ querying the LLM."
   :set-value #'gptel--set-with-scope
   :display-if-true "Yes"
   :display-if-false "No"
-  :key "-v")
+  :key "-R")
 
 (transient-define-infix gptel--infix-track-media ()
   "Send media from \"standalone\" links in the prompt.
@@ -1124,7 +1124,7 @@ Available behaviors are
   :display-map '((nil    . "No")
                  (ignore . "and ignore")
                  (t      . "with response"))
-  :key "-r"
+  :key "-v"
   :prompt "Include reasoning: "
   :reader (lambda (prompt &rest _)
             (let* ((choices '(("no"     . nil)
