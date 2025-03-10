@@ -232,7 +232,7 @@ key (more secure) for the active backend."
 
 This option is ignored unless
 - the LLM backend supports streaming, and
-- Curl is in use (see `gptel-use-curl')
+- Curl is in use (see `gptel-curl-path')
 
 When set to nil, Emacs waits for the full response and inserts it
 all at once.  This wait is asynchronous.
@@ -241,9 +241,14 @@ all at once.  This wait is asynchronous.
   :type 'boolean)
 (make-obsolete-variable 'gptel-playback 'gptel-stream "0.3.0")
 
-(defcustom gptel-use-curl (and (executable-find "curl") t)
-  "Whether gptel should prefer Curl when available."
-  :type 'boolean)
+(defcustom gptel-curl-path "curl"
+  "The path to the curl executable. Set to nil to disable the use of curl."
+  :group 'gptel
+  :type '(choice (const :tag "Do not use curl" nil)
+                 (const :tag "System curl" "curl")
+                 (file :tag "Custom path" :must-match t)))
+
+(define-obsolete-variable-alias 'gptel-use-curl 'gptel-curl-path "0.9.8")
 
 (defcustom gptel-org-convert-response t
   "Whether gptel should convert Markdown responses to Org markup.
@@ -1636,40 +1641,42 @@ implementation, used by OpenAI-compatible APIs and Ollama."
          :name (gptel-tool-name tool)
          :description (gptel-tool-description tool))
         (and (gptel-tool-args tool)     ;no parameters if args is nil
-             (list
-              :parameters
-              (list :type "object"
-                    :properties
-                    (cl-loop
-                     for arg in (gptel-tool-args tool)
-                     for name = (plist-get arg :name)
-                     for type = (plist-get arg :type)
-                     for newname = (or (and (keywordp name) name)
-                                       (make-symbol (concat ":" name)))
-                     for enum = (plist-get arg :enum)
-                     append
-                     (list newname
-                           `(:type ,type
-                             :description ,(plist-get arg :description)
-                             ,@(if enum (list :enum (vconcat enum)))
-                             ,@(cond
-                                ((equal type "object")
-                                 (list :properties (plist-get arg :properties)
-                                       :required (or (plist-get arg :required)
-                                                     (vector))
-                                       :additionalProperties :json-false))
-                                ((equal type "array")
-                                 ;; TODO(tool) If the item type is an object,
-                                 ;; add :additionalProperties to it
-                                 (list :items (plist-get arg :items)))))))
-                    :required
-                    (vconcat
-                     (delq nil (mapcar
-                                (lambda (arg) (and (not (plist-get arg :optional))
-                                              (plist-get arg :name)))
-                                (gptel-tool-args tool))))
-                    :additionalProperties :json-false))))))
+             `(:parameters ,(gptel--tool-args-to-json-schema (gptel-tool-args tool)))))))
     (ensure-list tools))))
+
+(defun gptel--tool-args-to-json-schema (tool-args)
+  "Convert TOOL-ARGS into a JSON schema object."
+  (list :type "object"
+        :properties
+        (cl-loop
+         for arg in tool-args
+         for name = (plist-get arg :name)
+         for type = (plist-get arg :type)
+         for newname = (or (and (keywordp name) name)
+                           (make-symbol (concat ":" name)))
+         for enum = (plist-get arg :enum)
+         append
+         (list newname
+               `(:type ,type
+                       :description ,(plist-get arg :description)
+                       ,@(if enum (list :enum (vconcat enum)))
+                       ,@(cond
+                          ((equal type "object")
+                           (list :properties (plist-get arg :properties)
+                                 :required (or (plist-get arg :required)
+                                               (vector))
+                                 :additionalProperties :json-false))
+                          ((equal type "array")
+                           ;; TODO(tool) If the item type is an object,
+                           ;; add :additionalProperties to it
+                           (list :items (plist-get arg :items)))))))
+        :required
+        (vconcat
+         (delq nil (mapcar
+                    (lambda (arg) (and (not (plist-get arg :optional))
+                                       (plist-get arg :name)))
+                    tool-args)))
+        :additionalProperties :json-false))
 
 (cl-defgeneric gptel--parse-tool-results (backend results)
   "Return a BACKEND-appropriate prompt containing tool call RESULTS.
@@ -1896,7 +1903,7 @@ buffer."
       (when (plist-get info key)
         (plist-put info key nil))))
   (funcall
-   (if gptel-use-curl
+   (if gptel-curl-path
        #'gptel-curl-get-response
      #'gptel--url-get-response)
    fsm)
@@ -2251,7 +2258,7 @@ be used to rerun or continue the request at a later time."
               (car directive))))
          ;; TODO(tool) Limit tool use to capable models after documenting :capabilities
          ;; (gptel-use-tools (and (gptel--model-capable-p 'tool-use) gptel-use-tools))
-         (stream (and stream gptel-use-curl
+         (stream (and stream gptel-curl-path
                       ;; HACK(tool): no stream if Ollama + tools.  Need to find a better way
                       (not (and (eq (type-of gptel-backend) 'gptel-ollama)
                                 gptel-tools gptel-use-tools))
@@ -2326,7 +2333,7 @@ BUF defaults to the current buffer."
       (and-let* ((cb (plist-get info :callback))
                  ((functionp cb)))
            (funcall cb 'abort info)))
-    (if gptel-use-curl
+    (if gptel-curl-path
         (progn                        ;Clean up Curl process
           (setf (alist-get proc gptel--request-alist nil 'remove) nil)
           (set-process-sentinel proc #'ignore)
