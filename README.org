@@ -1316,6 +1316,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-directives=    | Alist of system directives, can switch on the fly.      |
 | =gptel-max-tokens=    | Maximum token count (in query + response).              |
 | =gptel-temperature=   | Randomness in response text, 0 to 2.                    |
+| =gptel-cache=         | Cache prompts, system message or tools (Anthropic only) |
 | =gptel-use-context=   | How/whether to include additional context               |
 | =gptel-use-tools=     | Disable, allow or force LLM tool-use                    |
 | =gptel-tools=         | List of tools to include with requests                  |

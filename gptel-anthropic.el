@@ -203,15 +203,25 @@ Mutate state INFO with response metadata."
            :max_tokens ,(or gptel-max-tokens 1024)
            :messages [,@prompts])))
     (when gptel--system-message
-      (plist-put prompts-plist :system gptel--system-message))
+      (if (and (or (eq gptel-cache t) (memq 'system gptel-cache))
+               (gptel--model-capable-p 'cache))
+          ;; gptel--system-message is guaranteed to be a string
+          (plist-put prompts-plist :system
+                     `[(:type "text" :text ,gptel--system-message
+                        :cache_control (:type "ephemeral"))])
+        (plist-put prompts-plist :system gptel--system-message)))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-use-tools
       (when (eq gptel-use-tools 'force)
         (plist-put prompts-plist :tool_choice '(:type "any")))
       (when gptel-tools
-        (plist-put prompts-plist :tools
-                   (gptel--parse-tools backend gptel-tools))))
+        (let ((tools-array (gptel--parse-tools backend gptel-tools)))
+          (plist-put prompts-plist :tools tools-array)
+          (when (and (or (eq gptel-cache t) (memq 'tool gptel-cache))
+                     (gptel--model-capable-p 'cache))
+            (nconc (aref tools-array (1- (length tools-array)))
+                   '(:cache_control (:type "ephemeral")))))))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
      prompts-plist
@@ -294,12 +304,20 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
         (message "Unexpected tool_call_id format: %s" tool-id)
         tool-id)))
 
-(cl-defmethod gptel--parse-list ((_backend gptel-anthropic) prompt-list)
+(cl-defmethod gptel--parse-list ((backend gptel-anthropic) prompt-list)
   (cl-loop for text in prompt-list
            for role = t then (not role)
-           if text collect
-           (list :role (if role "user" "assistant")
-                 :content `[(:type "text" :text ,text)])))
+           if text
+           collect (list :role (if role "user" "assistant")
+                         :content `[(:type "text" :text ,text)])
+           into prompts
+           finally do
+           ;; cache messages if required: add cache_control to the last message
+           (if (and (or (eq gptel-cache t) (memq 'message gptel-cache))
+                    (gptel--model-capable-p 'cache))
+               (nconc (aref (plist-get (car (last prompts)) :content) 0)
+                      '(:cache_control (:type "ephemeral"))))
+           finally return prompts))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-anthropic) &optional max-entries)
   (let ((prompts) (prev-pt (point))
@@ -360,6 +378,16 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
         ;; XXX fails if content is empty.  The correct error behavior is left to
         ;; a future discussion.
         (push (list :role "user" :content content) prompts)))
+    ;; Cache messages if required: add cache_control to the last message
+    (if (and (or (eq gptel-cache t) (memq 'message gptel-cache))
+             (gptel--model-capable-p 'cache))
+        (let ((last-message (plist-get (car (last prompts)) :content)))
+          (if (stringp last-message)
+              (plist-put
+               (car (last prompts)) :content
+               `[(:type "text" :text ,last-message :cache_control (:type "ephemeral"))])
+            (nconc (aref (plist-get (car (last prompts)) :content) 0)
+                   '(:cache_control (:type "ephemeral"))))))
     prompts))
 
 (defun gptel--anthropic-parse-multipart (parts)
@@ -467,7 +495,7 @@ files in the context."
      :cutoff-date "2024-04")
     (claude-3-5-haiku-20241022
      :description "Intelligence at blazing speeds"
-     :capabilities (tool-use)
+     :capabilities (tool-use cache)
      :context-window 200
      :input-cost 1.00
      :output-cost 5.00
@@ -490,7 +518,7 @@ files in the context."
      :cutoff-date "2023-08")
     (claude-3-haiku-20240307
      :description "Fast and most compact model for near-instant responsiveness"
-     :capabilities (tool-use)
+     :capabilities (tool-use cache)
      :context-window 200
      :input-cost 0.25
      :output-cost 1.25
