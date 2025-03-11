@@ -506,7 +506,12 @@ Setting it to (message system) will cache the system message and
 the conversation text.
 
 Setting it to (message system tool) will cache everything and is
-the same as t.")
+the same as t."
+  :type '(choice
+          (const :tag "Cache everything" t)
+          (const :tag "Do not cache" nil)
+          (repeat symbol))
+  :group 'gptel)
 
 (defvar gptel--known-backends)
 
@@ -2881,6 +2886,8 @@ INTERACTIVEP is t when gptel is called interactively."
 
 
 ;;; Reasoning content UI
+(declare-function gptel-curl--stream-insert-response "gptel-curl")
+
 (defun gptel--display-reasoning-stream (text info)
   "Show reasoning TEXT in an appropriate location.
 

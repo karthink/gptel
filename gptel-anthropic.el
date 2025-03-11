@@ -304,7 +304,7 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
         (message "Unexpected tool_call_id format: %s" tool-id)
         tool-id)))
 
-(cl-defmethod gptel--parse-list ((backend gptel-anthropic) prompt-list)
+(cl-defmethod gptel--parse-list ((_backend gptel-anthropic) prompt-list)
   (cl-loop for text in prompt-list
            for role = t then (not role)
            if text
