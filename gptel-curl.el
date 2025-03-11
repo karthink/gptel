@@ -259,25 +259,7 @@ Optional RAW disables text properties and transformation."
            (insert response)
            (run-hooks 'gptel-post-stream-hook)))))
     (`(reasoning . ,text)
-     (pcase (plist-get info :include-reasoning)
-       ('nil)
-       ('t
-        (if (eq text t)
-            (gptel-curl--stream-insert-response
-             gptel-response-separator info t)
-          (gptel-curl--stream-insert-response text info)))
-       ('ignore
-        (if (eq text t)
-            (setq text gptel-response-separator)
-          (add-text-properties
-           0 (length text) '(gptel ignore front-sticky (gptel)) text))
-        (gptel-curl--stream-insert-response text info t))
-       ((pred stringp)
-        (unless (eq text t)
-          (with-current-buffer (get-buffer-create
-                                (plist-get info :include-reasoning))
-            (save-excursion (goto-char (point-max))
-                            (insert text)))))))
+     (gptel--display-reasoning-stream text info))
     (`(tool-call . ,tool-calls)
      (gptel--display-tool-calls tool-calls info))
     (`(tool-result . ,tool-results)

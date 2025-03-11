@@ -229,7 +229,7 @@ value of `gptel-org-branching-context', which see."
                        (goto-char (point-min)))
               (goto-char (point-max))
               (gptel-org--unescape-tool-results)
-              (gptel-org--strip-tool-headers)
+              (gptel-org--strip-block-headers)
               (let ((major-mode 'org-mode))
                 (gptel--parse-buffer gptel-backend max-entries)))))
       ;; Create prompt the usual way
@@ -244,19 +244,25 @@ value of `gptel-org-branching-context', which see."
                  (buffer-local-value sym org-buf)))
           (insert-buffer-substring org-buf beg end)
           (gptel-org--unescape-tool-results)
-          (gptel-org--strip-tool-headers)
+          (gptel-org--strip-block-headers)
           (let ((major-mode 'org-mode))
             (gptel--parse-buffer gptel-backend max-entries)))))))
 
 (defun gptel-org--strip-tool-headers ()
   "Remove all tool_call block headers and footers.
 Every line that matches will be removed entirely."
+(defun gptel-org--strip-block-headers ()
+  "Remove all gptel-specific block headers and footers.
+Every line that matches will be removed entirely.
+
+This removal is necessary to avoid auto-mimicry by LLMs."
   (save-excursion
     (goto-char (point-min))
-    (while (re-search-forward (rx line-start (literal "#+")
-                                  (or (literal "begin") (literal "end"))
-                                  (literal "_tool"))
-                              nil t)
+    (while (re-search-forward
+            (rx line-start (literal "#+")
+                (or (literal "begin") (literal "end"))
+                (or (literal "_tool") (literal "_reasoning")))
+            nil t)
       (delete-region (match-beginning 0)
                      (min (point-max) (1+ (line-end-position)))))))
 

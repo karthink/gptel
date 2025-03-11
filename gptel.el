@@ -2465,18 +2465,34 @@ Optional RAW disables text properties and transformation."
              ;; for uniformity with streaming responses
              (set-marker-insertion-type tracking-marker t)))))
       (`(reasoning . ,text)
-       (pcase (plist-get info :include-reasoning)
-         ('t (gptel--insert-response text info))
-         ('nil)
-         ('ignore
-          (add-text-properties
-           0 (length text) '(gptel ignore front-sticky (gptel)) text)
-          (gptel--insert-response text info t))
-         ((pred stringp)
-          (with-current-buffer (get-buffer-create
-                                (plist-get info :include-reasoning))
-            (save-excursion (goto-char (point-max))
-                            (insert text))))))
+       (when-let* ((include (plist-get info :include-reasoning)))
+         (if (stringp include)
+             (with-current-buffer (get-buffer-create
+                                   (plist-get info :include-reasoning))
+               (save-excursion (goto-char (point-max)) (insert text)))
+           (with-current-buffer (marker-buffer start-marker)
+             (let ((blocks (if (derived-mode-p 'org-mode)
+                               `("#+begin_reasoning\n" . ,(concat "\n#+end_reasoning"
+                                                           gptel-response-separator))
+                             ;; TODO(reasoning) remove properties and strip instead
+                             (cons (propertize "``` reasoning\n" 'gptel 'ignore)
+                                   (concat (propertize "\n```" 'gptel 'ignore)
+                                           gptel-response-separator)))))
+               (if (eq include 'ignore)
+                   (progn
+                     (add-text-properties
+                      0 (length text) '(gptel ignore front-sticky (gptel)) text)
+                     (gptel--insert-response
+                      (concat (car blocks) text (cdr blocks)) info t))
+                 (gptel--insert-response (car blocks) info t)
+                 (gptel--insert-response text info)
+                 (gptel--insert-response (cdr blocks) info t))
+               (when (derived-mode-p 'org-mode) ;fold block
+                 (save-excursion
+                   (goto-char (plist-get info :tracking-marker))
+                   (search-backward "#+end_reasoning" start-marker t)
+                   (when (looking-at "^#\\+end_reasoning")
+                     (org-cycle)))))))))
       (`(tool-call . ,tool-calls)
        (gptel--display-tool-calls tool-calls info))
       (`(tool-result . ,tool-results)
@@ -2833,6 +2849,59 @@ INTERACTIVEP is t when gptel is called interactively."
       (message "Send your query with %s!"
                (substitute-command-keys "\\[gptel-send]")))
     (current-buffer)))
+
+
+;;; Reasoning content UI
+(defun gptel--display-reasoning-stream (text info)
+  "Show reasoning TEXT in an appropriate location.
+
+INFO is the request INFO, see `gptel--url-get-response'.  This is
+for streaming responses only."
+  (when-let* ((include (plist-get info :include-reasoning)))
+    (if (stringp include)
+        (unless (eq text t)
+          (with-current-buffer (get-buffer-create include)
+            (save-excursion (goto-char (point-max))
+                            (insert text))))
+      (let* ((reasoning-marker (plist-get info :reasoning-marker))
+             (tracking-marker (plist-get info :tracking-marker))
+             (start-marker (plist-get info :position)))
+        (with-current-buffer (marker-buffer start-marker)
+          (if (eq text t)               ;end of stream
+              (progn
+                (gptel-curl--stream-insert-response
+                 (concat (if (derived-mode-p 'org-mode)
+                             "\n#+end_reasoning"
+                           ;; TODO(reasoning) remove properties and strip instead
+                           (propertize "\n```" 'gptel 'ignore))
+                         gptel-response-separator)
+                 info t)
+                (when (derived-mode-p 'org-mode) ;fold block
+                  (ignore-errors
+                    (save-excursion
+                      (goto-char tracking-marker)
+                      (search-backward "#+end_reasoning" start-marker t)
+                      (when (looking-at "^#\\+end_reasoning")
+                        (org-cycle))))))
+            (unless (and reasoning-marker tracking-marker
+                         (= reasoning-marker tracking-marker))
+              (gptel-curl--stream-insert-response
+               (if (derived-mode-p 'org-mode)
+                   "#+begin_reasoning\n"
+                 ;; TODO(reasoning) remove properties and strip instead
+                 (propertize "``` reasoning\n" 'gptel 'ignore))
+               info t))
+            (if (eq include 'ignore)
+                (progn
+                  (add-text-properties
+                   0 (length text) '(gptel ignore front-sticky (gptel)) text)
+                  (gptel-curl--stream-insert-response text info t))
+              (gptel-curl--stream-insert-response text info)))
+          (setq tracking-marker (plist-get info :tracking-marker))
+          (if reasoning-marker
+              (move-marker reasoning-marker tracking-marker)
+            (plist-put info :reasoning-marker
+                       (copy-marker tracking-marker nil))))))))
 
 
 ;;; Tool use UI
