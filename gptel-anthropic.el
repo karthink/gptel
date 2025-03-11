@@ -94,7 +94,7 @@ information if the stream contains it.  Not my best work, I know."
                                                    :name (plist-get cblock :name))
                                              (plist-get info :tool-use))))
                 ("thinking" (plist-put info :reasoning (plist-get cblock :thinking))
-                 (plist-put info :thinking-block t)))))
+                 (plist-put info :reasoning-block 'in)))))
            
            ((looking-at "content_block_stop")
             (cond
@@ -111,9 +111,8 @@ information if the stream contains it.  Not my best work, I know."
                 (error (pop (plist-get info :tool-use)))) ;TODO: nreverse :tool-use list
               (plist-put info :partial_json nil))
 
-             ((plist-get info :thinking-block) ;End of reasoning block
-              (plist-put info :thinking-block nil)
-              (plist-put info :reasoning t)))) ;Signal end of reasoning stream to filter
+             ((plist-get info :reasoning-block) ;End of reasoning block
+              (plist-put info :reasoning-block t)))) ;Signal end of reasoning stream to filter
            
            ((looking-at "message_delta")
             ;; collect stop_reason, usage_tokens and prepare tools

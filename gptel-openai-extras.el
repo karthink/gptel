@@ -280,7 +280,7 @@ parameters."
 
 (cl-defmethod gptel-curl--parse-stream :before ((_backend gptel-deepseek) info)
   "Capture reasoning block stream into INFO."
-  (unless (eq (plist-get info :reasoning) 'done)
+  (unless (eq (plist-get info :reasoning-block) 'done)
     (save-excursion
       (ignore-errors
         (catch 'done
@@ -288,18 +288,17 @@ parameters."
             (unless (looking-at-p " *\\[DONE\\]")
               (when-let* ((response (gptel--json-read))
                           (delta (map-nested-elt response '(:choices 0 :delta))))
-                (if-let* ((reasoning-content (plist-get delta :reasoning_content))
-                          ((not (eq reasoning-content :null))))
+                (if-let* ((reasoning (plist-get delta :reasoning_content))
+                          ((not (eq reasoning :null))))
                     ;; :reasoning will be consumed by the gptel-request callback
                     ;; and reset by the stream filter.
                     (plist-put info :reasoning
-                               (concat (plist-get info :reasoning) reasoning-content))
+                               (concat (plist-get info :reasoning) reasoning))
                   (when-let* ((content (plist-get delta :content))
                               ((not (eq content :null))))
-                    (unless (plist-get info :reasoning) ;Don't overwrite existing value
-                      (if (plist-member delta :reasoning_content) ;Check for reasoning model
-                          (plist-put info :reasoning t) ;End of streaming reasoning block
-                        (plist-put info :reasoning 'done))) ;Not using a reasoning model
+                    (if (plist-member delta :reasoning_content) ;Check for reasoning model
+                        (plist-put info :reasoning-block t) ;End of streaming reasoning block
+                      (plist-put info :reasoning-block 'done)) ;Not using a reasoning model
                     (throw 'done t)))))))))))
 
 (cl-defmethod gptel--parse-response :before ((_backend gptel-deepseek) response info)
