@@ -1340,6 +1340,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | *Org mode UI options*         |                                                       |
 |-------------------------------+-------------------------------------------------------|
 | =gptel-org-branching-context= | Make each outline path a separate conversation branch |
+| =gptel-org-ignore-elements=   | Ignore parts of the buffer when sending a query       |
 |-------------------------------+-------------------------------------------------------|
 
 |---------------------------------+-------------------------------------------------------------|
