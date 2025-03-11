@@ -111,7 +111,7 @@ information if the stream contains it.  Not my best work, I know."
                 (error (pop (plist-get info :tool-use)))) ;TODO: nreverse :tool-use list
               (plist-put info :partial_json nil))
 
-             ((plist-get info :reasoning-block) ;End of reasoning block
+             ((eq (plist-get info :reasoning-block) 'in) ;End of reasoning block
               (plist-put info :reasoning-block t)))) ;Signal end of reasoning stream to filter
            
            ((looking-at "message_delta")
