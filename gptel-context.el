@@ -240,7 +240,9 @@ PATH should be readable as text."
          (gptel-context--add-directory path 'add))
         ((and gptel-context-exclude-gitignored
               (gptel-context--skip-file-p path))
-         (message "Skipping git-ignored file: %s" path))
+         (message (concat "Skipping git-ignored file: %s. To include these files, "
+			  "unset `gptel-context-exclude-gitignored'.")
+		  path))
         ((gptel--file-binary-p path)
          (gptel-context--add-binary-file path))
         (t (gptel-context--add-text-file path))))
