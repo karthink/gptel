@@ -919,12 +919,6 @@ Later plists in the sequence take precedence over earlier ones."
         (setq rtn (plist-put rtn p v))))
     rtn))
 
-(defun gptel--font-lock-update (beg end)
-  "Force font-lock update between BEG and END."
-  (when font-lock-mode
-    (save-excursion
-      (font-lock-fontify-region beg end))))
-
 (defun gptel-auto-scroll ()
   "Scroll window if LLM response continues below viewport.
 
@@ -1337,7 +1331,7 @@ file."
         (add-hook 'before-save-hook #'gptel--save-state nil t)
         (when (derived-mode-p 'org-mode)
           ;; Work around bug in `org-fontify-extend-region'.
-          (add-hook 'gptel-post-response-functions #'gptel--font-lock-update nil t))
+          (add-hook 'gptel-post-response-functions #'font-lock-flush nil t))
         (gptel--restore-state)
         (if gptel-use-header-line
           (setq gptel--old-header-line header-line-format
