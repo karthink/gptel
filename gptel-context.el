@@ -301,12 +301,14 @@ GIT-CACHE is a cons of git-root directory and tracked files list."
 (defalias 'gptel-add-file #'gptel-context-add-file)
 
 (defun gptel-context--git-files (dir)
-  "Return a list of git-tracked files in the Git repo at DIR."
+  "Return a list of git-tracked files in the Git repo at DIR.
+Fall back to nil (allowing all files) if Git command fails."
   (let ((default-directory dir))
     (condition-case err
         (process-lines "git" "ls-files" "--cached" "--others" "--exclude-standard")
       (error
-       (message "Error running git ls-files in %s: %S" dir err)
+       (message "Warning: Error running git ls-files in %s: %S (including all files)" dir err)
+       ;; Return nil to allow all files rather than exclude all
        nil))))
 
 (defun gptel-context--skip-file-p (file)
