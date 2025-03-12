@@ -251,7 +251,7 @@ PATH should be readable as text."
 (defalias 'gptel-add-file #'gptel-context-add-file)
 
 (defun gptel-context--git-files (dir)
-  "Return a list of unignored files in the Git repo at DIR."
+  "Return a list of git-tracked files in the Git repo at DIR."
   (let ((default-directory dir))
     (condition-case err
         (process-lines "git" "ls-files" "--cached" "--others" "--exclude-standard")
@@ -261,15 +261,14 @@ PATH should be readable as text."
 
 (defun gptel-context--skip-file-p (file)
   "Return non-nil if FILE should be skipped due to gitignore rules.
-This function assumes it will be called with a list of unignored files
+This function assumes it will be called with a list of git-tracked files
 available or will make a direct Git call for a single file check."
   (when (and gptel-context-exclude-gitignored
              (executable-find "git"))
     (when-let* ((git-root (locate-dominating-file file ".git"))
                 (rel-path (file-relative-name file git-root)))
-      ;; Get unignored files directly for this single file
-      (let ((unignored (gptel-context--git-files git-root)))
-        (not (member rel-path unignored))))))
+      (let ((git-tracked (gptel-context--git-files git-root)))
+        (not (member rel-path git-tracked))))))
 
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
