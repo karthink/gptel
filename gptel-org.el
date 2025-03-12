@@ -23,7 +23,9 @@
 ;;
 
 ;;; Code:
-(eval-when-compile (require 'cl-lib))
+(eval-when-compile
+  (require 'cl-lib)
+  (require 'gptel))
 (require 'org-element)
 (require 'outline)
 
@@ -51,6 +53,7 @@
 (declare-function gptel--parse-buffer "gptel")
 (declare-function gptel--parse-directive "gptel")
 (declare-function gptel--restore-props "gptel")
+(declare-function gptel--with-buffer-copy "gptel")
 (declare-function org-entry-get "org")
 (declare-function org-entry-put "org")
 (declare-function org-with-wide-buffer "org-macs")
@@ -236,12 +239,7 @@ value of `gptel-org-branching-context', which see."
                    do (outline-next-heading)
                    collect (point) into ends
                    finally return (cons prompt-end ends))))
-            (with-temp-buffer
-              ;; TODO(org) duplicated below
-              (dolist (sym '( gptel-backend gptel--system-message gptel-model
-                              gptel-mode gptel-track-response gptel-track-media))
-                (set (make-local-variable sym)
-                     (buffer-local-value sym org-buf)))
+            (gptel--with-buffer-copy org-buf nil nil
               (cl-loop for start in start-bounds
                        for end   in end-bounds
                        do (insert-buffer-substring org-buf start end)
@@ -250,24 +248,19 @@ value of `gptel-org-branching-context', which see."
               (gptel-org--unescape-tool-results)
               (gptel-org--strip-elements)
               (gptel-org--strip-block-headers)
-              (let ((major-mode 'org-mode))
-                (gptel--parse-buffer gptel-backend max-entries)))))
+              (when gptel-org-ignore-elements (gptel-org--strip-elements))
+              (save-excursion (run-hooks 'gptel-prompt-filter-hook))
+              (gptel--parse-buffer gptel-backend max-entries))))
       ;; Create prompt the usual way
       (let ((org-buf (current-buffer))
-            (beg (point-min))
-            (end (point-max)))
-        (with-temp-buffer
-          ;; TODO(org) duplicated above
-          (dolist (sym '( gptel-backend gptel--system-message gptel-model
-                          gptel-mode gptel-track-response gptel-track-media))
-            (set (make-local-variable sym)
-                 (buffer-local-value sym org-buf)))
-          (insert-buffer-substring org-buf beg end)
+            (beg (point-min)) (end (point-max)))
+        (gptel--with-buffer-copy org-buf beg end
           (gptel-org--unescape-tool-results)
           (gptel-org--strip-elements)
           (gptel-org--strip-block-headers)
-          (let ((major-mode 'org-mode))
-            (gptel--parse-buffer gptel-backend max-entries)))))))
+          (when gptel-org-ignore-elements (gptel-org--strip-elements))
+          (save-excursion (run-hooks 'gptel-prompt-filter-hook))
+          (gptel--parse-buffer gptel-backend max-entries))))))
 
 (defun gptel-org--strip-elements ()
   "Remove all elements in `gptel-org-ignore-elements' from the

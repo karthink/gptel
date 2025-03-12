@@ -191,9 +191,6 @@
 (require 'cl-generic)
 (require 'gptel-openai)
 
-(with-eval-after-load 'org
-  (require 'gptel-org))
-
 
 ;;; User options
 
@@ -272,6 +269,19 @@ if the command-line argument size is limited by the operating system.
 The default for windows comes from Microsoft documentation located here:
 https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa"
   :type 'natnum)
+
+(defcustom gptel-prompt-filter-hook nil
+  "Hook run to modify the buffer before sending.
+
+This hook is called in a temporary buffer containing the text to
+be sent, with the cursor at the end of the prompt.  You can use
+it to modify the buffer as required.
+
+Example: A typical use case might be to search for occurrences of
+$(cmd) and replace it with the output of the shell command cmd,
+making it easy to send the output of shell commands to the LLM."
+  :group 'gptel
+  :type 'hook)
 
 (defcustom gptel-post-request-hook nil
   "Hook run after sending a gptel request.
@@ -960,6 +970,22 @@ Note: This will move the cursor."
   `(save-excursion
      (skip-syntax-forward "w.")
      ,(macroexp-progn body)))
+
+(defmacro gptel--with-buffer-copy (buf start end &rest body)
+  "Copy gptel's local variables from BUF to a temp buffer and run BODY.
+
+If positions START and END are provided, insert that part of BUF first."
+  (declare (indent 3))
+  `(with-temp-buffer
+     (dolist (sym '( gptel-backend gptel--system-message gptel-model
+                     gptel-mode gptel-track-response gptel-track-media
+                     gptel-prompt-filter-hook))
+      (set (make-local-variable sym)
+       (buffer-local-value sym ,buf)))
+     ,(when (and start end)
+       `(insert-buffer-substring ,buf ,start ,end))
+     (let ((major-mode (buffer-local-value 'major-mode ,buf)))
+      ,@body)))
 
 (defun gptel-prompt-prefix-string ()
   "Prefix before user prompts in `gptel-mode'."
@@ -2315,12 +2341,13 @@ be used to rerun or continue the request at a later time."
             ((null prompt)
              (gptel--create-prompt start-marker))
             ((stringp prompt)
-             ;; FIXME Dear reader, welcome to Jank City:
-             (with-temp-buffer
-               (let ((gptel-model (buffer-local-value 'gptel-model buffer))
-                     (gptel-backend (buffer-local-value 'gptel-backend buffer)))
-                 (insert prompt)
-                 (gptel--create-prompt))))
+             (gptel--with-buffer-copy buffer nil nil
+               (insert prompt)
+               (save-excursion (run-hooks 'gptel-prompt-filter-hook))
+               (gptel--wrap-user-prompt-maybe
+                (gptel--parse-buffer
+                 gptel-backend (and gptel--num-messages-to-send
+                                    (* 2 gptel--num-messages-to-send))))))
             ((consp prompt) (gptel--parse-list gptel-backend prompt)))))
          (info (list :data (gptel--request-data gptel-backend full-prompt)
                      :buffer buffer
@@ -2532,6 +2559,29 @@ Optional RAW disables text properties and transformation."
       (`(tool-result . ,tool-results)
        (gptel--display-tool-results tool-results info)))))
 
+(defun gptel--wrap-user-prompt-maybe (prompts)
+  "Return PROMPTS wrapped with text and media context.
+
+This delegates to backend-specific wrap functions."
+  (prog1 prompts
+    (when gptel-context--alist
+      ;; Inject context chunks into the last user prompt if required.
+      ;; This is also the fallback for when `gptel-use-context' is set to
+      ;; 'system but the model does not support system messages.
+      (when (and gptel-use-context
+                 (or (eq gptel-use-context 'user)
+                     (gptel--model-capable-p 'nosystem))
+                 (> (length prompts) 0)) ;FIXME context should be injected
+                                        ;even when there are no prompts
+        (gptel--wrap-user-prompt gptel-backend prompts))
+      ;; Inject media chunks into the first user prompt if required.  Media
+      ;; chunks are always included with the first user message,
+      ;; irrespective of the preference in `gptel-use-context'.  This is
+      ;; because media cannot be included (in general) with system messages.
+      (when (and gptel-use-context gptel-track-media
+                 (gptel--model-capable-p 'media))
+        (gptel--wrap-user-prompt gptel-backend prompts :media)))))
+
 (defun gptel--create-prompt (&optional prompt-end)
   "Return a full conversation prompt from the contents of this buffer.
 
@@ -2551,38 +2601,23 @@ there."
       (let* ((max-entries (and gptel--num-messages-to-send
                                (* 2 gptel--num-messages-to-send)))
              (prompt-end (or prompt-end (point-max)))
+             (buf (current-buffer))
              (prompts
               (cond
                ((use-region-p)
-                ;; Narrow to region
-                (narrow-to-region (region-beginning) (region-end))
-                (goto-char (point-max))
-                (gptel--parse-buffer gptel-backend max-entries))
+                (let ((rb (region-beginning)) (re (region-end)))
+                  (gptel--with-buffer-copy buf rb re
+                    (save-excursion (run-hooks 'gptel-prompt-filter-hook))
+                    (gptel--parse-buffer gptel-backend max-entries))))
                ((derived-mode-p 'org-mode)
                 (require 'gptel-org)
                 (goto-char prompt-end)
                 (gptel-org--create-prompt prompt-end))
-               (t (goto-char prompt-end)
-                  (gptel--parse-buffer gptel-backend max-entries)))))
+               (t (gptel--with-buffer-copy buf (point-min) prompt-end
+                    (save-excursion (run-hooks 'gptel-prompt-filter-hook))
+                    (gptel--parse-buffer gptel-backend max-entries))))))
         ;; NOTE: prompts is modified in place here
-        (when gptel-context--alist
-          ;; Inject context chunks into the last user prompt if required.
-          ;; This is also the fallback for when `gptel-use-context' is set to
-          ;; 'system but the model does not support system messages.
-          (when (and gptel-use-context
-                     (or (eq gptel-use-context 'user)
-                         (gptel--model-capable-p 'nosystem))
-                     (> (length prompts) 0)) ;FIXME context should be injected
-                                             ;even when there are no prompts
-            (gptel--wrap-user-prompt gptel-backend prompts))
-          ;; Inject media chunks into the first user prompt if required.  Media
-          ;; chunks are always included with the first user message,
-          ;; irrespective of the preference in `gptel-use-context'.  This is
-          ;; because media cannot be included (in general) with system messages.
-          (when (and gptel-use-context gptel-track-media
-                     (gptel--model-capable-p 'media))
-            (gptel--wrap-user-prompt gptel-backend prompts :media)))
-        prompts))))
+        (gptel--wrap-user-prompt-maybe prompts)))))
 
 (cl-defgeneric gptel--parse-buffer (backend max-entries)
   "Parse current buffer backwards from point and return a list of prompts.
