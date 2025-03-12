@@ -182,13 +182,13 @@ the `.gitignore' file of their associated repository."
       (message "Current buffer added as context.")))))
 
 (defun gptel-context--build-git-cache (directory)
-"Build git file tracking cache for DIRECTORY.
+  "Build git file tracking cache for DIRECTORY.
 Return a cons cell `(git-root . tracked-files)' or nil if not
 applicable."
-(when (and gptel-context-exclude-git-ignored
-           (executable-find "git"))
-  (when-let ((git-root (locate-dominating-file directory ".git")))
-    (cons git-root (gptel-context--git-files git-root)))))
+  (when (and gptel-context-exclude-git-ignored
+	     (executable-find "git"))
+    (when-let ((git-root (locate-dominating-file directory ".git")))
+      (cons git-root (gptel-context--git-files git-root)))))
 
 ;;;###autoload (autoload 'gptel-add "gptel-context" "Add/remove regions or buffers from gptel's context." t)
 (defalias 'gptel-add #'gptel-context-add)
@@ -221,42 +221,42 @@ Return PATH if added, nil if ignored."
     nil))
 
 (defun gptel-context--add-directory (path action &optional git-cache)
-"Process all files in directory at PATH according to ACTION.
+  "Process all files in directory at PATH according to ACTION.
 ACTION should be either `add' or `remove'.
 Optional GIT-CACHE is a cons of git-root directory and tracked files list."
-(let* ((git-cache (or git-cache
-		      (and (eq action 'add)
-                           (gptel-context--build-git-cache path))))
-       (git-root (car-safe git-cache))
-       (git-tracked-files (cdr-safe git-cache)))
-  ;; Check if the directory itself is git-ignored
-  (if (and git-root
-           gptel-context-exclude-git-ignored
-           (file-in-directory-p path git-root)
-           (not (cl-some (lambda (f)
-                           (string-prefix-p (file-relative-name path git-root) f))
-                         git-tracked-files)))
-      ;; Skip the entire directory if it's ignored
-      (gptel-context--message-git-skipped path git-cache)
-    ;; Otherwise process files recursively
-    (dolist (file (directory-files-recursively path "." t))
-      (unless (file-directory-p file)
-        (if (and git-root
-                 gptel-context-exclude-git-ignored
-                 (not (member (file-relative-name file git-root) git-tracked-files))
-		 (eq action 'add))
-	    ;; Skip individual ignored files
-            (gptel-context--message-git-skipped file git-cache)
-          ;; Process non-ignored files
-          (pcase-exhaustive action
-	    ('add
-	     (if (gptel--file-binary-p file)
-                 (gptel-context--add-binary-file file)
-	       (gptel-context--add-text-file file)))
-	    ('remove
-	     (setf (alist-get file gptel-context--alist nil 'remove #'equal) nil)))))))
-  (when (eq action 'remove)
-    (message "Directory \"%s\" removed from context." path))))
+  (let* ((git-cache (or git-cache
+			(and (eq action 'add)
+			     (gptel-context--build-git-cache path))))
+	 (git-root (car-safe git-cache))
+	 (git-tracked-files (cdr-safe git-cache)))
+    ;; Check if the directory itself is git-ignored
+    (if (and git-root
+	     gptel-context-exclude-git-ignored
+	     (file-in-directory-p path git-root)
+	     (not (cl-some (lambda (f)
+			     (string-prefix-p (file-relative-name path git-root) f))
+			   git-tracked-files)))
+	;; Skip the entire directory if it's ignored
+	(gptel-context--message-git-skipped path git-cache)
+      ;; Otherwise process files recursively
+      (dolist (file (directory-files-recursively path "." t))
+	(unless (file-directory-p file)
+	  (if (and git-root
+		   gptel-context-exclude-git-ignored
+		   (not (member (file-relative-name file git-root) git-tracked-files))
+		   (eq action 'add))
+	      ;; Skip individual ignored files
+	      (gptel-context--message-git-skipped file git-cache)
+	    ;; Process non-ignored files
+	    (pcase-exhaustive action
+	      ('add
+	       (if (gptel--file-binary-p file)
+		   (gptel-context--add-binary-file file)
+		 (gptel-context--add-text-file file)))
+	      ('remove
+	       (setf (alist-get file gptel-context--alist nil 'remove #'equal) nil)))))))
+    (when (eq action 'remove)
+      (message "Directory \"%s\" removed from context." path))))
 
 (defun gptel-context-add-file (path &optional git-cache)
   "Add the file at PATH to the gptel context.
@@ -283,19 +283,19 @@ Optional GIT-CACHE is a cons of git-root directory and tracked files list."
 	(t (gptel-context--add-text-file path))))
 
 (defun gptel-context--message-git-skipped (path git-cache)
-"Message that PATH is skipped due to gitignore rules.
+  "Message that PATH is skipped due to gitignore rules.
 GIT-CACHE is a cons of git-root directory and tracked files list."
-(let* ((git-root (car-safe git-cache))
-       (type (if (file-directory-p path) "directory" "file"))
-       (skipped-common (format "git-ignored %s" type))
-       (skipped (if (string= type "directory")
-		    (concat "files from " skipped-common)
-		  skipped-common))
-       (rel-path (file-relative-name path git-root))
-       (repo (file-name-nondirectory (directory-file-name git-root)))
-       (var (symbol-name 'gptel-context-exclude-git-ignored)))
-  (message "Skipping %s `%s' in repo (%s). To include git-ignored files, unset `%s'."
-	   skipped rel-path repo var)))
+  (let* ((git-root (car-safe git-cache))
+	 (type (if (file-directory-p path) "directory" "file"))
+	 (skipped-common (format "git-ignored %s" type))
+	 (skipped (if (string= type "directory")
+		      (concat "files from " skipped-common)
+		    skipped-common))
+	 (rel-path (file-relative-name path git-root))
+	 (repo (file-name-nondirectory (directory-file-name git-root)))
+	 (var (symbol-name 'gptel-context-exclude-git-ignored)))
+    (message "Skipping %s `%s' in repo (%s). To include git-ignored files, unset `%s'."
+	     skipped rel-path repo var)))
 
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
 (defalias 'gptel-add-file #'gptel-context-add-file)
