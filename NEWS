@@ -1,0 +1,104 @@
+;;; -*- mode: org; -*-
+
+* 0.9.8 2025-03-11
+
+Version 0.9.8 adds support for new Gemini, Anthropic, OpenAI, Perplexity, and Deepseek models, introduces LLM tool use/function calling, a redesign of ~gptel-menu~, includes new customization hooks, dry-run options and refined settings, improvements to the rewrite feature and control of LLM "reasoning" content.
+
+** Breaking changes
+
+- ~gemini-pro~ has been removed from the list of Gemini models, as this model is no longer supported by the Gemini API.
+
+** New models and backends
+
+- Add support for several new Gemini models including ~gemini-2.0-flash~, ~gemini-2.0-pro-exp~ and ~gemini-2.0-flash-thinking-exp~, among others.
+
+- Add support for the Anthropic model ~claude-3-7-sonnet-20250219~, including its "reasoning" output.
+
+- Add support for OpenAI's ~o1~, ~o3-mini~ and ~gpt-4.5-preview~ models.
+
+- Add support for Perplexity.  While gptel supported Perplexity in earlier releases by reusing its OpenAI support, there is now first class support for the Perplexity API, including citations.  (This feature was added by @pirminj.)
+
+- Add support for Deepseek.  While gptel supported Deepseek in earlier releases by reusing its OpenAI support, there is now first class support for the Perplexity API, including support for handling "reasoning" output.
+
+** Notable new features and UI changes
+
+- ~gptel-rewrite~ now supports iterating on responses.
+
+- gptel supports the ability to simulate/dry-run requests so you can see exactly what will be sent.  This payload preview can now be edited in place and the request continued.
+
+- Directories can now be added to gptel's global context.  Doing so will add all files in the directory recursively.
+
+- "Oneshot" settings: when using gptel's Transient menus, request parameters, directives and tools can now be set for the next request only in addition to globally across the Emacs session and buffer-locally.  This is useful for making one-off requests with different settings.
+
+- ~gptel-mode~ can now be used in all modes derived from ~text-mode~.
+
+- gptel now tries to handle LLM responses that are in mixed Org/Markdown markup correctly.
+
+- Add ~gptel-org-convert-response~ to toggle the automatic conversion of (possibly) Markdown-formatted LLM responses to Org markup where appropriate.
+
+- You can now look up registered gptel backends using the ~gptel-get-backend~ function.  This is intended to make scripting and configuring gptel easier.  ~gptel-get-backend~ is a generalized variable so you can (un)set backends with ~setf~.
+
+- Tool use: gptel now supports LLM tool use, or function calling.  Essentially you can equip the LLM with capabilities (such as filesystem access, web search, control of Emacs or introspection of Emacs' state and more) that it can use to perform tasks for you.  gptel runs these tools using argument values provided by the LLMs.  This requires specifying tools, which are elisp functions with plain text descriptions of their arguments and results.  gptel does not include any tools out of the box yet.
+
+- You can look up registered gptel tools using the ~gptel-get-tool~ function.  This is intended to make scripting and configuring gptel easier.  ~gptel-get-tool~ is a generalized variable so you can (un)set tools with ~setf~.
+
+- New hooks for customization
+  + ~gptel-prompt-filter-hook~ runs in a temporary buffer containing the text to be sent, before the full query is created.  It can be used for arbitrary text transformations to the source text.
+  + ~gptel-post-request-hook~ runs after the request is sent, and (possibly) before any response is received.  This is intended for preparatory/reset code.
+  + ~gptel-post-rewrite-hook~ runs after a ~gptel-rewrite~ request is successfully and fully received.
+
+- ~gptel-menu~ has been redesigned.  It now shows a verbose description of what will be sent and where the output will go.  This is intended to provide clarity on gptel's default prompting behavior, as well as the effect of the various prompt/response redirection it provides.  Incompatible combinations of options are now disallowed.
+
+- The spacing between the end of the prompt and the beginning of the response in buffers is now customizable via ~gptel-response-separator~, and can be any string.
+
+- ~gptel-context-remove-all~ is now an interactive command.
+
+- gptel now handles "reasoning" content produced by LLMs.  Some LLMs include in their response a "thinking" or "reasoning" section.  This text improves the quality of the LLM’s final output, but may not be interesting to you by itself.  The new user option ~gptel-include-reasoning~ controls whether and how gptel displays this content.
+
+- (Anthropic API only) Some LLM backends can cache content sent to it by gptel, so that only the newly included part of the text needs to be processed on subsequent conversation turns.  This results in faster and significantly cheaper processing. The new user option ~gptel-cache~ can be used to specify caching preferences for prompts, the system message and/or tool definitions.  This is supported only by the Anthropic API right now.
+
+- (Org mode) Org property drawers are now stripped from the prompt text before sending queries.  You can control this behavior or specify additional Org elements to ignore via ~gptel-org-ignore-elements~.
+
+** Bug fixes
+
+- Fix response mix-up when running concurrent requests in Org mode buffers.
+- gptel now works around an Org fontification bug where streaming responses in Org mode buffers sometimes caused source code blocks to remain unfontified.
+
+* 0.9.7 2024-12-04
+
+Version 0.9.7 adds dynamic directives, a better rewrite interface, streaming support to the gptel request API, and more flexible model/backend configuration.
+
+** Breaking changes
+~gptel-rewrite-menu~ has been obsoleted.  Use ~gptel-rewrite~ instead.
+
+** Backends
+- Add support for OpenAI's ~o1-preview~ and ~o1-mini~
+
+- Add support for Anthropic's Claude 3.5 Haiku
+
+- Add support for xAI (contributed by @WuuBoLin)
+
+- Add support for Novita AI (contributed by @jasonhp)
+
+** Notable new features and UI changes
+
+- gptel's directives (see ~gptel-directives~) can now be dynamic, and include more than the system message.  You can "pre-fill" a conversation with canned user/LLM messages.  Directives can now be functions that dynamically generate the system message and conversation history based on the current context.  This paves the way for fully flexible task-specific templates, which the UI does not yet support in full.  This design was suggested by @meain. (#375)
+
+- gptel's rewrite interface has been reworked.  If using a streaming endpoint, the rewritten text is streamed in as a preview placed over the original.  In all cases, clicking on the preview brings up a dispatch you can use to easily diff, ediff, merge, accept or reject the changes (4ae9c1b2), and you can configure gptel to run one of these actions automatically.  See the README for examples.  This design was suggested by @meain. (#375)
+
+- ~gptel-abort~, used to cancel requests in progress, now works across the board, including when not using Curl or with ~gptel-rewrite~ (7277c00).
+
+- The ~gptel-request~ API now explicitly supports streaming responses (7277c00), making it easy to write your own helpers or features with streaming support.  The API also supports ~gptel-abort~ to stop and clean up responses.
+
+- You can now unset the system message -- different from setting it to an empty string.  gptel will also automatically disable the system message when using models that don't support it (0a2c07a).
+
+- Support for including PDFs with requests to Anthropic models has been added.  (These queries are cached, so you pay only 10% of the token cost of the PDF in follow-up queries.)  Note that document support (PDFs etc) for Gemini models has been available since v0.9.5. (0f173ba, #459)
+
+- When defining a gptel model or backend, you can specify arbitrary parameters to be sent with each request.  This includes the (many) API options across all APIs that gptel does not yet provide explicit support for (bcbbe67e).  This feature was suggested by @tillydray (#471).
+
+- New transient command option to easily remove all included context chunks (a844612), suggested by @metachip and @gavinhughes.
+
+** Bug fixes
+- Pressing ~RET~ on included files in the context inspector buffer now pops up the file correctly.
+- API keys are stripped of whitespace before sending.
+- Multiple UI, backend and prompt construction bugs have been fixed.

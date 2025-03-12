@@ -1414,6 +1414,9 @@ gptel is a general-purpose package for chat and ad-hoc LLM interaction.  The fol
 
 ** Acknowledgments
 
+- [[https://github.com/pabl0][Henrik Ahlgren]] for a keen eye to detail and polish applied to gptel's UI.
+- [[https://github.com/positron-solutions/][Positron Solutions]] for extensive testing of the tool use feature and the design of gptel's in-buffer tool use records.
+- [[https://github.com/jdtsmith][JD Smith]] for feedback and code assistance with gptel-menu's redesign
 - [[https://github.com/meain][Abin Simon]] for extensive feedback on improving gptel's directives and UI.
 - [[https://github.com/algal][Alexis Gallagher]] and [[https://github.com/d1egoaz][Diego Alvarez]] for fixing a nasty multi-byte bug with =url-retrieve=.
 - [[https://github.com/tarsius][Jonas Bernoulli]] for the Transient library.
