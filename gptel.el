@@ -2743,6 +2743,7 @@ the response is inserted into the current buffer after point."
     (when (with-current-buffer (plist-get info :buffer)
             (and (derived-mode-p 'org-mode)
                  gptel-org-convert-response))
+      (require 'gptel-org)
       (plist-put info :transformer #'gptel--convert-markdown->org))
     (plist-put info :callback callback)
     (when gptel-log-level               ;logging

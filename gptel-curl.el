@@ -137,6 +137,7 @@ the response is inserted into the current buffer after point."
                            (when (with-current-buffer (plist-get info :buffer)
                                    (and (derived-mode-p 'org-mode)
                                         gptel-org-convert-response))
+			     (require 'gptel-org)
                              (gptel--stream-convert-markdown->org
                               (plist-get info :position))))
                      (unless (plist-get info :callback)
