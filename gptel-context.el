@@ -84,8 +84,8 @@ context chunk.  This is accessible as, for example:
   :group 'gptel
   :type 'function)
 
-(defcustom gptel-context-exclude-gitignored t
-  "Whether to exclude gitignored files from context.
+(defcustom gptel-context-exclude-git-ignored t
+  "Whether to exclude git-ignored files from context.
 When non-nil, do not add to the context files or directories listed in
 the `.gitignore' file of their associated repository."
   :group 'gptel
@@ -263,7 +263,7 @@ PATH should be readable as text."
   "Return non-nil if FILE should be skipped due to gitignore rules.
 This function assumes it will be called with a list of git-tracked files
 available or will make a direct Git call for a single file check."
-  (when (and gptel-context-exclude-gitignored
+  (when (and gptel-context-exclude-git-ignored
              (executable-find "git"))
     (when-let* ((git-root (locate-dominating-file file ".git"))
                 (rel-path (file-relative-name file git-root)))
