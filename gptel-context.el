@@ -310,21 +310,22 @@ Fall back to nil (allowing all files) if Git command fails."
       (let ((git-unignored (gptel-context--get-git-unignored git-root)))
         (not (member rel-path git-unignored))))))
 
-(defun gptel-context--message-git-skipped (path git-cache)
+(defun gptel-context--message-git-skipped (path &optional git-cache)
   "Message that PATH is skipped due to gitignore rules.
 Optional GIT-CACHE is a cons of git-root directory and non-ignored
 files list."
-  (let* ((git-root (car-safe git-cache))
-	 (type (if (file-directory-p path) "directory" "file"))
+  (let* ((type (if (file-directory-p path) "directory" "file"))
 	 (skipped-common (format "git-ignored %s" type))
 	 (skipped (if (string= type "directory")
 		      (concat "files from " skipped-common)
 		    skipped-common))
-	 (rel-path (file-relative-name path git-root))
-	 (repo (file-name-nondirectory (directory-file-name git-root)))
-	 (var (symbol-name 'gptel-context-exclude-git-ignored)))
-    (message "Skipping %s `%s' in repo (%s). To include git-ignored files, unset `%s'."
-	     skipped rel-path repo var)))
+	 (var (symbol-name 'gptel-context-exclude-git-ignored))
+	 (reminder (format "To include git-ignored files, unset `%s'." var)))
+    (if-let* ((git-root (car-safe git-cache))
+	      (rel-path (file-relative-name path git-root))
+	      (repo (file-name-nondirectory (directory-file-name git-root))))
+	(message "Skipping %s `%s' in repo (%s). %s" skipped rel-path repo reminder)
+      (message "Skipping %s `%s'. %s" skipped path reminder))))
 
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
