@@ -721,3 +721,8 @@ cleaning up after."
 
 (provide 'gptel-org)
 ;;; gptel-org.el ends here
+
+;; Silence warnings about `org-element-type-p' and `org-element-parent', see #294.
+;; Local Variables:
+;; byte-compile-warnings: (not unresolved)
+;; End:
