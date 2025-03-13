@@ -127,7 +127,6 @@ the `.gitignore' file of their associated repository."
 	   (action-fn (if remove-p
 			  #'gptel-context-remove
 			#'gptel-context-add-file))
-	   ;; Get git info just once for all files
 	   (git-cache (and (not remove-p)
 			   (gptel-context--build-git-cache default-directory))))
       (when (or remove-p (null dirs) (null confirm)
