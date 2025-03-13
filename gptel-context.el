@@ -228,14 +228,14 @@ Optional GIT-CACHE is a cons of git-root directory and tracked files list."
 			(and (eq action 'add)
 			     (gptel-context--build-git-cache path))))
 	 (git-root (car-safe git-cache))
-	 (git-tracked-files (cdr-safe git-cache)))
+	 (git-unignored-files (cdr-safe git-cache)))
     ;; Check if the directory itself is git-ignored
     (if (and git-root
 	     gptel-context-exclude-git-ignored
 	     (file-in-directory-p path git-root)
 	     (not (cl-some (lambda (f)
 			     (string-prefix-p (file-relative-name path git-root) f))
-			   git-tracked-files)))
+			   git-unignored-files)))
 	;; Skip the entire directory if it's ignored
 	(gptel-context--message-git-skipped path git-cache)
       ;; Otherwise process files recursively
@@ -243,7 +243,7 @@ Optional GIT-CACHE is a cons of git-root directory and tracked files list."
 	(unless (file-directory-p file)
 	  (if (and git-root
 		   gptel-context-exclude-git-ignored
-		   (not (member (file-relative-name file git-root) git-tracked-files))
+		   (not (member (file-relative-name file git-root) git-unignored-files))
 		   (eq action 'add))
 	      ;; Skip individual ignored files
 	      (gptel-context--message-git-skipped file git-cache)
@@ -319,8 +319,8 @@ available or will make a direct Git call for a single file check."
              (executable-find "git"))
     (when-let* ((git-root (locate-dominating-file file ".git"))
                 (rel-path (file-relative-name file git-root)))
-      (let ((git-tracked (gptel-context--git-files git-root)))
-        (not (member rel-path git-tracked))))))
+      (let ((git-unignored (gptel-context--get-git-unignored git-root)))
+        (not (member rel-path git-unignored))))))
 
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
