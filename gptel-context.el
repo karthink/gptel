@@ -144,7 +144,7 @@ the `.gitignore' file of their associated repository."
    ((and (derived-mode-p 'image-mode)
 	 (gptel--model-capable-p 'media)
 	 (buffer-file-name)
-	 (not (gptel-context--is-git-ignored-p (buffer-file-name))))
+	 (not (gptel-context--git-skip-p (buffer-file-name))))
     (funcall (if (and arg (< (prefix-numeric-value arg) 0))
               #'gptel-context-remove
               #'gptel-context-add-file)
@@ -270,7 +270,7 @@ files list."
                          (file-in-directory-p path git-root)
                          (not (member (file-relative-name path git-root) tracked-files))))
                 ;; Otherwise check individually
-                (gptel-context--is-git-ignored-p path)))
+                (gptel-context--git-skip-p path)))
 	 (gptel-context--message-git-skipped path git-cache))
 	((gptel--file-binary-p path)
 	 (gptel-context--add-binary-file path))
@@ -301,7 +301,7 @@ Fall back to nil (allowing all files) if Git command fails."
        ;; Return nil to allow all files rather than exclude all
        nil))))
 
-(defun gptel-context--is-git-ignored-p (file)
+(defun gptel-context--git-skip-p (file)
   "Return non-nil if FILE should be skipped due to gitignore rules."
   (when (and gptel-context-exclude-git-ignored
              (executable-find "git"))
