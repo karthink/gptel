@@ -143,7 +143,7 @@ the `.gitignore' file of their associated repository."
    ;; If in an image buffer
    ((and (derived-mode-p 'image-mode)
 	 (gptel--model-capable-p 'media)
-	 (not (gptel-context--skip-file-p (buffer-file-name)))
+	 (not (gptel-context--is-git-ignored-p (buffer-file-name)))
 	 (buffer-file-name))
     (funcall (if (and arg (< (prefix-numeric-value arg) 0))
               #'gptel-context-remove
@@ -276,7 +276,7 @@ Optional GIT-CACHE is a cons of git-root directory and tracked files list."
                          (file-in-directory-p path git-root)
                          (not (member (file-relative-name path git-root) tracked-files))))
                 ;; Otherwise check individually
-                (gptel-context--skip-file-p path)))
+                (gptel-context--is-git-ignored-p path)))
 	 (gptel-context--message-git-skipped path git-cache))
 	((gptel--file-binary-p path)
 	 (gptel-context--add-binary-file path))
@@ -311,10 +311,10 @@ Fall back to nil (allowing all files) if Git command fails."
        ;; Return nil to allow all files rather than exclude all
        nil))))
 
-(defun gptel-context--skip-file-p (file)
   "Return non-nil if FILE should be skipped due to gitignore rules.
 This function assumes it will be called with a list of git-tracked files
 available or will make a direct Git call for a single file check."
+(defun gptel-context--is-git-ignored-p (file)
   (when (and gptel-context-exclude-git-ignored
              (executable-find "git"))
     (when-let* ((git-root (locate-dominating-file file ".git"))
