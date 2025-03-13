@@ -950,7 +950,9 @@ responses."
 		       " " (propertize " " 'display `(space :align-to 166))
 		       cutoff)))))
              finally return
-             (cdr (assoc (completing-read prompt models-alist nil t)
+             (cdr (assoc (completing-read prompt models-alist nil t nil nil
+					  (concat (gptel-backend-name gptel-backend) ":"
+						  (gptel--model-name gptel-model)))
                          models-alist)))))
 
 (transient-define-infix gptel--infix-temperature ()
