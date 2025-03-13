@@ -616,7 +616,8 @@ the same as t."
      :input-cost 3
      :output-cost 12
      :cutoff-date "2023-10"
-     :capabilities (nosystem reasoning)
+     :capabilities ( ;; nosystem
+                    reasoning)
      :request-params (:stream :json-false))
     ;; limited information available
     (gpt-4-32k
