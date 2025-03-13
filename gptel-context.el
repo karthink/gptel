@@ -143,8 +143,8 @@ the `.gitignore' file of their associated repository."
    ;; If in an image buffer
    ((and (derived-mode-p 'image-mode)
 	 (gptel--model-capable-p 'media)
-	 (not (gptel-context--is-git-ignored-p (buffer-file-name)))
-	 (buffer-file-name))
+	 (buffer-file-name)
+	 (not (gptel-context--is-git-ignored-p (buffer-file-name))))
     (funcall (if (and arg (< (prefix-numeric-value arg) 0))
               #'gptel-context-remove
               #'gptel-context-add-file)
