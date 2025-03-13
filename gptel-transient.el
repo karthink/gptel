@@ -497,28 +497,28 @@ This is used only for setting this variable via `gptel-menu'.")
            (oset obj value value)))
 
 (defclass gptel-provider-variable (transient-lisp-variable)
-  ((model       :initarg :model)
-   (model-value :initarg :model-value)
+  ((backend       :initarg :backend)
+   (backend-value :initarg :backend-value)
    (always-read :initform t)
    (set-value :initarg :set-value :initform #'set))
   "Class used for gptel-backends.")
 
 (cl-defmethod transient-format-value ((obj gptel-provider-variable))
   (propertize (concat
-               (gptel-backend-name (oref obj value)) ":"
-               (gptel--model-name
-                (buffer-local-value (oref obj model) transient--original-buffer)))
+               (gptel-backend-name
+                (buffer-local-value (oref obj backend) transient--original-buffer)) ":"
+               (gptel--model-name (oref obj value)))
               'face 'transient-value))
 
 (cl-defmethod transient-infix-set ((obj gptel-provider-variable) value)
   (pcase-let ((`(,backend-value ,model-value) value))
     (funcall (oref obj set-value)
              (oref obj variable)
-             (oset obj value backend-value)
+             (oset obj value model-value)
              gptel--set-buffer-locally)
     (funcall (oref obj set-value)
-             (oref obj model)
-             (oset obj model-value model-value)
+             (oref obj backend)
+             (oset obj backend-value backend-value)
              gptel--set-buffer-locally))
   (transient-setup))
 
@@ -913,9 +913,9 @@ responses."
   :description "Model"
   :class 'gptel-provider-variable
   :prompt "Model: "
-  :variable 'gptel-backend
+  :variable 'gptel-model
   :set-value #'gptel--set-with-scope
-  :model 'gptel-model
+  :backend 'gptel-backend
   :key "-m"
   :reader (lambda (prompt &rest _)
             (cl-loop
