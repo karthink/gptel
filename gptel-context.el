@@ -261,6 +261,7 @@ files list."
   (cond ((file-directory-p path)
          (gptel-context--add-directory path 'add git-cache))
         ((and gptel-context-exclude-git-ignored
+	      (not (file-remote-p path))
               (if git-cache
                   ;; Use cached git info if available
                   (let ((git-root (car git-cache))
@@ -285,6 +286,7 @@ files list."
 Return a cons cell `(git-root . tracked-files)' or nil if not
 applicable."
   (when (and gptel-context-exclude-git-ignored
+	     (not (file-remote-p directory))
 	     (executable-find "git"))
     (when-let ((git-root (locate-dominating-file directory ".git")))
       (cons git-root (gptel-context--get-git-unignored git-root)))))
@@ -303,6 +305,7 @@ Fall back to nil (allowing all files) if Git command fails."
 (defun gptel-context--git-skip-p (file)
   "Return non-nil if FILE should be skipped due to gitignore rules."
   (when (and gptel-context-exclude-git-ignored
+	     (not (file-remote-p file))
              (executable-find "git"))
     (when-let* ((git-root (locate-dominating-file file ".git"))
                 (rel-path (file-relative-name file git-root)))
