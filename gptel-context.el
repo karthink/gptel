@@ -214,7 +214,8 @@ Return PATH if added, nil if ignored."
 (defun gptel-context--add-directory (path action &optional git-cache)
   "Process all files in directory at PATH according to ACTION.
 ACTION should be either `add' or `remove'.
-Optional GIT-CACHE is a cons of git-root directory and tracked files list."
+
+Optional GIT-CACHE is a cons of git-root directory and non-ignored files list."
   (let* ((git-cache (or git-cache
 			(and (eq action 'add)
 			     (gptel-context--build-git-cache path))))
@@ -252,9 +253,11 @@ Optional GIT-CACHE is a cons of git-root directory and tracked files list."
 (defun gptel-context-add-file (path &optional git-cache)
   "Add the file at PATH to the gptel context.
 
-If PATH is a directory, recursively add all files in it.
-PATH should be readable as text.
-Optional GIT-CACHE is a cons of git-root directory and tracked files list."
+If PATH is a directory, recursively add all files in it. PATH should
+be readable as text.
+
+Optional GIT-CACHE is a cons of git-root directory and non-ignored
+files list."
   (interactive "fChoose file to add to context: ")
   (cond ((file-directory-p path)
          (gptel-context--add-directory path 'add git-cache))
@@ -276,7 +279,6 @@ Optional GIT-CACHE is a cons of git-root directory and tracked files list."
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
 (defalias 'gptel-add-file #'gptel-context-add-file)
 
-  "Return a list of git-tracked files in the Git repo at DIR.
 ;;; git tracking functions
 
 (defun gptel-context--build-git-cache (directory)
@@ -289,6 +291,7 @@ applicable."
       (cons git-root (gptel-context--get-git-unignored git-root)))))
 
 (defun gptel-context--get-git-unignored (dir)
+  "Return a list of files in the Git repo at DIR excluding git-ignored files.
 Fall back to nil (allowing all files) if Git command fails."
   (let ((default-directory dir))
     (condition-case err
@@ -298,10 +301,8 @@ Fall back to nil (allowing all files) if Git command fails."
        ;; Return nil to allow all files rather than exclude all
        nil))))
 
-  "Return non-nil if FILE should be skipped due to gitignore rules.
-This function assumes it will be called with a list of git-tracked files
-available or will make a direct Git call for a single file check."
 (defun gptel-context--is-git-ignored-p (file)
+  "Return non-nil if FILE should be skipped due to gitignore rules."
   (when (and gptel-context-exclude-git-ignored
              (executable-find "git"))
     (when-let* ((git-root (locate-dominating-file file ".git"))
