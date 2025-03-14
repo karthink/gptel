@@ -1,5 +1,15 @@
 # -*- mode: org; -*-
 
+* 0.9.9
+
+** New features and UI changes
+
+- The new option ~gptel-curl-extra-args~ can be used to specify extra
+  arguments to the Curl command used for the request.  This is the
+  global version of the gptel-backend-specific ~:curl-args~ slot,
+  which can be used to specify Curl arguments when using a specific
+  backend.
+
 * 0.9.8 2025-03-13
 
 Version 0.9.8 adds support for new Gemini, Anthropic, OpenAI,
@@ -36,8 +46,7 @@ feature and control of LLM "reasoning" content.
 
 - Add support for Perplexity.  While gptel supported Perplexity in
   earlier releases by reusing its OpenAI support, there is now first
-  class support for the Perplexity API, including citations.  (This
-  feature was added by @pirminj.)
+  class support for the Perplexity API, including citations.
 
 - Add support for DeepSeek.  While gptel supported DeepSeek in earlier
   releases by reusing its OpenAI support, there is now first class

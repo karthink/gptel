@@ -38,6 +38,20 @@
 
 (declare-function gptel--stream-convert-markdown->org "gptel-org")
 
+(defcustom gptel-curl-extra-args nil
+  "Extra arguments to pass to Curl when sending queries.
+
+This should be a list of strings, each one a Curl command line
+argument.  Note that these should not conflict with the options
+in `gptel-curl--common-args', which gptel requires for correct
+functioning.
+
+If you want to specify extra arguments only when using a specific
+gptel backend, use the `:curl-args' slot of the backend instead.
+See `gptel-backend'."
+  :group 'gptel
+  :type '(repeat string))
+
 (defconst gptel-curl--common-args
   (if (memq system-type '(windows-nt ms-dos))
       '("--disable" "--location" "--silent" "-XPOST"
@@ -73,6 +87,7 @@ REQUEST-DATA is the data to send, TOKEN is a unique identifier."
       (gptel--log data-json "request body"))
     (append
      gptel-curl--common-args
+     gptel-curl-extra-args
      (gptel-backend-curl-args gptel-backend)
      (list (format "-w(%s . %%{size_header})" token))
      (if (length< data-json gptel-curl-file-size-threshold)
