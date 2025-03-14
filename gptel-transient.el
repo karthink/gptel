@@ -557,8 +557,6 @@ Also format its value in the Transient menu."
 
 ;; * Transient Prefixes
 
-(define-obsolete-function-alias 'gptel-send-menu 'gptel-menu "0.3.2")
-
 ;;;###autoload (autoload 'gptel-menu "gptel-transient" nil t)
 (transient-define-prefix gptel-menu ()
   "Change parameters of prompt to send to the LLM."
