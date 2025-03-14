@@ -1,6 +1,6 @@
 # -*- mode: org; -*-
 
-* 0.9.8 2025-03-11
+* 0.9.8 2025-03-13
 
 Version 0.9.8 adds support for new Gemini, Anthropic, OpenAI,
 Perplexity, and DeepSeek models, introduces LLM tool use/function
@@ -12,6 +12,15 @@ feature and control of LLM "reasoning" content.
 
 - ~gemini-pro~ has been removed from the list of Gemini models, as
   this model is no longer supported by the Gemini API.
+
+- Sending an active region in Org mode will now apply Org
+  mode-specific rules to the text, such as branching context.
+
+- The following obsolete variables and functions have been removed:
+  - ~gptel-send-menu~: Use ~gptel-menu~ instead.
+  - ~gptel-host~: Use ~gptel-make-openai~ instead.
+  - ~gptel-playback~: Use ~gptel-stream~ instead.
+  - ~gptel--debug~: Use ~gptel-log-level~ instead.
 
 ** New models and backends
 
@@ -35,7 +44,7 @@ feature and control of LLM "reasoning" content.
   support for the DeepSeek API, including support for handling
   "reasoning" output.
 
-** Notable new features and UI changes
+** New features and UI changes
 
 - ~gptel-rewrite~ now supports iterating on responses.
 
@@ -121,9 +130,10 @@ feature and control of LLM "reasoning" content.
 - (Org mode) Org property drawers are now stripped from the prompt
   text before sending queries.  You can control this behavior or
   specify additional Org elements to ignore via
-  ~gptel-org-ignore-elements~.
+  ~gptel-org-ignore-elements~.  (For more complex pre-processing you
+  can use ~gptel-prompt-filter-hook~.)
 
-** Bug fixes
+** Notable Bug fixes
 
 - Fix response mix-up when running concurrent requests in Org mode
   buffers.
@@ -145,11 +155,11 @@ model/backend configuration.
 
 - Add support for Anthropic's Claude 3.5 Haiku.
 
-- Add support for xAI (contributed by @WuuBoLin).
+- Add support for xAI.
 
-- Add support for Novita AI (contributed by @jasonhp).
+- Add support for Novita AI.
 
-** Notable new features and UI changes
+** New features and UI changes
 
 - gptel's directives (see ~gptel-directives~) can now be dynamic, and
   include more than the system message.  You can "pre-fill" a
@@ -157,46 +167,42 @@ model/backend configuration.
   functions that dynamically generate the system message and
   conversation history based on the current context.  This paves the
   way for fully flexible task-specific templates, which the UI does
-  not yet support in full.  This design was suggested by
-  @meain. (#375)
+  not yet support in full.
 
 - gptel's rewrite interface has been reworked.  If using a streaming
   endpoint, the rewritten text is streamed in as a preview placed over
   the original.  In all cases, clicking on the preview brings up a
   dispatch you can use to easily diff, ediff, merge, accept or reject
   the changes (4ae9c1b2), and you can configure gptel to run one of
-  these actions automatically.  See the README for examples.  This
-  design was suggested by @meain. (#375)
+  these actions automatically.  See the README for examples.
 
 - ~gptel-abort~, used to cancel requests in progress, now works across
-  the board, including when not using Curl or with ~gptel-rewrite~
-  (7277c00).
+  the board, including when not using Curl or with ~gptel-rewrite~.
 
 - The ~gptel-request~ API now explicitly supports streaming responses
-  (7277c00), making it easy to write your own helpers or features with
+  , making it easy to write your own helpers or features with
   streaming support.  The API also supports ~gptel-abort~ to stop and
   clean up responses.
 
 - You can now unset the system message -- different from setting it to
   an empty string.  gptel will also automatically disable the system
-  message when using models that don't support it (0a2c07a).
+  message when using models that don't support it.
 
 - Support for including PDFs with requests to Anthropic models has
   been added.  (These queries are cached, so you pay only 10% of the
   token cost of the PDF in follow-up queries.)  Note that document
   support (PDFs etc) for Gemini models has been available since
-  v0.9.5. (0f173ba, #459)
+  v0.9.5.
 
 - When defining a gptel model or backend, you can specify arbitrary
   parameters to be sent with each request.  This includes the (many)
   API options across all APIs that gptel does not yet provide explicit
-  support for (bcbbe67e).  This feature was suggested by @tillydray
-  (#471).
+  support for.
 
 - New transient command option to easily remove all included context
-  chunks (a844612), suggested by @metachip and @gavinhughes.
+  chunks.
 
-** Bug fixes
+** Notable Bug fixes
 - Pressing ~RET~ on included files in the context inspector buffer now
   pops up the file correctly.
 - API keys are stripped of whitespace before sending.

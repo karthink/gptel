@@ -198,15 +198,6 @@
   "Interact with LLMs from anywhere in Emacs."
   :group 'hypermedia)
 
-;; (defcustom gptel-host "api.openai.com"
-;;   "The API host queried by gptel."
-;;   :group 'gptel
-;;   :type 'string)
-(make-obsolete-variable
- 'gptel-host
- "Use `gptel-make-openai' instead."
- "0.5.0")
-
 (defcustom gptel-proxy ""
   "Path to a proxy to use for gptel interactions.
 Passed to curl via --proxy arg, for example \"proxy.yourorg.com:80\"
@@ -236,7 +227,6 @@ all at once.  This wait is asynchronous.
 
 \='tis a bit silly."
   :type 'boolean)
-(make-obsolete-variable 'gptel-playback 'gptel-stream "0.3.0")
 
 (defcustom gptel-use-curl (and (executable-find "curl") t)
   "Whether gptel should prefer Curl when available."
@@ -744,8 +734,6 @@ which see."
           (const :tag "No logging" nil)
           (const :tag "Limited" info)
           (const :tag "Full" debug)))
-(make-obsolete-variable
- 'gptel--debug 'gptel-log-level "0.6.5")
 
 (defcustom gptel-track-response t
   "Distinguish between user messages and LLM responses.
