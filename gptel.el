@@ -585,7 +585,7 @@ the same as t."
      :cutoff-date "2023-10")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
-     :capabilities (nosystem media reasoning)
+     :capabilities (media reasoning)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 15
@@ -616,8 +616,7 @@ the same as t."
      :input-cost 3
      :output-cost 12
      :cutoff-date "2023-10"
-     :capabilities ( ;; nosystem
-                    reasoning)
+     :capabilities (reasoning)
      :request-params (:stream :json-false))
     ;; limited information available
     (gpt-4-32k
