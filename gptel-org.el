@@ -23,9 +23,8 @@
 ;;
 
 ;;; Code:
-(eval-when-compile
-  (require 'cl-lib)
-  (require 'gptel))
+(eval-when-compile (require 'gptel))
+(require 'cl-lib)
 (require 'org-element)
 (require 'outline)
 
@@ -202,7 +201,11 @@ recent exchanges.
 The prompt is constructed from the contents of the buffer up to
 point, or PROMPT-END if provided.  Its contents depend on the
 value of `gptel-org-branching-context', which see."
-  (unless prompt-end (setq prompt-end (point)))
+  (when (use-region-p)
+    (narrow-to-region (region-beginning) (region-end)))
+  (if prompt-end
+      (goto-char prompt-end)
+    (setq prompt-end (point)))
   (let ((max-entries (and gptel--num-messages-to-send
                           (* 2 gptel--num-messages-to-send)))
         (topic-start (gptel-org--get-topic-start)))
@@ -218,30 +221,28 @@ value of `gptel-org-branching-context', which see."
         ;; Create prompt from direct ancestors of point
         (save-excursion
           (let* ((org-buf (current-buffer))
-                 (start-bounds (gptel-org--element-lineage-map
-                                   (org-element-at-point) #'gptel-org--element-begin
-                                 '(headline org-data) 'with-self))
+                 ;; Collect all heading start positions in the lineage
+                 (full-bounds (gptel-org--element-lineage-map
+                                  (org-element-at-point) #'gptel-org--element-begin
+                                '(headline) 'with-self) )
+                 ;; lineage-map returns the full lineage in the unnarrowed
+                 ;; buffer.  Remove heading start positions at or before
+                 ;; (point-min) that are invalid due to narrowing, and add
+                 ;; (point-min) explicitly
+                 (start-bounds (nconc (cl-delete-if (lambda (p) (<= p (point-min)))
+                                                    full-bounds)
+                                      (list (point-min))))
                  (end-bounds
                   (cl-loop
-                   for (pos . rest) on (cdr start-bounds)
-                   while
-                   (and (>= pos (point-min)) ;respect narrowing
-                        (goto-char pos)
-                        ;; org-element-lineage always returns an extra
-                        ;; (org-data) element at point 1.  If there is also a
-                        ;; heading here, it is either a false positive or we
-                        ;; would be double counting it.  So we reject this node
-                        ;; when also at a heading.
-                        (not (and (eq pos 1) (org-at-heading-p)
-                                  ;; Skip if at the last element of start-bounds,
-                                  ;; since we captured this heading already (#476)
-                                  (null rest))))
-                   do (outline-next-heading)
+                   ;; (car start-bounds) is the begining of the current element,
+                   ;; not relevant
+                   for pos in (cdr start-bounds)
+                   do (goto-char pos) (outline-next-heading)
                    collect (point) into ends
                    finally return (cons prompt-end ends))))
             (gptel--with-buffer-copy org-buf nil nil
               (cl-loop for start in start-bounds
-                       for end   in end-bounds
+                       for end in end-bounds
                        do (insert-buffer-substring org-buf start end)
                        (goto-char (point-min)))
               (goto-char (point-max))

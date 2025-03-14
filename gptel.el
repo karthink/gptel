@@ -2589,25 +2589,25 @@ If `gptel-context--alist' is non-nil and the additional
 context needs to be included with the user prompt, add it.
 
 If PROMPT-END (a marker) is provided, end the prompt contents
-there."
+there.  This defaults to (point)."
   (save-excursion
     (save-restriction
       (let* ((max-entries (and gptel--num-messages-to-send
                                (* 2 gptel--num-messages-to-send)))
-             (prompt-end (or prompt-end (point-max)))
              (buf (current-buffer))
              (prompts
               (cond
+               ((derived-mode-p 'org-mode)
+                (require 'gptel-org)
+                ;; Also handles regions in Org mode
+                (gptel-org--create-prompt prompt-end))
                ((use-region-p)
                 (let ((rb (region-beginning)) (re (region-end)))
                   (gptel--with-buffer-copy buf rb re
                     (save-excursion (run-hooks 'gptel-prompt-filter-hook))
                     (gptel--parse-buffer gptel-backend max-entries))))
-               ((derived-mode-p 'org-mode)
-                (require 'gptel-org)
-                (goto-char prompt-end)
-                (gptel-org--create-prompt prompt-end))
-               (t (gptel--with-buffer-copy buf (point-min) prompt-end
+               (t (unless prompt-end (setq prompt-end (point)))
+                  (gptel--with-buffer-copy buf (point-min) prompt-end
                     (save-excursion (run-hooks 'gptel-prompt-filter-hook))
                     (gptel--parse-buffer gptel-backend max-entries))))))
         ;; NOTE: prompts is modified in place here
