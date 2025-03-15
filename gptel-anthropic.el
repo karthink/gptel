@@ -468,45 +468,58 @@ files in the context."
 ;;                   (t context-string)))
 ;;         (plist-get (car (last prompts)) :content)))
 
+(defconst gptel--anthropic-cost-url "https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table"
+  "Web page for current Anthropic model pricing.")
+
 (defconst gptel--anthropic-models
-  '((claude-3-7-sonnet-20250219
+  `((claude-3-7-sonnet-20250219
      :description "Hybrid model capable of standard thinking and extended thinking modes"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
+     :max-output 8192
      :input-cost 3
      :output-cost 15
+     :cost-url ,gptel--anthropic-cost-url
      :cutoff-date "2025-02")
     (claude-3-5-sonnet-20241022
      :description "Highest level of intelligence and capability"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
+     :max-output 8192
      :input-cost 3
      :output-cost 15
+     :cost-url ,gptel--anthropic-cost-url
      :cutoff-date "2024-04")
     (claude-3-5-sonnet-20240620
      :description "Highest level of intelligence and capability (earlier version)"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
+     :max-output 8192
      :input-cost 3
      :output-cost 15
+     :cost-url ,gptel--anthropic-cost-url
      :cutoff-date "2024-04")
     (claude-3-5-haiku-20241022
      :description "Intelligence at blazing speeds"
      :capabilities (tool-use cache)
      :context-window 200
+     :max-output 8192
      :input-cost 1.00
      :output-cost 5.00
+     :cost-url ,gptel--anthropic-cost-url
      :cutoff-date "2024-07")
     (claude-3-opus-20240229
      :description "Top-level performance, intelligence, fluency, and understanding"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
+     :max-output 4096
      :input-cost 15
      :output-cost 75
+     :cost-url ,gptel--anthropic-cost-url
      :cutoff-date "2023-08")
     (claude-3-sonnet-20240229
      :description "Balance of intelligence and speed (legacy model)"
@@ -515,13 +528,16 @@ files in the context."
      :context-window 200
      :input-cost 3
      :output-cost 15
+     :cost-url ,gptel--anthropic-cost-url
      :cutoff-date "2023-08")
     (claude-3-haiku-20240307
      :description "Fast and most compact model for near-instant responsiveness"
      :capabilities (tool-use cache)
      :context-window 200
+     :max-output 4096
      :input-cost 0.25
      :output-cost 1.25
+     :cost-url ,gptel--anthropic-cost-url
      :cutoff-date "2023-08"))
   "List of available Anthropic models and associated properties.
 Keys:
@@ -534,9 +550,13 @@ Keys:
 
 - `:context-window': the context window size, in thousands of tokens.
 
+- `:max-output': the maximum number of output tokens.
+
 - `:input-cost': the input cost, in US dollars per million tokens.
 
 - `:output-cost': the output cost, in US dollars per million tokens.
+
+- `:cost-url': web page for current model pricing.
 
 - `:cutoff-date': the knowledge cutoff date.
 

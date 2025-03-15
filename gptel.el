@@ -520,14 +520,18 @@ the same as t."
 
 (defvar gptel--known-backends)
 
+(defconst gptel--openai-cost-url "https://platform.openai.com/docs/pricing"
+  "Web page for current OpenAI model pricing.")
+
 (defconst gptel--openai-models
-  '((gpt-4o
+  `((gpt-4o
      :description "Advanced model for complex tasks; cheaper & faster than GPT-Turbo"
      :capabilities (media tool-use json url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 128
      :input-cost 2.50
      :output-cost 10
+     :cost-url ,gptel--openai-cost-url
      :cutoff-date "2023-10")
     (gpt-4o-mini
      :description "Cheap model for fast tasks; cheaper & more capable than GPT-3.5 Turbo"
@@ -536,6 +540,7 @@ the same as t."
      :context-window 128
      :input-cost 0.15
      :output-cost 0.60
+     :cost-url ,gptel--openai-cost-url
      :cutoff-date "2023-10")
     (gpt-4-turbo
      :description "Previous high-intelligence model"
@@ -544,6 +549,7 @@ the same as t."
      :context-window 128
      :input-cost 10
      :output-cost 30
+     :cost-url ,gptel--openai-cost-url
      :cutoff-date "2023-12")
     ;; points to gpt-4-0613
     (gpt-4
@@ -553,6 +559,7 @@ the same as t."
      :context-window 8.192
      :input-cost 30
      :output-cost 60
+     :cost-url ,gptel--openai-cost-url
      :cutoff-date "2023-09")
     (gpt-4-turbo-preview
      :description "Points to gpt-4-0125-preview"
@@ -561,6 +568,7 @@ the same as t."
      :context-window 128
      :input-cost 10
      :output-cost 30
+     :cost-url ,gptel--openai-cost-url
      :cutoff-date "2023-12")
     (gpt-4-0125-preview
      :description "GPT-4 Turbo preview model intended to reduce cases of “laziness”"
@@ -569,6 +577,7 @@ the same as t."
      :context-window 128
      :input-cost 10
      :output-cost 30
+     :cost-url ,gptel--openai-cost-url
      :cutoff-date "2023-12")
     (gpt-4.5-preview
      :description "Largest and most capable GPT model to date"
@@ -577,6 +586,7 @@ the same as t."
      :context-window 128
      :input-cost 75
      :output-cost 150
+     :cost-url ,gptel--openai-cost-url
      :cutoff-date "2023-10")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
@@ -586,6 +596,7 @@ the same as t."
      :input-cost 15
      :output-cost 60
      :cutoff-date "2023-10"
+     :cost-url ,gptel--openai-cost-url
      :request-params (:stream :json-false))
     (o1-preview
      :description "DEPRECATED: PLEASE USE o1"
@@ -594,6 +605,7 @@ the same as t."
      :context-window 128
      :input-cost 15
      :output-cost 60
+     :cost-url ,gptel--openai-cost-url
      :cutoff-date "2023-10"
      :capabilities (nosystem reasoning)
      :request-params (:stream :json-false))
@@ -602,6 +614,7 @@ the same as t."
      :context-window 128
      :input-cost 3
      :output-cost 12
+     :cost-url ,gptel--openai-cost-url
      :cutoff-date "2023-10"
      :capabilities (nosystem reasoning)
      :request-params (:stream :json-false))
@@ -610,6 +623,7 @@ the same as t."
      :context-window 200
      :input-cost 3
      :output-cost 12
+     :cost-url ,gptel--openai-cost-url
      :cutoff-date "2023-10"
      :capabilities (nosystem reasoning)
      :request-params (:stream :json-false))
@@ -617,13 +631,15 @@ the same as t."
     (gpt-4-32k
      :capabilities (tool-use)
      :input-cost 60
-     :output-cost 120)
+     :output-cost 120
+     :cost-url ,gptel--openai-cost-url)
     (gpt-4-1106-preview
      :description "Preview model with improved function calling support"
      :capabilities (tool-use)
      :context-window 128
      :input-cost 10
      :output-cost 30
+     :cost-url ,gptel--openai-cost-url
      :cutoff-date "2023-04")
     (gpt-3.5-turbo
      :description "More expensive & less capable than GPT-4o-mini; use that instead"
@@ -631,6 +647,7 @@ the same as t."
      :context-window 16.358
      :input-cost 0.50
      :output-cost 1.50
+     :cost-url ,gptel--openai-cost-url
      :cutoff-date "2021-09")
     (gpt-3.5-turbo-16k
      :description "More expensive & less capable than GPT-4o-mini; use that instead"
@@ -638,6 +655,7 @@ the same as t."
      :context-window 16.385
      :input-cost 3
      :output-cost 4
+     :cost-url ,gptel--openai-cost-url
      :cutoff-date "2021-09"))
   "List of available OpenAI models and associated properties.
 Keys:
@@ -653,6 +671,8 @@ Keys:
 - `:input-cost': the input cost, in US dollars per million tokens.
 
 - `:output-cost': the output cost, in US dollars per million tokens.
+
+- `:cost-url': web page for current model pricing.
 
 - `:cutoff-date': the knowledge cutoff date.
 
@@ -1441,6 +1461,78 @@ file."
     (force-mode-line-update)))
 
 (declare-function gptel-context--wrap "gptel-context")
+
+;; See (info "(elisp) Emacs Lisp Coding Conventions") for justification
+;; for not prefixing this function name with `gptel-'.
+(defun describe-gptel-model (backend model)
+  "Display a description of a gptel model MODEL of BACKEND."
+  (interactive
+   (nthcdr 1
+	   (cl-loop
+	    with default = (concat (gptel-backend-name gptel-backend) ":"
+				   (gptel--model-name gptel-model))
+	    for (name . backend) in gptel--known-backends
+	    nconc (cl-loop for model in (gptel-backend-models backend)
+			   collect (list (concat name ":"
+						 (gptel--model-name model))
+					 backend model))
+	    into models-alist
+	    finally return (assoc (completing-read
+				   (format-prompt "Describe gptel model" default)
+				   models-alist nil t nil nil
+				   default) models-alist))))
+  (help-setup-xref (list #'describe-gptel-model backend model)
+		   (called-interactively-p 'interactive))
+  (with-help-window (help-buffer)
+    (with-current-buffer standard-output
+      (cl-flet ((sect (name val)
+		      (insert (make-string (max 0
+						(- 18 (string-width name)))
+					   ?\s)
+			      (concat name ": "))
+		      (insert (if (listp val)
+				  (string-join (mapcar
+						#'(lambda (s)
+						    (if (symbolp s)
+							(symbol-name s)
+						      s))
+						val) ", ")
+				val))
+		      (insert "\n")))
+	(let* ((stream (gptel-backend-stream backend))
+	       (desc (get model :description))
+	       (caps (get model :capabilities))
+	       (context (get model :context-window))
+	       (maxout (get model :max-output))
+	       (cost-url (get model :cost-url))
+	       (cutoff (get model :cutoff-date))
+	       (mime-types (get model :mime-types))
+	       (input-cost (get model :input-cost))
+	       (output-cost (get model :output-cost)))
+	  (insert (format "%s:%s is a gptel Large Language Model (LLM).\n\n"
+			  (gptel-backend-name backend)
+			  (gptel--model-name model)))
+	  (when desc (sect "Description" desc))
+	  (sect "Backend endpoint"
+		(format "%s://%s%s"
+			(gptel-backend-protocol backend)
+			(gptel-backend-host backend)
+			(gptel-backend-endpoint backend)))
+	  (sect "Streaming" (if stream "yes" "no"))
+	  (when caps (sect "Capabilities" caps))
+	  (when context (sect "Context window" (format "%dk" context)))
+	  (when maxout (sect "Maximum output" (format "%d tokens" maxout)))
+	  (when cutoff (sect "Cut-off date" cutoff))
+	  (when mime-types (sect "MIME types" mime-types))
+	  (when input-cost (sect "Input cost"
+				 (format "$%6.2f per 1M tokens" input-cost)))
+	  (when output-cost (sect "Output cost"
+				  (format "$%6.2f per 1M tokens" output-cost)))
+	  (when (or input-cost output-cost)
+	    (insert (format "%20sPrices subject to change.\n" " "))
+	    (when cost-url
+	      (insert (make-string 20 ?\s))
+	      (help-insert-xref-button cost-url 'help-url cost-url))))))))
 
 
 ;;; Tool use
