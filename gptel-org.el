@@ -526,6 +526,7 @@ non-nil (default), display a message afterwards."
 
 
 ;;; Transforming responses
+;;;###autoload
 (defun gptel--convert-markdown->org (str)
   "Convert string STR from markdown to org markup.
 
@@ -602,6 +603,7 @@ This is intended for use in the markdown to org stream converter."
         (insert (if end "#+end_src" "#+begin_src "))
       (insert "="))))
 
+;;;###autoload
 (defun gptel--stream-convert-markdown->org (start-marker)
   "Return a Markdown to Org converter.
 
