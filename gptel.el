@@ -1226,27 +1226,29 @@ the gptel property is set to just PROP.
 
 The legacy structure, a list of (BEG . END) is also supported and will be
 applied before being re-persisted in the new structure."
-  (if (symbolp (caar bounds-alist))
-      (mapc
-       (lambda (bounds)
-         (let* ((prop (pop bounds)))
-           (mapc
-            (lambda (bound)
-              (let ((prop-has-val (> (length bound) 2)))
-                (add-text-properties
-                 (pop bound) (pop bound)
-                 (if (eq prop 'response)
-                     '(gptel response front-sticky (gptel))
-                   (list 'gptel
-                         (if prop-has-val
-                             (cons prop (pop bound))
-                           prop))))))
-            bounds)))
-       bounds-alist)
-    (mapc (lambda (bound)
-            (add-text-properties
-             (car bound) (cdr bound) '(gptel response front-sticky (gptel))))
-          bounds-alist)))
+  (let ((modified (buffer-modified-p)))
+    (if (symbolp (caar bounds-alist))
+        (mapc
+         (lambda (bounds)
+           (let* ((prop (pop bounds)))
+             (mapc
+              (lambda (bound)
+                (let ((prop-has-val (> (length bound) 2)))
+                  (add-text-properties
+                   (pop bound) (pop bound)
+                   (if (eq prop 'response)
+                       '(gptel response front-sticky (gptel))
+                     (list 'gptel
+                           (if prop-has-val
+                               (cons prop (pop bound))
+                             prop))))))
+              bounds)))
+         bounds-alist)
+      (mapc (lambda (bound)
+              (add-text-properties
+               (car bound) (cdr bound) '(gptel response front-sticky (gptel))))
+            bounds-alist))
+    (set-buffer-modified-p modified)))
 
 (defun gptel--restore-state ()
   "Restore gptel state when turning on `gptel-mode'."
