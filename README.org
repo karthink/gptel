@@ -89,6 +89,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#spacemacs][Spacemacs]]
   - [[#setup][Setup]]
     - [[#chatgpt][ChatGPT]]
+    - [[#configuring-other-llm-backends][Configuring other LLM backends]]
     - [[#other-llm-backends][Other LLM backends]]
       - [[#azure][Azure]]
       - [[#gpt4all][GPT4All]]
@@ -197,11 +198,23 @@ Procure an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
 
 Optional: Set =gptel-api-key= to the key. Alternatively, you may choose a more secure method such as:
 
-- Storing in =~/.authinfo=. By default, "api.openai.com" is used as HOST and "apikey" as USER.
-  #+begin_src authinfo
-machine api.openai.com login apikey password TOKEN
-  #+end_src
-- Setting it to a function that returns the key.
+- Setting it to a custom function that returns the key.
+- Leaving it set to the default =gptel-apikey-from-auth-source= function which reads keys from =~/.authinfo=.
+
+*** Configuring other LLM backends
+ChatGPT is the default LLM backend for gptel, if you want to use other LLM backends (like Claude/Anthropic) you need to register and configure them first.
+
+Add your API keys to =~/.authinfo=, and leave =gptel-api-key= set to its default. By default, the API endpoint DNS name (e.g. "api.openai.com") is used as HOST and "apikey" as USER.
+#+begin_src authinfo
+machine api.openai.com login apikey password sk-secret-openai-api-key-goes-here
+machine api.anthropic.com login apikey password sk-secret-anthropic-api-key-goes-here
+#+end_src
+
+#+begin_src emacs-lisp
+(gptel-make-anthropic "Claude" :stream t :key gptel-api-key)
+#+end_src
+
+Once the backend is registered, you'll see model names prefixed by "Claude:" appear in the transient model selection menu.
 
 *** Other LLM backends
 #+html: <details><summary>
