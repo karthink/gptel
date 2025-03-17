@@ -89,6 +89,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#spacemacs][Spacemacs]]
   - [[#setup][Setup]]
     - [[#chatgpt][ChatGPT]]
+    - [[#configuring-other-llm-backends][Configuring other LLM backends]]
     - [[#other-llm-backends][Other LLM backends]]
       - [[#azure][Azure]]
       - [[#gpt4all][GPT4All]]
@@ -202,6 +203,39 @@ Optional: Set =gptel-api-key= to the key. Alternatively, you may choose a more s
 machine api.openai.com login apikey password TOKEN
   #+end_src
 - Setting it to a function that returns the key.
+
+*** Configuring other LLM backends
+ChatGPT is the default LLM backend for gptel. If that is all you intend to use, setting the =gptel-api-key= variable to
+your OpenAI API key, or adding an entry for =api.openai.com= in your =~/.authinfo= file is all you need. If you'd like to
+use additional LLM backends, you need to explicitly register them, which (among other things) tells gptel which API key
+to use for a given backend.
+
+Here is an example of a =~/.authinfo= file that stores the API keys for three different backends.
+#+begin_src authinfo
+machine api.openai.com login apikey password sk-a-super-secret-api-key-goes-here
+machine api.anthropic.com login apikey password sk-another-super-secret-api-key
+machine api.deepseek.com login apikey password sk-yet-another-secret-api-key
+#+end_src
+*NOTE*: Without extra configuration these keys will be stored in plaintext on disk, check out the documentation for the
+=auth-sources= variable for details on how to securely manage secrets in Emacs.
+
+The code below will register and configure the Anthropic and Deepseek backends. By default, the =gptel-api-key= variable
+is set to the function =gptel-apikey-from-auth-source=. This means you can simply use =gptel-api-key= as the key for all
+backend configurations, and rely on Emacs' built-in =auth-sources= mechanism to retreive the correct API key.
+
+#+begin_src emacs-lisp
+(gptel-make-anthropic "Claude"
+  :stream t
+  :key gptel-api-key)
+
+(gptel-make-deepseek "Deepseek"
+  :stream t
+  :key gptel-api-key)
+#+end_src
+
+Once these backends are registered, models from these backends will appear in the transient menu when selecting a model.
+The new model names in the menu will be prefixed by either "Claude:" or "Deepseek:" to make it clear which LLM backend
+is serving a given model.
 
 *** Other LLM backends
 #+html: <details><summary>
