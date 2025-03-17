@@ -296,7 +296,7 @@ parameters."
                                (concat (plist-get info :reasoning) reasoning))
                   (when-let* ((content (plist-get delta :content))
                               ((not (eq content :null))))
-                    (if (plist-member delta :reasoning_content) ;Check for reasoning model
+                    (if (eq (plist-get info :reasoning-block) 'in) ;Check if in reasoning block
                         (plist-put info :reasoning-block t) ;End of streaming reasoning block
                       (plist-put info :reasoning-block 'done)) ;Not using a reasoning model
                     (throw 'done t)))))))))))

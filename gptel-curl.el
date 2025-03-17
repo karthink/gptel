@@ -338,6 +338,8 @@ Optional RAW disables text properties and transformation."
                  ((stringp reasoning)
                   ;; Obtained from separate JSON field in response
                   (funcall callback (cons 'reasoning reasoning) proc-info)
+                  (unless reasoning-block ;Record that we're in a reasoning block (#709)
+                    (plist-put proc-info :reasoning-block 'in))
                   (plist-put proc-info :reasoning nil)) ;Reset for next parsing round
                  ((and (null reasoning-block) (length> response 0))
                   (if (string-match-p "^ *<think>" response)
