@@ -451,28 +451,30 @@ ARGS are the original function call arguments."
 (defun gptel-org--restore-state ()
   "Restore gptel state for Org buffers when turning on `gptel-mode'."
   (save-restriction
-    (widen)
-    (condition-case status
-        (progn
-          (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
-            (gptel--restore-props (read bounds)))
-          (pcase-let ((`(,system ,backend ,model ,temperature ,tokens ,num)
-                       (gptel-org--entry-properties (point-min))))
-            (when system (setq-local gptel--system-message system))
-            (if backend (setq-local gptel-backend backend)
-              (message
-               (substitute-command-keys
-                (concat
-                 "Could not activate gptel backend \"%s\"!  "
-                 "Switch backends with \\[universal-argument] \\[gptel-send]"
-                 " before using gptel."))
-               backend))
-            (when model (setq-local gptel-model model))
-            (when temperature (setq-local gptel-temperature temperature))
-            (when tokens (setq-local gptel-max-tokens tokens))
-            (when num (setq-local gptel--num-messages-to-send num))))
-      (:success (message "gptel chat restored."))
-      (error (message "Could not restore gptel state, sorry! Error: %s" status)))))
+    (let ((modified (buffer-modified-p)))
+      (widen)
+      (condition-case status
+          (progn
+            (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
+              (gptel--restore-props (read bounds)))
+            (pcase-let ((`(,system ,backend ,model ,temperature ,tokens ,num)
+                         (gptel-org--entry-properties (point-min))))
+              (when system (setq-local gptel--system-message system))
+              (if backend (setq-local gptel-backend backend)
+                (message
+                 (substitute-command-keys
+                  (concat
+                   "Could not activate gptel backend \"%s\"!  "
+                   "Switch backends with \\[universal-argument] \\[gptel-send]"
+                   " before using gptel."))
+                 backend))
+              (when model (setq-local gptel-model model))
+              (when temperature (setq-local gptel-temperature temperature))
+              (when tokens (setq-local gptel-max-tokens tokens))
+              (when num (setq-local gptel--num-messages-to-send num))))
+        (:success (message "gptel chat restored."))
+        (error (message "Could not restore gptel state, sorry! Error: %s" status)))
+      (set-buffer-modified-p modified))))
 
 (defun gptel-org-set-properties (pt &optional msg)
   "Store the active gptel configuration under the current heading.
