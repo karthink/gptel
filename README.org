@@ -199,7 +199,7 @@ Procure an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
 Optional: Set =gptel-api-key= to the key. Alternatively, you may choose a more secure method such as:
 
 - Setting it to a custom function that returns the key.
-- Leaving it set to the default =gptel-apikey-from-auth-source= function which reads keys from =~/.authinfo=.
+- Leaving it set to the default =gptel-api-key-from-auth-source= function which reads keys from =~/.authinfo=.
 
 *** Configuring other LLM backends
 ChatGPT is the default LLM backend for gptel, if you want to use other LLM backends (like Claude/Anthropic) you need to register and configure them first.
