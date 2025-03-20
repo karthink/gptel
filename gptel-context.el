@@ -87,7 +87,7 @@ context chunk.  This is accessible as, for example:
 
 (defcustom gptel-context-restrict-to-project-files t
   "Whether to restrict files eligible to be added to the context to project files.
-When set to t, files in a VCS system that are not project files (such as files
+When set to t, files in a VCS that are not project files (such as files
 listed in `.gitignore' in a Git repository) will not be added to the context."
   :group 'gptel
   :type 'boolean)
