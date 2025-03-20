@@ -1005,7 +1005,7 @@ You can examine the active context from the menu:
 And then browse through or remove context from the context buffer:
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/79a5ffe8-3d63-4bf7-9bf6-0457ab61bf2a" align="center" alt="Image showing gptel's context buffer.">
 
-By default, files in a local repository’s =.gitignore= file are excluded from the context. To include these files, set =gptel-context-exclude-git-ignored= to =nil=. Note that remote files are always included, regardless of the value of =gptel-context-exclude-git-ignored=.
+By default, files in a version control system that are not project files will not be added to the context. To be able to add these files, set =gptel-context-exclude-git-ignored= to =nil=. Note that remote files are always included, regardless of the value of =gptel-context-exclude-git-ignored=.
 
 *** Handle "reasoning" content
 
