@@ -30,6 +30,7 @@
 ;;; -*- lexical-binding: t -*-
 (require 'gptel)
 (require 'cl-lib)
+(require 'project)
 
 (declare-function gptel-menu "gptel-transient")
 (declare-function dired-get-marked-files "dired")
@@ -84,10 +85,10 @@ context chunk.  This is accessible as, for example:
   :group 'gptel
   :type 'function)
 
-(defcustom gptel-context-exclude-git-ignored t
-  "Whether to exclude git-ignored files from context.
-When non-nil, do not add to the context files or directories listed in
-the `.gitignore' file of their associated repository."
+(defcustom gptel-context-restrict-to-project-files t
+  "Whether to restrict files eligible to be added to the context to project files.
+When set to t, files in a VCS system that are not project files (such as files
+listed in `.gitignore' in a Git repository) will not be added to the context."
   :group 'gptel
   :type 'boolean)
 
@@ -115,8 +116,8 @@ the `.gitignore' file of their associated repository."
    ;; A region is selected.
    ((use-region-p)
     (gptel-context--add-region (current-buffer)
-                                  (region-beginning)
-                                  (region-end))
+                               (region-beginning)
+                               (region-end))
     (deactivate-mark)
     (message "Current region added as context."))
    ;; If in dired
@@ -127,27 +128,27 @@ the `.gitignore' file of their associated repository."
 	   (action-fn (if remove-p
 			  #'gptel-context-remove
 			#'gptel-context-add-file))
-	   (git-cache (and (not remove-p)
-			   (gptel-context--build-git-cache default-directory))))
+	   (project-files (and (not remove-p)
+			       gptel-context-restrict-to-project-files
+			       (gptel-context--get-project-files default-directory))))
       (when (or remove-p (null dirs) (null confirm)
 		(y-or-n-p (format "Recursively add files from %d director%s? "
 				  (length dirs)
 				  (if (= (length dirs) 1) "y" "ies"))))
-	(if git-cache
-	    (dolist (file files)
-	      (funcall (if remove-p #'gptel-context-remove
-			 (lambda (f) (gptel-context-add-file f git-cache)))
-		       file))
+	(if project-files
+	    (mapc (lambda (file)
+		    (gptel-context-add-file file project-files))
+		  files)
 	  (mapc action-fn files)))))
    ;; If in an image buffer
    ((and (derived-mode-p 'image-mode)
 	 (gptel--model-capable-p 'media)
 	 (buffer-file-name)
-	 (not (gptel-context--git-skip-p (buffer-file-name))))
+	 (not (gptel-context--skip-p (buffer-file-name))))
     (funcall (if (and arg (< (prefix-numeric-value arg) 0))
-              #'gptel-context-remove
-              #'gptel-context-add-file)
-          (buffer-file-name)))
+		 #'gptel-context-remove
+               #'gptel-context-add-file)
+             (buffer-file-name)))
    ;; No region is selected, and ARG is positive.
    ((and arg (> (prefix-numeric-value arg) 0))
     (let* ((buffer-name (read-buffer "Choose buffer to add as context: "
@@ -162,17 +163,17 @@ the `.gitignore' file of their associated repository."
     (when (or (null confirm)
 	      (y-or-n-p "Remove all contexts from this buffer? "))
       (let ((removed-contexts 0))
-        (cl-loop for cov in
+	(cl-loop for cov in
                  (gptel-context--in-region (current-buffer) (point-min) (point-max))
                  do (progn
                       (cl-incf removed-contexts)
                       (gptel-context-remove cov)))
-        (message (format "%d context%s removed from current buffer."
+	(message (format "%d context%s removed from current buffer."
                          removed-contexts
                          (if (= removed-contexts 1) "" "s"))))))
    (t ; Default behavior
     (if (gptel-context--at-point)
-        (progn
+	(progn
           (gptel-context-remove (car (gptel-context--in-region (current-buffer)
                                                                (max (point-min) (1- (point)))
                                                                (point))))
@@ -210,68 +211,52 @@ Return PATH if added, nil if ignored."
     (message "Ignoring unsupported binary file \"%s\"." path)
     nil))
 
-(defun gptel-context--add-directory (path action &optional git-cache)
+(defun gptel-context--add-directory (path action &optional project-files)
   "Process all files in directory at PATH according to ACTION.
 ACTION should be either `add' or `remove'.
 
-Optional GIT-CACHE is a cons of git-root directory and non-ignored files list."
-  (let* ((git-cache (or git-cache
-			(and (eq action 'add)
-			     (gptel-context--build-git-cache path))))
-	 (git-root (car-safe git-cache))
-	 (git-unignored-files (cdr-safe git-cache)))
-    ;; Check if the directory itself is git-ignored
-    (if (and git-root
-	     gptel-context-exclude-git-ignored
-	     (file-in-directory-p path git-root)
-	     (not (cl-some (lambda (f)
-			     (string-prefix-p (file-relative-name path git-root) f))
-			   git-unignored-files)))
-	;; Skip the entire directory if it's ignored
-	(gptel-context--message-git-skipped path git-cache)
-      ;; Otherwise process files recursively
-      (dolist (file (directory-files-recursively path "." t))
-	(unless (file-directory-p file)
-	  (if (and git-root
-		   gptel-context-exclude-git-ignored
-		   (not (member (file-relative-name file git-root) git-unignored-files))
-		   (eq action 'add))
-	      ;; Skip individual ignored files
-	      (gptel-context--message-git-skipped file git-cache)
-	    ;; Process non-ignored files
-	    (pcase-exhaustive action
-	      ('add
-	       (if (gptel--file-binary-p file)
-		   (gptel-context--add-binary-file file)
-		 (gptel-context--add-text-file file)))
-	      ('remove
-	       (setf (alist-get file gptel-context--alist nil 'remove #'equal) nil)))))))
+PROJECT-FILES is a list of all files in the current project."
+  (let* ((project-files (or project-files
+			    (and (eq action 'add)
+				 (gptel-context--get-project-files path))))
+	 (root (car-safe project-files)))
+    (dolist (file (directory-files-recursively path "." t))
+      (unless (file-directory-p file)
+	(if (and gptel-context-restrict-to-project-files
+		 root
+		 (eq action 'add)
+		 (not (member file project-files)))
+	    (gptel-context--message-skipped file project-files)
+	  (pcase-exhaustive action
+	    ('add
+	     (if (gptel--file-binary-p file)
+		 (gptel-context--add-binary-file file)
+	       (gptel-context--add-text-file file)))
+	    ('remove
+	     (setf (alist-get file gptel-context--alist nil 'remove #'equal) nil))))))
     (when (eq action 'remove)
       (message "Directory \"%s\" removed from context." path))))
 
-(defun gptel-context-add-file (path &optional git-cache)
+(defun gptel-context-add-file (path &optional project-files)
   "Add the file at PATH to the gptel context.
 
 If PATH is a directory, recursively add all files in it. PATH should
 be readable as text.
 
-Optional GIT-CACHE is a cons of git-root directory and non-ignored
-files list."
+PROJECT-FILES is a list of all files in the current project."
   (interactive "fChoose file to add to context: ")
   (cond ((file-directory-p path)
-         (gptel-context--add-directory path 'add git-cache))
-        ((and gptel-context-exclude-git-ignored
+         (gptel-context--add-directory path 'add project-files))
+        ((and gptel-context-restrict-to-project-files
 	      (not (file-remote-p path))
-              (if git-cache
-                  ;; Use cached git info if available
-                  (let ((git-root (car git-cache))
-                        (tracked-files (cdr git-cache)))
-                    (and git-root
-                         (file-in-directory-p path git-root)
-                         (not (member (file-relative-name path git-root) tracked-files))))
-                ;; Otherwise check individually
-                (gptel-context--git-skip-p path)))
-	 (gptel-context--message-git-skipped path git-cache))
+              (if project-files
+		  (when-let ((project (project-current nil (car-safe project-files))))
+                    (let ((root (project-root project)))
+                      (and (file-in-directory-p path root)
+			   (not (member path project-files)))))
+		;; Otherwise check individually
+		(gptel-context--skip-p path)))
+	 (gptel-context--message-skipped path project-files))
 	((gptel--file-binary-p path)
 	 (gptel-context--add-binary-file path))
 	(t (gptel-context--add-text-file path))))
@@ -279,55 +264,31 @@ files list."
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
 (defalias 'gptel-add-file #'gptel-context-add-file)
 
-;;; git tracking functions
+;;; project-related functions
 
-(defun gptel-context--build-git-cache (directory)
-  "Build git file tracking cache for DIRECTORY.
-Return a cons cell `(git-root . tracked-files)' or nil if not
-applicable."
-  (when (and gptel-context-exclude-git-ignored
-	     (not (file-remote-p directory))
-	     (executable-find "git"))
-    (when-let ((git-root (locate-dominating-file directory ".git")))
-      (cons git-root (gptel-context--get-git-unignored git-root)))))
+(defun gptel-context--get-project-files (dir)
+  "Return a list of files in the project DIR, or nil if no project is found."
+  (when-let ((project (project-current nil dir)))
+    (project-files project)))
 
-(defun gptel-context--get-git-unignored (dir)
-  "Return a list of files in the Git repo at DIR excluding git-ignored files.
-Fall back to nil (allowing all files) if Git command fails."
-  (let ((default-directory dir))
-    (condition-case err
-        (process-lines "git" "ls-files" "--cached" "--others" "--exclude-standard")
-      (error
-       (message "Warning: Error running git ls-files in %s: %S (including all files)" dir err)
-       ;; Return nil to allow all files rather than exclude all
-       nil))))
+(defun gptel-context--skip-p (file)
+  "Return non-nil if FILE should not be added to the context."
+  (when (and gptel-context-restrict-to-project-files
+	     (not (file-remote-p file)))
+    (when-let* ((project (project-current nil file)))
+      (not (member file (gptel-context--get-project-files file))))))
 
-(defun gptel-context--git-skip-p (file)
-  "Return non-nil if FILE should be skipped due to gitignore rules."
-  (when (and gptel-context-exclude-git-ignored
-	     (not (file-remote-p file))
-             (executable-find "git"))
-    (when-let* ((git-root (locate-dominating-file file ".git"))
-                (rel-path (file-relative-name file git-root)))
-      (let ((git-unignored (gptel-context--get-git-unignored git-root)))
-        (not (member rel-path git-unignored))))))
-
-(defun gptel-context--message-git-skipped (path &optional git-cache)
-  "Message that PATH is skipped due to gitignore rules.
-Optional GIT-CACHE is a cons of git-root directory and non-ignored
-files list."
-  (let* ((type (if (file-directory-p path) "directory" "file"))
-	 (skipped-common (format "git-ignored %s" type))
-	 (skipped (if (string= type "directory")
-		      (concat "files from " skipped-common)
-		    skipped-common))
-	 (var (symbol-name 'gptel-context-exclude-git-ignored))
-	 (reminder (format "To include git-ignored files, unset `%s'." var)))
-    (if-let* ((git-root (car-safe git-cache))
-	      (rel-path (file-relative-name path git-root))
-	      (repo (file-name-nondirectory (directory-file-name git-root))))
-	(message "Skipping %s `%s' in repo (%s). %s" skipped rel-path repo reminder)
-      (message "Skipping %s `%s'. %s" skipped path reminder))))
+(defun gptel-context--message-skipped (file &optional project-files)
+  "Message that FILE is skipped because it is not a project file.
+PROJECT-FILES is a list of all files in the current project."
+  (let* ((type (if (file-directory-p file) "directory" "file"))
+	 (var (symbol-name 'gptel-context-restrict-to-project-files))
+	 (reminder (format "To include this file, unset `%s'." var)))
+    (if-let* ((project (project-current nil (car-safe project-files)))
+	      (root (project-root project))
+	      (rel-file (file-relative-name file root)))
+	(message "Skipping %s \"%s\" in project \"%s\". %s" type rel-file (project-name project) reminder)
+      (message "Skipping %s \"%s\". %s" type file reminder))))
 
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
@@ -351,8 +312,8 @@ If CONTEXT is a directory, recursively removes all files in it."
       (message "File \"%s\" removed from context." context)))
    ((region-active-p)
     (when-let* ((contexts (gptel-context--in-region (current-buffer)
-                                                    (region-beginning)
-                                                    (region-end))))
+						    (region-beginning)
+						    (region-end))))
       (cl-loop for ctx in contexts do (delete-overlay ctx))))
    (t
     (when-let* ((ctx (gptel-context--at-point)))
