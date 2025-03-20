@@ -254,8 +254,8 @@ value of `gptel-org-branching-context', which see."
               (gptel--parse-buffer gptel-backend max-entries))))
       ;; Create prompt the usual way
       (let ((org-buf (current-buffer))
-            (beg (point-min)) (end (point-max)))
-        (gptel--with-buffer-copy org-buf beg end
+            (beg (point-min)))
+        (gptel--with-buffer-copy org-buf beg prompt-end
           (gptel-org--unescape-tool-results)
           (gptel-org--strip-elements)
           (gptel-org--strip-block-headers)
