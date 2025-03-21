@@ -501,10 +501,10 @@ for."
                   :request-params request-params
                   :key key
                   :url (lambda ()
-                         (let ((method (if (and stream
-                                                gptel-stream)
-                                           "streamGenerateContent"
-                                         "generateContent")))
+                         (let ((method
+                                (if (and stream gptel-use-curl gptel-stream)
+                                    "streamGenerateContent"
+                                  "generateContent")))
                            (format "%s://%s%s/%s:%s?key=%s"
                                    protocol
                                    host
