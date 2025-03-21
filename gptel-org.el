@@ -617,7 +617,8 @@ START-MARKER is used to identify the corresponding process when
 cleaning up after."
   (letrec ((in-src-block nil)           ;explicit nil to address BUG #183
            (in-org-src-block nil)
-           (temp-buf (generate-new-buffer " *gptel-temp*" t))
+           (temp-buf ; NOTE: Don't use `generate-new-buffer' until we drop support for Emacs 27.1 (#724)
+            (get-buffer-create (generate-new-buffer-name " *gptel-temp*") t))
            (start-pt (make-marker))
            (ticks-total 0)      ;MAYBE should we let-bind case-fold-search here?
            (cleanup-fn
