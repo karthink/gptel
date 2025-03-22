@@ -276,7 +276,7 @@ PROJECT-FILES is a list of all files in the current project."
   (when (and gptel-context-restrict-to-project-files
 	     (not (file-remote-p file)))
     (when-let* ((project (project-current nil file)))
-      (not (member file (gptel-context--get-project-files file))))))
+      (not (member file (gptel-context--get-project-files (project-root project)))))))
 
 (defun gptel-context--message-skipped (file &optional project-files)
   "Message that FILE is skipped because it is not a project file.
