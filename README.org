@@ -1,6 +1,9 @@
 #+title: gptel: A simple LLM client for Emacs
 
-[[https://elpa.nongnu.org/nongnu/gptel.html][file:https://elpa.nongnu.org/nongnu/gptel.svg]] [[https://stable.melpa.org/#/gptel][file:https://stable.melpa.org/packages/gptel-badge.svg]] [[https://melpa.org/#/gptel][file:https://melpa.org/packages/gptel-badge.svg]]
+[[https://elpa.nongnu.org/nongnu/gptel.html][file:https://elpa.nongnu.org/nongnu/gptel.svg]]
+[[https://elpa.nongnu.org/nongnu-devel/gptel.html][file:https://elpa.nongnu.org/nongnu-devel/gptel.svg]]
+[[https://stable.melpa.org/#/gptel][file:https://stable.melpa.org/packages/gptel-badge.svg]]
+[[https://melpa.org/#/gptel][file:https://melpa.org/packages/gptel-badge.svg]]
 
 gptel is a simple Large Language Model chat client for Emacs, with support for multiple models and backends.  It works in the spirit of Emacs, available at any time and uniformly in any buffer.
 
@@ -148,11 +151,9 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
 
 ** Installation
 
-gptel can be installed in Emacs out of the box with =M-x package-install= ⏎ =gptel=.  This installs the latest commit.
-
-If you want the stable version instead, add NonGNU-devel ELPA or MELPA-stable to your list of package sources (=package-archives=), then install gptel with =M-x package-install⏎= =gptel= from these sources.
-
-(Optional: Install =markdown-mode=.)
+- *Release version*: =M-x package-install= ⏎ =gptel= in Emacs.
+- *Development snapshot*: Add MELPA or NonGNU-devel ELPA to your list of package sources, then install with =M-x package-install= ⏎ =gptel=.
+- *Optional:* Install =markdown-mode=.
 
 #+html: <details><summary>
 **** Straight
