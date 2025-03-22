@@ -360,7 +360,8 @@ OV is the rewrite overlay, CI is true for interactive calls."
            (concat
             (unless (eq (char-before (overlay-start ov)) ?\n) "\n")
             (propertize "REWRITE READY: " 'face 'success)
-            (mapconcat (lambda (e) (cdr e)) (mapcar #'rmc--add-key-description choices) ", ")
+	    (when (fboundp #'rmc--add-key-description)  ; introduced in Emacs 29
+              (mapconcat (lambda (e) (cdr e)) (mapcar #'rmc--add-key-description choices) ", "))
             (propertize
              " " 'display `(space :align-to (- right ,(1+ (length hint-str)))))
             (propertize hint-str 'face 'success)))
