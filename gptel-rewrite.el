@@ -397,6 +397,8 @@ INFO is the async communication channel for the rewrite request."
             (when (eq (char-before (point-max)) ?\n)
               (plist-put info :newline t))
             (delay-mode-hooks (funcall (buffer-local-value 'major-mode buf)))
+	    ;; message.el and possily others set these when entering the major mode. (#730)
+	    (setq buffer-file-name nil buffer-auto-save-file-name nil)
             (add-text-properties (point-min) (point-max) '(face shadow font-lock-face shadow))
             (goto-char (point-min)))
           (insert response)
