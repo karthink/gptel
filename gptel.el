@@ -974,6 +974,14 @@ If positions START and END are provided, insert that part of BUF first."
      (let ((major-mode (buffer-local-value 'major-mode ,buf)))
       ,@body)))
 
+(defmacro gptel--temp-buffer (buf)
+  "Generate a temp buffer BUF.
+
+Compatibility macro for Emacs 27.1."
+  (if (< emacs-major-version 28)
+      `(generate-new-buffer ,buf)
+    `(generate-new-buffer ,buf t)))
+
 (defun gptel-prompt-prefix-string ()
   "Prefix before user prompts in `gptel-mode'."
   (or (alist-get major-mode gptel-prompt-prefix-alist) ""))

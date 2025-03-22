@@ -632,8 +632,8 @@ generated from functions."
                            (make-overlay (region-beginning) (region-end) nil t))))
                (overlay-put ov 'category 'gptel)
                (overlay-put ov 'evaporate t)
-               ;; NOTE: Don't use `generate-new-buffer' until we drop support for Emacs 27.1 (#724)
-               (cons ov (get-buffer-create (generate-new-buffer-name " *gptel-rewrite*") t)))
+               ;; NOTE: Switch to `generate-new-buffer' after we drop Emacs 27.1 (#724)
+               (cons ov (gptel--temp-buffer " *gptel-rewrite*")))
              :callback #'gptel--rewrite-callback)
       ;; Move back so that the cursor is on the overlay when done.
       (unless (get-char-property (point) 'gptel-rewrite)
