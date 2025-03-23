@@ -1,4 +1,4 @@
-;;; gptel-context.el --- Context aggregator for GPTel  -*- lexical-binding: t; -*-
+;;; gptel-context.el --- Context aggregator for gptel  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
@@ -23,7 +23,7 @@
 ;;; Commentary:
 
 ;; The context allows you to conveniently create contexts which can be fed
-;; to GPTel.
+;; to gptel.
 
 ;;; Code:
 

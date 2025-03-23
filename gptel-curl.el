@@ -1,4 +1,4 @@
-;;; gptel-curl.el --- Curl support for GPTel         -*- lexical-binding: t; -*-
+;;; gptel-curl.el --- Curl support for gptel         -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
@@ -22,7 +22,7 @@
 
 ;;; Commentary:
 
-;; Curl support for GPTel.  Utility functions.
+;; Curl support for gptel.  Utility functions.
 
 ;;; Code:
 
@@ -205,7 +205,7 @@ PROC-INFO is the plist containing process metadata."
 
 ;; TODO: Separate user-messaging from this function
 (defun gptel-curl--stream-cleanup (process _status)
-  "Process sentinel for GPTel curl requests.
+  "Process sentinel for gptel curl requests.
 
 PROCESS and _STATUS are process parameters."
   (let ((proc-buf (process-buffer process)))

@@ -248,7 +248,7 @@ This only affects requests originating from Org mode buffers."
   "Size threshold for using file input with Curl.
 
 Specifies the size threshold for when to use a temporary file to pass data to
-Curl in GPTel queries.  If the size of the data to be sent exceeds this
+Curl in gptel queries.  If the size of the data to be sent exceeds this
 threshold, the data is written to a temporary file and passed to Curl using the
 `--data-binary' option with a file reference.  Otherwise, the data is passed
 directly as a command-line argument.
@@ -256,7 +256,7 @@ directly as a command-line argument.
 The value is an integer representing the number of bytes.
 
 Adjusting this value may be necessary depending on the environment
-and the typical size of the data being sent in GPTel queries.
+and the typical size of the data being sent in gptel queries.
 A larger value may improve performance by avoiding the overhead of creating
 temporary files for small data payloads, while a smaller value may be needed
 if the command-line argument size is limited by the operating system.
