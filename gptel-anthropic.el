@@ -117,7 +117,8 @@ information if the stream contains it.  Not my best work, I know."
            ((looking-at "message_delta")
             ;; collect stop_reason, usage_tokens and prepare tools
             (forward-line 1) (forward-char 5)
-            (when-let* ((tool-use (plist-get info :tool-use)))
+            (when-let* ((tool-use (plist-get info :tool-use))
+                        (response (gptel--json-read)))
               (let* ((data (plist-get info :data))
                      (prompts (plist-get data :messages)))
                 (plist-put ; Append a COPY of response text + tool-use to the prompts list
@@ -139,8 +140,7 @@ information if the stream contains it.  Not my best work, I know."
                         (plist-put tool-call :input nil)
                         (plist-put tool-call :id (gptel--anthropic-unformat-tool-id
                                                   (plist-get tool-call :id))))
-                      tool-use)))
-            (when-let* ((response (gptel--json-read)))
+                      tool-use))
               (plist-put info :output-tokens
                          (map-nested-elt response '(:usage :output_tokens)))
               (plist-put info :stop-reason
