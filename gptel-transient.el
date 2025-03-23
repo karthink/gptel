@@ -1,4 +1,4 @@
-;;; gptel-transient.el --- Transient menu for GPTel  -*- lexical-binding: t; -*-
+;;; gptel-transient.el --- Transient menu for gptel  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2023  Karthik Chikmagalur
 
