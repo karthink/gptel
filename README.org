@@ -93,7 +93,6 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
   - [[#setup][Setup]]
     - [[#chatgpt][ChatGPT]]
     - [[#other-llm-backends][Other LLM backends]]
-      - [[#optional-securing-api-keys-with-authinfo][(Optional) Securing API keys with =authinfo=]]
       - [[#azure][Azure]]
       - [[#gpt4all][GPT4All]]
       - [[#ollama][Ollama]]
@@ -214,7 +213,9 @@ Once this backend is registered, you'll see model names prefixed by "Claude:" ap
 
 See below for details on your preferred LLM provider, including local LLMs.
 
-**** (Optional) Securing API keys with =authinfo=
+#+html: <details><summary>
+***** (Optional) Securing API keys with =authinfo=
+#+html: </summary>
 
 You can use Emacs' built-in support for =authinfo= to store API keys required by gptel.  Add your API keys to =~/.authinfo=, and leave =gptel-api-key= set to its default.  By default, the API endpoint DNS name (e.g. "api.openai.com") is used as HOST and "apikey" as USER.
 #+begin_src authinfo
@@ -222,6 +223,7 @@ machine api.openai.com login apikey password sk-secret-openai-api-key-goes-here
 machine api.anthropic.com login apikey password sk-secret-anthropic-api-key-goes-here
 #+end_src
 
+#+html: </details>
 #+html: <details><summary>
 **** Azure
 #+html: </summary>
@@ -534,7 +536,7 @@ The above code makes the backend available to select.  If you want it to be the 
 
 ***** (Optional) Interim support for Claude 3.7 Sonnet
 
-gptel does not yet support specifying LLM "reasoning"/"thinking" behaviors dynamically through its interface.  This effort is ongoing, but in the meantime you use the Claude 3.7 Sonnet model in its "thinking" mode by defining a second Claude backend and selecting it in via the UI or elisp:
+To use Claude 3.7 Sonnet model in its "thinking" mode, you can define a second Claude backend and select it in via the UI or elisp:
 
 #+begin_src emacs-lisp
 (gptel-make-anthropic "Claude-thinking" ;Any name you want
@@ -553,7 +555,7 @@ gptel does not yet support specifying LLM "reasoning"/"thinking" behaviors dynam
 
 You can set the reasoning budget tokens and max tokens for this usage via the =:budget_tokens= and =:max_tokens= keys here, respectively.
 
-Once proper support for specifying reasoning behaviors is added to gptel's UI this will be unnecessary.
+You can control whether/how the reasoning output is shown via gptel's menu or =gptel-include-reasoning=, see [[#handle-reasoning-content][handling reasoning content]]. 
 
 #+html: </details>
 #+html: <details><summary>
