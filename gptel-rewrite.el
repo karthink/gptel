@@ -396,9 +396,7 @@ INFO is the async communication channel for the rewrite request."
             (insert-buffer-substring buf (overlay-start ov) (overlay-end ov))
             (when (eq (char-before (point-max)) ?\n)
               (plist-put info :newline t))
-            (delay-mode-hooks (funcall (buffer-local-value 'major-mode buf)))
-	    ;; message.el and possily others set these when entering the major mode. (#730)
-	    (setq buffer-file-name nil buffer-auto-save-file-name nil)
+            (setq major-mode (buffer-local-value 'major-mode buf)) ;Don't turn on major-mode (#730, #722)
             (add-text-properties (point-min) (point-max) '(face shadow font-lock-face shadow))
             (goto-char (point-min)))
           (insert response)
@@ -421,7 +419,8 @@ INFO is the async communication channel for the rewrite request."
             (let ((inhibit-read-only t))
               (delete-region (point) (point-max))
               ;; Run post-rewrite-functions on rewritten text in its buffer
-              (run-hook-with-args 'gptel-post-rewrite-functions (point-min) (point-max))
+              (with-demoted-errors
+                  (run-hook-with-args 'gptel-post-rewrite-functions (point-min) (point-max)))
               (when (and (plist-get info :newline)
                          (not (eq (char-before (point-max)) ?\n)))
                 (insert "\n"))
