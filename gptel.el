@@ -1675,6 +1675,18 @@ callback as its first argument, which it runs with the result:
            nil nil #'equal)
           tool)))
 
+(defun gptel-register-tool (spec)
+  "Register a tool defined by SPEC with gptel.
+SPEC is a plist that can be passed to `gptel-make-tool'.  Add the tool
+to `gptel-tools', replacing any tool with the same name."
+  (let ((tool (apply #'gptel-make-tool spec)))
+    (setq gptel-tools
+          (cons tool (seq-remove
+                      (lambda (existing)
+                        (string= (gptel-tool-name existing)
+                                 (gptel-tool-name tool)))
+                      gptel-tools)))))
+
 (cl-defgeneric gptel--parse-tools (_backend tools)
   "Parse TOOLS and return a list of prompts.
 
