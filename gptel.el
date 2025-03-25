@@ -2529,7 +2529,11 @@ Optional RAW disables text properties and transformation."
                                    (plist-get info :include-reasoning))
                (save-excursion (goto-char (point-max)) (insert text)))
            (with-current-buffer (marker-buffer start-marker)
-             (let ((blocks (if (derived-mode-p 'org-mode)
+             (let ((separator         ;Separate from response prefix if required
+                    (and (not tracking-marker) gptel-mode
+                         (not (string-suffix-p "\n" (gptel-response-prefix-string)))
+                         "\n"))
+                   (blocks (if (derived-mode-p 'org-mode)
                                `("#+begin_reasoning\n" . ,(concat "\n#+end_reasoning"
                                                            gptel-response-separator))
                              ;; TODO(reasoning) remove properties and strip instead
@@ -2542,7 +2546,7 @@ Optional RAW disables text properties and transformation."
                       0 (length text) '(gptel ignore front-sticky (gptel)) text)
                      (gptel--insert-response
                       (concat (car blocks) text (cdr blocks)) info t))
-                 (gptel--insert-response (car blocks) info t)
+                 (gptel--insert-response (concat separator (car blocks)) info t)
                  (gptel--insert-response text info)
                  (gptel--insert-response (cdr blocks) info t))
                (when (derived-mode-p 'org-mode) ;fold block
@@ -2953,12 +2957,18 @@ for streaming responses only."
                         (org-cycle))))))
             (unless (and reasoning-marker tracking-marker
                          (= reasoning-marker tracking-marker))
-              (gptel-curl--stream-insert-response
-               (if (derived-mode-p 'org-mode)
-                   "#+begin_reasoning\n"
-                 ;; TODO(reasoning) remove properties and strip instead
-                 (propertize "``` reasoning\n" 'gptel 'ignore))
-               info t))
+              (let ((separator        ;Separate from response prefix if required
+                     (and (not tracking-marker) gptel-mode
+                          (not (string-suffix-p
+                                "\n" (gptel-response-prefix-string)))
+                          "\n")))
+                (gptel-curl--stream-insert-response
+                 (concat separator
+                         (if (derived-mode-p 'org-mode)
+                             "#+begin_reasoning\n"
+                           ;; TODO(reasoning) remove properties and strip instead
+                           (propertize "``` reasoning\n" 'gptel 'ignore)))
+                 info t)))
             (if (eq include 'ignore)
                 (progn
                   (add-text-properties
@@ -3093,10 +3103,15 @@ for tool call results.  INFO contains the state of the request."
          do (funcall
              (plist-get info :callback)
              (let* ((name (gptel-tool-name tool))
-                    (separator (if (and tool-marker tracking-marker
-                                        (= tracking-marker tool-marker))
-                                   "\n"
-                                 gptel-response-separator))
+                    (separator        ;Separate from response prefix if required
+                     (cond ((not tracking-marker)
+                            (and gptel-mode
+                                 (not (string-suffix-p
+                                       "\n" (gptel-response-prefix-string)))
+                                 "\n"))           ;start of response
+                           ((not (and tool-marker ;not consecutive tool result blocks
+                                      (= tracking-marker tool-marker)))
+                            gptel-response-separator)))
                     (tool-use
                      ;; TODO(tool) also check args since there may be more than
                      ;; one call/result for the same tool
@@ -3130,7 +3145,7 @@ for tool call results.  INFO contains the state of the request."
                    (concat "\n" call "\n\n" result)
                    'gptel `(tool . ,id))
                   ;; TODO(tool) remove properties and strip instead of ignoring
-                  (propertize "\n```" 'gptel 'ignore))))
+                  (propertize "\n```\n" 'gptel 'ignore))))
              info
              'raw)
          ;; tool-result insertion has updated the tracking marker
@@ -3144,7 +3159,7 @@ for tool call results.  INFO contains the state of the request."
            (ignore-errors
              (save-excursion
                (goto-char tracking-marker)
-               (beginning-of-line)
+               (forward-line -1)
                (when (looking-at "^#\\+end_tool")
                  (org-cycle))))))))))
 
