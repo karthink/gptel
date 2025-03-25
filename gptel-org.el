@@ -226,12 +226,15 @@ value of `gptel-org-branching-context', which see."
                                   (org-element-at-point) #'gptel-org--element-begin
                                 '(headline) 'with-self) )
                  ;; lineage-map returns the full lineage in the unnarrowed
-                 ;; buffer.  Remove heading start positions at or before
-                 ;; (point-min) that are invalid due to narrowing, and add
-                 ;; (point-min) explicitly
-                 (start-bounds (nconc (cl-delete-if (lambda (p) (<= p (point-min)))
-                                                    full-bounds)
-                                      (list (point-min))))
+                 ;; buffer.  Remove heading start positions before (point-min)
+                 ;; that are invalid due to narrowing, and add (point-min) if
+                 ;; it's not already included in the lineage
+                 (start-bounds
+                  (nconc (cl-delete-if (lambda (p) (< p (point-min)))
+                                       full-bounds)
+                         (unless (save-excursion (goto-char (point-min))
+                                                 (looking-at-p outline-regexp))
+                           (list (point-min)))))
                  (end-bounds
                   (cl-loop
                    ;; (car start-bounds) is the begining of the current element,
