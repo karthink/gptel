@@ -395,6 +395,15 @@ files in the context."
      :input-cost 0.00
      :output-cost 0.00
      :cutoff-date "2024-08")
+    (gemini-2.5-pro-exp-03-25
+     :description "Enhanced thinking and reasoning, multimodal understanding, advanced coding, and more"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1000
+     :input-cost 0.00
+     :output-cost 0.00
+     :cutoff-date "2025-01")
     (gemini-2.0-flash-thinking-exp
      :description "DEPRECATED: Please use gemini-2.0-flash-thinking-exp-01-21 instead."
      :capabilities (tool-use media)
@@ -426,7 +435,8 @@ Information about the Gemini models was obtained from the following
 source:
 
 - <https://ai.google.dev/pricing>
-- <https://cloud.google.com/vertex-ai/generative-ai/docs/learn/models>")
+- <https://cloud.google.com/vertex-ai/generative-ai/docs/learn/models>
+- <https://ai.google.dev/gemini-api/docs/models>")
 
 ;;;###autoload
 (cl-defun gptel-make-gemini
