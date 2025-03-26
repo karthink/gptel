@@ -440,7 +440,7 @@ Keys:
   include when using this model.
 
 Information about the Gemini models was obtained from the following
-source:
+sources:
 
 - <https://ai.google.dev/pricing>
 - <https://ai.google.dev/gemini-api/docs/models>")
