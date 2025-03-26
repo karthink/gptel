@@ -386,6 +386,14 @@ files in the context."
      :input-cost 0.00
      :output-cost 0.00
      :cutoff-date "2024-08")
+    (gemini-2.5-pro-exp-03-25
+     :description "Gemini’s most capable model"
+     :capabilities (json)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :input-cost 0.00
+     :output-cost 0.00
+     :cutoff-date "2025-01")
     (gemini-2.0-flash-exp
      :description "Multi-modal, streaming, tool use 2000 RPM"
      :capabilities (tool-use json media)
