@@ -2,6 +2,10 @@
 
 * 0.9.9
 
+** Breaking changes
+
+** New models and backends
+
 ** New features and UI changes
 
 - The new option ~gptel-curl-extra-args~ can be used to specify extra
@@ -9,6 +13,10 @@
   global version of the gptel-backend-specific ~:curl-args~ slot,
   which can be used to specify Curl arguments when using a specific
   backend.
+
+- Tools now run in the buffer from which the request originates.
+
+** Notable Bug fixes
 
 * 0.9.8 2025-03-13
 

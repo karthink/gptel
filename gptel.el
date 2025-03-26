@@ -2068,63 +2068,62 @@ Run post-response hooks."
     (with-current-buffer (plist-get info :buffer)
       (when gptel-mode
         (gptel--update-status
-         (format " Calling tool..." ) 'mode-line-emphasis)))
+         (format " Calling tool..." ) 'mode-line-emphasis))
 
-    (let ((result-alist) (pending-calls))
-      (mapc                             ; Construct function calls
-       (lambda (tool-call)
-         (letrec ((args (plist-get tool-call :args))
-                  (name (plist-get tool-call :name))
-                  (arg-values)
-                  (tool-spec
-                   (cl-find-if
-                    (lambda (ts) (equal (gptel-tool-name ts) name))
-                    (plist-get info :tools)))
-                  (process-tool-result
-                   (lambda (result)
-                     (plist-put info :tool-success t)
-                     (let ((result (gptel--to-string result)))
-                       (plist-put tool-call :result result)
-                       (push (list tool-spec args result) result-alist))
-                     (cl-incf tool-idx)
-                     (when (>= tool-idx ntools) ; All tools have run
-                       (gptel--inject-prompt
-                        backend (plist-get info :data)
-                        (gptel--parse-tool-results
-                         backend (plist-get info :tool-use)))
-                       (funcall (plist-get info :callback)
-                                (cons 'tool-result result-alist) info)
-                       (gptel--fsm-transition fsm)))))
-           (if (null tool-spec)
-               (message "Unknown tool called by model: %s" name)
-             (setq arg-values
-                   (mapcar
-                    (lambda (arg)
-                      (let ((key (intern (concat ":" (plist-get arg :name)))))
-                        (plist-get args key)))
-                    (gptel-tool-args tool-spec)))
-             ;; Check if tool requires confirmation
-             (if (and gptel-confirm-tool-calls (or (eq gptel-confirm-tool-calls t)
-                                                   (gptel-tool-confirm tool-spec)))
-                 (push (list tool-spec arg-values process-tool-result)
-                       pending-calls)
-               ;; If not, run the tool
-               (if (gptel-tool-async tool-spec)
-                   (apply (gptel-tool-function tool-spec)
-                          process-tool-result arg-values)
-                 (let ((result
-                        (condition-case errdata
-                            (apply (gptel-tool-function tool-spec) arg-values)
-                          (error (mapconcat #'gptel--to-string errdata " ")))))
-                   (funcall process-tool-result result)))))))
-       tool-use)
-      (when pending-calls
-        (with-current-buffer (plist-get info :buffer)
+      (let ((result-alist) (pending-calls))
+        (mapc                           ; Construct function calls
+         (lambda (tool-call)
+           (letrec ((args (plist-get tool-call :args))
+                    (name (plist-get tool-call :name))
+                    (arg-values)
+                    (tool-spec
+                     (cl-find-if
+                      (lambda (ts) (equal (gptel-tool-name ts) name))
+                      (plist-get info :tools)))
+                    (process-tool-result
+                     (lambda (result)
+                       (plist-put info :tool-success t)
+                       (let ((result (gptel--to-string result)))
+                         (plist-put tool-call :result result)
+                         (push (list tool-spec args result) result-alist))
+                       (cl-incf tool-idx)
+                       (when (>= tool-idx ntools) ; All tools have run
+                         (gptel--inject-prompt
+                          backend (plist-get info :data)
+                          (gptel--parse-tool-results
+                           backend (plist-get info :tool-use)))
+                         (funcall (plist-get info :callback)
+                                  (cons 'tool-result result-alist) info)
+                         (gptel--fsm-transition fsm)))))
+             (if (null tool-spec)
+                 (message "Unknown tool called by model: %s" name)
+               (setq arg-values
+                     (mapcar
+                      (lambda (arg)
+                        (let ((key (intern (concat ":" (plist-get arg :name)))))
+                          (plist-get args key)))
+                      (gptel-tool-args tool-spec)))
+               ;; Check if tool requires confirmation
+               (if (and gptel-confirm-tool-calls (or (eq gptel-confirm-tool-calls t)
+                                                     (gptel-tool-confirm tool-spec)))
+                   (push (list tool-spec arg-values process-tool-result)
+                         pending-calls)
+                 ;; If not, run the tool
+                 (if (gptel-tool-async tool-spec)
+                     (apply (gptel-tool-function tool-spec)
+                            process-tool-result arg-values)
+                   (let ((result
+                          (condition-case errdata
+                              (apply (gptel-tool-function tool-spec) arg-values)
+                            (error (mapconcat #'gptel--to-string errdata " ")))))
+                     (funcall process-tool-result result)))))))
+         tool-use)
+        (when pending-calls
           (setq gptel--fsm-last fsm)
           (when gptel-mode (gptel--update-status
-                            (format " Run tools?" ) 'mode-line-emphasis)))
-        (funcall (plist-get info :callback)
-                 (cons 'tool-call pending-calls) info)))))
+                            (format " Run tools?" ) 'mode-line-emphasis))
+          (funcall (plist-get info :callback)
+                   (cons 'tool-call pending-calls) info))))))
 
 ;;;; State machine predicates
 ;; Predicates used to find the next state to transition to, see
