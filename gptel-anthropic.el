@@ -200,7 +200,7 @@ Mutate state INFO with response metadata."
   (let ((prompts-plist
          `(:model ,(gptel--model-name gptel-model)
            :stream ,(or gptel-stream :json-false)
-           :max_tokens ,(or gptel-max-tokens 1024)
+           :max_tokens ,(or gptel-max-tokens 4096)
            :messages [,@prompts])))
     (when gptel--system-message
       (if (and (or (eq gptel-cache t) (memq 'system gptel-cache))
