@@ -443,7 +443,6 @@ Information about the Gemini models was obtained from the following
 source:
 
 - <https://ai.google.dev/pricing>
-- <https://cloud.google.com/vertex-ai/generative-ai/docs/learn/models>
 - <https://ai.google.dev/gemini-api/docs/models>")
 
 ;;;###autoload
