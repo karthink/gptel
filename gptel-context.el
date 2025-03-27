@@ -282,12 +282,12 @@ PROJECT-FILES is a list of all files in the current project."
   "Message that FILE is skipped because it is not a project file.
 PROJECT-FILES is a list of all files in the current project."
   (let* ((type (if (file-directory-p file) "directory" "file"))
-	 (var (symbol-name 'gptel-context-restrict-to-project-files))
-	 (reminder (format "To include this file, unset `%s'." var)))
+	 (reminder (format "To include this file, unset %S."
+			   'gptel-context-restrict-to-project-files)))
     (if-let* ((project (project-current nil (car-safe project-files)))
-	      (root (project-root project))
-	      (rel-file (file-relative-name file root)))
-	(message "Skipping %s \"%s\" in project \"%s\". %s" type rel-file (project-name project) reminder)
+	      (rel-file (file-relative-name file (project-root project))))
+	(message "Skipping %s \"%s\" in project \"%s\". %s"
+		 type rel-file (project-name project) reminder)
       (message "Skipping %s \"%s\". %s" type file reminder))))
 
 (defun gptel-context-remove (&optional context)
