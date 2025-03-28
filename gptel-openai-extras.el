@@ -331,7 +331,7 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
 ;;;###autoload
 (cl-defun gptel-make-deepseek
     (name &key curl-args stream key request-params
-          (header (lambda () (when-let (key (gptel--get-api-key))
+          (header (lambda () (when-let* ((key (gptel--get-api-key)))
                           `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.deepseek.com")
           (protocol "https")
