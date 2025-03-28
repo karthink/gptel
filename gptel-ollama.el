@@ -93,7 +93,7 @@ Store response metadata in state INFO."
            finally (plist-put info :tool-use tool-use)))))))
 
 (cl-defmethod gptel--request-data ((backend gptel-ollama) prompts)
-  "JSON encode PROMPTS for sending to ChatGPT."
+  "JSON encode PROMPTS for sending to Ollama."
   (when gptel--system-message
     (push (list :role "system"
                 :content gptel--system-message)
