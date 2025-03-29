@@ -2132,10 +2132,10 @@ Run post-response hooks."
 (defun gptel--error-p (info) (plist-get info :error))
 
 (defun gptel--tool-use-p (info)
-  (and gptel-use-tools (plist-get info :tool-use)))
+  (and (plist-get info :tools) (plist-get info :tool-use)))
 
 (defun gptel--tool-result-p (info)
-  (and gptel-use-tools (plist-get info :tool-success)))
+  (and (plist-get info :tools) (plist-get info :tool-success)))
 
 
 ;;; Send queries, handle responses
