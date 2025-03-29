@@ -135,6 +135,7 @@ the response is inserted into the current buffer after point."
          (stream (plist-get info :stream))
          (process (apply #'start-process "gptel-curl"
                          (gptel--temp-buffer " *gptel-curl*") "curl" args)))
+    (set-process-coding-system process 'utf-8-unix 'utf-8-unix)
     (when (memq system-type '(windows-nt ms-dos))
       ;; Don't try to convert cr-lf to cr on Windows so that curl's "header size
       ;; in bytes" stays correct
