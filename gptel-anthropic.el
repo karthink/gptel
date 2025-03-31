@@ -54,8 +54,9 @@
 ;; Do NOT change the plist-put to push or setf!
 
 ;; NOTE: The stream parser looks complicated only because it handles streaming
-;; tool calls.  Stream parsing is simple: if you are studying this code, look at
-;; a commit from before tool-use support was added to gptel.
+;; tool calls, streaming "thinking" blocks and their interactions.  Stream
+;; parsing is simple: if you are studying this code, look instead at a commit
+;; from before tool-use support was added to gptel.
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-anthropic) info)
   "Parse an Anthropic data stream.
 
@@ -82,7 +83,10 @@ information if the stream contains it.  Not my best work, I know."
                      (cons partial-json (plist-get info :partial_json)))
                   (if-let* ((thinking (plist-get delta :thinking)))
                       (plist-put info :reasoning
-                                 (concat (plist-get info :reasoning) thinking)))))))
+                                 (concat (plist-get info :reasoning) thinking))
+                    (if-let* ((signature (plist-get delta :signature)))
+                        (plist-put info :signature
+                                   (concat (plist-get info :signature) signature))))))))
            
            ((looking-at "content_block_start") ;Is the following block text or tool-use?
             (forward-line 1) (forward-char 5)
@@ -126,9 +130,12 @@ information if the stream contains it.  Not my best work, I know."
                  (vconcat
                   prompts
                   `((:role "assistant"
-                     :content ,(vconcat ;Insert any LLM text
+                     :content ,(vconcat ;Insert any LLM text and thinking text
+                                (and-let* ((reasoning (plist-get info :partial_reasoning)))
+                                 `((:type "thinking" :thinking ,reasoning
+                                    :signature ,(plist-get info :signature))))
                                 (and-let* ((strs (plist-get info :partial_text)))
-                                 (list (list :type "text" :text (apply #'concat (nreverse strs)))))
+                                 `((:type "text" :text ,(apply #'concat (nreverse strs)))))
                                 (mapcar (lambda (tool-call) ;followed by the tool calls
                                           (append (list :type "tool_use")
                                            (copy-sequence tool-call)))
@@ -150,6 +157,10 @@ information if the stream contains it.  Not my best work, I know."
       (unless (string-empty-p response-text)
         (plist-put info :partial_text
                    (cons response-text (plist-get info :partial_text))))
+      (when (plist-get info :tools)
+        (when-let* ((reasoning (plist-get info :reasoning)))
+          (plist-put info :partial_reasoning
+                     (concat (plist-get info :partial_reasoning) reasoning))))
       response-text)))
 
 (cl-defmethod gptel--parse-response ((_backend gptel-anthropic) response info)
