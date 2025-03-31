@@ -300,9 +300,7 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
 (defun gptel--anthropic-unformat-tool-id (tool-id)
   (or (and (string-match "toolu_\\(.+\\)" tool-id)
            (match-string 1 tool-id))
-      (progn
-        (message "Unexpected tool_call_id format: %s" tool-id)
-        tool-id)))
+      tool-id))
 
 (cl-defmethod gptel--parse-list ((_backend gptel-anthropic) prompt-list)
   (cl-loop for text in prompt-list
