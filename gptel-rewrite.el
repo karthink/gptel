@@ -29,6 +29,10 @@
 (defvar eldoc-documentation-functions)
 (defvar diff-entire-buffers)
 
+(defvar gptel-rewrite--assistant-instruction-question
+  "What is the required change?")
+(defvar gptel-rewrite--default-rewrite-prefix "Rewrite: ")
+
 (declare-function diff-no-select "diff")
 (declare-function rmc--add-key-description "rmc")
 
@@ -534,7 +538,7 @@ By default, gptel uses the directive associated with the `rewrite'
   (unless (or gptel--rewrite-overlays (use-region-p))
     (user-error "`gptel-rewrite' requires an active region or rewrite in progress."))
   (unless gptel--rewrite-message
-    (setq gptel--rewrite-message "Rewrite: "))
+    (setq gptel--rewrite-message gptel-rewrite--default-rewrite-prefix))
   (transient-setup 'gptel-rewrite))
 
 ;; * Transient infixes for rewriting
@@ -576,7 +580,7 @@ By default, gptel uses the directive associated with the `rewrite'
                                           minibuffer-local-map)))
               (minibuffer-with-setup-hook cycle-prefix
                 (read-string
-                 prompt (or gptel--rewrite-message "Rewrite: ")
+                 prompt (or gptel--rewrite-message gptel-rewrite--default-rewrite-prefix)
                  history)))))
 
 (transient-define-argument gptel--infix-rewrite-diff:-U ()
@@ -616,7 +620,7 @@ generated from functions."
           (and gptel-use-context (if nosystem 'user 'system)))
          (prompt (list (or (get-char-property (point) 'gptel-rewrite)
                            (buffer-substring-no-properties (region-beginning) (region-end)))
-                       "What is the required change?"
+                       gptel-rewrite--assistant-instruction-question
                        (or rewrite-message gptel--rewrite-message))))
     (when nosystem
       (setcar prompt (concat (car-safe (gptel--parse-directive
