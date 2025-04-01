@@ -171,7 +171,7 @@ Clone or download this repository and run =M-x package-install-file⏎= on the r
 #+html: </summary>
 In =packages.el=
 #+begin_src emacs-lisp
-(package! gptel)
+(package! gptel :recipe (:nonrecursive t))
 #+end_src
 
 In =config.el=
