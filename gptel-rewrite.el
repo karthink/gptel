@@ -87,9 +87,9 @@ overlay."
 
 (defface gptel-rewrite-highlight-face
   '((((class color) (min-colors 88) (background dark))
-     :background "#041714" :extend t)
+     :background "#041714" :extend t :inherit default)
     (((class color) (min-colors 88) (background light))
-     :background "light goldenrod yellow" :extend t)
+     :background "light goldenrod yellow" :extend t :inherit default)
     (t :inherit secondary-selection))
   "Face for highlighting regions with pending rewrites."
   :group 'gptel)
@@ -434,6 +434,7 @@ INFO is the async communication channel for the rewrite request."
               (add-hook 'eldoc-documentation-functions #'gptel--rewrite-key-help nil 'local)
               ;; (overlay-put ov 'gptel-rewrite response)
               (overlay-put ov 'face 'gptel-rewrite-highlight-face)
+	      (overlay-put ov 'priority 2000)
               (overlay-put ov 'keymap gptel-rewrite-actions-map)
               (overlay-put ov 'mouse-face 'highlight)
               (overlay-put
