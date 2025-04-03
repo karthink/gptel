@@ -1,0 +1,928 @@
+# -*- fill-column: 70; -*-
+#+title: gptel
+#+author: Karthik Chikmagalur
+#+email: contact@karthinks.com
+#+language: en
+#+options: ':t toc:nil author:t email:t num:t
+#+export_file_name: gptel
+#+startup: content
+#+macro: stable-version 0.9.6
+#+macro: release-date 2024-12-31
+#+macro: development-version 0.9.7-dev
+#+macro: space @@texinfo:@: @@
+#+macro: kbd (eval (org-texinfo-kbd-macro $1))
+#+texinfo_filename: gptel.info
+#+texinfo_dir_category: Misc
+#+texinfo_dir_desc: A simple LLM client for Emacs
+#+texinfo_header: @syncodeindex pg cp
+
+
+#+texinfo: @insertcopying
+
+This is the user and developer manual for gptel, a simple Large Language Model
+(LLM) client for Emacs.
+
+The documentation herein corresponds to stable version {{{stable-version}}},
+dated {{{release-date}}}.  The development target is version
+{{{development-version}}}.
+
++ Package name (nonGNU ELPA): ~gptel~
++ Official manual: TODO
++ Git repository: <https://github.com/karthink/gptel>
++ Bug tracker: <https://github.com/karthink/gptel/issues>
+
+#+toc: headlines 8
+
+* COPYING
+:properties:
+:copying: t
+:end:
+
+#+begin_quote
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.3 or
+any later version published by the Free Software Foundation; with no
+Invariant Sections, with the Front-Cover Texts being “A GNU Manual,”
+and with the Back-Cover Texts as in (a) below.  A copy of the license
+is included in the section entitled “GNU Free Documentation License.”
+
+(a) The FSF’s Back-Cover Text is: “You have the freedom to copy and
+modify this GNU manual.”
+#+end_quote
+
+* Overview
+
+gptel is a Large Language Model client for Emacs, with support for
+multiple models and backends.  It works in the spirit of Emacs,
+available at any time and uniformly in any buffer.
+
+** Supported backends
+
+gptel supports the following services.
+
+#+html: <div align="center">
+#+attr_texinfo: :columns .2 .1 .6
+| LLM Backend        | Supports | Requires                   |
+|--------------------+----------+----------------------------|
+| ChatGPT            | ✓       | [[https://platform.openai.com/account/api-keys][API key]]                    |
+| Anthropic (Claude) | ✓       | [[https://www.anthropic.com/api][API key]]                    |
+| Gemini             | ✓       | [[https://makersuite.google.com/app/apikey][API key]]                    |
+| Ollama             | ✓       | [[https://ollama.ai/][Ollama running locally]]     |
+| Llama.cpp          | ✓       | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]]  |
+| Llamafile          | ✓       | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
+| GPT4All            | ✓       | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
+| Kagi FastGPT       | ✓       | [[https://kagi.com/settings?p=api][API key]]                    |
+| Kagi Summarizer    | ✓       | [[https://kagi.com/settings?p=api][API key]]                    |
+| Azure              | ✓       | Deployment and API key     |
+| Groq               | ✓       | [[https://console.groq.com/keys][API key]]                    |
+| Perplexity         | ✓       | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
+| OpenRouter         | ✓       | [[https://openrouter.ai/keys][API key]]                    |
+| together.ai        | ✓       | [[https://api.together.xyz/settings/api-keys][API key]]                    |
+| Anyscale           | ✓       | [[https://docs.endpoints.anyscale.com/][API key]]                    |
+| PrivateGPT         | ✓       | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
+| DeepSeek           | ✓       | [[https://platform.deepseek.com/api_keys][API key]]                    |
+| Cerebras           | ✓       | [[https://cloud.cerebras.ai/][API key]]                    |
+| Github Models      | ✓       | [[https://github.com/settings/tokens][Token]]                      |
+| Novita AI          | ✓       | [[https://novita.ai/model-api/product/llm-api?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][Token]]                      |
+| xAI                | ✓       | [[https://console.x.ai?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][API key]]                    |
+#+html: </div>
+
+** Basic concepts
+
+#+cindex: Large Language Model
+A Large Language Model (LLM) is a neural network trained on a large
+corpus of information to generate text or audio-visual output data
+based on input.  The input can be in many formats as well, including
+audio-visual data.  (In this manual we are primarily interested in
+textual input and output.)  A subclass of these models are trained to
+generate text to convincingly simulate the format of a back-and-forth
+conversation.  gptel provides an Emacs interface to use these
+so-called "instruct" models.  In this manual LLM refers only to
+"instruct" models.
+
+LLMs are categorized by the information they were trained with, tasks
+they are trained for, by their capabilities, and by their size.  Their
+size is typically measured in billions of network parameters, where
+the smallest models (1-7 billion parameters) can run on today's
+consumer hardware.  The larger models typically consist of hundreds of
+billions of parameters, and require clusters or supercomputers to run.
+
+Some LLMs -- typically the smaller ones -- are permissively licensed
+and free.  Most larger models are proprietary and only available as a
+service that charges by the word.
+
+gptel does not provide or run these models.  Instead, it only acts as
+a client, sending and receiving conversation text over HTTP.  To run
+free models on your hardware, you can use software such as llama.cpp
+or Ollama.  Larger and more capable models typically require paid API
+access.
+
+Presently, gptel works only with "chat" models, which are trained to
+respond to input in a manner resembling a conversational reply.  Such
+models (nicknamed "instruct models") are among the most popular and
+usually easy to use without additional tooling, as the interaction
+format prescribes an interface by itself.
+
+* TODO Installation
+* TODO Set up
+* TODO gptel's design
+
+- gptel tries to be general, not specific
+- gptel tries to be always available
+
+* TODO Quick start and commands
+
+The primary means of using gptel is by invoking the command
+~gptel-send~.  It can be invoked on any text and in any buffer,
+including the minibuffer or special, read-only buffers.
+
+#+findex: gptel-send
+This command treats the buffer like a chat interface.  It sends the
+buffer text from the start upto the cursor to the LLM as a prompt, and
+inserts the response it receives below the cursor.  If the region is
+active, it sends only the text in the region instead.  Narrowing is
+respected.
+
+Like most gptel commands, ~gptel-send~ is asynchronous, so you can
+continue to use Emacs while waiting for the response to be received.
+
+#+findex: gptel-menu
+Calling ~gptel-send~ with a prefix argument invokes a "transient" menu
+where you can specify various gptel options.
+
+#+findex: gptel-abort
+<<gptel-abort>>This command 
+
+** gptel in a dedicated buffer
+
+** Chat persistence
+
+* gptel's transient interface
+
+  <<gptel-scope>>
+  #+cindex: gptel-menu scope
+- {{{kbd(=)}}} Scope :: Most actions in gptel's transient menus that
+  involve setting variables can be scoped to act globally,
+  buffer-locally or to set them for the next request only.
+  Interactively, this is the way to specify different backends, models
+  and system messages in different Emacs buffers, or to temporarily
+  specify them for a one-shot request.  The Scope option is available
+  in several gptel menus, including ~gptel-menu~, ~gptel-tools~ and
+  ~gptel-system-prompt~.
+
+* The rewrite interface
+
+* Configuration
+
+** The anantomy of gptel-send
+
+The following flowchart provides an overview of the most common user
+options and hooks available for customizing the behavior of
+~gptel-send~.  The left and right columns show user options and hooks
+respectively.  The central column illustrates the control flow of
+~gptel-send~, and where in the pipeline the user options or hooks are
+applied.
+
+#+BEGIN_EXAMPLE
+        (USER OPTIONS)                    GPTEL-SEND                   (HOOKS) 
+             ║                                │                           ║    
+             v                                v                           v    
+╭───────────────────────────╮    ╭────────────┴─────────────╮                  
+│      (Org mode only)      │    │       Copy region        │                  
+│ gptel-org-ignore-elements │    │ (or buffer above cursor) │
+│gptel-org-branching-context├───>┤   to a temporary buffer  │
+╰───────────────────────────╯    ╰────────────┬─────────────╯
+╭──────────────────────────╮                  │·╶─╴·╶─╴·╶─╴· gptel-prompt-filter-hook
+│  gptel-track-response    ├──╮               v
+╰──────────────────────────╯  │  ╭────────────┴──────────────╮
+╭───────────────────────────╮ │  │  Create messages array,   │
+│ Add base64-encoded media  │ ├─>┤ Assign user and LLM roles │
+│        from links         ├─╯  │         to text           │
+│     gptel-track-media     │    ╰────────────┬──────────────╯
+╰───────────────────────────╯                 │
+ ╭─────────────────────────╮                  │
+ │     Collect context     │                  │
+ │(regions, buffers, files)├──╮               v
+ │    gptel-use-context    │  │     ╭─────────┴──────────╮
+ ╰─────────────────────────╯  │     │                    │
+ ╭─────────────────────────╮  ├────>│   Create payload   │
+ │      Prepare tools      │  │     │                    │
+ │     gptel-use-tools     ├──┤     ╰─────────┬──────────╯
+ │       gptel-tools       │  │               v
+ ╰─────────────────────────╯  │     ╔═════════╧══════════╗
+ ╭─────────────────────────╮  │     ║    Send request    ║
+ │  Run and add directive  │  │     ╚═════════╤══════════╝
+ │    gptel-directives     ├──┤               │·╶─╴·╶─╴·╶─╴· gptel-post-request-hook
+ │  gptel--system-message  │  │               │                                            
+ ╰─────────────────────────╯  │               v                                            
+ ╭─────────────────────────╮  │            ╶──┴──╴                                         
+ │    Backend parameters   │  │          ╭ ─ ─ ─ ─ ─╮                                      
+ │      gptel-backend      ├──┤           ASYNC WAIT                                       
+ ╰─────────────────────────╯  │          ╰ ─ ─ ─ ─  ╯                                      
+ ╭─────────────────────────╮  │            ╶──┬──╴                                         
+ │      gptel-model        ├──╯               v                                            
+ ╰─────────────────────────╯                  ├·╶─╴·╶─╴·╶─╴· gptel-pre-response-hook       
+╭──────────────────────────╮      ╭───────────────────────╮                                
+│    Handle "Reasoning"    ├─────>┤                       │                                
+│ gptel-include-reasoning  │  ╭─<─┤ Parse partial response│                                
+╰──────────────────────────╯  │╭<─┤                       │<╮                              
+                              ││  ╰───────────────────────╯ │                              
+                              ││                            ├ gptel-post-stream-hook       
+                              ││  ╭───────────────────────╮ │                              
+                              │╰──┤ Insert response chunk ├─o                              
+                              │   ╰───────────────────────╯ │                              
+╭──────────────────────────╮  │   ╭───────────────────────╮ │                              
+│ gptel-confirm-tool-calls ├─>o──>┤  Confirm tool calls   │ v                              
+╰──────────────────────────╯  │   ╰───────────────────────╯ │                              
+╭──────────────────────────╮  │   ╭───────────────────────╮ │                              
+│gptel-include-tool-results├─>┴──>┤  Insert tool results  │ │                              
+╰──────────────────────────╯      ╰───────────┬───────────╯ │                              
+                                              ├─────────────╯                              
+                                              v·╶─╴·╶─╴·╶─╴· gptel-post-response-functions 
+                                           ╶──┴──╴
+#+END_EXAMPLE
+
+~gptel-send~ works by (i) building a backend-appropriate request
+payload from the provided text, context, tools and active gptel
+configuration, (ii) sending the request and (iii) inserting or
+otherwise dispatching on the response as necessary.  A detailed
+description of gptel-send's processing pipeline and concomitant
+customization options follows.
+
+1. Copy the text up to the cursor (or the selected region) from the
+   "request buffer" to a temporary buffer.  This serves as the primary
+   prompt to be sent to the LLM.
+
+   #+vindex: gptel-org-branching-context
+   #+vindex: gptel-org-ignore-elements
+2. If the request is sent from an Org mode buffer, this region may be
+   modified in two different ways.  If ~gptel-org-branching-context~
+   is non-nil, copy only the lineage of the current Org entry to the
+   temporary buffer.  Additionally, remove Org elements of the types
+   in ~gptel-org-ignore-elements~ from this text.  By default, the
+   latter is used to strip Org =PROPERTIES= blocks from the text
+   before sending.  See [[*gptel in Org mode]] for more details.
+   
+   #+vindex: gptel-prompt-filter-functions
+3. Run the hook ~gptel-prompt-filter-hook~ in this buffer, with the
+   cursor at the end.  This can be used to modify the prompt text as
+   required.  A typical example would be to search for occurrences of
+   the pattern =$(cmd)= and replace it with the output of the shell
+   command =cmd=, making it easy to send dynamically generated shell
+   command output.
+
+   #+vindex: gptel-track-media
+   #+vindex: gptel-track-response
+4. Parse the buffer and collect text, sorting it into user and LLM
+   role buckets in an array of messages.  gptel uses [[info:elisp#Text Properties][text-properties]]
+   to track the provenance of buffer text.  If the user option
+   ~gptel-track-response~ is non-nil, ignore the distinction between
+   user and LLM roles and treat the entire buffer as a user prompt.
+   If the user option ~gptel-track-media~ is non-nil, scan hyperlinks
+   to files in this buffer and check if their MIME types are supported
+   by the LLM (see [[*Models]]).  If they are, base64-encode them and
+   include them in the messages array.
+   
+   #+vindex: gptel-use-context
+5. If ~gptel-use-context~ is non-nil, collect regions, buffers or
+   files that are explicitly added via ~gptel-add~ to gptel's context
+   by the user.  How exactly this is added to the request payload
+   depends on the value of ~gptel-use-context~, see [[*Context]].
+
+6. Build the payload using parameters specified by ~gptel-backend~ and
+   ~gptel-model~.  The former can include preferences like response
+   streaming, LLM prompt caching, temperature etc.  There are dozens
+   of parameters governing backend API behavior and LLM output, and
+   gptel provides user options for only a few of them, such as
+   ~gptel-temperature~ and ~gptel-cache~.  To specify arbitrary
+   LLM/backend API parameters, see [[*Backends]].
+
+7. Create the system message and possible conversation template from
+   ~gptel--system-message~, and include it in the payload.  If this
+   variable is a string, it is included as is.  If it is a function,
+   the system message is generated dynamically.  If it is a list of
+   strings, the first element is treated as the system message, and
+   the remaining elements are considered alternating user and LLM
+   messages to be prepended to the messages array.  See [[*Directives]]
+   for details.
+
+   #+vindex: gptel-use-tools
+   #+vindex: gptel-tools
+8. If ~gptel-use-tools~ is non-nil and ~gptel-tools~ contains a list
+   of gptel tools (See [[*Tools]]), include the tools in the payload.
+
+   #+vindex: gptel-post-request-hook
+9. Make a HTTP request with this payload.  The address, port and API
+   key (if required) for the request are included in the
+   ~gptel-backend~ struct.  Run ~gptel-post-request-hook~ immediately
+   after starting the request.  This hook may be used to do any
+   cleanup or resetting -- gptel uses this hook to reset user
+   preferences after firing a "oneshot" request, see [[*gptel's
+   transient interface]].
+
+    #+vindex: gptel-pre-response-hook
+10. ~gptel-send~ then waits for a response.  When a response is
+    received, do some basic error handling.  If the response has HTTP
+    code 200/201, first run ~gptel-pre-response-hook~ in the buffer
+    from which the request was sent.  This hook can be used to prepare
+    the buffer for the response however you would like.
+
+    #+vindex: gptel-post-stream-hook
+11. Streaming responses only: Insert each chunk into the request
+    buffer (or elsewhere if the output has been redirected, see
+    [[*gptel's transient interface]].)  After each insertion, run
+    ~gptel-post-stream-hook~.  This hook runs in the request buffer
+    and may be used for immediate actions such as recentering the view
+    or scrolling the window with the response.
+
+    #+vindex: gptel-include-reasoning
+12. If ~gptel-include-reasoning~ is non-nil and the model responds
+    with a "thinking" or reasoning "block" of text, handle it
+    according to this user option.  Typically this involves formatting
+    it specially.
+
+    #+vindex: gptel-confirm-tool-calls
+13. If the LLM responds with a tool call, either run the tool
+    automatically or insert a prompt into the request buffer seeking
+    confirmation from the user.  This depends on both the value of
+    ~gptel-confirm-tool-calls~ and the tool's =:confirm= slot.  If the
+    output has been redirected to a non-buffer destination, tool call
+    confirmation is sought from the minibuffer instead.
+
+    #+vindex: gptel-include-tool-results
+14. If a tool has been run (automatically or after confirmation),
+    conditionally insert the result into the request buffer, depending
+    on the value of ~gptel-include-tool-results~ and the tool's
+    =:include= slot.
+
+15. After the response ends, run the hook
+    ~gptel-post-response-functions~ in the request buffer.  This hook
+    can be used for cleanup, formatting or modifying the LLM output,
+    etc.  Note that this hook always runs, even if the response fails.
+
+#+findex: gptel--inspect-fsm
+After the request ends, you can examine a pretty-printed view of the
+state and details of the last request sent from the buffer at any time
+via the function ~gptel--inspect-fsm~.  In chat buffers, you can click
+on the status text in the header-line instead.  This is primarily
+intended for introspection and debugging.
+
+#+vindex: gptel--fsm-last
+Alternatively, you can inspect the variable ~gptel--fsm-last~, which
+always contains the last request as a gptel state-machine object (see
+[[*gptel's finite state machine][gptel's state machine]]).
+
+** gptel in Org mode
+
+  #+vindex: gptel-org-branching-context
+- ~gptel-org-branching-context~
+
+  #+vindex: gptel-org-convert-response
+- ~gptel-org-convert-response~
+
+  #+vindex: gptel-org-ignore-elements
+- ~gptel-org-ignore-elements~
+
+  #+findex: gptel-org-set-topic
+- ~gptel-org-set-topic~
+
+  #+findex: gptel-org-set-properties
+- ~gptel-org-set-properties~
+
+** Directives
+
+#+cindex: system message
+In addition to the text in your buffer, LLMs can be prompted with
+instructions on how they should respond.  They are prioritized and
+treated specially by most LLMs, and is one of the primary levers for
+configuring its behavior.  In popular use these instructions are
+referred to as the "system message", "system prompt" or "directives".
+gptel refers to them as the "system message" and "directives".
+
+The system message can be used to specify the LLM's general tone and
+tenor, output format, structure or restrictions, as well as general
+objectives it should work towards in its interactions with the user.
+
+The following is a typical system message describing the tone and
+proscribing certain common LLM behaviors.
+
+#+begin_example
+To assist: Be terse.  Do not offer unprompted advice or
+clarifications.  Speak in specific, topic relevant terminology.  Do
+NOT hedge or qualify.  Speak directly and be willing to make creative
+guesses.
+
+Explain your reasoning.  if you don’t know, say you don’t know.  Be
+willing to reference less reputable sources for ideas.
+
+Do NOT summarize your answers.  Never apologize.  Ask questions when
+unsure.
+#+end_example
+
+Here is another example, this time specifying an objective for the LLM
+to work towards:
+
+#+begin_example
+You are a tutor and domain expert in the domain of my questions.  You
+will lead me to discover the answer myself by providing hints.  Your
+instructions are as follows:
+
+- If the question or notation is not clear to you, ask for clarifying
+  details.
+- At first your hints should be general and vague.
+- If I fail to make progress, provide more explicit hints.
+- Never provide the answer itself unless I explicitly ask you to.  If
+  my answer is wrong, again provide only hints to correct it.
+- If you use LaTeX notation, enclose math in \( and \) or \[ and \]
+  delimiters.
+#+end_example
+
+#+vindex: gptel--system-message
+You can control system message gptel uses via the variable
+~gptel--system-message~.  This is most commonly a string containing
+the text of the instructions.  But it can also be a /directive/ - a
+function or a list of strings, as explained below.
+
+#+vindex: gptel-directives
+While you can set ~gptel--system-message~ to any string, gptel
+provides the alist ~gptel-directives~ as a registry of /directives/.
+
+gptel's idea of the /directive/ is more general than a static string.
+A directive in ~gptel-directives~ can be
+
+- A string, interpreted as the system message.
+
+- A list of strings, whose first (possibly nil) element is
+  interpreted as the system message, and the remaining elements
+  as (possibly nil) alternating user prompts and LLM responses.
+  This can be used to template the initial part of a conversation.
+
+- A function that returns a string or a list of strings, interpreted
+  as the above.  This can be used to dynamically generate a system
+  message and/or conversation template based on the current context.
+  (See the definition of ~gptel--rewrite-directive-default~ for an
+  example.)
+
+Each entry in ~gptel-directives~ maps a symbol naming the directive to
+the directive itself.  By default, gptel uses the directive with the
+key =default=, so you should set this to what gptel should use out of
+the box:
+
+#+begin_src emacs-lisp
+(setf (alist-get 'default gptel-directives)
+      "My default system message here.")
+#+end_src
+  
+** TODO Backends
+
+#+tindex: gptel-backend
+A ~gptel-backend~
+
+- =:request-params=
+
+  #+findex: gptel-get-backend
+- (~gptel-get-backend~) ::
+
+The backend can be set interactively from ~gptel-menu~:
+
+- {{{kbd(-m)}}} Model :: Set the gptel backend and model in use from
+  ~gptel-menu~.  Note that the [[gptel-scope][gptel's scope action]] is available in
+  this menu, so the backend and model may be specified globally,
+  buffer-locally or for the next request only.
+  
+** TODO Models
+
+- =:capabilities=
+
+The model can be set interactively from ~gptel-menu~:  
+  
+- {{{kbd(-m)}}} Model :: Set the gptel backend and model in use from
+  ~gptel-menu~.  Note that the [[gptel-scope][gptel's scope action]] is available in
+  this menu, so the backend and model may be specified globally,
+  buffer-locally or for the next request only.
+  
+  
+** TODO Context
+** TODO Tools
+
+gptel can provide the LLM with client-side elisp "tools", or function
+specifications, along with the request.  A "tool" is an elisp function along
+with metadata intended to describe its purpose, arguments and return value as
+you would to a human. ("This function is used to do X.  It accepts two
+arguments, a string and a list of numbers, and returns Y.")
+
+If the LLM decides to run the tool, it supplies the tool call arguments, which
+gptel uses to run the tool in your Emacs session.  The result is optionally
+returned to the LLM to complete the task.
+
+This exchange can be used to equip the LLM with capabilities or knowledge beyond
+what is available out of the box -- for instance, you can get the LLM to control
+your Emacs frame, create or modify files and directories, or look up information
+relevant to your request via web search or in a local database.
+
+To use tools in gptel, you need
+- a model that supports this usage.  All the flagship models support tool use,
+  as do many of the smaller open models.
+- Tool specifications that gptel understands.  gptel does not currently include
+  any tools out of the box.
+
+Tool use in gptel feature is currently experimental.
+
+#+tindex: gptel-tool
+A gptel-tool
+
+*** Writing or obtaining tools
+
+*** Selecting tools
+
+  #+findex: gptel-get-tool
+- (~gptel-get-tool~) ::
+
+Interactively:
+
+  #+findex: gptel-tools
+- (~gptel-tools~) ::
+  Command to select tools and set tool-related behavior for gptel.
+  Running ~gptel-tools~ interactively brings up a transient menu where
+  these options may be specified.  Note that the [[gptel-scope][gptel's scope action]]
+  is available in this menu, so these settings may be specified as
+  global, buffer-local or "oneshot".
+
+Via elisp:
+
+* Advanced configuration
+
+** The ~gptel-request~ API
+
+The core of gptel is the function ~gptel-request~.  It offers an easy,
+flexible and comprehensive way to interact with LLMs, and is
+responsible for state handling and for every HTTP request made by
+gptel.  All commands offered by gptel that involve sending and
+receiving prompts and replies work by calling ~gptel-request~
+internally.
+
+#+begin_example
+                                       GPTEL-REQUEST
+                                             │
+                                             v
+╭────────────────────────────╮  ╭────────────┴──────────────╮
+│        Environment         │  │Single or multi-part PROMPT│
+│                            │  │                           │
+│ gptel-model                │  │Single or multi-part SYSTEM│
+│ gptel-backend              │  ╰────────────┬──────────────╯
+│                            │               v
+│ gptel-use-context          │     ╭─────────┴──────────╮
+│ gptel-use-tools            ├────>│   Create payload   ├·····>··
+│ gptel-tools                │     │        INFO        │       ·
+│ gptel-cache                │     ╰─────────┬──────────╯       ·
+│ gptel-include-reasoning    │               v                  ·
+│ gptel-track-response       │     ╔═════════╧══════════╗       ·
+│                            │     ║    Send request    ║       ·
+│ gptel-org-convert-response │     ╚═════════╤══════════╝       ·
+╰────────────────────────────╯               v                  ·
+                                          ╶──┴──╴               ·
+                                        ╭ ─ ─ ─ ─ ─╮            ·
+                                         ASYNC WAIT             ·
+                                        ╰ ─ ─ ─ ─  ╯            ·
+                                          ╶──┬──╴               ·
+                                             v                  ·
+                                ╭────────────┴─────────────╮    ·
+                                │          Call            │    ·
+                                │ (CALLBACK response INFO) │··<··
+                                ╰────────────┬─────────────╯
+                                             v
+                                          ╶──┴──╴
+#+end_example
+
+~gptel-request~ can be used to extend gptel, or write your own
+functionality independent of that offered by gptel.  Below is the full
+documentation of ~gptel-request~.  You may prefer to learn from
+examples and modify them to suit your needs instead, in which case see
+[[*Extending gptel]].
+
+- (~gptel-request~) ::
+  #+findex: gptel-request
+  Arguments: 
+  : (&optional PROMPT
+  :  &key      CALLBACK (BUFFER (current-buffer))
+  :            POSITION CONTEXT DRY-RUN (STREAM nil)
+  :            (IN-PLACE nil) (SYSTEM gptel--system-message)
+  :            (FSM (gptel-make-fsm)))
+  Request a response from the current ~gptel-backend~ for =PROMPT=.
+
+  The request is asynchronous, this function returns immediately.
+
+  If =PROMPT= is
+  + a string, it is used to create a full prompt suitable for
+    sending to the LLM.
+  + A list of strings, it is interpreted as a conversation, i.e. a
+    series of alternating user prompts and LLM responses.
+  + =nil= but region is active, the region contents are used.
+  + =nil=, the current buffer’s contents up to (point) are used.
+    Previous responses from the LLM are identified as responses.
+
+  Keyword arguments:
+
+  =CALLBACK=, if supplied, is a function of two arguments, called
+  with the =RESPONSE= (usually a string) and =INFO= (a plist):
+
+  : (funcall CALLBACK RESPONSE INFO)
+
+  =RESPONSE= is
+
+  + A string if the request was successful
+  + =nil= if there was no response or an error.
+
+  These are the only two cases you typically need to consider, unless
+  you need to clean up after [[gptel-abort][aborted requests]], use LLM tools, handle
+  "reasoning" content specially or stream responses (see =STREAM=).
+  In these cases, =RESPONSE= can be
+
+  - The symbol =abort= if the request is aborted, see =gptel-abort=.
+
+  - A cons cell of the form
+
+    : (tool-call . ((TOOL ARGS CB) ...))
+
+    where =TOOL= is a gptel-tool struct, =ARGS= is a plist of
+    arguments, and =CB= is a function for handling the results.  You
+    can call =CB= with the result of calling the tool to continue the
+    request.
+
+  - A cons cell of the form
+
+    : (tool-result . ((TOOL ARGS RESULT) ...))
+
+    where =TOOL= is a gptel-tool struct, =ARGS= is a plist of
+    arguments, and =RESULT= was returned from calling the tool
+    function.
+
+  - A cons cell of the form
+
+    : (reasoning . text)
+
+    where text is the contents of the reasoning block.  (Also see
+    =STREAM= if you are using streaming.)
+
+  See ~gptel--insert-response~ for an example callback handling all
+  cases.
+
+  The =INFO= plist has (at least) the following keys:
+  =:data=         - The request data included with the query
+  =:position=     - marker at the point the request was sent, unless
+  =POSITION= is specified.
+  =:buffer=       - The buffer current when the request was sent,
+  unless =BUFFER= is specified.
+  =:status=       - Short string describing the result of the request,
+  including possible HTTP errors.
+
+  Example of a callback that messages the user with the response
+  and info:
+
+  #+begin_src emacs-lisp
+  (lambda (response info)
+    (if (stringp response)
+        (let ((posn (marker-position (plist-get info :position)))
+              (buf  (buffer-name (plist-get info :buffer))))
+          (message "Response for request from %S at %d: %s"
+                   buf posn response))
+      (message "gptel-request failed with message: %s"
+               (plist-get info :status))))
+  #+end_src
+
+  Or, for just the response:
+
+  #+begin_src emacs-lisp
+  (lambda (response _)
+    ;; Do something with response
+    (and (stringp response)
+         (message (rot13-string response))))
+  #+end_src
+
+  If =CALLBACK= is omitted, the response is inserted at the point the
+  request was sent.
+
+  =STREAM= is a boolean that determines if the response should be
+  streamed, as in ~gptel-stream~.  If the model or the backend does
+  not support streaming, this will be ignored.
+
+  When streaming responses
+
+  - =CALLBACK= will be called repeatedly with each =RESPONSE= text
+    chunk (a string) as it is received.
+  - When the =HTTP= request ends successfully, =CALLBACK= will be
+    called with a =RESPONSE= argument of t to indicate success.
+  - Similarly, =CALLBACK= will be called with
+    =(reasoning . text-chunk)= for each reasoning chunk, and
+    =(reasoning . t)= to indicate the end of the reasoning block.
+
+  =BUFFER= and =POSITION= are the buffer and position (integer or
+  marker) at which the response is inserted.  If a =CALLBACK= is
+  specified, no response is inserted and these arguments are
+  ignored, but they are still available in the =INFO= plist passed
+  to =CALLBACK= for you to use.
+
+  =BUFFER= defaults to the current buffer, and =POSITION= to the value
+  of (point) or (region-end), depending on whether the region is
+  active.
+
+  =CONTEXT= is any additional data needed for the callback to run. It
+  is included in the =INFO= argument to the callback.  Note: This is
+  intended for storing Emacs state to be used by =CALLBACK=, and
+  unrelated to the context supplied to the LLM.
+
+  =SYSTEM= is the system message or extended chat directive sent to
+  the LLM.  This can be a string, a list of strings or a function that
+  returns either; see ~gptel-directives~ for more information. If
+  =SYSTEM= is omitted, the value of ~gptel--system-message~ for the
+  current buffer is used.
+
+  The following keywords are mainly for internal use:
+
+  =IN-PLACE= is a boolean used by the default callback when inserting
+  the response to determine if delimiters are needed between the
+  prompt and the response.
+
+  If =DRY-RUN= is non-nil, do not send the request.  Construct and
+  return a state machine object that can be introspected and resumed.
+
+  =FSM= is the state machine driving the request.  This can be used to
+  define a custom request control flow, see [[*gptel's finite state
+  machine]] for details.
+
+Note:
+
+1. This function is not fully self-contained.  Consider let-binding
+   the parameters ~gptel-backend~, ~gptel-model~, ~gptel-use-tools~,
+   ~gptel-track-response~ and ~gptel-use-context~ around calls to it
+   as required.
+
+2. The return value of this function is a state machine object that
+   may be used to rerun or continue the request at a later time.  See
+   [[*gptel's finite state machine]].
+
+** gptel's finite state machine
+
+#+cindex: finite state machine
+gptel's interactions with LLMs are typically limited to a query
+followed a response, but can involve several back-and-forth exchanges
+when tool calls or custom behavior is involved.  Under the hood, gptel
+uses a Finite State Machine (FSM) to manage the lifecycle of all LLM
+interactions.
+
+  #+tindex: gptel-fsm
+- (~gptel-fsm~) ::
+  Fields:
+  : STATE TABLE HANDLERS INFO
+  
+  A finite state machine object consists of the fields =STATE=,
+  =TABLE=, =HANDLERS= and =INFO=.
+
+FSMs may be created by the constructor ~gptel-make-fsm~.
+  
+  #+findex: gptel-make-fsm
+- (~gptel-make-fsm~) ::
+  Arguments:
+  : (&key STATE TABLE HANDLERS INFO)
+  =STATE=: The current state of the machine, can be any symbol.
+
+  =TABLE=: Alist mapping states to possible next states along with
+  predicates to determine the next state.  See
+  ~gptel-request--transitions~ for an example.
+
+  =HANDLERS=: Alist mapping states to state handler functions.
+  Handlers are called when entering each state.  See
+  ~gptel-request--handlers~ for an example
+  
+  =INFO=: The state machine's current context.  This is a plist
+  holding all the information required for the ongoing request, and
+  can be used to tweak and resume a paused request.  (This should be
+  called "context", but context means too many things already in
+  gptel.)
+
+Each gptel request is passed an instance of this state machine and
+driven by it.
+
+The FSM is in one of several possible states, and collects contextual
+information in its =INFO= plist.
+
+Its transition table (=TABLE=) encodes possible states and predicates
+that are used to decide which state to switch to next.  This is an
+example of a transition table:
+
+#+begin_src emacs-lisp
+((INIT . ((t                    . WAIT)))
+ (WAIT . ((t                    . TYPE)))
+ (TYPE . ((gptel--error-p       . ERRS)
+          (gptel--tool-use-p    . TOOL)
+          (t                    . DONE)))
+ (TOOL . ((gptel--error-p       . ERRS)
+          (gptel--tool-result-p . WAIT)
+          (t                    . DONE))))
+#+end_src
+
+The possible states of the FSM in this example are =INIT=, =WAIT=,
+=TYPE=, =TOOL=, =ERRS= and =DONE=.  These are gptel's default FSM
+states and denoted by upper-case symbols here.  But there is no
+special significance to them, and they can be arbitrary identifiers.
+
+Each state in this table maps to a list of conses of the form
+=(predicate . NEXT-STATE)=.
+
+  #+findex: gptel--fsm-next
+- (~gptel--fsm-next~) ::
+  Arguments: =(MACHINE)=
+  
+  Determine the next state for =MACHINE=.  Run through the predicates
+  for the current state in the transition table, calling each one with
+  =INFO= until one succeeds.  A predicate of =t= is treated as always
+  true. Return the corresponding state.
+
+The FSM's =HANDLERS= is a list of functions that are run upon entering
+a new state.  This is an example of FSM handlers:
+
+#+begin_src emacs-lisp
+((WAIT gptel--handle-wait)
+ (TOOL gptel--handle-tool-use))
+#+end_src
+
+Both the =WAIT= and =TOOL= states have one handler each, and other
+states do not have any handlers associated with them.
+
+The handler's job is to produce the side effects required for the LLM
+request, such as inserting responses into buffers, updating the UI,
+running tools and so on.  They also upate the FSM's =INFO= as
+necessary, capturing information for the transition-table predicates
+to use.
+  
+  #+findex: gptel--fsm-transition
+- (~gptel--fsm-transition~) ::
+  Arguments:
+  : (MACHINE &optional NEW-STATE)
+  
+  Transition =MACHINE= to =NEW-STATE= or its natural next state.  Run
+  the =HANDLERS= corresponding to that state.
+
+A typical state sequence for a gptel request can thus look like
+
+: INIT -> WAIT -> TYPE -> TOOL -> WAIT -> TYPE -> DONE
+
+corresponding to a query that resulted in a tool call, followed by
+sending the tool result back to the LLM to be interpreted, and then a
+final response.
+
+#+vindex: gptel--fsm-last
+The buffer-local variable ~gptel--fsm-last~ stores the FSM for the
+latest gptel request, and is updated as it changes.  You can inspect
+this at any time to track what gptel is up to in that buffer.  gptel
+provides a helper function that visualizes the state of the FSM:
+
+  #+findex: gptel--inspect-fsm
+- (~gptel--inspect-fsm~) ::
+  Pop up a buffer to inspect the latest (possibly in-progress) gptel
+  request in the current buffer.
+
+In between conversation turns or calls to ~gptel-request~, gptel is
+mostly stateless.  However it maintains a limited amount of state in
+the buffer text itself via text-properties.  This state is used only
+to assign user/LLM/tool roles to the text, and may be persisted to the
+file.  No other history is maintained, and ~gptel--fsm-last~ is
+overwritten when another request is started from the same buffer.
+
+*** TODO Beyond hooks: changing gptel's control flow
+
+By modifying gptel's default FSM transition-table and handlers, you
+can gain fine-grained access over the control flow of gptel well
+beyond what is possible via the provided hooks.
+
+Entirely new applications and flows may be created with a custom state
+machine, although this requires exercising some care around the
+transitions that gptel imposes during its network handling. 
+
+* Extending gptel
+
+This section provides recipes for...
+
+** Simple ~gptel-request~ commands
+
+** Building an application
+
+* Concept Index
+:PROPERTIES:
+:INDEX:    cp
+:END:
+
+* Variable Index
+:PROPERTIES:
+:INDEX:    vr
+:END:
+
+* Function Index
+:PROPERTIES:
+:INDEX:    fn
+:END:
+
+* Type Index
+:PROPERTIES:
+:INDEX:    tp
+:END:
