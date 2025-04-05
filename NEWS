@@ -4,7 +4,12 @@
 
 ** Breaking changes
 
+- ~gptel-org-branching-context~ is now a global variable.  It was
+  buffer-local by default in past releases.
+
 ** New models and backends
+
+- Add support for ~gemini-2.5-pro-exp-03-25~.
 
 ** New features and UI changes
 

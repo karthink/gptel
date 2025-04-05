@@ -143,7 +143,6 @@ heading 2.2 text
 -----
 
 This makes it feasible to have multiple conversation branches."
-  :local t
   :type 'boolean
   :group 'gptel)
 
