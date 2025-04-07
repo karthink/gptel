@@ -119,8 +119,8 @@ listed in `.gitignore' in a Git repository) will not be added to the context."
    ;; A region is selected.
    ((use-region-p)
     (gptel-context--add-region (current-buffer)
-                               (region-beginning)
-                               (region-end))
+                                  (region-beginning)
+                                  (region-end))
     (deactivate-mark)
     (message "Current region added as context."))
    ;; If in dired
@@ -145,9 +145,9 @@ listed in `.gitignore' in a Git repository) will not be added to the context."
 	 (not (gptel-context--skip-p (buffer-file-name))))
     (gptel-context--ensure-project-files default-directory)
     (funcall (if (and arg (< (prefix-numeric-value arg) 0))
-		 #'gptel-context-remove
-               #'gptel-context-add-file)
-             (buffer-file-name)))
+              #'gptel-context-remove
+              #'gptel-context-add-file)
+          (buffer-file-name)))
    ;; No region is selected, and ARG is positive.
    ((and arg (> (prefix-numeric-value arg) 0))
     (let* ((buffer-name (read-buffer "Choose buffer to add as context: "
@@ -162,17 +162,17 @@ listed in `.gitignore' in a Git repository) will not be added to the context."
     (when (or (null confirm)
 	      (y-or-n-p "Remove all contexts from this buffer? "))
       (let ((removed-contexts 0))
-	(cl-loop for cov in
+        (cl-loop for cov in
                  (gptel-context--in-region (current-buffer) (point-min) (point-max))
                  do (progn
                       (cl-incf removed-contexts)
                       (gptel-context-remove cov)))
-	(message (format "%d context%s removed from current buffer."
+        (message (format "%d context%s removed from current buffer."
                          removed-contexts
                          (if (= removed-contexts 1) "" "s"))))))
    (t ; Default behavior
     (if (gptel-context--at-point)
-	(progn
+        (progn
           (gptel-context-remove (car (gptel-context--in-region (current-buffer)
                                                                (max (point-min) (1- (point)))
                                                                (point))))
@@ -251,7 +251,7 @@ be readable as text."
 		(gptel-context--skip-p path)))
 	 (gptel-context--message-skipped path))
 	((gptel--file-binary-p path)
-	 (gptel-context--add-binary-file path))
+         (gptel-context--add-binary-file path))
 	(t (gptel-context--add-text-file path))))
 
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
@@ -318,8 +318,8 @@ If CONTEXT is a directory, recursively removes all files in it."
       (message "File \"%s\" removed from context." context)))
    ((region-active-p)
     (when-let* ((contexts (gptel-context--in-region (current-buffer)
-						    (region-beginning)
-						    (region-end))))
+                                                    (region-beginning)
+                                                    (region-end))))
       (cl-loop for ctx in contexts do (delete-overlay ctx))))
    (t
     (when-let* ((ctx (gptel-context--at-point)))
