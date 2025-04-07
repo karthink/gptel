@@ -319,14 +319,33 @@ which see."
 	             (let* ((transient-current-command (oref transient--prefix command))
 	                    (transient-current-suffixes transient--suffixes))
 	               (transient-args transient-current-command))))
-           (lbeg (line-number-at-pos (if (use-region-p) (region-beginning)
+	   (reg (use-region-p))
+           (lbeg (line-number-at-pos (if reg (region-beginning)
                                        (point-min))))
-           (lend (line-number-at-pos (if (use-region-p) (region-end)
+           (lend (line-number-at-pos (if reg (region-end)
                                        (point))))
            (ltext (ptv (if (> lend lbeg)
                            (format " (lines %d-%d)" lbeg lend)
                          (format " (line %d)" lbeg))))
-           (dest) (context))
+	   (pt-r/o (or buffer-read-only
+		       (and (get-char-property (point) 'read-only)
+			    (get-char-property (point) 'front-sticky))
+		       (and (> (point) 1)
+			    (get-char-property (1- (point)) 'read-only)
+			    (not (get-char-property (1- (point)) 'rear-nonsticky)))))
+	   (re-r/o (when reg
+		     (or buffer-read-only
+			 (and (get-char-property (region-end) 'read-only)
+			      (get-char-property (region-end) 'front-sticky))
+			    (and (> (point) 1)
+				 (get-char-property (1- (region-end)) 'read-only)
+				 (not (get-char-property (1- (region-end)) 'rear-nonsticky))))))
+	   (reg-r/o (when reg (unless pt-r/o
+		      (let ((e (region-end)))
+			(save-excursion
+			  (goto-char (region-beginning))
+			  (when-let ((m (text-property-search-forward 'read-only)))
+			    (< (prop-match-beginning m) e))))))))
       (setq dest (cond
                   ((member "e" args) (ptv "echo area"))
                   ((member "k" args) (ptv "kill-ring"))
@@ -334,7 +353,19 @@ which see."
                               (and (stringp s) (memq (aref s 0) '(?g ?b))
                                    (not (equal (substring s 1) (buffer-name)))
                                    (concat (pth "buffer ") (ptv (substring s 1)))))
-                            args))))
+                            args))
+		  (pt-r/o (concat (pth "buffer ")
+				  (ptv gptel--read-only-response-buffer)
+				  (pth " (point read-only)")))
+		  (re-r/o (concat (pth "buffer ")
+				    (ptv gptel--read-only-response-buffer)
+				    (pth (concat " (region "
+						 (unless (member "i" args) "end ")
+						 "read-only)"))))
+		  ((and (member "i" args) reg-r/o)
+		   (concat (pth "buffer ")
+			   (ptv gptel--read-only-response-buffer)
+			   (pth " (region read-only)")))))
       (setq context
             (and gptel-context--alist
                  (let ((lc (length gptel-context--alist)))
@@ -367,16 +398,15 @@ which see."
                      (if dest (concat (pth ", response to ") dest)
                        (concat (pth ", insert response at point")))))
             ((member "i" args)
-             (let* ((reg (use-region-p))
-                    (src (ptv (if reg "selection" (buffer-name)))))
+             (let* ((src (ptv (if reg "region" (buffer-name)))))
                (if dest (concat (pth "Send ") src ltext context (pth ", with response to ")
-                                (ptv dest) (pth "; kill") ltext
-                                (and (not reg) (concat (pth " in ") src)))
+                                dest (unless (or pt-r/o reg-r/o) (concat (pth "; kill") ltext
+						 (and (not reg) (concat (pth " in ") src)))))
                  (concat (pth "Replace ") src ltext (pth " with response")
                          (and context
                               (concat (pth " ( with") (substring context 11) " )"))))))
-            ((use-region-p)
-             (concat (pth "Send ") (ptv "selection") ltext
+            (reg
+             (concat (pth "Send ") (ptv "region") ltext
                      context (if dest (concat (pth ", with response to ") dest)
                                (concat (pth ", insert response at region end")))))
             (t (concat (pth "Send ") (ptv (buffer-name)) ltext
