@@ -92,6 +92,9 @@ listed in `.gitignore' in a Git repository) will not be added to the context."
   :group 'gptel
   :type 'boolean)
 
+(defvar-local gptel-context--project-files nil
+  "Cache of project files for the current directory.")
+
 (defun gptel-context-add (&optional arg confirm)
   "Add context to gptel in a DWIM fashion.
 
@@ -127,24 +130,20 @@ listed in `.gitignore' in a Git repository) will not be added to the context."
            (remove-p (< (prefix-numeric-value arg) 0))
 	   (action-fn (if remove-p
 			  #'gptel-context-remove
-			#'gptel-context-add-file))
-	   (project-files (and (not remove-p)
-			       gptel-context-restrict-to-project-files
-			       (gptel-context--get-project-files default-directory))))
+			#'gptel-context-add-file)))
       (when (or remove-p (null dirs) (null confirm)
 		(y-or-n-p (format "Recursively add files from %d director%s? "
 				  (length dirs)
 				  (if (= (length dirs) 1) "y" "ies"))))
-	(if project-files
-	    (mapc (lambda (file)
-		    (gptel-context-add-file file project-files))
-		  files)
-	  (mapc action-fn files)))))
+        (unless remove-p
+          (gptel-context--ensure-project-files default-directory))
+	(mapc action-fn files))))
    ;; If in an image buffer
    ((and (derived-mode-p 'image-mode)
 	 (gptel--model-capable-p 'media)
 	 (buffer-file-name)
 	 (not (gptel-context--skip-p (buffer-file-name))))
+    (gptel-context--ensure-project-files default-directory)
     (funcall (if (and arg (< (prefix-numeric-value arg) 0))
 		 #'gptel-context-remove
                #'gptel-context-add-file)
@@ -211,22 +210,17 @@ Return PATH if added, nil if ignored."
     (message "Ignoring unsupported binary file \"%s\"." path)
     nil))
 
-(defun gptel-context--add-directory (path action &optional project-files)
+(defun gptel-context--add-directory (path action)
   "Process all files in directory at PATH according to ACTION.
-ACTION should be either `add' or `remove'.
-
-PROJECT-FILES is a list of all files in the current project."
-  (let* ((project-files (or project-files
-			    (and (eq action 'add)
-				 (gptel-context--get-project-files path))))
-	 (root (car-safe project-files)))
+ACTION should be either `add' or `remove'."
+  (let* ((root (car-safe gptel-context--project-files)))
     (dolist (file (directory-files-recursively path "." t))
       (unless (file-directory-p file)
 	(if (and gptel-context-restrict-to-project-files
 		 root
 		 (eq action 'add)
-		 (not (member file project-files)))
-	    (gptel-context--message-skipped file project-files)
+		 (not (member file gptel-context--project-files)))
+	    (gptel-context--message-skipped file)
 	  (pcase-exhaustive action
 	    ('add
 	     (if (gptel--file-binary-p file)
@@ -237,26 +231,25 @@ PROJECT-FILES is a list of all files in the current project."
     (when (eq action 'remove)
       (message "Directory \"%s\" removed from context." path))))
 
-(defun gptel-context-add-file (path &optional project-files)
+(defun gptel-context-add-file (path)
   "Add the file at PATH to the gptel context.
 
 If PATH is a directory, recursively add all files in it. PATH should
-be readable as text.
-
-PROJECT-FILES is a list of all files in the current project."
+be readable as text."
   (interactive "fChoose file to add to context: ")
+  (gptel-context--ensure-project-files path)
   (cond ((file-directory-p path)
-         (gptel-context--add-directory path 'add project-files))
+         (gptel-context--add-directory path 'add))
         ((and gptel-context-restrict-to-project-files
 	      (not (file-remote-p path))
-              (if project-files
-		  (when-let ((project (project-current nil (car-safe project-files))))
+              (if gptel-context--project-files
+		  (when-let ((project (project-current nil (car-safe gptel-context--project-files))))
                     (let ((root (project-root project)))
                       (and (file-in-directory-p path root)
-			   (not (member path project-files)))))
+			   (not (member path gptel-context--project-files)))))
 		;; Otherwise check individually
 		(gptel-context--skip-p path)))
-	 (gptel-context--message-skipped path project-files))
+	 (gptel-context--message-skipped path))
 	((gptel--file-binary-p path)
 	 (gptel-context--add-binary-file path))
 	(t (gptel-context--add-text-file path))))
@@ -265,6 +258,20 @@ PROJECT-FILES is a list of all files in the current project."
 (defalias 'gptel-add-file #'gptel-context-add-file)
 
 ;;; project-related functions
+
+(defun gptel-context--ensure-project-files (path)
+  "Ensure project files are loaded for PATH if needed.
+PATH can be a file or directory.
+
+Only loads project files if `gptel-context-restrict-to-project-files' is non-nil
+and `gptel-context--project-files' is not already set."
+  (unless gptel-context--project-files
+    (when gptel-context-restrict-to-project-files
+      (setq gptel-context--project-files
+            (gptel-context--get-project-files
+             (if (and path (file-directory-p path))
+                 path
+               (file-name-directory (or path default-directory))))))))
 
 (defun gptel-context--get-project-files (dir)
   "Return a list of files in the project DIR, or nil if no project is found."
@@ -278,13 +285,12 @@ PROJECT-FILES is a list of all files in the current project."
     (when-let* ((project (project-current nil file)))
       (not (member file (gptel-context--get-project-files (project-root project)))))))
 
-(defun gptel-context--message-skipped (file &optional project-files)
-  "Message that FILE is skipped because it is not a project file.
-PROJECT-FILES is a list of all files in the current project."
+(defun gptel-context--message-skipped (file)
+  "Message that FILE is skipped because it is not a project file."
   (let* ((type (if (file-directory-p file) "directory" "file"))
 	 (reminder (format "To include this file, unset %S."
 			   'gptel-context-restrict-to-project-files)))
-    (if-let* ((project (project-current nil (car-safe project-files)))
+    (if-let* ((project (project-current nil (car-safe gptel-context--project-files)))
 	      (rel-file (file-relative-name file (project-root project))))
 	(message "Skipping %s \"%s\" in project \"%s\". %s"
 		 type rel-file (project-name project) reminder)
