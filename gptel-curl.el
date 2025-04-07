@@ -281,6 +281,9 @@ Optional RAW disables text properties and transformation."
              (set-marker-insertion-type tracking-marker t)
              (plist-put info :tracking-marker tracking-marker))
            (goto-char tracking-marker)
+           (when (plist-get info :last-was-tool-result)
+             (insert gptel-response-separator)
+             (plist-put info :last-was-tool-result nil))
            (unless raw
              (when transformer
                (setq response (funcall transformer response)))
@@ -295,7 +298,8 @@ Optional RAW disables text properties and transformation."
     (`(tool-call . ,tool-calls)
      (gptel--display-tool-calls tool-calls info))
     (`(tool-result . ,tool-results)
-     (gptel--display-tool-results tool-results info))))
+     (gptel--display-tool-results tool-results info)
+     (plist-put info :last-was-tool-result t))))
 
 (defun gptel-curl--stream-filter (process output)
   (let* ((fsm (car (alist-get process gptel--request-alist)))
