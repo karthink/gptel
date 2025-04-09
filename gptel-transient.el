@@ -576,6 +576,13 @@ Also format its value in the Transient menu."
     (gptel--infix-context-add-file)
     (gptel--infix-context-remove-all)
     (gptel--suffix-context-buffer)]
+   ["" "Info"
+    ("h" "Describe model"
+     (lambda ()
+       "Describe the current gptel model."
+       (interactive)
+       (describe-gptel-model gptel-backend gptel-model))
+     :transient t)]
    [:pad-keys t
     :if (lambda () (and gptel-use-tools gptel--known-tools))
     "" (:info
