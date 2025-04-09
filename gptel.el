@@ -1969,9 +1969,12 @@ Handle read-only buffers and run pre-response hooks (but only if
 the request succeeded)."
   (let* ((info (gptel-fsm-info fsm))
          (start-marker (plist-get info :position)))
-    (when (with-current-buffer (plist-get info :buffer)
-            (or buffer-read-only
-                (get-char-property start-marker 'read-only)))
+    (when (and
+           (memq (plist-get info :callback)
+                 '(gptel--insert-response gptel-curl--stream-insert-response))
+           (with-current-buffer (plist-get info :buffer)
+             (or buffer-read-only
+                 (get-char-property start-marker 'read-only))))
       (message "Buffer is read only, displaying reply in buffer \"*LLM response*\"")
       (display-buffer
        (with-current-buffer (get-buffer-create "*LLM response*")
