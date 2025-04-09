@@ -1118,7 +1118,8 @@ FILE is assumed to exist and be a regular file."
     (enh-ruby-mode . "Ruby")
     (yaml-mode     . "Yaml")
     (yaml-ts-mode  . "Yaml")
-    (rustic-mode   . "Rust"))
+    (rustic-mode   . "Rust")
+    (tuareg-mode   . "OCaml"))
   "Mapping from unconventionally named major modes to languages.
 
 This is used when generating system prompts for rewriting and
