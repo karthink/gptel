@@ -912,6 +912,19 @@ Later plists in the sequence take precedence over earlier ones."
         (setq rtn (plist-put rtn p v))))
     rtn))
 
+(cl-defun gptel--url-retrieve (url &key method data headers)
+  "Retrieve URL synchronously with METHOD, DATA and HEADERS."
+  (declare (indent 1))
+  (let ((url-request-method (if (eq method'post) "POST" "GET"))
+        (url-request-data (encode-coding-string (gptel--json-encode data) 'utf-8))
+        (url-mime-accept-string "application/json")
+        (url-request-extra-headers
+         `(("content-type" . "application/json")
+           ,@headers)))
+    (with-current-buffer (url-retrieve-synchronously url 'silent)
+      (goto-char url-http-end-of-headers)
+      (gptel--json-read))))
+
 (defun gptel-auto-scroll ()
   "Scroll window if LLM response continues below viewport.
 
