@@ -870,8 +870,41 @@ Register a backend with
   :key "your-api-key"              ;can be a function that returns the key
   :endpoint "/v1/chat/completions"
   :stream t
-  :models '(;; xAI now only offers `grok-beta` as of the time of this writing
-            grok-beta))
+  :models '((grok-3-latest
+             :description "Grok 3"
+             :capabilities '(text tool-use json)
+             :context-window 131072
+             :input-cost 3
+             :output-cost 15)
+
+            (grok-3-fast-latest
+             :description "Faster Grok 3"
+             :capabilities '(text tool-use json)
+             :context-window 131072
+             :input-cost 5
+             :output-cost 25)
+
+            (grok-3-mini-latest
+             :description "Mini Grok 3"
+             :capabilities '(text tool-use json reasoning)
+             :context-window 131072
+             :input-cost 0.3
+             :output-cost 0.5)
+
+            (grok-3-mini-fast-latest
+             :description "Faster mini Grok 3"
+             :capabilities '(text tool-use json reasoning)
+             :context-window 131072
+             :input-cost 0.6
+             :output-cost 4)
+
+            (grok-2-vision-1212
+             :description "Grok 2 Vision"
+             :capabilities '(text tool-use json)
+             :mime-types '("image/jpeg" "image/png" "image/gif" "image/webp")
+             :context-window 32768
+             :input-cost 2
+             :output-cost 10)))
 #+end_src
 
 You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
