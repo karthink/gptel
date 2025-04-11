@@ -225,7 +225,8 @@ Then we need a session token."
           (header (lambda ()
                     (gptel--gh-auth)
                     `(("openai-intent" . "conversation-panel")
-                      ("authorization" . ,(concat "Bearer " (plist-get (gptel--gh-token gptel-backend) :token)))
+                      ("authorization" . ,(concat "Bearer "
+                                           (plist-get (gptel--gh-token gptel-backend) :token)))
                       ("x-request-id" . ,(gptel--gh-uuid))
                       ("vscode-sessionid" . ,(or (gptel--gh-sessionid gptel-backend) ""))
                       ("vscode-machineid" . ,(or (gptel--gh-machineid gptel-backend) ""))
@@ -236,7 +237,56 @@ Then we need a session token."
           (endpoint "/chat/completions")
           (stream t)
           (models gptel--gh-models))
-  "Register a Github Copilot backend for gptel with NAME."
+  "Register a Github Copilot chat backend for gptel with NAME.
+
+Keyword arguments:
+
+CURL-ARGS (optional) is a list of additional Curl arguments.
+
+HOST (optional) is the API host, typically \"api.githubcopilot.com\".
+
+MODELS is a list of available model names, as symbols.
+Additionally, you can specify supported LLM capabilities like
+vision or tool-use by appending a plist to the model with more
+information, in the form
+
+ (model-name . plist)
+
+For a list of currently recognized plist keys, see
+`gptel--openai-models'.  An example of a model specification
+including both kinds of specs:
+
+:models
+\\='(gpt-3.5-turbo                         ;Simple specs
+  gpt-4-turbo
+  (gpt-4o-mini                          ;Full spec
+   :description
+   \"Affordable and intelligent small model for lightweight tasks\"
+   :capabilities (media tool json url)
+   :mime-types
+   (\"image/jpeg\" \"image/png\" \"image/gif\" \"image/webp\")))
+
+Defaults to a list of models supported by GitHub Copilot.
+
+STREAM is a boolean to toggle streaming responses, defaults to
+false.
+
+PROTOCOL (optional) specifies the protocol, https by default.
+
+ENDPOINT (optional) is the API endpoint for completions, defaults to
+\"/chat/completions\".
+
+HEADER (optional) is for additional headers to send with each
+request.  It should be an alist or a function that returns an
+alist, like:
+ ((\"Content-Type\" . \"application/json\"))
+
+Defaults to headers required by GitHub Copilot.
+
+REQUEST-PARAMS (optional) is a plist of additional HTTP request
+parameters (as plist keys) and values supported by the API.  Use
+these to set parameters that gptel does not provide user options
+for."
   (declare (indent 1))
   (let ((backend (gptel--make-gh
                   :name name
