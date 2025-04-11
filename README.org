@@ -343,7 +343,7 @@ The above code makes the backend available to select.  If you want it to be the 
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
 (setq
- gptel-model 'gemini-pro
+ gptel-model 'gemini-2.5-pro-exp-03-25
  gptel-backend (gptel-make-gemini "Gemini"
                  :key "YOUR_GEMINI_API_KEY"
                  :stream t))
