@@ -180,15 +180,20 @@ If your browser does not open automatically, browse to %s."
 
 (defun gptel--gh-renew-token ()
   "Renew session token."
-  (thread-last
-    (gptel--url-retrieve
-     "https://api.github.com/copilot_internal/v2/token"
-     :method 'get
-     :headers `(("authorization"
-                 . ,(format "token %s" (gptel--gh-github-token gptel-backend)))
-                ,@gptel--gh-auth-common-headers))
-    (gptel--gh-save gptel-gh-token-file)
-    (setf (gptel--gh-token gptel-backend))))
+  (let ((token
+         (gptel--url-retrieve
+             "https://api.github.com/copilot_internal/v2/token"
+           :method 'get
+           :headers `(("authorization"
+                       . ,(format "token %s" (gptel--gh-github-token gptel-backend)))
+                      ,@gptel--gh-auth-common-headers))))
+    (if (not (plist-get token :token))
+        (progn
+          (setf (gptel--gh-github-token gptel-backend) nil)
+          (user-error "Error: You might not have access to Github Copilot Chat!"))
+      (thread-last
+        (gptel--gh-save gptel-gh-token-file token)
+        (setf (gptel--gh-token gptel-backend))))))
 
 (defun gptel--gh-auth ()
   "Authenticate with GitHub Copilot API.
@@ -206,9 +211,9 @@ Then we need a session token."
     (setf (gptel--gh-token gptel-backend)
           (gptel--gh-restore gptel-gh-token-file)))
 
-  (pcase-let (((map :access_token :expires_at)
+  (pcase-let (((map :token :expires_at)
                (gptel--gh-token gptel-backend)))
-    (when (or (null access_token)
+    (when (or (null token)
               (and expires_at
                    (> (round (float-time (current-time)))
                       expires_at)))
