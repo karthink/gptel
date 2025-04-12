@@ -897,7 +897,6 @@ The above code makes the backend available to select.  If you want it to be the 
 
 #+html: </details>
 
-#+html: </details>
 #+html: <details><summary>
 **** Github CopilotChat
 #+html: </summary>
@@ -918,6 +917,8 @@ The above code makes the backend available to select.  If you want it to be the 
 (setq gptel-model 'claude-3.7-sonnet
       gptel-backend (gptel-make-gh-copilot "Copilot"))
 #+end_src
+
+#+html: </details>
 
 ** Usage
 
