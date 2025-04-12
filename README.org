@@ -47,7 +47,7 @@ https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-a
 https://github.com/user-attachments/assets/cec11aec-52f6-412e-9e7a-9358e8b9b1bf
 #+html: </p>
 
-*Tool use* (experimental)
+*Tool use*
 
 #+html: <p align="center">
 https://github.com/user-attachments/assets/5f993659-4cfd-49fa-b5cd-19c55766b9b2
@@ -75,7 +75,7 @@ See also [[https://youtu.be/g1VMGhC5gRU][this youtube demo (2 minutes)]] by Armi
 - Interact with LLMs from anywhere in Emacs (any buffer, shell, minibuffer, wherever).
 - LLM responses are in Markdown or Org markup.
 - Supports multiple independent conversations and one-off ad hoc interactions.
-- Supports tool-use to equip LLMs with agentic capabilities (experimental feature).
+- Supports tool-use to equip LLMs with agentic capabilities.
 - Supports multi-modal input (include images, documents).
 - Save chats as regular Markdown/Org/Text files and resume them later.
 - Edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.
@@ -123,7 +123,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
     - [[#setting-options-backend-model-request-parameters-system-prompts-and-more][Setting options (backend, model, request parameters, system prompts and more)]]
     - [[#include-more-context-with-requests][Include more context with requests]]
     - [[#handle-reasoning-content][Handle "reasoning" content]]
-    - [[#tool-use-experimental][Tool use (experimental)]]
+    - [[#tool-use][Tool use]]
       - [[#defining-gptel-tools][Defining gptel tools]]
       - [[#selecting-tools][Selecting tools]]
     - [[#rewrite-refactor-or-fill-in-a-region][Rewrite, refactor or fill in a region]]
@@ -1092,7 +1092,7 @@ Some LLMs include in their response a "thinking" or "reasoning" block.  This tex
 
 When included with the response, reasoning content will be delimited by Org blocks or markdown backticks.
 
-*** Tool use (experimental)
+*** Tool use
 
 gptel can provide the LLM with client-side elisp "tools", or function specifications, along with the request.  If the LLM decides to run the tool, it supplies the tool call arguments, which gptel uses to run the tool in your Emacs session.  The result is optionally returned to the LLM to complete the task.
 
@@ -1101,8 +1101,6 @@ This exchange can be used to equip the LLM with capabilities or knowledge beyond
 #+html: <p align="center">
 https://github.com/user-attachments/assets/d1f8e2ac-62bb-49bc-850d-0a67aa0cd4c3
 #+html: </p>
-
-This feature is currently experimental.
 
 To use tools in gptel, you need
 - a model that supports this usage.  All the flagship models support tool use, as do many of the smaller open models.
