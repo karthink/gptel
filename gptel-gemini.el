@@ -313,16 +313,21 @@ files in the context."
                   current))
         (plist-get (car (last prompts)) :parts))))
 
+(defconst gptel--gemini-cost-url "https://ai.google.dev/pricing"
+  "Web page for current Gemini model pricing.")
+
 (defconst gptel--gemini-models
-  '((gemini-1.5-pro-latest
+  `((gemini-1.5-pro-latest
      :description "Google's latest model with enhanced capabilities across various tasks"
      :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
      :context-window 2000
+     :max-output 8192
      ;; input & output price is halved for prompts of 128k tokens or less
      :input-cost 2.50
      :output-cost 10
+     :cost-url ,gptel--gemini-cost-url
      :cutoff-date "2024-05")
     (gemini-2.0-flash-exp
      :description "Next generation features, superior speed, native tool use"
@@ -337,19 +342,23 @@ files in the context."
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
      :context-window 1000
+     :max-output 8192
      ;; input & output price is halved for prompts of 128k tokens or less
      :input-cost 0.15
      :output-cost 0.60
+     :cost-url ,gptel--gemini-cost-url
      :cutoff-date "2024-05")
     (gemini-1.5-flash-8b
      :description "High volume and lower intelligence tasks"
      :capabilities (tool-use json media)
      :context-window 1000
+     :max-output 8192
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
      ;; input & output price is halved for prompts of 128k tokens or less
      :input-cost 0.075
      :output-cost 0.30
+     :cost-url ,gptel--gemini-cost-url
      :cutoff-date "2024-10")
     (gemini-exp-1206
      :description "Improved coding, reasoning and vision capabilities"
@@ -363,8 +372,10 @@ files in the context."
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
      :context-window 1000
+     :max-output 8192
      :input-cost 0.10
      :output-cost 0.40
+     :cost-url ,gptel--gemini-cost-url
      :cutoff-date "2024-08")
     (gemini-2.0-flash-lite-preview-02-05
      :description "Gemini 2.0 Flash model optimized for cost efficiency and low latency"
@@ -372,6 +383,7 @@ files in the context."
      :context-window 1000
      :input-cost 0.075
      :output-cost 0.30
+     :cost-url ,gptel--gemini-cost-url
      :cutoff-date "2024-08")
     (gemini-2.0-pro-exp-02-05
      :description "Next gen, high speed, multimodal for a diverse variety of tasks"
@@ -379,12 +391,14 @@ files in the context."
      :context-window 2000
      :input-cost 0.00
      :output-cost 0.00
+     :cost-url ,gptel--gemini-cost-url
      :cutoff-date "2024-08")
     (gemini-2.0-flash-thinking-exp-01-21
      :description "Next gen, high speed, multimodal for a diverse variety of tasks"
      :capabilities (json)
      :input-cost 0.00
      :output-cost 0.00
+     :cost-url ,gptel--gemini-cost-url
      :cutoff-date "2024-08")
     (gemini-2.0-flash-exp
      :description "Multi-modal, streaming, tool use 2000 RPM"
@@ -394,6 +408,7 @@ files in the context."
      :context-window 1000
      :input-cost 0.00
      :output-cost 0.00
+     :cost-url ,gptel--gemini-cost-url
      :cutoff-date "2024-08")
     (gemini-2.5-pro-exp-03-25
      :description "Like gemini-2.5-pro-preview-03-25 but limited to 5 req/min, 25 req/day"
@@ -431,9 +446,13 @@ Keys:
 
 - `:context-window': the context window size, in thousands of tokens.
 
+- `:max-output': maximum number of output tokens.
+
 - `:input-cost': the input cost, in US dollars per million tokens.
 
 - `:output-cost': the output cost, in US dollars per million tokens.
+
+- `:cost-url': web page for current model pricing.
 
 - `:cutoff-date': the knowledge cutoff date.
 

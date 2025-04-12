@@ -339,12 +339,16 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
           (models '((deepseek-reasoner
                      :capabilities (tool reasoning)
                      :context-window 64
+		     :max-output 8192
                      :input-cost 0.55
-                     :output-cost 2.19)
+                     :output-cost 2.19
+		     :cost-url "https://api-docs.deepseek.com/quick_start/pricing/")
                     (deepseek-chat
                      :capabilities (tool)
                      :context-window 64
+		     :max-output 8192
                      :input-cost 0.27
+		     :cost-url "https://api-docs.deepseek.com/quick_start/pricing/"
                      :output-cost 1.10))))
   "Register a DeepSeek backend for gptel with NAME."
   (declare (indent 1))
