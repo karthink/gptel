@@ -83,6 +83,13 @@
      :context-window 1000
      :input-cost 0.10
      :output-cost 0.40
+     :cutoff-date "2024-08")
+    (gemini-2.5-pro
+     :description "Next gen, high speed, multimodal for a diverse variety of tasks"
+     :capabilities (tool-use json)
+     :context-window 1000
+     :input-cost 0.10
+     :output-cost 0.40
      :cutoff-date "2024-08")))
 
 (cl-defstruct (gptel--gh (:include gptel-openai)
