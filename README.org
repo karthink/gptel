@@ -878,8 +878,8 @@ The above code makes the backend available to select.  If you want it to be the 
 (setq gptel-model 'grok-3-latest
       gptel-backend
       (gptel-make-xai "xAI"               ; Any name you want
-                      :key "your-api-key" ; can be a function that returns the key
-                      :stream t))
+        :key "your-api-key" ; can be a function that returns the key
+        :stream t))
 #+end_src
 
 #+html: </details>

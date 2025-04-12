@@ -363,11 +363,12 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
     (setf (alist-get name gptel--known-backends nil nil #'equal) backend)
     backend))
 
+;;; xAI
 ;;;###autoload
 (cl-defun gptel-make-xai
     (name &key curl-args stream key request-params
           (header (lambda () (when-let* ((key (gptel--get-api-key)))
-                               `(("Authorization" . ,(concat "Bearer " key))))))
+                          `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.x.ai")
           (protocol "https")
           (endpoint "/v1/chat/completions")
@@ -406,7 +407,18 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
                      :context-window 32768
                      :input-cost 2
                      :output-cost 10))))
-  "Register an xAI backend for gptel with NAME."
+  "Register an xAI backend for gptel with NAME.
+
+Keyword arguments:
+
+KEY is a variable whose value is the API key, or function that
+returns the key.
+
+STREAM is a boolean to toggle streaming responses, defaults to
+false.
+
+The other keyword arguments are all optional.  For their meanings
+see `gptel-make-openai'."
   (declare (indent 1))
   (let ((backend (gptel--make-openai
                   :name name
