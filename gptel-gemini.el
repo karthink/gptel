@@ -396,13 +396,22 @@ files in the context."
      :output-cost 0.00
      :cutoff-date "2024-08")
     (gemini-2.5-pro-exp-03-25
-     :description "Enhanced thinking and reasoning, multimodal understanding, advanced coding, and more"
+     :description "Like gemini-2.5-pro-preview-03-25 but limited to 5 req/min, 25 req/day"
      :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
      :context-window 1000
      :input-cost 0.00
      :output-cost 0.00
+     :cutoff-date "2025-01")
+    (gemini-2.5-pro-preview-03-25
+     :description "Enhanced reasoning, multimodal understanding & advanced coding"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1000
+     :input-cost 1.25 ; 2.50 for >200k tokens
+     :output-cost 10.00 ; 15 for >200k tokens
      :cutoff-date "2025-01")
     (gemini-2.0-flash-thinking-exp
      :description "DEPRECATED: Please use gemini-2.0-flash-thinking-exp-01-21 instead."
