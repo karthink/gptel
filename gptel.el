@@ -579,6 +579,14 @@ the same as t."
      :input-cost 75
      :output-cost 150
      :cutoff-date "2023-10")
+    (gpt-4.1
+     :description "Flagship GPT model for complex tasks"
+     :capabilities (media tool-use url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1048
+     :input-cost 2
+     :output-cost 8
+     :cutoff-date "2024-06")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
      :capabilities (media reasoning)
