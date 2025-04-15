@@ -546,14 +546,21 @@ the same as t."
      :input-cost 2.0
      :output-cost 8.0
      :cutoff-date "2024-05")
+    (gpt-4.5-preview
+     :description "DEPRECATED: Use gpt-4.1 instead"
+     :capabilities (media tool-use url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 128
+     :input-cost 75
+     :output-cost 150
+     :cutoff-date "2023-10")
     (gpt-4.1-mini
      :description "Balance between intelligence, speed and cost"
      :capabilities (media tool-use json url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 1024
      :input-cost 0.4
-     :output-cost 1.6
-     :cutoff-date "2024-05")
+     :output-cost 1.6)
     (gpt-4.1-nano
      :description "Fastest, most cost-effective GPT-4.1 model"
      :capabilities (media tool-use json url)
@@ -569,40 +576,15 @@ the same as t."
      :context-window 128
      :input-cost 10
      :output-cost 30
-     :cutoff-date "2023-12")
-    ;; points to gpt-4-0613
+     :cutoff-date "2023-11")
     (gpt-4
      :description "GPT-4 snapshot from June 2023 with improved function calling support"
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :capabilities (media tool-use url)
+     :capabilities (media url)
      :context-window 8.192
      :input-cost 30
      :output-cost 60
-     :cutoff-date "2023-09")
-    (gpt-4-turbo-preview
-     :description "Points to gpt-4-0125-preview"
-     :capabilities (media tool-use url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 10
-     :output-cost 30
-     :cutoff-date "2023-12")
-    (gpt-4-0125-preview
-     :description "GPT-4 Turbo preview model intended to reduce cases of “laziness”"
-     :capabilities (media tool-use url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 10
-     :output-cost 30
-     :cutoff-date "2023-12")
-    (gpt-4.5-preview
-     :description "Largest and most capable GPT model to date"
-     :capabilities (media tool-use url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 75
-     :output-cost 150
-     :cutoff-date "2023-10")
+     :cutoff-date "2023-11")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
      :capabilities (media reasoning)
@@ -610,18 +592,7 @@ the same as t."
      :context-window 200
      :input-cost 15
      :output-cost 60
-     :cutoff-date "2023-10"
-     :request-params (:stream :json-false))
-    (o1-preview
-     :description "DEPRECATED: PLEASE USE o1"
-     :capabilities (nosystem media)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 15
-     :output-cost 60
-     :cutoff-date "2023-10"
-     :capabilities (nosystem reasoning)
-     :request-params (:stream :json-false))
+     :cutoff-date "2023-10")
     (o1-mini
      :description "Faster and cheaper reasoning model good at coding, math, and science"
      :context-window 128
@@ -638,18 +609,6 @@ the same as t."
      :cutoff-date "2023-10"
      :capabilities (reasoning)
      :request-params (:stream :json-false))
-    ;; limited information available
-    (gpt-4-32k
-     :capabilities (tool-use)
-     :input-cost 60
-     :output-cost 120)
-    (gpt-4-1106-preview
-     :description "Preview model with improved function calling support"
-     :capabilities (tool-use)
-     :context-window 128
-     :input-cost 10
-     :output-cost 30
-     :cutoff-date "2023-04")
     (gpt-3.5-turbo
      :description "More expensive & less capable than GPT-4o-mini; use that instead"
      :capabilities (tool-use)

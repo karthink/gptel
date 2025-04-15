@@ -7,6 +7,18 @@
 - ~gptel-org-branching-context~ is now a global variable.  It was
   buffer-local by default in past releases.
 
+- The following models have been removed from the default ChatGPT backend:
+  - ~o1-preview~: use ~o1~ instead.
+  - ~gpt-4-turbo-preview~: use ~gpt-4o~ or ~gpt-4-turbo~ instead.
+  - ~gpt-4-32k~, ~gpt-4-0125-preview~ and ~gpt-4-1106-preview~: use
+    ~gpt-4o~ or ~gpt-4~ instead.
+  Alternatively, you can add these models back to the backend in your
+  personal configuration:
+  #+begin_src emacs-lisp
+  (push 'gpt-4-turbo-preview
+        (gptel-backend-models (gptel-get-backend "ChatGPT")))
+  #+end_src
+
 ** New models and backends
 
 - Add support for ~gemini-2.5-pro-exp-03-25~.
