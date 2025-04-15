@@ -1511,7 +1511,11 @@ a tool, use `gptel-make-tool', which see."
   :group 'gptel
   :type '(repeat gptel-tool))
 
-(cl-defstruct (gptel-tool (:constructor gptel--make-tool)
+(cl-defstruct (gptel-tool (:constructor nil)
+                          (:constructor gptel--make-tool
+                           (&key function name description args
+                                 async category confirm include
+                                 &allow-other-keys))
                           (:copier gptel--copy-tool))
   "Struct to specify tools for LLMs to run.
 
@@ -1520,7 +1524,14 @@ a (plain language) task.  If the LLM decides to use the tool to
 accomplish the task, gptel will run the tool and (optionally)
 feed the LLM the results.  You can add tools via
 `gptel-make-tool', which see."
-  function name description args async category confirm include)
+  (function nil :type function :documentation "Function that runs the tool")
+  (name nil :type string :documentation "Tool name, snake_case recommended")
+  (description nil :type string :documentation "What the tool does, intended for the LLM")
+  (args nil :type list :documentation "List of plists specifying function arguments")
+  (async nil :type boolean :documentation "Whether the function runs asynchronously")
+  (category nil :type string :documentation "Use to group tools by purpose")
+  (confirm nil :type boolean :documentation "Seek confirmation before running tool?")
+  (include nil :type boolean :documentation "Include tool results in buffer?"))
 
 (define-advice gptel--make-tool (:filter-args (rest) preprocess-args)
   "Convert symbol :type values to strings in the args in REST."
@@ -2206,20 +2217,6 @@ responses (see STREAM).  In these cases, RESPONSE can be
 See `gptel--insert-response' for an example callback handling all
 cases.
 
-STREAM is a boolean that determines if the response should be
-streamed, as in `gptel-stream'.  If the model or the backend does
-not support streaming, this will be ignored.
-
-When streaming responses
-
-- CALLBACK will be called repeatedly with each RESPONSE text
-  chunk (a string) as it is received.
-- When the HTTP request ends successfully, CALLBACK will be
-  called with a RESPONSE argument of t to indicate success.
-- Similarly, CALLBACK will be called with
-  (reasoning . text-chunk) for each reasoning chunk, and
-  (reasoning . t) to indicate the end of the reasoning block.
-
 The INFO plist has (at least) the following keys:
 :data         - The request data included with the query
 :position     - marker at the point the request was sent, unless
@@ -2250,6 +2247,20 @@ Or, for just the response:
 If CALLBACK is omitted, the response is inserted at the point the
 request was sent.
 
+STREAM is a boolean that determines if the response should be
+streamed, as in `gptel-stream'.  If the model or the backend does
+not support streaming, this will be ignored.
+
+When streaming responses
+
+- CALLBACK will be called repeatedly with each RESPONSE text
+  chunk (a string) as it is received.
+- When the HTTP request ends successfully, CALLBACK will be
+  called with a RESPONSE argument of t to indicate success.
+- Similarly, CALLBACK will be called with
+  (reasoning . text-chunk) for each reasoning chunk, and
+  (reasoning . t) to indicate the end of the reasoning block.
+
 BUFFER and POSITION are the buffer and position (integer or
 marker) at which the response is inserted.  If a CALLBACK is
 specified, no response is inserted and these arguments are
@@ -2277,8 +2288,9 @@ IN-PLACE is a boolean used by the default callback when inserting
 the response to determine if delimiters are needed between the
 prompt and the response.
 
-If DRY-RUN is non-nil, construct and return the full query data
-as usual, but do not send the request.
+If DRY-RUN is non-nil, do not send the request.  Construct and
+return a state machine object that can be introspected and
+resumed.
 
 FSM is the state machine driving the request.  This can be used
 to define a custom request control flow, see `gptel-fsm' for
