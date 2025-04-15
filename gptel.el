@@ -538,6 +538,30 @@ the same as t."
      :input-cost 0.15
      :output-cost 0.60
      :cutoff-date "2023-10")
+    (gpt-4.1
+     :description "Flagship model for complex tasks"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1024
+     :input-cost 2.0
+     :output-cost 8.0
+     :cutoff-date "2024-05")
+    (gpt-4.1-mini
+     :description "Balance between intelligence, speed and cost"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1024
+     :input-cost 0.4
+     :output-cost 1.6
+     :cutoff-date "2024-05")
+    (gpt-4.1-nano
+     :description "Fastest, most cost-effective GPT-4.1 model"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1024
+     :input-cost 0.10
+     :output-cost 0.40
+     :cutoff-date "2024-05")
     (gpt-4-turbo
      :description "Previous high-intelligence model"
      :capabilities (media tool-use url)
