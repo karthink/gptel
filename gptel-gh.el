@@ -27,22 +27,36 @@
 
 ;;; Github Copilot
 (defconst gptel--gh-models
-  '((gpt-4o-2024-11-20
+  '((gpt-4o
      :description
      "Advanced model for complex tasks; cheaper & faster than GPT-Turbo"
      :capabilities (media tool-use json url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 128 :input-cost 2.5 :output-cost 10 :cutoff-date "2023-10")
+    (gpt-4o-copilot
+     :description "Cheap model for fast tasks; cheaper & more capable than GPT-3.5 Turbo"
+     :context-window 128
+     :input-cost 0.15
+     :output-cost 0.60
+     :cutoff-date "2023-10")
+    (gpt-4.1
+     :description "Flagship model for complex tasks"
+     :capabilities (tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1024
+     :input-cost 2.0
+     :output-cost 8.0
+     :cutoff-date "2024-05")
     (gpt-4.5-preview
      :description "Largest and most capable GPT model to date"
-     :capabilities (tool-use url)
+     :capabilities (url)
      :context-window 128
      :input-cost 75
      :output-cost 150
      :cutoff-date "2023-10")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
-     :capabilities (reasoning)
+     :capabilities (reasoning tool-use)
      :context-window 200
      :input-cost 15
      :output-cost 60
@@ -50,43 +64,49 @@
      :request-params (:stream :json-false))
     (o3-mini
      :description "High intelligence at the same cost and latency targets of o1-mini"
+     :capabilities (reasoning tool-use)
      :context-window 200
      :input-cost 3
      :output-cost 12
-     :cutoff-date "2023-10"
-     :capabilities (reasoning)
-     :request-params (:stream :json-false))
+     :cutoff-date "2023-10")
     (claude-3.5-sonnet
      :description "Highest level of intelligence and capability"
-     :capabilities (tool-use cache)
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
      :input-cost 3
      :output-cost 15
      :cutoff-date "2024-04")
     (claude-3.7-sonnet
      :description "Hybrid model capable of standard thinking and extended thinking modes"
-     :capabilities (tool-use cache)
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
      :input-cost 3
      :output-cost 15
      :cutoff-date "2025-02")
     (claude-3.7-sonnet-thought
      :description "Claude 3.7 Sonnet Thinking"
-     :capabilities (tool-use cache)
+     :capabilities (media cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
      :input-cost 3
      :output-cost 15
      :cutoff-date "2025-02")
     (gemini-2.0-flash-001
      :description "Next gen, high speed, multimodal for a diverse variety of tasks"
-     :capabilities (tool-use json)
+     :capabilities (json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
      :context-window 1000
      :input-cost 0.10
      :output-cost 0.40
      :cutoff-date "2024-08")
     (gemini-2.5-pro
      :description "Next gen, high speed, multimodal for a diverse variety of tasks"
-     :capabilities (tool-use json)
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
      :context-window 1000
      :input-cost 0.10
      :output-cost 0.40
