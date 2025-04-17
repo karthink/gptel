@@ -599,16 +599,30 @@ the same as t."
      :input-cost 3
      :output-cost 12
      :cutoff-date "2023-10"
-     :capabilities (nosystem reasoning)
-     :request-params (:stream :json-false))
+     :capabilities (nosystem reasoning))
+    (o3
+     :description "Well-rounded and powerful model across domains"
+     :capabilities (reasoning media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 200
+     :input-cost 10
+     :output-cost 40
+     :cutoff-date "2024-05")
     (o3-mini
      :description "High intelligence at the same cost and latency targets of o1-mini"
      :context-window 200
-     :input-cost 3
-     :output-cost 12
+     :input-cost 1.10
+     :output-cost 4.40
      :cutoff-date "2023-10"
-     :capabilities (reasoning)
-     :request-params (:stream :json-false))
+     :capabilities (reasoning tool-use json))
+    (o4-mini
+     :description "Fast, effective reasoning with efficient performance in coding and visual tasks"
+     :capabilities (reasoning media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 200
+     :input-cost 1.10
+     :output-cost 4.40
+     :cutoff-date "2024-05")
     (gpt-3.5-turbo
      :description "More expensive & less capable than GPT-4o-mini; use that instead"
      :capabilities (tool-use)

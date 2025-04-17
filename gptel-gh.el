@@ -62,6 +62,14 @@
      :output-cost 60
      :cutoff-date "2023-10"
      :request-params (:stream :json-false))
+    (o3
+     :description "Well-rounded and powerful model across domains"
+     :capabilities (reasoning media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 200
+     :input-cost 10
+     :output-cost 40
+     :cutoff-date "2024-05")
     (o3-mini
      :description "High intelligence at the same cost and latency targets of o1-mini"
      :capabilities (reasoning tool-use)
@@ -69,6 +77,14 @@
      :input-cost 3
      :output-cost 12
      :cutoff-date "2023-10")
+    (o4-mini
+     :description "Fast, effective reasoning with efficient performance in coding and visual tasks"
+     :capabilities (reasoning media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 200
+     :input-cost 1.10
+     :output-cost 4.40
+     :cutoff-date "2024-05")
     (claude-3.5-sonnet
      :description "Highest level of intelligence and capability"
      :capabilities (media tool-use cache)
