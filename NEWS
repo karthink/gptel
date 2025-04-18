@@ -25,6 +25,8 @@
 
 - Add support for ~gpt-4.1~, ~gpt-4.1-mini~ and ~gpt-4.1-nano~.
 
+- Add support for ~gemini-2.5-flash-preview-04-17~.
+
 ** New features and UI changes
 
 - The new option ~gptel-curl-extra-args~ can be used to specify extra
