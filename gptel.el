@@ -1719,29 +1719,28 @@ implementation, used by OpenAI-compatible APIs and Ollama."
              (list
               :parameters
               (list :type "object"
+                    ;; gptel's tool args spec is close to the JSON schema, except
+                    ;; that we use (:name "argname" ...)
+                    ;; instead of  (:argname (...)), and
+                    ;; (:optional t) for each arg instead of (:required [...])
+                    ;; for all args at once.  Handle this difference by
+                    ;; modifying a copy of the gptel tool arg spec.
                     :properties
                     (cl-loop
                      for arg in (gptel-tool-args tool)
-                     for name = (plist-get arg :name)
-                     for type = (plist-get arg :type)
+                     for argspec = (copy-sequence arg)
+                     for name = (plist-get arg :name) ;handled differently
+                     for type = (plist-get arg :type) ;to add additional keys to objects
                      for newname = (or (and (keywordp name) name)
                                        (make-symbol (concat ":" name)))
-                     for enum = (plist-get arg :enum)
-                     append
-                     (list newname
-                           `(:type ,type
-                             :description ,(plist-get arg :description)
-                             ,@(if enum (list :enum (vconcat enum)))
-                             ,@(cond
-                                ((equal type "object")
-                                 (list :properties (plist-get arg :properties)
-                                       :required (or (plist-get arg :required)
-                                                     (vector))
-                                       :additionalProperties :json-false))
-                                ((equal type "array")
-                                 ;; TODO(tool) If the item type is an object,
-                                 ;; add :additionalProperties to it
-                                 (list :items (plist-get arg :items)))))))
+                     do                ;ARGSPEC is ARG without unrecognized keys
+                     (cl-remf argspec :name)
+                     (cl-remf argspec :optional)
+                     if (equal (plist-get arg :type) "object")
+                     do (unless (plist-member argspec :required)
+                          (plist-put argspec :required []))
+                     (plist-put argspec :additionalProperties :json-false)
+                     append (list newname argspec))
                     :required
                     (vconcat
                      (delq nil (mapcar

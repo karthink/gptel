@@ -87,7 +87,7 @@ information if the stream contains it.  Not my best work, I know."
                     (if-let* ((signature (plist-get delta :signature)))
                         (plist-put info :signature
                                    (concat (plist-get info :signature) signature))))))))
-           
+
            ((looking-at "content_block_start") ;Is the following block text or tool-use?
             (forward-line 1) (forward-char 5)
             (when-let* ((cblock (plist-get (gptel--json-read) :content_block)))
@@ -99,7 +99,7 @@ information if the stream contains it.  Not my best work, I know."
                                              (plist-get info :tool-use))))
                 ("thinking" (plist-put info :reasoning (plist-get cblock :thinking))
                  (plist-put info :reasoning-block 'in)))))
-           
+
            ((looking-at "content_block_stop")
             (cond
              ((plist-get info :partial_json)   ;End of tool block
@@ -117,7 +117,7 @@ information if the stream contains it.  Not my best work, I know."
 
              ((eq (plist-get info :reasoning-block) 'in) ;End of reasoning block
               (plist-put info :reasoning-block t)))) ;Signal end of reasoning stream to filter
-           
+
            ((looking-at "message_delta")
             ;; collect stop_reason, usage_tokens and prepare tools
             (forward-line 1) (forward-char 5)
@@ -250,25 +250,23 @@ TOOLS is a list of `gptel-tool' structs, which see."
             :description (gptel-tool-description tool)
             :input_schema ;NOTE: Anthropic wants "{}" if the function takes no args, not null
             (list :type "object"
+                  ;; See the generic implementation for an explanation of this
+                  ;; transformation.
                   :properties
                   (cl-loop
                    for arg in (gptel-tool-args tool)
-                   for name = (plist-get arg :name)
-                   for type = (plist-get arg :type)
+                   for argspec = (copy-sequence arg)
+                   for name = (plist-get arg :name) ;handled differently
+                   for type = (plist-get arg :type) ;to add additional keys to objects
                    for newname = (or (and (keywordp name) name)
                                      (make-symbol (concat ":" name)))
-                   for enum = (plist-get arg :enum)
-                   append (list newname
-                                `(:type ,(plist-get arg :type)
-                                  :description ,(plist-get arg :description)
-                                  ,@(if enum (list :enum (vconcat enum)))
-                                  ,@(cond
-                                     ((equal type "object")
-                                      (list
-                                       :properties (plist-get arg :properties)
-                                       :required (or (plist-get arg :required) [])))
-                                     ((equal type "array")
-                                      (list :items (plist-get arg :items)))))))
+                   do                  ;ARGSPEC is ARG without unrecognized keys
+                   (cl-remf argspec :name)
+                   (cl-remf argspec :optional)
+                   if (equal (plist-get arg :type) "object")
+                   do (unless (plist-member argspec :required)
+                        (plist-put argspec :required []))
+                   append (list newname argspec))
                   :required
                   (vconcat
                    (delq nil (mapcar

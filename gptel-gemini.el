@@ -157,23 +157,23 @@ TOOLS is a list of `gptel-tool' structs, which see."
     (if (not (gptel-tool-args tool))
          :null           ;NOTE: Gemini wants :null if the function takes no args
       (list :type "object"
+            ;; See the generic implementation for an explanation of this
+            ;; transformation.
             :properties
             (cl-loop
              for arg in (gptel-tool-args tool)
-             for name = (plist-get arg :name)
-             for type = (plist-get arg :type)
+             for argspec = (copy-sequence arg)
+             for name = (plist-get arg :name) ;handled differently
+             for type = (plist-get arg :type) ;to add additional keys to objects
              for newname = (or (and (keywordp name) name)
                                (make-symbol (concat ":" name)))
-             for enum = (plist-get arg :enum)
-             append (list newname
-                          `(:type ,(plist-get arg :type)
-                            :description ,(plist-get arg :description)
-                            ,@(if enum (list :enum (vconcat enum)))
-                            ,@(cond
-                               ((equal type "object")
-                                (list :parameters (plist-get arg :parameters)))
-                               ((equal type "array")
-                                (list :items (plist-get arg :items)))))))
+             do                        ;ARGSPEC is ARG without unrecognized keys
+             (cl-remf argspec :name)
+             (cl-remf argspec :optional)
+             if (equal (plist-get arg :type) "object")
+             do (unless (plist-member argspec :required)
+                  (plist-put argspec :required []))
+             append (list newname argspec))
             :required
             (vconcat
              (delq nil (mapcar
