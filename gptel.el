@@ -1554,20 +1554,29 @@ feed the LLM the results.  You can add tools via
 
 (defun gptel--preprocess-tool-args (spec)
   "Convert symbol :type values in tool SPEC to strings destructively."
-  (cond ((not (listp spec)) spec)
+  ;; NOTE: Do not use `sequencep' here, as that covers strings too and breaks
+  ;; things.
+  (cond ((not (or (listp spec) (vectorp spec))) spec)
+        ((vectorp spec)
+         (cl-loop for element across spec
+                  for idx upfrom 0
+                  do (aset spec idx (gptel--preprocess-tool-args element)))
+         spec)
         ((keywordp (car spec))
          (let ((tail spec))
            (while tail
              (when (and (eq (car tail) :type) (symbolp (cadr tail)))
                (setcar (cdr tail) (symbol-name (cadr tail))))
-             (when (listp (cadr tail))
+             ;; TODO: Handle :enum ("provided" "as" "list") here, convert to
+             ;; :enum ["provided" "as" "array"]
+             (when (or (listp (cadr tail)) (vectorp (cadr tail)))
                (gptel--preprocess-tool-args (cadr tail)))
              (setq tail (cddr tail)))
            spec))
-        (t (dolist (element spec)
-             (when (listp element)
-               (gptel--preprocess-tool-args element)))
-           spec)))
+        ((listp spec) (dolist (element spec)
+                        (when (listp element)
+                          (gptel--preprocess-tool-args element)))
+         spec)))
 
 (defvar gptel--known-tools nil
   "Alist of gptel tools arranged by category.
