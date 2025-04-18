@@ -1547,11 +1547,6 @@ feed the LLM the results.  You can add tools via
   (confirm nil :type boolean :documentation "Seek confirmation before running tool?")
   (include nil :type boolean :documentation "Include tool results in buffer?"))
 
-(define-advice gptel--make-tool (:filter-args (rest) preprocess-args)
-  "Convert symbol :type values to strings in the args in REST."
-  (cl-callf gptel--preprocess-tool-args (plist-get rest :args))
-  rest)
-
 (defun gptel--preprocess-tool-args (spec)
   "Convert symbol :type values in tool SPEC to strings destructively."
   ;; NOTE: Do not use `sequencep' here, as that covers strings too and breaks
@@ -1699,7 +1694,7 @@ callback as its first argument, which it runs with the result:
                    (lambda (_)
                      (let ((result (parse-this-buffer)))
                        (funcall callback result)))))"
-  (let* ((tool (apply #'gptel--make-tool slots))
+  (let* ((tool (apply #'gptel--make-tool (gptel--preprocess-tool-args slots)))
          (category (or (gptel-tool-category tool) "misc")))
     (setf (alist-get
            (gptel-tool-name tool)
