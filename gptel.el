@@ -1526,7 +1526,7 @@ a tool, use `gptel-make-tool', which see."
   :type '(repeat gptel-tool))
 
 (cl-defstruct (gptel-tool (:constructor nil)
-                          (:constructor gptel--make-tool
+                          (:constructor gptel--make-tool-internal
                            (&key function name description args
                                  async category confirm include
                                  &allow-other-keys))
@@ -1546,11 +1546,6 @@ feed the LLM the results.  You can add tools via
   (category nil :type string :documentation "Use to group tools by purpose")
   (confirm nil :type boolean :documentation "Seek confirmation before running tool?")
   (include nil :type boolean :documentation "Include tool results in buffer?"))
-
-(define-advice gptel--make-tool (:filter-args (rest) preprocess-args)
-  "Convert symbol :type values to strings in the args in REST."
-  (cl-callf gptel--preprocess-tool-args (plist-get rest :args))
-  rest)
 
 (defun gptel--preprocess-tool-args (spec)
   "Convert symbol :type values in tool SPEC to strings destructively."
@@ -1576,6 +1571,10 @@ feed the LLM the results.  You can add tools via
                      (when (listp element)
                        (gptel--preprocess-tool-args element))))))
   spec)
+
+(defun gptel--make-tool (&rest spec)
+  "Construct a gptel-tool according to SPEC."
+  (apply #'gptel--make-tool-internal (gptel--preprocess-tool-args spec)))
 
 (defvar gptel--known-tools nil
   "Alist of gptel tools arranged by category.
