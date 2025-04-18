@@ -71,7 +71,9 @@ REQUEST-DATA is the data to send, TOKEN is a unique identifier."
          (gptel-stream (plist-get info :stream))
          (url (let ((backend-url (gptel-backend-url gptel-backend)))
                 (if (functionp backend-url)
-                    (funcall backend-url) backend-url)))
+                    (with-current-buffer (plist-get info :buffer)
+                      (funcall backend-url))
+                  backend-url)))
          (data-json (encode-coding-string (gptel--json-encode data) 'utf-8))
          (headers
           (append '(("Content-Type" . "application/json"))

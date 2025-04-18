@@ -2796,7 +2796,9 @@ the response is inserted into the current buffer after point."
     (let ((proc-buf
            (url-retrieve (let ((backend-url (gptel-backend-url gptel-backend)))
                            (if (functionp backend-url)
-                               (funcall backend-url) backend-url))
+                               (with-current-buffer (plist-get info :buffer)
+                                 (funcall backend-url))
+                             backend-url))
                          (lambda (_)
                            (set-buffer-multibyte t)
                            (set-buffer-file-coding-system 'utf-8-unix)
