@@ -910,6 +910,8 @@ Later plists in the sequence take precedence over earlier ones."
         (setq rtn (plist-put rtn p v))))
     rtn))
 
+(defvar url-http-end-of-headers)
+(defvar url-http-response-status)
 (cl-defun gptel--url-retrieve (url &key method data headers)
   "Retrieve URL synchronously with METHOD, DATA and HEADERS."
   (declare (indent 1))
@@ -1737,7 +1739,6 @@ implementation, used by OpenAI-compatible APIs and Ollama."
                      for arg in (gptel-tool-args tool)
                      for argspec = (copy-sequence arg)
                      for name = (plist-get arg :name) ;handled differently
-                     for type = (plist-get arg :type) ;to add additional keys to objects
                      for newname = (or (and (keywordp name) name)
                                        (make-symbol (concat ":" name)))
                      do                ;ARGSPEC is ARG without unrecognized keys
@@ -2840,11 +2841,9 @@ RESPONSE is the parsed JSON of the response, as a plist.
 PROC-INFO is a plist with process information and other context.
 See `gptel-curl--get-response' for its contents.")
 
-(defvar url-http-end-of-headers)
-(defvar url-http-response-status)
 (defun gptel--url-parse-response (backend proc-info)
   "Parse response from BACKEND with PROC-INFO."
-  (when gptel-log-level             ;logging
+  (when gptel-log-level                 ;logging
     (save-excursion
       (goto-char url-http-end-of-headers)
       (when (eq gptel-log-level 'debug)

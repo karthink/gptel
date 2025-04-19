@@ -164,7 +164,6 @@ TOOLS is a list of `gptel-tool' structs, which see."
              for arg in (gptel-tool-args tool)
              for argspec = (copy-sequence arg)
              for name = (plist-get arg :name) ;handled differently
-             for type = (plist-get arg :type) ;to add additional keys to objects
              for newname = (or (and (keywordp name) name)
                                (make-symbol (concat ":" name)))
              do                        ;ARGSPEC is ARG without unrecognized keys
