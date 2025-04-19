@@ -300,6 +300,10 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
 ;; this is handled by its defgeneric implementation
 
 (defun gptel--anthropic-format-tool-id (tool-id)
+  (unless tool-id
+    (setq tool-id (substring
+                   (md5 (format "%s%s" (random) (float-time)))
+                   nil 24)))
   (if (string-prefix-p "toolu_" tool-id)
       tool-id
     (format "toolu_%s" tool-id)))

@@ -331,6 +331,10 @@ Mutate state INFO with response metadata."
   "Format TOOL-ID for OpenAI.
 
 If the ID has the format used by a different backend, use as-is."
+  (unless tool-id
+    (setq tool-id (substring
+                   (md5 (format "%s%s" (random) (float-time)))
+                   nil 24)))
   (if (or (string-prefix-p "toolu_" tool-id) ;#747
           (string-prefix-p "call_"  tool-id))
       tool-id
