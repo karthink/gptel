@@ -209,26 +209,25 @@ information if the stream contains it."
                    finally (plist-put info :tool-use call-specs)))
               (when-let* ((response (gptel--json-read))
                           (delta (map-nested-elt response '(:choices 0 :delta))))
-                (if-let* ((content (plist-get delta :content))
-                          ((not (eq content :null))))
-                    (push content content-strs)
-                  ;; No text content, so look for tool calls
-                  (when-let* ((tool-call (map-nested-elt delta '(:tool_calls 0)))
-                              (func (plist-get tool-call :function)))
-                    (if (plist-get func :name) ;new tool block begins
-                        (progn
-                          (when-let* ((partial (plist-get info :partial_json)))
-                            (let* ((prev-tool-call (car (plist-get info :tool-use)))
-                                   (prev-func (plist-get prev-tool-call :function)))
-                              (plist-put prev-func :arguments ;update args for old tool block
-                                         (apply #'concat (nreverse (plist-get info :partial_json)))))
-                            (plist-put info :partial_json nil)) ;clear out finished chain of partial args
-                          ;; Start new chain of partial argument strings
-                          (plist-put info :partial_json (list (plist-get func :arguments)))
-                          ;; NOTE: Do NOT use `push' for this, it prepends and we lose the reference
-                          (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
-                      ;; old tool block continues, so continue collecting arguments in :partial_json 
-                      (push (plist-get func :arguments) (plist-get info :partial_json)))))
+                (when-let* ((content (plist-get delta :content))
+                            ((not (eq content :null))))
+                  (push content content-strs))
+                (when-let* ((tool-call (map-nested-elt delta '(:tool_calls 0)))
+                            (func (plist-get tool-call :function)))
+                  (if (plist-get func :name) ;new tool block begins
+                      (progn
+                        (when-let* ((partial (plist-get info :partial_json)))
+                          (let* ((prev-tool-call (car (plist-get info :tool-use)))
+                                 (prev-func (plist-get prev-tool-call :function)))
+                            (plist-put prev-func :arguments ;update args for old tool block
+                                       (apply #'concat (nreverse (plist-get info :partial_json)))))
+                          (plist-put info :partial_json nil)) ;clear out finished chain of partial args
+                        ;; Start new chain of partial argument strings
+                        (plist-put info :partial_json (list (plist-get func :arguments)))
+                        ;; NOTE: Do NOT use `push' for this, it prepends and we lose the reference
+                        (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
+                    ;; old tool block continues, so continue collecting arguments in :partial_json
+                    (push (plist-get func :arguments) (plist-get info :partial_json))))
                 ;; Check for reasoning blocks, currently only used by Openrouter
                 ;; MAYBE: Should this be moved to a dedicated Openrouter backend?
                 (unless (or (eq (plist-get info :reasoning-block) 'done)
