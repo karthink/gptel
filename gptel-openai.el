@@ -210,7 +210,7 @@ information if the stream contains it."
               (when-let* ((response (gptel--json-read))
                           (delta (map-nested-elt response '(:choices 0 :delta))))
                 (if-let* ((content (plist-get delta :content))
-                          ((not (eq content :null))))
+                          ((not (or (eq content :null) (string-empty-p content)))))
                     (push content content-strs)
                   ;; No text content, so look for tool calls
                   (when-let* ((tool-call (map-nested-elt delta '(:tool_calls 0)))
