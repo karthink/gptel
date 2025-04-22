@@ -201,7 +201,7 @@ information if the stream contains it."
                   (cl-loop
                    for tool-call in tool-use ; Construct the call specs for running the function calls
                    for spec = (plist-get tool-call :function)
-                   collect (list :id (gptel--openai-unformat-tool-id (plist-get tool-call :id))
+                   collect (list :id (plist-get tool-call :id)
                                  :name (plist-get spec :name)
                                  :args (ignore-errors (gptel--json-read-string
                                                        (plist-get spec :arguments))))
@@ -274,7 +274,7 @@ Mutate state INFO with response metadata."
                                         (gptel--json-read-string
                                          (plist-get call-spec :arguments))))
            (plist-put call-spec :arguments nil)
-           (plist-put call-spec :id (gptel--openai-unformat-tool-id (plist-get tool-call :id)))
+           (plist-put call-spec :id (plist-get tool-call :id))
            collect call-spec into tool-use
            finally (plist-put info :tool-use tool-use)))))))
 
@@ -322,11 +322,11 @@ Mutate state INFO with response metadata."
    (lambda (tool-call)
      (list
       :role "tool"
-      :tool_call_id (gptel--openai-format-tool-id
-                     (plist-get tool-call :id))
+      :tool_call_id (plist-get tool-call :id)
       :content (plist-get tool-call :result)))
    tool-use))
 
+;; TODO: Remove these functions (#792)
 (defun gptel--openai-format-tool-id (tool-id)
   "Format TOOL-ID for OpenAI.
 
@@ -384,7 +384,7 @@ If the ID has the format used by a different backend, use as-is."
                      (push (list :role "assistant"
                                  :tool_calls
                                  (vector (list :type "function"
-                                               :id (gptel--openai-format-tool-id id)
+                                               :id id
                                                :function `( :name ,name
                                                             :arguments ,arguments))))
                            prompts))

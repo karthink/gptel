@@ -144,8 +144,7 @@ information if the stream contains it.  Not my best work, I know."
                 (mapc (lambda (tool-call)
                         (plist-put tool-call :args (plist-get tool-call :input))
                         (plist-put tool-call :input nil)
-                        (plist-put tool-call :id (gptel--anthropic-unformat-tool-id
-                                                  (plist-get tool-call :id))))
+                        (plist-put tool-call :id (plist-get tool-call :id)))
                       tool-use))
               (plist-put info :output-tokens
                          (map-nested-elt response '(:usage :output_tokens)))
@@ -198,8 +197,7 @@ Mutate state INFO with response metadata."
       for call = (copy-sequence call-raw) do
       (plist-put call :args (plist-get call :input))
       (plist-put call :input nil)
-      (plist-put call :id (gptel--anthropic-unformat-tool-id
-                           (plist-get call :id)))
+      (plist-put call :id (plist-get call :id))
       collect call into calls
       finally do (plist-put info :tool-use calls)))
    finally return
@@ -287,8 +285,7 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
        (let* ((result (plist-get tool-call :result))
               (formatted
                (list :type "tool_result"
-                     :tool_use_id (gptel--anthropic-format-tool-id
-                                   (plist-get tool-call :id))
+                     :tool_use_id (plist-get tool-call :id)
                      :content (if (stringp result) result
                                 (prin1-to-string result)))))
          (prog1 formatted
@@ -299,12 +296,14 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
 ;; NOTE: No `gptel--inject-prompt' method required for gptel-anthropic, since
 ;; this is handled by its defgeneric implementation
 
+;; TODO: Remove these functions (#792)
 (defun gptel--anthropic-format-tool-id (tool-id)
   (unless tool-id
     (setq tool-id (substring
                    (md5 (format "%s%s" (random) (float-time)))
                    nil 24)))
-  (if (string-prefix-p "toolu_" tool-id)
+  (if (or (string-prefix-p "call_" tool-id)
+          (string-prefix-p "toolu_" tool-id))
       tool-id
     (format "toolu_%s" tool-id)))
 
@@ -354,7 +353,7 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
                (save-excursion
                  (condition-case nil
                      (let* ((tool-call (read (current-buffer)))
-                            (id (gptel--anthropic-format-tool-id id))
+                            ;; (id (gptel--anthropic-format-tool-id id))
                             (name (plist-get tool-call :name))
                             (arguments (plist-get tool-call :args)))
                        (plist-put tool-call :id id)
