@@ -184,7 +184,7 @@ current heading and the cursor position."
                                  (substring-no-properties
                                   (replace-regexp-in-string
                                    "\\s-+" "-"
-                                   (org-get-heading)))
+                                   (org-entry-get nil "ITEM")))
                                  50))))))
   (when (stringp topic) (org-set-property "GPTEL_TOPIC" topic)))
 
