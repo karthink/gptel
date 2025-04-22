@@ -228,7 +228,7 @@ If INJECT-MEDIA is non-nil wrap it with base64-encoded media files in the contex
         (cl-callf (lambda (images)
                     (vconcat (plist-get media-processed :images)
                              images))
-            (plist-get (cadr prompts) :images)))
+            (plist-get (car prompts) :images)))
     ;; Wrap the last user prompt with included text contexts
     (cl-callf gptel-context--wrap (plist-get (car (last prompts)) :content))))
 
