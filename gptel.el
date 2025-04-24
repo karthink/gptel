@@ -1979,7 +1979,7 @@ buffer."
   ;; a second network request: gptel tests for the presence of these flags to
   ;; handle state transitions.  (NOTE: Don't add :token to this.)
   (let ((info (gptel-fsm-info fsm)))
-    (dolist (key '(:tool-success :tool-use :error :http-status))
+    (dolist (key '(:tool-success :tool-use :error :http-status :reasoning))
       (when (plist-get info key)
         (plist-put info key nil))))
   (funcall
