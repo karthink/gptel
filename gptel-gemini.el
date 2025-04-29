@@ -79,7 +79,6 @@ list."
                (map-nested-elt
                 response '(:usageMetadata :candidatesTokenCount)))
     (concat
-     ;; text parts and tool-use
      (cl-loop
       for part across parts
       for tx = (plist-get part :text)
@@ -93,7 +92,17 @@ list."
           (plist-put info :reasoning-block t))
       and collect tx into content-strs end
       else if (plist-get part :functionCall)
-      collect (copy-sequence it) into tool-use
+        collect (copy-sequence it) into tool-use
+      else if (plist-get part :executableCode)
+        collect (format "Executing code:\n```%s\n%s\n```\n\n"
+                        (downcase (plist-get it :language))
+                        (string-trim (plist-get it :code)))
+        into content-strs
+      else if (plist-get part :codeExecutionResult)
+        collect (format "Execution result (%s):\n```\n%s\n```\n\n"
+                        (plist-get it :outcome)
+                        (string-trim (plist-get it :output)))
+        into content-strs
       finally do                         ;Add text and tool-calls to prompts list
       (when (or tool-use include-text)
         (let* ((data (plist-get info :data))
@@ -111,20 +120,6 @@ list."
       (when tool-use                    ;Capture tool call data for running tools
         (plist-put info :tool-use
                    (nconc (plist-get info :tool-use) tool-use)))
-      finally return
-      (and content-strs (apply #'concat content-strs)))
-     ;; executable code and result
-     (cl-loop
-      for part across parts
-      collect (or (when-let ((executable-code (plist-get part :executableCode)))
-                    (format "Executing code:\n\n```%s\n%s\n```\n"
-                            (downcase (plist-get executable-code :language))
-                            (plist-get executable-code :code)))
-                  (when-let ((execution-result (plist-get part :codeExecutionResult)))
-                    (format "Execution result (%s): %s\n"
-                            (plist-get execution-result :outcome)
-                            (plist-get execution-result :output))))
-      into content-strs
       finally return
       (and content-strs (apply #'concat content-strs)))
      ;; grounding metadata
