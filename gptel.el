@@ -2385,13 +2385,8 @@ be used to rerun or continue the request at a later time."
   (gptel--sanitize-model)
   (let* ((directive (gptel--parse-directive system))
          ;; DIRECTIVE contains both the system message and the template prompts
-         (system-message
-          ;; Add context chunks to system message if required
-          (unless (gptel--model-capable-p 'nosystem)
-            (if (and gptel-context--alist
-                     (eq gptel-use-context 'system))
-                (gptel-context--wrap (car directive))
-              (car directive))))
+         (system-message (car directive))
+         (collection (gptel-context--collect))
          ;; TODO(tool) Limit tool use to capable models after documenting :capabilities
          ;; (gptel-use-tools (and (gptel--model-capable-p 'tool-use) gptel-use-tools))
          (stream (and stream gptel-use-curl
@@ -2434,7 +2429,9 @@ be used to rerun or continue the request at a later time."
             ((consp prompt) (gptel--parse-list gptel-backend prompt)))))
          (info (list :data (list :args t
                                  :full-prompt full-prompt
+                                 :use-context gptel-use-context
                                  :system-message system-message
+                                 :collection collection
                                  :stream stream
                                  :callback callback
                                  :context context
@@ -2453,7 +2450,15 @@ be used to rerun or continue the request at a later time."
     (if (not (plist-member data :args))
         info
       (let ((full-prompt (plist-get data :full-prompt))
-            (gptel--system-message (plist-get data :system-message))
+            (gptel--system-message
+             ;; Add context chunks to system message if required
+             (unless (gptel--model-capable-p 'nosystem)
+               (if (and (plist-get data :collection)
+                        (eq (plist-get data :use-context) 'system))
+                   (funcall gptel-context-wrap-function
+                            (plist-get data :system-message)
+                            (plist-get data :collection))
+                 (plist-get data :system-message))))
             (stream (plist-get data :stream))
             (callback (plist-get data :callback))
             (context (plist-get data :context))
