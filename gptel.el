@@ -2451,13 +2451,13 @@ be used to rerun or continue the request at a later time."
   (let ((data (plist-get info :data)))
     (if (not (plist-member data :args))
         info
-      (let (((full-prompt (plist-get data :full-prompt))
-             (stream (plist-get data :stream))
-             (callback (plist-get data :callback))
-             (context (plist-get data :context))
-             (in-place (plist-get data :in-place))
-             (gptel-include-reasoning (plist-get data :gptel-include-reasoning))
-             (gptel-use-tools (plist-get data :gptel-use-tools))))
+      (let ((full-prompt (plist-get data :full-prompt))
+            (stream (plist-get data :stream))
+            (callback (plist-get data :callback))
+            (context (plist-get data :context))
+            (in-place (plist-get data :in-place))
+            (gptel-include-reasoning (plist-get data :gptel-include-reasoning))
+            (gptel-use-tools (plist-get data :gptel-use-tools)))
         ;; overwrite the "initial arguments" with the realized data
         (plist-put info :data (gptel--request-data backend full-prompt))
         (when stream (plist-put info :stream t))
@@ -2473,8 +2473,9 @@ be used to rerun or continue the request at a later time."
 
 (defsubst gptel-prepare-fsm (fsm)
   "Prepare the FSM for operation, preparing all context arguments."
-  (setf (gptel-fsm-info fsm)
-        (gptel-realize-info (gptel-fsm-info fsm))))
+  (let ((info (gptel-fsm-info fsm)))
+    (setf (gptel-fsm-info fsm)
+          (gptel-realize-info (plist-get info :backend) info))))
 
 (defun gptel-abort (buf)
   "Stop any active gptel process associated with buffer BUF.
