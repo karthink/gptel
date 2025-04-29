@@ -1787,14 +1787,15 @@ OpenAI-compatible and Ollama message formats."
 ;;; State machine for driving requests
 
 (defvar gptel-request--transitions
-  `((INIT . ((t                       . WAIT)))
-    (WAIT . ((t                       . TYPE)))
-    (TYPE . ((,#'gptel--error-p       . ERRS)
-             (,#'gptel--tool-use-p    . TOOL)
-             (t                       . DONE)))
-    (TOOL . ((,#'gptel--error-p       . ERRS)
-             (,#'gptel--tool-result-p . WAIT)
-             (t                       . DONE))))
+  `((INIT    . ((t                       . AUGMENT)))
+    (AUGMENT . ((t                       . WAIT)))
+    (WAIT    . ((t                       . TYPE)))
+    (TYPE    . ((,#'gptel--error-p       . ERRS)
+                (,#'gptel--tool-use-p    . TOOL)
+                (t                       . DONE)))
+    (TOOL    . ((,#'gptel--error-p       . ERRS)
+                (,#'gptel--tool-result-p . WAIT)
+                (t                       . DONE))))
   "Alist specifying gptel's default state transition table for requests.
 
 Each entry is a list whose car is a request state (any symbol)
@@ -1806,8 +1807,9 @@ machine's INFO, see `gptel-fsm'.  A predicate of `t' is
 considered a success and acts as a default.")
 
 (defvar gptel-request--handlers
-  `((WAIT ,#'gptel--handle-wait)
-    (TOOL ,#'gptel--handle-tool-use))
+  `((AUGMENT ,#'gptel--handle-augment)
+    (WAIT    ,#'gptel--handle-wait)
+    (TOOL    ,#'gptel--handle-tool-use))
   "Alist specifying handlers for gptel's default state transitions.
 
 Each entry is a list whose car is a request state (a symbol) and
@@ -1826,11 +1828,12 @@ Handlers can be asynchronous, in which case the transition call
 should typically be placed in its callback.")
 
 (defvar gptel-send--handlers
-  `((WAIT ,#'gptel--handle-wait)
-    (TYPE ,#'gptel--handle-pre-insert)
-    (ERRS ,#'gptel--handle-error ,#'gptel--fsm-last)
-    (TOOL ,#'gptel--handle-tool-use)
-    (DONE ,#'gptel--handle-post-insert ,#'gptel--fsm-last))
+  `((AUGMENT ,#'gptel--handle-augment)
+    (WAIT    ,#'gptel--handle-wait)
+    (TYPE    ,#'gptel--handle-pre-insert)
+    (ERRS    ,#'gptel--handle-error ,#'gptel--fsm-last)
+    (TOOL    ,#'gptel--handle-tool-use)
+    (DONE    ,#'gptel--handle-post-insert ,#'gptel--fsm-last))
   "Alist specifying handlers for `gptel-send' state transitions.
 
 See `gptel-request--handlers' for details.")
@@ -1991,6 +1994,55 @@ buffer."
   (run-hooks 'gptel-post-request-hook)
   (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
     (gptel--update-status " Waiting..." 'warning)))
+
+(defcustom gptel-augment-pre-modify-hook nil
+  "Hook run before augmentally extending the context of a gptel request.
+
+This runs before any request is submitted."
+  :type 'hook)
+
+(defcustom gptel-augment-post-modify-hook nil
+  "Hook run after augmentally extending the context of a gptel request.
+
+This runs (possibly) before any request is submitted."
+  :type 'hook)
+
+(defcustom gptel-augment-handler-functions nil
+  "List of handlers used to augment a query before sending it.
+
+Each handler function receives the `info' of the current FSM, but
+it is special in that it is the raw, unprocessed input, before
+the `:data' has been constructed by the backends. The `:data' in
+this version of the info is a pre-construction set of arguments,
+all of which may be examined and/or modified by the augment
+handler in order to influence construction of the final request
+data. This pre-construction set has the following elements:
+
+  (list :args t
+        :full-prompt full-prompt
+        :stream stream
+        :callback callback
+        :context context
+        :in-place in-place
+        :gptel-include-reasoning gptel-include-reasoning
+        :gptel-use-tools gptel-use-tools)
+
+Note that while this set of handlers can certainly be set with a
+global value to be applied to all queries in all buffers, it
+meant to be set locally for a specific buffer, or chat topic, or
+only the context of using a certain agent."
+  :type 'hook)
+
+(defun gptel--handle-augment (fsm)
+  "Augment the request contained in state machine FSM's info."
+  (cl-loop for fn in gptel-augment-handler-functions
+           for result = (gptel-fsm-info fsm)
+           then (or (funcall fn result) result))
+  (run-hooks 'gptel-augment-pre-modify-hook)
+  (gptel--fsm-transition fsm)
+  (run-hooks 'gptel-augment-post-modify-hook)
+  (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
+    (gptel--update-status " Augmenting..." 'warning)))
 
 (defun gptel--handle-pre-insert (fsm)
   "Tasks before inserting the LLM response for state FSM.
