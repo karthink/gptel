@@ -132,10 +132,11 @@ list."
            (string-join (seq-into queries 'list) ", ")))
         (when-let ((chunks (plist-get grounding-meta :groundingChunks)))
           (cl-loop
-           for chunk across chunks
-           collect (format "- [%s](%s)\n"
-                           (map-nested-elt chunk '(:web :title))
-                           (map-nested-elt chunk '(:web :uri)))
+           for chunk being the elements of chunks using (index chunk-id)
+           collect (format "[%s]: %s (%s)\n"  ; markdown reference link syntax
+                           (1+ chunk-id)
+                           (map-nested-elt chunk '(:web :uri))
+                           (map-nested-elt chunk '(:web :title)))
            into chunk-strs
            finally return
            (and chunk-strs (concat "\nGroundings:\n" (apply #'concat chunk-strs))))))))))
