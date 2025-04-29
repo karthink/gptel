@@ -2385,7 +2385,7 @@ be used to rerun or continue the request at a later time."
   (gptel--sanitize-model)
   (let* ((directive (gptel--parse-directive system))
          ;; DIRECTIVE contains both the system message and the template prompts
-         (gptel--system-message
+         (system-message
           ;; Add context chunks to system message if required
           (unless (gptel--model-capable-p 'nosystem)
             (if (and gptel-context--alist
@@ -2434,6 +2434,7 @@ be used to rerun or continue the request at a later time."
             ((consp prompt) (gptel--parse-list gptel-backend prompt)))))
          (info (list :data (list :args t
                                  :full-prompt full-prompt
+                                 :system-message system-message
                                  :stream stream
                                  :callback callback
                                  :context context
@@ -2452,6 +2453,7 @@ be used to rerun or continue the request at a later time."
     (if (not (plist-member data :args))
         info
       (let ((full-prompt (plist-get data :full-prompt))
+            (gptel--system-message (plist-get data :system-message))
             (stream (plist-get data :stream))
             (callback (plist-get data :callback))
             (context (plist-get data :context))
