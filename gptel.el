@@ -1978,6 +1978,7 @@ buffer."
   ;; Reset some flags in info.  This is necessary when reusing fsm's context for
   ;; a second network request: gptel tests for the presence of these flags to
   ;; handle state transitions.  (NOTE: Don't add :token to this.)
+  (gptel-prepare-fsm fsm)
   (let ((info (gptel-fsm-info fsm)))
     (dolist (key '(:tool-success :tool-use :error :http-status :reasoning))
       (when (plist-get info key)
@@ -2379,23 +2380,49 @@ be used to rerun or continue the request at a later time."
                  gptel-backend (and gptel--num-messages-to-send
                                     (* 2 gptel--num-messages-to-send))))))
             ((consp prompt) (gptel--parse-list gptel-backend prompt)))))
-         (info (list :data (gptel--request-data gptel-backend full-prompt)
+         (info (list :data (list :args t
+                                 :full-prompt full-prompt
+                                 :stream stream
+                                 :callback callback
+                                 :context context
+                                 :in-place in-place
+                                 :gptel-include-reasoning gptel-include-reasoning
+                                 :gptel-use-tools gptel-use-tools)
                      :buffer buffer
                      :position start-marker
                      :backend gptel-backend)))
-    (when stream (plist-put info :stream t))
-    ;; This context should not be confused with the context aggregation context!
-    (when callback (plist-put info :callback callback))
-    (when context (plist-put info :context context))
-    (when in-place (plist-put info :in-place in-place))
-    (when gptel-include-reasoning       ;Required for next-request-only scope
-      (plist-put info :include-reasoning gptel-include-reasoning))
-    (when (and gptel-use-tools gptel-tools)
-      (plist-put info :tools gptel-tools))
-    ;; Add info to state machine context
     (setf (gptel-fsm-info fsm) info))
   (unless dry-run (gptel--fsm-transition fsm)) ;INIT -> WAIT
   fsm)
+
+(defun gptel-realize-info (backend info)
+  (let ((data (plist-get info :data)))
+    (if (not (plist-member data :args))
+        info
+      (let (((full-prompt (plist-get data :full-prompt))
+             (stream (plist-get data :stream))
+             (callback (plist-get data :callback))
+             (context (plist-get data :context))
+             (in-place (plist-get data :in-place))
+             (gptel-include-reasoning (plist-get data :gptel-include-reasoning))
+             (gptel-use-tools (plist-get data :gptel-use-tools))))
+        ;; overwrite the "initial arguments" with the realized data
+        (plist-put info :data (gptel--request-data backend full-prompt))
+        (when stream (plist-put info :stream t))
+        ;; This context should not be confused with the context aggregation context!
+        (when callback (plist-put info :callback callback))
+        (when context (plist-put info :context context))
+        (when in-place (plist-put info :in-place in-place))
+        (when gptel-include-reasoning    ;Required for next-request-only scope
+          (plist-put info :include-reasoning gptel-include-reasoning))
+        (when (and gptel-use-tools gptel-tools)
+          (plist-put info :tools gptel-tools)))
+      info)))
+
+(defsubst gptel-prepare-fsm (fsm)
+  "Prepare the FSM for operation, preparing all context arguments."
+  (setf (gptel-fsm-info fsm)
+        (gptel-realize-info (gptel-fsm-info fsm))))
 
 (defun gptel-abort (buf)
   "Stop any active gptel process associated with buffer BUF.
