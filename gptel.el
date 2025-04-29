@@ -1981,7 +1981,6 @@ buffer."
   ;; Reset some flags in info.  This is necessary when reusing fsm's context for
   ;; a second network request: gptel tests for the presence of these flags to
   ;; handle state transitions.  (NOTE: Don't add :token to this.)
-  (gptel-prepare-fsm fsm)
   (let ((info (gptel-fsm-info fsm)))
     (dolist (key '(:tool-success :tool-use :error :http-status :reasoning))
       (when (plist-get info key)
@@ -2033,11 +2032,18 @@ meant to be set locally for a specific buffer, or chat topic, or
 only the context of using a certain agent."
   :type 'hook)
 
+(defsubst gptel--augmented-info (info)
+  "Augment the request contained in state machine FSM's info.
+Returns the transformed info."
+  (cl-loop for fn in gptel-augment-handler-functions
+           for result = info then (or (funcall fn result) result)
+           finally (cl-return (or result info))))
+
 (defun gptel--handle-augment (fsm)
   "Augment the request contained in state machine FSM's info."
-  (cl-loop for fn in gptel-augment-handler-functions
-           for result = (gptel-fsm-info fsm)
-           then (or (funcall fn result) result))
+  (setf (gptel-fsm-info fsm)
+        (gptel--realize-info (plist-get (gptel-fsm-info fsm) :backend)
+                             (gptel--augmented-info (gptel-fsm-info fsm))))
   (run-hooks 'gptel-augment-pre-modify-hook)
   (gptel--fsm-transition fsm)
   (run-hooks 'gptel-augment-post-modify-hook)
@@ -2445,7 +2451,7 @@ be used to rerun or continue the request at a later time."
   (unless dry-run (gptel--fsm-transition fsm)) ;INIT -> WAIT
   fsm)
 
-(defun gptel-realize-info (backend info)
+(defun gptel--realize-info (backend info)
   (let ((data (plist-get info :data)))
     (if (not (plist-member data :args))
         info
@@ -2478,12 +2484,6 @@ be used to rerun or continue the request at a later time."
           (plist-put info :tools gptel-tools)))
       info)))
 
-(defsubst gptel-prepare-fsm (fsm)
-  "Prepare the FSM for operation, preparing all context arguments."
-  (let ((info (gptel-fsm-info fsm)))
-    (setf (gptel-fsm-info fsm)
-          (gptel-realize-info (plist-get info :backend) info))))
-
 (defun gptel-abort (buf)
   "Stop any active gptel process associated with buffer BUF.
 
@@ -2503,7 +2503,7 @@ BUF defaults to the current buffer."
     (with-demoted-errors "Callback error: %S"
       (and-let* ((cb (plist-get info :callback))
                  ((functionp cb)))
-           (funcall cb 'abort info)))
+        (funcall cb 'abort info)))
     (if gptel-use-curl
         (progn                        ;Clean up Curl process
           (setf (alist-get proc gptel--request-alist nil 'remove) nil)
