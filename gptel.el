@@ -2035,23 +2035,35 @@ meant to be set locally for a specific buffer, or chat topic, or
 only the context of using a certain agent."
   :type 'hook)
 
-(defsubst gptel--augmented-info (info)
+(defun gptel--finish-augmentation (fsm info)
+  "The last augmentation to be called; transitions the FSM."
+  (setf (gptel-fsm-info fsm) (gptel--realize-info info))
+  (gptel--fsm-transition fsm)
+  (run-hooks 'gptel-augment-post-modify-hook))
+
+(defun gptel--augment-info (fsm info fns)
   "Augment the request contained in state machine FSM's info.
-Returns the transformed info."
-  (cl-loop for fn in gptel-augment-handler-functions
-           for result = info then (or (funcall fn result) result)
-           finally (cl-return (or result info))))
+
+Each function receives a CALLBACK and an INFO, and must call the
+callabck with their augemented version of the INFO (or the
+original INFO) once completed. This permits augmentations to be
+asynchronous.
+
+Returns the transformed info at the end."
+  (if (null fns)
+      (gptel--finish-augmentation fsm info)
+    (funcall (car fns)
+             #'(lambda (i) (gptel--augment-info fsm i (cdr fns)))
+             info)))
 
 (defun gptel--handle-augment (fsm)
   "Augment the request contained in state machine FSM's info."
-  (setf (gptel-fsm-info fsm)
-        (gptel--realize-info (plist-get (gptel-fsm-info fsm) :backend)
-                             (gptel--augmented-info (gptel-fsm-info fsm))))
-  (run-hooks 'gptel-augment-pre-modify-hook)
-  (gptel--fsm-transition fsm)
-  (run-hooks 'gptel-augment-post-modify-hook)
   (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
-    (gptel--update-status " Augmenting..." 'warning)))
+    (gptel--update-status " Augmenting..." 'warning)
+    (sit-for 0))
+  (run-hooks 'gptel-augment-pre-modify-hook)
+  (gptel--augment-info fsm (gptel-fsm-info fsm)
+                       gptel-augment-handler-functions))
 
 (defun gptel--handle-pre-insert (fsm)
   "Tasks before inserting the LLM response for state FSM.
@@ -2454,7 +2466,7 @@ be used to rerun or continue the request at a later time."
   (unless dry-run (gptel--fsm-transition fsm)) ;INIT -> WAIT
   fsm)
 
-(defun gptel--realize-info (backend info)
+(defun gptel--realize-info (info)
   (let ((data (plist-get info :data)))
     (if (not (plist-member data :args))
         info
@@ -2475,7 +2487,8 @@ be used to rerun or continue the request at a later time."
             (gptel-include-reasoning (plist-get data :gptel-include-reasoning))
             (gptel-use-tools (plist-get data :gptel-use-tools)))
         ;; overwrite the "initial arguments" with the realized data
-        (plist-put info :data (gptel--request-data backend full-prompt))
+        (plist-put info :data (gptel--request-data
+                               (plist-get info :backend) full-prompt))
         (when stream (plist-put info :stream t))
         ;; This context should not be confused with the context aggregation context!
         (when callback (plist-put info :callback callback))
