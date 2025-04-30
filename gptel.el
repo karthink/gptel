@@ -1724,7 +1724,7 @@ implementation, used by OpenAI-compatible APIs and Ollama."
         (list
          :name (gptel-tool-name tool)
          :description (gptel-tool-description tool))
-        (and (gptel-tool-args tool)     ;no parameters if args is nil
+        (if (gptel-tool-args tool)
              (list
               :parameters
               (list :type "object"
@@ -1755,7 +1755,8 @@ implementation, used by OpenAI-compatible APIs and Ollama."
                                 (lambda (arg) (and (not (plist-get arg :optional))
                                               (plist-get arg :name)))
                                 (gptel-tool-args tool))))
-                    :additionalProperties :json-false))))))
+                    :additionalProperties :json-false))
+          (list :parameters nil)))))
     (ensure-list tools))))
 
 (cl-defgeneric gptel--parse-tool-results (backend results)
