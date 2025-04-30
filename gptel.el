@@ -2064,8 +2064,7 @@ Returns the transformed info at the end."
 (defun gptel--handle-augment (fsm)
   "Augment the request contained in state machine FSM's info."
   (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
-    (gptel--update-status " Augmenting..." 'warning)
-    (sit-for 0))
+    (gptel--update-status " Augmenting..." 'warning))
   (run-hooks 'gptel-augment-pre-modify-hook)
   (gptel--augment-info fsm (gptel-fsm-info fsm)
                        gptel-augment-handler-functions))
