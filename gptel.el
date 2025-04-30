@@ -2019,6 +2019,9 @@ data. This pre-construction set has the following elements:
 
   (list :args t
         :full-prompt full-prompt
+        :use-context use-context
+        :system-message system-message
+        :collection collection
         :stream stream
         :callback callback
         :context context
