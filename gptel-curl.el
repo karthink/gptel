@@ -173,7 +173,13 @@ the response is inserted into the current buffer after point."
           (progn (set-process-sentinel process #'gptel-curl--stream-cleanup)
                  (set-process-filter process #'gptel-curl--stream-filter))
         (set-process-sentinel process #'gptel-curl--sentinel))
-      (setf (alist-get process gptel--request-alist) fsm))))
+      (setf (alist-get process gptel--request-alist)
+            (cons fsm
+                  #'(lambda ()
+                      ;; Clean up Curl process
+                      (set-process-sentinel process #'ignore)
+                      (delete-process process)
+                      (kill-buffer (process-buffer process))))))))
 
 ;; ;; Ahead-Of-Time dispatch code for the parsers
 ;; :parser ; FIXME `cl--generic-*' are internal functions
@@ -219,7 +225,7 @@ PROC-INFO is the plist containing process metadata."
 
 PROCESS and _STATUS are process parameters."
   (let ((proc-buf (process-buffer process)))
-    (let* ((fsm (alist-get process gptel--request-alist))
+    (let* ((fsm (car (alist-get process gptel--request-alist)))
            (info (gptel-fsm-info fsm))
            (http-status (plist-get info :http-status)))
       (when gptel-log-level (gptel-curl--log-response proc-buf info)) ;logging
@@ -291,7 +297,7 @@ Optional RAW disables text properties and transformation."
      (gptel--display-tool-results tool-results info))))
 
 (defun gptel-curl--stream-filter (process output)
-  (let* ((fsm (alist-get process gptel--request-alist))
+  (let* ((fsm (car (alist-get process gptel--request-alist)))
          (proc-info (gptel-fsm-info fsm))
          (callback (or (plist-get proc-info :callback)
                        #'gptel-curl--stream-insert-response)))
@@ -394,7 +400,7 @@ See `gptel-curl--get-response' for its contents.")
 PROCESS and _STATUS are process parameters."
   (let ((proc-buf (process-buffer process)))
     (when-let* (((eq (process-status process) 'exit))
-                (fsm (alist-get process gptel--request-alist))
+                (fsm (car (alist-get process gptel--request-alist)))
                 (proc-info (gptel-fsm-info fsm))
                 (proc-callback (plist-get proc-info :callback)))
       (when gptel-log-level (gptel-curl--log-response proc-buf proc-info)) ;logging
