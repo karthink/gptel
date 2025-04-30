@@ -864,7 +864,10 @@ Each entry is of the form
 or
  (\"path/to/file\").")
 
-(defvar gptel--request-alist nil "Alist of active gptel requests.")
+(defvar gptel--request-alist nil
+  "Alist of active gptel requests.
+Each entry has the form (PROCESS . (FSM ABORT-CLOSURE))
+If the ABORT-CLOSURE is called, it must abort the PROCESS.")
 
 
 ;;; Utility functions
@@ -1958,7 +1961,7 @@ buffer."
   (unless fsm
     (setq fsm (or (cdr-safe (cl-find-if
                              (lambda (proc-list)
-                               (eq (thread-first (cdr proc-list)
+                               (eq (thread-first (cadr proc-list)
                                                  (gptel-fsm-info)
                                                  (plist-get :buffer))
                                    (current-buffer)))
@@ -2454,28 +2457,24 @@ BUF defaults to the current buffer."
   (interactive (list (current-buffer)))
   (when-let* ((proc-attrs
                (cl-find-if
-                (lambda (proc-list)
-                  (eq (thread-first (cdr proc-list)
+                (lambda (entry)
+                  ;; each entry has the form (PROC . (FSM ABORT-FN))
+                  (eq (thread-first (cadr entry) ; FSM
                                     (gptel-fsm-info)
                                     (plist-get :buffer))
                       buf))
                 gptel--request-alist))
               (proc (car proc-attrs))
-              (info (gptel-fsm-info (cdr proc-attrs))))
-    ;; Run callback with abort signal
+              (fsm (cadr proc-attrs))
+              (info (gptel-fsm-info fsm))
+              (abort-fn (cddr proc-attrs)))
+    ;; Run :callback with abort signal
     (with-demoted-errors "Callback error: %S"
       (and-let* ((cb (plist-get info :callback))
                  ((functionp cb)))
-           (funcall cb 'abort info)))
-    (if gptel-use-curl
-        (progn                        ;Clean up Curl process
-          (setf (alist-get proc gptel--request-alist nil 'remove) nil)
-          (set-process-sentinel proc #'ignore)
-          (delete-process proc)
-          (kill-buffer (process-buffer proc)))
-      (plist-put info :callback #'ignore)
-      (let (kill-buffer-query-functions)
-        (kill-buffer proc)))            ;Can't stop url-retrieve process
+        (funcall cb 'abort info)))
+    (funcall abort-fn)
+    (setf (alist-get proc gptel--request-alist nil 'remove) nil)
     (with-current-buffer buf
       (when gptel-mode (gptel--update-status  " Abort" 'error)))
     (message "Stopped gptel request in buffer %S" (buffer-name buf))))
@@ -2882,7 +2881,13 @@ the response is inserted into the current buffer after point."
                              (kill-buffer buf)))
                          nil t nil)))
       ;; TODO: Add transformer here.
-      (setf (alist-get proc-buf gptel--request-alist) fsm))))
+      (setf (alist-get proc-buf gptel--request-alist)
+            (cons fsm
+                  #'(lambda ()
+                      (plist-put info :callback #'ignore)
+                      (let (kill-buffer-query-functions)
+                        ;;Can't stop url-retrieve process
+                        (kill-buffer proc-buf))))))))
 
 (cl-defgeneric gptel--parse-response (backend response proc-info)
   "Response extractor for LLM requests.
