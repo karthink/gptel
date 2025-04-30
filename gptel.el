@@ -2009,13 +2009,18 @@ This runs (possibly) before any request is submitted."
 (defcustom gptel-augment-handler-functions nil
   "List of handlers used to augment a query before sending it.
 
-Each handler function receives the `info' of the current FSM, but
-it is special in that it is the raw, unprocessed input, before
-the `:data' has been constructed by the backends. The `:data' in
-this version of the info is a pre-construction set of arguments,
-all of which may be examined and/or modified by the augment
-handler in order to influence construction of the final request
-data. This pre-construction set has the following elements:
+Each handler function receives a `callback' and the `info' of the
+current FSM. When completed, it must call that `callback' with
+the final version of that `info' for the next stage of the
+augmentation pipeline.
+
+Note that this `info' it is special in that it is the raw,
+unprocessed input, before the `:data' has been constructed by the
+backends. The `:data' in this version of the info is a
+pre-construction set of arguments, all of which may be examined
+and/or modified by the augment handler in order to influence
+construction of the final request data. This pre-construction set
+has the following elements:
 
   (list :args t
         :full-prompt full-prompt
