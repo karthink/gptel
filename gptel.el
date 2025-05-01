@@ -2043,6 +2043,22 @@ meant to be set locally for a specific buffer, or chat topic, or
 only the context of using a certain agent."
   :type 'hook)
 
+(defmacro gptel-sync-fn (fn)
+  "Turn a synchronous function into a suitable augment handler.
+
+This takes any function from FSM -> FSM, and returns a function
+that takes a callback and an FSM, and once it finishes by
+returning the next fsm, calls the callback on that value.
+
+Thus, you can take a normal, synchronous augmentation function
+and add it to `gptel-augment-handler-functions' using the
+following code:
+
+  (add-hook 'gptel-augment-handler-functions
+            (gptel-sync-fn #'my-synchronous-function))"
+  `(lambda (callback fsm)
+     (funcall callback (funcall fn fsm))))
+
 (defun gptel--finish-augmentation (fsm)
   "The last augmentation to be called; transitions the FSM."
   (setf (gptel-fsm-info fsm)
