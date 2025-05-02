@@ -257,26 +257,27 @@ Mutate state INFO with response metadata."
                (plist-get choice0 :finish_reason))
     (plist-put info :output-tokens
                (map-nested-elt response '(:usage :completion_tokens)))
-    ;; OpenAI returns either non-blank text content or a tool call, not both
-    (if (and content (not (or (eq content :null) (string-empty-p content))))
-        (prog1 content
-          (when-let* ((reasoning (plist-get message :reasoning)) ;look for reasoning blocks
-                      ((and (stringp reasoning) (not (string-empty-p reasoning)))))
-            (plist-put info :reasoning reasoning)))
-      (prog1 nil                        ; Look for tool calls only if no content
-        (when-let* ((tool-calls (plist-get message :tool_calls)))
-          (gptel--inject-prompt    ; First add the tool call to the prompts list
-           (plist-get info :backend) (plist-get info :data) message)
-          (cl-loop         ;Then capture the tool call data for running the tool
-           for tool-call across tool-calls ;replace ":arguments" with ":args"
-           for call-spec = (copy-sequence (plist-get tool-call :function))
-           do (ignore-errors (plist-put call-spec :args
-                                        (gptel--json-read-string
-                                         (plist-get call-spec :arguments))))
-           (plist-put call-spec :arguments nil)
-           (plist-put call-spec :id (plist-get tool-call :id))
-           collect call-spec into tool-use
-           finally (plist-put info :tool-use tool-use)))))))
+    ;; OpenAI returns either non-blank text content or a tool call, not both.
+    ;; However OpenAI-compatible APIs like llama.cpp can include both (#819), so
+    ;; we check for both tool calls and responses independently.
+    (when-let* ((tool-calls (plist-get message :tool_calls)))
+      (gptel--inject-prompt        ; First add the tool call to the prompts list
+       (plist-get info :backend) (plist-get info :data) message)
+      (cl-loop             ;Then capture the tool call data for running the tool
+       for tool-call across tool-calls  ;replace ":arguments" with ":args"
+       for call-spec = (copy-sequence (plist-get tool-call :function))
+       do (ignore-errors (plist-put call-spec :args
+                                    (gptel--json-read-string
+                                     (plist-get call-spec :arguments))))
+       (plist-put call-spec :arguments nil)
+       (plist-put call-spec :id (plist-get tool-call :id))
+       collect call-spec into tool-use
+       finally (plist-put info :tool-use tool-use)))
+    (when (and content (not (or (eq content :null) (string-empty-p content))))
+      (when-let* ((reasoning (plist-get message :reasoning)) ;look for reasoning blocks
+                  ((and (stringp reasoning) (not (string-empty-p reasoning)))))
+        (plist-put info :reasoning reasoning))
+      content)))
 
 (cl-defmethod gptel--request-data ((backend gptel-openai) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
