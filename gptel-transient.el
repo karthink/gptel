@@ -752,7 +752,26 @@ Customize `gptel-directives' for task-specific prompts."
     :pad-keys t])
 
 ;; ** Prefix for selecting tools
+(defun gptel--toggle-all-tools ()
+  "Toggle the selection state of all tools in the transient menu.
 
+If any tool is currently selected, deselect all tools.
+If no tools are selected, select all tools."
+  (interactive)
+  (let ((all-selected t)
+         (has-tools nil))
+    ;; Check if any tools are not selected
+    (dolist (suffix transient-current-suffixes)
+      (when (cl-typep suffix 'gptel--switch)
+        (setq has-tools t)
+        (when (null (oref suffix value))
+          (setq all-selected nil))))
+    ;; If we have tools but not all are selected, select all; otherwise deselect all
+    (when has-tools
+      (dolist (suffix transient-current-suffixes)
+        (when (cl-typep suffix 'gptel--switch)
+          (transient-infix-set suffix (unless all-selected (oref suffix argument))))))
+    (transient--redisplay)))
 ;;;###autoload (autoload 'gptel-tools "gptel-transient" nil t)
 (transient-define-prefix gptel-tools ()
   "Select tools to include with gptel requests.
@@ -785,6 +804,9 @@ only (\"oneshot\")."
                 (cl-delete-if-not #'consp args))
         gptel--set-buffer-locally))
      :transient transient--do-return)
+    ("a" "Toggle all tools" gptel--toggle-all-tools
+      :transient t)
+
     ("q" "Cancel" transient-quit-one)]]
   [:class transient-column
    :setup-children
@@ -794,14 +816,14 @@ only (\"oneshot\")."
       (cdr
        (cl-loop          ;loop through gptel--known tools and collect categories
         for (category . tools-alist) in gptel--known-tools
-        with unused-keys = (delete ?q (number-sequence ?a ?z))
+        with unused-keys = (delete ?q (number-sequence ?b ?z))
         for category-key = (seq-find (lambda (k) (member k unused-keys)) category
                                      (seq-first unused-keys))
         do (setq unused-keys (delete category-key unused-keys))
         nconc
         (cl-loop                    ;for each category, collect tools as infixes
          for (name . tool) in tools-alist
-         with tool-keys = (delete category-key (number-sequence ?a ?z))
+         with tool-keys = (delete category-key (number-sequence ?b ?z))
          for tool-key = (seq-find (lambda (k) (member k tool-keys)) name
                                   (seq-first tool-keys))
          do (setq tool-keys (delete tool-key tool-keys))
