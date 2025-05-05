@@ -253,7 +253,8 @@ value of `gptel-org-branching-context', which see."
               (gptel-org--strip-block-headers)
               (when gptel-org-ignore-elements (gptel-org--strip-elements))
               (save-excursion (run-hooks 'gptel-prompt-filter-hook))
-              (gptel--parse-buffer gptel-backend max-entries))))
+              ;; (gptel--parse-buffer gptel-backend max-entries)
+              (current-buffer))))
       ;; Create prompt the usual way
       (let ((org-buf (current-buffer))
             (beg (point-min)))
@@ -263,7 +264,8 @@ value of `gptel-org-branching-context', which see."
           (gptel-org--strip-block-headers)
           (when gptel-org-ignore-elements (gptel-org--strip-elements))
           (save-excursion (run-hooks 'gptel-prompt-filter-hook))
-          (gptel--parse-buffer gptel-backend max-entries))))))
+          ;; (gptel--parse-buffer gptel-backend max-entries)
+          (current-buffer))))))
 
 (defun gptel-org--strip-elements ()
   "Remove all elements in `gptel-org-ignore-elements' from the
