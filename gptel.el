@@ -278,6 +278,52 @@ making it easy to send the output of shell commands to the LLM."
   :group 'gptel
   :type 'hook)
 
+(defcustom gptel-augment-pre-modify-hook nil
+  "Hook run before augmentally extending the context of a gptel request.
+
+This runs before any request is submitted."
+  :type 'hook)
+
+(defcustom gptel-augment-post-modify-hook nil
+  "Hook run after augmentally extending the context of a gptel request.
+
+This runs (possibly) before any request is submitted."
+  :type 'hook)
+
+(defcustom gptel-augment-handler-functions nil
+  "List of handlers used to augment a query before sending it.
+
+Each handler function receives a `callback' and the current
+`fsm'.  When completed, it must call that `callback' with the
+final version of that `fsm' for the next stage of the
+augmentation pipeline.
+
+Note that the `info' of this `fsm' is special in that it is the
+raw, unprocessed input, before the `:data' has been constructed
+by the backends. The `:data' in this version of the info is a
+pre-construction set of arguments, all of which may be examined
+and/or modified by the augment handler in order to influence
+construction of the final request data. This pre-construction set
+has the following elements:
+
+  (list :args t
+        :full-prompt full-prompt
+        :use-context use-context
+        :system-message system-message
+        :collection collection
+        :stream stream
+        :callback callback
+        :context context
+        :in-place in-place
+        :gptel-include-reasoning gptel-include-reasoning
+        :gptel-use-tools gptel-use-tools)
+
+Note that while this set of handlers can certainly be set with a
+global value to be applied to all queries in all buffers, it
+meant to be set locally for a specific buffer, or chat topic, or
+only the context of using a certain agent."
+  :type 'hook)
+
 (defcustom gptel-post-request-hook nil
   "Hook run after sending a gptel request.
 
@@ -979,16 +1025,20 @@ Note: This will move the cursor."
 
 If positions START and END are provided, insert that part of BUF first."
   (declare (indent 3))
-  `(with-temp-buffer
-     (dolist (sym '( gptel-backend gptel--system-message gptel-model
-                     gptel-mode gptel-track-response gptel-track-media
-                     gptel-prompt-filter-hook))
-      (set (make-local-variable sym)
-       (buffer-local-value sym ,buf)))
-     ,(when (and start end)
-       `(insert-buffer-substring ,buf ,start ,end))
-     (let ((major-mode (buffer-local-value 'major-mode ,buf)))
-      ,@body)))
+  (let ((temp-buffer (make-symbol "temp-buffer")))
+    `(let ((,temp-buffer (generate-new-buffer " *temp*" t)))
+      (with-current-buffer ,temp-buffer
+       (dolist (sym '( gptel-backend gptel--system-message gptel-model
+                       gptel-mode gptel-track-response gptel-track-media
+                       gptel-use-tools gptel-tools gptel-use-curl
+                       gptel-prompt-filter-hook gptel-use-context
+                       gptel-augment-handler-functions))
+        (set (make-local-variable sym)
+         (buffer-local-value sym ,buf)))
+       ,(when (and start end)
+         `(insert-buffer-substring ,buf ,start ,end))
+       (let ((major-mode (buffer-local-value 'major-mode ,buf)))
+        ,@body)))))
 
 (defmacro gptel--temp-buffer (buf)
   "Generate a temp buffer BUF.
@@ -1214,6 +1264,7 @@ returned as a list of strings."
          (function (gptel--parse-directive (funcall directive) raw))
          (cons     (if raw directive
                      (cons (car directive)
+                           ;; FIXME(augment) do this elsewhere
                            (gptel--parse-list
                             gptel-backend (cdr directive))))))))
 
@@ -2154,59 +2205,41 @@ buffer."
   (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
     (gptel--update-status " Waiting..." 'warning)))
 
-(defcustom gptel-augment-pre-modify-hook nil
-  "Hook run before augmentally extending the context of a gptel request.
-
-This runs before any request is submitted."
-  :type 'hook)
-
-(defcustom gptel-augment-post-modify-hook nil
-  "Hook run after augmentally extending the context of a gptel request.
-
-This runs (possibly) before any request is submitted."
-  :type 'hook)
-
-(defcustom gptel-augment-handler-functions nil
-  "List of handlers used to augment a query before sending it.
-
-Each handler function receives a `callback' and the current
-`fsm'.  When completed, it must call that `callback' with the
-final version of that `fsm' for the next stage of the
-augmentation pipeline.
-
-Note that the `info' of this `fsm' is special in that it is the
-raw, unprocessed input, before the `:data' has been constructed
-by the backends. The `:data' in this version of the info is a
-pre-construction set of arguments, all of which may be examined
-and/or modified by the augment handler in order to influence
-construction of the final request data. This pre-construction set
-has the following elements:
-
-  (list :args t
-        :full-prompt full-prompt
-        :stream stream
-        :callback callback
-        :context context
-        :in-place in-place
-        :gptel-include-reasoning gptel-include-reasoning
-        :gptel-use-tools gptel-use-tools)
-
-Note that while this set of handlers can certainly be set with a
-global value to be applied to all queries in all buffers, it
-meant to be set locally for a specific buffer, or chat topic, or
-only the context of using a certain agent."
-  :type 'hook)
-
 (defun gptel--handle-augment (fsm)
   "Augment the request contained in state machine FSM's info."
-  (cl-loop for fn in gptel-augment-handler-functions
-           for result = (gptel-fsm-info fsm)
-           then (or (funcall fn result) result))
-  (run-hooks 'gptel-augment-pre-modify-hook)
-  (gptel--fsm-transition fsm)
-  (run-hooks 'gptel-augment-post-modify-hook)
-  (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
-    (gptel--update-status " Augmenting..." 'warning)))
+  (let* ((info (gptel-fsm-info fsm)))
+    (run-hooks 'gptel-augment-pre-modify-hook)
+    (if gptel-augment-handler-functions
+        (let ((augment-total
+               (if (local-variable-p 'gptel-augment-handler-functions)
+                   (+ (length (remq t gptel-augment-handler-functions))
+                      (length (default-value 'gptel-augment-handler-functions)))
+                 (length gptel-augment-handler-functions)))
+              (augment-idx 0))
+          (with-current-buffer (plist-get info :buffer)
+            (gptel--update-status " Augmenting..." 'mode-line-emphasis))
+          (run-hook-wrapped
+           'gptel-augment-handler-functions
+           (lambda (func fsm-arg)
+             (with-current-buffer (plist-get info :data)
+               (goto-char (point-max))
+               (condition-case nil
+                   (funcall func fsm-arg)
+                 (wrong-number-of-arguments
+                  (funcall func (lambda ()
+                                  (cl-incf augment-idx)
+                                  (when (>= augment-idx augment-total) ;All augmentors have run
+                                    (gptel--realize-info fsm-arg)))
+                           fsm-arg))
+                 (error (user-error "Augmentor failed: %S" func))
+                 (:success
+                  (cl-incf augment-idx)
+                  (when (>= augment-idx augment-total) ;All augmentors have run
+                    (gptel--realize-info fsm-arg)))))
+             nil)
+           fsm))
+      (gptel--realize-info fsm))
+    fsm))
 
 (defun gptel--handle-pre-insert (fsm)
   "Tasks before inserting the LLM response for state FSM.
@@ -2548,32 +2581,7 @@ be used to rerun or continue the request at a later time."
   (declare (indent 1))
   ;; TODO Remove this check in version 1.0
   (gptel--sanitize-model)
-  (let* ((directive (gptel--parse-directive system))
-         ;; DIRECTIVE contains both the system message and the template prompts
-         (gptel--system-message
-          ;; Add context chunks to system message if required
-          (unless (gptel--model-capable-p 'nosystem)
-            (if (and gptel-context--alist
-                     (eq gptel-use-context 'system))
-                (gptel-context--wrap (car directive))
-              (car directive))))
-         ;; TODO(tool) Limit tool use to capable models after documenting :capabilities
-         ;; (gptel-use-tools (and (gptel--model-capable-p 'tool-use) gptel-use-tools))
-         (stream (and stream gptel-use-curl
-                      ;; HACK(tool): no stream if Ollama + tools.  Need to find a better way
-                      (not (and (eq (type-of gptel-backend) 'gptel-ollama)
-                                gptel-tools gptel-use-tools))
-                      ;; Check model-specific request-params for streaming preference
-                      (let* ((model-params (gptel--model-request-params gptel-model))
-                             (stream-spec (plist-get model-params :stream)))
-                        ;; If not present, there is no model-specific preference
-                        (or (not (memq :stream model-params))
-                            ;; If present, it must not be :json-false or nil
-                            (and stream-spec (not (eq stream-spec :json-false)))))
-                      ;; Check backend-specific streaming settings
-                      (gptel-backend-stream gptel-backend)))
-         (gptel-stream stream)
-         (start-marker
+  (let* ((start-marker
           (cond
            ((null position)
             (if (use-region-p)
@@ -2582,38 +2590,84 @@ be used to rerun or continue the request at a later time."
            ((markerp position) position)
            ((integerp position)
             (set-marker (make-marker) position buffer))))
-         (full-prompt
-          (nconc
-           (cdr directive)           ;prompt constructed from directive/template
-           (cond                     ;prompt from buffer or explicitly supplied
-            ((null prompt)
-             (gptel--create-prompt start-marker))
-            ((stringp prompt)
-             (gptel--with-buffer-copy buffer nil nil
-               (insert prompt)
-               (save-excursion (run-hooks 'gptel-prompt-filter-hook))
-               (gptel--wrap-user-prompt-maybe
-                (gptel--parse-buffer
-                 gptel-backend (and gptel--num-messages-to-send
-                                    (* 2 gptel--num-messages-to-send))))))
-            ((consp prompt) (gptel--parse-list gptel-backend prompt)))))
-         (info (list :data (gptel--request-data gptel-backend full-prompt)
+         (prompt-buffer
+          (cond                       ;prompt from buffer or explicitly supplied
+           ((null prompt)
+            (gptel--create-prompt start-marker))
+           ((stringp prompt)
+            (gptel--with-buffer-copy buffer nil nil
+              (insert prompt)
+              (save-excursion (run-hooks 'gptel-prompt-filter-hook))
+              ;; (gptel--wrap-user-prompt-maybe
+              ;;  (gptel--parse-buffer
+              ;;   gptel-backend (and gptel--num-messages-to-send
+              ;;                      (* 2 gptel--num-messages-to-send))))
+              (current-buffer)))
+           ;; FIXME(augment) Remove gptel--parse-list, do this in a buffer
+           ((consp prompt) (gptel--parse-list gptel-backend prompt))))
+         (info (list :data prompt-buffer
                      :buffer buffer
-                     :position start-marker
-                     :backend gptel-backend)))
-    (when stream (plist-put info :stream t))
+                     :position start-marker)))
+    (with-current-buffer prompt-buffer (setq gptel--system-message system))
+    (when stream (plist-put info :stream stream))
     ;; This context should not be confused with the context aggregation context!
     (when callback (plist-put info :callback callback))
     (when context (plist-put info :context context))
     (when in-place (plist-put info :in-place in-place))
-    (when gptel-include-reasoning       ;Required for next-request-only scope
-      (plist-put info :include-reasoning gptel-include-reasoning))
-    (when (and gptel-use-tools gptel-tools)
-      (plist-put info :tools gptel-tools))
     ;; Add info to state machine context
+    (when dry-run (plist-put info :dry-run dry-run))
     (setf (gptel-fsm-info fsm) info))
-  (unless dry-run (gptel--fsm-transition fsm)) ;INIT -> WAIT
+  (gptel--fsm-transition fsm)           ;INIT -> AUGMENT
   fsm)
+
+(defun gptel--realize-info (fsm)
+  ";TODO: "
+  (let ((info (gptel-fsm-info fsm)))
+    (with-current-buffer (plist-get info :data)
+      (let* ((directive (gptel--parse-directive gptel--system-message))
+             ;; DIRECTIVE contains both the system message and the template prompts
+             (gptel--system-message
+              ;; Add context chunks to system message if required
+              (unless (gptel--model-capable-p 'nosystem)
+                (if (and gptel-context--alist
+                         (eq gptel-use-context 'system))
+                    (gptel-context--wrap (car directive))
+                  (car directive))))
+             ;; TODO(tool) Limit tool use to capable models after documenting :capabilities
+             ;; (gptel-use-tools (and (gptel--model-capable-p 'tool-use) gptel-use-tools))
+             (stream (and (plist-get info :stream) gptel-use-curl
+                          ;; HACK(tool): no stream if Ollama + tools.  Need to find a better way
+                          (not (and (eq (type-of gptel-backend) 'gptel-ollama)
+                                    gptel-tools gptel-use-tools))
+                          ;; Check model-specific request-params for streaming preference
+                          (let* ((model-params (gptel--model-request-params gptel-model))
+                                 (stream-spec (plist-get model-params :stream)))
+                            ;; If not present, there is no model-specific preference
+                            (or (not (memq :stream model-params))
+                                ;; If present, it must not be :json-false or nil
+                                (and stream-spec (not (eq stream-spec :json-false)))))
+                          ;; Check backend-specific streaming settings
+                          (gptel-backend-stream gptel-backend)))
+             (gptel-stream stream)
+             (full-prompt
+              (nconc
+               (cdr directive)       ;prompt constructed from directive/template
+               (gptel--parse-buffer  ;prompt from buffer or explicitly supplied
+                gptel-backend (and gptel--num-messages-to-send
+                                   (* 2 gptel--num-messages-to-send))))))
+        (when stream (plist-put info :stream t))
+        (plist-put info :backend gptel-backend)
+        (when gptel-include-reasoning   ;Required for next-request-only scope
+          (plist-put info :include-reasoning gptel-include-reasoning))
+        (when (and gptel-use-tools gptel-tools)
+          (plist-put info :tools gptel-tools))
+        (plist-put info :data
+                   (gptel--request-data gptel-backend full-prompt))
+        (run-hooks 'gptel-augment-post-modify-hook))
+      (kill-buffer (current-buffer)))
+    ;; AUGMENT -> WAIT
+    (unless (plist-get info :dry-run) (gptel--fsm-transition fsm))
+    fsm))
 
 (defun gptel-abort (buf)
   "Stop any active gptel process associated with buffer BUF.
@@ -2859,13 +2913,16 @@ there.  This defaults to (point)."
                 (let ((rb (region-beginning)) (re (region-end)))
                   (gptel--with-buffer-copy buf rb re
                     (save-excursion (run-hooks 'gptel-prompt-filter-hook))
-                    (gptel--parse-buffer gptel-backend max-entries))))
+                    ;; (gptel--parse-buffer gptel-backend max-entries)
+                    (current-buffer))))
                (t (unless prompt-end (setq prompt-end (point)))
                   (gptel--with-buffer-copy buf (point-min) prompt-end
                     (save-excursion (run-hooks 'gptel-prompt-filter-hook))
-                    (gptel--parse-buffer gptel-backend max-entries))))))
+                    ;; (gptel--parse-buffer gptel-backend max-entries)
+                    (current-buffer))))))
         ;; NOTE: prompts is modified in place here
-        (gptel--wrap-user-prompt-maybe prompts)))))
+        ;; (gptel--wrap-user-prompt-maybe prompts)
+        prompts))))
 
 (cl-defgeneric gptel--parse-buffer (backend max-entries)
   "Parse current buffer backwards from point and return a list of prompts.
