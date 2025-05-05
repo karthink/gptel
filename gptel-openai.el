@@ -349,11 +349,34 @@ If the ID has the format used by a different backend, use as-is."
 ;; NOTE: No `gptel--inject-prompt' method required for gptel-openai, since this
 ;; is handled by its defgeneric implementation
 
-(cl-defmethod gptel--parse-list ((_backend gptel-openai) prompt-list)
-  (cl-loop for text in prompt-list
-           for role = t then (not role)
-           if text collect
-           (list :role (if role "user" "assistant") :content text)))
+(cl-defmethod gptel--parse-list ((backend gptel-openai) prompt-list)
+  (if (stringp (car prompt-list))
+      (cl-loop for text in prompt-list  ; Simple format, list of strings
+               for role = t then (not role)
+               if text collect
+               (list :role (if role "user" "assistant") :content text))
+    (let ((full-prompt))                ; Advanced format, list of lists
+      (dolist (entry prompt-list)
+        (pcase entry
+          (`(prompt . ,msg)
+           (push (list :role "user" :content (or (car-safe msg) msg)) full-prompt))
+          (`(response . ,msg)
+           (push (list :role "assistant" :content (or (car-safe msg) msg)) full-prompt))
+          (`(tool . ,call)
+           (unless (plist-get call :id)
+             (plist-put call :id (gptel--openai-format-tool-id nil)))
+           (push
+            (list
+             :role "assistant"
+             :tool_calls
+             (vector
+              (list :type "function"
+                    :id (plist-get call :id)
+                    :function `( :name ,(plist-get call :name)
+                                 :arguments ,(gptel--json-encode (plist-get call :args))))))
+            full-prompt)
+           (push (car (gptel--parse-tool-results backend (list (cdr entry)))) full-prompt))))
+      (nreverse full-prompt))))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-openai) &optional max-entries)
   (let ((prompts) (prev-pt (point))

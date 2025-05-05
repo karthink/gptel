@@ -312,20 +312,41 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
            (match-string 1 tool-id))
       tool-id))
 
-(cl-defmethod gptel--parse-list ((_backend gptel-anthropic) prompt-list)
-  (cl-loop for text in prompt-list
-           for role = t then (not role)
-           if text
-           collect (list :role (if role "user" "assistant")
-                         :content `[(:type "text" :text ,text)])
-           into prompts
-           finally do
-           ;; cache messages if required: add cache_control to the last message
-           (if (and (or (eq gptel-cache t) (memq 'message gptel-cache))
-                    (gptel--model-capable-p 'cache))
-               (nconc (aref (plist-get (car (last prompts)) :content) 0)
-                      '(:cache_control (:type "ephemeral"))))
-           finally return prompts))
+(cl-defmethod gptel--parse-list ((backend gptel-anthropic) prompt-list)
+  (let ((full-prompt
+         (if (stringp (car prompt-list))
+             (cl-loop for text in prompt-list ; Simple format, list of strings
+                      for role = t then (not role)
+                      if text
+                      collect (list :role (if role "user" "assistant")
+                                    :content `[(:type "text" :text ,text)]))
+           (let ((prompts))
+             (dolist (entry prompt-list) ; Advanced format, list of lists
+               (pcase entry
+                 (`(prompt . ,msg)
+                  (push (list :role "user"
+                              :content `[(:type "text" :text ,(or (car-safe msg) msg))])
+                        prompts))
+                 (`(response . ,msg)
+                  (push (list :role "assistant"
+                              :content `[(:type "text" :text ,(or (car-safe msg) msg))])
+                        prompts))
+                 (`(tool . ,call)
+                  (unless (plist-get call :id)
+                    (plist-put call :id (gptel--anthropic-format-tool-id nil)))
+                  (push (list :role "assistant"
+                              :content `[( :type "tool_use" :id ,(plist-get call :id)
+                                           :name ,(plist-get call :name)
+                                           :input ,(plist-get call :args))])
+                        prompts)
+                  (push (gptel--parse-tool-results backend (list (cdr entry))) prompts))))
+             (nreverse prompts)))))
+    ;; cache messages if required: add cache_control to the last message
+    (when (and (or (eq gptel-cache t) (memq 'message gptel-cache))
+               (gptel--model-capable-p 'cache))
+      (nconc (aref (plist-get (car (last full-prompt)) :content) 0)
+             '(:cache_control (:type "ephemeral"))))
+    full-prompt))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-anthropic) &optional max-entries)
   (let ((prompts) (prev-pt (point))

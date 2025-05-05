@@ -2170,6 +2170,7 @@ Run post-response hooks."
 (defun gptel--tool-result-p (info)
   (and (plist-get info :tools) (plist-get info :tool-success)))
 
+;; TODO(prompt-list): Document new prompt input format to `gptel-request'.
 
 ;;; Send queries, handle responses
 (cl-defun gptel-request
