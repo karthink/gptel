@@ -1048,13 +1048,15 @@ If positions START and END are provided, insert that part of BUF first."
                        gptel-mode gptel-track-response gptel-track-media
                        gptel-use-tools gptel-tools gptel-use-curl
                        gptel-prompt-filter-hook gptel-use-context
-                       gptel-augment-handler-functions))
+                       gptel--num-messages-to-send gptel-stream
+                       gptel-include-reasoning
+                       gptel-temperature gptel-max-tokens gptel-cache))
         (set (make-local-variable sym)
          (buffer-local-value sym ,buf)))
        ,(when (and start end)
          `(insert-buffer-substring ,buf ,start ,end))
-       (let ((major-mode (buffer-local-value 'major-mode ,buf)))
-        ,@body)))))
+       (setq major-mode (buffer-local-value 'major-mode ,buf))
+       ,@body))))
 
 (defmacro gptel--temp-buffer (buf)
   "Generate a temp buffer BUF.
@@ -2279,12 +2281,14 @@ buffer."
                   (funcall func (lambda ()
                                   (cl-incf augment-idx)
                                   (when (>= augment-idx augment-total) ;All augmentors have run
+                                    (run-hooks 'gptel-augment-post-modify-hook)
                                     (gptel--realize-info fsm-arg)))
                            fsm-arg))
                  (error (user-error "Augmentor failed: %S" func))
                  (:success
                   (cl-incf augment-idx)
                   (when (>= augment-idx augment-total) ;All augmentors have run
+                    (run-hooks 'gptel-augment-post-modify-hook)
                     (gptel--realize-info fsm-arg)))))
              nil)
            fsm))
@@ -2648,13 +2652,13 @@ be used to rerun or continue the request at a later time."
             (gptel--with-buffer-copy buffer nil nil
               (insert prompt)
               (save-excursion (run-hooks 'gptel-prompt-filter-hook))
-              ;; (gptel--wrap-user-prompt-maybe
-              ;;  (gptel--parse-buffer
-              ;;   gptel-backend (and gptel--num-messages-to-send
-              ;;                      (* 2 gptel--num-messages-to-send))))
               (current-buffer)))
-           ;; FIXME(augment) Remove gptel--parse-list, do this in a buffer
-           ((consp prompt) (gptel--parse-list gptel-backend prompt))))
+           ((consp prompt)
+            ;; (gptel--parse-list gptel-backend prompt)
+            (gptel--with-buffer-copy buffer nil nil
+              (gptel--parse-list-and-insert prompt)
+              (save-excursion (run-hooks 'gptel-prompt-filter-hook))
+              (current-buffer)))))
          (info (list :data prompt-buffer
                      :buffer buffer
                      :position start-marker)))
@@ -2674,7 +2678,7 @@ be used to rerun or continue the request at a later time."
   ";TODO: "
   (let ((info (gptel-fsm-info fsm)))
     (with-current-buffer (plist-get info :data)
-      (let* ((directive (gptel--parse-directive gptel--system-message))
+      (let* ((directive (gptel--parse-directive gptel--system-message 'raw))
              ;; DIRECTIVE contains both the system message and the template prompts
              (gptel--system-message
               ;; Add context chunks to system message if required
@@ -2699,12 +2703,14 @@ be used to rerun or continue the request at a later time."
                           ;; Check backend-specific streaming settings
                           (gptel-backend-stream gptel-backend)))
              (gptel-stream stream)
-             (full-prompt
-              (nconc
-               (cdr directive)       ;prompt constructed from directive/template
-               (gptel--parse-buffer  ;prompt from buffer or explicitly supplied
-                gptel-backend (and gptel--num-messages-to-send
-                                   (* 2 gptel--num-messages-to-send))))))
+             (full-prompt))
+        (when (cdr directive)       ; prompt constructed from directive/template
+          (save-excursion (goto-char (point-min))
+                          (gptel--parse-list-and-insert (cdr directive))))
+        (setq full-prompt (gptel--parse-buffer  ;prompt from buffer or explicitly supplied
+                           gptel-backend (and gptel--num-messages-to-send
+                                              (* 2 gptel--num-messages-to-send))))
+        (gptel--wrap-user-prompt-maybe full-prompt)
         (when stream (plist-put info :stream t))
         (plist-put info :backend gptel-backend)
         (when gptel-include-reasoning   ;Required for next-request-only scope
@@ -2981,6 +2987,40 @@ BACKEND is the LLM backend in use.
 
 MAX-ENTRIES is the number of queries/responses to include for
 contexbt.")
+
+(defun gptel--parse-list-and-insert (prompts)
+  "Insert PROMPTS, a list of messages into the current buffer.
+
+Propertize the insertions in a format gptel can parse into a
+conversation.
+
+PROMPTS is typically the input to `gptel-request', either a list of strings
+representing a conversation with alternate prompt/response turns, or a list of
+lists with explicit roles (prompt/response/tool).  See the documentation of
+`gptel-request' for the latter."
+  (if (stringp (car prompts))         ; Simple format, list of strings
+      (cl-loop for text in prompts
+               for response = nil then (not response)
+               when text
+               if response
+               do (insert gptel-response-separator
+                          (propertize text 'gptel 'response)
+                          gptel-response-separator)
+               else do (insert text))
+    (dolist (entry prompts)             ; Advanced format, list of lists
+      (pcase entry
+        (`(prompt . ,msg) (insert (or (car-safe msg) msg)))
+        (`(response . ,msg)
+         (insert gptel-response-separator
+                 (propertize (or (car-safe msg) msg) 'gptel 'response)))
+        (`(tool . ,call)
+         (insert gptel-response-separator
+                 (propertize
+                  (concat
+                   "(:name " (plist-get call :name) " :args "
+                   (prin1-to-string (plist-get call :args)) ")\n\n"
+                   (plist-get call :result))
+                  'gptel `(tool . ,(plist-get call :id)))))))))
 
 (cl-defgeneric gptel--parse-list (backend prompt-list)
   "Parse PROMPT-LIST and return a list of prompts suitable for
