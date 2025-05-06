@@ -143,6 +143,26 @@ list."
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
 
+(defun gptel--gemini-filter-schema (schema)
+  "Destructively filter unsupported attributes from SCHEMA.
+
+Gemini's API does not support `additionalProperties'."
+  (when (plistp schema)
+    (cl-loop for (key val) on schema by #'cddr
+             do (cond
+                  ;; Recursively modify sub-schemas (object properties and array items)
+                  ((memq key '(:properties :items))
+                   (gptel--gemini-filter-schema val))
+                  ;; Recursively modify schemas within vectors (anyOf/allOf)
+                  ((memq key '(:anyOf :allOf))
+                   (dotimes (i (length val))
+                     (aset val i (gptel--gemini-filter-schema
+                                  (aref val i)))))
+                  ;; Default: do nothing to other key-value pairs yet.
+                  (t nil)))
+    (cl-remf schema :additionalProperties))
+  schema)
+
 (cl-defmethod gptel--parse-tools ((_backend gptel-gemini) tools)
   "Parse TOOLS to the Gemini API tool definition spec.
 
@@ -172,7 +192,9 @@ TOOLS is a list of `gptel-tool' structs, which see."
              if (equal (plist-get arg :type) "object")
              do (unless (plist-member argspec :required)
                   (plist-put argspec :required []))
-             append (list newname argspec))
+             if (equal (plist-get arg :type) "string")
+             do (cl-remf argspec :format)
+             append (list newname (gptel--gemini-filter-schema argspec)))
             :required
             (vconcat
              (delq nil (mapcar
