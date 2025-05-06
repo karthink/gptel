@@ -1491,14 +1491,6 @@ If nil, tool use is turned off."
           (const :tag "Force tool use" force)
           (const :tag "Turn Off" nil)))
 
-(defcustom gptel-force-send-parameters nil
-  "Force send paramters field for functions without arguments.
-
-If set to t, tool with nil args will still be send as an empty object."
-  :type '(choice
-          (const :tag "Enable" t)
-          (const :tag "Turn off" nil)))
-
 (defcustom gptel-confirm-tool-calls 'auto
   "Whether tool calls should wait for the user to run them.
 
@@ -1764,7 +1756,7 @@ implementation, used by OpenAI-compatible APIs and Ollama."
                                               (plist-get arg :name)))
                                 (gptel-tool-args tool))))
                     :additionalProperties :json-false))
-          (and gptel-force-send-parameters (list :parameters nil))))))
+          (list :parameters :null)))))
     (ensure-list tools))))
 
 (cl-defgeneric gptel--parse-tool-results (backend results)
