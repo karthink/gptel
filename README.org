@@ -324,6 +324,22 @@ The above code makes the backend available to select.  If you want it to be the 
                  :models '(mistral:latest)))
 #+end_src
 
+***** (Optional) Set custom model parameters
+
+Some models come with recommended parameter. To set them use this.
+#+begin_src emacs-lisp
+;; OPTIONAL configuration
+  (gptel-make-ollama "Ollama"
+                     :host "localhost:11434"
+                     :stream t
+                     :models '((qwen3:30b
+                                :request-params (:options (:temperature  0.6
+                                                           :top_p        0.95
+                                                           :top_k       20
+                                                           :min_p        0
+                                                           :num_ctx 131072)))))
+#+end_src
+
 #+html: </details>
 
 #+html: <details><summary>
