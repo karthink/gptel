@@ -296,8 +296,8 @@ Mutate state INFO with response metadata."
          `(:model ,(gptel--model-name gptel-model)
            :messages [,@prompts]
            :stream ,(or gptel-stream :json-false)))
-        (reasoning-model-p ; TODO: Embed this capability in the model's properties
-         (memq gptel-model '(o1 o1-preview o1-mini o3-mini o3 o4-mini))))
+        (reasoning-model-p
+         (gptel--model-capable-p 'reasoning)))
     (when (and gptel-temperature (not reasoning-model-p))
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-use-tools
