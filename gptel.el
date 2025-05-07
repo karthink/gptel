@@ -954,15 +954,15 @@ Note: This will move the cursor."
     (dotimes (_ (abs arg))
       (funcall search 'gptel 'response t)
       (if (> arg 0)
-          (when (looking-at (concat "\n\\{1,2\\}"
-                                    (regexp-quote
-                                     (gptel-prompt-prefix-string))
-                                    "?"))
+          (when-let* ((prefix (gptel-prompt-prefix-string))
+                      ((not (string-empty-p prefix)))
+                      ((looking-at (concat "\n\\{1,2\\}"
+                                           (regexp-quote prefix) "?"))))
             (goto-char (match-end 0)))
-        (when (looking-back (concat (regexp-quote
-                                     (gptel-response-prefix-string))
-                                    "?")
-                            (point-min))
+        (when-let* ((prefix (gptel-response-prefix-string))
+                    ((not (string-empty-p prefix)))
+                    ((looking-back (concat (regexp-quote prefix) "?")
+                                   (point-min))))
           (goto-char (match-beginning 0)))))))
 
 (defmacro gptel--at-word-end (&rest body)
