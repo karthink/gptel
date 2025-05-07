@@ -2225,22 +2225,19 @@ buffer."
            (lambda (func fsm-arg)
              (with-current-buffer (plist-get info :data)
                (goto-char (point-max))
-               (condition-case nil
-                   (funcall func fsm-arg)
-                 (wrong-number-of-arguments
-                  (funcall func (lambda ()
-                                  (cl-incf augment-idx)
-                                  (when (>= augment-idx augment-total) ;All augmentors have run
-                                    (run-hooks 'gptel-augment-post-modify-hook)
-                                    (gptel--realize-info fsm-arg)))
-                           fsm-arg))
-                 (error (user-error "Augmentor failed: %S" func))
-                 (:success
-                  (cl-incf augment-idx)
-                  (when (>= augment-idx augment-total) ;All augmentors have run
-                    (run-hooks 'gptel-augment-post-modify-hook)
-                    (gptel--realize-info fsm-arg)))))
-             nil)
+               (if (= (car (func-arity func)) 2) ;async augmentor
+                   (funcall func (lambda ()
+                                   (cl-incf augment-idx)
+                                   (when (>= augment-idx augment-total) ;All augmentors have run
+                                     (run-hooks 'gptel-augment-post-modify-hook)
+                                     (gptel--realize-info fsm-arg)))
+                            fsm-arg)
+                 (funcall func fsm-arg) ;sync augmentor
+                 (cl-incf augment-idx)
+                 (when (>= augment-idx augment-total) ;All augmentors have run
+                   (run-hooks 'gptel-augment-post-modify-hook)
+                   (gptel--realize-info fsm-arg))))
+             nil)           ;always return nil so run-hook-wrapped doesn't abort
            fsm))
       (gptel--realize-info fsm))
     fsm))
