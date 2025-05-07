@@ -2689,7 +2689,7 @@ be used to rerun or continue the request at a later time."
                   (car directive))))
              ;; TODO(tool) Limit tool use to capable models after documenting :capabilities
              ;; (gptel-use-tools (and (gptel--model-capable-p 'tool-use) gptel-use-tools))
-             (stream (and (plist-get info :stream) gptel-use-curl
+             (stream (and (plist-get info :stream) gptel-use-curl gptel-stream
                           ;; HACK(tool): no stream if Ollama + tools.  Need to find a better way
                           (not (and (eq (type-of gptel-backend) 'gptel-ollama)
                                     gptel-tools gptel-use-tools))
@@ -2707,11 +2707,12 @@ be used to rerun or continue the request at a later time."
         (when (cdr directive)       ; prompt constructed from directive/template
           (save-excursion (goto-char (point-min))
                           (gptel--parse-list-and-insert (cdr directive))))
-        (setq full-prompt (gptel--parse-buffer  ;prompt from buffer or explicitly supplied
+        (goto-char (point-max))
+        (setq full-prompt (gptel--parse-buffer ;prompt from buffer or explicitly supplied
                            gptel-backend (and gptel--num-messages-to-send
                                               (* 2 gptel--num-messages-to-send))))
         (gptel--wrap-user-prompt-maybe full-prompt)
-        (when stream (plist-put info :stream t))
+        (unless stream (cl-remf info :stream))
         (plist-put info :backend gptel-backend)
         (when gptel-include-reasoning   ;Required for next-request-only scope
           (plist-put info :include-reasoning gptel-include-reasoning))
