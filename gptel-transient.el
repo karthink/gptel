@@ -461,6 +461,24 @@ Their own value is ignored")
         (propertize display-if-true
                     'face (if value 'transient-value 'transient-inactive-value))))))
 
+;; TODO(presets): Extend to a general gptel--option class.
+(defclass gptel--preset (transient-option)
+  ((set-value :initarg :set-value :initform nil))
+  "Singleton class for displaying and setting gptel presets.")
+
+(cl-defmethod transient-infix-set ((obj gptel--preset) value)
+  "Call an instance-specific setter for side-effects."
+  (funcall (oref obj set-value) value)
+  (oset obj value value))
+
+(cl-defmethod transient-format-value ((obj gptel--preset))
+  (with-slots (value) obj
+    (if gptel--known-presets            ;FIXME: Make this generic?
+        (format "(%s%s)" (propertize "@" 'face 'transient-key)
+                (or (and value (propertize value 'face 'transient-value))
+                    (propertize "preset" 'face 'transient-inactive-value)))
+      "")))
+
 (defclass gptel--scope (gptel--switches)
   ((display-if-true :initarg :display-if-true :initform "buffer")
    (display-if-false :initarg :display-if-false :initform "global"))
@@ -593,7 +611,9 @@ Also format its value in the Transient menu."
      (lambda () (interactive) (gptel--handle-tool-use gptel--fsm-last))
      :if (lambda () (and gptel--fsm-last
                     (eq (gptel-fsm-state gptel--fsm-last) 'TOOL))))]]
-  [["Request Parameters"
+  [[(gptel--infix-preset
+     :description "Request Parameters" :face 'transient-heading
+     :format "%d %v")
     (gptel--infix-variable-scope)
     (gptel--infix-provider)
     (gptel--infix-max-tokens)
@@ -867,6 +887,42 @@ value of `gptel-use-context', set from here."
               (cdr (assoc destination choices)))))
 
 ;; ** Infixes for model parameters
+(transient-define-infix gptel--infix-preset ()
+  "Select and apply a gptel preset.
+
+Presets are collections of gptel options intended to be applied
+together, defined via `gptel-make-preset'.  Using this command and they
+can be applied globally, buffer-locally or for the next request only."
+  :always-read t
+  :argument "@"
+  :format "  %k %d (%v)"
+  :key "@"
+  :description "Preset"
+  :class 'gptel--preset
+  :prompt "Apply preset: "
+  :set-value #'(lambda (name)
+                 (when name
+                  (gptel--apply-preset
+                   (or (assoc name gptel--known-presets)
+                       (assoc (intern-soft name) gptel--known-presets))
+                   (lambda (sym val) (gptel--set-with-scope
+                                 sym val gptel--set-buffer-locally)))
+                  (message "Applied gptel preset %s"
+                   (propertize name 'face 'transient-value)))
+                 (transient-setup)
+                 name)
+  :reader
+  #'(lambda (prompt initial history)
+      (let ((completion-extra-properties
+             `(:annotation-function
+               ,(lambda (choice)
+                  (when-let* ((desc (plist-get
+                                     (cdr (assoc choice gptel--known-presets))
+                                     :description)))
+                   (concat (propertize " " 'display '(space :align-to 40))
+                    desc))))))
+       (completing-read
+        prompt gptel--known-presets nil t initial history))))
 
 (transient-define-infix gptel--infix-variable-scope ()
   "Set gptel's model parameters and system message in this buffer or globally."
