@@ -39,6 +39,15 @@
 
 - Tools now run in the buffer from which the request originates.
 
+- You can now define "presets", which are a bundle of gptel options, such as the
+  backend, model, system message, included tools, temperature and so on.  This
+  set of options can be applied together, making it easy to switch between
+  different tasks using gptel.  From gptel's transient menu, you can save the
+  current configuration as a preset or apply another one.  Presets can be
+  applied globally, buffer-locally or for the next request only.  To persist
+  presets across Emacs sessions, define presets in your configuration
+  using ~gptel-make-preset~.
+
 ** Notable Bug fixes
 
 * 0.9.8 2025-03-13

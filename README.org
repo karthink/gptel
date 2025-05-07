@@ -149,6 +149,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#chatgpt-i-get-the-error-http2-429-you-exceeded-your-current-quota][(ChatGPT) I get the error "(HTTP/2 429) You exceeded your current quota"]]
       - [[#why-another-llm-client][Why another LLM client?]]
   - [[#additional-configuration][Additional Configuration]]
+    - [[#option-presets][Option presets]]
   - [[#alternatives][Alternatives]]
     - [[#packages-using-gptel][Packages using gptel]]
   - [[#acknowledgments][Acknowledgments]]
@@ -1492,6 +1493,40 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 |---------------------------------+-------------------------------------------------------------|
 
 #+html: </details>
+
+*** Option presets
+
+If you use several LLMs for different tasks with accompanying system prompts (instructions) and tool configurations, manually adjusting =gptel= settings each time can become tedious.  Presets are a bundle of gptel settings -- such as the model, backend, system message, and enabled tools -- that you can switch to at once.
+
+Once defined, presets can be applied from gptel's transient menu:
+
+#+html: <img src="https://github.com/user-attachments/assets/e0cf6a32-d999-4138-8369-23512f5e9311" align="center" />
+#+html: <br>
+
+To define a preset, use the =gptel-make-preset= function, which takes a name and keyword-value pairs of settings:
+
+#+begin_src emacs-lisp
+(gptel-make-preset 'gpt4coding                       ;preset name, a symbol
+  :description "A preset optimized for coding tasks" ;for your reference
+  :backend "Claude"                     ;gptel backend or backend name
+  :model 'claude-3-7-sonnet-20250219.1
+  :system "You are an expert coding assistant. Your role is to provide high-quality code solutions, refactorings, and explanations."
+  :tools '("read_buffer" "modify_buffer")) ;gptel tools or tool names
+#+end_src
+
+Besides a couple of special keys (=:description=, =:parents= to inherit other presets), there is no predefined list of keys.  Instead, the key =:foo= corresponds to setting =gptel-foo= (preferred) or =gptel--foo=.  So the preset can include the value of any gptel option.  For example, the following preset sets =gptel-temperature= and =gptel-use-context=:
+
+#+begin_src emacs-lisp
+(gptel-make-preset 'proofreading
+  :description "Preset for proofreading tasks"
+  :backend "ChatGPT"
+  :model 'gpt-4.1-mini
+  :tools '("read_buffer" "spell_check" "grammar_check")
+  :temperature 0.7                      ;sets gptel-temperature
+  :use-context 'system)                 ;sets gptel-use-context
+#+end_src
+
+Switching to a preset applies the specified settings without affecting other settings.  Depending on the scope option (~=~ in gptel's transient menu), presets can be applied globally, buffer-locally or for the next request only.
 
 ** COMMENT Will you add feature X?
 
