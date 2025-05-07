@@ -3277,6 +3277,126 @@ NAME and ARG-VALUES are the name and arguments for the call."
     (?i (gptel--inspect-fsm gptel--fsm-last))))
 
 
+;;; Presets
+;;;; Presets implementation
+(defvar gptel--known-presets nil
+  "Alist of presets for gptel.
+
+Each entry maps a preset name (a symbol) to a plist of
+specifications (see `gptel-make-preset').")
+
+(defun gptel-make-preset (name &rest keys)
+  "Define a gptel preset with NAME.
+
+A preset is a combination of gptel options intended to be applied and
+used together.  Presets can make it less tedious to change gptel
+settings on the fly.
+
+Typically this will include a model, backend, system message and perhaps
+some tools, but any set of gptel options can be set this way.
+
+NAME can be a symbol (preferred) or string.  KEYS is a plist
+corresponding to the options being set.  All KEYS are optional.
+Recognized keys include:
+
+DESCRIPTION is a description of the preset, used when selecting a
+preset.
+
+PARENTS is a preset name (or list of preset names) to apply before this
+one.
+
+BACKEND is the gptel-backend to set, or its name (like \"ChatGPT\").
+
+MODEL is the gptel-model.
+
+SYSTEM is the directive. It can be
+- the system message (a string),
+- a list of strings (a conversation template)
+- or a function (dynamic system message).
+- It can also be a symbol naming a directive in `gptel-directives'.
+
+TOOLS is a list of gptel tools or tool names, like
+\\='(\"read_url\" \"read_buffer\" ...)
+
+Recognized keys are not limited to the above.  Any other key (like
+`:foo') corresponds to the value of either `gptel-foo' (preferred) or
+`gptel--foo'.
+- So TOOLS corresponds to `gptel-tools',
+- CONFIRM-TOOL-CALLS to `gptel-confirm-tool-calls',
+- TEMPERATURE to `gptel-temperature' and so on.
+See gptel's customization options for all available settings."
+  (declare (indent 1))
+  (if-let* ((p (assoc name gptel--known-presets)))
+      (setcdr p keys)
+    (setq gptel--known-presets          ;Add at end of presets for menu ordering
+          (nconc gptel--known-presets (list (cons name keys))))))
+
+(defun gptel-get-preset (name)
+  "Get the gptel preset spec with NAME."
+  (alist-get name gptel--known-presets nil nil #'equal))
+
+(defun gptel--apply-preset (preset &optional setter)
+  "Apply gptel PRESET with SETTER.
+
+PRESET is the name of a preset, or a spec of the form
+ (NAME :KEY1 VAL1 :KEY2 VAL2 ...).
+
+SETTER is the function used to set the gptel options.  It must accept
+two arguments, the symbol being set and the value to set it to.  It
+defaults to `set', and can be set to a different function to (for
+example) apply the preset buffer-locally."
+  (when (memq (type-of preset) '(string symbol))
+    (let ((spec (or (gptel-get-preset preset)
+                    (user-error "gptel preset \"%s\": Cannot find preset."
+                                preset))))
+      (setq preset (cons preset spec))))
+  (unless setter (setq setter #'set))
+  (when-let* ((parents (plist-get (cdr preset) :parents)))
+    (mapc #'gptel--apply-preset (ensure-list parents)))
+  (map-do
+   (lambda (key val)
+     (pcase key
+       ((or :parents :description) nil)
+       (:system
+        (if (and (symbolp val) (not (functionp val)))
+            (if-let* ((directive (alist-get val gptel-directives)))
+                (funcall setter 'gptel--system-message directive)
+              (user-error "gptel preset \"%s\": Cannot find directive %s"
+                          (car preset) val))
+          (funcall setter 'gptel--system-message val)))
+       (:backend
+        (setq val (cl-etypecase val
+                    (gptel-backend val)
+                    (string (gptel-get-backend val))))
+        (unless val
+          (user-error "gptel preset \"%s\": Cannot find backend %s."
+                      (car preset) val))
+        (funcall setter 'gptel-backend val))
+       (:tools
+        (funcall
+         setter 'gptel-tools
+         (flatten-list
+          (cl-loop for tool-name in (ensure-list val)
+                   for tool = (cl-etypecase tool-name
+                                (gptel-tool tool-name)
+                                (string (gptel-get-tool tool-name)))
+                   do (unless tool
+                        (user-error "gptel preset \"%s\": Cannot find tool %s."
+                                    (car preset) val))
+                   collect tool))))
+       ((and (let sym (or (intern-soft
+                           (concat "gptel-" (substring (symbol-name key) 1)))
+                          (intern-soft
+                           (concat "gptel--" (substring (symbol-name key) 1)))))
+             (guard (and sym (boundp sym))))
+        (funcall setter sym val))
+       (_ (display-warning
+           '(gptel presets)
+           (format "gptel preset \"%s\": setting for %s not found, ignoring."
+                   (car preset) key)))))
+   (cdr preset)))
+
+
 ;;; Response tweaking commands
 
 (defun gptel--attach-response-history (history &optional buf)
