@@ -84,6 +84,23 @@ context chunk.  This is accessible as, for example:
   :group 'gptel
   :type 'function)
 
+(defun gptel-context-add-current-kill (&optional arg)
+  "Add current-kill to gptel, accumulating unless arg is non-nil"
+  (interactive "P")
+  (let ((kill (current-kill 0)))
+    (with-current-buffer (get-buffer-create "*current-kill*")
+      (if arg
+          (kill-region (point-min) (point-max))
+        (goto-char (point-max))
+        (unless (bobp)
+          (unless (bolp)
+            (insert ?\n))
+          (insert "----\n")))
+      (insert kill)
+      (gptel-context--add-region (current-buffer)
+                                 (point-min) (point-max))
+      (message "*current-kill* has been added as context."))))
+
 (defun gptel-context-add (&optional arg confirm)
   "Add context to gptel in a DWIM fashion.
 
