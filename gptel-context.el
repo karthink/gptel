@@ -85,11 +85,11 @@ context chunk.  This is accessible as, for example:
   :type 'function)
 
 (defun gptel-context-add-current-kill (&optional arg)
-  "Add current-kill to gptel, accumulating unless arg is non-nil"
+  "Add current-kill to gptel, accumulating if arg is non-nil"
   (interactive "P")
   (let ((kill (current-kill 0)))
     (with-current-buffer (get-buffer-create "*current-kill*")
-      (if arg
+      (if (not arg)
           (kill-region (point-min) (point-max))
         (goto-char (point-max))
         (unless (bobp)
