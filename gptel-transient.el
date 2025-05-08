@@ -1130,7 +1130,7 @@ supports.  See `gptel-track-media' for more information."
 (declare-function gptel-add "gptel-context")
 
 (transient-define-suffix gptel--infix-context-add-current-kill (&optional arg)
-  "Add current region to gptel's context."
+  "Add current kill to gptel's context."
   :transient 'transient--do-stay
   :key "C-y"
   :description
