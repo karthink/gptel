@@ -995,12 +995,14 @@ Compatibility macro for Emacs 27.1."
       `(generate-new-buffer ,buf)
     `(generate-new-buffer ,buf t)))
 
-(defun gptel-prompt-prefix-string ()
+(defsubst gptel-prompt-prefix-string ()
   "Prefix before user prompts in `gptel-mode'."
+  (declare (side-effect-free t))
   (or (alist-get major-mode gptel-prompt-prefix-alist) ""))
 
-(defun gptel-response-prefix-string ()
+(defsubst gptel-response-prefix-string ()
   "Prefix before LLM responses in `gptel-mode'."
+  (declare (side-effect-free t))
   (or (alist-get major-mode gptel-response-prefix-alist) ""))
 
 (defsubst gptel--trim-prefixes (s)
