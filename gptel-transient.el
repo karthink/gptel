@@ -801,9 +801,10 @@ only (\"oneshot\")."
         nconc
         (cl-loop                    ;for each category, collect tools as infixes
          for (name . tool) in tools-alist
-         with tool-keys = (delete category-key (number-sequence ?a ?z))
-         for tool-key = (seq-find (lambda (k) (member k tool-keys)) name
-                                  (seq-first tool-keys))
+         with tool-keys = (nconc (delete category-key (number-sequence ?a ?z)) (number-sequence ?A ?Z))
+         for tool-key = (or (seq-find (lambda (k) (member k tool-keys)) name)
+                            (seq-find (lambda (k) (member k tool-keys)) (upcase name)
+                                      (seq-first tool-keys)))
          do (setq tool-keys (delete tool-key tool-keys))
          collect           ;Each list is a transient infix of type gptel--switch
          (list (key-description (list category-key tool-key))
