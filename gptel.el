@@ -1624,7 +1624,7 @@ returned."
                   (cl-loop for (_ . tools) in gptel--known-tools
                            if (assoc path tools)
                            return (cdr it)))))
-      (user-error "No tool matches for %S" path)))
+      (error "No tool matches for %S" path)))
 
 (defun gptel-make-tool (&rest slots)
   "Make a gptel tool for LLM use.
