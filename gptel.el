@@ -3428,6 +3428,46 @@ example) apply the preset buffer-locally."
                    (car preset) key)))))
    (cdr preset)))
 
+(defun gptel--preset-syms (preset)
+  "Return a list of gptel variables (symbols) set by PRESET.
+
+PRESET is a spec (plist) of keys and values."
+  (let* ((index preset)
+         syms key val)
+    (while index
+      (setq key (pop index) val (pop index))
+      (pcase key
+        (:description)
+        (:parents
+         (mapc (lambda (parent-preset)
+                 (nconc syms (gptel--preset-syms
+                              (gptel-get-preset parent-preset))))
+               (ensure-list val)))
+        (:system (push 'gptel--system-message syms))
+        (_ (if-let* ((var (or (intern-soft
+                               (concat "gptel-" (substring (symbol-name key) 1)))
+                              (intern-soft
+                               (concat "gptel--" (substring (symbol-name key) 1))))))
+               (push var syms)
+             (display-warning
+              '(gptel presets)
+              (format "gptel preset \"%s\": setting for %s not found, ignoring."
+                      (car preset) key))))))
+    (cl-delete-duplicates syms)))
+
+(defmacro gptel-with-preset (name &rest body)
+  "Run BODY with gptel preset NAME applied.
+
+This macro can be used to create `gptel-request' command with settings
+from a gptel preset applied.  NAME is the preset name, typically a
+symbol."
+  (declare (indent 1))
+  `(cl-progv (gptel--preset-syms
+              (gptel-get-preset ,(if (symbolp name) `',name name)))
+       nil
+     (gptel--apply-preset ,(if (symbolp name) `',name name))
+     ,@body))
+
 
 ;;; Response tweaking commands
 
