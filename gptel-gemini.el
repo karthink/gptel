@@ -147,20 +147,21 @@ list."
   "Destructively filter unsupported attributes from SCHEMA.
 
 Gemini's API does not support `additionalProperties'."
+  (cl-remf schema :additionalProperties)
   (when (plistp schema)
     (cl-loop for (key val) on schema by #'cddr
              do (cond
-                  ;; Recursively modify sub-schemas (object properties and array items)
-                  ((memq key '(:properties :items))
-                   (gptel--gemini-filter-schema val))
-                  ;; Recursively modify schemas within vectors (anyOf/allOf)
-                  ((memq key '(:anyOf :allOf))
-                   (dotimes (i (length val))
-                     (aset val i (gptel--gemini-filter-schema
-                                  (aref val i)))))
-                  ;; Default: do nothing to other key-value pairs yet.
-                  (t nil)))
-    (cl-remf schema :additionalProperties))
+                 ;; Recursively modify schemas within vectors (anyOf/allOf)
+                 ((memq key '(:anyOf :allOf))
+                  (dotimes (i (length val))
+                    (aset val i (gptel--gemini-filter-schema (aref val i)))))
+                 ;; Recursively modify plist values, which may contain sub-schemas
+                 ((plistp val)
+                  (when (cl-remf val :additionalProperties)
+                    (cl-remf (plist-get schema key) :additionalProperties))
+                  (gptel--gemini-filter-schema val))
+                 ;; Default: do nothing to other key-value pairs yet.
+                 (t nil))))
   schema)
 
 (cl-defmethod gptel--parse-tools ((_backend gptel-gemini) tools)
