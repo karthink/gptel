@@ -3,7 +3,7 @@
 #+author: Karthik Chikmagalur
 #+email: contact@karthinks.com
 #+language: en
-#+options: ':t toc:nil author:t email:t num:t
+#+options: ':t toc:nil author:t email:t num:t h:4
 #+export_file_name: gptel
 #+startup: content
 #+macro: stable-version 0.9.6
@@ -61,30 +61,30 @@ available at any time and uniformly in any buffer.
 gptel supports the following services.
 
 #+html: <div align="center">
-#+attr_texinfo: :columns .2 .1 .6
-| LLM Backend        | Supports | Requires                   |
-|--------------------+----------+----------------------------|
-| ChatGPT            | ✓       | [[https://platform.openai.com/account/api-keys][API key]]                    |
-| Anthropic (Claude) | ✓       | [[https://www.anthropic.com/api][API key]]                    |
-| Gemini             | ✓       | [[https://makersuite.google.com/app/apikey][API key]]                    |
-| Ollama             | ✓       | [[https://ollama.ai/][Ollama running locally]]     |
-| Llama.cpp          | ✓       | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]]  |
-| Llamafile          | ✓       | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
-| GPT4All            | ✓       | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
-| Kagi FastGPT       | ✓       | [[https://kagi.com/settings?p=api][API key]]                    |
-| Kagi Summarizer    | ✓       | [[https://kagi.com/settings?p=api][API key]]                    |
-| Azure              | ✓       | Deployment and API key     |
-| Groq               | ✓       | [[https://console.groq.com/keys][API key]]                    |
-| Perplexity         | ✓       | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
-| OpenRouter         | ✓       | [[https://openrouter.ai/keys][API key]]                    |
-| together.ai        | ✓       | [[https://api.together.xyz/settings/api-keys][API key]]                    |
-| Anyscale           | ✓       | [[https://docs.endpoints.anyscale.com/][API key]]                    |
-| PrivateGPT         | ✓       | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
-| DeepSeek           | ✓       | [[https://platform.deepseek.com/api_keys][API key]]                    |
-| Cerebras           | ✓       | [[https://cloud.cerebras.ai/][API key]]                    |
-| Github Models      | ✓       | [[https://github.com/settings/tokens][Token]]                      |
-| Novita AI          | ✓       | [[https://novita.ai/model-api/product/llm-api?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][Token]]                      |
-| xAI                | ✓       | [[https://console.x.ai?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][API key]]                    |
+#+attr_texinfo: :columns .2 .7
+| LLM Backend        | Requires                   |
+|--------------------+----------------------------|
+| ChatGPT            | [[https://platform.openai.com/account/api-keys][API key]]                    |
+| Anthropic (Claude) | [[https://www.anthropic.com/api][API key]]                    |
+| Gemini             | [[https://makersuite.google.com/app/apikey][API key]]                    |
+| Ollama             | [[https://ollama.ai/][Ollama running locally]]     |
+| Llama.cpp          | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]]  |
+| Llamafile          | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
+| GPT4All            | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
+| Kagi FastGPT       | [[https://kagi.com/settings?p=api][API key]]                    |
+| Kagi Summarizer    | [[https://kagi.com/settings?p=api][API key]]                    |
+| Azure              | Deployment and API key     |
+| Groq               | [[https://console.groq.com/keys][API key]]                    |
+| Perplexity         | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
+| OpenRouter         | [[https://openrouter.ai/keys][API key]]                    |
+| together.ai        | [[https://api.together.xyz/settings/api-keys][API key]]                    |
+| Anyscale           | [[https://docs.endpoints.anyscale.com/][API key]]                    |
+| PrivateGPT         | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
+| DeepSeek           | [[https://platform.deepseek.com/api_keys][API key]]                    |
+| Cerebras           | [[https://cloud.cerebras.ai/][API key]]                    |
+| Github Models      | [[https://github.com/settings/tokens][Token]]                      |
+| Novita AI          | [[https://novita.ai/model-api/product/llm-api?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][Token]]                      |
+| xAI                | [[https://console.x.ai?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][API key]]                    |
 #+html: </div>
 
 ** Basic concepts
@@ -137,25 +137,40 @@ The primary means of using gptel is by invoking the command
 including the minibuffer or special, read-only buffers.
 
 #+findex: gptel-send
-This command treats the buffer like a chat interface.  It sends the
-buffer text from the start upto the cursor to the LLM as a prompt, and
-inserts the response it receives below the cursor.  If the region is
-active, it sends only the text in the region instead.  Narrowing is
-respected.
+- Function ~gptel-send~ ::
+  Arguments: =ARG=
+
+  This command sends the buffer text from the start upto the cursor to
+  the LLM as a prompt, and inserts the response it receives below the
+  cursor.  It treats the buffer like a chat interface.  If the region
+  is active, it sends only the text in the region instead.  Narrowing
+  is respected.
 
 Like most gptel commands, ~gptel-send~ is asynchronous, so you can
 continue to use Emacs while waiting for the response to be received.
 
-#+findex: gptel-menu
 Calling ~gptel-send~ with a prefix argument invokes a "transient" menu
-where you can specify various gptel options.
+where you can specify various gptel options.  This menu may be invoked
+directly via ~gptel-menu~:
+
+#+findex: gptel-menu
+- Function ~gptel-menu~ ::
+  Display a menu
+  + to set chat parameters ([[*Models][model]], [[*Backends][backend]], [[*Directives][system message]]),
+  + include quick instructions for the next request only,
+  + to add [[*Context][additional context]] -- regions, buffers or files -- to gptel,
+  + to read the prompt from or redirect the response elsewhere,
+  + or to replace the prompt with the response.
+  Several more setting
 
 #+findex: gptel-abort
-<<gptel-abort>>This command 
+<<gptel-abort>>This command
 
 ** gptel in a dedicated buffer
 
 ** Chat persistence
+
+** The rewrite interface
 
 * gptel's transient interface
 
@@ -170,8 +185,6 @@ where you can specify various gptel options.
   in several gptel menus, including ~gptel-menu~, ~gptel-tools~ and
   ~gptel-system-prompt~.
 
-* The rewrite interface
-
 * Configuration
 
 ** The anantomy of gptel-send
@@ -184,11 +197,11 @@ respectively.  The central column illustrates the control flow of
 applied.
 
 #+BEGIN_EXAMPLE
-        (USER OPTIONS)                    GPTEL-SEND                   (HOOKS) 
-             ║                                │                           ║    
-             v                                v                           v    
-╭───────────────────────────╮    ╭────────────┴─────────────╮                  
-│      (Org mode only)      │    │       Copy region        │                  
+        (USER OPTIONS)                    GPTEL-SEND                   (HOOKS)
+             ║                                │                           ║
+             v                                v                           v
+╭───────────────────────────╮    ╭────────────┴─────────────╮
+│      (Org mode only)      │    │       Copy region        │
 │ gptel-org-ignore-elements │    │ (or buffer above cursor) │
 │gptel-org-branching-context├───>┤   to a temporary buffer  │
 ╰───────────────────────────╯    ╰────────────┬─────────────╯
@@ -213,32 +226,32 @@ applied.
  ╭─────────────────────────╮  │     ║    Send request    ║
  │  Run and add directive  │  │     ╚═════════╤══════════╝
  │    gptel-directives     ├──┤               │·╶─╴·╶─╴·╶─╴· gptel-post-request-hook
- │  gptel--system-message  │  │               │                                            
- ╰─────────────────────────╯  │               v                                            
- ╭─────────────────────────╮  │            ╶──┴──╴                                         
- │    Backend parameters   │  │          ╭ ─ ─ ─ ─ ─╮                                      
- │      gptel-backend      ├──┤           ASYNC WAIT                                       
- ╰─────────────────────────╯  │          ╰ ─ ─ ─ ─  ╯                                      
- ╭─────────────────────────╮  │            ╶──┬──╴                                         
- │      gptel-model        ├──╯               v                                            
- ╰─────────────────────────╯                  ├·╶─╴·╶─╴·╶─╴· gptel-pre-response-hook       
-╭──────────────────────────╮      ╭───────────────────────╮                                
-│    Handle "Reasoning"    ├─────>┤                       │                                
-│ gptel-include-reasoning  │  ╭─<─┤ Parse partial response│                                
-╰──────────────────────────╯  │╭<─┤                       │<╮                              
-                              ││  ╰───────────────────────╯ │                              
-                              ││                            ├ gptel-post-stream-hook       
-                              ││  ╭───────────────────────╮ │                              
-                              │╰──┤ Insert response chunk ├─o                              
-                              │   ╰───────────────────────╯ │                              
-╭──────────────────────────╮  │   ╭───────────────────────╮ │                              
-│ gptel-confirm-tool-calls ├─>o──>┤  Confirm tool calls   │ v                              
-╰──────────────────────────╯  │   ╰───────────────────────╯ │                              
-╭──────────────────────────╮  │   ╭───────────────────────╮ │                              
-│gptel-include-tool-results├─>┴──>┤  Insert tool results  │ │                              
-╰──────────────────────────╯      ╰───────────┬───────────╯ │                              
-                                              ├─────────────╯                              
-                                              v·╶─╴·╶─╴·╶─╴· gptel-post-response-functions 
+ │  gptel--system-message  │  │               │
+ ╰─────────────────────────╯  │               v
+ ╭─────────────────────────╮  │            ╶──┴──╴
+ │    Backend parameters   │  │          ╭ ─ ─ ─ ─ ─╮
+ │      gptel-backend      ├──┤           ASYNC WAIT
+ ╰─────────────────────────╯  │          ╰ ─ ─ ─ ─  ╯
+ ╭─────────────────────────╮  │            ╶──┬──╴
+ │      gptel-model        ├──╯               v
+ ╰─────────────────────────╯                  ├·╶─╴·╶─╴·╶─╴· gptel-pre-response-hook
+╭──────────────────────────╮      ╭───────────────────────╮
+│    Handle "Reasoning"    ├─────>┤                       │
+│ gptel-include-reasoning  │  ╭─<─┤ Parse partial response│
+╰──────────────────────────╯  │╭<─┤                       │<╮
+                              ││  ╰───────────────────────╯ │
+                              ││                            ├ gptel-post-stream-hook
+                              ││  ╭───────────────────────╮ │
+                              │╰──┤ Insert response chunk ├─o
+                              │   ╰───────────────────────╯ │
+╭──────────────────────────╮  │   ╭───────────────────────╮ │
+│ gptel-confirm-tool-calls ├─>o──>┤  Confirm tool calls   │ v
+╰──────────────────────────╯  │   ╰───────────────────────╯ │
+╭──────────────────────────╮  │   ╭───────────────────────╮ │
+│gptel-include-tool-results├─>┴──>┤  Insert tool results  │ │
+╰──────────────────────────╯      ╰───────────┬───────────╯ │
+                                              ├─────────────╯
+                                              v·╶─╴·╶─╴·╶─╴· gptel-post-response-functions
                                            ╶──┴──╴
 #+END_EXAMPLE
 
@@ -262,7 +275,7 @@ customization options follows.
    in ~gptel-org-ignore-elements~ from this text.  By default, the
    latter is used to strip Org =PROPERTIES= blocks from the text
    before sending.  See [[*gptel in Org mode]] for more details.
-   
+
    #+vindex: gptel-prompt-filter-functions
 3. Run the hook ~gptel-prompt-filter-hook~ in this buffer, with the
    cursor at the end.  This can be used to modify the prompt text as
@@ -282,7 +295,7 @@ customization options follows.
    to files in this buffer and check if their MIME types are supported
    by the LLM (see [[*Models]]).  If they are, base64-encode them and
    include them in the messages array.
-   
+
    #+vindex: gptel-use-context
 5. If ~gptel-use-context~ is non-nil, collect regions, buffers or
    files that are explicitly added via ~gptel-add~ to gptel's context
@@ -372,7 +385,16 @@ Alternatively, you can inspect the variable ~gptel--fsm-last~, which
 always contains the last request as a gptel state-machine object (see
 [[*gptel's finite state machine][gptel's state machine]]).
 
-** gptel in Org mode
+** gptel chat buffer UI
+
+  <<gptel-prompt-prefix-alist>>
+  #+vindex: gptel-prompt-prefix-alist
+- ~gptel-prompt-prefix-alist~
+
+  #+vindex: gptel-response-prefix-alist
+- ~gptel-response-prefix-alist~
+
+*** gptel in Org mode
 
   #+vindex: gptel-org-branching-context
 - ~gptel-org-branching-context~
@@ -472,7 +494,7 @@ the box:
 (setf (alist-get 'default gptel-directives)
       "My default system message here.")
 #+end_src
-  
+
 ** TODO Backends
 
 #+tindex: gptel-backend
@@ -481,7 +503,7 @@ A ~gptel-backend~
 - =:request-params=
 
   #+findex: gptel-get-backend
-- (~gptel-get-backend~) ::
+- Function ~gptel-get-backend~ ::
 
 The backend can be set interactively from ~gptel-menu~:
 
@@ -489,59 +511,298 @@ The backend can be set interactively from ~gptel-menu~:
   ~gptel-menu~.  Note that the [[gptel-scope][gptel's scope action]] is available in
   this menu, so the backend and model may be specified globally,
   buffer-locally or for the next request only.
-  
+
 ** TODO Models
 
 - =:capabilities=
 
-The model can be set interactively from ~gptel-menu~:  
-  
+The model can be set interactively from ~gptel-menu~:
+
 - {{{kbd(-m)}}} Model :: Set the gptel backend and model in use from
   ~gptel-menu~.  Note that the [[gptel-scope][gptel's scope action]] is available in
   this menu, so the backend and model may be specified globally,
   buffer-locally or for the next request only.
-  
-  
+
+
 ** TODO Context
 ** TODO Tools
 
 gptel can provide the LLM with client-side elisp "tools", or function
-specifications, along with the request.  A "tool" is an elisp function along
-with metadata intended to describe its purpose, arguments and return value as
-you would to a human. ("This function is used to do X.  It accepts two
-arguments, a string and a list of numbers, and returns Y.")
+specifications, along with the request.  A "tool" is an elisp function
+along with metadata intended to describe its purpose, arguments and
+return value as you would to a human:
 
-If the LLM decides to run the tool, it supplies the tool call arguments, which
-gptel uses to run the tool in your Emacs session.  The result is optionally
-returned to the LLM to complete the task.
+#+begin_quote
+"This function is used to do X.  It accepts two arguments, a string
+and a list of numbers, and returns Y."
+#+end_quote
 
-This exchange can be used to equip the LLM with capabilities or knowledge beyond
-what is available out of the box -- for instance, you can get the LLM to control
-your Emacs frame, create or modify files and directories, or look up information
-relevant to your request via web search or in a local database.
+If the LLM decides to run the tool, it supplies the tool call
+arguments, which gptel uses to run the tool in your Emacs session.
+The result is optionally returned to the LLM to complete the task.
+
+This exchange can be used to equip the LLM with capabilities or
+knowledge beyond what is available out of the box -- for instance, you
+can get the LLM to control your Emacs frame, create or modify files
+and directories, or look up information relevant to your request via
+web search or in a local database.
 
 To use tools in gptel, you need
-- a model that supports this usage.  All the flagship models support tool use,
-  as do many of the smaller open models.
-- Tool specifications that gptel understands.  gptel does not currently include
-  any tools out of the box.
-
-Tool use in gptel feature is currently experimental.
-
-#+tindex: gptel-tool
-A gptel-tool
+- a model that supports this usage.  All the flagship models support
+  tool use, as do many of the smaller open models.
+- Tool specifications that gptel understands.  gptel does not
+  currently include any tool specifications out of the box.
 
 *** Writing or obtaining tools
+
+A gptel tool is a structure specifying an Elisp function, the format
+of its arguments and accompanying documentation intended for the LLM.
+This documentation includes a description of the function and its
+arguments.
+
+#+tindex: gptel-tool
+- Type ~gptel-tool~ :: A structure containing the fields specified
+  below in calls to ~gptel-make-tool~.
+
+  #+findex: gptel-make-tool
+- Function ~gptel-make-tool~ ::
+  Arguments:
+  : (&key NAME FUNCTION DESCRIPTION ARGS
+  :       CATEGORY INCLUDE CONFIRM ASYNC)
+
+  Make a gptel tool for LLM use.  The following keyword arguments are
+  available, of which the first four are required.
+
+  =NAME=: The name of the tool, recommended to be in Javascript style
+  snake_case.
+
+  =FUNCTION=: The function itself (lambda or symbol) that runs the
+  tool.
+
+  =DESCRIPTION=: A verbose description of what the tool does, how to
+  call it and what it returns.
+
+  =ARGS=: A list of plists specifying the arguments, or nil for a
+  function that takes no arguments.  Each plist in ARGS requires the
+  following keys:
+  - argument =:name= and =:description=, as strings.
+  - argument =:type=, as a symbol.  Allowed types are those understood
+    by the JSON schema: =string=, =number=, =integer=, =boolean=,
+    =array=, object or null
+
+  The following plist keys are conditional/optional:
+  - =:optional=, boolean indicating if argument is optional
+  - =:enum= for enumerated types, whose value is a vector of strings
+    representing allowed values.  Note that =:type= is still required
+    for enums.
+  - =:items=, if the =:type= is array.  Its value must be a plist
+    including at least the item’s =:type=.
+  - =:properties=, if the type is object.  Its value must be a plist
+    that can be serialized into a valid JSON object specification by
+    ~json-serialize~.
+
+  See [[*Specifying tool arguments]] for examples of structured tool
+  arguments.
+
+  =ASYNC=: boolean indicating if the elisp function is asynchronous.
+  If =ASYNC= is t, the function should take a callback as its first
+  argument, along with the arguments specified in =ARGS=, and run the
+  callback with the tool call result when it’s ready.  The callback
+  itself is an implementation detail and must not be included in
+  =ARGS=.
+
+  The following keys are optional:
+
+  =CATEGORY=: A string indicating a category for the tool.  This is
+  used only for grouping in gptel’s UI.  Defaults to "misc".
+
+  =CONFIRM=: Whether the tool call should wait for the user to run
+  it.  If true, the user will be prompted with the proposed tool
+  call, which can be examined, accepted, deferred or canceled.
+
+  =INCLUDE=: Whether the tool results should be included as part of
+  the LLM output.  This is useful for logging and as context for
+  subsequent requests in the same buffer.  This is primarily useful
+  in chat buffers.
+
+**** Specifying tool arguments
+
+Tool arguments are specified in an Elisp format that mirrors the JSON
+schema for that object[fn:1-json-schema].  Each argument spec must be
+a plist with special keywords.  gptel supports a small subset of the
+keywords supported by the JSON schema.
+
+Argument specification is best understood by looking at some examples.
+
+Consider a function argument named =some_text= that is expected to be
+a string.  This argument can be specified as
+
+#+begin_src emacs-lisp
+(:name "some_text"
+ :description "Text to insert into a buffer"
+ :type string)
+#+end_src
+
+This is translated (roughly) to the JSON object
+
+#+begin_src js-json
+{
+    "some_text": {
+        "type": "string",
+        "description": "Text to insert at buffer end"
+    }
+}
+#+end_src
+
+In a tool definition, this appears as a member of the =:args= list.
+In this example there is only one argument:
+
+#+begin_src emacs-lisp
+(gptel-make-tool
+ :name "append_to_current_buffer"
+ :function (lambda (some_text) (end-of-buffer) (insert some_text))
+ :args '((:name "some_text" ;NOTE: This is a list of argument specs
+          :description "Text to insert into a buffer"
+          :type string)))
+#+end_src
+
+Multiple arguments are specified as a list of plists.  For example,
+
+#+begin_src emacs-lisp
+((:name "buffer"
+  :description "Name of buffer to append to"
+  :type string)
+ (:name "some_text"
+  :description "Text to insert at buffer end"
+  :type string))
+#+end_src
+
+which is translated (roughly) to the JSON object
+
+#+begin_src js-json
+{
+    "buffer": {
+        "type": "string",
+        "description": "Name of buffer to append to"
+    },
+    "some_text": {
+        "type": "string",
+        "description": "Text to insert at buffer end"
+    }
+}
+#+end_src
+
+A description of argument specification keywords recognized by gptel
+follows.  The following keywords are always required:
+
+- =:name= :: (string) The name of the argument as it appears to the
+  LLM.  Using a snake_case or CamelCase name is preferred.
+
+- =:description= :: (string) A description of the argument, intended
+  for humans and the LLM.  This can be as verbose as required, and can
+  include examples.  You can use this to guide the LLM's behavior, and
+  include hints such as when this argument might not be requried (see
+  =:optional= below).
+
+- =:type= :: (symbol) Any datatype recognized by the JSON schema:
+  =string=, =number=, =integer=, =boolean=, =array=, =object= or
+  =null=.  The compound types =array= and =object= require further
+  specification, covered below.
+
+The following keyword is required if (and only if) the type is
+=array=:
+
+- =:items= :: Its value must be a plist including at least the item's
+  type.  Examples:
+
+  #+begin_src emacs-lisp
+:items (:type string)                      ;Array of strings
+:items (:type array :items (:type number)) ;Array of array of numbers
+  #+end_src
+
+The following keys is required if (and only if) the type is =object=:
+
+- =:properties= :: A plist, each of whose keys is the name of a
+  property and value is the schema used to validate the property.
+  Example:
+
+  #+begin_src emacs-lisp
+:properties (:red   (:type number :description "red value [0.0, 1.0")
+             :blue  (:type number :description "blue value [0.0, 1.0")
+             :green (:type number :description "green value [0.0, 1.0")
+             :alpha (:type number :description "opacity [0.0, 1.0"))
+  #+end_src
+
+- =:required= :: (vector of strings) specification of which keys of
+  the object are required.  For instance, if the =:alpha=
+  key is optional in the above example:
+
+  #+begin_src emacs-lisp
+:required ["red" "blue" "green"]
+  #+end_src
+
+Here is an example of a spec for an argument named "key_colors" that
+is an array of color descriptions, where each color description is an
+object with several keys, all of which are required:
+
+#+begin_src emacs-lisp
+(:name "key_colors"
+ :description "Key colors in the image.  Limit to less than four."
+ :type array
+ :items (:type "object"
+         :properties
+         (:r (:type number :description "red value [0.0, 1.0]")
+          :g (:type number :description "green value [0.0, 1.0]")
+          :b (:type number :description "blue value [0.0, 1.0]")
+          :name (:type string
+                 :description: "Human-readable color name in snake_case, 
+e.g. \"olive_green\" or \"turquoise\""))
+         :required ["r" "g" "b" "name"]))
+#+end_src
+
+Finally, the following optional argument keywords are recognized:
+
+- =:optional= :: (boolean) Specifies whether this argument is
+  optional.  (Note that =:required= above specifies required object
+  keys, not whether the argument itself is optional.)
+
+- =:enum= :: (vector of strings) If the argument is of an enumerated
+  type, the value of this key is a vector of strings representing
+  allowed values.  Note that =:type= is still required for enums.
+
+Here is an example of an argument list including an optional enum,
+the "unit" argument:
+
+#+begin_src emacs-lisp
+((:name "location"
+  :type object
+  :properties (:lat (:type number
+                     :description "Latitude, [-90.0, 90.0]")
+               :lon (:type number
+                     :description "Longitude, [-180.0, 180.0]"))
+  :required ["lat" "lon"]
+  :description "The latitude and longitude, in degrees.
+South and West (resp) are negative.")
+ (:name "unit"
+  :type string
+  :description "The unit of temperature, either 'celsius' or 'fahrenheit'"
+  :enum ("celsius" "farenheit")
+  :optional t))
+#+end_src
+
+[fn:1-json-schema] https://json-schema.org/understanding-json-schema/reference
+
+**** Obtaining tools
 
 *** Selecting tools
 
   #+findex: gptel-get-tool
-- (~gptel-get-tool~) ::
+- Function ~gptel-get-tool~ ::
 
 Interactively:
 
   #+findex: gptel-tools
-- (~gptel-tools~) ::
+- Function ~gptel-tools~ ::
   Command to select tools and set tool-related behavior for gptel.
   Running ~gptel-tools~ interactively brings up a transient menu where
   these options may be specified.  Note that the [[gptel-scope][gptel's scope action]]
@@ -550,16 +811,263 @@ Interactively:
 
 Via elisp:
 
+** Presets
+
+#+cindex: agent
+#+cindex: preset
+If you use several LLMs, system messages and sets of tools for
+different LLM tasks, it can be tedious to set options like the
+backend, model, system message and included tools repeatedly for each
+task or in each buffer.  This is one of the main points of friction
+with using gptel interactively.[fn:2-noninteractive-option-setting]
+
+gptel allows bundles of compatible options to be to be pre-specified
+and applied together, making it feasible to switch rapidly between
+different kinds of LLM tasks.  A collection of such options is
+referred to as a "preset".
+
+Once defined, you can switch to a preset from gptel's transient menu
+(~gptel-menu~).  When a gptel preset is applied, the gptel options it
+specifies are set, and the ones it does not specify are simply left
+untouched.  So you can layer several presets on top of each other,
+with the later ones taking precedence over the ones applied earlier.
+
+Presets can be applied globally (across the Emacs session),
+buffer-locally or for the next request only.  This is controlled by
+the "Scope" option in gptel's transient menus -- see [[gptel-scope]].
+
+Depending on the task, options in a preset could be
+
+- Basic ones like selecting the LLM provider, the model and system
+  message.
+- Tools to include with requests..
+- Request parameters like the temperature, the maximum reply size and
+  whether to stream responses,
+- gptel-specific behavior like whether it should distinguish between
+  user prompts and LLM responses in the prompt
+  (~gptel-track-response~), include images and documents with the
+  prompt (~gptel-track-media~).
+
+A preset is not limited to these options.  You can specify the value of any
+variable that begins with "gptel-".
+
+To define a preset, use ~gptel-make-preset~.
+
+  #+findex: gptel-make-preset
+- Function ~gptel-make-preset~ ::
+  Arguments:  =(NAME &rest KEYS ...)=
+  : (NAME [KEY1 VALUE1] [KEY2 VALUE2] ...)
+  Register a gptel options preset with =NAME=.
+
+  A preset is a combination of gptel options intended to be applied
+  and used together.  Presets make it convenient to change multiple
+  gptel settings on the fly.
+
+  Typically a preset will include a model, backend, system message and
+  perhaps some tools, but any set of gptel options can be set this way.
+
+  =NAME= must be a symbol.  =KEYS= is a plist of =KEY= and =VALUE=
+  pairs corresponding to the options being set.  Recognized keys
+  include:
+
+  =DESCRIPTION= is a description of the preset, used when selecting a
+  preset.
+
+  =PARENTS= is a preset name (or list of preset names) to apply before
+  this one.
+
+  =BACKEND= is the ~gptel-backend~ to set, or its name (like "ChatGPT").
+
+  =MODEL= is the ~gptel-model~.
+
+  =SYSTEM= is the directive. It can be
+  - the system message (a string),
+  - a list of strings (template)
+  - or a function (dynamic system message).
+  - It can also be a symbol naming a directive in ~gptel-directives~.
+
+  =TOOLS= is a list of ~gptel-tools~ or tool names, like
+  ='("read_url" "read_buffer" ...)=
+
+  Recognized keys are not limited to the above.  Any other key, like
+  =:foo=, corresponds to the value of either =gptel-foo= (prioritized)
+  or =gptel--foo=.
+
+  - So =TOOLS= corresponds to =gptel-tools=,
+  - =CONFIRM-TOOL-CALLS= to =gptel-confirm-tool-calls=,
+  - =TEMPERATURE= to =gptel-temperature= and so on.
+
+  See gptel’s customization options for all available settings.
+
+Here are a couple of examples of defining presets:
+
+#+begin_src emacs-lisp
+(gptel-make-preset 'gpt4coding
+  :description  "A preset optimized for coding tasks" ;for your reference
+  :backend      "Claude"                    ;gptel backend or backend name
+  :model        'claude-3-7-sonnet-20250219.1
+  :system       "You are an expert coding assistant. Your role is to provide
+                 high-quality code solutions, refactorings, and explanations."
+  :tools        '("read_buffer" "modify_buffer")) ;gptel tools or tool names
+#+end_src
+
+#+begin_src emacs-lisp
+(gptel-make-preset 'editor      ;can also be a string, but symbols are preferred
+  :description  "Preset for proofreading tasks"
+  :backend      "ChatGPT"
+  :system       'proofread         ;system message looked up in gptel-directives
+  :model        'gpt-4.1-mini
+  :tools        '("read_buffer" "spell_check" "grammar_check")
+  :temperature  0.7)
+#+end_src
+
+This is a preset that sets the temperature and max tokens, and
+specifies how context (attached regions, buffers or files) and
+"reasoning" text should be handled.  Crucially, it does not set the
+model or the backend, so it is intended to be used as a "parent" of
+other more specific presets.
+
+#+begin_src emacs-lisp
+(gptel-make-preset 'misc
+  :temperature       0.2                ;sets gptel-temperature
+  :max-tokens        512                ;sets gptel-max-tokens
+  :include-reasoning nil                ;sets gptel-include-reasoning
+  :use-context       'system)           ;sets gptel-use-context
+#+end_src
+
+For programmatic use, you can use ~gptel-with-preset~ to send requests
+with presets temporarily applied.
+
+  #+findex: gptel-make-preset
+- Macro ~gptel-with-preset~ ::
+  Arguments: =(NAME &REST BODY)=
+
+  Run =BODY= with gptel preset =NAME= applied.
+
+  This macro can be used to create ~gptel-request~ command with
+  settings from a gptel preset applied.  =NAME= is the preset name, a
+  symbol.
+
+Consider the common case of needing to send an LLM query with specific
+parameters:
+
+#+begin_src emacs-lisp
+(let ((gptel-backend ...)
+      (gptel-model ...)
+      (gptel--system-message ...)
+      (gptel-tools (mapcar #'gptel-get-tool ...))
+      ...)
+  (gptel-request "Prompt" :callback ...))
+#+end_src
+
+If the required configuration is available as a preset, you can
+instead run
+
+#+begin_src emacs-lisp
+(gptel-with-preset editor               ;name of preset
+  (gptel-request "Prompt" :callback ...))
+#+end_src
+
+[fn:2-noninteractive-option-setting] This is not an issue for
+programmatic use of gptel, where you can let-bind ~gptel-backend~,
+~gptel-model~ and so on around calls to ~gptel-request~.  Presets can
+simplify this too, see ~gptel-with-preset~ above.
+
+*** Specifying presets in the prompt
+
+It is sometimes useful to be able to send a single LLM query with
+options different from the active ones.  One way to do this is to set
+the scope to =oneshot= in gptel's transient menus before changing
+options ([[gptel-scope][Scope]]) This makes it so that the previous set of options is
+restored after the request is sent.
+
+A second, possibly more convenient way is to specify a preset in the
+prompt text itself, which requires no fiddling with menus or other
+elisp.
+
+Imagine that you have the following preset defined:
+
+#+begin_src emacs-lisp
+(gptel-make-preset 'websearch
+  :description  "Haiku with basic web search capability."
+  ;; System message with instructions about searching, citations
+  :system       'searcher 
+  :backend      "Claude"
+  :model        'claude-3-5-haiku-20241022
+  :temperature  0.7
+  :tools        '("search_web" "read_url" "get_youtube_meta"))
+#+end_src
+
+This preset includes tools for searching the web, reading URLs and
+finding YouTube transcripts that the LLM can use.  Irrespective of the
+active gptel settings, you can send a query with this preset applied
+by starting your query message with =@websearch=:
+
+#+begin_quote
+@websearch Are there any 13" e-ink monitors on the market?  Create a
+table comparing them, sourcing specs and reviews from online sources.
+Also do the same for "transreflective-LCD" displays -- I'm not sure
+what exactly they're called but they're comparable to e-ink.
+#+end_quote
+
+If you use a prompt prefix, the =@preset= cookie has to be placed
+immediately after the prompt to be recognized ([[gptel-prompt-prefix-alist][prompt-prefix]]) Given
+
+#+begin_src emacs-lisp
+(setq gptel-prompt-prefix-alist
+      '((markdown-mode . "USER: ")
+        (text-mode     . "USER: ")))
+#+end_src
+
+The query prompt would look like
+
+#+begin_quote
+USER: @websearch Are there any 13" e-ink monitors...
+#+end_quote
+
+In chat buffers, a valid preset cookie is highlighted automatically
+and can be completed via ~completion-at-point~.  This is Emacs'
+familiar tab-completion in buffers, see [[info:emacs#Symbol Completion][Symbol Completion]]
+
+To enable this feature, set ~gptel-use-preset-cookie~.
+
+  #+vindex: gptel-use-preset-cookie
+- ~gptel-use-preset-cookie~ :: Boolean that enables recognizing preset
+  cookies at the start of your prompt.  If non-nil, gptel will
+  recognize presets specified as =@name-of-preset= at the start of the
+  last user message in a conversation.  If this preset exists,
+  settings from it will be applied when using =gptel-send=.  A query
+  can thus be directed anywhere, and sent with any other concomitant
+  settings, if a preset with these specifications exists.
+
+*** TODO COMMENT Agents and agentic use in gptel
+
+In contemporary parlance, an "LLM agent" (or simply "agent") is an LLM
+that can act on its own output, continuing a task autonomously until
+it determines that the task is finished.
+
+In addition to a model that is trained to behave this way, using an
+LLM as an agent requires only a suitable system message (instructions)
+and access to tools that it can call.  (For complex tasks, using these
+tools could involve making separate requests to the same or other
+LLMs.)  gptel does not currently ship with tools, but a preset
+
 * Advanced configuration
 
 ** The ~gptel-request~ API
 
-The core of gptel is the function ~gptel-request~.  It offers an easy,
-flexible and comprehensive way to interact with LLMs, and is
+The heart of gptel is the function ~gptel-request~.  It offers an
+easy, flexible and comprehensive way to interact with LLMs, and is
 responsible for state handling and for every HTTP request made by
 gptel.  All commands offered by gptel that involve sending and
 receiving prompts and replies work by calling ~gptel-request~
 internally.
+
+~gptel-request~ can be used to extend gptel, or write your own
+functionality independent of that offered by gptel.  Below is a
+schematic and the full documentation of ~gptel-request~.  You may
+prefer to learn from examples and modify them to suit your needs
+instead, in which case see [[*Extending gptel]].
 
 #+begin_example
                                        GPTEL-REQUEST
@@ -594,15 +1102,9 @@ internally.
                                           ╶──┴──╴
 #+end_example
 
-~gptel-request~ can be used to extend gptel, or write your own
-functionality independent of that offered by gptel.  Below is the full
-documentation of ~gptel-request~.  You may prefer to learn from
-examples and modify them to suit your needs instead, in which case see
-[[*Extending gptel]].
-
-- (~gptel-request~) ::
+- Function ~gptel-request~ ::
   #+findex: gptel-request
-  Arguments: 
+  Arguments:
   : (&optional PROMPT
   :  &key      CALLBACK (BUFFER (current-buffer))
   :            POSITION CONTEXT DRY-RUN (STREAM nil)
@@ -771,17 +1273,17 @@ uses a Finite State Machine (FSM) to manage the lifecycle of all LLM
 interactions.
 
   #+tindex: gptel-fsm
-- (~gptel-fsm~) ::
+- Datatype ~gptel-fsm~ ::
   Fields:
   : STATE TABLE HANDLERS INFO
-  
+
   A finite state machine object consists of the fields =STATE=,
   =TABLE=, =HANDLERS= and =INFO=.
 
 FSMs may be created by the constructor ~gptel-make-fsm~.
-  
+
   #+findex: gptel-make-fsm
-- (~gptel-make-fsm~) ::
+- Function ~gptel-make-fsm~ ::
   Arguments:
   : (&key STATE TABLE HANDLERS INFO)
   =STATE=: The current state of the machine, can be any symbol.
@@ -793,7 +1295,7 @@ FSMs may be created by the constructor ~gptel-make-fsm~.
   =HANDLERS=: Alist mapping states to state handler functions.
   Handlers are called when entering each state.  See
   ~gptel-request--handlers~ for an example
-  
+
   =INFO=: The state machine's current context.  This is a plist
   holding all the information required for the ongoing request, and
   can be used to tweak and resume a paused request.  (This should be
@@ -830,9 +1332,9 @@ Each state in this table maps to a list of conses of the form
 =(predicate . NEXT-STATE)=.
 
   #+findex: gptel--fsm-next
-- (~gptel--fsm-next~) ::
+- Function ~gptel--fsm-next~ ::
   Arguments: =(MACHINE)=
-  
+
   Determine the next state for =MACHINE=.  Run through the predicates
   for the current state in the transition table, calling each one with
   =INFO= until one succeeds.  A predicate of =t= is treated as always
@@ -849,19 +1351,24 @@ a new state.  This is an example of FSM handlers:
 Both the =WAIT= and =TOOL= states have one handler each, and other
 states do not have any handlers associated with them.
 
-The handler's job is to produce the side effects required for the LLM
-request, such as inserting responses into buffers, updating the UI,
-running tools and so on.  They also upate the FSM's =INFO= as
-necessary, capturing information for the transition-table predicates
-to use.
-  
+The state handler is the workhorse: its job is to produce the side
+effects required for the LLM request, such as inserting responses into
+buffers, updating the UI, running tools and so on.  Handlers also
+upate the FSM's =INFO= as necessary, capturing information for the
+transition-table predicates to use, and transition the FSM to the next
+state.
+
   #+findex: gptel--fsm-transition
-- (~gptel--fsm-transition~) ::
+- Function ~gptel--fsm-transition~ ::
   Arguments:
   : (MACHINE &optional NEW-STATE)
-  
+
   Transition =MACHINE= to =NEW-STATE= or its natural next state.  Run
   the =HANDLERS= corresponding to that state.
+
+Handlers can be asynchronous, in that the call to
+~gptel--fsm-transition~ can occur in a process sentinel or some other
+kind of delayed callback.
 
 A typical state sequence for a gptel request can thus look like
 
@@ -878,7 +1385,7 @@ this at any time to track what gptel is up to in that buffer.  gptel
 provides a helper function that visualizes the state of the FSM:
 
   #+findex: gptel--inspect-fsm
-- (~gptel--inspect-fsm~) ::
+- Function ~gptel--inspect-fsm~ ::
   Pop up a buffer to inspect the latest (possibly in-progress) gptel
   request in the current buffer.
 
@@ -897,7 +1404,7 @@ beyond what is possible via the provided hooks.
 
 Entirely new applications and flows may be created with a custom state
 machine, although this requires exercising some care around the
-transitions that gptel imposes during its network handling. 
+transitions that gptel imposes during its network handling.
 
 * Extending gptel
 
