@@ -823,7 +823,7 @@ only (\"oneshot\")."
          (identity ;TODO(tool): Replace with vconcat for groups separated by category
           ;; Add a category header that can be used to toggle all tools in that category
           (nconc (list " " (list (key-description (list category-key category-key))
-                                 (concat (propertize (concat (capitalize category) " tools")
+                                 (concat (propertize (concat category " tools")
                                                      'face 'transient-heading)
                                          (make-string (max (- 14 (length category)) 0) ? ))
                                  "(*)"
