@@ -89,6 +89,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
 ** Contents :toc:
   - [[#breaking-changes][Breaking changes!]]
   - [[#installation][Installation]]
+      - [[#use-package][use-package]]
       - [[#straight][Straight]]
       - [[#manual][Manual]]
       - [[#doom-emacs][Doom Emacs]]
@@ -160,6 +161,12 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
 - *Development snapshot*: Add MELPA or NonGNU-devel ELPA to your list of package sources, then install with =M-x package-install= ⏎ =gptel=.
 - *Optional:* Install =markdown-mode=.
 
+#+html: <details><summary>
+**** use-package
+#+html: </summary>
+#+begin_src emacs-lisp
+  (use-package gptel)
+#+end_src
 #+html: <details><summary>
 **** Straight
 #+html: </summary>
