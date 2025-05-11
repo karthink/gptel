@@ -418,6 +418,26 @@ which see."
                        context (if dest (concat (pth ", with response to ") dest)
                                  (concat (pth ", insert response at point")))))))))
 
+(defun gptel--format-preset-string ()
+  "Format the preset indicator display for `gptel-menu'."
+  (concat
+   (propertize "Request Parameters" 'face 'transient-heading)
+   (if (and gptel--known-presets gptel--preset)
+       (apply
+        #'format " (%s%s)"
+        (let ((mismatch (gptel--preset-mismatch-p gptel--preset)))
+          (list (propertize "@" 'face (if mismatch 'transient-key
+                                        '( :inherit transient-key
+                                           :inherit secondary-selection
+                                           :box -1 :weight bold)))
+                (propertize (format "%s" gptel--preset) 'face
+                            (if mismatch
+                                '(:inherit warning :strike-through t)
+                              '(:inherit secondary-selection :box -1))))))
+     (format " (%s%s)"
+             (propertize "@" 'face 'transient-key)
+             (propertize "preset" 'face 'transient-inactive-value)))))
+
 
 ;; * Transient classes and methods for gptel
 
@@ -495,45 +515,6 @@ Their own value is ignored")
         (propertize "|" 'face 'transient-delimiter)
         (propertize display-if-true
                     'face (if value 'transient-value 'transient-inactive-value))))))
-
-;; ;; MAYBE(presets): Extend to a general gptel--option class?
-;; (defclass gptel--preset (transient-option)
-;;   ((set-value :initarg :set-value :initform nil))
-;;   "Singleton class for displaying and setting gptel presets.")
-
-(defclass gptel--preset-variable (gptel-lisp-variable)
-  ((set-props :initarg :set-props :initform nil))
-  "Singleton class for displaying and setting gptel presets.")
-
-(cl-defmethod transient-infix-set ((obj gptel--preset-variable) value)
-  "Set both the preset variable and the gptel options in the preset."
-  ;; (funcall (oref obj set-value) value)
-  ;; (oset obj value value)
-  (funcall (oref obj set-value)         ;First set the preset variable itself
-           (oref obj variable)
-           (oset obj value value)
-           gptel--set-buffer-locally)
-  ;; Then set the options specified by the preset
-  (funcall (oref obj set-props) value))
-
-(cl-defmethod transient-format-value ((obj gptel--preset-variable))
-  (with-slots (value) obj
-    (if gptel--known-presets            ;MAYBE: Make this generic?
-        (apply #'format "(%s%s)"
-               (if value
-                   (let ((mismatch (gptel--preset-mismatch-p value)))
-                     (list (propertize "@" 'face
-                                       (if mismatch 'transient-key
-                                         '( :inherit transient-key
-                                            :inherit secondary-selection
-                                            :box -1 :weight bold)))
-                           (propertize value 'face
-                                       (if mismatch
-                                           '(:inherit warning :strike-through t)
-                                         '(:inherit secondary-selection :box -1)))))
-                 (list (propertize "@" 'face 'transient-key)
-                       (propertize "preset" 'face 'transient-inactive-value))))
-      "")))
 
 (defclass gptel--scope (gptel--switches)
   ((display-if-true :initarg :display-if-true :initform "buffer")
@@ -667,9 +648,9 @@ Also format its value in the Transient menu."
      (lambda () (interactive) (gptel--handle-tool-use gptel--fsm-last))
      :if (lambda () (and gptel--fsm-last
                     (eq (gptel-fsm-state gptel--fsm-last) 'TOOL))))]]
-  [[(gptel--infix-preset
-     :description "Request Parameters" :face 'transient-heading
-     :format "%d %v")
+  [[(gptel--preset
+     :key "@" :format "%d"
+     :description gptel--format-preset-string)
     (gptel--infix-variable-scope)
     (gptel--infix-provider)
     (gptel--infix-max-tokens)
@@ -829,6 +810,65 @@ Customize `gptel-directives' for task-specific prompts."
              'gptel--system-message "Directive" t)))
     :pad-keys t])
 
+;; ** Prefix for saving and applying presets
+
+(transient-define-prefix gptel--preset ()
+  "Apply a gptel preset, or save the current configuration as a preset.
+
+A \"preset\" is a collection of gptel settings, such as the model,
+backend, system message and enabled tools, that are applied and used
+together.  See `gptel-make-preset' for details."
+  :transient-suffix #'transient--do-return
+  [:description "Save or apply a preset collection of gptel options"
+   [:pad-keys t
+    ("C-s" "Save current settings to preset" gptel--save-preset)]]
+  [:if (lambda () gptel--known-presets)
+   :class transient-column
+   :setup-children
+   (lambda (_)
+     (transient-parse-suffixes
+      'gptel--preset
+      (cl-loop
+       for (name-sym . preset) in gptel--known-presets
+       for name = (symbol-name name-sym)
+       with unused-keys = (nconc (number-sequence ?a ?z)
+                                 (number-sequence ?0 ?9))
+       for description = (plist-get preset :description)
+       for key = (seq-find (lambda (k) (member k unused-keys))
+                           name (seq-first unused-keys))
+       do (setq unused-keys (delq key unused-keys))
+       collect
+       (list
+        (key-description (list key))
+        (concat name
+                (propertize " " 'display '(space :align-to 20))
+                (and description
+                     (propertize (concat
+                                  "(" (gptel--describe-directive
+                                       description (- (window-width) 30))
+                                  ")")
+                                 'face 'shadow)))
+        `(lambda () (interactive)
+           (gptel--set-with-scope 'gptel--preset ',name-sym
+            gptel--set-buffer-locally)
+           (gptel--apply-preset
+            ',(cons name-sym preset)
+            (lambda (sym val) (gptel--set-with-scope
+                               sym val gptel--set-buffer-locally)))
+           (message "Applied gptel preset %s"
+            (propertize ,name 'face 'transient-value))
+           (when transient--stack
+            (run-at-time 0 nil #'transient-setup))))
+       into generated
+       finally return
+       (nconc (list '(gptel--infix-variable-scope
+                      :format "%d %k %v"
+                      :description
+                      (lambda () (format "%s        %s"
+                             (propertize "Apply preset" 'face 'transient-heading)
+                             (propertize "Scope" 'face 'transient-active-prefix)))))
+              generated))))])
+
 ;; ** Prefix for selecting tools
 
 ;;;###autoload (autoload 'gptel-tools "gptel-transient" nil t)
@@ -943,51 +983,6 @@ value of `gptel-use-context', set from here."
               (cdr (assoc destination choices)))))
 
 ;; ** Infixes for model parameters
-(transient-define-infix gptel--infix-preset ()
-  "Select and apply a gptel preset.
-
-Presets are collections of gptel options intended to be applied
-together, defined via `gptel-make-preset'.  Using this command and they
-can be applied globally, buffer-locally or for the next request only."
-  :always-read t
-  ;; :argument "@"
-  ;; :class 'gptel--preset
-  :format "  %k %d (%v)"
-  :key "@"
-  :description "Preset"
-  :class 'gptel--preset-variable
-  :variable 'gptel--preset
-  :prompt "Apply preset: "
-  :set-value #'gptel--set-with-scope
-  :set-props #'(lambda (name)
-                 (when name
-                  (gptel--apply-preset
-                   (or (assoc name gptel--known-presets)
-                       (assoc (intern-soft name) gptel--known-presets))
-                   (lambda (sym val) (gptel--set-with-scope
-                                 sym val gptel--set-buffer-locally)))
-                  (message "Applied gptel preset %s"
-                   (propertize name 'face 'transient-value)))
-                 (transient-setup)
-                 name)
-  :reader
-  #'(lambda (prompt initial history)
-      (if gptel--known-presets
-          (let ((completion-extra-properties
-                 `(:annotation-function
-                   ,(lambda (choice)
-                      (when-let* ((desc
-                                   (plist-get
-                                    (cdr (or (assoc choice gptel--known-presets)
-                                          (assoc (intern-soft choice) gptel--known-presets)))
-                                    :description)))
-                       (concat (propertize " " 'display '(space :align-to 40))
-                        desc))))))
-           (completing-read
-            prompt gptel--known-presets nil t initial history))
-        (message
-         "No gptel presets defined!  Use `gptel-make-preset' to define presets.")
-        nil)))
 
 (transient-define-infix gptel--infix-variable-scope ()
   "Set gptel's model parameters and system message in this buffer or globally."
