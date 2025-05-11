@@ -1212,7 +1212,12 @@ Once loaded, you can run the =gptel-mcp-connect= and =gptel-mcp-disconnect= comm
 
 #+html: <img src="https://github.com/user-attachments/assets/2cbbf8a0-49c7-49a5-ba24-514ad7e08799" align="center" alt="Image showing MCP tool registration commands in gptel's tool selection menu.">
 
-MCP-provided tools can be used as normal with gptel.
+MCP-provided tools can be used as normal with gptel.  Here is a screencast of the process.  (The "github" MCP server is installed separately using npm.)
+
+#+html: <p align="center">
+https://github.com/user-attachments/assets/f3ea7ac0-a322-4a59-b5b2-b3f592554f8a
+#+html: </p>
+
 
 *** Rewrite, refactor or fill in a region
 
