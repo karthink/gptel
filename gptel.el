@@ -3335,6 +3335,38 @@ See gptel's customization options for all available settings."
   "Get the gptel preset spec with NAME."
   (alist-get name gptel--known-presets nil nil #'equal))
 
+(defun gptel--save-preset (name &optional description)
+  "Save gptel's current settings as a preset with NAME.
+
+NAME must be a symbol.  DESCRIPTION is added if provided.  In addition
+to registering the preset, elisp code to do the same is copied to the
+kill-ring."
+  (interactive
+   (list (intern (completing-read "Save gptel settings to (existing or new) preset: "
+                                  gptel--known-presets))
+         (read-string "Description (optional): ")))
+  (let ((preset-code
+         `(gptel-make-preset ',name
+           :description ,(when (and description
+                                (not (string-blank-p description)))
+                          description)
+           :backend ,(gptel-backend-name gptel-backend)
+           :model ',gptel-model
+           :system ,(if-let* ((directive (car-safe (rassoc gptel--system-message
+                                                    gptel-directives))))
+                         `',directive
+                      gptel--system-message)
+           :tools ,(mapcar #'gptel-tool-name gptel-tools)
+           :stream ,gptel-stream
+           :temperature ,gptel-temperature
+           :max-tokens ,gptel-max-tokens
+           :use-context ',gptel-use-context
+           :include-reasoning ,gptel-include-reasoning)))
+    (kill-new (pp-to-string preset-code))
+    (eval preset-code)
+    (message "Preset %s saved. (Lisp expression for preset saved to kill-ring)"
+             (propertize (symbol-name name) 'face 'highlight))))
+
 (defun gptel--apply-preset (preset &optional setter)
   "Apply gptel PRESET with SETTER.
 
