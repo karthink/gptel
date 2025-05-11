@@ -687,7 +687,8 @@ MSG is the meaning of symbol, used when messaging.
 If EXTERNAL is non-nil, include external sources of directives."
   (cl-loop for (type . prompt) in gptel-directives
            ;; Avoid clashes with the custom directive key
-           with unused-keys = (delete ?s (number-sequence ?a ?z))
+           with unused-keys = (delete ?s (nconc (number-sequence ?a ?z)
+                                                (number-sequence ?0 ?9)))
            with width = (window-width)
            for name = (symbol-name type)
            for key = (seq-find (lambda (k) (member k unused-keys)) name (seq-first unused-keys))
@@ -801,7 +802,8 @@ only (\"oneshot\")."
         nconc
         (cl-loop                    ;for each category, collect tools as infixes
          for (name . tool) in tools-alist
-         with tool-keys = (delete category-key (number-sequence ?a ?z))
+         with tool-keys = (delete category-key (nconc (number-sequence ?a ?z)
+                                                      (number-sequence ?0 ?9)))
          for tool-key = (seq-find (lambda (k) (member k tool-keys)) name
                                   (seq-first tool-keys))
          do (setq tool-keys (delete tool-key tool-keys))
