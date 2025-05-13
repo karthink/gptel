@@ -1626,6 +1626,34 @@ returned."
                            return (cdr it)))))
       (error "No tool matches for %S" path)))
 
+(defun gptel-delete-tool (path)
+  "Delete tool at PATH from gptel's tool registry.
+
+PATH can be specified
+- as a string representing the tool name, like \"search_db\",
+- or as a list representing a category and tool name,
+  like \\='(\"emacs\" \"read_buffer\").
+In both cases, the first matching gptel-tool is deleted.
+
+- as a string representing a category, like \"filesystem\".
+In this all gptel-tools in this category are deleted."
+  (let* ((found-tools (or (gptel-get-tool path) (user-error "No tool matches for %S" path)))
+         ;; found-tools may be a list of tools or a single tool,
+         ;; so we massage it into a list for consistency
+         (tools (if (listp found-tools) found-tools
+                  (list found-tools))))
+    ;; Remove all affected tools
+    (dolist (tool tools)
+      (let* ((name (gptel-tool-name tool))
+             (category (gptel-tool-category tool))
+             (tools-in-category (alist-get category gptel--known-tools nil nil #'equal)))
+        (map-put! gptel--known-tools category (assoc-delete-all name tools-in-category))
+        (message "Deleted tool %s from category %s" name category)))
+    ;; Clean up empty categories, i.e. categories with 0 tools remaining
+    (setq gptel--known-tools (map-filter (lambda (_category tools) (not (null tools)))
+                                         gptel--known-tools))))
+
+
 (defun gptel-make-tool (&rest slots)
   "Make a gptel tool for LLM use.
 
