@@ -577,7 +577,8 @@ Also format its value in the Transient menu."
     (gptel--infix-context-remove-all)
     (gptel--suffix-context-buffer)]
    [:pad-keys t
-    :if (lambda () (and gptel-use-tools gptel--known-tools))
+    :if (lambda () (and gptel-use-tools
+                   (or gptel--known-tools (featurep 'gptel-integrations))))
     "" (:info
         (lambda ()
           (concat
