@@ -151,8 +151,6 @@ Store response metadata in state INFO."
            (push (list :role "assistant" :content (or (car-safe msg) msg))
                  full-prompt))
           (`(tool . ,call)
-           (unless (plist-get call :id)
-             (plist-put call :id (gptel--anthropic-format-tool-id nil)))
            (push (list :role "assistant"
                        :content ""
                        :tool_calls `[(:function (:name ,(plist-get call :name)
