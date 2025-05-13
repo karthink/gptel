@@ -77,7 +77,9 @@ See also [[https://youtu.be/g1VMGhC5gRU][this youtube demo (2 minutes)]] by Armi
 - LLM responses are in Markdown or Org markup.
 - Supports multiple independent conversations and one-off ad hoc interactions.
 - Supports tool-use to equip LLMs with agentic capabilities.
+- Supports Model Context Protocol (MCP) integration using [[https://github.com/lizqwerscott/mcp.el][mcp.el]].
 - Supports multi-modal input (include images, documents).
+- Supports "reasoning" content in LLM responses.
 - Save chats as regular Markdown/Org/Text files and resume them later.
 - Edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.
 - Supports introspection, so you can see /exactly/ what will be sent.  Inspect and modify queries before sending them.
@@ -128,7 +130,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
     - [[#tool-use][Tool use]]
       - [[#defining-gptel-tools][Defining gptel tools]]
       - [[#selecting-tools][Selecting tools]]
-      - [[#tools-from-mcp-servers][Tools from MCP servers]]
+      - [[#model-context-protocol-mcp-integration][Model Context Protocol (MCP) integration]]
     - [[#rewrite-refactor-or-fill-in-a-region][Rewrite, refactor or fill in a region]]
     - [[#extra-org-mode-conveniences][Extra Org mode conveniences]]
   - [[#faq][FAQ]]
@@ -1191,7 +1193,7 @@ From here you can also require confirmation for all tool calls, and decide if to
 
 #+html: </details>
 #+html: <details><summary>
-**** Tools from MCP servers
+**** Model Context Protocol (MCP) integration
 #+html: </summary>
 
 The [[https://modelcontextprotocol.io/introduction][Model Context Protocol]] (MCP) is a protocol for providing resources and tools to LLMs, and [[https://github.com/appcypher/awesome-mcp-servers][many MCP servers exist]] that provide LLM tools for file access, database connections, API integrations etc.  The [[mcp.el]] package for Emacs can act as an MCP client and manage these tool calls for gptel.
@@ -1199,7 +1201,7 @@ The [[https://modelcontextprotocol.io/introduction][Model Context Protocol]] (MC
 To use MCP servers with gptel, you thus need three pieces:
 
 1. The [[https://github.com/lizqwerscott/mcp.el][mcp.el]] package for Emacs
-2. MCP servers configured for and running via mcp.el.  (MCP servers are typically run locally.)
+2. MCP servers configured for and running via mcp.el.
 3. gptel and access to an LLM
 
 While mcp.el [[https://github.com/lizqwerscott/mcp.el?tab=readme-ov-file#use-with-gptel][provides instructions]] for accessing MCP-provided tools from gptel, gptel includes =gptel-integrations=, a small library to make this more convenient.  This library is not automatically loaded by gptel, so if you would like to use it you have to require it:
@@ -1212,7 +1214,7 @@ Once loaded, you can run the =gptel-mcp-connect= and =gptel-mcp-disconnect= comm
 
 #+html: <img src="https://github.com/user-attachments/assets/2cbbf8a0-49c7-49a5-ba24-514ad7e08799" align="center" alt="Image showing MCP tool registration commands in gptel's tool selection menu.">
 
-MCP-provided tools can be used as normal with gptel.  Here is a screencast of the process.  (The "github" MCP server is installed separately using npm.)
+MCP-provided tools can be used as normal with gptel.  Here is a screencast of the process.  (In this example the "github" MCP server is installed separately using npm.)
 
 #+html: <p align="center">
 https://github.com/user-attachments/assets/f3ea7ac0-a322-4a59-b5b2-b3f592554f8a

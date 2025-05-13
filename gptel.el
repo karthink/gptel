@@ -50,6 +50,7 @@
 ;; - LLM responses are in Markdown or Org markup.
 ;; - Supports conversations and multiple independent sessions.
 ;; - Supports tool-use to equip LLMs with agentic capabilities.
+;; - Supports Model Context Protocol (MCP) integration using the mcp.el package.
 ;; - Supports multi-modal models (send images, documents).
 ;; - Supports "reasoning" content in LLM responses.
 ;; - Save chats as regular Markdown/Org/Text files and resume them later.
