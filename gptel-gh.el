@@ -41,7 +41,7 @@
      :cutoff-date "2023-10")
     (gpt-4.1
      :description "Flagship model for complex tasks"
-     :capabilities (tool-use json url)
+     :capabilities (media tool-use json url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 1024
      :input-cost 2.0
