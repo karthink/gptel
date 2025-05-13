@@ -2127,7 +2127,7 @@ Run post-response hooks."
          (lambda (tool-call)
            (letrec ((args (plist-get tool-call :args))
                     (name (plist-get tool-call :name))
-                    (arg-values)
+                    (arg-values nil)
                     (tool-spec
                      (cl-find-if
                       (lambda (ts) (equal (gptel-tool-name ts) name))
