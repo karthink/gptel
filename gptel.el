@@ -1594,7 +1594,8 @@ feed the LLM the results.  You can add tools via
 
 (defun gptel--make-tool (&rest spec)
   "Construct a gptel-tool according to SPEC."
-  (apply #'gptel--make-tool-internal (gptel--preprocess-tool-args spec)))
+  (gptel--preprocess-tool-args (plist-get spec :args))
+  (apply #'gptel--make-tool-internal spec))
 
 (defvar gptel--known-tools nil
   "Alist of gptel tools arranged by category.
