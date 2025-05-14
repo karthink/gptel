@@ -441,9 +441,9 @@ PROC-INFO is a plist with contextual information."
           (cond
            ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
            ((member http-status '("200" "100"))
-            (list (and-let* ((resp ;; (funcall parser nil response proc-info)
-                              (gptel--parse-response (plist-get proc-info :backend)
-                                                     response proc-info)))
+            (list (and-let* ((resp (gptel--parse-response
+                                    (plist-get proc-info :backend) response proc-info))
+                             ((not (string-blank-p resp))))
                     (string-trim resp))
                   http-status http-msg))
            ((plist-get response :error)

@@ -50,6 +50,7 @@
 ;; - LLM responses are in Markdown or Org markup.
 ;; - Supports conversations and multiple independent sessions.
 ;; - Supports tool-use to equip LLMs with agentic capabilities.
+;; - Supports Model Context Protocol (MCP) integration using the mcp.el package.
 ;; - Supports multi-modal models (send images, documents).
 ;; - Supports "reasoning" content in LLM responses.
 ;; - Save chats as regular Markdown/Org/Text files and resume them later.
@@ -136,6 +137,21 @@
 ;; prefix arg), as well as examine or modify context.
 ;;
 ;; When context is available, gptel will include it with each LLM query.
+;;
+;; LLM Tool use:
+;;
+;; gptel supports "tool calling" behavior, where LLMs can specify arguments with
+;; which to call provided "tools" (elisp functions).  The results of running the
+;; tools are fed back to the LLM, giving it capabilities and knowledge beyond
+;; what is available out of the box.  For example, tools can perform web
+;; searches or API lookups, modify files and directories, and so on.
+;;
+;; Tools can be specified via `gptel-make-tool', or obtained from other
+;; repositories, or from Model Context Protocol (MCP) servers using the mcp.el
+;; package.  See the README for details.
+;;
+;; Tools can be included with LLM queries using gptel's menu, or from
+;; `gptel-tools'.
 ;;
 ;; Rewrite interface
 ;;
@@ -954,15 +970,15 @@ Note: This will move the cursor."
     (dotimes (_ (abs arg))
       (funcall search 'gptel 'response t)
       (if (> arg 0)
-          (when (looking-at (concat "\n\\{1,2\\}"
-                                    (regexp-quote
-                                     (gptel-prompt-prefix-string))
-                                    "?"))
+          (when-let* ((prefix (gptel-prompt-prefix-string))
+                      ((not (string-empty-p prefix)))
+                      ((looking-at (concat "\n\\{1,2\\}"
+                                           (regexp-quote prefix) "?"))))
             (goto-char (match-end 0)))
-        (when (looking-back (concat (regexp-quote
-                                     (gptel-response-prefix-string))
-                                    "?")
-                            (point-min))
+        (when-let* ((prefix (gptel-response-prefix-string))
+                    ((not (string-empty-p prefix)))
+                    ((looking-back (concat (regexp-quote prefix) "?")
+                                   (point-min))))
           (goto-char (match-beginning 0)))))))
 
 (defmacro gptel--at-word-end (&rest body)
@@ -995,12 +1011,14 @@ Compatibility macro for Emacs 27.1."
       `(generate-new-buffer ,buf)
     `(generate-new-buffer ,buf t)))
 
-(defun gptel-prompt-prefix-string ()
+(defsubst gptel-prompt-prefix-string ()
   "Prefix before user prompts in `gptel-mode'."
+  (declare (side-effect-free t))
   (or (alist-get major-mode gptel-prompt-prefix-alist) ""))
 
-(defun gptel-response-prefix-string ()
+(defsubst gptel-response-prefix-string ()
   "Prefix before LLM responses in `gptel-mode'."
+  (declare (side-effect-free t))
   (or (alist-get major-mode gptel-response-prefix-alist) ""))
 
 (defsubst gptel--trim-prefixes (s)
@@ -1576,7 +1594,8 @@ feed the LLM the results.  You can add tools via
 
 (defun gptel--make-tool (&rest spec)
   "Construct a gptel-tool according to SPEC."
-  (apply #'gptel--make-tool-internal (gptel--preprocess-tool-args spec)))
+  (gptel--preprocess-tool-args (plist-get spec :args))
+  (apply #'gptel--make-tool-internal spec))
 
 (defvar gptel--known-tools nil
   "Alist of gptel tools arranged by category.
@@ -1622,7 +1641,7 @@ returned."
                   (cl-loop for (_ . tools) in gptel--known-tools
                            if (assoc path tools)
                            return (cdr it)))))
-      (user-error "No tool matches for %S" path)))
+      (error "No tool matches for %S" path)))
 
 (defun gptel-make-tool (&rest slots)
   "Make a gptel tool for LLM use.
@@ -1979,7 +1998,8 @@ buffer."
   ;; a second network request: gptel tests for the presence of these flags to
   ;; handle state transitions.  (NOTE: Don't add :token to this.)
   (let ((info (gptel-fsm-info fsm)))
-    (dolist (key '(:tool-success :tool-use :error :http-status :reasoning))
+    (dolist (key '(:tool-success :tool-use :error
+                   :http-status :reasoning :reasoning-block))
       (when (plist-get info key)
         (plist-put info key nil))))
   (funcall
@@ -2108,7 +2128,7 @@ Run post-response hooks."
          (lambda (tool-call)
            (letrec ((args (plist-get tool-call :args))
                     (name (plist-get tool-call :name))
-                    (arg-values)
+                    (arg-values nil)
                     (tool-spec
                      (cl-find-if
                       (lambda (ts) (equal (gptel-tool-name ts) name))
@@ -2170,6 +2190,7 @@ Run post-response hooks."
 (defun gptel--tool-result-p (info)
   (and (plist-get info :tools) (plist-get info :tool-success)))
 
+;; TODO(prompt-list): Document new prompt input format to `gptel-request'.
 
 ;;; Send queries, handle responses
 (cl-defun gptel-request
@@ -2865,7 +2886,8 @@ See `gptel-curl--get-response' for its contents.")
        ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
        ((or (memq url-http-response-status '(200 100))
             (string-match-p "\\(?:1\\|2\\)00 OK" http-msg))
-        (list (and-let* ((resp (gptel--parse-response backend response proc-info)))
+        (list (and-let* ((resp (gptel--parse-response backend response proc-info))
+                         ((not (string-blank-p resp))))
                 (string-trim resp))
               http-status http-msg))
        ((plist-get response :error)

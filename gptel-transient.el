@@ -577,7 +577,8 @@ Also format its value in the Transient menu."
     (gptel--infix-context-remove-all)
     (gptel--suffix-context-buffer)]
    [:pad-keys t
-    :if (lambda () (and gptel-use-tools gptel--known-tools))
+    :if (lambda () (and gptel-use-tools
+                   (or gptel--known-tools (featurep 'gptel-integrations))))
     "" (:info
         (lambda ()
           (concat
@@ -687,7 +688,8 @@ MSG is the meaning of symbol, used when messaging.
 If EXTERNAL is non-nil, include external sources of directives."
   (cl-loop for (type . prompt) in gptel-directives
            ;; Avoid clashes with the custom directive key
-           with unused-keys = (delete ?s (number-sequence ?a ?z))
+           with unused-keys = (delete ?s (nconc (number-sequence ?a ?z)
+                                                (number-sequence ?0 ?9)))
            with width = (window-width)
            for name = (symbol-name type)
            for key = (seq-find (lambda (k) (member k unused-keys)) name (seq-first unused-keys))
@@ -755,8 +757,9 @@ Customize `gptel-directives' for task-specific prompts."
 (defun gptel--toggle-all-tools ()
   "Toggle the selection state of all tools in the transient menu.
 
-If any tool is currently selected, deselect all tools.
-If no tools are selected, select all tools."
+If no or some tools are selected, select all tools.
+If all tools are selected, deselect all tools.
+"
   (interactive)
   (let ((all-selected t)
          (has-tools nil))
@@ -804,7 +807,7 @@ only (\"oneshot\")."
                 (cl-delete-if-not #'consp args))
         gptel--set-buffer-locally))
      :transient transient--do-return)
-    ("a" "Toggle all tools" gptel--toggle-all-tools
+    ("*" "Toggle all tools" gptel--toggle-all-tools
       :transient t)
 
     ("q" "Cancel" transient-quit-one)]]
@@ -816,14 +819,15 @@ only (\"oneshot\")."
       (cdr
        (cl-loop          ;loop through gptel--known tools and collect categories
         for (category . tools-alist) in gptel--known-tools
-        with unused-keys = (delete ?q (number-sequence ?b ?z))
+        with unused-keys = (delete ?q (number-sequence ?a ?z))
         for category-key = (seq-find (lambda (k) (member k unused-keys)) category
                                      (seq-first unused-keys))
         do (setq unused-keys (delete category-key unused-keys))
         nconc
         (cl-loop                    ;for each category, collect tools as infixes
          for (name . tool) in tools-alist
-         with tool-keys = (delete category-key (number-sequence ?b ?z))
+         with tool-keys = (delete category-key (nconc (number-sequence ?a ?z)
+                                                      (number-sequence ?0 ?9)))
          for tool-key = (seq-find (lambda (k) (member k tool-keys)) name
                                   (seq-first tool-keys))
          do (setq tool-keys (delete tool-key tool-keys))
@@ -845,7 +849,7 @@ only (\"oneshot\")."
          (identity ;TODO(tool): Replace with vconcat for groups separated by category
           ;; Add a category header that can be used to toggle all tools in that category
           (nconc (list " " (list (key-description (list category-key category-key))
-                                 (concat (propertize (concat (capitalize category) " tools")
+                                 (concat (propertize (concat category " tools")
                                                      'face 'transient-heading)
                                          (make-string (max (- 14 (length category)) 0) ? ))
                                  "(*)"
