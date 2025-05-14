@@ -1220,6 +1220,8 @@ MCP-provided tools can be used as normal with gptel.  Here is a screencast of th
 https://github.com/user-attachments/assets/f3ea7ac0-a322-4a59-b5b2-b3f592554f8a
 #+html: </p>
 
+#+html: </details>
+
 
 *** Rewrite, refactor or fill in a region
 
