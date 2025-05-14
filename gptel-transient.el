@@ -435,14 +435,6 @@ which see."
                nil t)
               #'string-equal)
              nconc (alist-get (string-trim-right selection) candidate-tools nil nil #'string-equal))))
-
-(defun gptel--tools-used-summary ()
-  (concat
-   "Tools" (and gptel-tools
-                (concat " (" (propertize (format "%d selected"
-                                                 (length gptel-tools))
-                                         'face 'warning)
-                        ")"))))
 
 ;; * Transient classes and methods for gptel
 
@@ -794,17 +786,68 @@ only (\"oneshot\")."
   :refresh-suffixes t
   [:description
    "Provide the LLM with tools to run tasks for you"
+   [:class
+    transient-column
+    :setup-children
+    (lambda (_)
+      (transient-parse-suffixes 'gptel-tools
+                                (append
+                                 `("" (:info ,(concat
+                                               "Tools used: ("
+                                               (propertize (format "%d selected"
+                                                                   (length gptel-tools))
+                                                           'face 'default)
+                                               (and gptel--tools-added
+                                                    (propertize (format ", %d being added"
+                                                                        (length gptel--tools-added))
+                                                                'face 'warning))
+                                               (and gptel--tools-removed
+                                                    (propertize (format ", %d being removed"
+                                                                        (length gptel--tools-removed))
+                                                                'face 'error))
+                                               ")")
+                                             :format "%d" :face transient-heading))
+                                 (cl-loop for (cat . tools-alist) in gptel--known-tools
+                                          for filtered-tools-alist = (cl-loop for (tool_name . tool) in tools-alist
+                                                                              if (memql tool gptel--tools-added)
+                                                                              collect tool_name into green
+                                                                              else if (and (memql tool gptel--tools-removed)
+                                                                                           (memql tool gptel-tools))
+                                                                              collect tool_name into red
+                                                                              else if (memql tool gptel-tools)
+                                                                              collect tool_name into white
+                                                                              finally return (list white green red))
+                                          if (cl-notevery #'null filtered-tools-alist)
+                                          collect
+                                          (list :info
+                                                (let ((str-list))
+                                                  (when-let (values (car filtered-tools-alist))
+                                                    (push (string-join values ",") str-list))
+                                                  (when-let (values (cadr filtered-tools-alist))
+                                                    (push (string-join (mapcar
+                                                                        (lambda (val)
+                                                                          (propertize val 'face 'warning))
+                                                                        values)
+                                                                       ",")
+                                                          str-list))
+                                                  (when-let (values (caddr filtered-tools-alist))
+                                                    (push (string-join (mapcar
+                                                                        (lambda (val)
+                                                                          (propertize val 'face 'error))
+                                                                        values)
+                                                                       ",")
+                                                          str-list))
+                                                  (concat cat " (" (string-join (reverse str-list) ", ") ")")))))))
+    :pad-keys t]]
+  [
    ["Update tools used"
     (gptel--infix-set-tools)
     (gptel--infix-remove-tools
-     :if (lambda () (or (length> gptel--tools-added 0)
-                        (length> gptel-tools 0))))
+     :if (lambda () (or gptel--tools-added gptel-tools)))
     (gptel--infix-clear-tools-changes
-     :if (lambda () (or (length> gptel--tools-added 0)
-                        (length> gptel--tools-removed 0))))
+     :if (lambda () (or gptel--tools-added gptel--tools-removed)))
     (gptel--infix-remove-all-tools
-     :if (lambda () (or (length> gptel--tools-added 0)
-                        (length> gptel-tools 0))))]]
+     :if (lambda () (or gptel--tools-added gptel-tools)))]]
   [[""
     (gptel--infix-variable-scope)
     (gptel--infix-use-tools)
@@ -823,7 +866,12 @@ only (\"oneshot\")."
        (setq gptel--tools-added nil
              gptel--tools-removed nil))
      :transient transient--do-return)
-    ("q" "Cancel" transient-quit-one)]])
+    ("q" "Cancel"
+     (lambda (args)
+       (interactive (list ""))
+       (setq gptel--tools-added nil
+             gptel--tools-removed nil))
+     :transient nil)]])
 
 
 ;; * Transient Infixes
