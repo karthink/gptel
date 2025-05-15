@@ -713,9 +713,9 @@ cleaning up after."
                        (cond      ; At bob, underscore/asterisk followed by word
                         ((or (and (bobp) (looking-at "\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
                              (looking-at ; word followed by underscore/asterisk
-                              "[^[:space:][:punct:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
+                              "[^[:space:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:]]\\|$\\)")
                              (looking-at ; underscore/asterisk followed by word
-                              "\\(?:[[:space:][:punct:]]\\)\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
+                              "\\(?:[[:space:]]\\)\\(?:_\\|\\*\\)\\([^[:space:]]\\|$\\)"))
                          ;; Emphasis, replace with slashes
                          (forward-char (if (bobp) 1 2)) (delete-char -1) (insert "/"))
                         ((or (and (bobp) (looking-at "\\*[[:space:]]"))
