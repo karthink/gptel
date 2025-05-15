@@ -260,7 +260,8 @@ Mutate state INFO with response metadata."
     ;; OpenAI returns either non-blank text content or a tool call, not both.
     ;; However OpenAI-compatible APIs like llama.cpp can include both (#819), so
     ;; we check for both tool calls and responses independently.
-    (when-let* ((tool-calls (plist-get message :tool_calls)))
+    (when-let* ((tool-calls (plist-get message :tool_calls))
+                ((not (eq tool-calls :null))))
       (gptel--inject-prompt        ; First add the tool call to the prompts list
        (plist-get info :backend) (plist-get info :data) message)
       (cl-loop             ;Then capture the tool call data for running the tool
