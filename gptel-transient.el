@@ -571,6 +571,7 @@ Also format its value in the Transient menu."
    [:pad-keys t ""
     (:info #'gptel--describe-infix-context
      :face transient-heading :format "%d")
+    (gptel--infix-context-add-current-kill)
     (gptel--infix-context-add-region)
     (gptel--infix-context-add-buffer)
     (gptel--infix-context-add-file)
@@ -1009,6 +1010,16 @@ supports.  See `gptel-track-media' for more information."
 
 (declare-function gptel-context--at-point "gptel-context")
 (declare-function gptel-add "gptel-context")
+
+(transient-define-suffix gptel--infix-context-add-current-kill (&optional arg)
+  "Add current kill to gptel's context."
+  :transient 'transient--do-stay
+  :key "C-y"
+  :description
+  "Yank to context"
+  (interactive "P")
+  (gptel-context-add-current-kill arg)
+  (transient-setup))
 
 (transient-define-suffix gptel--infix-context-add-region ()
   "Add current region to gptel's context."
