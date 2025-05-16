@@ -33,7 +33,8 @@
 
 (cl-defstruct (gptel-bedrock (:constructor gptel--make-bedrock)
                              (:copier nil)
-                             (:include gptel-backend)))
+                             (:include gptel-backend))
+	      model-region)
 
 (defconst gptel-bedrock--prompt-type
   ;; For documentation purposes only -- this describes the type of prompt objects that get passed
@@ -481,6 +482,41 @@ conversation."
                       :content [(:text ,(plist-get tool-call :result))])))
      tool-use-requests))))
 
+(defvar gptel-bedrock--aws-profile-cache nil
+  "Cache for AWS profile credentials in the form of (PROFILE . CREDS).")
+
+(defmacro gptel-bedrock--alist-get! (key alist &optional default force-updatep testfn)
+  (let ((key-sym (gensym "key")))
+    (gv-letplace (getter setter) alist
+      `(let ((,key-sym ,key))
+	 (or (and (not ,force-updatep) (cdr (assoc ,key-sym ,getter ,@(if testfn `(,testfn)))))
+	     ,@(when default
+		 `((let ((new-val ,default))
+		     ,(funcall setter `(cons (cons ,key-sym new-val) ,getter))
+		     new-val))))))))
+
+(defun gptel-bedrock--fetch-aws-profile-credentials (profile &optional clear-cachep)
+  "Fetch & cache AWS credentials for PROFILE using aws-cli."
+  (let* ((creds-json
+	   (gptel-bedrock--alist-get! profile gptel-bedrock--aws-profile-cache
+	      (with-temp-buffer
+		  (unless (zerop (call-process "aws" nil t nil "configure" "export-credentials"
+					       (format "--profile=%s" profile)))
+		    (user-error "Failed to get AWS credentials from profile"))
+		(json-parse-string (buffer-string)))
+	      clear-cachep #'string=))
+	 (expiration (if-let (exp (gethash "Expiration" creds-json))
+			     (date-to-time exp))))
+    (cond
+      ((time-less-p (current-time) expiration)
+       (let ((access-key (gethash "AccessKeyId" creds-json))
+	     (secret-key (gethash "SecretAccessKey" creds-json))
+	     (session-token (gethash "SessionToken" creds-json)))
+	 (cl-values access-key secret-key session-token)))
+      ((not clear-cachep)
+       (gptel-bedrock--fetch-aws-profile-credentials profile t))
+      (t (user-error "AWS credentials expired for profile: %s" profile)))))
+
 (defun gptel-bedrock--get-credentials ()
   "Return the AWS credentials to use for the request.
 
@@ -491,12 +527,12 @@ AWS_SESSION_TOKEN).
 Convenient to use with `cl-multiple-value-bind'"
   (let ((key-id (getenv "AWS_ACCESS_KEY_ID"))
         (secret-key (getenv "AWS_SECRET_ACCESS_KEY"))
-        (token (getenv "AWS_SESSION_TOKEN")))
+        (token (getenv "AWS_SESSION_TOKEN"))
+	(profile (getenv "AWS_PROFILE")))
     (cond
-     ((and key-id secret-key token) (cl-values key-id secret-key token))
-     ((and key-id secret-key) (cl-values key-id secret-key))
-     ;; TODO: Add support for more credential sources
-     (t (user-error "Missing AWS credentials; currently only environment variables are supported")))))
+      ((and key-id secret-key) (cl-values key-id secret-key token))
+      ((and profile) (gptel-bedrock--fetch-aws-profile-credentials profile))
+      (t (user-error "Missing AWS credentials; currently only environment variables are supported")))))
 
 (defvar gptel-bedrock--model-ids
   ;; https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
@@ -531,10 +567,17 @@ IDs can be added or replaced by calling
     (cl-remove-if-not (lambda (model) (memq (car model) known-ids)) gptel--anthropic-models))
   "List of available AWS Bedrock models and associated properties.")
 
-(defun gptel-bedrock--get-model-id (model)
-  "Return the Bedrock model ID for MODEL."
-  (or (alist-get model gptel-bedrock--model-ids nil nil #'eq)
-      (error "Unknown Bedrock model: %s" model)))
+(defun gptel-bedrock--get-model-id (model &optional region)
+  "Return the Bedrock model ID for MODEL.
+
+REGION is one of apac, eu or us."
+  (concat
+   (when region
+     (or (member region '(apac eu us))
+	 (error "Unknown Bedrock region %s" region))
+     (concat (symbol-name region) "."))
+   (or (alist-get model gptel-bedrock--model-ids nil nil #'eq)
+       (error "Unknown Bedrock model: %s" model))))
 
 (defun gptel-bedrock--curl-args (region)
   "Generate the curl arguments to get a bedrock request signed for use in REGION."
@@ -553,6 +596,7 @@ IDs can be added or replaced by calling
     (name &key
           region
           (models gptel--bedrock-models)
+	  (model-region nil)
           (stream nil)
 	  curl-args
           (protocol "https"))
@@ -562,6 +606,7 @@ Keyword arguments:
 
 REGION - AWS region name (e.g. \"us-east-1\")
 MODELS - The list of models supported by this backend
+MODEL-REGION - one of apac, eu, us or nil
 STREAM - Whether to use streaming responses or not."
   (declare (indent 1))
   (let ((host (format "bedrock-runtime.%s.amazonaws.com" region)))
@@ -571,6 +616,7 @@ STREAM - Whether to use streaming responses or not."
            :host host
            :header nil           ; x-amz-security-token is set in curl-args if needed
            :models (gptel--process-models models)
+	   :model-region model-region
            :protocol protocol
            :endpoint "" ; Url is dynamically constructed based on other args
            :stream stream
@@ -579,7 +625,7 @@ STREAM - Whether to use streaming responses or not."
            :url
            (lambda ()
              (concat protocol "://" host
-                     "/model/" (gptel-bedrock--get-model-id gptel-model)
+                     "/model/" (gptel-bedrock--get-model-id gptel-model model-region)
                      "/" (if stream "converse-stream" "converse")))
            ))))
 
