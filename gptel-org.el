@@ -578,7 +578,7 @@ elements."
             (save-excursion
               (when (and (re-search-forward (regexp-quote (match-string 0))
                                             (line-end-position) t)
-                         (looking-at "[[:space]]\\|\s")
+                         (looking-at "[[:space:][:punct:]]\\|\s")
                          (not (looking-back "\\(?:[[:space]]\\|\s\\)\\(?:_\\|\\*\\)"
                                             (max (- (point) 2) (point-min)))))
                 (delete-char -1) (insert "/") t))
@@ -710,12 +710,14 @@ cleaning up after."
                    (save-match-data
                      (save-excursion
                        (ignore-errors (backward-char 2))
-                       (cond      ; At bob, underscore/asterisk followed by word
-                        ((or (and (bobp) (looking-at "\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
-                             (looking-at ; word followed by underscore/asterisk
-                              "[^[:space:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:]]\\|$\\)")
-                             (looking-at ; underscore/asterisk followed by word
-                              "\\(?:[[:space:]]\\)\\(?:_\\|\\*\\)\\([^[:space:]]\\|$\\)"))
+                       (cond
+                        ((and     ; At bob, underscore/asterisk followed by word
+                          (or (and (bobp) (looking-at "\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
+                              (looking-at ; word followed by underscore/asterisk
+                               "[^[:space:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
+                              (looking-at ; underscore/asterisk followed by word
+                               "\\(?:[[:space:]]\\)\\(?:_\\|\\*\\)\\([^[:space:]]\\|$\\)"))
+                          (not (looking-at "[[:punct:]]\\(?:_\\|\\*\\)[[:punct:]]")))
                          ;; Emphasis, replace with slashes
                          (forward-char (if (bobp) 1 2)) (delete-char -1) (insert "/"))
                         ((or (and (bobp) (looking-at "\\*[[:space:]]"))
