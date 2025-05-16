@@ -859,7 +859,10 @@ Each entry is of the form
 or
  (\"path/to/file\").")
 
-(defvar gptel--request-alist nil "Alist of active gptel requests.")
+(defvar gptel--request-alist nil
+  "Alist of active gptel requests.
+Each entry has the form (PROCESS . (FSM ABORT-CLOSURE))
+If the ABORT-CLOSURE is called, it must abort the PROCESS.")
 
 
 ;;; Utility functions
@@ -1806,14 +1809,15 @@ OpenAI-compatible and Ollama message formats."
 ;;; State machine for driving requests
 
 (defvar gptel-request--transitions
-  `((INIT . ((t                       . WAIT)))
-    (WAIT . ((t                       . TYPE)))
-    (TYPE . ((,#'gptel--error-p       . ERRS)
-             (,#'gptel--tool-use-p    . TOOL)
-             (t                       . DONE)))
-    (TOOL . ((,#'gptel--error-p       . ERRS)
-             (,#'gptel--tool-result-p . WAIT)
-             (t                       . DONE))))
+  `((INIT    . ((t                       . AUGMENT)))
+    (AUGMENT . ((t                       . WAIT)))
+    (WAIT    . ((t                       . TYPE)))
+    (TYPE    . ((,#'gptel--error-p       . ERRS)
+                (,#'gptel--tool-use-p    . TOOL)
+                (t                       . DONE)))
+    (TOOL    . ((,#'gptel--error-p       . ERRS)
+                (,#'gptel--tool-result-p . WAIT)
+                (t                       . DONE))))
   "Alist specifying gptel's default state transition table for requests.
 
 Each entry is a list whose car is a request state (any symbol)
@@ -1825,8 +1829,9 @@ machine's INFO, see `gptel-fsm'.  A predicate of `t' is
 considered a success and acts as a default.")
 
 (defvar gptel-request--handlers
-  `((WAIT ,#'gptel--handle-wait)
-    (TOOL ,#'gptel--handle-tool-use))
+  `((AUGMENT ,#'gptel--handle-augment)
+    (WAIT    ,#'gptel--handle-wait)
+    (TOOL    ,#'gptel--handle-tool-use))
   "Alist specifying handlers for gptel's default state transitions.
 
 Each entry is a list whose car is a request state (a symbol) and
@@ -1845,11 +1850,12 @@ Handlers can be asynchronous, in which case the transition call
 should typically be placed in its callback.")
 
 (defvar gptel-send--handlers
-  `((WAIT ,#'gptel--handle-wait)
-    (TYPE ,#'gptel--handle-pre-insert)
-    (ERRS ,#'gptel--handle-error ,#'gptel--fsm-last)
-    (TOOL ,#'gptel--handle-tool-use)
-    (DONE ,#'gptel--handle-post-insert ,#'gptel--fsm-last))
+  `((AUGMENT ,#'gptel--handle-augment)
+    (WAIT    ,#'gptel--handle-wait)
+    (TYPE    ,#'gptel--handle-pre-insert)
+    (ERRS    ,#'gptel--handle-error ,#'gptel--fsm-last)
+    (TOOL    ,#'gptel--handle-tool-use)
+    (DONE    ,#'gptel--handle-post-insert ,#'gptel--fsm-last))
   "Alist specifying handlers for `gptel-send' state transitions.
 
 See `gptel-request--handlers' for details.")
@@ -1929,7 +1935,7 @@ buffer."
   (unless fsm
     (setq fsm (or (cdr-safe (cl-find-if
                              (lambda (proc-list)
-                               (eq (thread-first (cdr proc-list)
+                               (eq (thread-first (cadr proc-list)
                                                  (gptel-fsm-info)
                                                  (plist-get :buffer))
                                    (current-buffer)))
@@ -2010,6 +2016,97 @@ buffer."
   (run-hooks 'gptel-post-request-hook)
   (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
     (gptel--update-status " Waiting..." 'warning)))
+
+(defcustom gptel-augment-pre-modify-hook nil
+  "Hook run before augmentally extending the context of a gptel request.
+
+This runs before any request is submitted."
+  :type 'hook)
+
+(defcustom gptel-augment-post-modify-hook nil
+  "Hook run after augmentally extending the context of a gptel request.
+
+This runs (possibly) before any request is submitted."
+  :type 'hook)
+
+(defcustom gptel-augment-handler-functions nil
+  "List of handlers used to augment a query before sending it.
+
+Each handler function receives a `callback' and the current
+`fsm'.  When completed, it must call that `callback' with the
+final version of that `fsm' for the next stage of the
+augmentation pipeline.
+
+Note that the `info' of this `fsm' is special in that it is the
+raw, unprocessed input, before the `:data' has been constructed
+by the backends. The `:data' in this version of the info is a
+pre-construction set of arguments, all of which may be examined
+and/or modified by the augment handler in order to influence
+construction of the final request data. This pre-construction set
+has the following elements:
+
+  (list :args t
+        :full-prompt full-prompt
+        :use-context use-context
+        :system-message system-message
+        :collection collection
+        :stream stream
+        :callback callback
+        :context context
+        :in-place in-place
+        :gptel-include-reasoning gptel-include-reasoning
+        :gptel-use-tools gptel-use-tools)
+
+Note that while this set of handlers can certainly be set with a
+global value to be applied to all queries in all buffers, it
+meant to be set locally for a specific buffer, or chat topic, or
+only the context of using a certain agent."
+  :type 'hook)
+
+(defmacro gptel-sync-fn (fn)
+  "Turn a synchronous function into a suitable augment handler.
+
+This takes any function from FSM -> FSM, and returns a function
+that takes a callback and an FSM, and once it finishes by
+returning the next fsm, calls the callback on that value.
+
+Thus, you can take a normal, synchronous augmentation function
+and add it to `gptel-augment-handler-functions' using the
+following code:
+
+  (add-hook 'gptel-augment-handler-functions
+            (gptel-sync-fn #'my-synchronous-function))"
+  `(lambda (callback fsm)
+     (funcall callback (funcall fn fsm))))
+
+(defun gptel--finish-augmentation (fsm)
+  "The last augmentation to be called; transitions the FSM."
+  (setf (gptel-fsm-info fsm)
+        (gptel--realize-info (gptel-fsm-info fsm)))
+  (gptel--fsm-transition fsm)
+  (run-hooks 'gptel-augment-post-modify-hook))
+
+(defun gptel--augment-info (fsm fns)
+  "Augment the request contained in state machine FSM's info.
+
+Each function receives a CALLBACK and an INFO, and must call the
+callabck with their augemented version of the INFO (or the
+original INFO) once completed. This permits augmentations to be
+asynchronous.
+
+Returns the transformed info at the end."
+  (if (null fns)
+      (gptel--finish-augmentation fsm)
+    (funcall (car fns)
+             #'(lambda (fsm) (gptel--augment-info fsm (cdr fns)))
+             fsm)))
+
+(defun gptel--handle-augment (fsm)
+  "Augment the request contained in state machine FSM's info."
+  (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
+    (gptel--update-status " Augmenting..." 'warning))
+  (run-hooks 'gptel-augment-pre-modify-hook)
+  (gptel--augment-info fsm gptel-augment-handler-functions))
 
 (defun gptel--handle-pre-insert (fsm)
   "Tasks before inserting the LLM response for state FSM.
@@ -2353,13 +2450,8 @@ be used to rerun or continue the request at a later time."
   (gptel--sanitize-model)
   (let* ((directive (gptel--parse-directive system))
          ;; DIRECTIVE contains both the system message and the template prompts
-         (gptel--system-message
-          ;; Add context chunks to system message if required
-          (unless (gptel--model-capable-p 'nosystem)
-            (if (and gptel-context--alist
-                     (eq gptel-use-context 'system))
-                (gptel-context--wrap (car directive))
-              (car directive))))
+         (system-message (car directive))
+         (collection (gptel-context--collect))
          ;; TODO(tool) Limit tool use to capable models after documenting :capabilities
          ;; (gptel-use-tools (and (gptel--model-capable-p 'tool-use) gptel-use-tools))
          (stream (and stream gptel-use-curl
@@ -2400,23 +2492,57 @@ be used to rerun or continue the request at a later time."
                  gptel-backend (and gptel--num-messages-to-send
                                     (* 2 gptel--num-messages-to-send))))))
             ((consp prompt) (gptel--parse-list gptel-backend prompt)))))
-         (info (list :data (gptel--request-data gptel-backend full-prompt)
+         (info (list :data (list :args t
+                                 :full-prompt full-prompt
+                                 :use-context gptel-use-context
+                                 :system-message system-message
+                                 :collection collection
+                                 :stream stream
+                                 :callback callback
+                                 :context context
+                                 :in-place in-place
+                                 :gptel-include-reasoning gptel-include-reasoning
+                                 :gptel-use-tools gptel-use-tools)
                      :buffer buffer
                      :position start-marker
                      :backend gptel-backend)))
-    (when stream (plist-put info :stream t))
-    ;; This context should not be confused with the context aggregation context!
-    (when callback (plist-put info :callback callback))
-    (when context (plist-put info :context context))
-    (when in-place (plist-put info :in-place in-place))
-    (when gptel-include-reasoning       ;Required for next-request-only scope
-      (plist-put info :include-reasoning gptel-include-reasoning))
-    (when (and gptel-use-tools gptel-tools)
-      (plist-put info :tools gptel-tools))
-    ;; Add info to state machine context
     (setf (gptel-fsm-info fsm) info))
   (unless dry-run (gptel--fsm-transition fsm)) ;INIT -> WAIT
   fsm)
+
+(defun gptel--realize-info (info)
+  (let ((data (plist-get info :data)))
+    (if (not (plist-member data :args))
+        info
+      (let ((full-prompt (plist-get data :full-prompt))
+            (gptel--system-message
+             ;; Add context chunks to system message if required
+             (unless (gptel--model-capable-p 'nosystem)
+               (if (and (plist-get data :collection)
+                        (eq (plist-get data :use-context) 'system))
+                   (funcall gptel-context-wrap-function
+                            (plist-get data :system-message)
+                            (plist-get data :collection))
+                 (plist-get data :system-message))))
+            (stream (plist-get data :stream))
+            (callback (plist-get data :callback))
+            (context (plist-get data :context))
+            (in-place (plist-get data :in-place))
+            (gptel-include-reasoning (plist-get data :gptel-include-reasoning))
+            (gptel-use-tools (plist-get data :gptel-use-tools)))
+        ;; overwrite the "initial arguments" with the realized data
+        (plist-put info :data (gptel--request-data
+                               (plist-get info :backend) full-prompt))
+        (when stream (plist-put info :stream t))
+        ;; This context should not be confused with the context aggregation context!
+        (when callback (plist-put info :callback callback))
+        (when context (plist-put info :context context))
+        (when in-place (plist-put info :in-place in-place))
+        (when gptel-include-reasoning    ;Required for next-request-only scope
+          (plist-put info :include-reasoning gptel-include-reasoning))
+        (when (and gptel-use-tools gptel-tools)
+          (plist-put info :tools gptel-tools)))
+      info)))
 
 (defun gptel-abort (buf)
   "Stop any active gptel process associated with buffer BUF.
@@ -2425,28 +2551,24 @@ BUF defaults to the current buffer."
   (interactive (list (current-buffer)))
   (when-let* ((proc-attrs
                (cl-find-if
-                (lambda (proc-list)
-                  (eq (thread-first (cdr proc-list)
+                (lambda (entry)
+                  ;; each entry has the form (PROC . (FSM ABORT-FN))
+                  (eq (thread-first (cadr entry) ; FSM
                                     (gptel-fsm-info)
                                     (plist-get :buffer))
                       buf))
                 gptel--request-alist))
               (proc (car proc-attrs))
-              (info (gptel-fsm-info (cdr proc-attrs))))
-    ;; Run callback with abort signal
+              (fsm (cadr proc-attrs))
+              (info (gptel-fsm-info fsm))
+              (abort-fn (cddr proc-attrs)))
+    ;; Run :callback with abort signal
     (with-demoted-errors "Callback error: %S"
       (and-let* ((cb (plist-get info :callback))
                  ((functionp cb)))
-           (funcall cb 'abort info)))
-    (if gptel-use-curl
-        (progn                        ;Clean up Curl process
-          (setf (alist-get proc gptel--request-alist nil 'remove) nil)
-          (set-process-sentinel proc #'ignore)
-          (delete-process proc)
-          (kill-buffer (process-buffer proc)))
-      (plist-put info :callback #'ignore)
-      (let (kill-buffer-query-functions)
-        (kill-buffer proc)))            ;Can't stop url-retrieve process
+        (funcall cb 'abort info)))
+    (funcall abort-fn)
+    (setf (alist-get proc gptel--request-alist nil 'remove) nil)
     (with-current-buffer buf
       (when gptel-mode (gptel--update-status  " Abort" 'error)))
     (message "Stopped gptel request in buffer %S" (buffer-name buf))))
@@ -2850,7 +2972,13 @@ the response is inserted into the current buffer after point."
                              (kill-buffer buf)))
                          nil t nil)))
       ;; TODO: Add transformer here.
-      (setf (alist-get proc-buf gptel--request-alist) fsm))))
+      (setf (alist-get proc-buf gptel--request-alist)
+            (cons fsm
+                  #'(lambda ()
+                      (plist-put info :callback #'ignore)
+                      (let (kill-buffer-query-functions)
+                        ;;Can't stop url-retrieve process
+                        (kill-buffer proc-buf))))))))
 
 (cl-defgeneric gptel--parse-response (backend response proc-info)
   "Response extractor for LLM requests.
