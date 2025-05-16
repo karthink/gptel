@@ -210,6 +210,7 @@
 (require 'map)
 (require 'text-property-search)
 (require 'cl-generic)
+(require 'mule-util)
 (require 'gptel-openai)
 
 
@@ -2552,6 +2553,9 @@ specified."
       (error
        (user-error "Can not resume request: could not read data from buffer!")))))
 
+(defconst gptel-display-max 128
+  "Maximum number of chars to be displayed for tool, reason ...")
+
 (defun gptel--insert-response (response info &optional raw)
   "Insert the LLM RESPONSE into the gptel buffer.
 
@@ -2613,12 +2617,19 @@ Optional RAW disables text properties and transformation."
                  (gptel--insert-response (concat separator (car blocks)) info t)
                  (gptel--insert-response text info)
                  (gptel--insert-response (cdr blocks) info t))
-               (when (derived-mode-p 'org-mode) ;fold block
-                 (save-excursion
-                   (goto-char (plist-get info :tracking-marker))
-                   (search-backward "#+end_reasoning" start-marker t)
-                   (when (looking-at "^#\\+end_reasoning")
-                     (org-cycle)))))))))
+               (save-excursion
+                 (goto-char (plist-get info :tracking-marker))
+                 (if (derived-mode-p 'org-mode) ;fold block
+                     (progn
+                       (search-backward "#+end_reasoning" start-marker t)
+                       (when (looking-at "^#\\+end_reasoning")
+                         (org-cycle)))
+                   (search-backward "```" start-marker t)
+                   (when (looking-at "^```$")
+                     (gptel--hs-fold
+                      (truncate-string-to-width
+                       text gptel-display-max nil nil t)))
+                   )))))))
       (`(tool-call . ,tool-calls)
        (gptel--display-tool-calls tool-calls info))
       (`(tool-result . ,tool-results)
@@ -3015,13 +3026,20 @@ for streaming responses only."
                            (propertize "\n```" 'gptel 'ignore))
                          gptel-response-separator)
                  info t)
-                (when (derived-mode-p 'org-mode) ;fold block
-                  (ignore-errors
-                    (save-excursion
-                      (goto-char tracking-marker)
-                      (search-backward "#+end_reasoning" start-marker t)
-                      (when (looking-at "^#\\+end_reasoning")
-                        (org-cycle))))))
+                (ignore-errors
+                  (save-excursion
+                    (goto-char tracking-marker)
+                    (if (derived-mode-p 'org-mode) ;fold block
+                        (progn
+                          (search-backward "#+end_reasoning" start-marker t)
+                          (when (looking-at "^#\\+end_reasoning")
+                            (org-cycle)))
+                      (search-backward "```" start-marker t)
+                      (when (looking-at "^```$")
+                        (gptel--hs-fold
+                         (truncate-string-to-width
+                          text gptel-display-max nil nil t)))
+                      ))))
             (unless (and reasoning-marker tracking-marker
                          (= reasoning-marker tracking-marker))
               (let ((separator        ;Separate from response prefix if required
@@ -3197,22 +3215,25 @@ for tool call results.  INFO contains the state of the request."
                     separator
                     "#+begin_tool "
                     truncated-call
+                    "\n"
                     (propertize
-                     (concat "\n" call "\n\n" (org-escape-code-in-string result))
+                     (concat call "\n\n" (org-escape-code-in-string result))
                      'gptel `(tool . ,id))
-                    "\n#+end_tool\n")
+                    "\n#+end_tool"
+                    gptel-response-separator)
                  ;; TODO(tool) else branch is handling all front-ends as markdown.
                  ;; At least escape markdown.
                  (concat
                   separator
                   ;; TODO(tool) remove properties and strip instead of ignoring
-                  (propertize (format "``` tool %s" truncated-call) 'gptel 'ignore)
+                  (propertize (format "``` tool %s\n" truncated-call) 'gptel 'ignore)
                   (propertize
                    ;; TODO(tool) escape markdown in result
-                   (concat "\n" call "\n\n" result)
+                   (concat call "\n\n" result)
                    'gptel `(tool . ,id))
                   ;; TODO(tool) remove properties and strip instead of ignoring
-                  (propertize "\n```\n" 'gptel 'ignore))))
+                  (propertize "\n```" 'gptel 'ignore)
+                  gptel-response-separator)))
              info
              'raw)
          ;; tool-result insertion has updated the tracking marker
@@ -3222,13 +3243,39 @@ for tool call results.  INFO contains the state of the request."
                (move-marker tool-marker tracking-marker)
              (setq tool-marker (copy-marker tracking-marker nil))
              (plist-put info :tool-marker tool-marker))
-         (when (derived-mode-p 'org-mode) ;fold drawer
-           (ignore-errors
-             (save-excursion
-               (goto-char tracking-marker)
-               (forward-line -1)
-               (when (looking-at "^#\\+end_tool")
-                 (org-cycle))))))))))
+         (ignore-errors
+           (save-excursion
+             (goto-char tracking-marker)
+             (if (derived-mode-p 'org-mode) ;fold drawer
+                 (progn
+                   (search-backward "#+end_tool" start-marker t)
+                   (when (looking-at "^#\\+end_tool")
+                     (org-cycle)))
+               (search-backward "```" start-marker t)
+               (when (looking-at "^```$")
+                 (gptel--hs-fold
+                  (truncate-string-to-width
+                   result gptel-display-max nil nil t)))
+               ))))))))
+
+(defun gptel--hs-fold (&optional disp)
+  "Fold the current 'gptel text section and display DISP instead."
+  (interactive)
+  (let (beg end ov)
+    ;; end of range, should be at \n now
+    (setq end (if (eq (get-text-property (point) 'gptel) 'ignore)
+                  (previous-single-property-change
+                   (point) 'gptel nil (point-min))
+                (next-single-property-change
+                 (point) 'gptel nil (point-max))))
+    (setq beg (previous-single-property-change
+               end 'gptel nil (point-min)))
+    (setq ov (make-overlay beg end))
+    (overlay-put ov 'invisible t)
+    (overlay-put ov 'hs 'region)
+    (overlay-put ov 'hs-b-offset 0)
+    (overlay-put ov 'display (or disp (truncate-string-ellipsis)))
+    (overlay-put ov 'evaporate t)))
 
 (defun gptel--format-tool-call (name arg-values)
   "Format a tool call for display in the buffer.
