@@ -1374,6 +1374,7 @@ file."
           (gptel-mode -1)
           (user-error (format "`gptel-mode' is not supported in `%s'." major-mode)))
         (add-hook 'before-save-hook #'gptel--save-state nil t)
+        (gptel--prettify-preset)
         (when (derived-mode-p 'org-mode)
           ;; Work around bug in `org-fontify-extend-region'.
           (add-hook 'gptel-post-response-functions #'font-lock-flush nil t))
@@ -1467,6 +1468,7 @@ file."
                          (buttonize (gptel--model-name gptel-model)
                             (lambda (&rest _) (gptel-menu))))))))
     (remove-hook 'before-save-hook #'gptel--save-state t)
+    (gptel--prettify-preset)
     (if gptel-use-header-line
         (setq header-line-format gptel--old-header-line
               gptel--old-header-line nil)
@@ -3551,6 +3553,81 @@ symbol."
        nil
      (gptel--apply-preset ,(if (symbolp name) `',name name))
      ,@body))
+
+;;;; Presets in-buffer UI
+(defun gptel--transform-apply-preset (_fsm)
+  "Apply a gptel preset to the buffer depending on the prompt.
+
+If the user prompt begins with @foo, the preset foo is applied."
+  (text-property-search-backward 'gptel nil t)
+  (when (looking-at
+         (concat "[\n[:blank:]]*"
+                 (and-let* ((prefix (gptel-prompt-prefix-string))
+                            ((not (string-empty-p prefix))))
+                   (concat "\\(?:" (regexp-quote prefix) "\\)?"))))
+    (goto-char (match-end 0)))
+  (while-let (((looking-at "[[:blank:]\n]*@\\([^[:blank:]]+\\)\\s-+"))
+              (name (match-string 1))
+              (preset (or (gptel-get-preset (intern-soft name))
+                          (gptel-get-preset name))))
+    (delete-region (match-beginning 0) (match-end 0))
+    (gptel--apply-preset (cons name preset)
+                         (lambda (sym val)
+                           (set (make-local-variable sym) val)))
+    (message "Sending request with preset %s applied!"
+             (propertize name 'face 'mode-line-emphasis))))
+
+(defun gptel--fontify-preset-keyword (end)
+  "Font-lock function for preset indicators in chat buffers.
+
+Return preset fontification info for text up to END."
+  (when (re-search-forward "\\(?:^\\|[[:blank:]]+\\)\\(@\\([^[:blank:]\n]+\\)\\)"
+                           end t)
+    (= (match-beginning 1)
+       (save-excursion
+         (text-property-search-backward 'gptel nil t)
+         (save-match-data
+           (if (looking-at
+                (concat "[\n[:blank:]]*"
+                        (and-let* ((prefix (gptel-prompt-prefix-string))
+                                   ((not (string-empty-p prefix))))
+                          (concat "\\(?:" (regexp-quote prefix) "\\)?"
+                                  "[\n[:blank:]]*"))))
+               (match-end 0) (point)))))))
+
+(defun gptel-preset-capf ()
+  "Completion at point for gptel presets in `gptel-mode'.
+
+Add this to `completion-at-point-functions'."
+  (and gptel--known-presets
+       (save-excursion
+         (let ((num (- (skip-syntax-backward "w_"))))
+           (when (= (char-before) ?@)
+             (list (point) (+ (point) num)
+                   gptel--known-presets
+                   :exclusive 'no
+                   :annotation-function
+                   #'(lambda (c) (thread-first
+                              (intern-soft c)
+                              (assq gptel--known-presets) (cdr)
+                              (plist-get :description)))))))))
+
+(defun gptel--prettify-preset ()
+  "Get visual and completion help with presets in gptel buffers.
+
+Intended to be added to `gptel-mode-hook'."
+  (let ((keyword '((gptel--fontify-preset-keyword
+                    1 (when-let* ((comps (all-completions (match-string 2)
+                                          gptel--known-presets))
+                                  ((member (match-string 2) comps)))
+                       '(:box -1 :inherit secondary-selection))
+                    prepend))))
+    (cond
+     (gptel-mode
+      (font-lock-add-keywords nil keyword t)
+      (add-hook 'completion-at-point-functions #'gptel-preset-capf nil t))
+     (t (font-lock-remove-keywords nil keyword)
+        (remove-hook 'completion-at-point-functions #'gptel-preset-capf t)))))
 
 
 ;;; Response tweaking commands
