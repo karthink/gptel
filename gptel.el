@@ -995,16 +995,22 @@ Note: This will move the cursor."
 
 If positions START and END are provided, insert that part of BUF first."
   (declare (indent 3))
-  `(with-temp-buffer
-     (dolist (sym '( gptel-backend gptel--system-message gptel-model
-                     gptel-mode gptel-track-response gptel-track-media
-                     gptel-prompt-filter-hook))
-      (set (make-local-variable sym)
-       (buffer-local-value sym ,buf)))
-     ,(when (and start end)
-       `(insert-buffer-substring ,buf ,start ,end))
-     (let ((major-mode (buffer-local-value 'major-mode ,buf)))
-      ,@body)))
+  (let ((temp-buffer (make-symbol "temp-buffer")))
+    `(let ((,temp-buffer (gptel--temp-buffer " *gptel-prompt*")))
+      (with-current-buffer ,temp-buffer
+       (dolist (sym '( gptel-backend gptel--system-message gptel-model
+                       gptel-mode gptel-track-response gptel-track-media
+                       gptel-use-tools gptel-tools gptel-use-curl
+                       gptel-prompt-filter-hook gptel-use-context
+                       gptel--num-messages-to-send gptel-stream
+                       gptel-include-reasoning
+                       gptel-temperature gptel-max-tokens gptel-cache))
+        (set (make-local-variable sym)
+         (buffer-local-value sym ,buf)))
+       ,(when (and start end)
+         `(insert-buffer-substring ,buf ,start ,end))
+       (setq major-mode (buffer-local-value 'major-mode ,buf))
+       ,@body))))
 
 (defmacro gptel--temp-buffer (buf)
   "Generate a temp buffer BUF.
