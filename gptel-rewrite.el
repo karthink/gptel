@@ -642,6 +642,7 @@ generated from functions."
                (overlay-put ov 'evaporate t)
                ;; NOTE: Switch to `generate-new-buffer' after we drop Emacs 27.1 (#724)
                (cons ov (gptel--temp-buffer " *gptel-rewrite*")))
+             :transforms gptel-prompt-transform-functions
              :callback #'gptel--rewrite-callback)
       ;; Move back so that the cursor is on the overlay when done.
       (unless (get-char-property (point) 'gptel-rewrite)
