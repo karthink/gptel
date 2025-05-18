@@ -2255,7 +2255,7 @@ Run post-response hooks."
                position context dry-run
                (stream nil) (in-place nil)
                (system gptel--system-message)
-               (fsm (gptel-make-fsm)))
+               transforms (fsm (gptel-make-fsm)))
   "Request a response from the `gptel-backend' for PROMPT.
 
 The request is asynchronous, this function returns immediately.
@@ -2390,6 +2390,22 @@ If DRY-RUN is non-nil, do not send the request.  Construct and
 return a state machine object that can be introspected and
 resumed.
 
+TRANSFORMS is a list of functions used to transform the prompt or query
+parameters dynamically.  Each function is called in a temporary buffer
+containing the prompt to be sent, and can conditionally modify this
+buffer.  This can include changing the (buffer-local) values of the
+model, backend or system prompt, or augmenting the prompt with
+additional information (such as from a RAG engine).
+
+- Synchronous transformers are called with zero or one argument, the
+  INFO plist for the request.
+
+- Asynchronous transformers are called with two arguments, a callback
+  and the state machine.  It should run the callback after finishing its
+  transformation.
+
+See `gptel-prompt-transform-functions' for more.
+
 FSM is the state machine driving the request.  This can be used
 to define a custom request control flow, see `gptel-fsm' for
 details.  You can safely ignore this -- FSM is an unstable
@@ -2432,6 +2448,7 @@ be used to rerun or continue the request at a later time."
          (info (list :data prompt-buffer
                      :buffer buffer
                      :position start-marker)))
+    (when transforms (plist-put info :transforms transforms))
     (with-current-buffer prompt-buffer (setq gptel--system-message system))
     (when stream (plist-put info :stream stream))
     ;; This context should not be confused with the context aggregation context!
@@ -2441,8 +2458,51 @@ be used to rerun or continue the request at a later time."
     ;; Add info to state machine context
     (when dry-run (plist-put info :dry-run dry-run))
     (setf (gptel-fsm-info fsm) info))
-  ;; (gptel--fsm-transition fsm)           ;INIT -> AUGMENT
-  (gptel--realize-query fsm))
+
+  ;; TEMP: Augment in separate let block to avoid overcapturing
+  ;; FIXME(augment) Call augmentors with INFO, not FSM
+  (let ((info (gptel-fsm-info fsm)))
+    (with-current-buffer (plist-get info :data)
+      (setq-local gptel-prompt-transform-functions (plist-get info :transforms))
+      ;; Preset has highest priority because it can change prompt-transform-functions
+      (when (memq 'gptel--transform-apply-preset gptel-prompt-transform-functions)
+        (gptel--transform-apply-preset fsm)
+        (setq gptel-prompt-transform-functions ;avoid mutation, copy transforms
+              (remq 'gptel--transform-apply-preset gptel-prompt-transform-functions)))
+      (let ((augment-total              ;act like a hook, count total
+             (if (memq t gptel-prompt-transform-functions)
+                 (length
+                  (setq gptel-prompt-transform-functions
+                        (nconc (remq t gptel-prompt-transform-functions)
+                               (default-value 'gptel-prompt-transform-functions))))
+               (length gptel-prompt-transform-functions)))
+            (augment-idx 0))
+        (if (null gptel-prompt-transform-functions)
+            (gptel--realize-query fsm)
+          (with-current-buffer (plist-get info :buffer) ;Apply prompt transformations
+            (gptel--update-status " Augmenting..." 'mode-line-emphasis))
+          ;; TODO(augment): This needs to be converted into a linear callback
+          ;; chain to avoid race conditions with multiple async augmentors.
+          (run-hook-wrapped
+           'gptel-prompt-transform-functions
+           (lambda (func fsm-arg)
+             (with-current-buffer (plist-get info :data)
+               (goto-char (point-max))
+               (if (= (car (func-arity func)) 2) ;async augmentor
+                   (funcall func (lambda ()
+                                   (cl-incf augment-idx)
+                                   (when (>= augment-idx augment-total) ;All augmentors have run
+                                     (gptel--realize-query fsm-arg)))
+                            fsm-arg)
+                 (if (= (car (func-arity func)) 0)
+                     (funcall func)
+                   (funcall func fsm-arg)) ;sync augmentor
+                 (cl-incf augment-idx)
+                 (when (>= augment-idx augment-total) ;All augmentors have run
+                   (gptel--realize-query fsm-arg))))
+             nil)           ;always return nil so run-hook-wrapped doesn't abort
+           fsm)))))
+  fsm)
 
 (defun gptel--realize-query (fsm)
   "Realize the query payload for FSM from its prompt buffer.
@@ -2550,6 +2610,7 @@ waiting for the response."
     (gptel--sanitize-model)
     (gptel-request nil
       :stream gptel-stream
+      :transforms gptel-prompt-transform-functions
       :fsm (gptel-make-fsm :handlers gptel-send--handlers))
     (gptel--update-status " Waiting..." 'warning)))
 
@@ -2721,23 +2782,19 @@ Otherwise the prompt text is constructed from the contents of the
 current buffer up to point, or PROMPT-END if provided."
   (save-excursion
     (save-restriction
-      (let* ((buf (current-buffer))
-             (prompts
-              (cond
-               ((derived-mode-p 'org-mode)
-                (require 'gptel-org)
-                ;; Also handles regions in Org mode
-                (gptel-org--create-prompt-buffer prompt-end))
-               ((use-region-p)
-                (let ((rb (region-beginning)) (re (region-end)))
-                  (gptel--with-buffer-copy buf rb re
-                    (current-buffer))))
-               (t (unless prompt-end (setq prompt-end (point)))
-                  (gptel--with-buffer-copy buf (point-min) prompt-end
-                    (current-buffer))))))
-        ;; NOTE: prompts is modified in place here
-        ;; (gptel--wrap-user-prompt-maybe prompts)
-        prompts))))
+      (let ((buf (current-buffer)))
+        (cond
+         ((derived-mode-p 'org-mode)
+          (require 'gptel-org)
+          ;; Also handles regions in Org mode
+          (gptel-org--create-prompt-buffer prompt-end))
+         ((use-region-p)
+          (let ((rb (region-beginning)) (re (region-end)))
+            (gptel--with-buffer-copy buf rb re
+              (current-buffer))))
+         (t (unless prompt-end (setq prompt-end (point)))
+            (gptel--with-buffer-copy buf (point-min) prompt-end
+              (current-buffer))))))))
 
 (defun gptel--create-prompt (&optional prompt-end)
   "Return a full conversation prompt from the contents of this buffer.
@@ -2748,10 +2805,11 @@ recent exchanges.
 If PROMPT-END (a marker) is provided, end the prompt contents
 there.  This defaults to (point)."
   (with-current-buffer (gptel--create-prompt-buffer prompt-end)
-    (gptel--parse-buffer
-     gptel-backend (and gptel--num-messages-to-send
-                        (* 2 gptel--num-messages-to-send)))
-    (kill-buffer (current-buffer))))
+    (unwind-protect
+        (gptel--parse-buffer
+         gptel-backend (and gptel--num-messages-to-send
+                            (* 2 gptel--num-messages-to-send)))
+      (kill-buffer (current-buffer)))))
 
 (make-obsolete 'gptel--create-prompt 'gptel--create-prompt-buffer
                "0.9.9")
