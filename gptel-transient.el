@@ -1482,6 +1482,7 @@ This sets the variable `gptel-include-tool-results', which see."
                  (gptel--merge-additional-directive system-extra)
                gptel--system-message)
              :callback callback
+             :transforms gptel-prompt-transform-functions
              :fsm (gptel-make-fsm :handlers gptel-send--handlers)
              :dry-run dry-run)
 
