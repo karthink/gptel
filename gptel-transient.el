@@ -1386,11 +1386,14 @@ This sets the variable `gptel-include-tool-results', which see."
         (prompt
          (cond
           ((member "m" args)
-           (read-string
-            (format "Ask %s: " (gptel-backend-name gptel-backend))
-            (and (use-region-p)
-                 (buffer-substring-no-properties
-                  (region-beginning) (region-end)))))
+           (minibuffer-with-setup-hook
+               (lambda () (add-hook 'completion-at-point-functions
+                               #'gptel-preset-capf nil t))
+             (read-string
+              (format "Ask %s: " (gptel-backend-name gptel-backend))
+              (and (use-region-p)
+                   (buffer-substring-no-properties
+                    (region-beginning) (region-end))))))
           ((member "y" args)
            (unless (car-safe kill-ring)
              (user-error "`kill-ring' is empty!  Nothing to send"))
