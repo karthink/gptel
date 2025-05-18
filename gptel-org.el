@@ -188,26 +188,22 @@ current heading and the cursor position."
                                  50))))))
   (when (stringp topic) (org-set-property "GPTEL_TOPIC" topic)))
 
-;; NOTE: This can be converted to a cl-defmethod for `gptel--parse-buffer'
-;; (conceptually cleaner), but will cause load-order issues in gptel.el and
-;; might be harder to debug.
-(defun gptel-org--create-prompt (&optional prompt-end)
-  "Return a full conversation prompt from the contents of this Org buffer.
+;; NOTE: This can be converted to a cl-defmethod for
+;; `gptel--create-prompt-buffer' (conceptually cleaner), but will cause
+;; load-order issues in gptel.el and might be harder to debug.
+(defun gptel-org--create-prompt-buffer (&optional prompt-end)
+  "Return a buffer with the conversation prompt to be sent.
 
-If `gptel--num-messages-to-send' is set, limit to that many
-recent exchanges.
-
-The prompt is constructed from the contents of the buffer up to
-point, or PROMPT-END if provided.  Its contents depend on the
-value of `gptel-org-branching-context', which see."
+If the region is active limit the prompt text to the region contents.
+Otherwise the prompt text is constructed from the contents of the
+current buffer up to point, or PROMPT-END if provided.  Its contents
+depend on the value of `gptel-org-branching-context', which see."
   (when (use-region-p)
     (narrow-to-region (region-beginning) (region-end)))
   (if prompt-end
       (goto-char prompt-end)
     (setq prompt-end (point)))
-  (let ((max-entries (and gptel--num-messages-to-send
-                          (* 2 gptel--num-messages-to-send)))
-        (topic-start (gptel-org--get-topic-start)))
+  (let ((topic-start (gptel-org--get-topic-start)))
     (when topic-start
       ;; narrow to GPTEL_TOPIC property scope
       (narrow-to-region topic-start prompt-end))
@@ -252,7 +248,7 @@ value of `gptel-org-branching-context', which see."
               (gptel-org--strip-block-headers)
               (when gptel-org-ignore-elements (gptel-org--strip-elements))
               (save-excursion (run-hooks 'gptel-prompt-filter-hook))
-              (gptel--parse-buffer gptel-backend max-entries))))
+              (current-buffer))))
       ;; Create prompt the usual way
       (let ((org-buf (current-buffer))
             (beg (point-min)))
@@ -261,7 +257,7 @@ value of `gptel-org-branching-context', which see."
           (gptel-org--strip-block-headers)
           (when gptel-org-ignore-elements (gptel-org--strip-elements))
           (save-excursion (run-hooks 'gptel-prompt-filter-hook))
-          (gptel--parse-buffer gptel-backend max-entries))))))
+          (current-buffer))))))
 
 (defun gptel-org--strip-elements ()
   "Remove all elements in `gptel-org-ignore-elements' from the

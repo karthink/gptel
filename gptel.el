@@ -193,7 +193,7 @@
 (declare-function hl-line-highlight "hl-line")
 
 (declare-function org-escape-code-in-string "org-src")
-(declare-function gptel-org--create-prompt "gptel-org")
+(declare-function gptel-org--create-prompt-buffer "gptel-org")
 (declare-function gptel-org-set-topic "gptel-org")
 (declare-function gptel-org--save-state "gptel-org")
 (declare-function gptel-org--restore-state "gptel-org")
@@ -1236,6 +1236,7 @@ returned as a list of strings."
          (function (gptel--parse-directive (funcall directive) raw))
          (cons     (if raw directive
                      (cons (car directive)
+                           ;; FIXME(augment) do this elsewhere
                            (gptel--parse-list
                             gptel-backend (cdr directive))))))))
 
@@ -2361,32 +2362,7 @@ be used to rerun or continue the request at a later time."
   (declare (indent 1))
   ;; TODO Remove this check in version 1.0
   (gptel--sanitize-model)
-  (let* ((directive (gptel--parse-directive system))
-         ;; DIRECTIVE contains both the system message and the template prompts
-         (gptel--system-message
-          ;; Add context chunks to system message if required
-          (unless (gptel--model-capable-p 'nosystem)
-            (if (and gptel-context--alist
-                     (eq gptel-use-context 'system))
-                (gptel-context--wrap (car directive))
-              (car directive))))
-         ;; TODO(tool) Limit tool use to capable models after documenting :capabilities
-         ;; (gptel-use-tools (and (gptel--model-capable-p 'tool-use) gptel-use-tools))
-         (stream (and stream gptel-use-curl
-                      ;; HACK(tool): no stream if Ollama + tools.  Need to find a better way
-                      (not (and (eq (type-of gptel-backend) 'gptel-ollama)
-                                gptel-tools gptel-use-tools))
-                      ;; Check model-specific request-params for streaming preference
-                      (let* ((model-params (gptel--model-request-params gptel-model))
-                             (stream-spec (plist-get model-params :stream)))
-                        ;; If not present, there is no model-specific preference
-                        (or (not (memq :stream model-params))
-                            ;; If present, it must not be :json-false or nil
-                            (and stream-spec (not (eq stream-spec :json-false)))))
-                      ;; Check backend-specific streaming settings
-                      (gptel-backend-stream gptel-backend)))
-         (gptel-stream stream)
-         (start-marker
+  (let* ((start-marker
           (cond
            ((null position)
             (if (use-region-p)
@@ -2395,38 +2371,89 @@ be used to rerun or continue the request at a later time."
            ((markerp position) position)
            ((integerp position)
             (set-marker (make-marker) position buffer))))
-         (full-prompt
-          (nconc
-           (cdr directive)           ;prompt constructed from directive/template
-           (cond                     ;prompt from buffer or explicitly supplied
-            ((null prompt)
-             (gptel--create-prompt start-marker))
-            ((stringp prompt)
-             (gptel--with-buffer-copy buffer nil nil
-               (insert prompt)
-               (save-excursion (run-hooks 'gptel-prompt-filter-hook))
-               (gptel--wrap-user-prompt-maybe
-                (gptel--parse-buffer
-                 gptel-backend (and gptel--num-messages-to-send
-                                    (* 2 gptel--num-messages-to-send))))))
-            ((consp prompt) (gptel--parse-list gptel-backend prompt)))))
-         (info (list :data (gptel--request-data gptel-backend full-prompt)
+         (prompt-buffer
+          (cond                       ;prompt from buffer or explicitly supplied
+           ((null prompt)
+            (gptel--create-prompt-buffer start-marker))
+           ((stringp prompt)
+            (gptel--with-buffer-copy buffer nil nil
+              (insert prompt)
+              (save-excursion (run-hooks 'gptel-prompt-filter-hook))
+              (current-buffer)))
+           ((consp prompt)
+            ;; (gptel--parse-list gptel-backend prompt)
+            (gptel--with-buffer-copy buffer nil nil
+              (gptel--parse-list-and-insert prompt)
+              (save-excursion (run-hooks 'gptel-prompt-filter-hook))
+              (current-buffer)))))
+         (info (list :data prompt-buffer
                      :buffer buffer
-                     :position start-marker
-                     :backend gptel-backend)))
-    (when stream (plist-put info :stream t))
+                     :position start-marker)))
+    (with-current-buffer prompt-buffer (setq gptel--system-message system))
+    (when stream (plist-put info :stream stream))
     ;; This context should not be confused with the context aggregation context!
     (when callback (plist-put info :callback callback))
     (when context (plist-put info :context context))
     (when in-place (plist-put info :in-place in-place))
-    (when gptel-include-reasoning       ;Required for next-request-only scope
-      (plist-put info :include-reasoning gptel-include-reasoning))
-    (when (and gptel-use-tools gptel-tools)
-      (plist-put info :tools gptel-tools))
     ;; Add info to state machine context
+    (when dry-run (plist-put info :dry-run dry-run))
     (setf (gptel-fsm-info fsm) info))
-  (unless dry-run (gptel--fsm-transition fsm)) ;INIT -> WAIT
-  fsm)
+  ;; (gptel--fsm-transition fsm)           ;INIT -> AUGMENT
+  (gptel--realize-query fsm))
+
+(defun gptel--realize-query (fsm)
+  "Realize the query payload for FSM from its prompt buffer.
+
+Initiate the request when done."
+  (let ((info (gptel-fsm-info fsm)))
+    (with-current-buffer (plist-get info :data)
+      (let* ((directive (gptel--parse-directive gptel--system-message 'raw))
+             ;; DIRECTIVE contains both the system message and the template prompts
+             (gptel--system-message
+              ;; Add context chunks to system message if required
+              (unless (gptel--model-capable-p 'nosystem)
+                (if (and gptel-context--alist
+                         (eq gptel-use-context 'system))
+                    (gptel-context--wrap (car directive))
+                  (car directive))))
+             ;; TODO(tool) Limit tool use to capable models after documenting :capabilities
+             ;; (gptel-use-tools (and (gptel--model-capable-p 'tool-use) gptel-use-tools))
+             (stream (and (plist-get info :stream) gptel-use-curl gptel-stream
+                          ;; HACK(tool): no stream if Ollama + tools.  Need to find a better way
+                          (not (and (eq (type-of gptel-backend) 'gptel-ollama)
+                                    gptel-tools gptel-use-tools))
+                          ;; Check model-specific request-params for streaming preference
+                          (let* ((model-params (gptel--model-request-params gptel-model))
+                                 (stream-spec (plist-get model-params :stream)))
+                            ;; If not present, there is no model-specific preference
+                            (or (not (memq :stream model-params))
+                                ;; If present, it must not be :json-false or nil
+                                (and stream-spec (not (eq stream-spec :json-false)))))
+                          ;; Check backend-specific streaming settings
+                          (gptel-backend-stream gptel-backend)))
+             (gptel-stream stream)
+             (full-prompt))
+        (when (cdr directive)       ; prompt constructed from directive/template
+          (save-excursion (goto-char (point-min))
+                          (gptel--parse-list-and-insert (cdr directive))))
+        (goto-char (point-max))
+        (setq full-prompt (gptel--parse-buffer ;prompt from buffer or explicitly supplied
+                           gptel-backend (and gptel--num-messages-to-send
+                                              (* 2 gptel--num-messages-to-send))))
+        (gptel--wrap-user-prompt-maybe full-prompt)
+        (unless stream (cl-remf info :stream))
+        (plist-put info :backend gptel-backend)
+        (when gptel-include-reasoning   ;Required for next-request-only scope
+          (plist-put info :include-reasoning gptel-include-reasoning))
+        (when (and gptel-use-tools gptel-tools)
+          (plist-put info :tools gptel-tools))
+        (plist-put info :data
+                   (gptel--request-data gptel-backend full-prompt))
+        (run-hooks 'gptel-augment-post-modify-hook))
+      (kill-buffer (current-buffer)))
+    ;; INIT -> WAIT
+    (unless (plist-get info :dry-run) (gptel--fsm-transition fsm))
+    fsm))
 
 (defun gptel-abort (buf)
   "Stop any active gptel process associated with buffer BUF.
@@ -2643,42 +2670,50 @@ This delegates to backend-specific wrap functions."
                  (gptel--model-capable-p 'media))
         (gptel--wrap-user-prompt gptel-backend prompts :media)))))
 
+(defun gptel--create-prompt-buffer (&optional prompt-end)
+  "Return a buffer with the conversation prompt to be sent.
+
+If the region is active limit the prompt text to the region contents.
+Otherwise the prompt text is constructed from the contents of the
+current buffer up to point, or PROMPT-END if provided."
+  (save-excursion
+    (save-restriction
+      (let* ((buf (current-buffer))
+             (prompts
+              (cond
+               ((derived-mode-p 'org-mode)
+                (require 'gptel-org)
+                ;; Also handles regions in Org mode
+                (gptel-org--create-prompt-buffer prompt-end))
+               ((use-region-p)
+                (let ((rb (region-beginning)) (re (region-end)))
+                  (gptel--with-buffer-copy buf rb re
+                    (save-excursion (run-hooks 'gptel-prompt-filter-hook))
+                    (current-buffer))))
+               (t (unless prompt-end (setq prompt-end (point)))
+                  (gptel--with-buffer-copy buf (point-min) prompt-end
+                    (save-excursion (run-hooks 'gptel-prompt-filter-hook))
+                    (current-buffer))))))
+        ;; NOTE: prompts is modified in place here
+        ;; (gptel--wrap-user-prompt-maybe prompts)
+        prompts))))
+
 (defun gptel--create-prompt (&optional prompt-end)
   "Return a full conversation prompt from the contents of this buffer.
 
 If `gptel--num-messages-to-send' is set, limit to that many
 recent exchanges.
 
-If the region is active limit the prompt to the region contents
-instead.
-
-If `gptel-context--alist' is non-nil and the additional
-context needs to be included with the user prompt, add it.
-
 If PROMPT-END (a marker) is provided, end the prompt contents
 there.  This defaults to (point)."
-  (save-excursion
-    (save-restriction
-      (let* ((max-entries (and gptel--num-messages-to-send
-                               (* 2 gptel--num-messages-to-send)))
-             (buf (current-buffer))
-             (prompts
-              (cond
-               ((derived-mode-p 'org-mode)
-                (require 'gptel-org)
-                ;; Also handles regions in Org mode
-                (gptel-org--create-prompt prompt-end))
-               ((use-region-p)
-                (let ((rb (region-beginning)) (re (region-end)))
-                  (gptel--with-buffer-copy buf rb re
-                    (save-excursion (run-hooks 'gptel-prompt-filter-hook))
-                    (gptel--parse-buffer gptel-backend max-entries))))
-               (t (unless prompt-end (setq prompt-end (point)))
-                  (gptel--with-buffer-copy buf (point-min) prompt-end
-                    (save-excursion (run-hooks 'gptel-prompt-filter-hook))
-                    (gptel--parse-buffer gptel-backend max-entries))))))
-        ;; NOTE: prompts is modified in place here
-        (gptel--wrap-user-prompt-maybe prompts)))))
+  (with-current-buffer (gptel--create-prompt-buffer prompt-end)
+    (gptel--parse-buffer
+     gptel-backend (and gptel--num-messages-to-send
+                        (* 2 gptel--num-messages-to-send)))
+    (kill-buffer (current-buffer))))
+
+(make-obsolete 'gptel--create-prompt 'gptel--create-prompt-buffer
+               "0.9.9")
 
 (cl-defgeneric gptel--parse-buffer (backend max-entries)
   "Parse current buffer backwards from point and return a list of prompts.
@@ -2687,6 +2722,40 @@ BACKEND is the LLM backend in use.
 
 MAX-ENTRIES is the number of queries/responses to include for
 contexbt.")
+
+(defun gptel--parse-list-and-insert (prompts)
+  "Insert PROMPTS, a list of messages into the current buffer.
+
+Propertize the insertions in a format gptel can parse into a
+conversation.
+
+PROMPTS is typically the input to `gptel-request', either a list of strings
+representing a conversation with alternate prompt/response turns, or a list of
+lists with explicit roles (prompt/response/tool).  See the documentation of
+`gptel-request' for the latter."
+  (if (stringp (car prompts))         ; Simple format, list of strings
+      (cl-loop for text in prompts
+               for response = nil then (not response)
+               when text
+               if response
+               do (insert gptel-response-separator
+                          (propertize text 'gptel 'response)
+                          gptel-response-separator)
+               else do (insert text))
+    (dolist (entry prompts)             ; Advanced format, list of lists
+      (pcase entry
+        (`(prompt . ,msg) (insert (or (car-safe msg) msg)))
+        (`(response . ,msg)
+         (insert gptel-response-separator
+                 (propertize (or (car-safe msg) msg) 'gptel 'response)))
+        (`(tool . ,call)
+         (insert gptel-response-separator
+                 (propertize
+                  (concat
+                   "(:name " (plist-get call :name) " :args "
+                   (prin1-to-string (plist-get call :args)) ")\n\n"
+                   (plist-get call :result))
+                  'gptel `(tool . ,(plist-get call :id)))))))))
 
 (cl-defgeneric gptel--parse-list (backend prompt-list)
   "Parse PROMPT-LIST and return a list of prompts suitable for
