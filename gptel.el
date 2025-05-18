@@ -286,17 +286,33 @@ The default for windows comes from Microsoft documentation located here:
 https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa"
   :type 'natnum)
 
-(defcustom gptel-prompt-filter-hook nil
-  "Hook run to modify the buffer before sending.
+(define-obsolete-variable-alias 'gptel-prompt-filter-hook
+  'gptel-prompt-transform-functions "0.9.9")
+
+(defcustom gptel-prompt-transform-functions nil
+  "Handlers to augment or transform a query before sending it.
 
 This hook is called in a temporary buffer containing the text to
 be sent, with the cursor at the end of the prompt.  You can use
 it to modify the buffer as required.
 
-Example: A typical use case might be to search for occurrences of
-$(cmd) and replace it with the output of the shell command cmd,
-making it easy to send the output of shell commands to the LLM."
-  :group 'gptel
+Example: A typical use case might be to search for occurrences of $(cmd)
+and replace it with the output of the shell command cmd, making it easy
+to send the output of shell commands to the LLM.
+
+Transform functions can be synchronous or asynchronous.
+
+Synchronous hook functions must accept zero or one argument: the INFO
+plist for the current request.
+
+Asynchronous hook functions must accept two arguments: a callback to
+call after the transformation is complete, and the INFO plist for the
+current request.
+
+Note that while this set of handlers can certainly be set with a global
+value to be applied to all queries in all buffers, it meant to be set
+locally for a specific buffer, or chat topic, or only the context of a
+certain task."
   :type 'hook)
 
 (defcustom gptel-post-request-hook nil
@@ -1025,9 +1041,8 @@ If positions START and END are provided, insert that part of BUF first."
        (dolist (sym '( gptel-backend gptel--system-message gptel-model
                        gptel-mode gptel-track-response gptel-track-media
                        gptel-use-tools gptel-tools gptel-use-curl
-                       gptel-prompt-filter-hook gptel-use-context
-                       gptel--num-messages-to-send gptel-stream
-                       gptel-include-reasoning
+                       gptel-use-context gptel--num-messages-to-send
+                       gptel-stream gptel-include-reasoning
                        gptel-temperature gptel-max-tokens gptel-cache))
         (set (make-local-variable sym)
          (buffer-local-value sym ,buf)))
@@ -2408,13 +2423,11 @@ be used to rerun or continue the request at a later time."
            ((stringp prompt)
             (gptel--with-buffer-copy buffer nil nil
               (insert prompt)
-              (save-excursion (run-hooks 'gptel-prompt-filter-hook))
               (current-buffer)))
            ((consp prompt)
             ;; (gptel--parse-list gptel-backend prompt)
             (gptel--with-buffer-copy buffer nil nil
               (gptel--parse-list-and-insert prompt)
-              (save-excursion (run-hooks 'gptel-prompt-filter-hook))
               (current-buffer)))))
          (info (list :data prompt-buffer
                      :buffer buffer
@@ -2718,11 +2731,9 @@ current buffer up to point, or PROMPT-END if provided."
                ((use-region-p)
                 (let ((rb (region-beginning)) (re (region-end)))
                   (gptel--with-buffer-copy buf rb re
-                    (save-excursion (run-hooks 'gptel-prompt-filter-hook))
                     (current-buffer))))
                (t (unless prompt-end (setq prompt-end (point)))
                   (gptel--with-buffer-copy buf (point-min) prompt-end
-                    (save-excursion (run-hooks 'gptel-prompt-filter-hook))
                     (current-buffer))))))
         ;; NOTE: prompts is modified in place here
         ;; (gptel--wrap-user-prompt-maybe prompts)
