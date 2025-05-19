@@ -249,7 +249,6 @@ value of `gptel-org-branching-context', which see."
                        (goto-char (point-min)))
               (goto-char (point-max))
               (gptel-org--unescape-tool-results)
-              (gptel-org--strip-elements)
               (gptel-org--strip-block-headers)
               (when gptel-org-ignore-elements (gptel-org--strip-elements))
               (save-excursion (run-hooks 'gptel-prompt-filter-hook))
@@ -259,7 +258,6 @@ value of `gptel-org-branching-context', which see."
             (beg (point-min)))
         (gptel--with-buffer-copy org-buf beg prompt-end
           (gptel-org--unescape-tool-results)
-          (gptel-org--strip-elements)
           (gptel-org--strip-block-headers)
           (when gptel-org-ignore-elements (gptel-org--strip-elements))
           (save-excursion (run-hooks 'gptel-prompt-filter-hook))
