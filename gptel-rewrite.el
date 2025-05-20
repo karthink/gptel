@@ -85,6 +85,13 @@ overlay."
           (const :tag "Dispatch" dispatch)
           (function :tag "Custom action")))
 
+(defcustom gptel-rewrite-stream gptel-stream
+  "Stream responses from the LLM as they are received while rewriting.
+See `gptel-stream' for further information. This setting is only
+used when rewriting."
+  :group 'gptel
+  :type 'boolean)
+
 (defface gptel-rewrite-highlight-face
   '((((class color) (min-colors 88) (background dark))
      :background "#041714" :extend t :inherit default)
@@ -626,7 +633,7 @@ generated from functions."
     (prog1 (gptel-request prompt
              :dry-run dry-run
              :system gptel--rewrite-directive
-             :stream gptel-stream
+             :stream gptel-rewrite-stream
              :context
              (let ((ov (or (cdr-safe (get-char-property-and-overlay (point) 'gptel-rewrite))
                            (make-overlay (region-beginning) (region-end) nil t))))
