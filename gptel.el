@@ -2595,38 +2595,48 @@ REQUEST-FSM is the state of the request, as returned by
 `gptel-request'.  If FORMAT is the symbol json, show the encoded
 JSON query instead of the Lisp structure gptel uses."
   (unless request-fsm (setq request-fsm gptel--fsm-last))
-  (with-current-buffer (get-buffer-create "*gptel-query*")
-    (let* ((standard-output (current-buffer))
-           (inhibit-read-only t)
-           (request-data
-            (plist-get (gptel-fsm-info request-fsm) :data)))
-      (buffer-disable-undo)
-      (erase-buffer)
-      (if (eq format 'json)
-          (progn (fundamental-mode)
-                 (insert (gptel--json-encode request-data))
-                 (json-pretty-print-buffer))
-        (lisp-data-mode)
-        (prin1 request-data)
-        (pp-buffer))
-      (setq-local gptel--fsm-last request-fsm)
-      (goto-char (point-min))
-      (view-mode 1)
-      (setq buffer-undo-list nil)
-      (use-local-map
-       (make-composed-keymap
-        (define-keymap
-          "C-c C-c" #'gptel--continue-query
-          "C-c C-k" #'quit-window)
-        (current-local-map)))
-      (unless header-line-format
-        (setq header-line-format
-              (substitute-command-keys
-               (concat
-                "Edit request: \\[read-only-mode],"
-                " Send request: \\[gptel--continue-query],"
-                " Quit: \\[quit-window]"))))
-      (display-buffer (current-buffer) gptel-display-buffer-action))))
+  (if (bufferp (plist-get (gptel-fsm-info request-fsm) :data))
+      (letrec ((dry-run-poll
+                (run-with-timer
+                 0 1 (lambda (fsm form)
+                       (unless (bufferp (plist-get (gptel-fsm-info fsm) :data))
+                         (cancel-timer dry-run-poll)
+                         (gptel--inspect-query fsm form)))
+                 request-fsm format))))
+    (with-current-buffer (plist-get (gptel-fsm-info request-fsm) :buffer)
+      (gptel--update-status " Ready" 'success))
+    (with-current-buffer (get-buffer-create "*gptel-query*")
+      (let* ((standard-output (current-buffer))
+             (inhibit-read-only t)
+             (request-data
+              (plist-get (gptel-fsm-info request-fsm) :data)))
+        (buffer-disable-undo)
+        (erase-buffer)
+        (if (eq format 'json)
+            (progn (fundamental-mode)
+                   (insert (gptel--json-encode request-data))
+                   (json-pretty-print-buffer))
+          (lisp-data-mode)
+          (prin1 request-data)
+          (pp-buffer))
+        (setq-local gptel--fsm-last request-fsm)
+        (goto-char (point-min))
+        (view-mode 1)
+        (setq buffer-undo-list nil)
+        (use-local-map
+         (make-composed-keymap
+          (define-keymap
+            "C-c C-c" #'gptel--continue-query
+            "C-c C-k" #'quit-window)
+          (current-local-map)))
+        (unless header-line-format
+          (setq header-line-format
+                (substitute-command-keys
+                 (concat
+                  "Edit request: \\[read-only-mode],"
+                  " Send request: \\[gptel--continue-query],"
+                  " Quit: \\[quit-window]"))))
+        (display-buffer (current-buffer) gptel-display-buffer-action)))))
 
 (defun gptel--continue-query ()
   "Continue sending the gptel query displayed in this buffer.
