@@ -289,12 +289,19 @@ https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-process
 (define-obsolete-variable-alias 'gptel-prompt-filter-hook
   'gptel-prompt-transform-functions "0.9.9")
 
-(defcustom gptel-prompt-transform-functions nil
+(defcustom gptel-prompt-transform-functions
+  '(gptel--transform-apply-preset gptel--transform-add-context)
   "Handlers to augment or transform a query before sending it.
 
 This hook is called in a temporary buffer containing the text to
 be sent, with the cursor at the end of the prompt.  You can use
-it to modify the buffer as required.
+it to modify the buffer or buffer-local variables as required.
+
+Since these functions modify the prompt construction buffer, the order
+in which they run is significant!  In particular, you may want to add
+your function before (the default) or after
+`gptel--transform-add-context', which adds gptel's context (other
+buffers, files etc) to this buffer.
 
 Example: A typical use case might be to search for occurrences of $(cmd)
 and replace it with the output of the shell command cmd, making it easy
