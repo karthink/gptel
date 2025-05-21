@@ -314,33 +314,33 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
 
 (cl-defmethod gptel--parse-list ((backend gptel-anthropic) prompt-list)
   (let ((full-prompt
-         (if (stringp (car prompt-list))
-             (cl-loop for text in prompt-list ; Simple format, list of strings
-                      for role = t then (not role)
-                      if text
-                      collect (list :role (if role "user" "assistant")
-                                    :content `[(:type "text" :text ,text)]))
-           (let ((prompts))
-             (dolist (entry prompt-list) ; Advanced format, list of lists
-               (pcase entry
-                 (`(prompt . ,msg)
-                  (push (list :role "user"
-                              :content `[(:type "text" :text ,(or (car-safe msg) msg))])
-                        prompts))
-                 (`(response . ,msg)
-                  (push (list :role "assistant"
-                              :content `[(:type "text" :text ,(or (car-safe msg) msg))])
-                        prompts))
-                 (`(tool . ,call)
-                  (unless (plist-get call :id)
-                    (plist-put call :id (gptel--anthropic-format-tool-id nil)))
-                  (push (list :role "assistant"
-                              :content `[( :type "tool_use" :id ,(plist-get call :id)
-                                           :name ,(plist-get call :name)
-                                           :input ,(plist-get call :args))])
-                        prompts)
-                  (push (gptel--parse-tool-results backend (list (cdr entry))) prompts))))
-             (nreverse prompts)))))
+         (if (consp (car prompt-list))
+             (let ((prompts))
+               (dolist (entry prompt-list) ; Advanced format, list of lists
+                 (pcase entry
+                   (`(prompt . ,msg)
+                    (push (list :role "user"
+                                :content `[(:type "text" :text ,(or (car-safe msg) msg))])
+                          prompts))
+                   (`(response . ,msg)
+                    (push (list :role "assistant"
+                                :content `[(:type "text" :text ,(or (car-safe msg) msg))])
+                          prompts))
+                   (`(tool . ,call)
+                    (unless (plist-get call :id)
+                      (plist-put call :id (gptel--anthropic-format-tool-id nil)))
+                    (push (list :role "assistant"
+                                :content `[( :type "tool_use" :id ,(plist-get call :id)
+                                             :name ,(plist-get call :name)
+                                             :input ,(plist-get call :args))])
+                          prompts)
+                    (push (gptel--parse-tool-results backend (list (cdr entry))) prompts))))
+               (nreverse prompts))
+           (cl-loop for text in prompt-list ; Simple format, list of strings
+                    for role = t then (not role)
+                    if text
+                    collect (list :role (if role "user" "assistant")
+                                  :content `[(:type "text" :text ,text)])))))
     ;; cache messages if required: add cache_control to the last message
     (when (and (or (eq gptel-cache t) (memq 'message gptel-cache))
                (gptel--model-capable-p 'cache))

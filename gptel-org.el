@@ -249,7 +249,6 @@ value of `gptel-org-branching-context', which see."
                        (goto-char (point-min)))
               (goto-char (point-max))
               (gptel-org--unescape-tool-results)
-              (gptel-org--strip-elements)
               (gptel-org--strip-block-headers)
               (when gptel-org-ignore-elements (gptel-org--strip-elements))
               (save-excursion (run-hooks 'gptel-prompt-filter-hook))
@@ -259,7 +258,6 @@ value of `gptel-org-branching-context', which see."
             (beg (point-min)))
         (gptel--with-buffer-copy org-buf beg prompt-end
           (gptel-org--unescape-tool-results)
-          (gptel-org--strip-elements)
           (gptel-org--strip-block-headers)
           (when gptel-org-ignore-elements (gptel-org--strip-elements))
           (save-excursion (run-hooks 'gptel-prompt-filter-hook))
@@ -578,7 +576,7 @@ elements."
             (save-excursion
               (when (and (re-search-forward (regexp-quote (match-string 0))
                                             (line-end-position) t)
-                         (looking-at "[[:space]]\\|\s")
+                         (looking-at "[[:space:][:punct:]]\\|\s")
                          (not (looking-back "\\(?:[[:space]]\\|\s\\)\\(?:_\\|\\*\\)"
                                             (max (- (point) 2) (point-min)))))
                 (delete-char -1) (insert "/") t))
@@ -710,12 +708,14 @@ cleaning up after."
                    (save-match-data
                      (save-excursion
                        (ignore-errors (backward-char 2))
-                       (cond      ; At bob, underscore/asterisk followed by word
-                        ((or (and (bobp) (looking-at "\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
-                             (looking-at ; word followed by underscore/asterisk
-                              "[^[:space:][:punct:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
-                             (looking-at ; underscore/asterisk followed by word
-                              "\\(?:[[:space:][:punct:]]\\)\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
+                       (cond
+                        ((and     ; At bob, underscore/asterisk followed by word
+                          (or (and (bobp) (looking-at "\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
+                              (looking-at ; word followed by underscore/asterisk
+                               "[^[:space:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
+                              (looking-at ; underscore/asterisk followed by word
+                               "\\(?:[[:space:]]\\)\\(?:_\\|\\*\\)\\([^[:space:]]\\|$\\)"))
+                          (not (looking-at "[[:punct:]]\\(?:_\\|\\*\\)[[:punct:]]")))
                          ;; Emphasis, replace with slashes
                          (forward-char (if (bobp) 1 2)) (delete-char -1) (insert "/"))
                         ((or (and (bobp) (looking-at "\\*[[:space:]]"))

@@ -72,6 +72,43 @@ global value."
     (_ (kill-local-variable sym)
        (set sym value))))
 
+(defvar gptel--preset nil
+  "Name of last applied gptel preset.
+
+For internal use only.")
+
+(defun gptel--preset-mismatch-p (name)
+  "Check if gptel preset with NAME is in effect."
+  (let ((elm (or (gptel-get-preset name)
+                 (gptel-get-preset (intern-soft name))))
+        key val)
+    (catch 'mismatch
+      (while elm
+        (setq key (pop elm) val (pop elm))
+        (cond
+         ((memq key '(:description :parents)) 'nil)
+         ((eq key :system)
+          (or (equal gptel--system-message val)
+              (and-let* (((symbolp val))
+                         (p (assq val gptel-directives)))
+                (equal gptel--system-message (cdr p)))
+              (throw 'mismatch t)))
+         ((eq key :backend)
+          (or (if (stringp val)
+                  (equal (gptel-backend-name gptel-backend) val)
+                (eq gptel-backend val))
+              (throw 'mismatch t)))
+         ((eq key :tools)
+          (or (equal (sort val #'string-lessp)
+                     (sort (mapcar #'gptel-tool-name gptel-tools)
+                           #'string-lessp))
+              (throw 'mismatch t)))
+         (t (let* ((suffix (substring (symbol-name key) 1))
+                   (sym (or (intern-soft (concat "gptel-" suffix))
+                            (intern-soft (concat "gptel--" suffix)))))
+              (or (and sym (boundp sym) (equal (eval sym) val))
+                  (throw 'mismatch t)))))))))
+
 (defun gptel--get-directive (args)
   "Find the additional directive in the transient ARGS.
 
@@ -416,6 +453,26 @@ This properly handles both individual tools and category headers."
 
 
 
+(defun gptel--format-preset-string ()
+  "Format the preset indicator display for `gptel-menu'."
+  (concat
+   (propertize "Request Parameters" 'face 'transient-heading)
+   (if (and gptel--known-presets gptel--preset)
+       (apply
+        #'format " (%s%s)"
+        (let ((mismatch (gptel--preset-mismatch-p gptel--preset)))
+          (list (propertize "@" 'face (if mismatch 'transient-key
+                                        '( :inherit transient-key
+                                           :inherit secondary-selection
+                                           :box -1 :weight bold)))
+                (propertize (format "%s" gptel--preset) 'face
+                            (if mismatch
+                                '(:inherit warning :strike-through t)
+                              '(:inherit secondary-selection :box -1))))))
+     (format " (%s%s)"
+             (propertize "@" 'face 'transient-key)
+             (propertize "preset" 'face 'transient-inactive-value)))))
+
 
 ;; * Transient classes and methods for gptel
 
@@ -626,7 +683,9 @@ Also format its value in the Transient menu."
      (lambda () (interactive) (gptel--handle-tool-use gptel--fsm-last))
      :if (lambda () (and gptel--fsm-last
                     (eq (gptel-fsm-state gptel--fsm-last) 'TOOL))))]]
-  [["Request Parameters"
+  [[(gptel--preset
+     :key "@" :format "%d"
+     :description gptel--format-preset-string)
     (gptel--infix-variable-scope)
     (gptel--infix-provider)
     (gptel--infix-max-tokens)
@@ -785,6 +844,67 @@ Customize `gptel-directives' for task-specific prompts."
             (gptel--setup-directive-menu
              'gptel--system-message "Directive" t)))
     :pad-keys t])
+
+;; ** Prefix for saving and applying presets
+
+(transient-define-prefix gptel--preset ()
+  "Apply a gptel preset, or save the current configuration as a preset.
+
+A \"preset\" is a collection of gptel settings, such as the model,
+backend, system message and enabled tools, that are applied and used
+together.  See `gptel-make-preset' for details."
+  :transient-suffix #'transient--do-return
+  [:description "Save or apply a preset collection of gptel options"
+   [:pad-keys t
+    ("C-s" "Save current settings to preset" gptel--save-preset)]]
+  [:if (lambda () gptel--known-presets)
+   :class transient-column
+   :setup-children
+   (lambda (_)
+     (transient-parse-suffixes
+      'gptel--preset
+      (cl-loop
+       for (name-sym . preset) in gptel--known-presets
+       for name = (symbol-name name-sym)
+       with unused-keys = (nconc (number-sequence ?a ?z)
+                                 (number-sequence ?0 ?9))
+       for description = (plist-get preset :description)
+       for key = (seq-find (lambda (k) (member k unused-keys))
+                           name (seq-first unused-keys))
+       do (setq unused-keys (delq key unused-keys))
+       collect
+       (list
+        (key-description (list key))
+        (concat name
+                (propertize " " 'display '(space :align-to 20))
+                (and description
+                     (propertize (concat
+                                  "(" (gptel--describe-directive
+                                       description (- (window-width) 30))
+                                  ")")
+                                 'face 'shadow)))
+        `(lambda () (interactive)
+           (gptel--set-with-scope 'gptel--preset ',name-sym
+            gptel--set-buffer-locally)
+           (gptel--apply-preset
+            ',(cons name-sym preset)
+            (lambda (sym val) (gptel--set-with-scope
+                               sym val gptel--set-buffer-locally)))
+           (message "Applied gptel preset %s"
+            (propertize ,name 'face 'transient-value))
+           (when transient--stack
+            (run-at-time 0 nil #'transient-setup))))
+       into generated
+       finally return
+       (nconc (list '(gptel--infix-variable-scope
+                      :format "%d %k %v"
+                      :description
+                      (lambda () (format "%s        %s"
+                             (propertize "Apply preset" 'face 'transient-heading)
+                             (propertize "Scope" 'face 'transient-active-prefix)))))
+              generated))))])
+
+;; ** Prefix for selecting tools
 
 ;;;###autoload (autoload 'gptel-tools "gptel-transient" nil t)
 (transient-define-prefix gptel-tools ()
