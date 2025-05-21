@@ -56,18 +56,25 @@
 This is used in gptel context buffers."
   :group 'gptel)
 
-(defcustom gptel-context-wrap-function #'gptel-context--wrap-default
-  "Function to format the context string sent with the gptel request.
+(defvar gptel-context-wrap-function nil
+  "Function to format the context string sent with the gptel request.")
+(make-obsolete-variable
+ 'gptel-context-wrap-function
+ "Custom functions for wrapping context are no longer supported by gptel.\
+  See `gptel-context--wrap-in-buffer' for details."
+ "0.9.9")
 
-This function receives two argument, the message to wrap with the
-context, and an alist of contexts organized by buffer.  It should
-return a string containing the message and the context, formatted as
-necessary.
+(defcustom gptel-context-string-function #'gptel-context--string
+  "Function to prepare the context string sent with the gptel request.
 
-The message is either the system message or the last user prompt,
-as configured by `gptel-use-context'.
+This function can be synchronous or asynchronous, and receives one or
+two arguments respectively.
 
-The alist of contexts is structured as follows:
+Synchronous: An alist of contexts with buffers or files (the context
+alist).
+Asynchronous: A callback to call with the result, and the context alist.
+
+The context alist is structured as follows:
 
  ((buffer1 . (overlay1 overlay2)
   (\"path/to/file\")
@@ -286,25 +293,57 @@ ADVANCE controls the overlay boundary behavior."
     overlay))
 
 ;;;###autoload
-(defun gptel-context--wrap (message)
-  "Wrap MESSAGE with context string."
-  (funcall gptel-context-wrap-function
-           message (gptel-context--collect)))
+(defun gptel-context--wrap (callback data-buf)
+  "Add request context to DATA-BUF and run CALLBACK.
 
-(defun gptel-context--wrap-default (message contexts)
-  "Add CONTEXTS to MESSAGE.
+DATA-BUF is the buffer where the request prompt is constructed."
+  (if (= (car (func-arity gptel-context-string-function)) 2)
+      (funcall gptel-context-string-function
+               (lambda (c) (with-current-buffer data-buf
+                        (gptel-context--wrap-in-buffer c))
+                 (funcall callback))
+               (gptel-context--collect))
+    (with-current-buffer data-buf
+      (thread-last (gptel-context--collect)
+                   (funcall gptel-context-string-function)
+                   (gptel-context--wrap-in-buffer)))
+    (funcall callback)))
 
-MESSAGE is usually either the system message or the user prompt.
-The accumulated context from CONTEXTS is appended or prepended to
-it, respectively."
-  ;; Append context before/after system message.
-  (let ((context-string (gptel-context--string contexts)))
-    (if (> (length context-string) 0)
-        (pcase-exhaustive gptel-use-context
-          ('system (concat message "\n\n" context-string))
-          ('user   (concat context-string "\n\n" message))
-          ('nil    message))
-      message)))
+(defun gptel-context--wrap-in-buffer (context-string &optional method)
+  "Inject CONTEXT-STRING to current buffer using METHOD.
+
+METHOD is either system or user, and defaults to `gptel-use-context'.
+This modifies the buffer."
+  (when (length> context-string 0)
+    (pcase (or method gptel-use-context)
+      ('system
+       (if (gptel--model-capable-p 'nosystem)
+           (gptel-context--wrap-in-buffer context-string 'user)
+         (if gptel--system-message
+             (cl-etypecase gptel--system-message
+               (string
+                (setq gptel--system-message
+                      (concat gptel--system-message "\n\n" context-string)))
+               (function
+                (setq gptel--system-message
+                      (gptel--parse-directive gptel--system-message 'raw))
+                (gptel-context--wrap-in-buffer context-string))
+               (list
+                (setq gptel--system-message ;cons a new list to avoid mutation
+                      (cons (concat (car gptel--system-message) "\n\n" context-string)
+                            (cdr gptel--system-message)))))
+           (setq gptel--system-message context-string))))
+      ('user
+       (goto-char (point-max))
+       (text-property-search-backward 'gptel nil t)
+       (and gptel-mode
+            (looking-at
+             (concat "[\n[:blank:]]*"
+                     (and-let* ((prefix (gptel-prompt-prefix-string))
+                                ((not (string-empty-p prefix))))
+                       (concat "\\(?:" (regexp-quote prefix) "\\)?"))))
+            (delete-region (match-beginning 0) (match-end 0)))
+       (insert "\n" context-string "\n\n")))))
 
 (defun gptel-context--collect-media (&optional contexts)
   "Collect media CONTEXTS.
