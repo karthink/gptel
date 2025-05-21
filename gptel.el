@@ -1108,6 +1108,11 @@ in any way.")
   "Curl executable to use."
   (if (stringp gptel-use-curl) gptel-use-curl "curl"))
 
+(defun gptel--transform-add-context (callback fsm)
+  (if (and gptel-use-context gptel-context--alist)
+      (gptel-context--wrap callback (plist-get (gptel-fsm-info fsm) :data))
+    (funcall callback)))
+
 ;;;; Model interface
 ;; NOTE: This interface would be simpler to implement as a defstruct.  But then
 ;; users cannot set `gptel-model' to a symbol/string directly, or we'd need
@@ -2513,12 +2518,7 @@ Initiate the request when done."
       (let* ((directive (gptel--parse-directive gptel--system-message 'raw))
              ;; DIRECTIVE contains both the system message and the template prompts
              (gptel--system-message
-              ;; Add context chunks to system message if required
-              (unless (gptel--model-capable-p 'nosystem)
-                (if (and gptel-context--alist
-                         (eq gptel-use-context 'system))
-                    (gptel-context--wrap (car directive))
-                  (car directive))))
+              (unless (gptel--model-capable-p 'nosystem) (car directive)))
              ;; TODO(tool) Limit tool use to capable models after documenting :capabilities
              ;; (gptel-use-tools (and (gptel--model-capable-p 'tool-use) gptel-use-tools))
              (stream (and (plist-get info :stream) gptel-use-curl gptel-stream
@@ -2543,7 +2543,14 @@ Initiate the request when done."
         (setq full-prompt (gptel--parse-buffer ;prompt from buffer or explicitly supplied
                            gptel-backend (and gptel--num-messages-to-send
                                               (* 2 gptel--num-messages-to-send))))
-        (gptel--wrap-user-prompt-maybe full-prompt)
+        ;; Inject media chunks into the first user prompt if required.  Media
+        ;; chunks are always included with the first user message,
+        ;; irrespective of the preference in `gptel-use-context'.  This is
+        ;; because media cannot be included (in general) with system messages.
+        ;; TODO(augment): Find a way to do this in the prompt-buffer?
+        (when (and gptel-context--alist gptel-use-context
+                   gptel-track-media (gptel--model-capable-p 'media))
+          (gptel--wrap-user-prompt gptel-backend full-prompt 'media))
         (unless stream (cl-remf info :stream))
         (plist-put info :backend gptel-backend)
         (when gptel-include-reasoning   ;Required for next-request-only scope
@@ -2760,29 +2767,6 @@ Optional RAW disables text properties and transformation."
        (gptel--display-tool-calls tool-calls info))
       (`(tool-result . ,tool-results)
        (gptel--display-tool-results tool-results info)))))
-
-(defun gptel--wrap-user-prompt-maybe (prompts)
-  "Return PROMPTS wrapped with text and media context.
-
-This delegates to backend-specific wrap functions."
-  (prog1 prompts
-    (when gptel-context--alist
-      ;; Inject context chunks into the last user prompt if required.
-      ;; This is also the fallback for when `gptel-use-context' is set to
-      ;; 'system but the model does not support system messages.
-      (when (and gptel-use-context
-                 (or (eq gptel-use-context 'user)
-                     (gptel--model-capable-p 'nosystem))
-                 (> (length prompts) 0)) ;FIXME context should be injected
-                                        ;even when there are no prompts
-        (gptel--wrap-user-prompt gptel-backend prompts))
-      ;; Inject media chunks into the first user prompt if required.  Media
-      ;; chunks are always included with the first user message,
-      ;; irrespective of the preference in `gptel-use-context'.  This is
-      ;; because media cannot be included (in general) with system messages.
-      (when (and gptel-use-context gptel-track-media
-                 (gptel--model-capable-p 'media))
-        (gptel--wrap-user-prompt gptel-backend prompts :media)))))
 
 (defun gptel--create-prompt-buffer (&optional prompt-end)
   "Return a buffer with the conversation prompt to be sent.
