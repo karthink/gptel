@@ -422,23 +422,21 @@ which see."
 
 (defun gptel--format-preset-string ()
   "Format the preset indicator display for `gptel-menu'."
-  (concat
-   (propertize "Request Parameters" 'face 'transient-heading)
-   (if (and gptel--known-presets gptel--preset)
-       (apply
-        #'format " (%s%s)"
-        (let ((mismatch (gptel--preset-mismatch-p gptel--preset)))
-          (list (propertize "@" 'face (if mismatch 'transient-key
-                                        '( :inherit transient-key
-                                           :inherit secondary-selection
-                                           :box -1 :weight bold)))
-                (propertize (format "%s" gptel--preset) 'face
-                            (if mismatch
-                                '(:inherit warning :strike-through t)
-                              '(:inherit secondary-selection :box -1))))))
-     (format " (%s%s)"
-             (propertize "@" 'face 'transient-key)
-             (propertize "preset" 'face 'transient-inactive-value)))))
+  (if (and gptel--known-presets gptel--preset)
+      (apply
+       #'format " (%s%s)"
+       (let ((mismatch (gptel--preset-mismatch-p gptel--preset)))
+         (list (propertize "@" 'face (if mismatch 'transient-key
+                                       '( :inherit transient-key
+                                          :inherit secondary-selection
+                                          :box -1 :weight bold)))
+               (propertize (format "%s" gptel--preset) 'face
+                           (if mismatch
+                               '(:inherit warning :strike-through t)
+                             '(:inherit secondary-selection :box -1))))))
+    (format " (%s%s)"
+            (propertize "@" 'face 'transient-key)
+            (propertize "preset" 'face 'transient-inactive-value))))
 
 
 ;; * Transient classes and methods for gptel
@@ -652,7 +650,10 @@ Also format its value in the Transient menu."
                     (eq (gptel-fsm-state gptel--fsm-last) 'TOOL))))]]
   [[(gptel--preset
      :key "@" :format "%d"
-     :description gptel--format-preset-string)
+     :description
+     (lambda ()
+       (concat (propertize "Request Parameters" 'face 'transient-heading)
+               (gptel--format-preset-string))))
     (gptel--infix-variable-scope)
     (gptel--infix-provider)
     (gptel--infix-max-tokens)
