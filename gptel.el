@@ -3356,7 +3356,7 @@ kill-ring."
                                                     gptel-directives))))
                          `',directive
                       gptel--system-message)
-           :tools ,(mapcar #'gptel-tool-name gptel-tools)
+           :tools ',(mapcar #'gptel-tool-name gptel-tools)
            :stream ,gptel-stream
            :temperature ,gptel-temperature
            :max-tokens ,gptel-max-tokens
