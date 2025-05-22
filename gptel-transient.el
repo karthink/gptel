@@ -420,11 +420,10 @@ which see."
                        context (if dest (concat (pth ", with response to ") dest)
                                  (concat (pth ", insert response at point")))))))))
 
-;; ** Prefix for selecting tools
 (defun gptel--toggle-all-tools ()
   "Toggle the selection state of all tools in the transient menu.
 
-If no or some tools are selected, select all tools.
+If no tools or some are selected, select all tools.
 If all tools are selected, deselect all tools.
 This properly handles both individual tools and category headers."
   (interactive)
@@ -450,8 +449,6 @@ This properly handles both individual tools and category headers."
           (transient-infix-set suffix (unless all-selected (oref suffix argument))))))
 
     (transient--redisplay)))
-
-
 
 (defun gptel--format-preset-string ()
   "Format the preset indicator display for `gptel-menu'."
@@ -938,9 +935,7 @@ only (\"oneshot\")."
                 (cl-delete-if-not #'consp args))
         gptel--set-buffer-locally))
      :transient transient--do-return)
-    ("*" "Toggle all tools" gptel--toggle-all-tools
-      :transient t)
-
+    ("*" "Toggle all tools" gptel--toggle-all-tools :transient t)
     ("q" "Cancel" transient-quit-one)]]
   [:class transient-column
    :setup-children
