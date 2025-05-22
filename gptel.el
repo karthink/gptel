@@ -3367,6 +3367,7 @@ kill-ring."
     (message "Preset %s saved. (Lisp expression for preset saved to kill-ring)"
              (propertize (symbol-name name) 'face 'highlight))))
 
+(defvar gptel--rewrite-directive)
 (defun gptel--apply-preset (preset &optional setter)
   "Apply gptel PRESET with SETTER.
 
@@ -3389,13 +3390,15 @@ example) apply the preset buffer-locally."
    (lambda (key val)
      (pcase key
        ((or :parents :description) nil)
-       (:system
-        (if (and (symbolp val) (not (functionp val)))
-            (if-let* ((directive (alist-get val gptel-directives)))
-                (funcall setter 'gptel--system-message directive)
-              (user-error "gptel preset \"%s\": Cannot find directive %s"
-                          (car preset) val))
-          (funcall setter 'gptel--system-message val)))
+       ((or :system :system-message :rewrite-directive)
+        (let ((sym (if (eq key :rewrite-directive)
+                       'gptel--rewrite-directive 'gptel--system-message)))
+          (if (and (symbolp val) (not (functionp val)))
+              (if-let* ((directive (alist-get val gptel-directives)))
+                  (funcall setter sym directive)
+                (user-error "gptel preset \"%s\": Cannot find directive %s"
+                            (car preset) val))
+            (funcall setter sym val))))
        (:backend
         (setq val (cl-etypecase val
                     (gptel-backend val)
