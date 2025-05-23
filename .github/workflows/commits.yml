@@ -4,7 +4,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
       - name: Check commit messages
         run: |
           for sha in $(git rev-list origin/main..HEAD); do
