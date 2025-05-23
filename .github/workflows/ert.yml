@@ -14,8 +14,17 @@ jobs:
 
       - name: Run ERT tests
         run: |
+          git submodule update --init --recursive
           cd test
           emacs -Q -L .. -L . \
+            --eval "(progn
+                      (require 'package)
+                      (add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\") t)
+                      (add-to-list 'package-archives '(\"gnu\" . \"https://elpa.gnu.org/packages/\") t)
+                      (package-initialize)
+                      (setq package-install-upgrade-built-in t)
+                      (package-refresh-contents)
+                      (package-install 'transient))" \
             $(find .. -mindepth 1 -maxdepth 1 \
               \( -name '.*.el' -prune -o -name '*.el' -type f -printf ' -l %p' \)) \
             $(find . -mindepth 1 -maxdepth 1 \
