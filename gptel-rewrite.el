@@ -483,6 +483,14 @@ By default, gptel uses the directive associated with the `rewrite'
      (gptel--describe-directive
       gptel--rewrite-directive (max (- (window-width) 14) 20) " "))
    [""
+    (gptel--preset
+     :if (lambda () (or (get-char-property (point) 'gptel-rewrite)
+                   (use-region-p)))
+     :key "@" :format "%d"
+     :description
+     (lambda ()
+       (concat (propertize "Instructions" 'face 'transient-heading)
+               (gptel--format-preset-string))))
     ("s" "Set full directive" gptel--rewrite-directive-menu)
     (gptel--infix-rewrite-extra)]]
   ;; FIXME: We are requiring `gptel-transient' because of this suffix, perhaps

@@ -1743,7 +1743,7 @@ implementation, used by OpenAI-compatible APIs and Ollama."
         (list
          :name (gptel-tool-name tool)
          :description (gptel-tool-description tool))
-        (and (gptel-tool-args tool)     ;no parameters if args is nil
+        (if (gptel-tool-args tool)
              (list
               :parameters
               (list :type "object"
@@ -1774,7 +1774,8 @@ implementation, used by OpenAI-compatible APIs and Ollama."
                                 (lambda (arg) (and (not (plist-get arg :optional))
                                               (plist-get arg :name)))
                                 (gptel-tool-args tool))))
-                    :additionalProperties :json-false))))))
+                    :additionalProperties :json-false))
+          (list :parameters :null)))))
     (ensure-list tools))))
 
 (cl-defgeneric gptel--parse-tool-results (backend results)
@@ -3356,7 +3357,7 @@ kill-ring."
                                                     gptel-directives))))
                          `',directive
                       gptel--system-message)
-           :tools ,(mapcar #'gptel-tool-name gptel-tools)
+           :tools ',(mapcar #'gptel-tool-name gptel-tools)
            :stream ,gptel-stream
            :temperature ,gptel-temperature
            :max-tokens ,gptel-max-tokens
@@ -3367,6 +3368,7 @@ kill-ring."
     (message "Preset %s saved. (Lisp expression for preset saved to kill-ring)"
              (propertize (symbol-name name) 'face 'highlight))))
 
+(defvar gptel--rewrite-directive)
 (defun gptel--apply-preset (preset &optional setter)
   "Apply gptel PRESET with SETTER.
 
@@ -3389,13 +3391,15 @@ example) apply the preset buffer-locally."
    (lambda (key val)
      (pcase key
        ((or :parents :description) nil)
-       (:system
-        (if (and (symbolp val) (not (functionp val)))
-            (if-let* ((directive (alist-get val gptel-directives)))
-                (funcall setter 'gptel--system-message directive)
-              (user-error "gptel preset \"%s\": Cannot find directive %s"
-                          (car preset) val))
-          (funcall setter 'gptel--system-message val)))
+       ((or :system :system-message :rewrite-directive)
+        (let ((sym (if (eq key :rewrite-directive)
+                       'gptel--rewrite-directive 'gptel--system-message)))
+          (if (and (symbolp val) (not (functionp val)))
+              (if-let* ((directive (alist-get val gptel-directives)))
+                  (funcall setter sym directive)
+                (user-error "gptel preset \"%s\": Cannot find directive %s"
+                            (car preset) val))
+            (funcall setter sym val))))
        (:backend
         (setq val (cl-etypecase val
                     (gptel-backend val)
