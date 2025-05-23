@@ -24,7 +24,12 @@ jobs:
                       (package-initialize)
                       (setq package-install-upgrade-built-in t)
                       (package-refresh-contents)
-                      (package-install 'transient))" \
+                      (package-install 'transient)
+                      ;; Verify version
+                      (require 'transient)
+                      (message \"Transient version: %s\" (package-desc-version (package-get-descriptor 'transient)))
+                      (require 'compat)
+                      (message \"Compat version: %s\" (package-desc-version (package-get-descriptor 'compat))))" \
             $(find .. -mindepth 1 -maxdepth 1 \
               \( -name '.*.el' -prune -o -name '*.el' -type f -printf ' -l %p' \)) \
             $(find . -mindepth 1 -maxdepth 1 \
