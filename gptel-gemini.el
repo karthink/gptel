@@ -463,6 +463,15 @@ files in the context."
      :input-cost 0.15
      :output-cost 0.60 ; 3.50 for thinking
      :cutoff-date "2025-01")
+    (gemini-2.5-flash-preview-05-20
+     :description "Best Gemini model in terms of price-performance, offering well-rounded capabilities"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1048 ; 65536 output token limit
+     :input-cost 0.15
+     :output-cost 0.60 ; 3.50 for thinking
+     :cutoff-date "2025-01")
     (gemini-2.5-pro-preview-05-06
      :description "Most powerful Gemini thinking model with maximum response accuracy and state-of-the-art performance"
      :capabilities (tool-use json media)
