@@ -2620,12 +2620,16 @@ waiting for the response."
   (interactive "P")
   (if (and arg (require 'gptel-transient nil t))
       (call-interactively #'gptel-menu)
-    (message "Querying %s..." (gptel-backend-name gptel-backend))
     (gptel--sanitize-model)
-    (gptel-request nil
-      :stream gptel-stream
-      :transforms gptel-prompt-transform-functions
-      :fsm (gptel-make-fsm :handlers gptel-send--handlers))
+    (let ((fsm (gptel-make-fsm :handlers gptel-send--handlers)))
+      (gptel-request nil
+        :stream gptel-stream
+        :transforms gptel-prompt-transform-functions
+        :fsm fsm)
+      (message "Querying %s..."
+               (thread-first (gptel-fsm-info fsm)
+                             (plist-get :backend)
+                             (gptel-backend-name))))
     (gptel--update-status " Waiting..." 'warning)))
 
 (declare-function json-pretty-print-buffer "json")
