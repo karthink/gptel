@@ -1133,6 +1133,7 @@ supports.  See `gptel-track-media' for more information."
   "Add current kill to gptel's context."
   :transient 'transient--do-stay
   :key "C-y"
+  :if (lambda () gptel-expert-commands)
   :description
   "Yank to context"
   (interactive "P")
