@@ -3665,41 +3665,35 @@ symbol."
   "Apply a gptel preset to the buffer depending on the prompt.
 
 If the user prompt begins with @foo, the preset foo is applied."
-  (text-property-search-backward 'gptel nil t)
-  (when (looking-at
-         (concat "[\n[:blank:]]*"
-                 (and-let* ((prefix (gptel-prompt-prefix-string))
-                            ((not (string-empty-p prefix))))
-                   (concat "\\(?:" (regexp-quote prefix) "\\)?"))))
-    (goto-char (match-end 0)))
-  (while-let (((looking-at "[[:blank:]\n]*@\\([^[:blank:]]+\\)\\s-+"))
-              (name (match-string 1))
-              (preset (or (gptel-get-preset (intern-soft name))
-                          (gptel-get-preset name))))
-    (delete-region (match-beginning 0) (match-end 0))
-    (gptel--apply-preset (cons name preset)
-                         (lambda (sym val)
-                           (set (make-local-variable sym) val)))
-    (message "Sending request with preset %s applied!"
-             (propertize name 'face 'mode-line-emphasis))))
+  (when gptel--known-presets
+    (text-property-search-backward 'gptel nil t)
+    (while (re-search-forward "@\\([^[:blank:]]+\\)\\_>" nil t)
+      ;; The following convoluted check is because re-search is much faster if
+      ;; the search pattern begins with a non-whitespace char.
+      (when (or (= (match-beginning 0) (point-min))
+                (memq (char-syntax (char-before (match-beginning 0))) '(32 62)))
+        (when-let* ((name (match-string 1))
+                    (preset (or (gptel-get-preset (intern-soft name))
+                                (gptel-get-preset name))))
+          (delete-region (match-beginning 0) (match-end 0))
+          (gptel--apply-preset (cons name preset)
+                               (lambda (sym val)
+                                 (set (make-local-variable sym) val))))))))
+
+;; ;; Alternative approach with string search
+;; (search-forward "@" nil t)
+;; (if (and (memq (char-syntax (char-before (1- (point)))) '(32 62))
+;;          (looking-at "\\([^[:blank:]]+?\\)[[:punct:]]?\\s-+"))
+;;     do-stuff)
 
 (defun gptel--fontify-preset-keyword (end)
   "Font-lock function for preset indicators in chat buffers.
 
 Return preset fontification info for text up to END."
-  (when (re-search-forward "\\(?:^\\|[[:blank:]]+\\)\\(@\\([^[:blank:]\n]+\\)\\)"
-                           end t)
-    (= (match-beginning 1)
-       (save-excursion
-         (text-property-search-backward 'gptel nil t)
-         (save-match-data
-           (if (looking-at
-                (concat "[\n[:blank:]]*"
-                        (and-let* ((prefix (gptel-prompt-prefix-string))
-                                   ((not (string-empty-p prefix))))
-                          (concat "\\(?:" (regexp-quote prefix) "\\)?"
-                                  "[\n[:blank:]]*"))))
-               (match-end 0) (point)))))))
+  (and (re-search-forward "@\\([^[:blank:]]+\\)\\_>" end t)
+       (or (= (match-beginning 0) (point-min))
+           (memq (char-syntax (char-before (match-beginning 0))) '(32 62)))
+       (not (plist-get (text-properties-at (match-beginning 1)) 'gptel))))
 
 (defun gptel-preset-capf ()
   "Completion at point for gptel presets in `gptel-mode'.
@@ -3723,9 +3717,11 @@ Add this to `completion-at-point-functions'."
 
 Intended to be added to `gptel-mode-hook'."
   (let ((keyword '((gptel--fontify-preset-keyword
-                    1 (when-let* ((comps (all-completions (match-string 2)
+                    ;; subexp 0 here is not required, we retain it to make it
+                    ;; easy to swtich to more complex patterns in the future
+                    0 (when-let* ((comps (all-completions (match-string 1)
                                           gptel--known-presets))
-                                  ((member (match-string 2) comps)))
+                                  ((member (match-string 1) comps)))
                        '(:box -1 :inherit secondary-selection))
                     prepend))))
     (cond
