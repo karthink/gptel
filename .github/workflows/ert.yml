@@ -1,0 +1,18 @@
+name: Emacs ERT Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: purcell/setup-emacs@master
+        with:
+          version: '29.4'
+
+      - name: Run ERT tests
+        run: |
+          cd test
+          emacs -Q -L .. -L . $(find .. -mindepth 1 -maxdepth 2 \( -name '.*.el' -prune -o -name '*.el' -type f -printf ' -l %p' \)) -l ert --batch -f ert-run-tests-batch-and-exit
