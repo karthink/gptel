@@ -109,6 +109,22 @@
      :input-cost 3
      :output-cost 15
      :cutoff-date "2025-02")
+    (claude-sonnet-4
+     :description "High-performance model with exceptional reasoning and efficiency"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 3
+     :output-cost 15
+     :cutoff-date "2025-03")
+    (claude-opus-4
+     :description "Most capable model for complex reasoning and advanced coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 15
+     :output-cost 75
+     :cutoff-date "2025-03")
     (gemini-2.0-flash-001
      :description "Next gen, high speed, multimodal for a diverse variety of tasks"
      :capabilities (json media)
