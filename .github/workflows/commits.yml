@@ -1,0 +1,13 @@
+name: Lint Commit Messages
+on: [pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Check commit messages
+        run: |
+          for sha in $(git rev-list origin/main..HEAD); do
+            msg=$(git log --format=%B -n 1 $sha)
+            echo "$msg" | grep -E "^(feat|fix|docs|chore): .{10,}$" || exit 1
+          done
