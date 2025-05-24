@@ -219,7 +219,7 @@ the response."
 ;;;###autoload
 (cl-defun gptel-make-perplexity
     (name &key curl-args stream key
-          (header 
+          (header
            (lambda () (when-let* ((key (gptel--get-api-key)))
                    `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.perplexity.ai")
@@ -309,7 +309,7 @@ parameters."
     (when (and (stringp reasoning) (length> reasoning 0))
       (plist-put info :reasoning reasoning))))
 
-(cl-defmethod gptel--parse-buffer :around ((_backend gptel-deepseek) max-entries)
+(cl-defmethod gptel--parse-buffer :around ((_backend gptel-deepseek) _max-entries)
   "Merge successive prompts in the prompts list that have the same role.
 
 The Deepseek API requires strictly alternating roles (user/assistant) in messages."
@@ -346,7 +346,9 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
                      :context-window 64
                      :input-cost 0.27
                      :output-cost 1.10))))
-  "Register a DeepSeek backend for gptel with NAME."
+  "Register a DeepSeek backend for gptel with NAME.
+
+For the meanings of the keyword arguments, see `gptel-make-openai'."
   (declare (indent 1))
   (let ((backend (gptel--make-deepseek
                   :name name

@@ -1129,6 +1129,7 @@ supports.  See `gptel-track-media' for more information."
 
 (declare-function gptel-context--at-point "gptel-context")
 (declare-function gptel-add "gptel-context")
+(declare-function gptel-context-add-current-kill "gptel-context")
 
 (transient-define-suffix gptel--infix-context-add-current-kill (&optional arg)
   "Add current kill to gptel's context."
