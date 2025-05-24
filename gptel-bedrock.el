@@ -591,6 +591,12 @@ REGION is one of apac, eu or us."
      (when token
        (list (format "-Hx-amz-security-token: %s" token))))))
 
+(defun gptel-bedrock--curl-version ()
+  (let* ((output (shell-command-to-string "curl --version"))
+         (version (and (string-match "^curl \\([0-9.]+\\)" output)
+                       (match-string 1 output))))
+    version))
+
 ;;;###autoload
 (cl-defun gptel-make-bedrock
     (name &key
@@ -609,6 +615,9 @@ MODELS - The list of models supported by this backend
 MODEL-REGION - one of apac, eu, us or nil
 STREAM - Whether to use streaming responses or not."
   (declare (indent 1))
+  (unless (and gptel-use-curl (version<= "8.5" (gptel-bedrock--curl-version)))
+    (error "Bedrock-backend requires curl >= 8.5, but gptel-use-curl := %s, curl-version := %s"
+           gptel-use-curl (gptel-bedrock--curl-version)))
   (let ((host (format "bedrock-runtime.%s.amazonaws.com" region)))
     (setf (alist-get name gptel--known-backends nil nil #'equal)
           (gptel--make-bedrock
