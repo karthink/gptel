@@ -410,7 +410,7 @@ START and END signify the region delimiters."
 
 (defun gptel-context--insert-file-string (path)
   "Insert at point the contents of the file at PATH as context."
-  (insert (format "In file `%s`:" (file-name-nondirectory path))
+  (insert (format "In file `%s`:" path)
           "\n\n```\n")
   (insert-file-contents path)
   (goto-char (point-max))
@@ -493,7 +493,7 @@ context overlays, see `gptel-context--alist'."
                         (overlay-put ov 'evaporate t)
                         (insert "\n" (make-separator-line) "\n"))
                     ;; BUF is a file path, not a buffer
-                    (insert (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
+                    (insert (propertize (format "In file %s:\n\n" buf)
                                         'face 'bold))
                     (setq beg (point))
                     (if-let* ((mime (plist-get ovs :mime)))
