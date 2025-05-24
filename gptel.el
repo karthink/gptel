@@ -254,9 +254,9 @@ all at once.  This wait is asynchronous.
 
 Can be set to t, nil, or a string path to the curl executable."
   :type '(choice
-          (const nil :tag "Do not use curl")
-          (const t :tag "Use the system curl")
-          (string :tag "Path to the curl executable")))
+          (const :tag "Do not use Curl" nil)
+          (const :tag "Use Curl" t)
+          (string :tag "Specify path to the Curl executable")))
 
 (defcustom gptel-org-convert-response t
   "Whether gptel should convert Markdown responses to Org markup.
