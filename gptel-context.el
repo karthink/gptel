@@ -402,11 +402,19 @@ START and END signify the region delimiters."
                  else collect (list buf) into elements
                  finally return elements)))
 
+(defun gptel-context--format-buffer-name (buffer)
+  "Format buffer name with file path if applicable."
+  (let ((buffer-name (buffer-name buffer))
+        (file-name (buffer-file-name buffer)))
+    (if file-name
+        (format "%s (%s)" buffer-name (abbreviate-file-name file-name))
+      buffer-name)))
+
 (defun gptel-context--insert-buffer-string (buffer contexts)
   "Insert at point a context string from all CONTEXTS in BUFFER."
     (let ((is-top-snippet t)
           (previous-line 1))
-      (insert (format "In buffer `%s`:" (buffer-name buffer))
+      (insert (format "In buffer `%s`:" (gptel-context--format-buffer-name buffer))
               "\n\n```" (gptel--strip-mode-suffix (buffer-local-value
                                                    'major-mode buffer))
               "\n")
@@ -504,7 +512,7 @@ context overlays, see `gptel-context--alist'."
                           (setq l1 (line-number-at-pos (overlay-start source-ov))
                                 l2 (line-number-at-pos (overlay-end source-ov))))
                         (insert (propertize (format "In buffer %s (lines %d-%d):\n\n"
-                                                    (buffer-name buf) l1 l2)
+                                                    (gptel-context--format-buffer-name buf) l1 l2)
                                             'face 'bold))
                         (setq beg (point))
                         (insert-buffer-substring
