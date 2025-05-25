@@ -516,7 +516,7 @@ context overlays, see `gptel-context--alist'."
                         (overlay-put ov 'evaporate t)
                         (insert "\n" (make-separator-line) "\n"))
                     ;; BUF is a file path, not a buffer
-                    (insert (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
+                    (insert (propertize (format "In file %s:\n\n" (abbreviate-file-name buf))
                                         'face 'bold))
                     (setq beg (point))
                     (if-let* ((mime (plist-get ovs :mime)))
