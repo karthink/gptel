@@ -151,7 +151,8 @@ Throw an error if there is no match."
                    (:copier gptel--copy-backend))
   name host header protocol stream
   endpoint key models url request-params
-  curl-args)
+  curl-args
+  (coding-system nil :documentation "Can be set to `binary' if the backend expects non UTF-8 output."))
 
 ;;; OpenAI (ChatGPT)
 (cl-defstruct (gptel-openai (:constructor gptel--make-openai)
@@ -521,7 +522,7 @@ information, in the form
  (model-name . plist)
 
 For a list of currently recognized plist keys, see
-`gptel--openai-models'. An example of a model specification
+`gptel--openai-models'.  An example of a model specification
 including both kinds of specs:
 
 :models
@@ -689,3 +690,7 @@ Example:
 
 (provide 'gptel-openai)
 ;;; gptel-openai.el ends here
+
+;; Local Variables:
+;; byte-compile-warnings: (not docstrings)
+;; End:

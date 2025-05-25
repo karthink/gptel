@@ -1205,7 +1205,7 @@ To use MCP servers with gptel, you thus need three pieces:
 2. MCP servers configured for and running via mcp.el.
 3. gptel and access to an LLM
 
-While mcp.el [[https://github.com/lizqwerscott/mcp.el?tab=readme-ov-file#use-with-gptel][provides instructions]] for accessing MCP-provided tools from gptel, gptel includes =gptel-integrations=, a small library to make this more convenient.  This library is not automatically loaded by gptel, so if you would like to use it you have to require it:
+gptel includes =gptel-integrations=, a small library to make this more convenient.  This library is not automatically loaded by gptel, so if you would like to use it you have to require it:
 
 #+begin_src emacs-lisp
 (require 'gptel-integrations)
@@ -1219,6 +1219,12 @@ MCP-provided tools can be used as normal with gptel.  Here is a screencast of th
 
 #+html: <p align="center">
 https://github.com/user-attachments/assets/f3ea7ac0-a322-4a59-b5b2-b3f592554f8a
+#+html: </p>
+
+Here's an example of using these tools:
+
+#+html: <p align="center">
+https://github.com/user-attachments/assets/b48a6a24-a130-4da7-a2ee-6ea568e10c85
 #+html: </p>
 
 #+html: </details>

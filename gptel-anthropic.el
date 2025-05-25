@@ -591,7 +591,7 @@ Keys:
 Information about the Anthropic models was obtained from the following
 comparison table:
 
-<https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table>")
+URL `https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table'")
 
 ;;;###autoload
 (cl-defun gptel-make-anthropic
@@ -676,3 +676,8 @@ for."
 
 (provide 'gptel-anthropic)
 ;;; gptel-anthropic.el ends here
+
+;; Local Variables:
+;; byte-compile-warnings: (not docstrings)
+;; End:
+

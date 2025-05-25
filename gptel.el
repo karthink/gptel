@@ -250,8 +250,13 @@ all at once.  This wait is asynchronous.
   :type 'boolean)
 
 (defcustom gptel-use-curl (and (executable-find "curl") t)
-  "Whether gptel should prefer Curl when available."
-  :type 'boolean)
+  "Whether gptel should prefer Curl when available.
+
+Can be set to t, nil, or a string path to the curl executable."
+  :type '(choice
+          (const :tag "Do not use Curl" nil)
+          (const :tag "Use Curl" t)
+          (string :tag "Specify path to the Curl executable")))
 
 (defcustom gptel-org-convert-response t
   "Whether gptel should convert Markdown responses to Org markup.
@@ -1055,6 +1060,10 @@ content on this line."
 Note: Changing this variable does not affect gptel\\='s behavior
 in any way.")
 (put 'gptel--backend-name 'safe-local-variable #'always)
+
+(defsubst gptel--curl-path ()
+  "Curl executable to use."
+  (if (stringp gptel-use-curl) gptel-use-curl "curl"))
 
 ;;;; Model interface
 ;; NOTE: This interface would be simpler to implement as a defstruct.  But then
