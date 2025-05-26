@@ -1354,7 +1354,7 @@ You can flip this switch before setting the option to =buffer= or =oneshot=.  Yo
 **** I want the transient menu options to be saved so I only need to set them once
 #+html: </summary>
 
-Any model options you set are saved for the current buffer.  But the redirection options in the menu are set for the next query only:
+Any model options you set are saved according to the scope (see previous question).  But the redirection options in the menu are set for the next query only:
 
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/2ecc6be9-aa52-4287-a739-ba06e1369ec2" alt="https://github.com/karthink/gptel/assets/8607532/2ecc6be9-aa52-4287-a739-ba06e1369ec2">
 
