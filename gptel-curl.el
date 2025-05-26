@@ -55,9 +55,9 @@ See `gptel-backend'."
 (defconst gptel-curl--common-args
   (if (memq system-type '(windows-nt ms-dos))
       '("--disable" "--location" "--silent" "-XPOST"
-        "-y300" "-Y1" "-D-")
+        "-y7200" "-Y1" "-D-")
     '("--disable" "--location" "--silent" "--compressed"
-      "-XPOST" "-y300" "-Y1" "-D-"))
+      "-XPOST" "-y7200" "-Y1" "-D-"))
   "Arguments always passed to Curl for gptel queries.")
 
 (defun gptel-curl--get-args (info token)
