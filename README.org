@@ -140,6 +140,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#i-want-to-change-the-formatting-of-the-prompt-and-llm-response][I want to change the formatting of the prompt and LLM response]]
       - [[#how-does-gptel-distinguish-between-user-prompts-and-llm-responses][How does gptel distinguish between user prompts and LLM responses?]]
     - [[#transient-menu-behavior][Transient menu behavior]]
+      - [[#i-want-to-set-gptel-options-but-only-for-this-buffer][I want to set gptel options, but only for this buffer]]
       - [[#i-want-the-transient-menu-options-to-be-saved-so-i-only-need-to-set-them-once][I want the transient menu options to be saved so I only need to set them once]]
       - [[#using-the-transient-menu-leaves-behind-extra-windows][Using the transient menu leaves behind extra windows]]
       - [[#can-i-change-the-transient-menu-key-bindings][Can I change the transient menu key bindings?]]
@@ -1334,6 +1335,21 @@ gptel does /not/ use any prefix or semantic/syntax element in the buffer (such a
 
 #+html: </details>
 *** Transient menu behavior
+#+html: <details><summary>
+**** I want to set gptel options, but only for this buffer
+#+html: </summary>
+
+In every menu used to set options, gptel provides a "scope" option, bound to the ~=~ key:
+
+#+html: <img src="https://github.com/user-attachments/assets/f9904134-2905-4b1d-ad37-b64c777af8ac" align="center" />
+
+#+html: <img src="https://github.com/user-attachments/assets/c0950035-bf65-43ae-b649-8e3b651ce3f1" align="center" />
+
+#+html: <img src="https://github.com/user-attachments/assets/fa3b1246-e00f-4c5e-88c7-46557b3507ef" align="center" />
+
+You can flip this switch before setting the option to =buffer= or =oneshot=.  You only need to flip this switch once, it's a persistent setting.  =buffer= sets the option buffer-locally, =oneshot= will set it for the next gptel request only.  The default scope is global.
+
+#+html: </details>
 #+html: <details><summary>
 **** I want the transient menu options to be saved so I only need to set them once
 #+html: </summary>
