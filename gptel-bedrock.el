@@ -586,8 +586,10 @@ REGION is one of apac, eu or us."
     (nconc
      (list
       "--user" (format "%s:%s" key-id secret)
-      "--aws-sigv4" (format "aws:amz:%s:bedrock" region)
-      "--output" "/dev/stdout") ;; Without this curl swallows the output
+      "--aws-sigv4" (format "aws:amz:%s:bedrock" region))
+     (unless (memq system-type '(windows-nt ms-dos))
+       ;; Without this curl swallows the output
+       (list "--output" "/dev/stdout"))
      (when token
        (list (format "-Hx-amz-security-token: %s" token))))))
 
