@@ -371,11 +371,19 @@ START and END signify the region delimiters."
                  else collect (list buf) into elements
                  finally return elements)))
 
+(defun gptel-context--format-buffer-name (buffer)
+  "Format buffer name with file path if applicable."
+  (let ((buffer-name (buffer-name buffer))
+        (file-name (buffer-file-name buffer)))
+    (if file-name
+        (format "%s (%s)" buffer-name (abbreviate-file-name file-name))
+      buffer-name)))
+
 (defun gptel-context--insert-buffer-string (buffer contexts)
   "Insert at point a context string from all CONTEXTS in BUFFER."
     (let ((is-top-snippet t)
           (previous-line 1))
-      (insert (format "In buffer `%s`:" (buffer-name buffer))
+      (insert (format "In buffer `%s`:" (gptel-context--format-buffer-name buffer))
               "\n\n```" (gptel--strip-mode-suffix (buffer-local-value
                                                    'major-mode buffer))
               "\n")
@@ -410,7 +418,7 @@ START and END signify the region delimiters."
 
 (defun gptel-context--insert-file-string (path)
   "Insert at point the contents of the file at PATH as context."
-  (insert (format "In file `%s`:" (file-name-nondirectory path))
+  (insert (format "In file `%s`:" (abbreviate-file-name path))
           "\n\n```\n")
   (insert-file-contents path)
   (goto-char (point-max))
@@ -481,7 +489,7 @@ context overlays, see `gptel-context--alist'."
                           (setq l1 (line-number-at-pos (overlay-start source-ov))
                                 l2 (line-number-at-pos (overlay-end source-ov))))
                         (insert (propertize (format "In buffer %s (lines %d-%d):\n\n"
-                                                    (buffer-name buf) l1 l2)
+                                                    (gptel-context--format-buffer-name buf) l1 l2)
                                             'face 'bold))
                         (setq beg (point))
                         (insert-buffer-substring
@@ -493,7 +501,7 @@ context overlays, see `gptel-context--alist'."
                         (overlay-put ov 'evaporate t)
                         (insert "\n" (make-separator-line) "\n"))
                     ;; BUF is a file path, not a buffer
-                    (insert (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
+                    (insert (propertize (format "In file %s:\n\n" (abbreviate-file-name buf))
                                         'face 'bold))
                     (setq beg (point))
                     (if-let* ((mime (plist-get ovs :mime)))
