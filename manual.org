@@ -830,7 +830,7 @@ Once defined, you can switch to a preset from gptel's transient menu
 (~gptel-menu~).  When a gptel preset is applied, the gptel options it
 specifies are set, and the ones it does not specify are simply left
 untouched.  So you can layer several presets on top of each other,
-with the later ones taking precedence over the ones applied earlier.
+with later presets taking precedence over the ones applied earlier.
 
 Presets can be applied globally (across the Emacs session),
 buffer-locally or for the next request only.  This is controlled by
@@ -1001,7 +1001,7 @@ Imagine that you have the following preset defined:
 This preset includes tools for searching the web, reading URLs and
 finding YouTube transcripts that the LLM can use.  Irrespective of the
 active gptel settings, you can send a query with this preset applied
-by starting your query message with =@websearch=:
+by including =@websearch= in your query:
 
 #+begin_quote
 @websearch Are there any 13" e-ink monitors on the market?  Create a
@@ -1010,35 +1010,24 @@ Also do the same for "transreflective-LCD" displays -- I'm not sure
 what exactly they're called but they're comparable to e-ink.
 #+end_quote
 
-If you use a prompt prefix, the =@preset= cookie has to be placed
-immediately after the prompt to be recognized ([[gptel-prompt-prefix-alist][prompt-prefix]]) Given
+This =@preset-name= cookie only applies to the final user turn of the
+coversation that is sent -- your latest question/response -- and the
+preset will not be applied if it is present in earlier messages.
 
-#+begin_src emacs-lisp
-(setq gptel-prompt-prefix-alist
-      '((markdown-mode . "USER: ")
-        (text-mode     . "USER: ")))
-#+end_src
-
-The query prompt would look like
-
+The =@preset-name= cookie can be anywhere in the prompt.  For example:
 #+begin_quote
-USER: @websearch Are there any 13" e-ink monitors...
+<long piece of text>
+
+What do you make of the above description, @editor?
 #+end_quote
 
 In chat buffers, a valid preset cookie is highlighted automatically
 and can be completed via ~completion-at-point~.  This is Emacs'
 familiar tab-completion in buffers, see [[info:emacs#Symbol Completion][Symbol Completion]]
 
-To enable this feature, set ~gptel-use-preset-cookie~.
-
-  #+vindex: gptel-use-preset-cookie
-- ~gptel-use-preset-cookie~ :: Boolean that enables recognizing preset
-  cookies at the start of your prompt.  If non-nil, gptel will
-  recognize presets specified as =@name-of-preset= at the start of the
-  last user message in a conversation.  If this preset exists,
-  settings from it will be applied when using =gptel-send=.  A query
-  can thus be directed anywhere, and sent with any other concomitant
-  settings, if a preset with these specifications exists.
+This method of specifying a preset takes priority over all the other
+ways of setting gptel request options, including via elisp, from
+gptel's transient menus, Org properties in the current buffer, etc.
 
 *** TODO COMMENT Agents and agentic use in gptel
 
