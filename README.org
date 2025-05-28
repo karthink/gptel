@@ -153,6 +153,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#why-another-llm-client][Why another LLM client?]]
   - [[#additional-configuration][Additional Configuration]]
     - [[#option-presets][Option presets]]
+      - [[#applying-presets-to-requests-automatically][Applying presets to requests automatically]]
   - [[#alternatives][Alternatives]]
     - [[#packages-using-gptel][Packages using gptel]]
   - [[#acknowledgments][Acknowledgments]]
@@ -1390,6 +1391,9 @@ gptel does /not/ use any prefix or semantic/syntax element in the buffer (such a
 *** Transient menu behavior
 #+html: <details><summary>
 **** I want to set gptel options, but only for this buffer
+:PROPERTIES:
+:ID:       748cbc00-0c92-4705-8839-619b2c80e566
+:END:
 #+html: </summary>
 
 In every menu used to set options, gptel provides a "scope" option, bound to the ~=~ key:
@@ -1592,7 +1596,7 @@ To define a preset, use the =gptel-make-preset= function, which takes a name and
 Besides a couple of special keys (=:description=, =:parents= to inherit other presets), there is no predefined list of keys.  Instead, the key =:foo= corresponds to setting =gptel-foo= (preferred) or =gptel--foo=.  So the preset can include the value of any gptel option.  For example, the following preset sets =gptel-temperature= and =gptel-use-context=:
 
 #+begin_src emacs-lisp
-(gptel-make-preset 'proofreading
+(gptel-make-preset 'proofreader
   :description "Preset for proofreading tasks"
   :backend "ChatGPT"
   :model 'gpt-4.1-mini
@@ -1602,6 +1606,39 @@ Besides a couple of special keys (=:description=, =:parents= to inherit other pr
 #+end_src
 
 Switching to a preset applies the specified settings without affecting other settings.  Depending on the scope option (~=~ in gptel's transient menu), presets can be applied globally, buffer-locally or for the next request only.
+
+**** Applying presets to requests automatically
+
+You can apply a preset to a /single/ query by including =@preset-name= in the prompt, where =preset-name= is the name of the preset.  (The =oneshot= scope option in gptel's transient menus is another way to do this, [[id:748cbc00-0c92-4705-8839-619b2c80e566][see the FAQ.]])
+
+For example, if you have a preset named =websearch= defined which includes tools for web access and search:
+#+begin_src emacs-lisp
+(gptel-make-preset 'websearch
+  :description  "Haiku with basic web search capability."
+  :backend      "Claude"
+  :model        'claude-3-5-haiku-20241022
+  :tools        '("search_web" "read_url" "get_youtube_meta"))
+#+end_src
+
+The following query is sent with this preset applied:
+
+#+begin_quote
+@websearch Are there any 13" e-ink monitors on the market?  Create a
+table comparing them, sourcing specs and reviews from online sources.
+Also do the same for "transreflective-LCD" displays -- I'm not sure
+what exactly they're called but they're comparable to e-ink.
+#+end_quote
+
+This =@preset-name= cookie only applies to the final user turn of the coversation that is sent.  So the presence of the cookie in past messages/turns is not significant. 
+
+The =@preset-name= cookie can be anywhere in the prompt.  For example:
+#+begin_quote
+<long piece of text>
+
+What do you make of the above description, @proofreader?
+#+end_quote
+
+In chat buffers this prefix will be offered as a completion and fontified, making it easy to use and spot.
 
 ** COMMENT Will you add feature X?
 
