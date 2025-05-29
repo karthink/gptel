@@ -381,10 +381,7 @@ If the ID has the format used by a different backend, use as-is."
              (list :role (if role "user" "assistant") :content text))))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-openai) &optional max-entries)
-  (let ((prompts) (prev-pt (point))
-        (include-media (and gptel-track-media
-                            (or (gptel--model-capable-p 'media)
-                                (gptel--model-capable-p 'url)))))
+  (let ((prompts) (prev-pt (point)))
     (if (or gptel-mode gptel-track-response)
         (while (and (or (not max-entries) (>= max-entries 0))
                     (/= prev-pt (point-min))
@@ -420,7 +417,7 @@ If the ID has the format used by a different backend, use as-is."
             ('ignore)
             ('nil
              (and max-entries (cl-decf max-entries))
-             (if include-media
+             (if gptel-track-media
                  (when-let* ((content (gptel--openai-parse-multipart
                                        (gptel--parse-media-links major-mode
                                                                  (point) prev-pt))))

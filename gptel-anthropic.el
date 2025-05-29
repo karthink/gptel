@@ -349,9 +349,7 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
     full-prompt))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-anthropic) &optional max-entries)
-  (let ((prompts) (prev-pt (point))
-        (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
-                                                  (gptel--model-capable-p 'url)))))
+  (let ((prompts) (prev-pt (point)))
     (if (or gptel-mode gptel-track-response)
         (while (and (or (not max-entries) (>= max-entries 0))
                     (goto-char (previous-single-property-change
@@ -392,7 +390,7 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
                                      id (line-number-at-pos (point))))))))
               ('ignore)
               ('nil                     ; user role: possibly with media
-               (if include-media
+               (if gptel-track-media
                    (when-let* ((content (gptel--anthropic-parse-multipart
                                          (gptel--parse-media-links major-mode (point) prev-pt))))
                      (when (> (length content) 0)

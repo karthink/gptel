@@ -667,8 +667,7 @@ Also format its value in the Transient menu."
     (gptel--infix-use-tools)
     (gptel--infix-track-response
      :if (lambda () (and gptel-expert-commands (not gptel-mode))))
-    (gptel--infix-track-media
-     :if (lambda () (and gptel-mode (gptel--model-capable-p 'media))))]
+    (gptel--infix-track-media :if (lambda () gptel-mode))]
    [" <Prompt from"
     ("m" "Minibuffer instead" "m")
     ("y" "Kill-ring instead" "y")

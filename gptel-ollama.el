@@ -161,9 +161,7 @@ Store response metadata in state INFO."
              (list :role (if role "user" "assistant") :content text))))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-ollama) &optional max-entries)
-  (let ((prompts) (prev-pt (point))
-        (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
-                                                  (gptel--model-capable-p 'url)))))
+  (let ((prompts) (prev-pt (point)))
     (if (or gptel-mode gptel-track-response)
         (while (and (or (not max-entries) (>= max-entries 0))
                     (goto-char (previous-single-property-change
@@ -194,7 +192,7 @@ Store response metadata in state INFO."
                                    (line-number-at-pos (point))))))))
             ('ignore)
             ('nil
-             (if include-media
+             (if gptel-track-media
                  (when-let* ((content (gptel--ollama-parse-multipart
                                        (gptel--parse-media-links major-mode (point) prev-pt))))
                    (when (> (length content) 0)

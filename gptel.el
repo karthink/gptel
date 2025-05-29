@@ -944,7 +944,10 @@ Later plists in the sequence take precedence over earlier ones."
   "Insert at point the contents of the file at PATH as context."
   (insert (format "In file `%s`:" (file-name-nondirectory path))
           "\n\n```\n")
-  (insert-file-contents path)
+  (let ((pm (point-marker)))
+    (set-marker-insertion-type pm t)
+    (insert-file-contents path)
+    (goto-char pm))
   (insert "\n```\n"))
 
 (defvar url-http-end-of-headers)
