@@ -1361,6 +1361,12 @@ This sets the variable `gptel-include-tool-results', which see."
               (cdr (assoc pref choices)))))
 
 
+
+(defun gptel--get-prompt-from-region()
+  "Get the prompt from the region."
+  (buffer-substring-no-properties
+   (region-beginning) (region-end)))
+
 ;; * Transient Suffixes
 
 ;; ** Suffix to send prompt
@@ -1388,8 +1394,7 @@ This sets the variable `gptel-include-tool-results', which see."
            (read-string
             (format "Ask %s: " (gptel-backend-name gptel-backend))
             (and (use-region-p)
-                 (buffer-substring-no-properties
-                  (region-beginning) (region-end)))))
+                 (gptel--get-prompt-from-region))))
           ((member "y" args)
            (unless (car-safe kill-ring)
              (user-error "`kill-ring' is empty!  Nothing to send"))
