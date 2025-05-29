@@ -80,7 +80,15 @@ list."
     (cl-loop
      for part across parts
      for tx = (plist-get part :text)
-     if (and tx (not (eq tx :null))) collect tx into content-strs
+     if (and tx (not (eq tx :null)))
+     if (plist-get part :thought)
+     do (unless (plist-get info :reasoning-block)
+          (plist-put info :reasoning-block 'in))
+     (plist-put info :reasoning (concat (plist-get info :reasoning) tx))
+     else do
+     (if (eq (plist-get info :reasoning-block) 'in)
+       (plist-put info :reasoning-block t))
+     and collect tx into content-strs end
      else if (plist-get part :functionCall)
      collect (copy-sequence it) into tool-use
      finally do                         ;Add text and tool-calls to prompts list
@@ -134,6 +142,9 @@ list."
       (setq params
             (plist-put params
                        :maxOutputTokens gptel-max-tokens)))
+    (when gptel-include-reasoning
+      (setq params
+            (plist-put params :thinkingConfig '(:includeThoughts t))))
     (when params
       (plist-put prompts-plist
                  :generationConfig params))
