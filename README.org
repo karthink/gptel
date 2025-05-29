@@ -122,7 +122,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
   - [[#usage][Usage]]
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
-      - [[#including-media-images-documents-with-requests][Including media (images, documents) with requests]]
+      - [[#including-media-images-documents-or-plain-text-files-with-requests][Including media (images, documents or plain-text files) with requests]]
       - [[#save-and-restore-your-chat-sessions][Save and restore your chat sessions]]
     - [[#setting-options-backend-model-request-parameters-system-prompts-and-more][Setting options (backend, model, request parameters, system prompts and more)]]
     - [[#include-more-context-with-requests][Include more context with requests]]
@@ -1008,7 +1008,7 @@ That's it. You can go back and edit previous prompts and responses if you want.
 The default mode is =markdown-mode= if available, else =text-mode=.  You can set =gptel-default-mode= to =org-mode= if desired.
 
 #+html: <details><summary>
-**** Including media (images, documents) with requests
+**** Including media (images, documents or plain-text files) with requests
 #+html: </summary>
 
 gptel supports sending media in Markdown and Org chat buffers, but this feature is disabled by default.
@@ -1020,16 +1020,24 @@ gptel supports sending media in Markdown and Org chat buffers, but this feature 
 
 -----
 
-There are two ways to include media with requests:
+There are two ways to include media or plain-text files with requests:
 
 1. Adding media files to the context with =gptel-add-file=, described further below.
 2. Including links to media in chat buffers, described here:
 
-To send media -- images or other supported file types -- with requests in chat buffers, you can include links to them in the chat buffer.  Such a link must be "standalone", i.e. on a line by itself surrounded by whitespace.
+To include plain-text files, images or other supported document types with requests in chat buffers, you can include links to them in the chat buffer.  Such a link must be "standalone", i.e. on a line by itself surrounded by whitespace.
 
 In Org mode, for example, the following are all *valid* ways of including an image with the request:
 
-- "Standalone" file link:
+- "Standalone" file links:
+#+begin_src 
+In this yaml file, I have some key-remapping configuration:
+
+[[file:/path/to/remap.yaml]]
+
+Could you explain what it does, and which program might be using it?
+#+end_src
+
 #+begin_src
 Describe this picture
 
@@ -1100,9 +1108,11 @@ Selecting a model and backend can be done interactively via the =-m= command of 
 
 By default, gptel will query the LLM with the active region or the buffer contents up to the cursor.  Often it can be helpful to provide the LLM with additional context from outside the current buffer. For example, when you're in a chat buffer but want to ask questions about a (possibly changing) code buffer and auxiliary project files.
 
-You can include additional text regions, buffers or files with gptel's queries.  This additional context is "live" and not a snapshot.  Once added, the regions, buffers or files are scanned and included at the time of each query.  When using multi-modal models, added files can be of any supported type -- typically images.
+You can include additional text regions, buffers or files with gptel's queries in two ways.  The first is via links in chat buffers, as described above (see "Including media with requests").
 
-You can add a selected region, buffer or file to gptel's context from the menu, or call =gptel-add=.  To add a file use =gptel-add= in Dired, or use the dedicated =gptel-add-file= command.  Directories will have their files added recursively after prompting for confirmation.
+The second is globally via dedicated context commands: you can add a selected region, buffer or file to gptel's context from the menu, or call =gptel-add=.  To add a file use =gptel-add= in Dired, or use the dedicated =gptel-add-file= command.  Directories will have their files added recursively after prompting for confirmation.
+
+This additional context is "live" and not a snapshot.  Once added, the regions, buffers or files are scanned and included at the time of each query.  When using multi-modal models, added files can be of any supported type -- typically images.
 
 You can examine the active context from the menu:
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/63cd7fc8-6b3e-42ae-b6ca-06ff935bae9c" align="center" alt="Image showing gptel's menu with the "inspect context" command.">

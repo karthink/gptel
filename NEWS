@@ -48,6 +48,12 @@
   presets across Emacs sessions, define presets in your configuration
   using ~gptel-make-preset~.
 
+- Links to plain-text files in chat buffers can be followed, and their contents
+  included with the request.  Using Org or Markdown links is an easy, intuitive,
+  persistent and buffer-local way to specify context.  To enable this behavior,
+  turn on ~gptel-track-media~, an existing option which also controls whether
+  image/document links are followed to send them (when the model supports it).
+
 ** Notable Bug fixes
 
 * 0.9.8 2025-03-13
