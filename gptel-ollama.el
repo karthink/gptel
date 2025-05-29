@@ -230,7 +230,13 @@ format."
    if text
    collect text into text-array end
    else if media
-   collect (gptel--base64-encode media) into media-array end
+   collect (gptel--base64-encode media) into media-array
+   else if (plist-get part :textfile)
+   collect
+   (with-temp-buffer
+     (gptel--insert-file-string (plist-get part :textfile))
+     (buffer-string))
+   into text-array
    finally return
    `(,@(and text-array  (list :content (mapconcat #'identity text-array " ")))
      ,@(and media-array (list :images  (vconcat media-array))))))

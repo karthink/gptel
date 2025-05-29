@@ -183,14 +183,6 @@ context chunk.  This is accessible as, for example:
 ;;;###autoload (autoload 'gptel-add "gptel-context" "Add/remove regions or buffers from gptel's context." t)
 (defalias 'gptel-add #'gptel-context-add)
 
-(defun gptel--file-binary-p (path)
-  "Check if file at PATH is readable and binary."
-  (condition-case nil
-      (with-temp-buffer
-        (insert-file-contents path nil 1 512 'replace)
-        (eq buffer-file-coding-system 'no-conversion))
-    (file-missing (message "File \"%s\" is not readable." path))))
-
 (defun gptel-context--add-text-file (path)
   "Add text file at PATH to context."
   (cl-pushnew (list path) gptel-context--alist :test #'equal)
@@ -408,14 +400,6 @@ START and END signify the region delimiters."
         (insert "\n..."))
       (insert "\n```")))
 
-(defun gptel-context--insert-file-string (path)
-  "Insert at point the contents of the file at PATH as context."
-  (insert (format "In file `%s`:" (file-name-nondirectory path))
-          "\n\n```\n")
-  (insert-file-contents path)
-  (goto-char (point-max))
-  (insert "\n```\n"))
-
 (defun gptel-context--string (context-alist)
   "Format the aggregated gptel context as annotated markdown fragments.
 
@@ -426,7 +410,7 @@ context overlays, see `gptel-context--alist'."
              if (bufferp buf)
              do (gptel-context--insert-buffer-string buf ovs)
              else if (not (plist-get ovs :mime))
-             do (gptel-context--insert-file-string buf) end
+             do (gptel--insert-file-string buf) end
              do (insert "\n\n")
              finally do
              (skip-chars-backward "\n\t\r ")

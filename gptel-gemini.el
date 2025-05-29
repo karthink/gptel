@@ -332,6 +332,12 @@ format."
      (:mime_type ,(plist-get part :mime)
       :data ,(gptel--base64-encode media)))
    into parts-array
+   else if (plist-get part :textfile)
+   collect
+   (list :text (with-temp-buffer
+                 (gptel--insert-file-string (plist-get part :textfile))
+                 (buffer-string)))
+   into parts-array
    finally return (vconcat parts-array)))
 
 (cl-defmethod gptel--wrap-user-prompt ((_backend gptel-gemini) prompts

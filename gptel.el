@@ -931,6 +931,22 @@ Later plists in the sequence take precedence over earlier ones."
         (setq rtn (plist-put rtn p v))))
     rtn))
 
+(defun gptel--file-binary-p (path)
+  "Check if file at PATH is readable and binary."
+  (condition-case nil
+      (with-temp-buffer
+        (insert-file-contents path nil 1 512 'replace)
+        (eq buffer-file-coding-system 'no-conversion))
+    (file-missing (message "File \"%s\" is not readable." path)
+                  nil)))
+
+(defun gptel--insert-file-string (path)
+  "Insert at point the contents of the file at PATH as context."
+  (insert (format "In file `%s`:" (file-name-nondirectory path))
+          "\n\n```\n")
+  (insert-file-contents path)
+  (insert "\n```\n"))
+
 (defvar url-http-end-of-headers)
 (defvar url-http-response-status)
 (cl-defun gptel--url-retrieve (url &key method data headers)
@@ -2729,36 +2745,39 @@ Return a list of the form
   (:text \"More text\"))
 for inclusion into the user prompt for the gptel request."
   (require 'mailcap)                    ;FIXME Avoid this somehow
-  (let ((parts) (from-pt))
+  (let ((parts) (from-pt) (mime))
     (save-excursion
       (setq from-pt (goto-char beg))
       (while (re-search-forward
               (concat "\\(?:" markdown-regex-link-inline "\\|"
                       markdown-regex-angle-uri "\\)")
               end t)
+        (setq mime nil)
         (when-let* ((link-at-pt (markdown-link-at-pos (point)))
                     ((gptel--link-standalone-p
                       (car link-at-pt) (cadr link-at-pt)))
                     (path (nth 3 link-at-pt))
-                    (path (string-remove-prefix "file://" path))
-                    (mime (mailcap-file-name-to-mime-type path))
-                    ((gptel--model-mime-capable-p mime)))
+                    (path (string-remove-prefix "file://" path)))
           (cond
            ((seq-some (lambda (p) (string-prefix-p p path))
                       '("https:" "http:" "ftp:"))
             ;; Collect text up to this image, and collect this image url
             (when (gptel--model-capable-p 'url) ; FIXME This is not a good place
-                                                ; to check for url capability!
-              (push (list :text (buffer-substring-no-properties from-pt (car link-at-pt)))
-                    parts)
-              (push (list :url path :mime mime) parts)
-              (setq from-pt (cadr link-at-pt))))
+                                        ; to check for url capability!
+              (let ((text (buffer-substring-no-properties from-pt (car link-at-pt))))
+                (unless (string-blank-p text) (push (list :text text) parts))
+                (push (list :url path :mime mime) parts)
+                (setq from-pt (cadr link-at-pt)))))
            ((file-readable-p path)
-            ;; Collect text up to this image, and collect this image
-            (push (list :text (buffer-substring-no-properties from-pt (car link-at-pt)))
-                  parts)
-            (push (list :media path :mime mime) parts)
-            (setq from-pt (cadr link-at-pt)))))))
+            (if (or (not (gptel--file-binary-p path))
+                    (and (setq mime (mailcap-file-name-to-mime-type path))
+                         (gptel--model-mime-capable-p mime)))
+                ;; Collect text up to this image, and collect this image
+                (let ((text (buffer-substring-no-properties from-pt (car link-at-pt))))
+                  (unless (string-blank-p text) (push (list :text text) parts))
+                  (push (if mime (list :media path :mime mime) (list :textfile path)) parts)
+                  (setq from-pt (cadr link-at-pt)))
+              (message "Ignoring unsupported binary file \"%s\"." path)))))))
     (unless (= from-pt end)
       (push (list :text (buffer-substring-no-properties from-pt end)) parts))
     (nreverse parts)))

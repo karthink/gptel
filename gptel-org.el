@@ -53,6 +53,7 @@
 (declare-function gptel--parse-directive "gptel")
 (declare-function gptel--restore-props "gptel")
 (declare-function gptel--with-buffer-copy "gptel")
+(declare-function gptel--file-binary-p "gptel")
 (declare-function org-entry-get "org")
 (declare-function org-entry-put "org")
 (declare-function org-with-wide-buffer "org-macs")
@@ -346,12 +347,13 @@ Return a list of the form
   (:text \"More text\"))
 for inclusion into the user prompt for the gptel request."
   (require 'mailcap)                    ;FIXME Avoid this somehow
-  (let ((parts) (from-pt)
+  (let ((parts) (from-pt) (mime)
         (link-regex (concat "\\(?:" org-link-bracket-re "\\|"
                             org-link-angle-re "\\)")))
     (save-excursion
       (setq from-pt (goto-char beg))
       (while (re-search-forward link-regex end t)
+        (setq mime nil)
         (when-let* ((link (org-element-context))
                     ((gptel-org--link-standalone-p link))
                     (raw-link (org-element-property :raw-link link))
@@ -360,25 +362,30 @@ for inclusion into the user prompt for the gptel request."
                     ;; FIXME This is not a good place to check for url capability!
                     ((member type `("attachment" "file"
                                     ,@(and (gptel--model-capable-p 'url)
-                                       '("http" "https" "ftp")))))
-                    (mime (mailcap-file-name-to-mime-type path))
-                    ((gptel--model-mime-capable-p mime)))
+                                       '("http" "https" "ftp"))))))
           (cond
            ((member type '("file" "attachment"))
-            (when (file-readable-p path)
-              ;; Collect text up to this image, and
-              ;; Collect this image
-              (when-let* ((text (string-trim (buffer-substring-no-properties
-                                              from-pt (gptel-org--element-begin link)))))
-                (unless (string-empty-p text) (push (list :text text) parts)))
-              (push (list :media path :mime mime) parts)
-              (setq from-pt (point))))
-           ((member type '("http" "https" "ftp"))
-            ;; Collect text up to this image, and
-            ;; Collect this image url
-            (when-let* ((text (string-trim (buffer-substring-no-properties
-                                            from-pt (gptel-org--element-begin link)))))
-              (unless (string-empty-p text) (push (list :text text) parts)))
+            (if (file-readable-p path)
+              (if (or (not (gptel--file-binary-p path))
+                      (and (setq mime (mailcap-file-name-to-mime-type path))
+                           (gptel--model-mime-capable-p mime)))
+                  (progn                ; text file or supported binary file
+                    ;; collect text up to link
+                    (when-let* ((text (buffer-substring-no-properties
+                                       from-pt (gptel-org--element-begin link))))
+                      (unless (string-blank-p text) (push (list :text text) parts)))
+                    ;; collect link
+                    (push (if mime (list :media path :mime mime) (list :textfile path)) parts)
+                    (setq from-pt (point)))
+                (message "Ignoring unsupported binary file \"%s\"." path))
+              (message "Ignoring inaccessible file \"%s\"." path)))
+           ((and (member type '("http" "https" "ftp"))
+                 (setq mime (mailcap-file-name-to-mime-type path))
+                 (gptel--model-capable-p mime))
+            ;; Collect text up to this image, and collect this image url
+            (when-let* ((text (buffer-substring-no-properties
+                               from-pt (gptel-org--element-begin link))))
+              (unless (string-blank-p text) (push (list :text text) parts)))
             (push (list :url raw-link :mime mime) parts)
             (setq from-pt (point))))))
       (unless (= from-pt end)

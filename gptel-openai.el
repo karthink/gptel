@@ -456,11 +456,16 @@ format."
    (and (or (= n 1) (= n last)) (setq text (gptel--trim-prefixes text)))
    and if text
    collect `(:type "text" :text ,text) into parts-array end
-   else if media
-   collect
+   else if media collect
    `(:type "image_url"
      :image_url (:url ,(concat "data:" (plist-get part :mime)
                         ";base64," (gptel--base64-encode media))))
+   into parts-array
+   else if (plist-get part :textfile) collect
+   `(:type "text"
+     :text ,(with-temp-buffer
+              (gptel--insert-file-string (plist-get part :textfile))
+              (buffer-string)))
    into parts-array end and
    if (plist-get part :url)
    collect

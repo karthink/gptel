@@ -459,6 +459,12 @@ format."
      ,@(and (gptel--model-capable-p 'cache)
         '(:cache_control (:type "ephemeral"))))
    into parts-array
+   else if (plist-get part :textfile) collect
+   `(:type "text"
+     :text ,(with-temp-buffer
+              (gptel--insert-file-string (plist-get part :textfile))
+              (buffer-string)))
+   into parts-array
    finally return (vconcat parts-array)))
 
 (cl-defmethod gptel--wrap-user-prompt ((_backend gptel-anthropic) prompts
