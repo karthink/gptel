@@ -85,6 +85,32 @@ overlay."
           (const :tag "Dispatch" dispatch)
           (function :tag "Custom action")))
 
+(defcustom gptel-rewrite-assistant-directive "What is the required change?"
+  "Assistant message part of the rewrite conversation dialogue.
+
+In GPTel, rewriting consists of a templated conversation of four
+messages.  The messages are the system prompt, the text to be rewritten,
+the assistant directive, and the rewriting message.  This variable
+defines the assistant directive.  It is inserted the conversation after
+the system prompt and the text being rewritten, but before the more
+specific user-provided rewriting message.  It is meant to instruct the
+language model on the flow of the rewriting conversation.
+
+This variable hardly needs to be modified, unless you are using the
+language model in a language other than English.  In that case, it may
+be wise to provide a translation of the default value in the language
+you are using."
+  :group 'gptel
+  :type 'string)
+
+(defcustom gptel-rewrite-default-message "Rewrite: "
+  "The base rewrite instruction.
+
+It is a baseline value that can be overridden using the transient menu
+of the `gptel-rewrite' command."
+  :group 'gptel
+  :type 'string)
+
 (defface gptel-rewrite-highlight-face
   '((((class color) (min-colors 88) (background dark))
      :background "#041714" :extend t :inherit default)
@@ -543,7 +569,7 @@ By default, gptel uses the directive associated with the `rewrite'
   (unless (or gptel--rewrite-overlays (use-region-p))
     (user-error "`gptel-rewrite' requires an active region or rewrite in progress."))
   (unless gptel--rewrite-message
-    (setq gptel--rewrite-message "Rewrite: "))
+    (setq gptel--rewrite-message gptel-rewrite-default-message))
   (transient-setup 'gptel-rewrite))
 
 ;; * Transient infixes for rewriting
@@ -585,7 +611,7 @@ By default, gptel uses the directive associated with the `rewrite'
                                           minibuffer-local-map)))
               (minibuffer-with-setup-hook cycle-prefix
                 (read-string
-                 prompt (or gptel--rewrite-message "Rewrite: ")
+                 prompt (or gptel--rewrite-message gptel-rewrite-default-message)
                  history)))))
 
 (transient-define-argument gptel--infix-rewrite-diff:-U ()
@@ -625,7 +651,7 @@ generated from functions."
           (and gptel-use-context (if nosystem 'user 'system)))
          (prompt (list (or (get-char-property (point) 'gptel-rewrite)
                            (buffer-substring-no-properties (region-beginning) (region-end)))
-                       "What is the required change?"
+                       gptel-rewrite-assistant-directive
                        (or rewrite-message gptel--rewrite-message))))
     (when nosystem
       (setcar prompt (concat (car-safe (gptel--parse-directive
