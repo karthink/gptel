@@ -52,7 +52,7 @@ MCP servers are started if required.  If INTERACTIVE is non-nil (or
 called interactively), guide the user through setting up mcp, and query
 for servers to retrieve tools from.
 
-Call SERVER-CALLBACK after starting MCP servers, if starting them."
+Call SERVER-CALLBACK after starting MCP servers."
   (interactive (list t))
   (if (locate-library "mcp-hub")
       (unless (require 'mcp-hub nil t)
@@ -107,7 +107,8 @@ Call SERVER-CALLBACK after starting MCP servers, if starting them."
                 (mcp-hub-start-all-server
                  add-all-tools (mapcar #'car inactive-servers))
               (funcall add-all-tools)))
-        (message "All MCP tools are already available to gptel!")))))
+        (message "All MCP tools are already available to gptel!")
+        (when (functionp server-callback) (funcall server-callback))))))
 
 (defun gptel-mcp-disconnect (&optional interactive)
   "Unregister gptel tools provided by MCP servers using the mcp package.
