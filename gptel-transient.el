@@ -86,7 +86,7 @@ For internal use only.")
       (while elm
         (setq key (pop elm) val (pop elm))
         (cond
-         ((memq key '(:description :parents)) 'nil)
+         ((memq key '(:description :parents :after)) 'nil)
          ((eq key :system)
           (or (equal gptel--system-message val)
               (and-let* (((symbolp val))
@@ -106,7 +106,8 @@ For internal use only.")
          (t (let* ((suffix (substring (symbol-name key) 1))
                    (sym (or (intern-soft (concat "gptel-" suffix))
                             (intern-soft (concat "gptel--" suffix)))))
-              (or (and sym (boundp sym) (equal (eval sym) val))
+              (or (null sym)
+                  (and (boundp sym) (equal (eval sym) val))
                   (throw 'mismatch t)))))))))
 
 (defun gptel--get-directive (args)

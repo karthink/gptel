@@ -3337,6 +3337,9 @@ preset.
 PARENTS is a preset name (or list of preset names) to apply before this
 one.
 
+AFTER is a function to run after the preset is applied.  It takes no
+arguments.
+
 BACKEND is the gptel-backend to set, or its name (like \"ChatGPT\").
 
 MODEL is the gptel-model.
@@ -3421,7 +3424,7 @@ example) apply the preset buffer-locally."
   (map-do
    (lambda (key val)
      (pcase key
-       ((or :parents :description) nil)
+       ((or :parents :description :after) nil)
        ((or :system :system-message :rewrite-directive)
         (let ((sym (if (eq key :rewrite-directive)
                        'gptel--rewrite-directive 'gptel--system-message)))
@@ -3461,7 +3464,12 @@ example) apply the preset buffer-locally."
            '(gptel presets)
            (format "gptel preset \"%s\": setting for %s not found, ignoring."
                    (car preset) key)))))
-   (cdr preset)))
+   (cdr preset))
+  (when-let* ((func (plist-get (cdr preset) :after)))
+    (if (functionp func) (funcall func)
+      (display-warning '(gptel presets)
+                       (format "gptel preset \"%s\": %S is not a function, ignoring."
+                               (car preset) func)))))
 
 (defun gptel--preset-syms (preset)
   "Return a list of gptel variables (symbols) set by PRESET.
