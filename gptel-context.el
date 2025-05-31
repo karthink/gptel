@@ -1,6 +1,6 @@
 ;;; gptel-context.el --- Context aggregator for gptel  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023  Karthik Chikmagalur
+;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
 ;; Author: daedsidog <contact@daedsidog.com>
 ;; Keywords: convenience, buffers

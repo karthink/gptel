@@ -1,6 +1,6 @@
 ;;; gptel-openai-extras.el --- Extensions to the OpenAI API -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023  Karthik Chikmagalur
+;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
 ;; Authors: Karthik Chikmagalur <karthikchikmagalur@gmail.com> and pirminj
 
