@@ -86,7 +86,7 @@ For internal use only.")
       (while elm
         (setq key (pop elm) val (pop elm))
         (cond
-         ((memq key '(:description :parents :after)) 'nil)
+         ((memq key '(:description :parents)) 'nil)
          ((eq key :system)
           (or (equal gptel--system-message val)
               (and-let* (((symbolp val))

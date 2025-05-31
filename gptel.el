@@ -3337,8 +3337,8 @@ preset.
 PARENTS is a preset name (or list of preset names) to apply before this
 one.
 
-AFTER is a function to run after the preset is applied.  It takes no
-arguments.
+PRE and POST are functions to run before and after the preset is
+applied.  They take no arguments.
 
 BACKEND is the gptel-backend to set, or its name (like \"ChatGPT\").
 
@@ -3419,12 +3419,13 @@ example) apply the preset buffer-locally."
                                 preset))))
       (setq preset (cons preset spec))))
   (unless setter (setq setter #'set))
+  (when-let* ((func (plist-get (cdr preset) :pre))) (funcall func))
   (when-let* ((parents (plist-get (cdr preset) :parents)))
     (mapc #'gptel--apply-preset (ensure-list parents)))
   (map-do
    (lambda (key val)
      (pcase key
-       ((or :parents :description :after) nil)
+       ((or :parents :description :pre :post) nil)
        ((or :system :system-message :rewrite-directive)
         (let ((sym (if (eq key :rewrite-directive)
                        'gptel--rewrite-directive 'gptel--system-message)))
@@ -3465,11 +3466,7 @@ example) apply the preset buffer-locally."
            (format "gptel preset \"%s\": setting for %s not found, ignoring."
                    (car preset) key)))))
    (cdr preset))
-  (when-let* ((func (plist-get (cdr preset) :after)))
-    (if (functionp func) (funcall func)
-      (display-warning '(gptel presets)
-                       (format "gptel preset \"%s\": %S is not a function, ignoring."
-                               (car preset) func)))))
+  (when-let* ((func (plist-get (cdr preset) :post))) (funcall func)))
 
 (defun gptel--preset-syms (preset)
   "Return a list of gptel variables (symbols) set by PRESET.
