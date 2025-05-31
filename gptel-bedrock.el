@@ -25,15 +25,18 @@
 ;; * https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseStream.html
 
 ;;; Code:
-(require 'cl-generic)
+(require 'cl-lib)
 (require 'map)
 (require 'gptel)
 (require 'mail-parse)
 
+(declare-function gptel-context--collect-media "gptel-context")
+(declare-function gptel-context--wrap "gptel-context")
+
 (cl-defstruct (gptel-bedrock (:constructor gptel--make-bedrock)
                              (:copier nil)
                              (:include gptel-backend))
-	      model-region)
+  model-region)
 
 (defconst gptel-bedrock--prompt-type
   ;; For documentation purposes only -- this describes the type of prompt objects that get passed
@@ -55,7 +58,7 @@
                                             :content (array (plist :text string))))))))
 
 (cl-defmethod gptel--request-data ((backend gptel-bedrock) prompts)
-  "Prepare request data for AWS Bedrock in converse format from PROMPTS."
+  "Prepare request data for AWS Bedrock BACKEND from PROMPTS."
   (nconc
    `(:messages [,@prompts] :inferenceConfig (:maxTokens ,(or gptel-max-tokens 500)))
    (when gptel--system-message `(:system [(:text ,gptel--system-message)]))
@@ -70,7 +73,7 @@
 TOOLS is a list of `gptel-tool' structs, which see."
    ;; https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolSpecification.html
    (let ((default-outputs (cl-call-next-method))) ;; use openai tool-parse
-     (map 'vector
+     (cl-map 'vector
       (lambda (tool spec)
         (list :toolSpec
               (list
@@ -484,26 +487,20 @@ conversation."
 (defvar gptel-bedrock--aws-profile-cache nil
   "Cache for AWS profile credentials in the form of (PROFILE . CREDS).")
 
-(defmacro gptel-bedrock--alist-get! (key alist &optional default force-updatep testfn)
-  (let ((key-sym (gensym "key")))
-    (gv-letplace (getter setter) alist
-      `(let ((,key-sym ,key))
-	 (or (and (not ,force-updatep) (cdr (assoc ,key-sym ,getter ,@(if testfn `(,testfn)))))
-	     ,@(when default
-		 `((let ((new-val ,default))
-		     ,(funcall setter `(cons (cons ,key-sym new-val) ,getter))
-		     new-val))))))))
+(defun gptel-bedrock--fetch-aws-profile-credentials (profile &optional clear-cache)
+  "Fetch & cache AWS credentials for PROFILE using aws-cli.
 
-(defun gptel-bedrock--fetch-aws-profile-credentials (profile &optional clear-cachep)
-  "Fetch & cache AWS credentials for PROFILE using aws-cli."
+Non-nil CLEAR-CACHE will refresh credentials."
   (let* ((creds-json
-	   (gptel-bedrock--alist-get! profile gptel-bedrock--aws-profile-cache
-	      (with-temp-buffer
-		  (unless (zerop (call-process "aws" nil t nil "configure" "export-credentials"
-					       (format "--profile=%s" profile)))
-		    (user-error "Failed to get AWS credentials from profile"))
-		(json-parse-string (buffer-string)))
-	      clear-cachep #'string=))
+           (let ((cell (or (assoc profile gptel-bedrock--aws-profile-cache #'string=)
+                           (car (push (cons profile nil) gptel-bedrock--aws-profile-cache)))))
+             (or (and (not clear-cache) (cdr cell))
+                 (setf (cdr cell)
+                       (with-temp-buffer
+		           (unless (zerop (call-process "aws" nil t nil "configure" "export-credentials"
+					                (format "--profile=%s" profile)))
+		             (user-error "Failed to get AWS credentials from profile"))
+		         (json-parse-string (buffer-string)))))))
 	 (expiration (if-let (exp (gethash "Expiration" creds-json))
 			     (date-to-time exp))))
     (cond
@@ -512,7 +509,7 @@ conversation."
 	     (secret-key (gethash "SecretAccessKey" creds-json))
 	     (session-token (gethash "SessionToken" creds-json)))
 	 (cl-values access-key secret-key session-token)))
-      ((not clear-cachep)
+      ((not clear-cache)
        (gptel-bedrock--fetch-aws-profile-credentials profile t))
       (t (user-error "AWS credentials expired for profile: %s" profile)))))
 
@@ -594,6 +591,7 @@ REGION is one of apac, eu or us."
        (list (format "-Hx-amz-security-token: %s" token))))))
 
 (defun gptel-bedrock--curl-version ()
+  "Check Curl version required for gptel-bedrock."
   (let* ((output (shell-command-to-string "curl --version"))
          (version (and (string-match "^curl \\([0-9.]+\\)" output)
                        (match-string 1 output))))
