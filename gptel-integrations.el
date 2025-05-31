@@ -45,15 +45,18 @@
 (defvar mcp-hub-servers)
 (defvar mcp-server-connections)
 
-(defun gptel-mcp-connect (&optional interactive server-callback)
+(defun gptel-mcp-connect (&optional servers server-callback interactive)
   "Add gptel tools from MCP servers using the mcp package.
 
-MCP servers are started if required.  If INTERACTIVE is non-nil (or
-called interactively), guide the user through setting up mcp, and query
-for servers to retrieve tools from.
+MCP servers are started if required.  SERVERS is a list of server
+names (strings) to connect to.  If nil, all known servers are
+considered.
+
+If INTERACTIVE is non-nil (or called interactively), guide the user
+through setting up mcp, and query for servers to retrieve tools from.
 
 Call SERVER-CALLBACK after starting MCP servers."
-  (interactive (list t))
+  (interactive (list nil nil t))
   (if (locate-library "mcp-hub")
       (unless (require 'mcp-hub nil t)
         (user-error "Could not load `mcp-hub'!  Please install\
@@ -61,8 +64,12 @@ Call SERVER-CALLBACK after starting MCP servers."
     (user-error "Could not find mcp!  Please install or configure the mcp package"))
   (if (null mcp-hub-servers)
       (user-error "No MCP servers available!  Please configure `mcp-hub-servers'")
+    (setq servers
+          (if servers
+              (mapcar (lambda (s) (assoc s mcp-hub-servers)) servers)
+            mcp-hub-servers))
     (let ((unregistered-servers ;Available servers minus servers already registered with gptel
-           (cl-loop for server in mcp-hub-servers
+           (cl-loop for server in servers
                     with registered-names =
                     (cl-loop for (cat . _tools) in gptel--known-tools
                              if (string-prefix-p "mcp-" cat)
@@ -110,21 +117,25 @@ Call SERVER-CALLBACK after starting MCP servers."
         (message "All MCP tools are already available to gptel!")
         (when (functionp server-callback) (funcall server-callback))))))
 
-(defun gptel-mcp-disconnect (&optional interactive)
+(defun gptel-mcp-disconnect (&optional servers interactive)
   "Unregister gptel tools provided by MCP servers using the mcp package.
 
+SERVERS is a list of server names (strings) to disconnect from.
+
 If INTERACTIVE is non-nil, query the user about which tools to remove."
-  (interactive (list t))
+  (interactive (list nil t))
   (if-let* ((names-alist
              (cl-loop
               for (category . _tools) in gptel--known-tools
-              if (string-match "^mcp-\\(.*\\)" category)
+              if (and (string-match "^mcp-\\(.*\\)" category)
+                      (or (null servers) ;Consider all if nil
+                          (member (match-string 1 category) servers)))
               collect (cons (match-string 1 category) category))))
       (let ((remove-fn (lambda (cat-names)
                          (setq gptel-tools ;Remove from gptel-tools
-                          (cl-delete-if (lambda (tool) (member (gptel-tool-category tool)
-                                                          cat-names))
-                                        gptel-tools))
+                               (cl-delete-if (lambda (tool) (member (gptel-tool-category tool)
+                                                               cat-names))
+                                             gptel-tools))
                          (mapc (lambda (category) ;Remove from registry
                                  (setf (alist-get category gptel--known-tools
                                                   nil t #'equal)
@@ -137,7 +148,7 @@ If INTERACTIVE is non-nil, query the user about which tools to remove."
                           (cons '("ALL" . nil) names-alist)
                           nil t)))
               (when (member "ALL" server-names)
-                  (setq server-names (mapcar #'car names-alist)))
+                (setq server-names (mapcar #'car names-alist)))
               (funcall remove-fn        ;remove selected tool categories
                        (mapcar (lambda (s) (cdr (assoc s names-alist))) server-names))
               (if (y-or-n-p
