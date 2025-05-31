@@ -28,7 +28,6 @@
 (require 'cl-generic)
 (require 'map)
 (require 'gptel)
-(require 'gptel-anthropic)
 (require 'mail-parse)
 
 (cl-defstruct (gptel-bedrock (:constructor gptel--make-bedrock)
@@ -536,7 +535,9 @@ Convenient to use with `cl-multiple-value-bind'"
 
 (defvar gptel-bedrock--model-ids
   ;; https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
-  '((claude-3-5-sonnet-20241022  . "anthropic.claude-3-5-sonnet-20241022-v2:0")
+  '((claude-sonnet-4-20250514    . "anthropic.claude-sonnet-4-20250514-v1:0")
+    (claude-opus-4-20250514      . "anthropic.claude-opus-4-20250514-v1:0")
+    (claude-3-5-sonnet-20241022  . "anthropic.claude-3-5-sonnet-20241022-v2:0")
     (claude-3-5-sonnet-20240620  . "anthropic.claude-3-5-sonnet-20240620-v1:0")
     (claude-3-5-haiku-20241022   . "anthropic.claude-3-5-haiku-20241022-v1:0")
     (claude-3-opus-20240229      . "anthropic.claude-3-opus-20240229-v1:0")
@@ -563,8 +564,7 @@ IDs can be added or replaced by calling
 \(push (model-name . \"model-id\") gptel-bedrock--model-ids).")
 
 (defvar gptel--bedrock-models
-  (let ((known-ids (mapcar #'car gptel-bedrock--model-ids)))
-    (cl-remove-if-not (lambda (model) (memq (car model) known-ids)) gptel--anthropic-models))
+  (mapcar #'car gptel-bedrock--model-ids)
   "List of available AWS Bedrock models and associated properties.")
 
 (defun gptel-bedrock--get-model-id (model &optional region)
@@ -615,6 +615,7 @@ Keyword arguments:
 REGION - AWS region name (e.g. \"us-east-1\")
 MODELS - The list of models supported by this backend
 MODEL-REGION - one of apac, eu, us or nil
+CURL-ARGS - additional curl args
 STREAM - Whether to use streaming responses or not."
   (declare (indent 1))
   (unless (and gptel-use-curl (version<= "8.5" (gptel-bedrock--curl-version)))
