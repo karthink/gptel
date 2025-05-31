@@ -275,7 +275,7 @@ This only affects requests originating from Org mode buffers."
   :type 'boolean)
 
 (defcustom gptel-curl-file-size-threshold
-  (if (memq system-type '(windows-nt ms-dos)) 32766 130000)
+  (if (memq system-type '(windows-nt ms-dos)) #x6ffe 130000)
   "Size threshold for using file input with Curl.
 
 Specifies the size threshold for when to use a temporary file to pass data to
@@ -292,8 +292,12 @@ A larger value may improve performance by avoiding the overhead of creating
 temporary files for small data payloads, while a smaller value may be needed
 if the command-line argument size is limited by the operating system.
 
-The default for windows comes from Microsoft documentation located here:
-https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa"
+The default of #x8000 for windows comes from Microsoft documentation
+located here:
+https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa
+
+It is set to (#x8000 - #x1000 - 2) to account for other (non-data) Curl
+command line arguments."
   :type 'natnum)
 
 (define-obsolete-variable-alias 'gptel-prompt-filter-hook
