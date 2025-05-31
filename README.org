@@ -90,7 +90,6 @@ See also [[https://youtu.be/g1VMGhC5gRU][this youtube demo (2 minutes)]] by Armi
 gptel uses Curl if available, but falls back to the built-in url-retrieve to work without external dependencies.
 
 ** Contents :toc:
-  - [[#breaking-changes][Breaking changes!]]
   - [[#installation][Installation]]
       - [[#straight][Straight]]
       - [[#manual][Manual]]
@@ -158,7 +157,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
     - [[#packages-using-gptel][Packages using gptel]]
   - [[#acknowledgments][Acknowledgments]]
 
-** Breaking changes!
+** COMMENT Breaking changes!
 
 - =gptel-model= is now expected to be a symbol, not a string.  Please update your configuration.
 
@@ -1035,6 +1034,8 @@ gptel provides a few powerful, general purpose and flexible commands.  You can d
 
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/3562a6e2-7a5c-4f7e-8e57-bf3c11589c73" align="center" alt="Image showing gptel's menu with some of the available query options.">
 
+You can also define a "preset" bundle of options that are applied together, see [[#option-presets][Option presets]] below.
+
 *** In a dedicated chat buffer:
 
 *Note*: gptel works anywhere in Emacs.  The dedicated chat buffer only adds some conveniences.
@@ -1050,6 +1051,8 @@ gptel provides a few powerful, general purpose and flexible commands.  You can d
 That's it. You can go back and edit previous prompts and responses if you want.
 
 The default mode is =markdown-mode= if available, else =text-mode=.  You can set =gptel-default-mode= to =org-mode= if desired.
+
+You can also define a "preset" bundle of options that are applied together, see [[#option-presets][Option presets]] below.
 
 #+html: <details><summary>
 **** Including media (images, documents or plain-text files) with requests
@@ -1543,7 +1546,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-prompt-prefix-alist=   | Text inserted before queries.                                  |
 | =gptel-response-prefix-alist= | Text inserted before responses.                                |
 | =gptel-track-response=        | Distinguish between user messages and LLM responses?           |
-| =gptel-track-media=           | Send images or other media from links?                         |
+| =gptel-track-media=           | Send text, images or other media from links?                   |
 | =gptel-confirm-tool-calls=    | Confirm all tool calls?                                        |
 | =gptel-include-tool-results=  | Include tool results in the LLM response?                      |
 | =gptel-use-header-line=       | Display status messages in header-line (default) or minibuffer |
@@ -1557,19 +1560,19 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-org-ignore-elements=   | Ignore parts of the buffer when sending a query       |
 |-------------------------------+-------------------------------------------------------|
 
-|---------------------------------+-------------------------------------------------------------|
-| *Hooks for customization*       |                                                             |
-|---------------------------------+-------------------------------------------------------------|
-| =gptel-save-state-hook=         | Runs before saving the chat state to a file on disk         |
-| =gptel-prompt-filter-hook=      | Runs in a temp buffer to transform text before sending      |
-| =gptel-post-request-hook=       | Runs immediately after dispatching a =gptel-request=.       |
-| =gptel-pre-response-hook=       | Runs before inserting the LLM response into the buffer      |
-| =gptel-post-response-functions= | Runs after inserting the full LLM response into the buffer  |
-| =gptel-post-stream-hook=        | Runs after each streaming insertion                         |
-| =gptel-context-wrap-function=   | To include additional context formatted your way            |
-| =gptel-rewrite-default-action=  | Automatically diff, ediff, merge or replace refactored text |
-| =gptel-post-rewrite-functions=  | Runs after a =gptel-rewrite= request succeeds               |
-|---------------------------------+-------------------------------------------------------------|
+|------------------------------------+-------------------------------------------------------------|
+| *Hooks for customization*          |                                                             |
+|------------------------------------+-------------------------------------------------------------|
+| =gptel-save-state-hook=            | Runs before saving the chat state to a file on disk         |
+| =gptel-prompt-transform-functions= | Runs in a temp buffer to transform text before sending      |
+| =gptel-post-request-hook=          | Runs immediately after dispatching a =gptel-request=.       |
+| =gptel-pre-response-hook=          | Runs before inserting the LLM response into the buffer      |
+| =gptel-post-response-functions=    | Runs after inserting the full LLM response into the buffer  |
+| =gptel-post-stream-hook=           | Runs after each streaming insertion                         |
+| =gptel-context-wrap-function=      | To include additional context formatted your way            |
+| =gptel-rewrite-default-action=     | Automatically diff, ediff, merge or replace refactored text |
+| =gptel-post-rewrite-functions=     | Runs after a =gptel-rewrite= request succeeds               |
+|------------------------------------+-------------------------------------------------------------|
 
 #+html: </details>
 
@@ -1582,8 +1585,15 @@ Once defined, presets can be applied from gptel's transient menu:
 #+html: <img src="https://github.com/user-attachments/assets/e0cf6a32-d999-4138-8369-23512f5e9311" align="center" />
 #+html: <br>
 
-To define a preset, use the =gptel-make-preset= function, which takes a name and keyword-value pairs of settings:
+To define a preset, use the =gptel-make-preset= function, which takes a name and keyword-value pairs of settings.
 
+Presets can be used to set individual options.  Here is an example of a preset to set the system message (and do nothing else):
+#+begin_src emacs-lisp
+(gptel-make-preset 'explain
+  :system "Explain what this code does to a novice programmer.")
+#+end_src
+
+More generally, you can specify a bundle of options:
 #+begin_src emacs-lisp
 (gptel-make-preset 'gpt4coding                       ;preset name, a symbol
   :description "A preset optimized for coding tasks" ;for your reference
