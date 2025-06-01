@@ -14,7 +14,7 @@ gptel is a simple Large Language Model chat client for Emacs, with support for m
 | Anthropic (Claude)   | ✓        | [[https://www.anthropic.com/api][API key]]                    |
 | Gemini               | ✓        | [[https://makersuite.google.com/app/apikey][API key]]                    |
 | Ollama               | ✓        | [[https://ollama.ai/][Ollama running locally]]     |
-| Llama.cpp            | ✓        | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]]  |
+| Llama.cpp            | ✓        | [[https://github.com/ggml-org/llama.cpp/tree/master/tools/server#quick-start][Llama.cpp running locally]]  |
 | Llamafile            | ✓        | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
 | GPT4All              | ✓        | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
 | Kagi FastGPT         | ✓        | [[https://kagi.com/settings?p=api][API key]]                    |
