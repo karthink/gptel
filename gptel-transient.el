@@ -99,10 +99,14 @@ For internal use only.")
                 (eq gptel-backend val))
               (throw 'mismatch t)))
          ((eq key :tools)
-          (or (equal (sort val #'string-lessp)
-                     (sort (mapcar #'gptel-tool-name gptel-tools)
-                           #'string-lessp))
-              (throw 'mismatch t)))
+          (if (eq (car-safe val) :append)
+              (cl-loop for name in (cdr val) ;preset tools contained in gptel-tools
+                       unless (memq (gptel-get-tool name) gptel-tools)
+                       do (throw 'mismatch t))
+            (or (equal (sort val #'string-lessp) ;preset tools same as gptel-tools
+                       (sort (mapcar #'gptel-tool-name gptel-tools)
+                             #'string-lessp))
+                (throw 'mismatch t))))
          (t (let* ((suffix (substring
                             (if (symbolp key) (symbol-name key) key) 1))
                    (sym (or (intern-soft (concat "gptel-" suffix))

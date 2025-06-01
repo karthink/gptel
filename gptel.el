@@ -2291,6 +2291,7 @@ If PROMPT is
   sending to the LLM.
 - A list of strings, it is interpreted as a conversation, i.e. a
   series of alternating user prompts and LLM responses.
+  (\"user msg 1\" \"llm msg 1\" \"user msg 2\" \"llm msg 2\" ...)
 - nil but region is active, the region contents are used.
 - nil, the current buffer's contents up to (point) are used.
   Previous responses from the LLM are identified as responses.
@@ -2424,7 +2425,7 @@ model, backend or system prompt, or augmenting the prompt with
 additional information (such as from a RAG engine).
 
 - Synchronous transformers are called with zero or one argument, the
-  INFO plist for the request.
+  state machine for the request.
 
 - Asynchronous transformers are called with two arguments, a callback
   and the state machine.  It should run the callback after finishing its
@@ -2469,6 +2470,7 @@ be used to rerun or continue the request at a later time."
            ((consp prompt)
             ;; (gptel--parse-list gptel-backend prompt)
             (gptel--with-buffer-copy buffer nil nil
+              ;; TEMP Decide on the annoated prompt-list format
               (gptel--parse-list-and-insert prompt)
               (current-buffer)))))
          (info (list :data prompt-buffer
@@ -2485,8 +2487,8 @@ be used to rerun or continue the request at a later time."
     (when dry-run (plist-put info :dry-run dry-run))
     (setf (gptel-fsm-info fsm) info))
 
-  ;; TEMP: Augment in separate let block to avoid overcapturing
-  ;; FIXME(augment) Call augmentors with INFO, not FSM
+  ;; TEMP: Augment in separate let block for now.  Are we overcapturing?
+  ;; FIXME(augment): Call augmentors with INFO, not FSM
   (let ((info (gptel-fsm-info fsm)))
     (with-current-buffer (plist-get info :data)
       (setq-local gptel-prompt-transform-functions (plist-get info :transforms))
@@ -2507,7 +2509,7 @@ be used to rerun or continue the request at a later time."
             (gptel--realize-query fsm)
           (with-current-buffer (plist-get info :buffer) ;Apply prompt transformations
             (gptel--update-status " Augmenting..." 'mode-line-emphasis))
-          ;; TODO(augment): This needs to be converted into a linear callback
+          ;; FIXME(augment): This needs to be converted into a linear callback
           ;; chain to avoid race conditions with multiple async augmentors.
           (run-hook-wrapped
            'gptel-prompt-transform-functions
@@ -3614,18 +3616,21 @@ example) apply the preset buffer-locally."
           (user-error "gptel preset \"%s\": Cannot find backend %s."
                       (car preset) val))
         (funcall setter 'gptel-backend val))
-       (:tools
-        (funcall
-         setter 'gptel-tools
-         (flatten-list
-          (cl-loop for tool-name in (ensure-list val)
-                   for tool = (cl-etypecase tool-name
-                                (gptel-tool tool-name)
-                                (string (gptel-get-tool tool-name)))
-                   do (unless tool
-                        (user-error "gptel preset \"%s\": Cannot find tool %s."
-                                    (car preset) val))
-                   collect tool))))
+       (:tools                          ;TEMP Confirm this `:append' convention
+        (let* ((append (when (eq (car-safe val) :append) (setq val (cdr val)) t))
+               (tools
+                (flatten-list
+                 (cl-loop for tool-name in (ensure-list val)
+                          for tool = (cl-etypecase tool-name
+                                       (gptel-tool tool-name)
+                                       (string (ignore-errors
+                                                 (gptel-get-tool tool-name))))
+                          do (unless tool
+                               (user-error "gptel preset \"%s\": Cannot find tool %s."
+                                           (car preset) val))
+                          collect tool))))
+          (funcall setter 'gptel-tools ;append makes a copy of gptel-tools, intentional
+                   (if append (delete-dups (append gptel-tools tools)) tools))))
        ((and (let sym (or (intern-soft
                            (concat "gptel-" (substring (symbol-name key) 1)))
                           (intern-soft
