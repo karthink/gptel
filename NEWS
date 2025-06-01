@@ -19,6 +19,12 @@
         (gptel-backend-models (gptel-get-backend "ChatGPT")))
   #+end_src
 
+- Only relevant if you use ~gptel-request~ in your elisp code,
+  /interactive gptel usage is unaffected/: ~gptel-request~ now takes a
+  new, optional =:transforms= argument.  Any prompt modifications
+  (like adding context to requests) must now be specified via this
+  argument.  See the definition of ~gptel-send~ for an example.
+
 ** New models and backends
 
 - Add support for ~gpt-4.1~, ~gpt-4.1-mini~, ~gpt-4.1-nano~, ~o3~ and

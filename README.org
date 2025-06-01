@@ -822,6 +822,8 @@ The above code makes the backend available to select.  If you want it to be the 
 **** Github Models
 #+html: </summary>
 
+NOTE:  [[https://docs.github.com/en/github-models/about-github-models][GitHub Models]] is /not/ GitHub Copilot!  If you want to use GitHub Copilot chat via gptel, look at the instructions for GitHub CopilotChat below instead.
+
 Register a backend with
 #+begin_src emacs-lisp
   ;; Github Models offers an OpenAI compatible API
