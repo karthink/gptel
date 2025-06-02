@@ -1261,7 +1261,7 @@ The [[https://modelcontextprotocol.io/introduction][Model Context Protocol]] (MC
 
 To use MCP servers with gptel, you thus need three pieces:
 
-1. The [[https://github.com/lizqwerscott/mcp.el][mcp.el]] package for Emacs
+1. The [[https://github.com/lizqwerscott/mcp.el][mcp.el]] package for Emacs, [[https://melpa.org/#/mcp][available on MELPA]].
 2. MCP servers configured for and running via mcp.el.
 3. gptel and access to an LLM
 

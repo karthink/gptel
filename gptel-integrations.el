@@ -42,6 +42,9 @@
 (declare-function mcp-hub-start-all-server "mcp-hub")
 (declare-function mcp-stop-server "mcp")
 (declare-function mcp-hub "mcp-hub")
+(declare-function mcp--status "mcp-hub")
+(declare-function mcp--tools "mcp-hub")
+(declare-function mcp-make-text-tool "mcp-hub")
 (defvar mcp-hub-servers)
 (defvar mcp-server-connections)
 
@@ -89,31 +92,34 @@ Call SERVER-CALLBACK after starting MCP servers."
                     unregistered-servers))
                  (server-active-p
                   (lambda (server) (gethash (car server) mcp-server-connections)))
-                 (get-all-tools (lambda () (mcp-hub-get-all-tool :asyncp t :categoryp t)))
                  (inactive-servers (cl-remove-if server-active-p servers))
                  (add-all-tools
-                  (lambda ()
+                  (lambda (&optional server-names)
                     "Register and add tools from servers.  Report failures."
-                    (let ((tools (funcall get-all-tools))
+                    (let ((tools (gptel-mcp--get-tools server-names))
                           (now-active (cl-remove-if-not server-active-p mcp-hub-servers)))
                       (mapc (lambda (tool) (apply #'gptel-make-tool tool)) tools)
                       (gptel-mcp--activate-tools tools)
                       (if-let* ((failed (cl-set-difference inactive-servers now-active
                                                            :test #'equal)))
-                          (message "%d/%d server%s failed to start: %s.  Run \\[mcp-hub] to investigate."
-                                   (length failed) (length inactive-servers)
-                                   (if (= (length failed) 1) "" "s")
-                                   (mapconcat #'car failed ", "))
-                        (message "Added %d tools from %d MCP server%s: %s"
-                                 (length tools) (length now-active)
-                                 (if (= (length now-active) 1) "" "s")
-                                 (mapconcat #'car now-active ", ")))
+                          (progn
+                            (message "Inactive-before: %S, Now-Active: %S" inactive-servers now-active)
+                            (message (substitute-command-keys
+                                      "%d/%d server%s failed to start: %s.  Run \\[mcp-hub] to investigate.")
+                                     (length failed) (length inactive-servers)
+                                     (if (= (length failed) 1) "" "s")
+                                     (mapconcat #'car failed ", ")))
+                        (let ((added (or server-names (mapcar #'car now-active))))
+                          (message "Added %d tools from %d MCP server%s: %s"
+                                   (length tools) (length added)
+                                   (if (= (length added) 1) "" "s")
+                                   (mapconcat #'identity added ", "))))
                       (when (functionp server-callback) (funcall server-callback))))))
 
             (if inactive-servers        ;start servers
                 (mcp-hub-start-all-server
                  add-all-tools (mapcar #'car inactive-servers))
-              (funcall add-all-tools)))
+              (funcall add-all-tools (mapcar #'car servers))))
         (message "All MCP tools are already available to gptel!")
         (when (functionp server-callback) (funcall server-callback))))))
 
@@ -170,17 +176,35 @@ If INTERACTIVE is non-nil, query the user about which tools to remove."
           (when (gethash (car server) mcp-server-connections)
             (mcp-stop-server (car server))))))))
 
+(defun gptel-mcp--get-tools (&optional server-names)
+  "Return tools from running MCP servers.
+
+SERVER-NAMES is a list of server names to add tools from.  Add tools
+from all connected servers if it is nil."
+  (unless server-names
+    (setq server-names (hash-table-keys mcp-server-connections)))
+  (let ((servers (mapcar (lambda (n) (gethash n mcp-server-connections))
+                         server-names)))
+    (cl-mapcan
+     (lambda (name server)
+       (when (and server (equal (mcp--status server) 'connected))
+         (when-let* ((tools (mcp--tools server))
+                     (tool-names (mapcar #'(lambda (tool) (plist-get tool :name)) tools)))
+           (mapcar (lambda (tool-name)
+                     (plist-put (mcp-make-text-tool name tool-name t)
+                                :category (format "mcp-%s" name)))
+                   tool-names))))
+     server-names servers)))
+
 (defun gptel-mcp--activate-tools (&optional tools)
   "Activate TOOLS or all MCP tools in current gptel session."
-  (unless tools (setq tools (mcp-hub-get-all-tool :asyncp t :categoryp t)))
+  (unless tools (setq tools (gptel-mcp--get-tools)))
   (dolist (tool tools)
     (cl-pushnew (gptel-get-tool (list (plist-get tool :category)
                                       (plist-get tool :name)))
                 gptel-tools)))
 
 (with-eval-after-load 'gptel-transient
-  ;; FIXME: If `gptel-mcp-connect' opens mcp-hub, the transient stays open.  I
-  ;; don't know how to fix this.
   (transient-define-suffix gptel--suffix-mcp-connect ()
     "Register tools provided by MCP servers."
     :key "M+"
@@ -189,10 +213,11 @@ If INTERACTIVE is non-nil, query the user about which tools to remove."
     (interactive)
     (condition-case err
         (gptel-mcp-connect
-         t (lambda () (when-let* ((transient--prefix)
-                             ((eq (oref transient--prefix command)
-                                  'gptel-tools)))
-                   (transient-setup 'gptel-tools))))
+         nil (lambda () (when-let* ((transient--prefix)
+                               ((eq (oref transient--prefix command)
+                                    'gptel-tools)))
+                     (transient-setup 'gptel-tools)))
+         t)
       (user-error (message "%s" (cadr err))))
     (transient-setup))
 
