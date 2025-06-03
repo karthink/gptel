@@ -3497,9 +3497,10 @@ settings on the fly.
 Typically this will include a model, backend, system message and perhaps
 some tools, but any set of gptel options can be set this way.
 
-NAME can be a symbol (preferred) or string.  KEYS is a plist
-corresponding to the options being set.  All KEYS are optional.
-Recognized keys include:
+NAME must be a symbol.  KEYS is a plist corresponding to the options
+being set.  All KEYS are optional.
+
+Recognized keys:
 
 DESCRIPTION is a description of the preset, used when selecting a
 preset.

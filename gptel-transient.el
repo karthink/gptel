@@ -103,7 +103,8 @@ For internal use only.")
                      (sort (mapcar #'gptel-tool-name gptel-tools)
                            #'string-lessp))
               (throw 'mismatch t)))
-         (t (let* ((suffix (substring (symbol-name key) 1))
+         (t (let* ((suffix (substring
+                            (if (symbolp key) (symbol-name key) key) 1))
                    (sym (or (intern-soft (concat "gptel-" suffix))
                             (intern-soft (concat "gptel--" suffix)))))
               (or (null sym)
@@ -834,7 +835,7 @@ together.  See `gptel-make-preset' for details."
       'gptel--preset
       (cl-loop
        for (name-sym . preset) in gptel--known-presets
-       for name = (symbol-name name-sym)
+       for name = (format "%s" name-sym)
        with unused-keys = (nconc (number-sequence ?a ?z)
                                  (number-sequence ?0 ?9))
        for description = (plist-get preset :description)
