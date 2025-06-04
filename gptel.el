@@ -1007,7 +1007,7 @@ Later plists in the sequence take precedence over earlier ones."
 
 (defun gptel-auto-scroll ()
   "Scroll window if LLM response continues below viewport.
-	
+
 Note: This will move the cursor."
   (when-let* ((win (get-buffer-window (current-buffer) 'visible))
               ((not (pos-visible-in-window-p (point) win)))
