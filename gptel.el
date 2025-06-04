@@ -1006,15 +1006,13 @@ Later plists in the sequence take precedence over earlier ones."
       (gptel--json-read))))
 
 (defun gptel-auto-scroll ()
-  "Scroll window if LLM response continues below viewport.
-
-Note: This will move the cursor."
+  "Scroll window if LLM response continues below viewport."
   (when-let* ((win (get-buffer-window (current-buffer) 'visible))
               ((not (pos-visible-in-window-p (point) win)))
               (scroll-error-top-bottom t))
     (condition-case nil
         (with-selected-window win
-          (scroll-up-command))
+          (run-at-time 0 nil #'scroll-up-command))
       (error nil))))
 
 (defun gptel-beginning-of-response (&optional _ _ arg)
