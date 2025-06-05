@@ -522,12 +522,33 @@ Non-nil CLEAR-CACHE will refresh credentials."
        (gptel-bedrock--fetch-aws-profile-credentials profile t))
       (t (user-error "AWS credentials expired for profile: %s" profile)))))
 
+(defun gptel-bedrock--fetch-instance-credentials ()
+  "Fetch AWS credentials using aws configure export-credentials.
+
+Returns a list of access key, secret key, and session token."
+  (with-temp-buffer
+    (condition-case nil
+        (progn
+          (call-process "aws" nil t nil "configure" "export-credentials")
+          (unless (zerop (buffer-size))
+            (let* ((creds (json-parse-string (buffer-string) :object-type 'plist))
+                   (access-key (plist-get creds :AccessKeyId))
+                   (secret-key (plist-get creds :SecretAccessKey))
+                   (session-token (plist-get creds :SessionToken)))
+              (cl-values access-key secret-key session-token))))
+      (error nil))))
+
 (defun gptel-bedrock--get-credentials ()
   "Return the AWS credentials to use for the request.
 
 Returns a list of 2-3 elements, depending on whether a session
 token is needed, with this form: (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 AWS_SESSION_TOKEN).
+
+Credentials are sourced in this order:
+1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+2. AWS_PROFILE environment variable
+3. Instance credentials via aws configure export-credentials
 
 Convenient to use with `cl-multiple-value-bind'"
   (let ((key-id (getenv "AWS_ACCESS_KEY_ID"))
@@ -537,7 +558,8 @@ Convenient to use with `cl-multiple-value-bind'"
     (cond
       ((and key-id secret-key) (cl-values key-id secret-key token))
       ((and profile) (gptel-bedrock--fetch-aws-profile-credentials profile))
-      (t (user-error "Missing AWS credentials; currently only environment variables are supported")))))
+      ((gptel-bedrock--fetch-instance-credentials))
+      (t (user-error "Missing AWS credentials; tried environment variables, AWS profile, and instance credentials")))))
 
 (defvar gptel-bedrock--model-ids
   ;; https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
