@@ -30,8 +30,9 @@
 - Add support for ~gpt-4.1~, ~gpt-4.1-mini~, ~gpt-4.1-nano~, ~o3~ and
   ~o4-mini~.
 
-- Add support for ~gemini-2.5-pro-exp-03-25~, ~gemini-2.5-flash-preview-04-17~,
-  ~gemini-2.5-pro-preview-05-06~ and ~gemini-2.5-pro-preview-06-05~.
+- Add support for ~gemini-2.5-pro-exp-03-25~,
+  ~gemini-2.5-flash-preview-04-17~, ~gemini-2.5-pro-preview-05-06~ and
+  ~gemini-2.5-pro-preview-06-05~.
 
 - Add support for ~claude-sonnet-4-20250514~ and
   ~claude-opus-4-20250514~.
@@ -75,9 +76,9 @@
 
 - gptel can access MCP server tools by integrating with the mcp.el
   package, which is at https://github.com/lizqwerscott/mcp.el.
-  (mcp.el is not yet available in a package archive.)  To help with
-  the integration, two new commands are provided: ~gptel-mcp-connect~
-  and ~gptel-mcp-disconnect~.  You can use these to start MCP servers
+  (mcp.el is available on MELPA.)  To help with the integration, two
+  new commands are provided: ~gptel-mcp-connect~ and
+  ~gptel-mcp-disconnect~.  You can use these to start MCP servers
   selectively and add tools to gptel.  These commands are also
   available from gptel's tools menu.
   
@@ -97,7 +98,7 @@
 - When using ~gptel-send~ from anywhere in Emacs, you can now include
   a "cookie" of the form =@preset-name= in the prompt text to apply
   that preset before sending.  The preset is applied for that request
-  only.  This is an easy way to switch models, tools, system
+  only.  This is an easy way to specify models, tools, system
   messages (etc) on the fly.  In chat buffers the preset cookie is
   fontified and available for completion via ~completion-at-point~.
 
@@ -107,9 +108,9 @@
 - Links to plain-text files in chat buffers can be followed, and their
   contents included with the request.  Using Org or Markdown links is
   an easy, intuitive, persistent and buffer-local way to specify
-  context.  To enable this behavior, turn on ~gptel-track-media~, a
-  pre-existing option which also controls whether image/document links
-  are followed and sent (when the model supports it).
+  context.  To enable this behavior, turn on ~gptel-track-media~. This
+  is a pre-existing option that also controls whether image/document
+  links are followed and sent (when the model supports it).
 
 - A new hook ~gptel-prompt-transform-functions~ is provided for
   arbitrary transformations of the prompt prior to sending a request.
