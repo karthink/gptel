@@ -30,8 +30,8 @@
 - Add support for ~gpt-4.1~, ~gpt-4.1-mini~, ~gpt-4.1-nano~, ~o3~ and
   ~o4-mini~.
 
-- Add support for ~gemini-2.5-pro-exp-03-25~,
-  ~gemini-2.5-flash-preview-04-17~ and ~gemini-2.5-pro-preview-05-06~.
+- Add support for ~gemini-2.5-pro-exp-03-25~, ~gemini-2.5-flash-preview-04-17~,
+  ~gemini-2.5-pro-preview-05-06~ and ~gemini-2.5-pro-preview-06-05~.
 
 - Add support for ~claude-sonnet-4-20250514~ and
   ~claude-opus-4-20250514~.
