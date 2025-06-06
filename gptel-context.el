@@ -291,12 +291,15 @@ afterwards."
   "Highlight the region from START to END.
 
 ADVANCE controls the overlay boundary behavior."
-  (let ((overlay (make-overlay start end nil (not advance) advance)))
+  (let ((overlay (make-overlay start end nil (not advance) advance))
+        (buffer (current-buffer))
+        (entry (assoc (current-buffer) gptel-context--alist)))
     (overlay-put overlay 'evaporate t)
     (overlay-put overlay 'face 'gptel-context-highlight-face)
     (overlay-put overlay 'gptel-context t)
-    (push overlay (alist-get (current-buffer)
-                             gptel-context--alist))
+    (if entry
+        (setf (cdr entry) (cons overlay (cdr entry)))
+      (push (cons buffer (list overlay)) gptel-context--alist))
     overlay))
 
 ;;;###autoload
@@ -412,40 +415,31 @@ START and END signify the region delimiters."
 
 (defun gptel-context--insert-buffer-string (buffer contexts)
   "Insert at point a context string from all CONTEXTS in BUFFER."
-    (let ((is-top-snippet t)
-          (previous-line 1))
-      (insert (format "In buffer `%s`:" (gptel-context--format-buffer-name buffer))
-              "\n\n```" (gptel--strip-mode-suffix (buffer-local-value
-                                                   'major-mode buffer))
-              "\n")
-      (dolist (context contexts)
-        (let* ((start (overlay-start context))
-               (end (overlay-end context))
-               content)
-          (let (lineno column)
-            (with-current-buffer buffer
-              (without-restriction
-                (setq lineno (line-number-at-pos start t)
-                      column (save-excursion (goto-char start)
-                                             (current-column))
-                      content (buffer-substring-no-properties start end))))
-            ;; We do not need to insert a line number indicator if we have two regions
-            ;; on the same line, because the previous region should have already put the
-            ;; indicator.
-            (unless (= previous-line lineno)
-              (unless (= lineno 1)
-                (unless is-top-snippet
-                  (insert "\n"))
-                (insert (format "... (Line %d)\n" lineno))))
-            (setq previous-line lineno)
-            (unless (zerop column) (insert " ..."))
-            (if is-top-snippet
-                (setq is-top-snippet nil)
-              (unless (= previous-line lineno) (insert "\n"))))
-          (insert content)))
-      (unless (>= (overlay-end (car (last contexts))) (point-max))
-        (insert "\n..."))
-      (insert "\n```")))
+  (let* ((major-mode (buffer-local-value 'major-mode buffer))
+         (file-name (buffer-file-name buffer))
+         (buffer-name (buffer-name buffer))
+         (contexts (sort contexts #'overlay-start<)))
+    (insert "<context_item>\n")
+    (when buffer-name
+      (insert (format "  <buffer_name>%s</buffer_name>\n" buffer-name)))
+    (when file-name
+      (insert (format "  <file_path>%s</file_path>\n" (abbreviate-file-name file-name))))
+    (when major-mode
+      (insert (format "  <file_type>%s</file_type>\n" (gptel--strip-mode-suffix major-mode))))
+    (dolist (context contexts)
+      (let (start end content start-line end-line)
+        (with-current-buffer buffer
+          (setq start (overlay-start context)
+                end (overlay-end context)
+                content (buffer-substring-no-properties start end)
+                start-line (line-number-at-pos start t)
+                end-line (line-number-at-pos end t)))
+        (insert (format "  <content start_line=\"%d\" end_line=\"%d\"><![CDATA[\n" start-line end-line))
+        (insert content)
+        (unless (string-suffix-p "\n" content)
+          (insert "\n"))
+        (insert "]]></content>\n"))))
+    (insert "</context_item>"))
 
 (defun gptel-context--string (context-alist)
   "Format the aggregated gptel context as annotated markdown fragments.
@@ -457,14 +451,40 @@ context overlays, see `gptel-context--alist'."
              if (bufferp buf)
              do (gptel-context--insert-buffer-string buf ovs)
              else if (not (plist-get ovs :mime))
-             do (gptel--insert-file-string buf) end
+             do (let ((path buf))
+                  (let* ((content-and-mode
+                          (with-temp-buffer
+                            (insert-file-contents path)
+                            (list (buffer-string) major-mode)))
+                         (end-line (with-temp-buffer (insert (car content-and-mode)) (count-lines (point-min) (point-max)))))
+                    (insert "<context_item>\n")
+                    (insert (format "  <file_path>%s</file_path>\n" (abbreviate-file-name path)))
+                    (when (cadr content-and-mode)
+                      (insert (format "  <file_type>%s</file_type>\n"
+                                      (gptel--strip-mode-suffix (cadr content-and-mode)))))
+                    (insert (format "  <content start_line=\"1\" end_line=\"%d\"><![CDATA[\n" end-line))
+                    (insert (car content-and-mode))
+                    (unless (string-suffix-p "\n" (car content-and-mode))
+                      (insert "\n"))
+                    (insert "]]></content>\n")
+                    (insert "</context_item>"))) end
              do (insert "\n\n")
              finally do
              (skip-chars-backward "\n\t\r ")
              (delete-region (point) (point-max))
              (unless (bobp)
                (goto-char (point-min))
-               (insert "Request context:\n\n"))
+               (insert "CONTEXT USAGE AND RULES:\n\n"
+                       "A \"Request context\" block is provided below. This context is the primary source of truth for the files or buffers mentioned.\n\n"
+                       "- Each context item is wrapped in `<context_item>` tags.\n"
+                       "- It contains metadata like `<file_path>` and `<file_type>`.\n"
+                       "- The code/text is inside a `<content>` tag with `start_line` and `end_line` attributes. The content is wrapped in `<![CDATA[...]]>`.\n\n"
+                       "**Mandatory Rules for Using Context:**\n"
+                       "1.  **Source of Truth:** The context provided is the ground truth. YOU MUST use the content within the `<content>` tags for any actions related to that file and line range.\n"
+                       "2.  **No Redundant Reading:** DO NOT use file-reading tools for any file path if its content is already provided in the context. Rely on the context.\n"
+                       "3.  **Precise File Edits:** When using file modification tools, your edits MUST be based on the provided context. The line numbers and the original text you are replacing must align exactly with the information in the `<content>` tags.\n\n"
+                       "---\n\n"
+                       "Request context:\n\n"))
              finally return
               (and (> (buffer-size) 0)
                    (buffer-string)))))
