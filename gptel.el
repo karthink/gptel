@@ -1017,6 +1017,16 @@ Note: This will move the cursor."
           (scroll-up-command))
       (error nil))))
 
+(defsubst gptel-prompt-prefix-string ()
+  "Prefix before user prompts in `gptel-mode'."
+  (declare (side-effect-free t))
+  (or (alist-get major-mode gptel-prompt-prefix-alist) ""))
+
+(defsubst gptel-response-prefix-string ()
+  "Prefix before LLM responses in `gptel-mode'."
+  (declare (side-effect-free t))
+  (or (alist-get major-mode gptel-response-prefix-alist) ""))
+
 (defun gptel-beginning-of-response (&optional _ _ arg)
   "Move point to the beginning of the LLM response ARG times."
   (interactive (list nil nil
@@ -1051,6 +1061,14 @@ Note: This will move the cursor."
      (skip-syntax-forward "w.")
      ,(macroexp-progn body)))
 
+(defmacro gptel--temp-buffer (buf)
+  "Generate a temp buffer BUF.
+
+Compatibility macro for Emacs 27.1."
+  (if (< emacs-major-version 28)
+      `(generate-new-buffer ,buf)
+    `(generate-new-buffer ,buf t)))
+
 (defmacro gptel--with-buffer-copy (buf start end &rest body)
   "Copy gptel's local variables from BUF to a temp buffer and run BODY.
 
@@ -1071,24 +1089,6 @@ If positions START and END are provided, insert that part of BUF first."
          `(insert-buffer-substring ,buf ,start ,end))
        (setq major-mode (buffer-local-value 'major-mode ,buf))
        ,@body))))
-
-(defmacro gptel--temp-buffer (buf)
-  "Generate a temp buffer BUF.
-
-Compatibility macro for Emacs 27.1."
-  (if (< emacs-major-version 28)
-      `(generate-new-buffer ,buf)
-    `(generate-new-buffer ,buf t)))
-
-(defsubst gptel-prompt-prefix-string ()
-  "Prefix before user prompts in `gptel-mode'."
-  (declare (side-effect-free t))
-  (or (alist-get major-mode gptel-prompt-prefix-alist) ""))
-
-(defsubst gptel-response-prefix-string ()
-  "Prefix before LLM responses in `gptel-mode'."
-  (declare (side-effect-free t))
-  (or (alist-get major-mode gptel-response-prefix-alist) ""))
 
 (defsubst gptel--trim-prefixes (s)
   "Remove prompt/response prefixes from string S.
