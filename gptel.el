@@ -1073,22 +1073,24 @@ Compatibility macro for Emacs 27.1."
   "Copy gptel's local variables from BUF to a temp buffer and run BODY.
 
 If positions START and END are provided, insert that part of BUF first."
-  (declare (indent 3))
-  (let ((temp-buffer (make-symbol "temp-buffer")))
-    `(let ((,temp-buffer (gptel--temp-buffer " *gptel-prompt*")))
-      (with-current-buffer ,temp-buffer
-       (dolist (sym '( gptel-backend gptel--system-message gptel-model
-                       gptel-mode gptel-track-response gptel-track-media
-                       gptel-use-tools gptel-tools gptel-use-curl
-                       gptel-use-context gptel--num-messages-to-send
-                       gptel-stream gptel-include-reasoning
-                       gptel-temperature gptel-max-tokens gptel-cache))
-        (set (make-local-variable sym)
-         (buffer-local-value sym ,buf)))
-       ,(when (and start end)
-         `(insert-buffer-substring ,buf ,start ,end))
-       (setq major-mode (buffer-local-value 'major-mode ,buf))
-       ,@body))))
+  `(gptel--with-buffer-copy-internal ,buf ,start ,end (lambda () ,@body)))
+
+(defun gptel--with-buffer-copy-internal (buf start end body-thunk)
+  "Prepare a temp buffer for a gptel request.
+
+For BUF, START, END and BODY-THUNK see `gptel--with-buffer-copy'."
+  (let ((temp-buffer (gptel--temp-buffer " *gptel-prompt*")))
+    (with-current-buffer temp-buffer
+      (dolist (sym '( gptel-backend gptel--system-message gptel-model
+                      gptel-mode gptel-track-response gptel-track-media
+                      gptel-use-tools gptel-tools gptel-use-curl
+                      gptel-use-context gptel--num-messages-to-send
+                      gptel-stream gptel-include-reasoning
+                      gptel-temperature gptel-max-tokens gptel-cache))
+        (set (make-local-variable sym) (buffer-local-value sym buf)))
+      (when (and start end) (insert-buffer-substring buf start end))
+      (setq major-mode (buffer-local-value 'major-mode buf))
+      (funcall body-thunk))))
 
 (defsubst gptel--trim-prefixes (s)
   "Remove prompt/response prefixes from string S.
