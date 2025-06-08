@@ -1652,25 +1652,6 @@ What do you make of the above description, @proofreader?
 
 In chat buffers this prefix will be offered as a completion and fontified, making it easy to use and spot.
 
-** COMMENT Will you add feature X?
-
-Maybe, I'd like to experiment a bit more first.  Features added since the inception of this package include
-- Curl support (=gptel-use-curl=).
-- Streaming responses (=gptel-stream=).
-- Cancelling requests in progress (=gptel-abort=)
-- General API for writing your own commands (=gptel-request=, [[https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands][wiki]])
-- Dispatch menus using Transient (=gptel-send= with a prefix arg).
-- Specifying the conversation context size.
-- GPT-4 support.
-- Response redirection (to the echo area, another buffer, etc).
-- A built-in refactor/rewrite prompt.
-- Limiting conversation context to Org headings using properties (#58).
-- Saving and restoring chats (#17).
-- Support for local LLMs.
-
-Features being considered or in the pipeline:
-- Fully stateless design ([[https://github.com/karthink/gptel/discussions/119][discussion #119]]).
-
 ** Alternatives
 
 Other Emacs clients for LLMs include
@@ -1708,8 +1689,10 @@ gptel is a general-purpose package for chat and ad-hoc LLM interaction.  The fol
 
 ** Acknowledgments
 
+- [[https://github.com/felipeochoa][Felipe Ochoa]] and [[https://github.com/akssri][akssri]] for adding AWS Bedrock support to gptel.
+- [[https://github.com/jwiegley][John Wiegley]] for the design of gptel's presets and gptel-request's async pipeline, but also for loads of general feedback and advice.
 - [[https://github.com/pabl0][Henrik Ahlgren]] for a keen eye to detail and polish applied to gptel's UI.
-- [[https://github.com/positron-solutions/][Positron Solutions]] for extensive testing of the tool use feature and the design of gptel's in-buffer tool use records.
+- [[https://github.com/psionic-k][psionic-k]] for extensive testing of the tool use feature and the design of gptel's in-buffer tool use records.
 - [[https://github.com/jdtsmith][JD Smith]] for feedback and code assistance with gptel-menu's redesign
 - [[https://github.com/meain][Abin Simon]] for extensive feedback on improving gptel's directives and UI.
 - [[https://github.com/algal][Alexis Gallagher]] and [[https://github.com/d1egoaz][Diego Alvarez]] for fixing a nasty multi-byte bug with =url-retrieve=.
