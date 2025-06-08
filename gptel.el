@@ -3569,7 +3569,10 @@ kill-ring."
            :temperature ,gptel-temperature
            :max-tokens ,gptel-max-tokens
            :use-context ',gptel-use-context
-           :include-reasoning ,gptel-include-reasoning)))
+           :track-media ,gptel-track-media
+           :include-reasoning ,(let ((reasoning gptel-include-reasoning))
+                                   (if (eq reasoning 'ignore)
+                                       ''ignore reasoning)))))
     (kill-new (pp-to-string preset-code))
     (eval preset-code)
     (message "Preset %s saved. (Lisp expression for preset saved to kill-ring)"
