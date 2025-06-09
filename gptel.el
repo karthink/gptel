@@ -3731,7 +3731,7 @@ Add this to `completion-at-point-functions'."
   (and gptel--known-presets
        (save-excursion
          (let ((num (- (skip-syntax-backward "w_"))))
-           (when (= (char-before) ?@)
+           (when (eql (char-before) ?@)
              (list (point) (+ (point) num)
                    gptel--known-presets
                    :exclusive 'no
