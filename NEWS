@@ -125,6 +125,12 @@
 - The current kill can be added to gptel's context.  To enable this,
   turn on ~gptel-expert-commands~ and use gptel's transient menu. 
 
+- The tools menu (~gptel-tools~) has been redesigned.  It now displays
+  tool categories and associated tools in two columns, and it should
+  scale better to any number of tools.  As a bonus, the new menu
+  requires half as many keystrokes as before to enable individual
+  tools or toggle categories.
+
 ** Notable Bug fixes
 
 - Fix more Org markup conversion edge cases involving nested Markdown

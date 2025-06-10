@@ -253,7 +253,8 @@ Handle formatting for system messages when the active
 
 OBJ is a tool-infix of type `gptel--switch'."
   (when-let* ((name (car (member (oref obj argument)
-                                 (mapcar #'gptel-tool-name gptel-tools)))))
+                                 (mapcar #'cadr
+                                         (plist-get (transient-scope) :tools))))))
     (oset obj value (list (oref obj category) name))))
 
 (defvar gptel--crowdsourced-prompts-url
@@ -473,17 +474,56 @@ which see."
   "Class used for arguments that share a category.")
 
 (cl-defmethod transient-infix-set ((obj gptel--switch) value)
-  "The VALUE of a gptel--switch OBJ is a list of the category
- and argument, e.g. (\"filesystem\" \"read_file\")."
-  (if value
-      (oset obj value (list (oref obj category) value))
-    (oset obj value nil)))
+  "Set VALUE of a `gptel--switch' OBJ.
+
+It is a list of the category and argument, e.g.
+ (\"filesystem\" \"read_file\")."
+  (let ((state (transient-scope))
+        (category (oref obj category)))
+    (if value
+        (progn
+          (cl-pushnew (list category value)
+                      (plist-get state :tools) :test #'equal)
+          (oset obj value (list category value)))
+      (plist-put state :tools
+                 (delete (list category (oref obj argument))
+                         (plist-get state :tools)))
+      (oset obj value nil))
+    (oset transient--prefix scope state)))
 
 (defclass gptel--switch-category (transient-switch)
   ((category :initarg :category))
   "Class used for arguments that switch a group of other arguments.
 
 Their own value is ignored")
+
+(cl-defmethod transient-format-value ((obj gptel--switch-category))
+  (let* ((category (oref obj category))
+         (active-count
+          (cl-count-if (lambda (tl) (equal (car tl) category))
+                       (plist-get (transient-scope) :tools)))
+         (total-count (length (cdr (assoc category gptel--known-tools)))))
+    (if (> active-count 0)
+        (propertize (format "(%d/%d)" active-count total-count) 'face 'transient-value)
+      (propertize (format "(0/%d)" total-count) 'face 'transient-inactive-value))))
+
+;; Pressing a tool category key should have different behaviors in different
+;; contexts:
+;; - If the tools for the category are not shown, show them, do nothing else
+;; - If the tools are showing and any of them are selected, deselect all
+;; - If the tools are showing and none of them are selected, select all
+
+;; To do this we independently track whether the category tools are visible
+;; ("active"), and whether any category tools have been "selected":
+(cl-defmethod transient-infix-read ((obj gptel--switch-category))
+  "Determine OBJ value according to category toggle settings."
+  (let* ((category (oref obj category))
+         (active (equal category (plist-get (transient-scope) :category)))
+         (selected (cl-some (lambda (tool-spec) (equal category (car tool-spec)))
+                            (plist-get (transient-scope) :tools))))
+    (if (not active)
+        (oref obj value)
+      (if selected nil (oref obj argument)))))
 
 (cl-defmethod transient-infix-set ((obj gptel--switch-category) value)
   "When setting VALUE, set all options in the category of OBJ."
@@ -495,10 +535,12 @@ Their own value is ignored")
                 (arg (if (slot-boundp suffix-obj 'argument)
                          (oref suffix-obj argument)
                        (oref obj argument-format))))
-      ;; Turn on/off all members in category
-      (if value
+      (if value                         ; Turn on/off all members in category
           (transient-infix-set suffix-obj arg)
         (transient-infix-set suffix-obj nil))))
+  ;; Update the active menu category and key in the prefix scope
+  (plist-put (transient-scope) :category (oref obj category))
+  (plist-put (transient-scope) :key (oref obj key))
   ;; Finally set the "value" of the category itself
   (oset obj value value))
 
@@ -880,6 +922,21 @@ together.  See `gptel-make-preset' for details."
 
 ;; ** Prefix for selecting tools
 
+;; gptel-tools offers a two-level menu for selecting tools, its design is a
+;; little convoluted so here's an explanation:
+;;
+;; Normally a transient prefix exports its value via transient-args, to be
+;; consumed by suffixes, where these args are determined by the state of the
+;; menu at the time of export.  The gptel-tools menu is dynamic and needs to
+;; store tool selections that may not be visible in the meny any more, so we
+;; cannot use the transient-args.
+;;
+;; We can not (should not?) control the value of the prefix directly, so we
+;; instead use the scope (a secondary value) of the prefix to maintain the
+;; history of selections.  When running a suffix, we gather tool selections from
+;; the scope.  The scope is also used as a message channel for connecting the
+;; category menu and the tool list menu for that category.
+
 ;;;###autoload (autoload 'gptel-tools "gptel-transient" nil t)
 (transient-define-prefix gptel-tools ()
   "Select tools to include with gptel requests.
@@ -892,6 +949,7 @@ To add tools to this list, use `gptel-make-tool', which see.
 Using the scope option, you can set tools to use with gptel
 requests globally, in this buffer or for the next request
 only (\"oneshot\")."
+  :refresh-suffixes t
   [:description "Provide the LLM with tools to run tasks for you"
    [""
     (gptel--infix-variable-scope)
@@ -900,65 +958,82 @@ only (\"oneshot\")."
     (gptel--infix-include-tool-results)]
    [""
     ("RET" "Confirm selection"
-     (lambda (args)
-       (interactive (list (transient-args transient-current-command)))
-       ;; There are two kinds of ARGS: categories with value "(*)", and lists of
-       ;; the type '("category" "tool_name").  We only want the latter, to use an
-       ;; index into `gptel--known-backends.'
+     (lambda (tools)
+       ;; We don't care about the transient args of this prefix at all, since
+       ;; the state is managed entirely through its transient-scope:
+       (interactive (list (plist-get (transient-scope 'gptel-tools) :tools)))
        (gptel--set-with-scope
         'gptel-tools
         (mapcar (lambda (category-and-name)
                   (map-nested-elt gptel--known-tools category-and-name))
-                (cl-delete-if-not #'consp args))
+                (cl-delete-if-not #'consp tools))
         gptel--set-buffer-locally))
      :transient transient--do-return)
     ("q" "Cancel" transient-quit-one)]]
-  [:class transient-column
-   :setup-children
-   (lambda (_)
-     (transient-parse-suffixes
-      'gptel-tools
-      (cdr
+  [[:class transient-column             ;Display known categories
+    :setup-children
+    (lambda (_)
+      (transient-parse-suffixes
+       'gptel-tools
        (cl-loop          ;loop through gptel--known tools and collect categories
         for (category . tools-alist) in gptel--known-tools
-        with unused-keys = (delete ?q (number-sequence ?a ?z))
-        for category-key = (seq-find (lambda (k) (member k unused-keys)) category
+        with unused-keys = (nconc (delete ?q (number-sequence ?a ?z))
+                                  (number-sequence ?0 ?9)
+                                  (number-sequence ?A ?Z))
+        for category-key = (seq-find (lambda (k) (member k unused-keys))
+                                     (string-remove-prefix "mcp-" category)
                                      (seq-first unused-keys))
         do (setq unused-keys (delete category-key unused-keys))
-        nconc
-        (cl-loop                    ;for each category, collect tools as infixes
-         for (name . tool) in tools-alist
-         with tool-keys = (delete category-key (nconc (number-sequence ?a ?z)
-                                                      (number-sequence ?0 ?9)))
-         for tool-key = (seq-find (lambda (k) (member k tool-keys)) name
-                                  (seq-first tool-keys))
-         do (setq tool-keys (delete tool-key tool-keys))
-         collect           ;Each list is a transient infix of type gptel--switch
-         (list (key-description (list category-key tool-key))
-               (concat (make-string (max (- 20 (length name)) 0) ? )
-                       (propertize
-                        (concat "(" (gptel--describe-directive
-                                     (gptel-tool-description tool) (- (window-width) 40))
-                                ")")
-                        'face 'shadow))
-               (gptel-tool-name tool)
-               :format " %k %v %d"
-               :init-value #'gptel--tools-init-value
-               :class 'gptel--switch
-               :category category)
-         into infixes-for-category
-         finally return
-         (identity ;TODO(tool): Replace with vconcat for groups separated by category
-          ;; Add a category header that can be used to toggle all tools in that category
-          (nconc (list " " (list (key-description (list category-key category-key))
-                                 (concat (propertize (concat category " tools")
-                                                     'face 'transient-heading)
-                                         (make-string (max (- 14 (length category)) 0) ? ))
-                                 "(*)"
-                                 :format " %k %d %v"
-                                 :class 'gptel--switch-category
-                                 :category category))
-                 infixes-for-category)))))))])
+        collect (list (key-description (list category-key))
+                      (concat (propertize category 'face 'transient-heading)
+                              (make-string (max (- 14 (length category)) 0) ? ))
+                      (char-to-string category-key)
+                      :format " %k %d %v"
+                      :class 'gptel--switch-category
+                      :category category)
+        into categories
+        finally do (plist-put (transient-scope) :keys unused-keys)
+        finally return categories)))]
+   [:class transient-column           ;Display known tools for selected category
+    :setup-children
+    (lambda (_)
+      (transient-parse-suffixes
+       'gptel-tools
+       (when-let* ((category (plist-get (transient-scope) :category))
+                   (tool-keys (plist-get (transient-scope) :keys)))
+         (cl-loop                   ;for each category, collect tools as infixes
+          with tools-alist = (cdr (assoc category gptel--known-tools))
+          for (name . tool) in tools-alist
+          for tool-key = (seq-find (lambda (k) (member k tool-keys)) name (seq-first tool-keys))
+          do (setq tool-keys (delete tool-key tool-keys))
+          collect          ;Each list is a transient infix of type gptel--switch
+          (list (key-description (list tool-key))
+                (concat (make-string (max (- 20 (length name)) 0) ? )
+                        (propertize
+                         (concat "(" (gptel--describe-directive
+                                      (gptel-tool-description tool) (- (window-width) 40))
+                                 ")")
+                         'face 'shadow))
+                (gptel-tool-name tool)
+                :format " %k %v %d"
+                :init-value #'gptel--tools-init-value
+                :class 'gptel--switch
+                :category category)
+          into infixes-for-category
+          finally return
+          (cons (list :info
+                      (lambda () (concat
+                             (propertize (plist-get (transient-scope) :key)
+                                         'face 'transient-key)
+                             (propertize " toggle all" 'face 'transient-heading)))
+                      :format " %d")
+                infixes-for-category)))))]]
+  (interactive)
+  (transient-setup
+   'gptel-tools nil nil
+   :scope (list :tools (mapcar (lambda (tool) (list (gptel-tool-category tool)
+                                               (gptel-tool-name tool)))
+                               gptel-tools))))
 
 
 ;; * Transient Infixes
