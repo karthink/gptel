@@ -448,6 +448,8 @@ which see."
 
 ;; * Transient classes and methods for gptel
 
+;; ** Class for generic gptel elisp variables
+
 (defclass gptel-lisp-variable (transient-lisp-variable)
   ((display-nil :initarg :display-nil)  ;String to display if value if nil
    (display-map :initarg :display-map :initform nil)) ;Display string from alist display-map
@@ -468,6 +470,8 @@ which see."
            (oref obj variable)
            (oset obj value value)
            gptel--set-buffer-locally))
+
+;; ** Class for managing gptel tools
 
 (defclass gptel--switch (transient-switch)
   ((category :initarg :category))
@@ -490,6 +494,8 @@ It is a list of the category and argument, e.g.
                          (plist-get state :tools)))
       (oset obj value nil))
     (oset transient--prefix scope state)))
+
+;; ** Class for managing gptel tool categories
 
 (defclass gptel--switch-category (transient-switch)
   ((category :initarg :category))
@@ -544,6 +550,8 @@ Their own value is ignored")
   ;; Finally set the "value" of the category itself
   (oset obj value value))
 
+;; ** Class for gptel options that are three-way switches
+
 (defclass gptel--switches (gptel-lisp-variable)
   ((display-if-true :initarg :display-if-true :initform "True")
    (display-if-false :initarg :display-if-false :initform "False"))
@@ -563,6 +571,8 @@ Their own value is ignored")
         (propertize "|" 'face 'transient-delimiter)
         (propertize display-if-true
                     'face (if value 'transient-value 'transient-inactive-value))))))
+
+;; ** Class for gptel's scope management, singleton
 
 (defclass gptel--scope (gptel--switches)
   ((display-if-true :initarg :display-if-true :initform "buffer")
@@ -599,6 +609,8 @@ This is used only for setting this variable via `gptel-menu'.")
            (oref obj variable)
            (oset obj value value)))
 
+;; ** Class for managing gptel's backend and model, singleton
+
 (defclass gptel-provider-variable (transient-lisp-variable)
   ((backend       :initarg :backend)
    (backend-value :initarg :backend-value)
@@ -624,6 +636,8 @@ This is used only for setting this variable via `gptel-menu'.")
              (oset obj backend-value backend-value)
              gptel--set-buffer-locally))
   (transient-setup))
+
+;; ** Class for infix options with in-buffer overlay display
 
 (defclass gptel-option-overlaid (transient-option)
   ((display-nil :initarg :display-nil)
