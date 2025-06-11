@@ -111,8 +111,7 @@ Store response metadata in state INFO."
     (when (and gptel-use-tools gptel-tools)
       ;; TODO(tool): Find out how to force tool use for Ollama
       (plist-put prompts-plist :tools
-                 (gptel--parse-tools backend gptel-tools))
-      (plist-put prompts-plist :stream :json-false))
+                 (gptel--parse-tools backend gptel-tools)))
     ;; if the temperature and max-tokens aren't set as
     ;; backend/model-specific, use the global settings
     (when (and gptel-temperature (not (plist-get options-plist :temperature)))
