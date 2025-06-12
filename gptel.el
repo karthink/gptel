@@ -3820,13 +3820,15 @@ example) apply the preset buffer-locally."
                 (user-error "gptel preset: Cannot find directive %s" val))
             (funcall setter sym val))))
        (:backend
-        (setq val (cl-etypecase val
+        (setq val (if (functionp val) (funcall val) val)
+              val (cl-etypecase val
                     (gptel-backend val)
                     (string (gptel-get-backend val))))
         (unless val
           (user-error "gptel preset: Cannot find backend %s." val))
         (funcall setter 'gptel-backend val))
        (:tools                          ;TEMP Confirm this `:append' convention
+        (setq val (if (functionp val) (funcall val) val))
         (let* ((append (when (eq (car-safe val) :append) (setq val (cdr val)) t))
                (tools
                 (flatten-list
@@ -3845,7 +3847,7 @@ example) apply the preset buffer-locally."
                           (intern-soft
                            (concat "gptel--" (substring (symbol-name key) 1)))))
              (guard (and sym (boundp sym))))
-        (funcall setter sym val))
+        (funcall setter sym (if (functionp val) (funcall val) val)))
        (_ (display-warning
            '(gptel presets)
            (format "gptel preset: setting for %s not found, ignoring." key)))))
