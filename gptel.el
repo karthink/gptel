@@ -1867,7 +1867,7 @@ implementation, used by OpenAI-compatible APIs and Ollama."
                                               (plist-get arg :name)))
                                 (gptel-tool-args tool))))
                     :additionalProperties :json-false))
-          (list :parameters :null)))))
+          (list :parameters (list :type "object" :properties nil))))))
     (ensure-list tools))))
 
 (cl-defgeneric gptel--parse-tool-results (backend results)
