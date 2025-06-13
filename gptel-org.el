@@ -516,10 +516,10 @@ non-nil (default), display a message afterwards."
    ;; Save response boundaries
    (letrec ((write-bounds
              (lambda (attempts)
-               (let* ((bounds (gptel--get-buffer-bounds))
-                      ;; first value of ((prop . ((beg end val)...))...)
-                      (offset (caadar bounds))
-                      (offset-marker (set-marker (make-marker) offset)))
+               (when-let* ((bounds (gptel--get-buffer-bounds))
+                           ;; first value of ((prop . ((beg end val)...))...)
+                           (offset (caadar bounds))
+                           (offset-marker (set-marker (make-marker) offset)))
                  (org-entry-put (point-min) "GPTEL_BOUNDS"
                                 (prin1-to-string (gptel--get-buffer-bounds)))
                  (when (and (not (= (marker-position offset-marker) offset))
