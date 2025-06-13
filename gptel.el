@@ -1009,13 +1009,14 @@ Later plists in the sequence take precedence over earlier ones."
   "Scroll window if LLM response continues below viewport.
 
 Note: This will move the cursor."
-  (when-let* ((win (get-buffer-window (current-buffer) 'visible))
-              ((not (pos-visible-in-window-p (point) win)))
-              (scroll-error-top-bottom t))
-    (condition-case nil
-        (with-selected-window win
-          (scroll-up-command))
-      (error nil))))
+  (run-at-time  ;Scheduled on the event loop to call from outside save-excursion
+   0 nil (lambda ()
+           (when-let* ((win (get-buffer-window (current-buffer) 'visible))
+                       ((not (pos-visible-in-window-p (point) win)))
+                       (scroll-error-top-bottom t))
+             (condition-case nil
+                 (with-selected-window win (scroll-up-command))
+               (error nil))))))
 
 (defsubst gptel-prompt-prefix-string ()
   "Prefix before user prompts in `gptel-mode'."
