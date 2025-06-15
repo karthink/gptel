@@ -235,6 +235,11 @@ Passed to curl via --proxy arg, for example \"proxy.yourorg.com:80\"
 Leave it empty if you don't use a proxy."
   :type 'string)
 
+(defcustom gptel-auth-user-name "apikey"
+  "The name of the user in the standard `gptel-api-key-from-auth-source'."
+  :type 'string)
+
+
 (defcustom gptel-api-key #'gptel-api-key-from-auth-source
   "An API key (string) for the default LLM backend.
 
@@ -917,7 +922,7 @@ and \"apikey\" as USER."
              (plist-get
               (car (auth-source-search
                     :host (or host (gptel-backend-host gptel-backend))
-                    :user (or user "apikey")
+                    :user (or user gptel-auth-user-name)
                     :require '(:secret)))
               :secret)))
       (if (functionp secret)
