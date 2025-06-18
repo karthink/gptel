@@ -976,7 +976,8 @@ Later plists in the sequence take precedence over earlier ones."
   (condition-case nil
       (with-temp-buffer
         (insert-file-contents path nil 1 512 'replace)
-        (eq buffer-file-coding-system 'no-conversion))
+        (memq buffer-file-coding-system
+              '(no-conversion no-conversion-multibyte)))
     (file-missing (message "File \"%s\" is not readable." path)
                   nil)))
 
