@@ -470,7 +470,7 @@ files in the context."
      :output-cost 10.00 ; 15 for >200k tokens
      :cutoff-date "2025-01")
     (gemini-2.5-flash-preview-04-17
-     :description "Best Gemini model in terms of price-performance, offering well-rounded capabilities"
+     :description "Best model in terms of price-performance, offering well-rounded capabilities"
      :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
@@ -479,7 +479,7 @@ files in the context."
      :output-cost 0.60 ; 3.50 for thinking
      :cutoff-date "2025-01")
     (gemini-2.5-flash-preview-05-20
-     :description "Best Gemini model in terms of price-performance, offering well-rounded capabilities"
+     :description "Best model in terms of price-performance, offering well-rounded capabilities"
      :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
@@ -488,7 +488,7 @@ files in the context."
      :output-cost 0.60 ; 3.50 for thinking
      :cutoff-date "2025-01")
     (gemini-2.5-pro-preview-05-06
-     :description "Previously the most powerful Gemini thinking model with state-of-the-art performance"
+     :description "Previously most powerful thinking model with state-of-the-art performance"
      :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
@@ -497,7 +497,34 @@ files in the context."
      :output-cost 10.00 ; 15 for >200k tokens
      :cutoff-date "2025-01")
     (gemini-2.5-pro-preview-06-05
-     :description "Most powerful Gemini thinking model with state-of-the-art performance"
+     :description "Most powerful thinking model with state-of-the-art performance"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1048 ; 65536 output token limit
+     :input-cost 1.25 ; 2.50 for >200k tokens
+     :output-cost 10.00 ; 15 for >200k tokens
+     :cutoff-date "2025-01")
+    (gemini-2.5-flash-lite-preview-06-17
+     :description "A Gemini 2.5 Flash model optimized for cost efficiency and low latency"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1000 ; 64000 output token limit
+     :input-cost 0.10
+     :output-cost 0.40
+     :cutoff-date "2025-01")
+    (gemini-2.5-flash
+     :description "Best model in terms of price-performance, offering well-rounded capabilities."
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1048 ; 65536 output token limit
+     :input-cost 0.3
+     :output-cost 2.50
+     :cutoff-date "2025-01")
+    (gemini-2.5-pro
+     :description "State-of-the-art thinking model, capable of reasoning over complex problems"
      :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
