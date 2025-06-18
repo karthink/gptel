@@ -91,7 +91,9 @@ Call SERVER-CALLBACK after starting MCP servers."
                           (mapcar (lambda (s) (assoc s mcp-hub-servers)) picks)))
                     unregistered-servers))
                  (server-active-p
-                  (lambda (server) (gethash (car server) mcp-server-connections)))
+                  (lambda (server)
+                    (when-let* ((server (gethash (car server) mcp-server-connections)))
+                      (equal (mcp--status server) 'connected))))
                  (inactive-servers (cl-remove-if server-active-p servers))
                  (add-all-tools
                   (lambda (&optional server-names)
