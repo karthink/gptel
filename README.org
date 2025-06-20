@@ -954,10 +954,14 @@ The above code makes the backend available to select.  If you want it to be the 
 Register a backend with
 #+begin_src emacs-lisp
 (gptel-make-bedrock "AWS"
+  ;; optionally enable streaming
+  :stream t
   :region "ap-northeast-1"
   ;; subset of gptel--bedrock-models
-  :models '(claude-3-5-sonnet-20241022)
-  ;; optional for provisioned access
+  :models '(claude-sonnet-4-20250514)
+  ;; Model region for cross-region inference profiles. Required for models such
+  ;; as Claude without on-demand throughput support. One of 'apac, 'eu or 'us.
+  ;; https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-use.html
   :model-region 'apac)
 #+end_src
 
@@ -976,14 +980,18 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
 #+begin_src emacs-lisp
 ;; OPTIONAL configuration
-(setq gptel-model   'claude-3-5-sonnet-20241022
+(setq gptel-model   'claude-sonnet-4-20250514
       gptel-backend
       (gptel-make-bedrock "AWS"
-  	:region "ap-northeast-1"
-          ;; subset of gptel--bedrock-models
-          :models '(claude-3-5-sonnet-20241022)
-          ;; optional
-          :model-region 'apac))
+        ;; optionally enable streaming
+        :stream t
+        :region "ap-northeast-1"
+        ;; subset of gptel--bedrock-models
+        :models '(claude-sonnet-4-20250514)
+        ;; Model region for cross-region inference profiles. Required for models such
+        ;; as Claude without on-demand throughput support. One of 'apac, 'eu or 'us.
+        ;; https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-use.html
+        :model-region 'apac))
 #+end_src
 
 #+html: </details>
