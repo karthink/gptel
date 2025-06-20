@@ -51,7 +51,7 @@
 
 - Add support for AWS Bedrock models.  You can create an AWS Bedrock
   gptel backend with ~gptel-make-bedrock~, which see.  Please note:
-  AWS Bedrock support requires Curl 8.5.0 or higher.
+  AWS Bedrock support requires Curl 8.9.0 or higher.
 
 - You can now create an xAI backend with ~gptel-make-xai~, which see.
   (xAI was supported before but the model configuration is now handled
