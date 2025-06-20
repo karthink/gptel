@@ -298,29 +298,20 @@ BUF is the buffer to modify, defaults to the overlay buffer."
       (display-buffer diff-buf))))
 
 (defun gptel--rewrite-ediff (&optional ovs)
-  "Ediff pending LLM responses in OVS or at point."
-  (interactive (list (gptel--rewrite-overlay-at)))
-  (when-let* ((ov-buf (overlay-buffer (or (car-safe ovs) ovs)))
-              ((buffer-live-p ov-buf)))
-    (letrec ((newbuf (gptel--rewrite-prepare-buffer ovs))
-             (cwc (current-window-configuration))
-             (hideshow
-              (lambda (&optional restore)
-                (dolist (ov (ensure-list ovs))
-                  (when-let* ((overlay-buffer ov))
-                    (let ((disp (overlay-get ov 'display))
-                          (stored (overlay-get ov 'gptel--ediff)))
-                      (overlay-put ov 'display (and restore stored))
-                      (overlay-put ov 'gptel--ediff (unless restore disp)))))))
-             (gptel--ediff-restore
-              (lambda ()
-                (when (window-configuration-p cwc)
-                  (set-window-configuration cwc))
-                (funcall hideshow 'restore)
-                (remove-hook 'ediff-quit-hook gptel--ediff-restore))))
-      (funcall hideshow)
-      (add-hook 'ediff-quit-hook gptel--ediff-restore)
-      (ediff-buffers ov-buf newbuf))))
+    "Ediff pending LLM responses in OVS or at point."
+    (interactive (list (gptel--rewrite-overlay-at)))
+    (when-let* ((ov-buf (overlay-buffer (or (car-safe ovs) ovs)))
+                ((buffer-live-p ov-buf)))
+      (let ((newbuf (gptel--rewrite-prepare-buffer ovs))
+            (cwc (current-window-configuration)))
+        (gptel--rewrite-reject ovs)
+        (add-hook 'ediff-quit-hook
+                  (lambda ()
+                    (when (window-configuration-p cwc)
+                      (set-window-configuration cwc))
+                    (remove-hook 'ediff-quit-hook #'gptel--ediff-restore))
+                  nil t)
+        (ediff-buffers ov-buf newbuf))))
 
 (defun gptel--rewrite-merge (&optional ovs)
   "Insert pending LLM responses in OVS as merge conflicts."
