@@ -504,8 +504,15 @@ Non-nil CLEAR-CACHE will refresh credentials."
        (gptel-bedrock--fetch-aws-profile-credentials profile t))
       (t (user-error "AWS credentials expired for profile: %s" profile)))))
 
-(defun gptel-bedrock--get-credentials ()
+(defun gptel-bedrock--get-credentials (profile)
   "Return the AWS credentials to use for the request.
+
+If credentials are not available based on the AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN environment variables,
+aws configure export-credentials is used to obtain credentials.
+PROFILE specifies the AWS profile to use for retrieving
+credentials.  If PROFILE is unset, AWS_PROFILE environment
+variable is used.
 
 Returns a list of 2-3 elements, depending on whether a session
 token is needed, with this form: (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
@@ -515,11 +522,11 @@ Convenient to use with `cl-multiple-value-bind'"
   (let ((key-id (getenv "AWS_ACCESS_KEY_ID"))
         (secret-key (getenv "AWS_SECRET_ACCESS_KEY"))
         (token (getenv "AWS_SESSION_TOKEN"))
-	(profile (getenv "AWS_PROFILE")))
+	(profile (or profile (getenv "AWS_PROFILE"))))
     (cond
       ((and key-id secret-key) (cl-values key-id secret-key token))
       ((and profile) (gptel-bedrock--fetch-aws-profile-credentials profile))
-      (t (user-error "Missing AWS credentials; currently only environment variables are supported")))))
+      (t (user-error "Missing AWS credentials; provide them either via environment variables or specify PROFILE when calling gptel-make-bedrock")))))
 
 (defvar gptel-bedrock--model-ids
   ;; https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
@@ -568,10 +575,12 @@ REGION is one of apac, eu or us."
    (or (alist-get model gptel-bedrock--model-ids nil nil #'eq)
        (error "Unknown Bedrock model: %s" model))))
 
-(defun gptel-bedrock--curl-args (region)
-  "Generate the curl arguments to get a bedrock request signed for use in REGION."
+(defun gptel-bedrock--curl-args (region profile)
+  "Generate the curl arguments to get a bedrock request signed for use in REGION.
+
+PROFILE specifies the aws profile to use for aws configure export-credentials."
   ;; https://curl.se/docs/manpage.html#--aws-sigv4
-  (cl-multiple-value-bind (key-id secret token) (gptel-bedrock--get-credentials)
+  (cl-multiple-value-bind (key-id secret token) (gptel-bedrock--get-credentials profile)
     (nconc
      (list
       "--user" (format "%s:%s" key-id secret)
@@ -596,6 +605,7 @@ REGION is one of apac, eu or us."
           (models gptel--bedrock-models)
 	  (model-region nil)
           stream curl-args request-params
+	  (aws-profile nil)
           (protocol "https"))
   "Register an AWS Bedrock backend for gptel with NAME.
 
@@ -604,6 +614,7 @@ Keyword arguments:
 REGION - AWS region name (e.g. \"us-east-1\")
 MODELS - The list of models supported by this backend
 MODEL-REGION - one of apac, eu, us or nil
+AWS-PROFILE - the aws profile to use for aws configure export-credentials
 CURL-ARGS - additional curl args
 STREAM - Whether to use streaming responses or not.
 REQUEST-PARAMS - a plist of additional HTTP request
@@ -619,12 +630,12 @@ parameters (as plist keys) and values supported by the API."
            :host host
            :header nil           ; x-amz-security-token is set in curl-args if needed
            :models (gptel--process-models models)
-	   :model-region model-region
+           :model-region model-region
            :protocol protocol
            :endpoint "" ; Url is dynamically constructed based on other args
            :stream stream
            :coding-system (and stream 'binary)
-           :curl-args (lambda () (append curl-args (gptel-bedrock--curl-args region)))
+           :curl-args (lambda () (append curl-args (gptel-bedrock--curl-args region aws-profile)))
            :request-params request-params
            :url
            (lambda ()
