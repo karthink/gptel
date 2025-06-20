@@ -102,6 +102,7 @@ Store response metadata in state INFO."
            `(:model ,(gptel--model-name gptel-model)
              :messages [,@prompts]
              :stream ,(or gptel-stream :json-false))
+           gptel--request-params
            (gptel-backend-request-params gptel-backend)
            (gptel--model-request-params  gptel-model)))
          ;; the initial options (if any) from request params
