@@ -302,15 +302,34 @@ BUF is the buffer to modify, defaults to the overlay buffer."
     (interactive (list (gptel--rewrite-overlay-at)))
     (when-let* ((ov-buf (overlay-buffer (or (car-safe ovs) ovs)))
                 ((buffer-live-p ov-buf)))
-      (let ((newbuf (gptel--rewrite-prepare-buffer ovs))
-            (cwc (current-window-configuration)))
-        (gptel--rewrite-reject ovs)
-        (add-hook 'ediff-quit-hook
-                  (lambda ()
-                    (when (window-configuration-p cwc)
-                      (set-window-configuration cwc))
-                    (remove-hook 'ediff-quit-hook #'gptel--ediff-restore))
-                  nil t)
+      (letrec ((newbuf (gptel--rewrite-prepare-buffer ovs))
+               (cwc (current-window-configuration))
+               (hideshow
+                (lambda (&optional restore)
+                  (dolist (ov (ensure-list ovs))
+                    (when-let* ((overlay-buffer ov))
+                      (if restore
+                          ;; Restore original overlay properties
+                          (progn
+                            (overlay-put ov 'display (overlay-get ov 'gptel--saved-display))
+                            (overlay-put ov 'face (overlay-get ov 'gptel--saved-face))
+                            ;; Clean up saved properties
+                            (overlay-put ov 'gptel--saved-display nil)
+                            (overlay-put ov 'gptel--saved-face nil))
+                        ;; Save and hide overlay properties
+                        (progn
+                          (overlay-put ov 'gptel--saved-display (overlay-get ov 'display))
+                          (overlay-put ov 'gptel--saved-face (overlay-get ov 'face))
+                          (overlay-put ov 'display nil)
+                          (overlay-put ov 'face nil)))))))
+               (gptel--ediff-restore
+                (lambda ()
+                  (when (window-configuration-p cwc)
+                    (set-window-configuration cwc))
+                  (funcall hideshow 'restore)
+                  (remove-hook 'ediff-quit-hook gptel--ediff-restore))))
+        (funcall hideshow)  ; Hide overlay properties
+        (add-hook 'ediff-quit-hook gptel--ediff-restore)
         (ediff-buffers ov-buf newbuf))))
 
 (defun gptel--rewrite-merge (&optional ovs)
