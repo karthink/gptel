@@ -241,7 +241,10 @@ PROCESS and _STATUS are process parameters."
                        (response (progn (goto-char header-size)
                                         (condition-case nil (gptel--json-read)
                                           (error 'json-read-error))))
-                       (error-data (plist-get response :error)))
+                       (error-data
+                        (cond ((plistp response) (plist-get response :error))
+                              ((arrayp response)
+                               (cl-some (lambda (el) (plist-get el :error)) response)))))
             (cond
              (error-data
               (plist-put info :error error-data))
@@ -460,8 +463,11 @@ PROC-INFO is a plist with contextual information."
                              ((not (string-blank-p resp))))
                     (string-trim resp))
                   http-status http-msg))
-           ((plist-get response :error)
-            (list nil http-status http-msg (plist-get response :error)))
+           ((and-let* ((error-data
+                        (cond ((plistp response) (plist-get response :error))
+                              ((arrayp response)
+                               (cl-some (lambda (el) (plist-get el :error)) response)))))
+              (list nil http-status http-msg error-data)))
            ((eq response 'json-read-error)
             (list nil http-status (concat "(" http-msg ") Malformed JSON in response.")
                   "Malformed JSON in response"))
