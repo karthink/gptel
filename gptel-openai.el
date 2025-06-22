@@ -231,9 +231,9 @@ information if the stream contains it."
                       ;; old tool block continues, so continue collecting arguments in :partial_json 
                       (push (plist-get func :arguments) (plist-get info :partial_json)))))
                 ;; Check for reasoning blocks, currently only used by Openrouter
-                ;; MAYBE: Should this be moved to a dedicated Openrouter backend?
-                (unless (or (eq (plist-get info :reasoning-block) 'done)
-                            (not (plist-member delta :reasoning)))
+                (unless (eq (plist-get info :reasoning-block) 'done)
+                  ;; We could also check for (plist-member delta :reasoning)
+                  ;; here, but some APIs don't include it with content. (#901)
                   (if-let* ((reasoning-chunk (plist-get delta :reasoning)) ;for openrouter
                             ((not (eq reasoning-chunk :null))))
                       (plist-put info :reasoning
