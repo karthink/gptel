@@ -993,7 +993,7 @@ only (\"oneshot\")."
         for (category . tools-alist) in gptel--known-tools
         with unused-keys = (nconc (delete ?q (number-sequence ?a ?z))
                                   (number-sequence ?0 ?9)
-                                  (number-sequence ?A ?Z))
+                                  (delete ?M (number-sequence ?A ?Z))) ;M used by MCP integration
         for category-key = (seq-find (lambda (k) (member k unused-keys))
                                      (string-remove-prefix "mcp-" category)
                                      (seq-first unused-keys))
@@ -1025,7 +1025,7 @@ only (\"oneshot\")."
                 (concat (make-string (max (- 20 (length name)) 0) ? )
                         (propertize
                          (concat "(" (gptel--describe-directive
-                                      (gptel-tool-description tool) (- (window-width) 40))
+                                      (gptel-tool-description tool) (- (window-width) 60))
                                  ")")
                          'face 'shadow))
                 (gptel-tool-name tool)
