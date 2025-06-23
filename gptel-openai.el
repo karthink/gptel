@@ -232,18 +232,15 @@ information if the stream contains it."
                       (push (plist-get func :arguments) (plist-get info :partial_json)))))
                 ;; Check for reasoning blocks, currently only used by Openrouter
                 (unless (eq (plist-get info :reasoning-block) 'done)
-                  ;; We could also check for (plist-member delta :reasoning)
-                  ;; here, but some APIs don't include it with content. (#901)
-                  (if-let* ((reasoning-chunk (plist-get delta :reasoning)) ;for openrouter
+                  (if-let* ((reasoning-chunk (plist-get delta :reasoning)) ;for Openrouter and co
                             ((not (eq reasoning-chunk :null))))
                       (plist-put info :reasoning
                                  (concat (plist-get info :reasoning) reasoning-chunk))
                     ;; Done with reasoning if we get non-empty content
-                    (if-let* ((c (plist-get delta :content))
+                    (if-let* (((plist-member info :reasoning)) ;Is this a reasoning model?
+                              (c (plist-get delta :content)) ;Started receiving text content?
                               ((not (or (eq c :null) (string-empty-p c)))))
-                        (if (plist-member info :reasoning) ;Is this a reasoning model?
-                            (plist-put info :reasoning-block t) ;End of streaming reasoning block
-                          (plist-put info :reasoning-block 'done))))))))) ;Not using a reasoning model
+                        (plist-put info :reasoning-block t)))))))) ;Signal end of reasoning block
       (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
