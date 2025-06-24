@@ -1835,39 +1835,37 @@ implementation, used by OpenAI-compatible APIs and Ollama."
         (list
          :name (gptel-tool-name tool)
          :description (gptel-tool-description tool))
-        (if (gptel-tool-args tool)
-             (list
-              :parameters
-              (list :type "object"
-                    ;; gptel's tool args spec is close to the JSON schema, except
-                    ;; that we use (:name "argname" ...)
-                    ;; instead of  (:argname (...)), and
-                    ;; (:optional t) for each arg instead of (:required [...])
-                    ;; for all args at once.  Handle this difference by
-                    ;; modifying a copy of the gptel tool arg spec.
-                    :properties
-                    (cl-loop
-                     for arg in (gptel-tool-args tool)
-                     for argspec = (copy-sequence arg)
-                     for name = (plist-get arg :name) ;handled differently
-                     for newname = (or (and (keywordp name) name)
-                                       (make-symbol (concat ":" name)))
-                     do                ;ARGSPEC is ARG without unrecognized keys
-                     (cl-remf argspec :name)
-                     (cl-remf argspec :optional)
-                     if (equal (plist-get arg :type) "object")
-                     do (unless (plist-member argspec :required)
-                          (plist-put argspec :required []))
-                     (plist-put argspec :additionalProperties :json-false)
-                     append (list newname argspec))
-                    :required
-                    (vconcat
-                     (delq nil (mapcar
-                                (lambda (arg) (and (not (plist-get arg :optional))
-                                              (plist-get arg :name)))
-                                (gptel-tool-args tool))))
-                    :additionalProperties :json-false))
-          (list :parameters :null)))))
+         (list
+          :parameters
+          (list :type "object"
+                ;; gptel's tool args spec is close to the JSON schema, except
+                ;; that we use (:name "argname" ...)
+                ;; instead of  (:argname (...)), and
+                ;; (:optional t) for each arg instead of (:required [...])
+                ;; for all args at once.  Handle this difference by
+                ;; modifying a copy of the gptel tool arg spec.
+                :properties
+                (cl-loop
+                 for arg in (gptel-tool-args tool)
+                 for argspec = (copy-sequence arg)
+                 for name = (plist-get arg :name) ;handled differently
+                 for newname = (or (and (keywordp name) name)
+                                   (make-symbol (concat ":" name)))
+                 do                ;ARGSPEC is ARG without unrecognized keys
+                 (cl-remf argspec :name)
+                 (cl-remf argspec :optional)
+                 if (equal (plist-get arg :type) "object")
+                 do (unless (plist-member argspec :required)
+                      (plist-put argspec :required []))
+                 (plist-put argspec :additionalProperties :json-false)
+                 append (list newname argspec))
+                :required
+                (vconcat
+                 (delq nil (mapcar
+                            (lambda (arg) (and (not (plist-get arg :optional))
+                                          (plist-get arg :name)))
+                            (gptel-tool-args tool))))
+                :additionalProperties :json-false)))))
     (ensure-list tools))))
 
 (cl-defgeneric gptel--parse-tool-results (backend results)
