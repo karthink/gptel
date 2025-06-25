@@ -793,7 +793,26 @@ Also format its value in the Transient menu."
        (gptel--inspect-query
         (gptel--suffix-send
          (cons "I" (transient-args transient-current-command)))
-        'json)))]]
+        'json)))]
+   ["Logging"
+    :if (lambda () (or gptel-log-level gptel-expert-commands))
+    ("-l" "Log level" "-l"
+     :class gptel-lisp-variable
+     :variable gptel-log-level
+     :set-value gptel--set-with-scope
+     :display-nil "Off"
+     :prompt "Prompt: "
+     :reader
+     (lambda (prompt _ _)
+       "Manage gptel's logging."
+       (let ((state (completing-read
+                     "Log level: " '(off info debug) nil t)))
+         (message "Log level set to %s" state)
+         (if (eq state 'off) nil (intern state)))))
+    ("L" "Inspect Log"
+     (lambda () (interactive)
+       (pop-to-buffer (get-buffer-create gptel--log-buffer-name)))
+     :format "  %k %d")]]
   [(gptel--suffix-send)]
   (interactive)
   (gptel--sanitize-model)
