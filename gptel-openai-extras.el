@@ -294,11 +294,11 @@ parameters."
                     ;; and reset by the stream filter.
                     (plist-put info :reasoning
                                (concat (plist-get info :reasoning) reasoning))
-                  (when-let* ((content (plist-get delta :content))
-                              ((not (eq content :null))))
-                    (if (eq (plist-get info :reasoning-block) 'in) ;Check if in reasoning block
-                        (plist-put info :reasoning-block t) ;End of streaming reasoning block
-                      (plist-put info :reasoning-block 'done)) ;Not using a reasoning model
+                  ;; Done with reasoning if we get non-empty content
+                  (when-let* (((plist-member info :reasoning)) ;Is this a reasoning model?
+                              (content (plist-get delta :content)) ;Started receiving text content?
+                              ((not (or (eq content :null) (string-empty-p content)))))
+                    (plist-put info :reasoning-block t) ;Signal end of reasoning block
                     (throw 'done t)))))))))))
 
 (cl-defmethod gptel--parse-response :before ((_backend gptel-deepseek) response info)
