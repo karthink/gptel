@@ -310,6 +310,7 @@ BUF is the buffer to modify, defaults to the overlay buffer."
                   (when-let* ((overlay-buffer ov))
                     (let ((disp (overlay-get ov 'display))
                           (stored (overlay-get ov 'gptel--ediff)))
+                      (overlay-put ov 'face (and restore 'gptel-rewrite-highlight-face))
                       (overlay-put ov 'display (and restore stored))
                       (overlay-put ov 'gptel--ediff (unless restore disp)))))))
              (gptel--ediff-restore
