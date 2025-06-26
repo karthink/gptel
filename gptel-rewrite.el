@@ -321,7 +321,9 @@ BUF is the buffer to modify, defaults to the overlay buffer."
                 (remove-hook 'ediff-quit-hook gptel--ediff-restore))))
       (funcall hideshow)
       (add-hook 'ediff-quit-hook gptel--ediff-restore)
-      (ediff-buffers ov-buf newbuf))))
+      (let ((ediff-window-setup-function #'ediff-setup-windows-plain)
+            (ediff-split-window-function #'split-window-horizontally))
+        (ediff-buffers ov-buf newbuf)))))
 
 (defun gptel--rewrite-merge (&optional ovs)
   "Insert pending LLM responses in OVS as merge conflicts."
