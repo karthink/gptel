@@ -488,6 +488,17 @@ files in the context."
      :input-cost 0.15
      :output-cost 0.60 ; 3.50 for thinking
      :cutoff-date "2025-01")
+    (gemini-2.5-flash
+     :description "Best price-performance Gemini model for production. Optimized for speed, efficiency, and scale."
+     :capabilities (tool-use json media audio video)
+     :mime-types   ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                    "application/pdf" "text/plain" "text/csv" "text/html"
+                    "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                    "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 1024
+     :input-cost 0.15
+     :output-cost 0.60
+     :cutoff-date "2025-01")
     (gemini-2.5-pro-preview-05-06
      :description "Previously most powerful thinking model with state-of-the-art performance"
      :capabilities (tool-use json media)
@@ -533,6 +544,29 @@ files in the context."
      :input-cost 1.25 ; 2.50 for >200k tokens
      :output-cost 10.00 ; 15 for >200k tokens
      :cutoff-date "2025-01")
+    (gemini-2.5-pro
+     :description "Most powerful Gemini thinking model with state-of-the-art performance"
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"
+                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 1048 ; 65536 output token limit
+     :input-cost 1.25 ; 2.50 for >200k tokens
+     :output-cost 10.00 ; 15 for >200k tokens
+     :cutoff-date "2025-01")
+    (gemini-2.5-flash-lite-preview-06-17
+     :description "Gemini 2.5 Flash-Lite: Preview. Most cost-efficient and fastest 2.5 model, optimized for high-volume, latency-sensitive tasks."
+     :capabilities (tool-use json media audio video)
+     :mime-types   ("image/png" "image/jpeg" "image/webp"
+                    "application/pdf" "text/plain"
+                    "audio/x-aac" "audio/flac" "audio/mp3" "audio/m4a" "audio/mpeg" "audio/mpga" "audio/mp4" "audio/(or )pus" "audio/pcm" "audio/wav" "audio/webm"
+                    "video/x-flv" "video/quicktime" "video/mpeg" "video/mp4" "video/webm" "video/wmv" "video/3gpp")
+     :context-window 1048
+     :input-cost 0.075
+     :output-cost 0.30
+     :cutoff-date "2025-01")
+
     (gemini-2.0-flash-thinking-exp
      :description "DEPRECATED: Please use gemini-2.0-flash-thinking-exp-01-21 instead."
      :capabilities (tool-use media)
