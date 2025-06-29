@@ -325,32 +325,41 @@ BUF is the buffer to modify, defaults to the overlay buffer."
             (ediff-split-window-function #'split-window-horizontally))
         (ediff-buffers ov-buf newbuf)))))
 
-(defun gptel--git-merge-conflicts (original-str new-str)
-  "Get merge conflicts between ORIGINAL-STR and NEW-STR using git merge-file."
-  (when (executable-find "git")
-    (let ((original-temp-file (make-temp-file "gptel-merge-"))
-          (empty-temp-file (make-temp-file "gptel-merge-")) ; use /dev/null? (windows?)
-          (new-temp-file (make-temp-file "gptel-merge-")))
-      (unwind-protect
-          (progn
-            (with-temp-file original-temp-file (insert original-str))
-            (with-temp-file empty-temp-file (insert ""))
-            (with-temp-file new-temp-file (insert new-str))
-            (shell-command-to-string
-             (format "git merge-file --no-diff3 -L original -L Empty -L '%s' -p %s %s %s"
-                     (gptel-backend-name gptel-backend)
-                     original-temp-file empty-temp-file new-temp-file)))
-        (delete-file original-temp-file)
-        (delete-file empty-temp-file)
-        (delete-file new-temp-file)))))
+(defun gptel--rewrite-merge-git (beg end new-str)
+  "Produce a merge conflict region between BEG and END.
 
-(defun gptel--simple-merge-conflicts (original-str new-str)
-  "Get merge conflict markers with ORIGINAL-STR and NEW-STR."
-  (concat
-   "<<<<<<< original\n" original-str
-   (unless (string-suffix-p "\n" original-str) "\n")
-   "=======\n" new-str
-   "\n>>>>>>> " (gptel-backend-name gptel-backend) "\n"))
+Merge the region with NEW-STR using git merge-file."
+  (let ((original-temp-file (make-temp-file "gptel-merge-"))
+        (empty-temp-file (make-temp-file "gptel-merge-")) ; use /dev/null? (windows?)
+        (new-temp-file (make-temp-file "gptel-merge-")))
+    (unwind-protect
+        (progn (write-region beg end original-temp-file)
+               (with-temp-file empty-temp-file (insert ""))
+               (with-temp-file new-temp-file (insert new-str))
+               (goto-char beg)
+               (delete-region beg end)
+               (call-process
+                "git" nil (list (current-buffer) nil) nil
+                "merge-file" "--no-diff3" "-L" "original" "-L" "Empty" "-L"
+                (gptel-backend-name gptel-backend) "-p"
+                original-temp-file empty-temp-file new-temp-file)
+               ;; Make merge marker active if required
+               (goto-char beg) (unless (bolp) (insert "\n")))
+      (delete-file original-temp-file)
+      (delete-file empty-temp-file)
+      (delete-file new-temp-file))))
+
+(defun gptel--rewrite-merge-simple (beg end new-str)
+  "Produce a merge conflict region between BEG and END.
+
+NEW-STR is the new string intended to replace the region."
+  (goto-char end)                       ;End first to preserve ordering
+  (unless (bolp) (insert "\n"))
+  (insert "=======\n" new-str "\n>>>>>>> "
+          (gptel-backend-name gptel-backend) "\n")
+  (goto-char beg)
+  (unless (bolp) (insert "\n"))
+  (insert-before-markers "<<<<<<< original\n"))
 
 (defun gptel--rewrite-merge (&optional ovs)
   "Insert pending LLM responses in OVS as merge conflicts."
@@ -361,17 +370,11 @@ BUF is the buffer to modify, defaults to the overlay buffer."
       (let ((changed))
         (dolist (ov (ensure-list ovs))
           (save-excursion
-            (when-let* ((new-str (overlay-get ov 'gptel-rewrite))
-                        (original-str (buffer-substring (overlay-start ov) (overlay-end ov))))
-              (let ((merge-result
-                     (or (gptel--git-merge-conflicts original-str new-str)
-                         (gptel--simple-merge-conflicts original-str new-str))))
-                ;; Replace overlay content with merge result
-                (goto-char (overlay-start ov))
-                (unless (bolp) (insert "\n"))
-                (delete-region (overlay-start ov) (overlay-end ov))
-                (insert merge-result)
-                (setq changed t)))))
+            (when-let* ((new-str (overlay-get ov 'gptel-rewrite)))
+              (if (executable-find "git") ;Replace overlay content with merge result
+                  (gptel--rewrite-merge-git (overlay-start ov) (overlay-end ov) new-str)
+                (gptel--rewrite-merge-simple (overlay-start ov) (overlay-end ov) new-str))
+              (setq changed t))))
         (when changed (smerge-mode 1)))
       (gptel--rewrite-reject ovs))))
 
