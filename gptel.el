@@ -3525,7 +3525,9 @@ PARENTS is a preset name (or list of preset names) to apply before this
 one.
 
 PRE and POST are functions to run before and after the preset is
-applied.  They take no arguments.
+applied.  They take no arguments.  If PRE returns a plist, its contents
+will be merged into the existing specification while appying the preset.
+Use this to adjust the preset based on the current environment.
 
 BACKEND is the gptel-backend to set, or its name (like \"ChatGPT\").
 
@@ -3609,7 +3611,11 @@ example) apply the preset buffer-locally."
                                 preset))))
       (setq preset (cons preset spec))))
   (unless setter (setq setter #'set))
-  (when-let* ((func (plist-get (cdr preset) :pre))) (funcall func))
+  (when-let* ((func (plist-get (cdr preset) :pre))
+              (result (funcall func)))
+    ;; If the :pre function returns a plist, merge it with the main spec.
+    (when (and (listp result) (keywordp (car result)))
+      (setq preset (cons (car preset) (append (cdr preset) result)))))
   (when-let* ((parents (plist-get (cdr preset) :parents)))
     (mapc #'gptel--apply-preset (ensure-list parents)))
   (map-do
