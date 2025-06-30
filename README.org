@@ -1721,6 +1721,7 @@ gptel is a general-purpose package for chat and ad-hoc LLM interaction.  The fol
 - [[https://github.com/armindarvish/consult-omni][consult-omni]]: Versatile multi-source search package.  It includes gptel as one of its many sources.
 - [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  (Note that gptel includes this feature as well (see =gptel-org-branching-context=), but requires a recent version of Org mode 9.7 or later to be installed.)
 - [[https://github.com/rob137/Corsair][Corsair]]: Helps gather text to populate LLM prompts for gptel.
+- [[https://github.com/lakkiy/gptel-commit][gptel-commit]]: Generate commit messages using gptel.
 
 ** COMMENT Older Breaking Changes
 
