@@ -171,8 +171,8 @@ adding elements to this list can significantly slow down
 (defun gptel-org-set-topic (topic)
   "Set a TOPIC and limit this conversation to the current heading.
 
-This limits the context sent to the LLM to the text between the
-current heading and the cursor position."
+This limits the context sent to the LLM to the text between the current
+heading (i.e. the heading with the topic set) and the cursor position."
   (interactive
    (list
     (progn
