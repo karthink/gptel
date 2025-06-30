@@ -47,6 +47,7 @@
 (declare-function gptel--model-capable-p "gptel")
 (declare-function gptel--model-name "gptel")
 (declare-function gptel--get-api-key "gptel")
+(declare-function gptel--insert-file-string "gptel")
 (declare-function prop-match-value "text-property-search")
 (declare-function text-property-search-backward "text-property-search")
 (declare-function json-read "json")

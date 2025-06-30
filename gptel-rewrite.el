@@ -28,9 +28,12 @@
 
 (defvar eldoc-documentation-functions)
 (defvar diff-entire-buffers)
+(defvar ediff-window-setup-function)
+(defvar ediff-split-window-function)
 
 (declare-function diff-no-select "diff")
 (declare-function rmc--add-key-description "rmc")
+(declare-function ediff-setup-windows-plain "ediff-wind")
 
 ;; * User options
 

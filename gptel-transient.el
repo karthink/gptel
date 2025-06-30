@@ -801,12 +801,12 @@ Also format its value in the Transient menu."
      :variable gptel-log-level
      :set-value gptel--set-with-scope
      :display-nil "Off"
-     :prompt "Prompt: "
+     :prompt "Log level: "
      :reader
      (lambda (prompt _ _)
        "Manage gptel's logging."
        (let ((state (completing-read
-                     "Log level: " '(off info debug) nil t)))
+                     prompt '(off info debug) nil t)))
          (message "Log level set to %s" state)
          (if (eq state 'off) nil (intern state)))))
     ("L" "Inspect Log"
