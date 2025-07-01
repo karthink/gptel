@@ -248,6 +248,8 @@ depend on the value of `gptel-org-branching-context', which see."
               (gptel-org--unescape-tool-results)
               (gptel-org--strip-block-headers)
               (when gptel-org-ignore-elements (gptel-org--strip-elements))
+              (setq org-complex-heading-regexp ;For org-element-context to run
+                    (buffer-local-value 'org-complex-heading-regexp org-buf))
               (current-buffer))))
       ;; Create prompt the usual way
       (let ((org-buf (current-buffer))
@@ -256,6 +258,8 @@ depend on the value of `gptel-org-branching-context', which see."
           (gptel-org--unescape-tool-results)
           (gptel-org--strip-block-headers)
           (when gptel-org-ignore-elements (gptel-org--strip-elements))
+          (setq org-complex-heading-regexp ;For org-element-context to run
+                (buffer-local-value 'org-complex-heading-regexp org-buf))
           (current-buffer))))))
 
 (defun gptel-org--strip-elements ()
