@@ -3615,7 +3615,9 @@ example) apply the preset buffer-locally."
               (result (funcall func)))
     ;; If the :pre function returns a plist, merge it with the main spec.
     (when (plistp result)
-      (setq preset (cons (car preset) (append (cdr preset) result)))))
+      (setq preset (copy-sequence preset))
+      (cl-loop for (key value) on result by #'cddr do
+               (setcdr preset (plist-put (cdr preset) key value)))))
   (when-let* ((parents (plist-get (cdr preset) :parents)))
     (mapc #'gptel--apply-preset (ensure-list parents)))
   (map-do
