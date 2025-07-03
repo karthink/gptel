@@ -119,6 +119,9 @@ context chunk.  This is accessible as, for example:
   CONFIRM is non-nil. With negative prefix ARG, remove all files from
   the context instead.
 
+- If in Buffer List, add buffer at point to the context, or remove
+  if it already included in the context.
+
 - Otherwise add the current buffer to the context.  With positive
   prefix ARG, prompt for a buffer name and add it to the context.
 
@@ -147,6 +150,12 @@ context chunk.  This is accessible as, for example:
 				  (length dirs)
 				  (if (= (length dirs) 1) "y" "ies"))))
 	(mapc action-fn files))))
+   ;; If in Buffer List
+   ((eq major-mode 'Buffer-menu-mode)
+    (funcall (if (alist-get (tabulated-list-get-id) gptel-context--alist)
+		 #'gptel-context-remove
+	       #'gptel-context-add-buffer)
+	     (tabulated-list-get-id)))
    ;; If in an image buffer
    ((and (derived-mode-p 'image-mode)
          (gptel--model-capable-p 'media)
@@ -157,13 +166,7 @@ context chunk.  This is accessible as, for example:
           (buffer-file-name)))
    ;; No region is selected, and ARG is positive.
    ((and arg (> (prefix-numeric-value arg) 0))
-    (let* ((buffer-name (read-buffer "Choose buffer to add as context: "
-                                     (current-buffer) t))
-           (start (with-current-buffer buffer-name (point-min)))
-           (end (with-current-buffer buffer-name (point-max))))
-      (gptel-context--add-region
-       (get-buffer buffer-name) start end t)
-      (message "Buffer '%s' added as context." buffer-name)))
+    (call-interactively #'gptel-context-add-buffer (current-buffer)))
    ;; No region is selected, and ARG is negative.
    ((and arg (< (prefix-numeric-value arg) 0))
     (when (or (null confirm)
@@ -238,14 +241,29 @@ PATH should be readable as text."
          (gptel-context--add-binary-file path))
 	((gptel-context--add-text-file path))))
 
-;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
+;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add a file to gptel's context." t)
 (defalias 'gptel-add-file #'gptel-context-add-file)
+
+(defun gptel-context-add-buffer (buffer-or-name)
+  "Add BUFFER-OR-NAME to the gptel context."
+  (interactive "bChoose buffer to add as context: ")
+  (with-current-buffer buffer-or-name
+    (gptel-context--add-region
+     (get-buffer buffer-or-name) (point-min) (point-max) t))
+  (message "Buffer \"%s\" added as context."
+	   (if (bufferp buffer-or-name)
+	       (buffer-name buffer-or-name)
+	     buffer-or-name)))
+
+;;;###autoload (autoload 'gptel-add-buffer "gptel-context" "Add a buffer to gptel's context." t)
+(defalias 'gptel-add-buffer #'gptel-context-add-buffer)
 
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
 
 If CONTEXT is nil, removes the context at point.
 If selection is active, removes all contexts within selection.
+if CONTEXT is a file or a buffer, removes from contexts.
 If CONTEXT is a directory, recursively removes all files in it."
   (cond
    ((overlayp context)
@@ -261,6 +279,12 @@ If CONTEXT is a directory, recursively removes all files in it."
         (gptel-context--add-directory context 'remove)
       (setf (alist-get context gptel-context--alist nil 'remove #'equal) nil)
       (message "File \"%s\" removed from context." context)))
+   ((bufferp context)
+    (cl-loop
+     for cxt in (alist-get context gptel-context--alist)
+     do (delete-overlay cxt))
+    (setf (alist-get context gptel-context--alist nil 'remove #'equal) nil)
+    (message "Buffer \"%s\" removed from context." (buffer-name context)))
    ((region-active-p)
     (when-let* ((contexts (gptel-context--in-region (current-buffer)
                                                     (region-beginning)
