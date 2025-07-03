@@ -217,7 +217,9 @@ information if the stream contains it."
                   ;; No text content, so look for tool calls
                   (when-let* ((tool-call (map-nested-elt delta '(:tool_calls 0)))
                               (func (plist-get tool-call :function)))
-                    (if (plist-get func :name) ;new tool block begins
+                    (if (and (plist-get func :name)
+                             ;; TEMP: This check is for litellm compatibility, should be removed
+                             (not (equal (plist-get func :name) "null"))) ; new tool block begins
                         (progn
                           (when-let* ((partial (plist-get info :partial_json)))
                             (let* ((prev-tool-call (car (plist-get info :tool-use)))
