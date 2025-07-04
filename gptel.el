@@ -3525,7 +3525,19 @@ PARENTS is a preset name (or list of preset names) to apply before this
 one.
 
 PRE and POST are functions to run before and after the preset is
-applied.  They take no arguments.
+applied.  They take no arguments.  PRE can return a plist containing
+other keys from the preset's spec, which will override the spec's values
+during the current application.  Use this to adjust the preset based on
+the current environment.  For example:
+
+  (gptel-make-preset 'enable-tools
+    ;; Must specify a default value for any keys that may be overridden.
+    :use-tools t
+    :pre (lambda ()
+      ;; If the value is already set to something non-nil like 'force,
+      ;; override the default with the current value.
+      (when gptel-use-tools
+        `(:use-tools ,gptel-use-tools)))
 
 BACKEND is the gptel-backend to set, or its name (like \"ChatGPT\").
 
@@ -3609,7 +3621,21 @@ example) apply the preset buffer-locally."
                                 preset))))
       (setq preset (cons preset spec))))
   (unless setter (setq setter #'set))
-  (when-let* ((func (plist-get (cdr preset) :pre))) (funcall func))
+  (when-let* ((func (plist-get (cdr preset) :pre))
+              (result (funcall func)))
+    ;; If the :pre function returns a plist, merge it with the main spec.
+    (when (plistp result)
+      (setq preset (copy-sequence preset))
+      (let ((spec (cdr preset)))
+        (cl-loop for (key value) on result by #'cddr do
+                 (if (plist-member spec key)
+                     (setcdr preset (plist-put spec key value))
+                   (display-warning
+                    '(gptel presets)
+                    (format (concat
+                             "gptel preset \"%s\": :pre function returned "
+                             "key %s not present in preset spec, ignoring.")
+                            (car preset) key)))))))
   (when-let* ((parents (plist-get (cdr preset) :parents)))
     (mapc #'gptel--apply-preset (ensure-list parents)))
   (map-do
