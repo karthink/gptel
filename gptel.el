@@ -2702,6 +2702,8 @@ JSON query instead of the Lisp structure gptel uses."
          (make-composed-keymap
           (define-keymap
             "C-c C-c" #'gptel--continue-query
+            "C-c C-w" (lambda () "Copy Curl command for query."
+                        (interactive) (gptel--continue-query 'copy))
             "C-c C-k" #'quit-window)
           (current-local-map)))
         (unless header-line-format
@@ -2710,17 +2712,24 @@ JSON query instead of the Lisp structure gptel uses."
                  (concat
                   "Edit request: \\[read-only-mode],"
                   " Send request: \\[gptel--continue-query],"
+                  (format " Copy Curl: %s"
+                          (propertize "C-c C-w" 'face 'help-key-binding))
                   " Quit: \\[quit-window]"))))
         (display-buffer (current-buffer) gptel-display-buffer-action)))))
 
-(defun gptel--continue-query ()
+(declare-function gptel-curl--get-args "gptel-curl")
+
+(defun gptel--continue-query (&optional copy)
   "Continue sending the gptel query displayed in this buffer.
 
 The request is continued with the same parameters as originally
-specified."
-  (interactive nil lisp-data-mode fundamental-mode)
+specified.
+
+With prefix arg COPY, copy the Curl command for the request to the
+kill ring instead."
+  (interactive "P" lisp-data-mode fundamental-mode)
   (unless (equal (buffer-name) "*gptel-query*")
-    (user-error "This command is meant for use in a gptel dry-run buffer."))
+    (user-error "This command is meant for use in a gptel dry-run buffer"))
   (save-excursion
     (goto-char (point-min))
     (condition-case-unless-debug nil
@@ -2729,8 +2738,16 @@ specified."
                             (gptel--json-read))))
           (cl-assert (cl-typep gptel--fsm-last 'gptel-fsm))
           (plist-put (gptel-fsm-info gptel--fsm-last) :data data)
-          (gptel--fsm-transition gptel--fsm-last)   ;INIT -> WAIT
-          (quit-window))
+          (if copy                 ;Copy Curl command instead of sending request
+              (let ((args (and (require 'gptel-curl)
+                               (gptel-curl--get-args (gptel-fsm-info gptel--fsm-last)
+                                                     (md5 (format "%s" (random)))))))
+                (kill-new
+                 (mapconcat #'shell-quote-argument
+                            (cons (gptel--curl-path) args) " \\\n"))
+                (message "Curl command for request copied to kill-ring"))
+            (gptel--fsm-transition gptel--fsm-last) ;INIT -> WAIT
+            (quit-window)))
       (error
        (user-error "Can not resume request: could not read data from buffer!")))))
 
