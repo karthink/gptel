@@ -230,12 +230,28 @@ Mutate state INFO with response metadata."
                      (gptel--model-capable-p 'cache))
             (nconc (aref tools-array (1- (length tools-array)))
                    '(:cache_control (:type "ephemeral")))))))
+    (when gptel--schema
+      (plist-put prompts-plist :tools
+                 (vconcat
+                  (list (gptel--parse-schema backend gptel--schema))
+                  (plist-get prompts-plist :tools)))
+      (plist-put prompts-plist :tool_choice
+                 `(:type "tool" :name ,gptel--ersatz-json-tool)))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
      prompts-plist
      gptel--request-params
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
+
+(cl-defmethod gptel--parse-schema ((_backend gptel-anthropic) schema)
+  ;; Unlike the other backends, Anthropic generates JSON using a tool call.  We
+  ;; write the tool here, meant to be added to :tools.
+  (list
+   :name "response_json"
+   :description "Record JSON output according to user prompt"
+   :input_schema (gptel--preprocess-schema
+                  (gptel--dispatch-schema-type schema))))
 
 (cl-defmethod gptel--parse-tools ((_backend gptel-anthropic) tools)
   "Parse TOOLS to the Anthropic API tool definition spec.

@@ -7,7 +7,24 @@
 - Add support for ~gemini-2.5-pro~, ~gemini-2.5-flash~,
   ~gemini-2.5-flash-lite-preview-06-17~.
 
+- Add support for Open WebUI.  Open WebUI provides an
+  OpenAI-compatible API, so the "support" is just a new section of the
+  README with instructions.
+
 ** New features and UI changes
+
+- Structured output support: ~gptel-request~ can now take an optional
+  schema argument to constrain LLM output to the specified JSON
+  schema.  The JSON schema can be provided as a serialized JSON string
+  or as an elisp object (a nested plist).  This feature works with all major
+  backends: OpenAI, Anthropic, Gemini, llama-cpp and Ollama.  It is
+  presently supported by some but not all "OpenAI-compatible API"
+  providers.  Note that this is only available via the ~gptel-request~
+  API, and currently unsupported by ~gptel-send~.
+
+- From the dry-run inspector buffer, you can now copy the Curl command
+  for the request.  Like when continuing the query, the request is
+  constructed from the contents of the buffer, which is editable.
 
 - gptel now handles Ollama models that return both reasoning content
   and tool calls in a single request.

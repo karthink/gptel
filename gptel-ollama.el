@@ -101,7 +101,10 @@ Store response metadata in state INFO."
           (gptel--merge-plists
            `(:model ,(gptel--model-name gptel-model)
              :messages [,@prompts]
-             :stream ,(or gptel-stream :json-false))
+             :stream ,(or gptel-stream :json-false)
+             ,@(and gptel--schema
+                `(:format ,(gptel--preprocess-schema
+                            (gptel--dispatch-schema-type gptel--schema)))))
            gptel--request-params
            (gptel-backend-request-params gptel-backend)
            (gptel--model-request-params  gptel-model)))
