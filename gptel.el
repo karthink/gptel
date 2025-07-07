@@ -914,6 +914,11 @@ These parameters are combined with model-specific and backend-specific
 incompatible with the active backend can break gptel.  Do not use this
 variable unless you know what you're doing!")
 
+(defconst gptel--ersatz-json-tool "response_json"
+  "Name of ersatz tool used to force JSON output.
+
+Some APIs, like Anthropic, use a tool to produce structured JSON output.")
+
 
 ;;; Utility functions
 
@@ -1092,7 +1097,7 @@ For BUF, START, END and BODY-THUNK see `gptel--with-buffer-copy'."
     (with-current-buffer temp-buffer
       (dolist (sym '( gptel-backend gptel--system-message gptel-model
                       gptel-mode gptel-track-response gptel-track-media
-                      gptel-use-tools gptel-tools gptel-use-curl
+                      gptel-use-tools gptel-tools gptel-use-curl gptel--schema
                       gptel-use-context gptel--num-messages-to-send
                       gptel-stream gptel-include-reasoning gptel--request-params
                       gptel-temperature gptel-max-tokens gptel-cache))
@@ -1575,6 +1580,60 @@ file."
     (force-mode-line-update)))
 
 (declare-function gptel-context--wrap "gptel-context")
+
+
+;;; Structured output
+(defvar gptel--schema nil
+  "Response output schema for backends that support it.")
+
+(cl-defgeneric gptel--parse-schema (_backend _schema)
+  "Parse JSON schema in a backend-appropriate way.")
+
+(defun gptel--dispatch-schema-type (schema)
+  "Convert SCHEMA to a valid elisp representation."
+  (when (stringp schema)
+    (setq schema (gptel--json-read-string schema)))
+  ;; The OpenAI and Anthropic APIs don't allow arrays at the root of the schema.
+  ;; Work around this by wrapping it in an object with the field "items".
+  ;; TODO(schema): Find some way to strip this extra layer from the response.
+  (if (member (plist-get schema :type) '("array" array))
+      (list :type "object"
+            :properties (list :items schema)
+            :required ["items"]
+            :additionalProperties :json-false)
+    schema))
+
+(defun gptel--preprocess-schema (spec)
+  "Set additionalProperties for objects in SPEC destructively.
+
+Convert symbol :types to strings."
+  ;; NOTE: Do not use `sequencep' here, as that covers strings too and breaks
+  ;; things.
+  (when (or (listp spec) (vectorp spec))
+    (cond
+     ((vectorp spec)
+      (cl-loop for element across spec
+               for idx upfrom 0
+               do (aset spec idx (gptel--preprocess-schema element))))
+     ((keywordp (car spec))
+      (let ((tail spec))
+        (while tail
+          (when (eq (car tail) :type)
+            (when (symbolp (cadr tail)) ;Convert symbol :type to string
+              (setcar (cdr tail) (symbol-name (cadr tail))))
+            (when (equal (cadr tail) "object") ;Add additional object fields
+              (plist-put tail :additionalProperties :json-false)
+              (let ((props
+                     (cl-loop for prop in (plist-get tail :properties) by #'cddr
+                              collect (substring (symbol-name prop) 1))))
+                (plist-put tail :required (vconcat props)))))
+          (when (or (listp (cadr tail)) (vectorp (cadr tail)))
+            (gptel--preprocess-schema (cadr tail)))
+          (setq tail (cddr tail)))))
+     ((listp spec) (dolist (element spec)
+                     (when (listp element)
+                       (gptel--preprocess-schema element))))))
+  spec)
 
 
 ;;; Tool use
@@ -2242,7 +2301,12 @@ Run post-response hooks."
                                   (cons 'tool-result result-alist) info)
                          (gptel--fsm-transition fsm)))))
              (if (null tool-spec)
-                 (message "Unknown tool called by model: %s" name)
+                 (if (equal name gptel--ersatz-json-tool) ;Could be a JSON response
+                     ;; Handle structured JSON output supplied as tool call
+                     (funcall (plist-get info :callback)
+                              (gptel--json-encode (plist-get tool-call :args))
+                              info)
+                   (message "Unknown tool called by model: %s" name))
                (setq arg-values
                      (mapcar
                       (lambda (arg)
@@ -2277,11 +2341,9 @@ Run post-response hooks."
 
 (defun gptel--error-p (info) (plist-get info :error))
 
-(defun gptel--tool-use-p (info)
-  (and (plist-get info :tools) (plist-get info :tool-use)))
+(defun gptel--tool-use-p (info) (plist-get info :tool-use))
 
-(defun gptel--tool-result-p (info)
-  (and (plist-get info :tools) (plist-get info :tool-success)))
+(defun gptel--tool-result-p (info) (plist-get info :tool-success))
 
 ;; TODO(prompt-list): Document new prompt input format to `gptel-request'.
 
@@ -2292,7 +2354,7 @@ Run post-response hooks."
                position context dry-run
                (stream nil) (in-place nil)
                (system gptel--system-message)
-               transforms (fsm (gptel-make-fsm)))
+               schema transforms (fsm (gptel-make-fsm)))
   "Request a response from the `gptel-backend' for PROMPT.
 
 The request is asynchronous, this function returns immediately.
@@ -2442,6 +2504,13 @@ additional information (such as from a RAG engine).
   and the state machine.  It should run the callback after finishing its
   transformation.
 
+If provided, SCHEMA forces the LLM to generate JSON output.  Its value
+is a JSON schema, which can be provided as an elisp object, a nested
+plist structure.  See the manual or the wiki for examples.
+
+Note: SCHEMA is presently experimental and subject to change, and not
+all providers support structured output.
+
 See `gptel-prompt-transform-functions' for more.
 
 FSM is the state machine driving the request.  This can be used
@@ -2470,6 +2539,7 @@ be used to rerun or continue the request at a later time."
            ((markerp position) position)
            ((integerp position)
             (set-marker (make-marker) position buffer))))
+         (gptel--schema schema)
          (prompt-buffer
           (cond                       ;prompt from buffer or explicitly supplied
            ((null prompt)
