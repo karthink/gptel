@@ -991,7 +991,7 @@ Later plists in the sequence take precedence over earlier ones."
 
 (defun gptel--insert-file-string (path)
   "Insert at point the contents of the file at PATH as context."
-  (insert (format "In file `%s`:" (file-name-nondirectory path))
+  (insert (format "In file `%s`:" path)
           "\n\n```\n")
   (let ((pm (point-marker)))
     (set-marker-insertion-type pm t)
