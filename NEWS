@@ -13,6 +13,14 @@
 
 ** New features and UI changes
 
+- When including a file in the context, the abbreviated full path of
+  the file is included is now included instead of the basename.
+  Specifically, =/home/user/path/to/file= is included as
+  =~/path/to/file=.  This is to provide additional context for LLM
+  actions, including tool-use in subsequent conversation turns.  This
+  applies to context included via ~gptel-add~ or as a link in a
+  buffer.
+
 - Structured output support: ~gptel-request~ can now take an optional
   schema argument to constrain LLM output to the specified JSON
   schema.  The JSON schema can be provided as a serialized JSON string
