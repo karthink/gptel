@@ -1087,6 +1087,7 @@ Compatibility macro for Emacs 27.1."
   "Copy gptel's local variables from BUF to a temp buffer and run BODY.
 
 If positions START and END are provided, insert that part of BUF first."
+  (declare (indent 3))
   `(gptel--with-buffer-copy-internal ,buf ,start ,end (lambda () ,@body)))
 
 (defun gptel--with-buffer-copy-internal (buf start end body-thunk)
