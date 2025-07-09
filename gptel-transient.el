@@ -994,7 +994,7 @@ only (\"oneshot\")."
      (lambda (tools)
        ;; We don't care about the transient args of this prefix at all, since
        ;; the state is managed entirely through its transient-scope:
-       (interactive (list (plist-get (transient-scope 'gptel-tools) :tools)))
+       (interactive (list (plist-get (transient-scope) :tools)))
        (gptel--set-with-scope
         'gptel-tools
         (mapcar (lambda (category-and-name)

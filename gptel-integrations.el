@@ -220,7 +220,7 @@ from all connected servers if it is nil."
          nil (lambda () (when-let* ((transient--prefix)
                                ((eq (oref transient--prefix command)
                                     'gptel-tools)))
-                     (let ((state (transient-scope 'gptel-tools)))
+                     (let ((state (transient-scope)))
                        (plist-put state :tools
                                   (delete-dups
                                    (nconc (mapcar (lambda (tool)
@@ -250,7 +250,7 @@ from all connected servers if it is nil."
     (call-interactively #'gptel-mcp-disconnect)
     ;; gptel-tools stores its state in its scope slot.  Retain the scope but
     ;; remove tools from it that no longer exist, then set up gptel-tools
-    (cl-loop with state = (transient-scope 'gptel-tools)
+    (cl-loop with state = (transient-scope)
              with tools = (plist-get state :tools)
              for tool-spec in tools
              if (map-nested-elt gptel--known-tools tool-spec)
