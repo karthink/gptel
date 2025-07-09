@@ -112,8 +112,6 @@ REQUEST-DATA is the data to send, TOKEN is a unique identifier."
               collect (format "-H%s: %s" key val))
      (list url))))
 
-;;TODO: The :transformer argument here is an alternate implementation of
-;;`gptel-response-filter-functions'. The two need to be unified.
 ;;;###autoload
 (defun gptel-curl-get-response (fsm)
   "Fetch response to prompt in state FSM from the LLM using Curl.
