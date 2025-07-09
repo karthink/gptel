@@ -3373,12 +3373,14 @@ USE-MINIBUFFER is non-nil)."
                        ": "))
              (lambda (tcs) (gptel--accept-tool-calls (list tcs) nil))
              tool-calls '("tool call" "tool calls" "run")
-             `((?i ,(lambda (_) (save-window-excursion
+             `((?k (lambda (tcs) (gptel--refuse-tool-calls (list tcs) nil))
+                "reject call(s)")
+               (?i ,(lambda (_) (save-window-excursion
                              (with-selected-window
                                  (gptel--inspect-fsm gptel--fsm-last)
                                (goto-char (point-min))
                                (when (search-forward-regexp "^:tool-use" nil t)
-                                 (forward-line 0) (hl-line-highlight))
+                                (forward-line 0) (hl-line-highlight))
                                (use-local-map
                                 (make-composed-keymap
                                  (define-keymap "q" (lambda () (interactive)
@@ -3386,14 +3388,16 @@ USE-MINIBUFFER is non-nil)."
                                                       (exit-recursive-edit)))
                                  (current-local-map)))
                                (recursive-edit) nil)))
-                   "inspect call(s)"))))
+                "inspect call(s)"))))
         ;; Prompt for confirmation from the chat buffer
         (let* ((backend-name (gptel-backend-name (plist-get info :backend)))
                (actions-string
                 (concat (propertize "Run tools: " 'face 'font-lock-string-face)
                         (propertize "C-c C-c" 'face 'help-key-binding)
-                        (propertize ", Cancel request: " 'face 'font-lock-string-face)
+                        (propertize ", Reject: " 'face 'font-lock-string-face)
                         (propertize "C-c C-k" 'face 'help-key-binding)
+                        (propertize ", Suspend: " 'face 'font-lock-string-face)
+                        (propertize "C-c C-z" 'face 'help-key-binding)
                         (propertize ", Inspect: " 'face 'font-lock-string-face)
                         (propertize "C-c C-i" 'face 'help-key-binding)))
                (confirm-strings
@@ -3432,7 +3436,8 @@ USE-MINIBUFFER is non-nil)."
                        (define-keymap
                          "<mouse-1>" #'gptel--dispatch-tool-calls
                          "C-c C-c" #'gptel--accept-tool-calls
-                         "C-c C-k" #'gptel--reject-tool-calls
+                         "C-c C-z" #'gptel--suspend-tool-calls
+                         "C-c C-k" #'gptel--refuse-tool-calls
                          "C-c C-i"
                          (lambda () (interactive)
                            (with-selected-window
@@ -3562,7 +3567,7 @@ NAME and ARG-VALUES are the name and arguments for the call."
                (funcall process-tool-result result))))
   (and (overlayp ov) (delete-overlay ov)))
 
-(defun gptel--reject-tool-calls (&optional _response ov)
+(defun gptel--suspend-tool-calls (&optional _response ov)
   (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
                                            (point) 'gptel-tool)))
                  (list resp o)))
@@ -3571,15 +3576,33 @@ NAME and ARG-VALUES are the name and arguments for the call."
             "Tool calls canceled.  \\[gptel-menu] to continue them!"))
   (and (overlayp ov) (delete-overlay ov)))
 
+(defun gptel--refuse-tool-calls (&optional response ov query)
+  (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
+                                           (point) 'gptel-tool)))
+                 (list resp o current-prefix-arg)))
+  (cl-loop
+   for (tool-spec arg-values process-tool-result) in response
+   do (when (or (not query)
+                (y-or-n-p
+                 (format "Refuse (%s %s)? "
+                         (gptel-tool-name tool-spec)
+                         (mapconcat
+                          (lambda (arg) (truncate-string-to-width
+                                    (prin1-to-string arg) 14 nil nil t))
+                          arg-values " "))))
+        (funcall process-tool-result "Error: tool call refused by user")))
+  (and (overlayp ov) (delete-overlay ov)))
+
 (defun gptel--dispatch-tool-calls (choice)
   (interactive
    (list
-    (let ((choices '((?y "yes") (?n "do nothing")
-                     (?k "cancel request") (?i "inspect call(s)"))))
+    (let ((choices '((?y "yes") (?z "suspend call(s)")
+                     (?k "reject call(s)") (?i "inspect call(s)"))))
       (read-multiple-choice "Run tool calls? " choices))))
   (pcase (car choice)
     (?y (call-interactively #'gptel--accept-tool-calls))
-    (?k (call-interactively #'gptel--reject-tool-calls))
+    (?k (call-interactively #'gptel--refuse-tool-calls))
+    (?z (call-interactively #'gptel--suspend-tool-calls))
     (?i (gptel--inspect-fsm gptel--fsm-last))))
 
 
