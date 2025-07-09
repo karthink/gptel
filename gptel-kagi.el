@@ -71,7 +71,8 @@
                      (concat "\n\n" (mapconcat #'identity ref-strings "\n")))))
     (concat output references)))
 
-;; TODO: Add model and backend-specific request-params support
+;; TODO: Add support for model/backend-specific request-params and
+;; gptel--request-params
 (cl-defmethod gptel--request-data ((_backend gptel-kagi) prompts)
   "JSON encode PROMPTS for Kagi."
   (pcase-exhaustive (gptel--model-name gptel-model)

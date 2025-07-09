@@ -91,7 +91,9 @@ Call SERVER-CALLBACK after starting MCP servers."
                           (mapcar (lambda (s) (assoc s mcp-hub-servers)) picks)))
                     unregistered-servers))
                  (server-active-p
-                  (lambda (server) (gethash (car server) mcp-server-connections)))
+                  (lambda (server)
+                    (when-let* ((server (gethash (car server) mcp-server-connections)))
+                      (equal (mcp--status server) 'connected))))
                  (inactive-servers (cl-remove-if server-active-p servers))
                  (add-all-tools
                   (lambda (&optional server-names)
@@ -211,15 +213,24 @@ from all connected servers if it is nil."
     :description "Add MCP server tools"
     :transient t
     (interactive)
+    ;; gptel-tools stores its state in its scope slot.  Retain the scope but
+    ;; update it with the newly selected tools.  Then set up gptel-tools.
     (condition-case err
         (gptel-mcp-connect
          nil (lambda () (when-let* ((transient--prefix)
                                ((eq (oref transient--prefix command)
                                     'gptel-tools)))
-                     (transient-setup 'gptel-tools)))
+                     (let ((state (transient-scope 'gptel-tools)))
+                       (plist-put state :tools
+                                  (delete-dups
+                                   (nconc (mapcar (lambda (tool)
+                                                    (list (gptel-tool-category tool)
+                                                          (gptel-tool-name tool)))
+                                                  gptel-tools)
+                                          (plist-get state :tools))))
+                       (transient-setup 'gptel-tools nil nil :scope state))))
          t)
-      (user-error (message "%s" (cadr err))))
-    (transient-setup))
+      (user-error (message "%s" (cadr err)))))
 
   (transient-define-suffix gptel--suffix-mcp-disconnect ()
     "Remove tools provided by MCP servers from gptel."
@@ -237,7 +248,15 @@ from all connected servers if it is nil."
                never v)))
     (interactive)
     (call-interactively #'gptel-mcp-disconnect)
-    (transient-setup))
+    ;; gptel-tools stores its state in its scope slot.  Retain the scope but
+    ;; remove tools from it that no longer exist, then set up gptel-tools
+    (cl-loop with state = (transient-scope 'gptel-tools)
+             with tools = (plist-get state :tools)
+             for tool-spec in tools
+             if (map-nested-elt gptel--known-tools tool-spec)
+             collect tool-spec into valid-tools
+             finally do (plist-put state :tools valid-tools)
+             (transient-setup 'gptel-tools nil nil :scope state)))
 
   (transient-remove-suffix 'gptel-tools '(0 2))
   (transient-append-suffix 'gptel-tools '(0 -1)

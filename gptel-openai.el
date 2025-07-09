@@ -40,6 +40,7 @@
 (defvar gptel-track-media)
 (defvar gptel-use-tools)
 (defvar gptel-tools)
+(defvar gptel--schema)
 (declare-function gptel-context--collect-media "gptel-context")
 (declare-function gptel--base64-encode "gptel")
 (declare-function gptel--trim-prefixes "gptel")
@@ -47,6 +48,7 @@
 (declare-function gptel--model-capable-p "gptel")
 (declare-function gptel--model-name "gptel")
 (declare-function gptel--get-api-key "gptel")
+(declare-function gptel--insert-file-string "gptel")
 (declare-function prop-match-value "text-property-search")
 (declare-function text-property-search-backward "text-property-search")
 (declare-function json-read "json")
@@ -57,6 +59,7 @@
 (declare-function gptel-context--wrap "gptel-context")
 (declare-function gptel--inject-prompt "gptel")
 (declare-function gptel--parse-tools "gptel")
+(declare-function gptel--parse-schema "gptel")
 
 ;; JSON conversion semantics used by gptel
 ;; empty object "{}" => empty list '() == nil
@@ -231,19 +234,16 @@ information if the stream contains it."
                       ;; old tool block continues, so continue collecting arguments in :partial_json 
                       (push (plist-get func :arguments) (plist-get info :partial_json)))))
                 ;; Check for reasoning blocks, currently only used by Openrouter
-                ;; MAYBE: Should this be moved to a dedicated Openrouter backend?
-                (unless (or (eq (plist-get info :reasoning-block) 'done)
-                            (not (plist-member delta :reasoning)))
-                  (if-let* ((reasoning-chunk (plist-get delta :reasoning)) ;for openrouter
+                (unless (eq (plist-get info :reasoning-block) 'done)
+                  (if-let* ((reasoning-chunk (plist-get delta :reasoning)) ;for Openrouter and co
                             ((not (eq reasoning-chunk :null))))
                       (plist-put info :reasoning
                                  (concat (plist-get info :reasoning) reasoning-chunk))
                     ;; Done with reasoning if we get non-empty content
-                    (if-let* ((c (plist-get delta :content))
+                    (if-let* (((plist-member info :reasoning)) ;Is this a reasoning model?
+                              (c (plist-get delta :content)) ;Started receiving text content?
                               ((not (or (eq c :null) (string-empty-p c)))))
-                        (if (plist-member info :reasoning) ;Is this a reasoning model?
-                            (plist-put info :reasoning-block t) ;End of streaming reasoning block
-                          (plist-put info :reasoning-block 'done))))))))) ;Not using a reasoning model
+                        (plist-put info :reasoning-block t)))))))) ;Signal end of reasoning block
       (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
@@ -309,11 +309,23 @@ Mutate state INFO with response metadata."
       (plist-put prompts-plist
                  (if reasoning-model-p :max_completion_tokens :max_tokens)
                  gptel-max-tokens))
+    (when gptel--schema
+      (plist-put prompts-plist
+                 :response_format (gptel--parse-schema backend gptel--schema)))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
      prompts-plist
+     gptel--request-params
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
+
+(cl-defmethod gptel--parse-schema ((_backend gptel-openai) schema)
+  (list :type "json_schema"
+        :json_schema
+        (list :name (md5 (format "%s" (random)))
+              :schema (gptel--preprocess-schema
+                       (gptel--dispatch-schema-type schema))
+              :strict t)))
 
 ;; NOTE: No `gptel--parse-tools' method required for gptel-openai, since this is
 ;; handled by its defgeneric implementation

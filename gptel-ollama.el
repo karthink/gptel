@@ -74,23 +74,22 @@ Store response metadata in state INFO."
   (plist-put info :output-tokens (plist-get response :eval_count))
   (let* ((message (plist-get response :message))
          (content (plist-get message :content)))
-    (if (and content (not (or (eq content :null) (string-empty-p content))))
-        content
-      (prog1 nil                        ; Look for tool calls only if no content
-        (when-let* ((tool-calls (plist-get message :tool_calls)))
-          ;; First add the tool call to the prompts list
-          (let* ((data (plist-get info :data))
-                 (prompts (plist-get data :messages)))
-            (plist-put data :messages (vconcat prompts `(,message))))
-          ;; Then capture the tool call data for running the tool
-          (cl-loop
-           for tool-call across tool-calls ;replace ":arguments" with ":args"
-           for call-spec = (copy-sequence (plist-get tool-call :function))
-           do (plist-put call-spec :args
-                         (plist-get call-spec :arguments))
-           (plist-put call-spec :arguments nil)
-           collect call-spec into tool-use
-           finally (plist-put info :tool-use tool-use)))))))
+    (when-let* ((tool-calls (plist-get message :tool_calls)))
+      ;; First add the tool call to the prompts list
+      (let* ((data (plist-get info :data))
+             (prompts (plist-get data :messages)))
+        (plist-put data :messages (vconcat prompts `(,message))))
+      ;; Then capture the tool call data for running the tool
+      (cl-loop
+       for tool-call across tool-calls  ;replace ":arguments" with ":args"
+       for call-spec = (copy-sequence (plist-get tool-call :function))
+       do (plist-put call-spec :args
+                     (plist-get call-spec :arguments))
+       (plist-put call-spec :arguments nil)
+       collect call-spec into tool-use
+       finally (plist-put info :tool-use tool-use)))
+    (when (and content (not (or (eq content :null) (string-empty-p content))))
+      content)))
 
 (cl-defmethod gptel--request-data ((backend gptel-ollama) prompts)
   "JSON encode PROMPTS for sending to Ollama."
@@ -102,7 +101,11 @@ Store response metadata in state INFO."
           (gptel--merge-plists
            `(:model ,(gptel--model-name gptel-model)
              :messages [,@prompts]
-             :stream ,(or gptel-stream :json-false))
+             :stream ,(or gptel-stream :json-false)
+             ,@(and gptel--schema
+                `(:format ,(gptel--preprocess-schema
+                            (gptel--dispatch-schema-type gptel--schema)))))
+           gptel--request-params
            (gptel-backend-request-params gptel-backend)
            (gptel--model-request-params  gptel-model)))
          ;; the initial options (if any) from request params

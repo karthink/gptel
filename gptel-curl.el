@@ -112,8 +112,6 @@ REQUEST-DATA is the data to send, TOKEN is a unique identifier."
               collect (format "-H%s: %s" key val))
      (list url))))
 
-;;TODO: The :transformer argument here is an alternate implementation of
-;;`gptel-response-filter-functions'. The two need to be unified.
 ;;;###autoload
 (defun gptel-curl-get-response (fsm)
   "Fetch response to prompt in state FSM from the LLM using Curl.
@@ -241,7 +239,10 @@ PROCESS and _STATUS are process parameters."
                        (response (progn (goto-char header-size)
                                         (condition-case nil (gptel--json-read)
                                           (error 'json-read-error))))
-                       (error-data (plist-get response :error)))
+                       (error-data
+                        (cond ((plistp response) (plist-get response :error))
+                              ((arrayp response)
+                               (cl-some (lambda (el) (plist-get el :error)) response)))))
             (cond
              (error-data
               (plist-put info :error error-data))
@@ -363,7 +364,7 @@ Optional RAW disables text properties and transformation."
                       (progn (setq response (cons 'reasoning response))
                              (plist-put proc-info :reasoning-block 'in))
                     (plist-put proc-info :reasoning-block 'done)))
-                 ((length> response 0)
+                 ((and (not (eq reasoning-block t)) (length> response 0))
                   (if-let* ((idx (string-match-p "</think>" response)))
                       (progn
                         (funcall callback
@@ -371,10 +372,9 @@ Optional RAW disables text properties and transformation."
                                        (string-trim-left
                                         (substring response nil (+ idx 8))))
                                  proc-info)
-                        ;; Signal end of reasoning stream
-                        (funcall callback '(reasoning . t) proc-info)
-                        (setq response (substring response (+ idx 8)))
-                        (plist-put proc-info :reasoning-block 'done))
+                        (setq reasoning-block t) ;Signal end of reasoning stream
+                        (plist-put proc-info :reasoning-block t)
+                        (setq response (substring response (+ idx 8))))
                     (setq response (cons 'reasoning response)))))
                 (when (eq reasoning-block t) ;End of reasoning block
                   (funcall callback '(reasoning . t) proc-info)
@@ -460,8 +460,11 @@ PROC-INFO is a plist with contextual information."
                              ((not (string-blank-p resp))))
                     (string-trim resp))
                   http-status http-msg))
-           ((plist-get response :error)
-            (list nil http-status http-msg (plist-get response :error)))
+           ((and-let* ((error-data
+                        (cond ((plistp response) (plist-get response :error))
+                              ((arrayp response)
+                               (cl-some (lambda (el) (plist-get el :error)) response)))))
+              (list nil http-status http-msg error-data)))
            ((eq response 'json-read-error)
             (list nil http-status (concat "(" http-msg ") Malformed JSON in response.")
                   "Malformed JSON in response"))
