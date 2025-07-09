@@ -806,9 +806,9 @@ Also format its value in the Transient menu."
      (lambda (prompt _ _)
        "Manage gptel's logging."
        (let ((state (completing-read
-                     prompt '(off info debug) nil t)))
+                     prompt '("off" "info" "debug") nil t)))
          (message "Log level set to %s" state)
-         (if (eq state 'off) nil (intern state)))))
+         (if (string= state "off") nil (intern state)))))
     ("L" "Inspect Log"
      (lambda () (interactive)
        (pop-to-buffer (get-buffer-create gptel--log-buffer-name)))
