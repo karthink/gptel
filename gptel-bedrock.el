@@ -518,10 +518,10 @@ Non-nil CLEAR-CACHE will refresh credentials."
 
 If credentials are not available based on the AWS_ACCESS_KEY_ID
 AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN environment variables,
-aws configure export-credentials is used to obtain
-credentials.  PROFILE specifies the AWS profile to use for
-retrieving credentials if AWS_PROFILE environment variable is not
-set.
+aws configure export-credentials is used to obtain credentials.
+PROFILE specifies the AWS profile to use for retrieving
+credentials.  If PROFILE is unset, AWS_PROFILE environment
+variable is used.
 
 Returns a list of 2-3 elements, depending on whether a session
 token is needed, with this form: (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
@@ -531,8 +531,7 @@ Convenient to use with `cl-multiple-value-bind'"
   (let ((key-id (getenv "AWS_ACCESS_KEY_ID"))
         (secret-key (getenv "AWS_SECRET_ACCESS_KEY"))
         (token (getenv "AWS_SESSION_TOKEN"))
-	(profile (or (getenv "AWS_PROFILE")
-                     profile)))
+	(profile (or profile (getenv "AWS_PROFILE"))))
     (cond
       ((and key-id secret-key) (cl-values key-id secret-key token))
       ((and profile) (gptel-bedrock--fetch-aws-profile-credentials profile))
