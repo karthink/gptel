@@ -120,36 +120,37 @@ information if the stream contains it.  Not my best work, I know."
            ((looking-at "message_delta")
             ;; collect stop_reason, usage_tokens and prepare tools
             (forward-line 1) (forward-char 5)
-            (when-let* ((tool-use (plist-get info :tool-use))
-                        (response (gptel--json-read)))
-              (let* ((data (plist-get info :data))
-                     (prompts (plist-get data :messages)))
-                (plist-put ; Append a COPY of response text + tool-use to the prompts list
-                 data :messages
-                 (vconcat
-                  prompts
-                  `((:role "assistant"
-                     :content ,(vconcat ;Insert any LLM text and thinking text
-                                (and-let* ((reasoning (plist-get info :partial_reasoning)))
-                                 `((:type "thinking" :thinking ,reasoning
-                                    :signature ,(plist-get info :signature))))
-                                (and-let* ((strs (plist-get info :partial_text)))
-                                 `((:type "text" :text ,(apply #'concat (nreverse strs)))))
-                                (mapcar (lambda (tool-call) ;followed by the tool calls
-                                          (append (list :type "tool_use")
-                                           (copy-sequence tool-call)))
-                                 tool-use))))))
-                (plist-put info :partial_text nil) ; Clear any captured text
-                ;; Then shape the tool-use block by adding args so we can call the functions
-                (mapc (lambda (tool-call)
-                        (plist-put tool-call :args (plist-get tool-call :input))
-                        (plist-put tool-call :input nil)
-                        (plist-put tool-call :id (plist-get tool-call :id)))
-                      tool-use))
+            (when-let* ((response (gptel--json-read)))
               (plist-put info :output-tokens
-                         (map-nested-elt response '(:usage :output_tokens)))
+                         (and-let* ((new (map-nested-elt response '(:usage :output_tokens))))
+                           (+ (or (plist-get info :output-tokens) 0) new)))
               (plist-put info :stop-reason
-                         (map-nested-elt response '(:delta :stop_reason)))))))
+                         (map-nested-elt response '(:delta :stop_reason)))
+              (when-let* ((tool-use (plist-get info :tool-use)))
+                (let* ((data (plist-get info :data))
+                       (prompts (plist-get data :messages)))
+                  (plist-put ; Append a COPY of response text + tool-use to the prompts list
+                   data :messages
+                   (vconcat
+                    prompts
+                    `((:role "assistant"
+                       :content ,(vconcat ;Insert any LLM text and thinking text
+                                  (and-let* ((reasoning (plist-get info :partial_reasoning)))
+                                   `((:type "thinking" :thinking ,reasoning
+                                      :signature ,(plist-get info :signature))))
+                                  (and-let* ((strs (plist-get info :partial_text)))
+                                   `((:type "text" :text ,(apply #'concat (nreverse strs)))))
+                                  (mapcar (lambda (tool-call) ;followed by the tool calls
+                                            (append (list :type "tool_use")
+                                             (copy-sequence tool-call)))
+                                   tool-use))))))
+                  (plist-put info :partial_text nil) ; Clear any captured text
+                  ;; Then shape the tool-use block by adding args so we can call the functions
+                  (mapc (lambda (tool-call)
+                          (plist-put tool-call :args (plist-get tool-call :input))
+                          (plist-put tool-call :input nil)
+                          (plist-put tool-call :id (plist-get tool-call :id)))
+                        tool-use)))))))
       (error (goto-char pt)))
     (let ((response-text (apply #'concat (nreverse content-strs))))
       (unless (string-empty-p response-text)

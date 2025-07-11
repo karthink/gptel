@@ -192,25 +192,40 @@ information if the stream contains it."
         (while (re-search-forward "^data:" nil t)
           (save-match-data
             (if (looking-at " *\\[DONE\\]")
-                ;; The stream has ended, so we do the following thing (if we found tool calls)
-                ;; - pack tool calls into the messages prompts list to send (INFO -> :data -> :messages)
-                ;; - collect tool calls (formatted differently) into (INFO -> :tool-use)
-                (when-let* ((tool-use (plist-get info :tool-use))
-                            (args (apply #'concat (nreverse (plist-get info :partial_json))))
-                            (func (plist-get (car tool-use) :function)))
-                  (plist-put func :arguments args) ;Update arguments for last recorded tool
-                  (gptel--inject-prompt
-                   (plist-get info :backend) (plist-get info :data)
-                   `(:role "assistant" :content :null :tool_calls ,(vconcat tool-use))) ; :refusal :null
-                  (cl-loop
-                   for tool-call in tool-use ; Construct the call specs for running the function calls
-                   for spec = (plist-get tool-call :function)
-                   collect (list :id (plist-get tool-call :id)
-                                 :name (plist-get spec :name)
-                                 :args (ignore-errors (gptel--json-read-string
-                                                       (plist-get spec :arguments))))
-                   into call-specs
-                   finally (plist-put info :tool-use call-specs)))
+                (progn
+                  ;; The stream has ended, so we do the following thing (if we found tool calls)
+                  ;; - pack tool calls into the messages prompts list to send (INFO -> :data -> :messages)
+                  ;; - collect tool calls (formatted differently) into (INFO -> :tool-use)
+                  (when-let* ((tool-use (plist-get info :tool-use))
+                              (args (apply #'concat (nreverse (plist-get info :partial_json))))
+                              (func (plist-get (car tool-use) :function)))
+                    (plist-put func :arguments args) ;Update arguments for last recorded tool
+                    (gptel--inject-prompt
+                     (plist-get info :backend) (plist-get info :data)
+                     `(:role "assistant" :content :null :tool_calls ,(vconcat tool-use))) ; :refusal :null
+                    (cl-loop
+                     for tool-call in tool-use ; Construct the call specs for running the function calls
+                     for spec = (plist-get tool-call :function)
+                     collect (list :id (plist-get tool-call :id)
+                                   :name (plist-get spec :name)
+                                   :args (ignore-errors (gptel--json-read-string
+                                                         (plist-get spec :arguments))))
+                     into call-specs
+                     finally (plist-put info :tool-use call-specs)))
+                  (save-excursion       ;Capture tokens and stop reason
+                    (forward-line 0)
+                    (when (re-search-backward "^data:" nil t)
+                      (goto-char (match-end 0))
+                      (when-let* ((attrs (gptel--json-read)))
+                        (plist-put info :stop-reason
+                                   (map-nested-elt attrs '(:choices 0 :finish_reason)))
+                        (when-let* ((usage (plist-get attrs :usage)))
+                          (plist-put info :input-tokens
+                                     (and-let* ((new (plist-get usage :prompt_tokens)))
+                                       (+ (or (plist-get info :input-tokens) 0) new)))
+                          (plist-put info :output-tokens
+                                     (and-let* ((new (plist-get usage :completion_tokens)))
+                                       (+ (or (plist-get info :output-tokens) 0) new))))))))
               (when-let* ((response (gptel--json-read))
                           (delta (map-nested-elt response '(:choices 0 :delta))))
                 (if-let* ((content (plist-get delta :content))
@@ -258,8 +273,12 @@ Mutate state INFO with response metadata."
          (content (plist-get message :content)))
     (plist-put info :stop-reason
                (plist-get choice0 :finish_reason))
+    (plist-put info :input-tokens
+               (and-let* ((new (map-nested-elt response '(:usage :prompt_tokens))))
+                 (+ (or (plist-get info :input-tokens) 0) new)))
     (plist-put info :output-tokens
-               (map-nested-elt response '(:usage :completion_tokens)))
+               (and-let* ((new (map-nested-elt response '(:usage :prompt_tokens))))
+                 (+ (or (plist-get info :output-tokens) 0) new)))
     ;; OpenAI returns either non-blank text content or a tool call, not both.
     ;; However OpenAI-compatible APIs like llama.cpp can include both (#819), so
     ;; we check for both tool calls and responses independently.
