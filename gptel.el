@@ -3626,8 +3626,8 @@ example) apply the preset buffer-locally."
     ;; If the :pre function returns a plist, merge it with the main spec.
     (when (plistp result)
       (setq preset (copy-sequence preset))
-      (let ((spec (cdr preset)))
-        (cl-loop for (key value) on result by #'cddr do
+      (cl-loop for (key value) on result by #'cddr do
+               (let ((spec (cdr preset)))
                  (if (plist-member spec key)
                      (setcdr preset (plist-put spec key value))
                    (display-warning
