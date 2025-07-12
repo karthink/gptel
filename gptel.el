@@ -4,7 +4,7 @@
 
 ;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
 ;; Version: 0.9.8.5
-;; Package-Requires: ((emacs "27.1") (transient "0.7.4") (compat "29.1.4.1"))
+;; Package-Requires: ((emacs "27.1") (transient "0.7.4"))
 ;; Keywords: convenience, tools
 ;; URL: https://github.com/karthink/gptel
 
