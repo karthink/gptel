@@ -1624,10 +1624,12 @@ Convert symbol :types to strings."
               (setcar (cdr tail) (symbol-name (cadr tail))))
             (when (equal (cadr tail) "object") ;Add additional object fields
               (plist-put tail :additionalProperties :json-false)
-              (let ((props
-                     (cl-loop for prop in (plist-get tail :properties) by #'cddr
-                              collect (substring (symbol-name prop) 1))))
-                (plist-put tail :required (vconcat props)))))
+              (let ((vprops (vconcat
+                             (cl-loop
+                              for prop in (plist-get tail :properties) by #'cddr
+                              collect (substring (symbol-name prop) 1)))))
+                (plist-put tail :required vprops)
+                (plist-put tail :propertyOrdering vprops))))
           (when (or (listp (cadr tail)) (vectorp (cadr tail)))
             (gptel--preprocess-schema (cadr tail)))
           (setq tail (cddr tail)))))
