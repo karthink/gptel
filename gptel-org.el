@@ -53,6 +53,7 @@
 (declare-function gptel--parse-directive "gptel")
 (declare-function gptel--restore-props "gptel")
 (declare-function gptel--with-buffer-copy "gptel")
+(declare-function gptel--file-binary-p "gptel")
 (declare-function org-entry-get "org")
 (declare-function org-entry-put "org")
 (declare-function org-with-wide-buffer "org-macs")
@@ -170,8 +171,8 @@ adding elements to this list can significantly slow down
 (defun gptel-org-set-topic (topic)
   "Set a TOPIC and limit this conversation to the current heading.
 
-This limits the context sent to the LLM to the text between the
-current heading and the cursor position."
+This limits the context sent to the LLM to the text between the current
+heading (i.e. the heading with the topic set) and the cursor position."
   (interactive
    (list
     (progn
@@ -188,26 +189,22 @@ current heading and the cursor position."
                                  50))))))
   (when (stringp topic) (org-set-property "GPTEL_TOPIC" topic)))
 
-;; NOTE: This can be converted to a cl-defmethod for `gptel--parse-buffer'
-;; (conceptually cleaner), but will cause load-order issues in gptel.el and
-;; might be harder to debug.
-(defun gptel-org--create-prompt (&optional prompt-end)
-  "Return a full conversation prompt from the contents of this Org buffer.
+;; NOTE: This can be converted to a cl-defmethod for
+;; `gptel--create-prompt-buffer' (conceptually cleaner), but will cause
+;; load-order issues in gptel.el and might be harder to debug.
+(defun gptel-org--create-prompt-buffer (&optional prompt-end)
+  "Return a buffer with the conversation prompt to be sent.
 
-If `gptel--num-messages-to-send' is set, limit to that many
-recent exchanges.
-
-The prompt is constructed from the contents of the buffer up to
-point, or PROMPT-END if provided.  Its contents depend on the
-value of `gptel-org-branching-context', which see."
+If the region is active limit the prompt text to the region contents.
+Otherwise the prompt text is constructed from the contents of the
+current buffer up to point, or PROMPT-END if provided.  Its contents
+depend on the value of `gptel-org-branching-context', which see."
   (when (use-region-p)
     (narrow-to-region (region-beginning) (region-end)))
   (if prompt-end
       (goto-char prompt-end)
     (setq prompt-end (point)))
-  (let ((max-entries (and gptel--num-messages-to-send
-                          (* 2 gptel--num-messages-to-send)))
-        (topic-start (gptel-org--get-topic-start)))
+  (let ((topic-start (gptel-org--get-topic-start)))
     (when topic-start
       ;; narrow to GPTEL_TOPIC property scope
       (narrow-to-region topic-start prompt-end))
@@ -251,8 +248,9 @@ value of `gptel-org-branching-context', which see."
               (gptel-org--unescape-tool-results)
               (gptel-org--strip-block-headers)
               (when gptel-org-ignore-elements (gptel-org--strip-elements))
-              (save-excursion (run-hooks 'gptel-prompt-filter-hook))
-              (gptel--parse-buffer gptel-backend max-entries))))
+              (setq org-complex-heading-regexp ;For org-element-context to run
+                    (buffer-local-value 'org-complex-heading-regexp org-buf))
+              (current-buffer))))
       ;; Create prompt the usual way
       (let ((org-buf (current-buffer))
             (beg (point-min)))
@@ -260,8 +258,9 @@ value of `gptel-org-branching-context', which see."
           (gptel-org--unescape-tool-results)
           (gptel-org--strip-block-headers)
           (when gptel-org-ignore-elements (gptel-org--strip-elements))
-          (save-excursion (run-hooks 'gptel-prompt-filter-hook))
-          (gptel--parse-buffer gptel-backend max-entries))))))
+          (setq org-complex-heading-regexp ;For org-element-context to run
+                (buffer-local-value 'org-complex-heading-regexp org-buf))
+          (current-buffer))))))
 
 (defun gptel-org--strip-elements ()
   "Remove all elements in `gptel-org-ignore-elements' from the
@@ -346,12 +345,13 @@ Return a list of the form
   (:text \"More text\"))
 for inclusion into the user prompt for the gptel request."
   (require 'mailcap)                    ;FIXME Avoid this somehow
-  (let ((parts) (from-pt)
+  (let ((parts) (from-pt) (mime)
         (link-regex (concat "\\(?:" org-link-bracket-re "\\|"
                             org-link-angle-re "\\)")))
     (save-excursion
       (setq from-pt (goto-char beg))
       (while (re-search-forward link-regex end t)
+        (setq mime nil)
         (when-let* ((link (org-element-context))
                     ((gptel-org--link-standalone-p link))
                     (raw-link (org-element-property :raw-link link))
@@ -360,25 +360,30 @@ for inclusion into the user prompt for the gptel request."
                     ;; FIXME This is not a good place to check for url capability!
                     ((member type `("attachment" "file"
                                     ,@(and (gptel--model-capable-p 'url)
-                                       '("http" "https" "ftp")))))
-                    (mime (mailcap-file-name-to-mime-type path))
-                    ((gptel--model-mime-capable-p mime)))
+                                       '("http" "https" "ftp"))))))
           (cond
            ((member type '("file" "attachment"))
-            (when (file-readable-p path)
-              ;; Collect text up to this image, and
-              ;; Collect this image
-              (when-let* ((text (string-trim (buffer-substring-no-properties
-                                              from-pt (gptel-org--element-begin link)))))
-                (unless (string-empty-p text) (push (list :text text) parts)))
-              (push (list :media path :mime mime) parts)
-              (setq from-pt (point))))
-           ((member type '("http" "https" "ftp"))
-            ;; Collect text up to this image, and
-            ;; Collect this image url
-            (when-let* ((text (string-trim (buffer-substring-no-properties
-                                            from-pt (gptel-org--element-begin link)))))
-              (unless (string-empty-p text) (push (list :text text) parts)))
+            (if (file-readable-p path)
+              (if (or (not (gptel--file-binary-p path))
+                      (and (setq mime (mailcap-file-name-to-mime-type path))
+                           (gptel--model-mime-capable-p mime)))
+                  (progn                ; text file or supported binary file
+                    ;; collect text up to link
+                    (when-let* ((text (buffer-substring-no-properties
+                                       from-pt (gptel-org--element-begin link))))
+                      (unless (string-blank-p text) (push (list :text text) parts)))
+                    ;; collect link
+                    (push (if mime (list :media path :mime mime) (list :textfile path)) parts)
+                    (setq from-pt (point)))
+                (message "Ignoring unsupported binary file \"%s\"." path))
+              (message "Ignoring inaccessible file \"%s\"." path)))
+           ((and (member type '("http" "https" "ftp"))
+                 (setq mime (mailcap-file-name-to-mime-type path))
+                 (gptel--model-capable-p mime))
+            ;; Collect text up to this image, and collect this image url
+            (when-let* ((text (buffer-substring-no-properties
+                               from-pt (gptel-org--element-begin link))))
+              (unless (string-blank-p text) (push (list :text text) parts)))
             (push (list :url raw-link :mime mime) parts)
             (setq from-pt (point))))))
       (unless (= from-pt end)
@@ -515,10 +520,10 @@ non-nil (default), display a message afterwards."
    ;; Save response boundaries
    (letrec ((write-bounds
              (lambda (attempts)
-               (let* ((bounds (gptel--get-buffer-bounds))
-                      ;; first value of ((prop . ((beg end val)...))...)
-                      (offset (caadar bounds))
-                      (offset-marker (set-marker (make-marker) offset)))
+               (when-let* ((bounds (gptel--get-buffer-bounds))
+                           ;; first value of ((prop . ((beg end val)...))...)
+                           (offset (caadar bounds))
+                           (offset-marker (set-marker (make-marker) offset)))
                  (org-entry-put (point-min) "GPTEL_BOUNDS"
                                 (prin1-to-string (gptel--get-buffer-bounds)))
                  (when (and (not (= (marker-position offset-marker) offset))

@@ -1,6 +1,6 @@
 ;;; gptel-curl.el --- Curl support for gptel         -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023  Karthik Chikmagalur
+;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur;; <karthikchikmagalur@gmail.com>
 ;; Keywords: convenience
@@ -112,8 +112,6 @@ REQUEST-DATA is the data to send, TOKEN is a unique identifier."
               collect (format "-H%s: %s" key val))
      (list url))))
 
-;;TODO: The :transformer argument here is an alternate implementation of
-;;`gptel-response-filter-functions'. The two need to be unified.
 ;;;###autoload
 (defun gptel-curl-get-response (fsm)
   "Fetch response to prompt in state FSM from the LLM using Curl.
@@ -173,7 +171,13 @@ the response is inserted into the current buffer after point."
           (progn (set-process-sentinel process #'gptel-curl--stream-cleanup)
                  (set-process-filter process #'gptel-curl--stream-filter))
         (set-process-sentinel process #'gptel-curl--sentinel))
-      (setf (alist-get process gptel--request-alist) fsm))))
+      (setf (alist-get process gptel--request-alist)
+            (cons fsm
+                  #'(lambda ()
+                      ;; Clean up Curl process
+                      (set-process-sentinel process #'ignore)
+                      (delete-process process)
+                      (kill-buffer (process-buffer process))))))))
 
 ;; ;; Ahead-Of-Time dispatch code for the parsers
 ;; :parser ; FIXME `cl--generic-*' are internal functions
@@ -219,7 +223,7 @@ PROC-INFO is the plist containing process metadata."
 
 PROCESS and _STATUS are process parameters."
   (let ((proc-buf (process-buffer process)))
-    (let* ((fsm (alist-get process gptel--request-alist))
+    (let* ((fsm (car (alist-get process gptel--request-alist)))
            (info (gptel-fsm-info fsm))
            (http-status (plist-get info :http-status)))
       (when gptel-log-level (gptel-curl--log-response proc-buf info)) ;logging
@@ -235,7 +239,10 @@ PROCESS and _STATUS are process parameters."
                        (response (progn (goto-char header-size)
                                         (condition-case nil (gptel--json-read)
                                           (error 'json-read-error))))
-                       (error-data (plist-get response :error)))
+                       (error-data
+                        (cond ((plistp response) (plist-get response :error))
+                              ((arrayp response)
+                               (cl-some (lambda (el) (plist-get el :error)) response)))))
             (cond
              (error-data
               (plist-put info :error error-data))
@@ -291,7 +298,7 @@ Optional RAW disables text properties and transformation."
      (gptel--display-tool-results tool-results info))))
 
 (defun gptel-curl--stream-filter (process output)
-  (let* ((fsm (alist-get process gptel--request-alist))
+  (let* ((fsm (car (alist-get process gptel--request-alist)))
          (proc-info (gptel-fsm-info fsm))
          (callback (or (plist-get proc-info :callback)
                        #'gptel-curl--stream-insert-response)))
@@ -357,7 +364,7 @@ Optional RAW disables text properties and transformation."
                       (progn (setq response (cons 'reasoning response))
                              (plist-put proc-info :reasoning-block 'in))
                     (plist-put proc-info :reasoning-block 'done)))
-                 ((length> response 0)
+                 ((and (not (eq reasoning-block t)) (length> response 0))
                   (if-let* ((idx (string-match-p "</think>" response)))
                       (progn
                         (funcall callback
@@ -365,10 +372,9 @@ Optional RAW disables text properties and transformation."
                                        (string-trim-left
                                         (substring response nil (+ idx 8))))
                                  proc-info)
-                        ;; Signal end of reasoning stream
-                        (funcall callback '(reasoning . t) proc-info)
-                        (setq response (substring response (+ idx 8)))
-                        (plist-put proc-info :reasoning-block 'done))
+                        (setq reasoning-block t) ;Signal end of reasoning stream
+                        (plist-put proc-info :reasoning-block t)
+                        (setq response (substring response (+ idx 8))))
                     (setq response (cons 'reasoning response)))))
                 (when (eq reasoning-block t) ;End of reasoning block
                   (funcall callback '(reasoning . t) proc-info)
@@ -394,7 +400,7 @@ See `gptel-curl--get-response' for its contents.")
 PROCESS and _STATUS are process parameters."
   (let ((proc-buf (process-buffer process)))
     (when-let* (((eq (process-status process) 'exit))
-                (fsm (alist-get process gptel--request-alist))
+                (fsm (car (alist-get process gptel--request-alist)))
                 (proc-info (gptel-fsm-info fsm))
                 (proc-callback (plist-get proc-info :callback)))
       (when gptel-log-level (gptel-curl--log-response proc-buf proc-info)) ;logging
@@ -454,8 +460,11 @@ PROC-INFO is a plist with contextual information."
                              ((not (string-blank-p resp))))
                     (string-trim resp))
                   http-status http-msg))
-           ((plist-get response :error)
-            (list nil http-status http-msg (plist-get response :error)))
+           ((and-let* ((error-data
+                        (cond ((plistp response) (plist-get response :error))
+                              ((arrayp response)
+                               (cl-some (lambda (el) (plist-get el :error)) response)))))
+              (list nil http-status http-msg error-data)))
            ((eq response 'json-read-error)
             (list nil http-status (concat "(" http-msg ") Malformed JSON in response.")
                   "Malformed JSON in response"))

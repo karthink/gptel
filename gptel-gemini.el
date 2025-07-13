@@ -1,6 +1,6 @@
 ;;; gptel-gemini.el ---  Gemini suppport for gptel  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023  Karthik Chikmagalur
+;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthikchikmagalur@gmail.com>
 
@@ -80,7 +80,15 @@ list."
     (cl-loop
      for part across parts
      for tx = (plist-get part :text)
-     if (and tx (not (eq tx :null))) collect tx into content-strs
+     if (and tx (not (eq tx :null)))
+     if (plist-get part :thought)
+     do (unless (plist-get info :reasoning-block)
+          (plist-put info :reasoning-block 'in))
+     (plist-put info :reasoning (concat (plist-get info :reasoning) tx))
+     else do
+     (if (eq (plist-get info :reasoning-block) 'in)
+       (plist-put info :reasoning-block t))
+     and collect tx into content-strs end
      else if (plist-get part :functionCall)
      collect (copy-sequence it) into tool-use
      finally do                         ;Add text and tool-calls to prompts list
@@ -106,15 +114,15 @@ list."
 (cl-defmethod gptel--request-data ((backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
   (let ((prompts-plist
-         `(:contents [,@prompts]
-           :safetySettings [(:category "HARM_CATEGORY_HARASSMENT"
-                             :threshold "BLOCK_NONE")
-                            (:category "HARM_CATEGORY_SEXUALLY_EXPLICIT"
-                             :threshold "BLOCK_NONE")
-                            (:category "HARM_CATEGORY_DANGEROUS_CONTENT"
-                             :threshold "BLOCK_NONE")
-                            (:category "HARM_CATEGORY_HATE_SPEECH"
-                             :threshold "BLOCK_NONE")]))
+         (list :contents (vconcat prompts)
+               :safetySettings [(:category "HARM_CATEGORY_HARASSMENT"
+                                 :threshold "BLOCK_NONE")
+                                (:category "HARM_CATEGORY_SEXUALLY_EXPLICIT"
+                                 :threshold "BLOCK_NONE")
+                                (:category "HARM_CATEGORY_DANGEROUS_CONTENT"
+                                 :threshold "BLOCK_NONE")
+                                (:category "HARM_CATEGORY_HATE_SPEECH"
+                                 :threshold "BLOCK_NONE")]))
         params)
     (if gptel--system-message
         (plist-put prompts-plist :system_instruction
@@ -134,14 +142,26 @@ list."
       (setq params
             (plist-put params
                        :maxOutputTokens gptel-max-tokens)))
+    (when gptel-include-reasoning
+      (setq params
+            (plist-put params :thinkingConfig '(:includeThoughts t))))
+    (when gptel--schema
+      (setq params (nconc params (gptel--gemini-filter-schema
+                                  (gptel--parse-schema backend gptel--schema)))))
     (when params
       (plist-put prompts-plist
                  :generationConfig params))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
      prompts-plist
+     gptel--request-params
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
+
+(cl-defmethod gptel--parse-schema ((_backend gptel-gemini) schema)
+  (list :responseMimeType "application/json"
+        :responseSchema (gptel--preprocess-schema
+                         (gptel--dispatch-schema-type schema))))
 
 (defun gptel--gemini-filter-schema (schema)
   "Destructively filter unsupported attributes from SCHEMA.
@@ -256,9 +276,7 @@ See generic implementation for full documentation."
              finally return prompts)))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-gemini) &optional max-entries)
-  (let ((prompts) (prev-pt (point))
-        (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
-                                                  (gptel--model-capable-p 'url)))))
+  (let ((prompts) (prev-pt (point)))
     (if (or gptel-mode gptel-track-response)
         (while (and (or (not max-entries) (>= max-entries 0))
                     (goto-char (previous-single-property-change
@@ -290,7 +308,7 @@ See generic implementation for full documentation."
                                    (line-number-at-pos (point))))))))
             ('ignore)
             ('nil
-             (if include-media
+             (if gptel-track-media
                  (when-let* ((content (gptel--gemini-parse-multipart
                                        (gptel--parse-media-links major-mode (point) prev-pt))))
                    (when (> (length content) 0)
@@ -331,6 +349,12 @@ format."
    `(:inline_data
      (:mime_type ,(plist-get part :mime)
       :data ,(gptel--base64-encode media)))
+   into parts-array
+   else if (plist-get part :textfile)
+   collect
+   (list :text (with-temp-buffer
+                 (gptel--insert-file-string (plist-get part :textfile))
+                 (buffer-string)))
    into parts-array
    finally return (vconcat parts-array)))
 
@@ -455,7 +479,7 @@ files in the context."
      :output-cost 10.00 ; 15 for >200k tokens
      :cutoff-date "2025-01")
     (gemini-2.5-flash-preview-04-17
-     :description "Best Gemini model in terms of price-performance, offering well-rounded capabilities"
+     :description "DEPRECATED: Please use gemini-2.5-flash instead."
      :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
@@ -464,7 +488,7 @@ files in the context."
      :output-cost 0.60 ; 3.50 for thinking
      :cutoff-date "2025-01")
     (gemini-2.5-flash-preview-05-20
-     :description "Best Gemini model in terms of price-performance, offering well-rounded capabilities"
+     :description "DEPRECATED: Please use gemini-2.5-flash instead."
      :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
@@ -472,14 +496,75 @@ files in the context."
      :input-cost 0.15
      :output-cost 0.60 ; 3.50 for thinking
      :cutoff-date "2025-01")
+    (gemini-2.5-flash
+     :description "Best model in terms of price-performance, offering well-rounded capabilities"
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"
+                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 1024
+     :input-cost 0.15
+     :output-cost 0.60
+     :cutoff-date "2025-01")
     (gemini-2.5-pro-preview-05-06
-     :description "Most powerful Gemini thinking model with maximum response accuracy and state-of-the-art performance"
+     :description "Previously most powerful thinking model with state-of-the-art performance"
      :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
-     :context-window 1000
+     :context-window 1048 ; 65536 output token limit
      :input-cost 1.25 ; 2.50 for >200k tokens
      :output-cost 10.00 ; 15 for >200k tokens
+     :cutoff-date "2025-01")
+    (gemini-2.5-pro-preview-06-05
+     :description "Most powerful thinking model with state-of-the-art performance"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1048 ; 65536 output token limit
+     :input-cost 1.25 ; 2.50 for >200k tokens
+     :output-cost 10.00 ; 15 for >200k tokens
+     :cutoff-date "2025-01")
+    (gemini-2.5-flash-lite-preview-06-17
+     :description "A Gemini 2.5 Flash model optimized for cost efficiency and low latency"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1000 ; 64000 output token limit
+     :input-cost 0.10
+     :output-cost 0.40
+     :cutoff-date "2025-01")
+    (gemini-2.5-flash
+     :description "Best model in terms of price-performance, offering well-rounded capabilities."
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")
+     :context-window 1048 ; 65536 output token limit
+     :input-cost 0.3
+     :output-cost 2.50
+     :cutoff-date "2025-01")
+    (gemini-2.5-pro
+     :description "Most powerful Gemini thinking model with state-of-the-art performance"
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"
+                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 1048               ; 65536 output token limit
+     :input-cost 1.25                   ; 2.50 for >200k tokens
+     :output-cost 10.00                 ; 15 for >200k tokens
+     :cutoff-date "2025-01")
+    (gemini-2.5-flash-lite-preview-06-17
+     :description "Fastest and cheapest 2.5 model, for high-volume, latency-sensitive tasks."
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "application/pdf" "text/plain"
+                  "audio/x-aac" "audio/flac" "audio/mp3" "audio/m4a" "audio/mpeg"
+                  "audio/mpga" "audio/mp4" "audio/opus" "audio/pcm" "audio/wav" "audio/webm"
+                  "video/x-flv" "video/quicktime" "video/mpeg" "video/mp4"
+                  "video/webm" "video/wmv" "video/3gpp")
+     :context-window 1048
+     :input-cost 0.075
+     :output-cost 0.30
      :cutoff-date "2025-01")
     (gemini-2.0-flash-thinking-exp
      :description "DEPRECATED: Please use gemini-2.0-flash-thinking-exp-01-21 instead."

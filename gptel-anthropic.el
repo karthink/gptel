@@ -1,6 +1,6 @@
 ;;; gptel-anthropic.el ---  Anthropic AI suppport for gptel  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023  Karthik Chikmagalur
+;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthikchikmagalur@gmail.com>
 
@@ -216,7 +216,7 @@ Mutate state INFO with response metadata."
           ;; gptel--system-message is guaranteed to be a string
           (plist-put prompts-plist :system
                      `[(:type "text" :text ,gptel--system-message
-                        :cache_control (:type "ephemeral"))])
+                        :cache_control (:type "ephemeral" :ttl "1h"))])
         (plist-put prompts-plist :system gptel--system-message)))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
@@ -230,11 +230,28 @@ Mutate state INFO with response metadata."
                      (gptel--model-capable-p 'cache))
             (nconc (aref tools-array (1- (length tools-array)))
                    '(:cache_control (:type "ephemeral")))))))
+    (when gptel--schema
+      (plist-put prompts-plist :tools
+                 (vconcat
+                  (list (gptel--parse-schema backend gptel--schema))
+                  (plist-get prompts-plist :tools)))
+      (plist-put prompts-plist :tool_choice
+                 `(:type "tool" :name ,gptel--ersatz-json-tool)))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
      prompts-plist
+     gptel--request-params
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
+
+(cl-defmethod gptel--parse-schema ((_backend gptel-anthropic) schema)
+  ;; Unlike the other backends, Anthropic generates JSON using a tool call.  We
+  ;; write the tool here, meant to be added to :tools.
+  (list
+   :name "response_json"
+   :description "Record JSON output according to user prompt"
+   :input_schema (gptel--preprocess-schema
+                  (gptel--dispatch-schema-type schema))))
 
 (cl-defmethod gptel--parse-tools ((_backend gptel-anthropic) tools)
   "Parse TOOLS to the Anthropic API tool definition spec.
@@ -345,13 +362,11 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
     (when (and (or (eq gptel-cache t) (memq 'message gptel-cache))
                (gptel--model-capable-p 'cache))
       (nconc (aref (plist-get (car (last full-prompt)) :content) 0)
-             '(:cache_control (:type "ephemeral"))))
+             '(:cache_control (:type "ephemeral" :ttl "1h"))))
     full-prompt))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-anthropic) &optional max-entries)
-  (let ((prompts) (prev-pt (point))
-        (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
-                                                  (gptel--model-capable-p 'url)))))
+  (let ((prompts) (prev-pt (point)))
     (if (or gptel-mode gptel-track-response)
         (while (and (or (not max-entries) (>= max-entries 0))
                     (goto-char (previous-single-property-change
@@ -392,7 +407,7 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
                                      id (line-number-at-pos (point))))))))
               ('ignore)
               ('nil                     ; user role: possibly with media
-               (if include-media
+               (if gptel-track-media
                    (when-let* ((content (gptel--anthropic-parse-multipart
                                          (gptel--parse-media-links major-mode (point) prev-pt))))
                      (when (> (length content) 0)
@@ -414,9 +429,10 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
           (if (stringp last-message)
               (plist-put
                (car (last prompts)) :content
-               `[(:type "text" :text ,last-message :cache_control (:type "ephemeral"))])
+               `[(:type "text" :text ,last-message
+                  :cache_control (:type "ephemeral" :ttl "1h"))])
             (nconc (aref (plist-get (car (last prompts)) :content) 0)
-                   '(:cache_control (:type "ephemeral"))))))
+                   '(:cache_control (:type "ephemeral" :ttl "1h"))))))
     prompts))
 
 (defun gptel--anthropic-parse-multipart (parts)
@@ -458,6 +474,12 @@ format."
      ;; TODO Make media caching a user option
      ,@(and (gptel--model-capable-p 'cache)
         '(:cache_control (:type "ephemeral"))))
+   into parts-array
+   else if (plist-get part :textfile) collect
+   `(:type "text"
+     :text ,(with-temp-buffer
+              (gptel--insert-file-string (plist-get part :textfile))
+              (buffer-string)))
    into parts-array
    finally return (vconcat parts-array)))
 
@@ -600,8 +622,7 @@ URL `https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-tab
            (lambda () (when-let* ((key (gptel--get-api-key)))
                    `(("x-api-key" . ,key)
                      ("anthropic-version" . "2023-06-01")
-                     ("anthropic-beta" . "pdfs-2024-09-25")
-                     ("anthropic-beta" . "prompt-caching-2024-07-31")))))
+                     ("anthropic-beta" . "extended-cache-ttl-2025-04-11")))))
           (models gptel--anthropic-models)
           (host "api.anthropic.com")
           (protocol "https")

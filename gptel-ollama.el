@@ -1,6 +1,6 @@
 ;;; gptel-ollama.el --- Ollama support for gptel     -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023  Karthik Chikmagalur
+;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthikchikmagalur@gmail.com>
 ;; Keywords: hypermedia
@@ -74,23 +74,22 @@ Store response metadata in state INFO."
   (plist-put info :output-tokens (plist-get response :eval_count))
   (let* ((message (plist-get response :message))
          (content (plist-get message :content)))
-    (if (and content (not (or (eq content :null) (string-empty-p content))))
-        content
-      (prog1 nil                        ; Look for tool calls only if no content
-        (when-let* ((tool-calls (plist-get message :tool_calls)))
-          ;; First add the tool call to the prompts list
-          (let* ((data (plist-get info :data))
-                 (prompts (plist-get data :messages)))
-            (plist-put data :messages (vconcat prompts `(,message))))
-          ;; Then capture the tool call data for running the tool
-          (cl-loop
-           for tool-call across tool-calls ;replace ":arguments" with ":args"
-           for call-spec = (copy-sequence (plist-get tool-call :function))
-           do (plist-put call-spec :args
-                         (plist-get call-spec :arguments))
-           (plist-put call-spec :arguments nil)
-           collect call-spec into tool-use
-           finally (plist-put info :tool-use tool-use)))))))
+    (when-let* ((tool-calls (plist-get message :tool_calls)))
+      ;; First add the tool call to the prompts list
+      (let* ((data (plist-get info :data))
+             (prompts (plist-get data :messages)))
+        (plist-put data :messages (vconcat prompts `(,message))))
+      ;; Then capture the tool call data for running the tool
+      (cl-loop
+       for tool-call across tool-calls  ;replace ":arguments" with ":args"
+       for call-spec = (copy-sequence (plist-get tool-call :function))
+       do (plist-put call-spec :args
+                     (plist-get call-spec :arguments))
+       (plist-put call-spec :arguments nil)
+       collect call-spec into tool-use
+       finally (plist-put info :tool-use tool-use)))
+    (when (and content (not (or (eq content :null) (string-empty-p content))))
+      content)))
 
 (cl-defmethod gptel--request-data ((backend gptel-ollama) prompts)
   "JSON encode PROMPTS for sending to Ollama."
@@ -102,7 +101,11 @@ Store response metadata in state INFO."
           (gptel--merge-plists
            `(:model ,(gptel--model-name gptel-model)
              :messages [,@prompts]
-             :stream ,(or gptel-stream :json-false))
+             :stream ,(or gptel-stream :json-false)
+             ,@(and gptel--schema
+                `(:format ,(gptel--preprocess-schema
+                            (gptel--dispatch-schema-type gptel--schema)))))
+           gptel--request-params
            (gptel-backend-request-params gptel-backend)
            (gptel--model-request-params  gptel-model)))
          ;; the initial options (if any) from request params
@@ -161,9 +164,7 @@ Store response metadata in state INFO."
              (list :role (if role "user" "assistant") :content text))))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-ollama) &optional max-entries)
-  (let ((prompts) (prev-pt (point))
-        (include-media (and gptel-track-media (or (gptel--model-capable-p 'media)
-                                                  (gptel--model-capable-p 'url)))))
+  (let ((prompts) (prev-pt (point)))
     (if (or gptel-mode gptel-track-response)
         (while (and (or (not max-entries) (>= max-entries 0))
                     (goto-char (previous-single-property-change
@@ -194,7 +195,7 @@ Store response metadata in state INFO."
                                    (line-number-at-pos (point))))))))
             ('ignore)
             ('nil
-             (if include-media
+             (if gptel-track-media
                  (when-let* ((content (gptel--ollama-parse-multipart
                                        (gptel--parse-media-links major-mode (point) prev-pt))))
                    (when (> (length content) 0)
@@ -230,7 +231,13 @@ format."
    if text
    collect text into text-array end
    else if media
-   collect (gptel--base64-encode media) into media-array end
+   collect (gptel--base64-encode media) into media-array
+   else if (plist-get part :textfile)
+   collect
+   (with-temp-buffer
+     (gptel--insert-file-string (plist-get part :textfile))
+     (buffer-string))
+   into text-array
    finally return
    `(,@(and text-array  (list :content (mapconcat #'identity text-array " ")))
      ,@(and media-array (list :images  (vconcat media-array))))))
