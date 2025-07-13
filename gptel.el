@@ -1964,9 +1964,11 @@ The following keys are optional
 CATEGORY: A string indicating a category for the tool.  This is
 used only for grouping in gptel's UI.  Defaults to \"misc\".
 
-CONFIRM: Whether the tool call should wait for the user to run
-it.  If true, the user will be prompted with the proposed tool
-call, which can be examined, accepted, deferred or canceled.
+CONFIRM: Whether the tool call should wait for the user to run it.  If
+true, the user will be prompted with the proposed tool call, which can
+be examined, accepted, deferred or canceled.  It can also be a function
+that receives the same arguments as FUNCTION and returns true if the
+user should be prompted.
 
 INCLUDE: Whether the tool results should be included as part of
 the LLM output.  This is useful for logging and as context for
@@ -2444,8 +2446,10 @@ Run post-response hooks."
                           (plist-get args key)))
                       (gptel-tool-args tool-spec)))
                ;; Check if tool requires confirmation
-               (if (and gptel-confirm-tool-calls (or (eq gptel-confirm-tool-calls t)
-                                                     (gptel-tool-confirm tool-spec)))
+               (if (and gptel-confirm-tool-calls
+                        (or (eq gptel-confirm-tool-calls t) ;always confirm, or
+                            (and-let* ((confirm (gptel-tool-confirm tool-spec)))
+                              (or (not (functionp confirm)) (apply confirm arg-values)))))
                    (push (list tool-spec arg-values process-tool-result)
                          pending-calls)
                  ;; If not, run the tool
