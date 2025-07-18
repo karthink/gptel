@@ -229,7 +229,7 @@ Mutate state INFO with response metadata."
           (when (and (or (eq gptel-cache t) (memq 'tool gptel-cache))
                      (gptel--model-capable-p 'cache))
             (nconc (aref tools-array (1- (length tools-array)))
-                   '(:cache_control (:type "ephemeral")))))))
+                   '(:cache_control (:type "ephemeral" :ttl "1h")))))))
     (when gptel--schema
       (plist-put prompts-plist :tools
                  (vconcat
