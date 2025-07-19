@@ -935,10 +935,9 @@ together.  See `gptel-make-preset' for details."
         `(lambda () (interactive)
            (gptel--set-with-scope 'gptel--preset ',name-sym
             gptel--set-buffer-locally)
-           (gptel--apply-preset
-            ',(cons name-sym preset)
+           (gptel--apply-preset ',preset
             (lambda (sym val) (gptel--set-with-scope
-                               sym val gptel--set-buffer-locally)))
+                          sym val gptel--set-buffer-locally)))
            (message "Applied gptel preset %s"
             (propertize ,name 'face 'transient-value))
            (when transient--stack
