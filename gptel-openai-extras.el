@@ -374,41 +374,49 @@ For the meanings of the keyword arguments, see `gptel-make-openai'."
           (host "api.x.ai")
           (protocol "https")
           (endpoint "/v1/chat/completions")
-          (models '((grok-3-latest
-                     :description "Grok 3"
-                     :capabilities '(tool-use json)
-                     :context-window 131072
-                     :input-cost 3
-                     :output-cost 15)
+          (models
+           '((grok-4
+              :description "Grok Flagship model"
+              :capabilities '(tool-use json reasoning)
+              :context-window 256
+              :input-cost 3
+              :output-cost 15)
 
-                    (grok-3-fast-latest
-                     :description "Faster Grok 3"
-                     :capabilities '(tool-use json)
-                     :context-window 131072
-                     :input-cost 5
-                     :output-cost 25)
+             (grok-3
+              :description "Grok 3"
+              :capabilities '(tool-use json reasoning)
+              :context-window 131
+              :input-cost 3
+              :output-cost 15)
 
-                    (grok-3-mini-latest
-                     :description "Mini Grok 3"
-                     :capabilities '(tool-use json reasoning)
-                     :context-window 131072
-                     :input-cost 0.3
-                     :output-cost 0.5)
+             (grok-3-fast
+              :description "Faster Grok 3"
+              :capabilities '(tool-use json reasoning)
+              :context-window 131
+              :input-cost 5
+              :output-cost 25)
 
-                    (grok-3-mini-fast-latest
-                     :description "Faster mini Grok 3"
-                     :capabilities '(tool-use json reasoning)
-                     :context-window 131072
-                     :input-cost 0.6
-                     :output-cost 4)
+             (grok-3-mini
+              :description "Mini Grok 3"
+              :capabilities '(tool-use json reasoning)
+              :context-window 131
+              :input-cost 0.3
+              :output-cost 0.5)
 
-                    (grok-2-vision-1212
-                     :description "Grok 2 Vision"
-                     :capabilities '(tool-use json)
-                     :mime-types '("image/jpeg" "image/png" "image/gif" "image/webp")
-                     :context-window 32768
-                     :input-cost 2
-                     :output-cost 10))))
+             (grok-3-mini-fast
+              :description "Faster mini Grok 3"
+              :capabilities '(tool-use json reasoning)
+              :context-window 131072
+              :input-cost 0.6
+              :output-cost 4)
+
+             (grok-2-vision-1212
+              :description "Grok 2 Vision"
+              :capabilities '(tool-use json media)
+              :mime-types '("image/jpeg" "image/png" "image/gif" "image/webp")
+              :context-window 32768
+              :input-cost 2
+              :output-cost 10))))
   "Register an xAI backend for gptel with NAME.
 
 Keyword arguments:
@@ -422,7 +430,7 @@ false.
 The other keyword arguments are all optional.  For their meanings
 see `gptel-make-openai'."
   (declare (indent 1))
-  (let ((backend (gptel--make-openai
+  (let ((backend (gptel--make-deepseek
                   :name name
                   :host host
                   :header header

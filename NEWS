@@ -2,6 +2,13 @@
 
 * 0.9.9-pre
 
+** Breaking changes
+
+- The suffix =-latest= has been dropped from Grok models, as they are
+  no longer required.  So the models =grok-3-latest=,
+  =grok-3-mini-latest= have been renamed to just =grok-3=,
+  =grok-3-mini= and so on.
+
 ** New models and backends
 
 - Add support for ~gemini-2.5-pro~, ~gemini-2.5-flash~,
@@ -11,7 +18,14 @@
   OpenAI-compatible API, so the "support" is just a new section of the
   README with instructions.
 
+- Add support for ~grok-4~.
+
 ** New features and UI changes
+
+- gptel now supports handling reasoning/thinking blocks in responses
+  from xAI's Grok models.  This is controlled by
+  ~gptel-include-reasoning~, in the same way that it handles other
+  APIs.
 
 - When including a file in the context, the abbreviated full path of
   the file is included is now included instead of the basename.

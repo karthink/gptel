@@ -216,7 +216,7 @@ Mutate state INFO with response metadata."
           ;; gptel--system-message is guaranteed to be a string
           (plist-put prompts-plist :system
                      `[(:type "text" :text ,gptel--system-message
-                        :cache_control (:type "ephemeral"))])
+                        :cache_control (:type "ephemeral" :ttl "1h"))])
         (plist-put prompts-plist :system gptel--system-message)))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
@@ -229,7 +229,7 @@ Mutate state INFO with response metadata."
           (when (and (or (eq gptel-cache t) (memq 'tool gptel-cache))
                      (gptel--model-capable-p 'cache))
             (nconc (aref tools-array (1- (length tools-array)))
-                   '(:cache_control (:type "ephemeral")))))))
+                   '(:cache_control (:type "ephemeral" :ttl "1h")))))))
     (when gptel--schema
       (plist-put prompts-plist :tools
                  (vconcat
@@ -362,7 +362,7 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
     (when (and (or (eq gptel-cache t) (memq 'message gptel-cache))
                (gptel--model-capable-p 'cache))
       (nconc (aref (plist-get (car (last full-prompt)) :content) 0)
-             '(:cache_control (:type "ephemeral"))))
+             '(:cache_control (:type "ephemeral" :ttl "1h"))))
     full-prompt))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-anthropic) &optional max-entries)
@@ -429,9 +429,10 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
           (if (stringp last-message)
               (plist-put
                (car (last prompts)) :content
-               `[(:type "text" :text ,last-message :cache_control (:type "ephemeral"))])
+               `[(:type "text" :text ,last-message
+                  :cache_control (:type "ephemeral" :ttl "1h"))])
             (nconc (aref (plist-get (car (last prompts)) :content) 0)
-                   '(:cache_control (:type "ephemeral"))))))
+                   '(:cache_control (:type "ephemeral" :ttl "1h"))))))
     prompts))
 
 (defun gptel--anthropic-parse-multipart (parts)
@@ -621,8 +622,7 @@ URL `https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-tab
            (lambda () (when-let* ((key (gptel--get-api-key)))
                    `(("x-api-key" . ,key)
                      ("anthropic-version" . "2023-06-01")
-                     ("anthropic-beta" . "pdfs-2024-09-25")
-                     ("anthropic-beta" . "prompt-caching-2024-07-31")))))
+                     ("anthropic-beta" . "extended-cache-ttl-2025-04-11")))))
           (models gptel--anthropic-models)
           (host "api.anthropic.com")
           (protocol "https")
