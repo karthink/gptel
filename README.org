@@ -1091,18 +1091,20 @@ The above code makes the backend available to select.  If you want it to be the 
         :model-region 'apac))
 #+end_src
 
-#+html: </details><summary>
+#+html: </details>
+
+#+html: <details><summary>
 **** Moonshot (Kimi)
 #+html: </summary>
 
 Register a backend with
 
 #+begin_src emacs-lisp
-  (gptel-make-openai "Moonshot"
-    :host "api.moonshot.cn"  ;; or "api.moonshot.ai" for the global site
-    :key "your-api-key"
-    :stream t  ;; optionally enable streaming
-    :models '(kimi-latest kimi-k2-0711-preview))
+(gptel-make-openai "Moonshot"
+  :host "api.moonshot.cn" ;; or "api.moonshot.ai" for the global site
+  :key "your-api-key"
+  :stream t ;; optionally enable streaming
+  :models '(kimi-latest kimi-k2-0711-preview))
 #+end_src
 
 See [[https://platform.moonshot.ai/docs/pricing/chat][Moonshot.ai document]] for a complete list of models.
@@ -1112,25 +1114,26 @@ See [[https://platform.moonshot.ai/docs/pricing/chat][Moonshot.ai document]] for
 Moonshot supports a builtin search tool that does not requires the user to provide the tool implementation. To use that, you first need to define the tool and add to =gptel-tools= (while it does not requires the client to provide the search implementation, it does expects the client to reply a tool call message with its given argument, to be consistent with other tool calls):
 
 #+begin_src emacs-lisp
-  (setq gptel-tools
-        (list (gptel-make-tool
-               :name "$web_search"
-               :function (lambda (&optional search_result) (json-serialize `(:search_result ,search_result)))
-               :description "Moonshot builtin web search. Only usable by moonshot model (kimi), ignore this if you are not."
-               :args '((:name "search_result" :type object :optional t))
-               :confirm nil
-               :category "web"))
+(setq gptel-tools
+      (list (gptel-make-tool
+             :name "$web_search"
+             :function (lambda (&optional search_result)
+                         (json-serialize
+                          `(:search_result ,search_result)))
+             :description "Moonshot builtin web search. Only usable by moonshot model (kimi), ignore this if you are not."
+             :args '((:name "search_result" :type object :optional t))
+             :category "web")))
 #+end_src
 
 Then you also need to add the tool declaration via =:request-params= because it needs a special =builtin_function= type:
 
 #+begin_src emacs-lisp
-    (gptel-make-openai "Moonshot"
-      :host "api.moonshot.cn"  ;; or "api.moonshot.ai" for the global site
-      :key "your-api-key"
-      :stream t  ;; optionally enable streaming
-      :models '(kimi-latest kimi-k2-0711-preview)
-      :request-params '(:tools [(:type "builtin_function" :function (:name "$web_search"))]))
+(gptel-make-openai "Moonshot"
+  :host "api.moonshot.cn" ;; or "api.moonshot.ai" for the global site
+  :key "your-api-key"
+  :stream t ;; optionally enable streaming
+  :models '(kimi-latest kimi-k2-0711-preview)
+  :request-params '(:tools [(:type "builtin_function" :function (:name "$web_search"))]))
 #+end_src
 
 Now the chat should be able to automatically use search. Try "what's new today" and you should expect the up-to-date news in response.
