@@ -1798,7 +1798,9 @@ setting up the buffer."
                                     display-buffer-use-some-window)
                                    (body-function . ,#'select-window))))
                (cond ((commandp callback) (call-interactively callback))
-                     ((functionp callback) (funcall callback))))))
+                     ((functionp callback) (funcall callback)))
+               (with-current-buffer orig-buf
+                 (call-interactively #'gptel-menu)))))
         (use-local-map
          (make-composed-keymap
           (define-keymap
