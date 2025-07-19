@@ -1840,6 +1840,43 @@ used only for grouping in gptel's UI.  Defaults to \"misc\".
 CONFIRM: Whether the tool call should wait for the user to run
 it.  If true, the user will be prompted with the proposed tool
 call, which can be examined, accepted, deferred or canceled.
+Can also be a function that receives the same arguments as FUNCTION
+and returns true if the user should be prompted.
+
+For example, to not prompt for user confirmation when creating files
+in the current working directory but in all other directories:
+
+  (gptel-make-tool
+   :name \"create_file\"
+   :description \"Create a new file with the specified content\"
+   :confirm  (lambda (&rest args)
+               (cl-destructuring-bind (path filename content)
+                   args
+                 (not (my-filepath-within-current-directory-p path))))
+   :function (lambda (path filename content)
+               (let ((full-path (expand-file-name filename path)))
+                 (with-temp-buffer
+                   (insert content)
+                   (write-file full-path))
+                 (format \"Created file %s in %s\" filename path)))
+   :args (list '(:name \"path\"
+  	             :type string
+  	             :description \"The directory where to create the file\")
+               '(:name \"filename\"
+  	             :type string
+  	             :description \"The name of the file to create\")
+               '(:name \"content\"
+  	             :type string
+  	             :description \"The content to write to the file\"))
+   :category \"filesystem\")
+
+  (defun my-filepath-within-current-directory-p (filepath)
+    \"Return t if FILEPATH is within the current working directory or its subdirectories.
+    FILEPATH can be relative or absolute, and may or may not end in a slash.\"
+    (let* ((current-dir-truename (file-truename (file-name-as-directory default-directory)))
+           (filepath-truename (file-truename (expand-file-name filepath)))
+           (filepath-dir-truename (file-name-as-directory (file-name-directory filepath-truename))))
+      (string-prefix-p current-dir-truename filepath-dir-truename)))
 
 INCLUDE: Whether the tool results should be included as part of
 the LLM output.  This is useful for logging and as context for
@@ -2318,7 +2355,10 @@ Run post-response hooks."
                       (gptel-tool-args tool-spec)))
                ;; Check if tool requires confirmation
                (if (and gptel-confirm-tool-calls (or (eq gptel-confirm-tool-calls t)
-                                                     (gptel-tool-confirm tool-spec)))
+                                                     (let ((confirm (gptel-tool-confirm tool-spec)))
+                                                       (if (functionp confirm)
+                                                           (apply confirm arg-values)
+                                                         confirm))))
                    (push (list tool-spec arg-values process-tool-result)
                          pending-calls)
                  ;; If not, run the tool
