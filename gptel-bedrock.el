@@ -36,7 +36,7 @@
 (cl-defstruct (gptel-bedrock (:constructor gptel--make-bedrock)
                              (:copier nil)
                              (:include gptel-backend))
-  model-region)
+  model-region api-key)
 
 (defconst gptel-bedrock--prompt-type
   ;; For documentation purposes only -- this describes the type of prompt objects that get passed
@@ -513,22 +513,24 @@ Non-nil CLEAR-CACHE will refresh credentials."
        (gptel-bedrock--fetch-aws-profile-credentials profile t))
       (t (user-error "AWS credentials expired for profile: %s" profile)))))
 
-(defun gptel-bedrock--get-credentials ()
+(defun gptel-bedrock--get-credentials (&optional backend)
   "Return the AWS credentials to use for the request.
 
 Returns a list of 2-3 elements, depending on whether a session
 token is needed, with this form: (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
-AWS_SESSION_TOKEN).
+AWS_SESSION_TOKEN). If BACKEND has an API key, returns (:api-key API_KEY).
 
 Convenient to use with `cl-multiple-value-bind'"
-  (let ((key-id (getenv "AWS_ACCESS_KEY_ID"))
-        (secret-key (getenv "AWS_SECRET_ACCESS_KEY"))
-        (token (getenv "AWS_SESSION_TOKEN"))
-	(profile (getenv "AWS_PROFILE")))
-    (cond
-      ((and key-id secret-key) (cl-values key-id secret-key token))
-      ((and profile) (gptel-bedrock--fetch-aws-profile-credentials profile))
-      (t (user-error "Missing AWS credentials; currently only environment variables are supported")))))
+  (if (and backend (gptel-bedrock-api-key backend))
+      (cl-values :api-key (gptel-bedrock-api-key backend))
+    (let ((key-id (getenv "AWS_ACCESS_KEY_ID"))
+          (secret-key (getenv "AWS_SECRET_ACCESS_KEY"))
+          (token (getenv "AWS_SESSION_TOKEN"))
+  	  (profile (getenv "AWS_PROFILE")))
+      (cond
+        ((and key-id secret-key) (cl-values key-id secret-key token))
+        ((and profile) (gptel-bedrock--fetch-aws-profile-credentials profile))
+        (t (user-error "Missing AWS credentials; currently only environment variables are supported"))))))
 
 (defvar gptel-bedrock--model-ids
   ;; https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
@@ -577,18 +579,23 @@ REGION is one of apac, eu or us."
    (or (alist-get model gptel-bedrock--model-ids nil nil #'eq)
        (error "Unknown Bedrock model: %s" model))))
 
-(defun gptel-bedrock--curl-args (region)
-  "Generate the curl arguments to get a bedrock request signed for use in REGION."
+(defun gptel-bedrock--curl-args (region &optional backend)
+  "Generate the curl arguments to get a bedrock request signed for use in REGION.
+If BACKEND is provided and has an API key, use Bearer authentication instead."
   ;; https://curl.se/docs/manpage.html#--aws-sigv4
-  (cl-multiple-value-bind (key-id secret token) (gptel-bedrock--get-credentials)
+  (cl-multiple-value-bind (key-id-or-type secret token) (gptel-bedrock--get-credentials backend)
     (nconc
-     (list
-      "--user" (format "%s:%s" key-id secret)
-      "--aws-sigv4" (format "aws:amz:%s:bedrock" region))
+     (if (eq key-id-or-type :api-key)
+         ;; Use Bearer token authentication for API keys
+         (list "-H" (format "Authorization: Bearer %s" secret))
+       ;; Use AWS SigV4 authentication for traditional credentials
+       (list
+        "--user" (format "%s:%s" key-id-or-type secret)
+        "--aws-sigv4" (format "aws:amz:%s:bedrock" region)))
      (unless (memq system-type '(windows-nt ms-dos))
        ;; Without this curl swallows the output
        (list "--output" "/dev/stdout"))
-     (when token
+     (when (and token (not (eq key-id-or-type :api-key)))
        (list (format "-Hx-amz-security-token: %s" token))))))
 
 (defun gptel-bedrock--curl-version ()
@@ -606,6 +613,7 @@ REGION is one of apac, eu or us."
 	  (model-region nil)
           (stream nil)
 	  curl-args
+          api-key
           (protocol "https"))
   "Register an AWS Bedrock backend for gptel with NAME.
 
@@ -615,6 +623,7 @@ REGION - AWS region name (e.g. \"us-east-1\")
 MODELS - The list of models supported by this backend
 MODEL-REGION - one of apac, eu, us or nil
 CURL-ARGS - additional curl args
+API-KEY - AWS Bedrock API key for authentication (alternative to AWS credentials)
 STREAM - Whether to use streaming responses or not."
   (declare (indent 1))
   (unless (and gptel-use-curl (version<= "8.9" (gptel-bedrock--curl-version)))
@@ -628,11 +637,12 @@ STREAM - Whether to use streaming responses or not."
            :header nil           ; x-amz-security-token is set in curl-args if needed
            :models (gptel--process-models models)
 	   :model-region model-region
+           :api-key api-key
            :protocol protocol
            :endpoint "" ; Url is dynamically constructed based on other args
            :stream stream
            :coding-system (and stream 'binary)
-           :curl-args (lambda () (append curl-args (gptel-bedrock--curl-args region)))
+           :curl-args (lambda () (append curl-args (gptel-bedrock--curl-args region gptel-backend)))
            :url
            (lambda ()
              (concat protocol "://" host
