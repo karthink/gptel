@@ -604,8 +604,7 @@ REGION is one of apac, eu or us."
           region
           (models gptel--bedrock-models)
 	  (model-region nil)
-          (stream nil)
-	  curl-args
+          stream curl-args request-params
           (protocol "https"))
   "Register an AWS Bedrock backend for gptel with NAME.
 
@@ -615,7 +614,9 @@ REGION - AWS region name (e.g. \"us-east-1\")
 MODELS - The list of models supported by this backend
 MODEL-REGION - one of apac, eu, us or nil
 CURL-ARGS - additional curl args
-STREAM - Whether to use streaming responses or not."
+STREAM - Whether to use streaming responses or not.
+REQUEST-PARAMS - a plist of additional HTTP request
+parameters (as plist keys) and values supported by the API."
   (declare (indent 1))
   (unless (and gptel-use-curl (version<= "8.9" (gptel-bedrock--curl-version)))
     (error "Bedrock-backend requires curl >= 8.9, but gptel-use-curl := %s, curl-version := %s"
@@ -633,12 +634,12 @@ STREAM - Whether to use streaming responses or not."
            :stream stream
            :coding-system (and stream 'binary)
            :curl-args (lambda () (append curl-args (gptel-bedrock--curl-args region)))
+           :request-params request-params
            :url
            (lambda ()
              (concat protocol "://" host
                      "/model/" (gptel-bedrock--get-model-id gptel-model model-region)
-                     "/" (if stream "converse-stream" "converse")))
-           ))))
+                     "/" (if stream "converse-stream" "converse")))))))
 
 (provide 'gptel-bedrock)
 ;;; gptel-bedrock.el ends here
