@@ -2665,8 +2665,7 @@ Initiate the request when done."
         (when (and gptel-use-tools gptel-tools)
           (plist-put info :tools gptel-tools))
         (plist-put info :data
-                   (gptel--request-data gptel-backend full-prompt))
-        (run-hooks 'gptel-augment-post-modify-hook))
+                   (gptel--request-data gptel-backend full-prompt)))
       (kill-buffer (current-buffer)))
     ;; INIT -> WAIT
     (unless (plist-get info :dry-run) (gptel--fsm-transition fsm))
@@ -2729,6 +2728,7 @@ waiting for the response."
       (message "Querying %s..."
                (thread-first (gptel-fsm-info fsm)
                              (plist-get :backend)
+                             (or gptel-backend)
                              (gptel-backend-name))))
     (gptel--update-status " Waiting..." 'warning)))
 
