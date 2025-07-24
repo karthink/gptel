@@ -1167,6 +1167,12 @@ gptel provides a few powerful, general purpose and flexible commands.  You can d
 | =gptel-org-set-properties= | Write gptel configuration as Org properties, for per-heading chat configuration.        |
 |----------------------------+-----------------------------------------------------------------------------------------|
 
+|------------------+----------------------------------------------------------------------------------------------------------|
+| *GitHub Copilot* |                                                                                                          |
+|------------------+----------------------------------------------------------------------------------------------------------|
+| =gptel-gh-login= | Allows you to interactively to login.This will prompt you to authorize in a browser and store the token. |
+|------------------+----------------------------------------------------------------------------------------------------------|
+
 *** In any buffer:
 
 1. Call =M-x gptel-send= to send the text up to the cursor. The response will be inserted below.  Continue the conversation by typing below the response.
