@@ -237,6 +237,12 @@ If your browser does not open automatically, browse to %s."
       (gptel--gh-save gptel-gh-github-token-file)
       (setf (gptel--gh-github-token gptel-backend)))))
 
+(defun gptel-gh-login ()
+  "Login to Github Copilot.
+This will prompt you to authorize in a browser and store the token."
+  (interactive)
+  (gptel--gh-login))
+
 (defun gptel--gh-renew-token ()
   "Renew session token."
   (let ((token
