@@ -243,12 +243,12 @@ If your browser does not open automatically, browse to %s."
        (not (string-empty-p (gptel--gh-github-token gptel-backend)))))
 
 (defun gptel-gh-login ()
-  "Login to Github Copilot API.
+  "Login to GitHub Copilot API.
 This will prompt you to authorize in a browser and store the token."
   (interactive)
   (gptel--gh-login)
   (if (not (gptel--gh-logged-in-p))
-      (user-error "Error: You might not have access to Github Copilot Chat!")
+      (user-error "Error: You might not have access to GitHub Copilot Chat!")
     (message "Successfully logged in to GitHub Copilot")))
 
 (defun gptel--gh-renew-token ()
@@ -263,7 +263,7 @@ This will prompt you to authorize in a browser and store the token."
     (if (not (plist-get token :token))
         (progn
           (setf (gptel--gh-github-token gptel-backend) nil)
-          (user-error "Error: You might not have access to Github Copilot Chat!"))
+          (user-error "Error: You might not have access to GitHub Copilot Chat!"))
       (thread-last
         (gptel--gh-save gptel-gh-token-file token)
         (setf (gptel--gh-token gptel-backend))))))
