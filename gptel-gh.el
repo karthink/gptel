@@ -237,11 +237,19 @@ If your browser does not open automatically, browse to %s."
       (gptel--gh-save gptel-gh-github-token-file)
       (setf (gptel--gh-github-token gptel-backend)))))
 
+(defun gptel--gh-logged-in-p ()
+  "Return non-nil if the user is logged in to GitHub Copilot."
+  (and (gptel--gh-github-token gptel-backend)
+       (not (string-empty-p (gptel--gh-github-token gptel-backend)))))
+
 (defun gptel-gh-login ()
-  "Login to Github Copilot.
+  "Login to Github Copilot API.
 This will prompt you to authorize in a browser and store the token."
   (interactive)
-  (gptel--gh-login))
+  (gptel--gh-login)
+  (if (not (gptel--gh-logged-in-p))
+      (user-error "Error: You might not have access to Github Copilot Chat!")
+    (message "Successfully logged in to GitHub Copilot")))
 
 (defun gptel--gh-renew-token ()
   "Renew session token."
