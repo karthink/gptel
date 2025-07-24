@@ -59,13 +59,22 @@
 
 (cl-defmethod gptel--request-data ((backend gptel-bedrock) prompts)
   "Prepare request data for AWS Bedrock BACKEND from PROMPTS."
-  (nconc
-   `(:messages [,@prompts] :inferenceConfig (:maxTokens ,(or gptel-max-tokens 500)))
-   (when gptel--system-message `(:system [(:text ,gptel--system-message)]))
-   (when gptel-temperature `(:temperature ,gptel-temperature))
-   (when (and gptel-use-tools gptel-tools)
-     `(:toolConfig (:toolChoice ,(if (eq gptel-use-tools 'force) '(:any '()) '(:auto '()))
-                    :tools ,(gptel--parse-tools backend gptel-tools))))))
+  ;; First, build the core Bedrock request data structure.
+  (let ((base-request-data
+         (nconc
+          `(:messages [,@prompts] :inferenceConfig (:maxTokens ,(or gptel-max-tokens 500)))
+          (when gptel--system-message `(:system [(:text ,gptel--system-message)]))
+          (when gptel-temperature `(:temperature ,gptel-temperature))
+          (when (and gptel-use-tools gptel-tools)
+            `(:toolConfig (:toolChoice ,(if (eq gptel-use-tools 'force) '(:any '()) '(:auto '()))
+                           :tools ,(gptel--parse-tools backend gptel-tools)))))))
+
+    ;; Finally, merge all potential :request-params sources.
+    (gptel--merge-plists
+     base-request-data               ; The core data we just built
+     gptel--request-params           ; Global/buffer-local gptel--request-params
+     (gptel-backend-request-params backend) ; From `gptel-make-bedrock` call
+     (gptel--model-request-params gptel-model)))) ; From the model's properties
 
 (cl-defmethod gptel--parse-tools ((_backend gptel-bedrock) tools)
   "Parse TOOLS and return a list of ToolSpecification objects.
