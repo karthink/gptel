@@ -273,7 +273,7 @@ Then we need a session token."
     (let ((token (gptel--gh-restore gptel-gh-github-token-file)))
       (if token
           (setf (gptel--gh-github-token gptel-backend) token)
-        (gptel--gh-login))))
+        (gptel-gh-login))))
 
   (when (null (gptel--gh-token gptel-backend))
     ;; try to load token from `gptel-gh-token-file'
