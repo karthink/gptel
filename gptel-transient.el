@@ -1779,7 +1779,8 @@ setting up the buffer."
         (set-marker msg-start (point))
         (save-excursion
           ;; If it's a list, insert only the system message part
-          (insert (or initial (car-safe (gptel--parse-directive directive 'raw))))
+          ;; If all is nil, insert "" at least
+          (insert (or initial (car-safe (gptel--parse-directive directive 'raw)) ""))
           (push-mark nil 'nomsg))
         (and (functionp setup) (funcall setup)))
       (display-buffer (current-buffer)
