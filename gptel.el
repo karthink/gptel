@@ -817,17 +817,16 @@ always handled separately."
 (defcustom gptel-track-media nil
   "Whether supported media in chat buffers should be sent.
 
-When the active `gptel-model' supports it, gptel can send images
-or other media from links in chat buffers to the LLM.  To use
-this, the following steps are required.
+When the active `gptel-model' supports it, gptel can send text, images
+or other media from links in chat buffers to the LLM.  To use this, the
+following steps are required.
 
 1. `gptel-track-media' (this variable) should be non-nil
 
-2. The LLM should provide vision or document support.  Currently,
-only the OpenAI, Anthropic and Ollama APIs are supported.  See
-the documentation of `gptel-make-openai', `gptel-make-anthropic'
-and `gptel-make-ollama' resp. for details on how to specify media
-support for models.
+2. The LLM should provide vision or document support.  (See
+`gptel-make-openai', `gptel-make-anthropic', `gptel-make-ollama' or
+`gptel-make-gemini' for details on how to specify media support for
+models.)
 
 3. Only \"standalone\" links in chat buffers are considered.
 These are links on their own line with no surrounding text.
