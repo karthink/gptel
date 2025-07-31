@@ -151,38 +151,34 @@ Meant to be called when `gptel-menu' is active."
       "\n"))
     ov))
 
-(defconst gptel--read-with-prefix-help
+(defun gptel--read-with-prefix-help (s)
+  "Show help for TAB key in `read-with-prefix-help'."
   (concat
    (propertize "(" 'face 'default)
    (propertize "TAB" 'face 'help-key-binding)
-   (propertize ": expand, " 'face 'default)
-   (propertize "M-n" 'face 'help-key-binding)
-   (propertize "/" 'face 'default)
-   (propertize "M-p" 'face 'help-key-binding)
-   (propertize ": next/previous) " 'face 'default))
-  "Help string ;TODO: ")
+   (propertize (concat ": " s ") ") 'face 'default)))
 
 (defun gptel--read-with-prefix (prefix)
   "Show string PREFIX in the minibuffer after the minibuffer prompt.
 
 PREFIX is shown in an overlay.  Repeated calls to this function
-will toggle its visibility state."
+will toggle its visibility state (one line, maximum, none)."
   (unless (minibufferp)
     (user-error "This command is intended to be used in the minibuffer."))
+  (set (make-local-variable 'resize-mini-windows) t)
   (let* ((update
          (lambda (ov s)
-           (overlay-put
-            ov 'after-string
-            (and s (concat (propertize (concat "\n" s "\n") 'face 'shadow)
-                           (make-separator-line))))))
-         (max-width (- (window-width) (minibuffer-prompt-end)))
+           (overlay-put ov 'before-string
+			(and s (propertize (concat s (propertize "\n"'face '(shadow default)))
+					   'rear-nonsticky t 'front-nonsticky t)))))
+         (max (or max-mini-window-height 0.4))
+         (max-width (window-max-chars-per-line))
          (max (or max-mini-window-height 0.4))
          (max-height (- (or (and (natnump max) max)
                             (floor (* max (frame-height))))
-                        5)))
+                        5))
+	 (prefix (string-replace "\n" "⏎" prefix)))
     (when (and prefix (not (string-empty-p prefix)) (> max-height 1))
-      (unless visual-line-mode (visual-line-mode 1))
-      (goto-char (minibuffer-prompt-end))
       (pcase-let ((`(,prop . ,ov)
                    (get-char-property-and-overlay
                     (point-min) 'gptel)))
@@ -191,33 +187,35 @@ will toggle its visibility state."
                     (point-min) (minibuffer-prompt-end) nil t)))
         (pcase prop
           ('partial
-           (if (> (length prefix) max-width)
-               (progn
-                 (overlay-put ov 'gptel 'prefix)
-                 (let ((disp-size
-                        (cl-loop for char across prefix
-                                 for idx upfrom 0
-                                 with n = 0 with max-length = (* max-height max-width)
-                                 if (eq char ?\n) do (cl-incf n)
-                                 if (> n max-height) return idx
-                                 if (> idx max-length)
-                                 return idx
-                                 finally return nil)))
-                   (funcall update ov
-                            (if disp-size
-                                (truncate-string-to-width
-                                 prefix disp-size  nil nil 'ellipsis)
-                              prefix))))
-             (overlay-put ov 'gptel 'hide)
-             (funcall update ov nil)))
-          ('prefix (overlay-put ov 'gptel 'hide)
-                 (funcall update ov nil))
-          (_ (overlay-put ov 'gptel 'partial)
-             (funcall update ov (truncate-string-to-width
-                                 prefix max-width nil nil
-                                 'ellipsis))))))))
-
-(defun gptel--transient-read-number (prompt _initial-input history)
+	   (overlay-put ov 'gptel 'one-line)
+	   (funcall update ov
+		    (with-temp-buffer
+		      (insert (gptel--read-with-prefix-help "shrink"))
+		      (let ((b (point)))
+			    (insert prefix)
+			    (set-text-properties b (point-max) '(face (shadow default))))
+		      (goto-char (point-min))
+		      (let ((fill-column max-width))
+			(fill-region (point) (point-max)))
+		      (goto-line (min max-height (line-number-at-pos (point-max))))
+		      (concat (buffer-substring 1 (point))
+			      (propertize (truncate-string-to-width
+					   (buffer-substring (point) (point-max))
+					   (1- max-width) nil
+					   nil
+					   t) 'face '(shadow default))))))
+          (_ (funcall update ov
+		      (if (>= (length prefix) max-width)
+			  (let ((he (gptel--read-with-prefix-help "expand")))
+			    (overlay-put ov 'gptel 'partial)
+			    (concat he (propertize (truncate-string-to-width
+						    prefix
+						    (- max-width (length he))
+						    nil nil t)
+						   'face '(shadow default))))
+			(overlay-put ov 'gptel 'hide)
+			(propertize prefix 'face '(shadow default))))))))))
+(defun gptel--transient-read-number (prompt initial-input history)
   "Read a numeric value from the minibuffer.
 
 PROMPT, _INITIAL-INPUT and HISTORY are as in the transient reader
@@ -245,7 +243,7 @@ Handle formatting for system messages when the active
               (propertize "]" 'face 'transient-heading))
     (if message
         (gptel--describe-directive
-         message (max (- (window-width) 12) 14) "⮐ ")
+         message (max (- (window-width) 12) 14) "⏎")
       "[No system message set]")))
 
 (defun gptel--tools-init-value (obj)
@@ -397,7 +395,7 @@ which see."
 				       (len (length val)))
 				 (ptv (concat
                                        "\"" (string-replace
-					     "\n" "⮐"
+					     "\n" "⏎"
 					     (truncate-string-to-width
 					      val 20 nil nil t))
 				       "\"" (when (> len 20)
@@ -848,7 +846,7 @@ If EXTERNAL is non-nil, include external sources of directives."
                           (concat "(" (gptel--describe-directive prompt (- width 30)) ")")
                           'face 'shadow))
                  `(lambda () (interactive)
-                    (message "%s: %s" ,msg ,(gptel--describe-directive prompt 100 "⮐ "))
+                    (message "%s: %s" ,msg ,(gptel--describe-directive prompt 100 "⏎"))
                     (gptel--set-with-scope ',sym ',prompt gptel--set-buffer-locally))
 	         :transient 'transient--do-return)
            into prompt-suffixes
@@ -1324,19 +1322,18 @@ Or in an extended conversation:
   :display-nil 'none
   :overlay nil
   :argument ":"
-  :prompt (concat "Add instructions for next request only "
-                  gptel--read-with-prefix-help)
+  :prompt "Instruction for next request: "
   :reader (lambda (prompt initial history)
             (let* ((directive
                     (car-safe (gptel--parse-directive gptel--system-message 'raw)))
                    (cycle-prefix (lambda () (interactive)
-                                   (gptel--read-with-prefix directive)))
+				   (gptel--read-with-prefix directive)))
                    (minibuffer-local-map
                     (make-composed-keymap
                      (define-keymap "TAB" cycle-prefix "<tab>" cycle-prefix)
                      minibuffer-local-map))
                    (extra (minibuffer-with-setup-hook cycle-prefix
-                            (read-string prompt (or initial " ") history))))
+			    (read-string prompt nil history (or initial)))))
               (unless (string-empty-p extra) extra)))
   :format " %k %d %v"
   :key "d"
