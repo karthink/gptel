@@ -20,7 +20,6 @@
         (gptel-backend-models (gptel-get-backend "Gemini")))
   #+end_src
 
-
 ** New models and backends
 
 - Add support for ~gemini-2.5-pro~, ~gemini-2.5-flash~,
@@ -62,6 +61,11 @@
 
 - gptel now handles Ollama models that return both reasoning content
   and tool calls in a single request.
+
+- ~gptel-make-bedrock~ now accepts an optional ~:profile~ parameter to specify
+  an AWS profile directly. A profile set this way overrides any AWS
+  authentication related environment variables, providing a clean method for
+  configuring Bedrock backends without relying on environment variables.
 
 * 0.9.8.5 2025-06-11
 
