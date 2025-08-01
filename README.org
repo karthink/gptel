@@ -1053,14 +1053,17 @@ Register a backend with
   ;; Model region for cross-region inference profiles. Required for models such
   ;; as Claude without on-demand throughput support. One of 'apac, 'eu or 'us.
   ;; https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-use.html
-  :model-region 'apac)
+  :model-region 'apac
+  ;; optionally specify AWS profile
+  :profile "my-aws-profile")
 #+end_src
 
-The Bedrock backend gets your AWS credentials from the environment variables. It expects to find either
-~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~, ~AWS_SESSION_TOKEN~ (optional), or if present, can use ~AWS_PROFILE~ to get these directly from the ~aws~ cli.
+The Bedrock backend resolves AWS credentials using the following priority:
+1. An AWS profile specified via the ~:profile~ parameter.
+2. Direct credentials from the ~AWS_ACCESS_KEY_ID~ and ~AWS_SECRET_ACCESS_KEY~ environment variables. The ~AWS_SESSION_TOKEN~ variable is also used if available.
+3. An AWS profile from the ~AWS_PROFILE~ environment variable.
 
-NOTE: The Bedrock backend needs curl >= 8.5 in order for the sigv4 signing to work properly,
-https://github.com/curl/curl/issues/11794
+NOTE: The Bedrock backend needs curl >= 8.5 in order for the sigv4 signing to work properly, https://github.com/curl/curl/issues/11794
 
 An error will be signalled if ~gptel-curl~ is ~NIL~.
 
@@ -1082,7 +1085,9 @@ The above code makes the backend available to select.  If you want it to be the 
         ;; Model region for cross-region inference profiles. Required for models such
         ;; as Claude without on-demand throughput support. One of 'apac, 'eu or 'us.
         ;; https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-use.html
-        :model-region 'apac))
+        :model-region 'apac
+        ;; optionally specify AWS profile
+        :profile "my-aws-profile"))
 #+end_src
 
 #+html: </details>
