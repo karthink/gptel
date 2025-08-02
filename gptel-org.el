@@ -247,7 +247,10 @@ depend on the value of `gptel-org-branching-context', which see."
               (goto-char (point-max))
               (gptel-org--unescape-tool-results)
               (gptel-org--strip-block-headers)
-              (when gptel-org-ignore-elements (gptel-org--strip-elements))
+              (when-let* ((gptel-org-ignore-elements ;not copied by -with-buffer-copy
+                           (buffer-local-value 'gptel-org-ignore-elements
+                                               org-buf)))
+                (gptel-org--strip-elements))
               (setq org-complex-heading-regexp ;For org-element-context to run
                     (buffer-local-value 'org-complex-heading-regexp org-buf))
               (current-buffer))))
@@ -257,7 +260,10 @@ depend on the value of `gptel-org-branching-context', which see."
         (gptel--with-buffer-copy org-buf beg prompt-end
           (gptel-org--unescape-tool-results)
           (gptel-org--strip-block-headers)
-          (when gptel-org-ignore-elements (gptel-org--strip-elements))
+          (when-let* ((gptel-org-ignore-elements ;not copied by -with-buffer-copy
+                       (buffer-local-value 'gptel-org-ignore-elements
+                                           org-buf)))
+                (gptel-org--strip-elements))
           (setq org-complex-heading-regexp ;For org-element-context to run
                 (buffer-local-value 'org-complex-heading-regexp org-buf))
           (current-buffer))))))
