@@ -1445,6 +1445,16 @@ file."
 ;; NOTE: It's not clear that this is the best strategy:
 (add-to-list 'text-property-default-nonsticky '(gptel . t))
 
+(defun gptel--inherit-stickiness (beg end pre)
+  "Mark any change to an LLM response region as a response.
+
+Intended to be added to `after-change-functions' in gptel chat buffers,
+which see for BEG, END and PRE."
+  (and (= pre 0) (< end (point-max))
+       (and-let* ((val (get-text-property end 'gptel)))
+         (add-text-properties
+          beg end `(gptel ,val front-sticky (gptel))))))
+
 ;;;###autoload
 (define-minor-mode gptel-mode
   "Minor mode for interacting with LLMs."
@@ -1459,6 +1469,7 @@ file."
           (gptel-mode -1)
           (user-error (format "`gptel-mode' is not supported in `%s'." major-mode)))
         (add-hook 'before-save-hook #'gptel--save-state nil t)
+        (add-hook 'after-change-functions 'gptel--inherit-stickiness nil t)
         (gptel--prettify-preset)
         (when (derived-mode-p 'org-mode)
           ;; Work around bug in `org-fontify-extend-region'.
@@ -1553,6 +1564,7 @@ file."
                          (buttonize (gptel--model-name gptel-model)
                             (lambda (&rest _) (gptel-menu))))))))
     (remove-hook 'before-save-hook #'gptel--save-state t)
+    (remove-hook 'after-change-functions 'gptel--inherit-stickiness t)
     (gptel--prettify-preset)
     (if gptel-use-header-line
         (setq header-line-format gptel--old-header-line
