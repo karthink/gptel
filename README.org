@@ -1057,7 +1057,16 @@ Register a backend with
 #+end_src
 
 The Bedrock backend gets your AWS credentials from the environment variables. It expects to find either
-~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~, ~AWS_SESSION_TOKEN~ (optional), or if present, can use ~AWS_PROFILE~ to get these directly from the ~aws~ cli.
+~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~, ~AWS_SESSION_TOKEN~ (optional), or if present, can use ~AWS_PROFILE~ to get these directly from the ~aws~ cli. You can also make use of [[https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html][Bedrock API keys]] by setting the =:bedrock-api-key= parameter:
+
+#+begin_src emacs-lisp
+(gptel-make-bedrock "AWS"
+  :stream t
+  :region "ap-northeast-1"
+  :models '(claude-sonnet-4-20250514)
+  :model-region 'apac
+  :bedrock-api-key "my-key")
+#+end_src
 
 NOTE: The Bedrock backend needs curl >= 8.5 in order for the sigv4 signing to work properly,
 https://github.com/curl/curl/issues/11794
