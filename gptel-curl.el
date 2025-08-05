@@ -60,11 +60,44 @@ See `gptel-backend'."
       "-XPOST" "-y7200" "-Y1" "-D-"))
   "Arguments always passed to Curl for gptel queries.")
 
+(defun gptel--ensure-utf8-strings (data)
+  "Recursively process DATA to ensure all strings are properly UTF-8 encoded.
+Handles lists, vectors, alists, plists, and strings with raw byte sequences.
+
+This function solves an issue with non-ASCII characters (like accented characters)
+in messages when `gptel-include-tool-results' is set to t. Without this processing,
+raw UTF-8 byte sequences (like \\303\\251 for 'é') would cause JSON encoding to fail
+with a 'wrong-type-argument json-value-p' error."
+  (cond
+   ;; Handle strings - decode them if they contain UTF-8 byte sequences
+   ((stringp data)
+    (condition-case nil
+        (decode-coding-string data 'utf-8)
+      (error data)))
+
+   ;; Handle vectors
+   ((vectorp data)
+    (let ((i 0)
+          (len (length data))
+          (new-vec (copy-sequence data)))
+      (while (< i len)
+        (aset new-vec i (gptel--ensure-utf8-strings (aref data i)))
+        (setq i (1+ i)))
+      new-vec))
+
+   ;; Handle cons cells (lists, alists, and other structures)
+   ((consp data)
+    (cons (gptel--ensure-utf8-strings (car data))
+          (gptel--ensure-utf8-strings (cdr data))))
+
+   ;; Return everything else unchanged
+   (t data)))
+
 (defun gptel-curl--get-args (info token)
   "Produce list of arguments for calling Curl.
 
 REQUEST-DATA is the data to send, TOKEN is a unique identifier."
-  (let* ((data (plist-get info :data))
+  (let* ((data (gptel--ensure-utf8-strings (plist-get info :data)))
          ;; We have to let-bind the following two variables since their dynamic
          ;; values are used for key lookup and url resoloution
          (gptel-backend (plist-get info :backend))
@@ -83,8 +116,9 @@ REQUEST-DATA is the data to send, TOKEN is a unique identifier."
     (when gptel-log-level
       (when (eq gptel-log-level 'debug)
         (gptel--log (gptel--json-encode
-                     (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
-                             headers))
+                     (gptel--ensure-utf8-strings
+                      (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
+                             headers)))
                     "request headers"))
       (gptel--log data-json "request body"))
     (append
@@ -205,11 +239,14 @@ PROC-INFO is the plist containing process metadata."
   (with-current-buffer proc-buf
     (save-excursion
       (goto-char (point-min))
-      (when (re-search-forward "?\n?\n" nil t)
+      (when (re-search-forward "
+?\n
+?\n" nil t)
         (when (eq gptel-log-level 'debug)
           (gptel--log (gptel--json-encode
-                       (buffer-substring-no-properties
-                        (point-min) (1- (point))))
+                       (gptel--ensure-utf8-strings
+                        (buffer-substring-no-properties
+                         (point-min) (1- (point)))))
                       "response headers"))
         (let ((p (point)))
           (when (search-forward (plist-get proc-info :token) nil t)
@@ -308,7 +345,7 @@ Optional RAW disables text properties and transformation."
         (goto-char (process-mark process))
         (insert output)
         (set-marker (process-mark process) (point)))
-      
+
       ;; Find HTTP status
       (unless (plist-get proc-info :http-status)
         (save-excursion
@@ -323,7 +360,7 @@ Optional RAW disables text properties and transformation."
             (plist-put proc-info :http-status http-status)
             (plist-put proc-info :status (string-trim http-msg))
             (gptel--fsm-transition fsm))))
-      
+
       (when-let* ((http-msg (plist-get proc-info :status))
                   (http-status (plist-get proc-info :http-status)))
         ;; Find data chunk(s) and run callback

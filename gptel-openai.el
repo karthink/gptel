@@ -236,7 +236,7 @@ information if the stream contains it."
                           (plist-put info :partial_json (list (plist-get func :arguments)))
                           ;; NOTE: Do NOT use `push' for this, it prepends and we lose the reference
                           (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
-                      ;; old tool block continues, so continue collecting arguments in :partial_json 
+                      ;; old tool block continues, so continue collecting arguments in :partial_json
                       (push (plist-get func :arguments) (plist-get info :partial_json)))))
                 ;; Check for reasoning blocks, currently only used by Openrouter
                 (unless (eq (plist-get info :reasoning-block) 'done)
@@ -388,7 +388,7 @@ If the ID has the format used by a different backend, use as-is."
                 (list :type "function"
                       :id (plist-get call :id)
                       :function `( :name ,(plist-get call :name)
-                                   :arguments ,(gptel--json-encode (plist-get call :args))))))
+                                   :arguments ,(gptel--json-encode (gptel--ensure-utf8-strings (plist-get call :args)))))))
               full-prompt)
              (push (car (gptel--parse-tool-results backend (list (cdr entry)))) full-prompt))))
         (nreverse full-prompt))
@@ -414,7 +414,7 @@ If the ID has the format used by a different backend, use as-is."
                (condition-case nil
                    (let* ((tool-call (read (current-buffer)))
                           (name (plist-get tool-call :name))
-                          (arguments (gptel--json-encode (plist-get tool-call :args))))
+                          (arguments (gptel--json-encode (gptel--ensure-utf8-strings (plist-get tool-call :args)))))
                      (plist-put tool-call :id id)
                      (plist-put tool-call :result
                                 (string-trim (buffer-substring-no-properties

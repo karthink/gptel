@@ -109,7 +109,7 @@
 ;;   prompt/response.
 ;;
 ;; To use this in a dedicated buffer:
-;; 
+;;
 ;; - M-x gptel: Start a chat session.
 ;;
 ;; - In the chat session: Press `C-c RET' (`gptel-send') to send your prompt.
@@ -126,7 +126,7 @@
 ;;   (described next), or include them as links in Org or Markdown mode chat
 ;;   buffers.  Sending media is disabled by default, you can turn it on globally
 ;;   via `gptel-track-media', or locally in a chat buffer via the header line.
-;; 
+;;
 ;; Include more context with requests:
 ;;
 ;; If you want to provide the LLM with more context, you can add arbitrary
@@ -175,11 +175,11 @@
 ;;
 ;; - You can limit the conversation context to an Org heading with
 ;;   `gptel-org-set-topic'.
-;;   
+;;
 ;; - You can have branching conversations in Org mode, where each hierarchical
 ;;   outline path through the document is a separate conversation branch.
 ;;   See the variable `gptel-org-branching-context'.
-;;   
+;;
 ;; - You can declare the gptel model, backend, temperature, system message and
 ;;   other parameters as Org properties with the command
 ;;   `gptel-org-set-properties'.  gptel queries under the corresponding heading
@@ -1009,7 +1009,7 @@ Later plists in the sequence take precedence over earlier ones."
   "Retrieve URL synchronously with METHOD, DATA and HEADERS."
   (declare (indent 1))
   (let ((url-request-method (if (eq method'post) "POST" "GET"))
-        (url-request-data (encode-coding-string (gptel--json-encode data) 'utf-8))
+        (url-request-data (encode-coding-string (gptel--json-encode (gptel--ensure-utf8-strings data)) 'utf-8))
         (url-mime-accept-string "application/json")
         (url-request-extra-headers
          `(("content-type" . "application/json")
@@ -2318,7 +2318,7 @@ Run post-response hooks."
                  (if (equal name gptel--ersatz-json-tool) ;Could be a JSON response
                      ;; Handle structured JSON output supplied as tool call
                      (funcall (plist-get info :callback)
-                              (gptel--json-encode (plist-get tool-call :args))
+                              (gptel--json-encode (gptel--ensure-utf8-strings (plist-get tool-call :args)))
                               info)
                    (message "Unknown tool called by model: %s" name))
                (setq arg-values
@@ -2773,7 +2773,7 @@ JSON query instead of the Lisp structure gptel uses."
         (erase-buffer)
         (if (eq format 'json)
             (progn (fundamental-mode)
-                   (insert (gptel--json-encode request-data))
+                   (insert (gptel--json-encode (gptel--ensure-utf8-strings request-data)))
                    (json-pretty-print-buffer))
           (lisp-data-mode)
           (prin1 request-data)
@@ -3109,7 +3109,7 @@ the response is inserted into the current buffer after point."
                        #'gptel--insert-response)) ;default callback
          (url-request-data
           (encode-coding-string
-           (gptel--json-encode (plist-get info :data))
+           (gptel--json-encode (gptel--ensure-utf8-strings (plist-get info :data)))
            'utf-8)))
     (when (with-current-buffer (plist-get info :buffer)
             (and (derived-mode-p 'org-mode)
@@ -3119,8 +3119,9 @@ the response is inserted into the current buffer after point."
     (when gptel-log-level               ;logging
       (when (eq gptel-log-level 'debug)
         (gptel--log (gptel--json-encode
-                     (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
-                             url-request-extra-headers))
+                     (gptel--ensure-utf8-strings
+                      (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
+                              url-request-extra-headers)))
                     "request headers"))
       (gptel--log url-request-data "request body"))
     (let ((proc-buf
@@ -3184,7 +3185,7 @@ See `gptel-curl--get-response' for its contents.")
     (save-excursion
       (goto-char url-http-end-of-headers)
       (when (eq gptel-log-level 'debug)
-        (gptel--log (gptel--json-encode (buffer-substring-no-properties (point-min) (point)))
+        (gptel--log (gptel--json-encode (gptel--ensure-utf8-strings (buffer-substring-no-properties (point-min) (point))))
                     "response headers"))
       (gptel--log (buffer-substring-no-properties (point) (point-max))
                   "response body")))
