@@ -1200,6 +1200,8 @@ That's it. You can go back and edit previous prompts and responses if you want.
 
 The default mode is =markdown-mode= if available, else =text-mode=.  You can set =gptel-default-mode= to =org-mode= if desired.
 
+By default, a new window is created for the chat buffer and it can be changed to use current window by setting Chat UI option `(setq gptel-display-buffer-action '(display-buffer-same-window))`. 
+
 You can also define a "preset" bundle of options that are applied together, see [[#option-presets][Option presets]] below.
 
 #+html: <details><summary>
