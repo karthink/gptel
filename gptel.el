@@ -817,17 +817,16 @@ always handled separately."
 (defcustom gptel-track-media nil
   "Whether supported media in chat buffers should be sent.
 
-When the active `gptel-model' supports it, gptel can send images
-or other media from links in chat buffers to the LLM.  To use
-this, the following steps are required.
+When the active `gptel-model' supports it, gptel can send text, images
+or other media from links in chat buffers to the LLM.  To use this, the
+following steps are required.
 
 1. `gptel-track-media' (this variable) should be non-nil
 
-2. The LLM should provide vision or document support.  Currently,
-only the OpenAI, Anthropic and Ollama APIs are supported.  See
-the documentation of `gptel-make-openai', `gptel-make-anthropic'
-and `gptel-make-ollama' resp. for details on how to specify media
-support for models.
+2. The LLM should provide vision or document support.  (See
+`gptel-make-openai', `gptel-make-anthropic', `gptel-make-ollama' or
+`gptel-make-gemini' for details on how to specify media support for
+models.)
 
 3. Only \"standalone\" links in chat buffers are considered.
 These are links on their own line with no surrounding text.
@@ -1446,6 +1445,16 @@ file."
 ;; NOTE: It's not clear that this is the best strategy:
 (add-to-list 'text-property-default-nonsticky '(gptel . t))
 
+(defun gptel--inherit-stickiness (beg end pre)
+  "Mark any change to an LLM response region as a response.
+
+Intended to be added to `after-change-functions' in gptel chat buffers,
+which see for BEG, END and PRE."
+  (and (= pre 0) (< end (point-max))
+       (and-let* ((val (get-text-property end 'gptel)))
+         (add-text-properties
+          beg end `(gptel ,val front-sticky (gptel))))))
+
 ;;;###autoload
 (define-minor-mode gptel-mode
   "Minor mode for interacting with LLMs."
@@ -1460,6 +1469,7 @@ file."
           (gptel-mode -1)
           (user-error (format "`gptel-mode' is not supported in `%s'." major-mode)))
         (add-hook 'before-save-hook #'gptel--save-state nil t)
+        (add-hook 'after-change-functions 'gptel--inherit-stickiness nil t)
         (gptel--prettify-preset)
         (when (derived-mode-p 'org-mode)
           ;; Work around bug in `org-fontify-extend-region'.
@@ -1554,6 +1564,7 @@ file."
                          (buttonize (gptel--model-name gptel-model)
                             (lambda (&rest _) (gptel-menu))))))))
     (remove-hook 'before-save-hook #'gptel--save-state t)
+    (remove-hook 'after-change-functions 'gptel--inherit-stickiness t)
     (gptel--prettify-preset)
     (if gptel-use-header-line
         (setq header-line-format gptel--old-header-line
@@ -2665,8 +2676,7 @@ Initiate the request when done."
         (when (and gptel-use-tools gptel-tools)
           (plist-put info :tools gptel-tools))
         (plist-put info :data
-                   (gptel--request-data gptel-backend full-prompt))
-        (run-hooks 'gptel-augment-post-modify-hook))
+                   (gptel--request-data gptel-backend full-prompt)))
       (kill-buffer (current-buffer)))
     ;; INIT -> WAIT
     (unless (plist-get info :dry-run) (gptel--fsm-transition fsm))
@@ -2729,6 +2739,7 @@ waiting for the response."
       (message "Querying %s..."
                (thread-first (gptel-fsm-info fsm)
                              (plist-get :backend)
+                             (or gptel-backend)
                              (gptel-backend-name))))
     (gptel--update-status " Waiting..." 'warning)))
 
@@ -3686,8 +3697,8 @@ kill-ring."
 (defun gptel--apply-preset (preset &optional setter)
   "Apply gptel PRESET with SETTER.
 
-PRESET is the name of a preset, or a spec of the form
- (NAME :KEY1 VAL1 :KEY2 VAL2 ...).
+PRESET is the name of a preset, or a spec (plist) of the form
+ (:KEY1 VAL1 :KEY2 VAL2 ...).
 
 SETTER is the function used to set the gptel options.  It must accept
 two arguments, the symbol being set and the value to set it to.  It
@@ -3697,10 +3708,10 @@ example) apply the preset buffer-locally."
     (let ((spec (or (gptel-get-preset preset)
                     (user-error "gptel preset \"%s\": Cannot find preset."
                                 preset))))
-      (setq preset (cons preset spec))))
+      (setq preset spec)))
   (unless setter (setq setter #'set))
-  (when-let* ((func (plist-get (cdr preset) :pre))) (funcall func))
-  (when-let* ((parents (plist-get (cdr preset) :parents)))
+  (when-let* ((func (plist-get preset :pre))) (funcall func))
+  (when-let* ((parents (plist-get preset :parents)))
     (mapc #'gptel--apply-preset (ensure-list parents)))
   (map-do
    (lambda (key val)
@@ -3712,16 +3723,14 @@ example) apply the preset buffer-locally."
           (if (and (symbolp val) (not (functionp val)))
               (if-let* ((directive (alist-get val gptel-directives)))
                   (funcall setter sym directive)
-                (user-error "gptel preset \"%s\": Cannot find directive %s"
-                            (car preset) val))
+                (user-error "gptel preset: Cannot find directive %s" val))
             (funcall setter sym val))))
        (:backend
         (setq val (cl-etypecase val
                     (gptel-backend val)
                     (string (gptel-get-backend val))))
         (unless val
-          (user-error "gptel preset \"%s\": Cannot find backend %s."
-                      (car preset) val))
+          (user-error "gptel preset: Cannot find backend %s." val))
         (funcall setter 'gptel-backend val))
        (:tools                          ;TEMP Confirm this `:append' convention
         (let* ((append (when (eq (car-safe val) :append) (setq val (cdr val)) t))
@@ -3733,8 +3742,7 @@ example) apply the preset buffer-locally."
                                        (string (ignore-errors
                                                  (gptel-get-tool tool-name))))
                           do (unless tool
-                               (user-error "gptel preset \"%s\": Cannot find tool %s."
-                                           (car preset) val))
+                               (user-error "gptel preset: Cannot find tool %s." val))
                           collect tool))))
           (funcall setter 'gptel-tools ;append makes a copy of gptel-tools, intentional
                    (if append (delete-dups (append gptel-tools tools)) tools))))
@@ -3746,15 +3754,20 @@ example) apply the preset buffer-locally."
         (funcall setter sym val))
        (_ (display-warning
            '(gptel presets)
-           (format "gptel preset \"%s\": setting for %s not found, ignoring."
-                   (car preset) key)))))
-   (cdr preset))
-  (when-let* ((func (plist-get (cdr preset) :post))) (funcall func)))
+           (format "gptel preset: setting for %s not found, ignoring." key)))))
+   preset)
+  (when-let* ((func (plist-get preset :post))) (funcall func)))
 
 (defun gptel--preset-syms (preset)
   "Return a list of gptel variables (symbols) set by PRESET.
 
-PRESET is a spec (plist) of keys and values."
+PRESET is the name of a preset, or a spec (plist) of the form
+ (:KEY1 VAL1 :KEY2 VAL2 ...)."
+  (when (memq (type-of preset) '(string symbol))
+    (let ((spec (or (gptel-get-preset preset)
+                    (user-error "gptel preset \"%s\": Cannot find preset."
+                                preset))))
+      (setq preset spec)))
   (let* ((index preset)
          syms key val)
     (while index
@@ -3782,14 +3795,14 @@ PRESET is a spec (plist) of keys and values."
   "Run BODY with gptel preset NAME applied.
 
 This macro can be used to create `gptel-request' command with settings
-from a gptel preset applied.  NAME is the preset name, typically a
-symbol."
+from a gptel preset applied.
+
+NAME is the name of a preset, or a spec (plist) of the form
+ (:KEY1 VAL1 :KEY2 VAL2 ...).  It must be quoted."
   (declare (indent 1))
-  `(cl-progv (gptel--preset-syms
-              (gptel-get-preset ,(if (symbolp name) `',name name)))
-       nil
-     (gptel--apply-preset ,(if (symbolp name) `',name name))
-     ,@body))
+  `(cl-progv (gptel--preset-syms ,name) nil
+    (gptel--apply-preset ,name)
+    ,@body))
 
 ;;;; Presets in-buffer UI
 (defun gptel--transform-apply-preset (_fsm)
@@ -3807,7 +3820,7 @@ If the user prompt begins with @foo, the preset foo is applied."
                     (preset (or (gptel-get-preset (intern-soft name))
                                 (gptel-get-preset name))))
           (delete-region (match-beginning 0) (match-end 0))
-          (gptel--apply-preset (cons name preset)
+          (gptel--apply-preset preset
                                (lambda (sym val)
                                  (set (make-local-variable sym) val))))))))
 

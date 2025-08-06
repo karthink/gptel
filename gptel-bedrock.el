@@ -59,13 +59,22 @@
 
 (cl-defmethod gptel--request-data ((backend gptel-bedrock) prompts)
   "Prepare request data for AWS Bedrock BACKEND from PROMPTS."
-  (nconc
-   `(:messages [,@prompts] :inferenceConfig (:maxTokens ,(or gptel-max-tokens 500)))
-   (when gptel--system-message `(:system [(:text ,gptel--system-message)]))
-   (when gptel-temperature `(:temperature ,gptel-temperature))
-   (when (and gptel-use-tools gptel-tools)
-     `(:toolConfig (:toolChoice ,(if (eq gptel-use-tools 'force) '(:any '()) '(:auto '()))
-                    :tools ,(gptel--parse-tools backend gptel-tools))))))
+  ;; First, build the core Bedrock request data structure.
+  (let ((base-request-data
+         (nconc
+          `(:messages [,@prompts] :inferenceConfig (:maxTokens ,(or gptel-max-tokens 500)))
+          (when gptel--system-message `(:system [(:text ,gptel--system-message)]))
+          (when gptel-temperature `(:temperature ,gptel-temperature))
+          (when (and gptel-use-tools gptel-tools)
+            `(:toolConfig (:toolChoice ,(if (eq gptel-use-tools 'force) '(:any '()) '(:auto '()))
+                           :tools ,(gptel--parse-tools backend gptel-tools)))))))
+
+    ;; Finally, merge all potential :request-params sources.
+    (gptel--merge-plists
+     base-request-data               ; The core data we just built
+     gptel--request-params           ; Global/buffer-local gptel--request-params
+     (gptel-backend-request-params backend) ; From `gptel-make-bedrock` call
+     (gptel--model-request-params gptel-model)))) ; From the model's properties
 
 (cl-defmethod gptel--parse-tools ((_backend gptel-bedrock) tools)
   "Parse TOOLS and return a list of ToolSpecification objects.
@@ -604,8 +613,7 @@ REGION is one of apac, eu or us."
           region
           (models gptel--bedrock-models)
 	  (model-region nil)
-          (stream nil)
-	  curl-args
+          stream curl-args request-params
           (protocol "https"))
   "Register an AWS Bedrock backend for gptel with NAME.
 
@@ -615,7 +623,9 @@ REGION - AWS region name (e.g. \"us-east-1\")
 MODELS - The list of models supported by this backend
 MODEL-REGION - one of apac, eu, us or nil
 CURL-ARGS - additional curl args
-STREAM - Whether to use streaming responses or not."
+STREAM - Whether to use streaming responses or not.
+REQUEST-PARAMS - a plist of additional HTTP request
+parameters (as plist keys) and values supported by the API."
   (declare (indent 1))
   (unless (and gptel-use-curl (version<= "8.9" (gptel-bedrock--curl-version)))
     (error "Bedrock-backend requires curl >= 8.9, but gptel-use-curl := %s, curl-version := %s"
@@ -633,12 +643,12 @@ STREAM - Whether to use streaming responses or not."
            :stream stream
            :coding-system (and stream 'binary)
            :curl-args (lambda () (append curl-args (gptel-bedrock--curl-args region)))
+           :request-params request-params
            :url
            (lambda ()
              (concat protocol "://" host
                      "/model/" (gptel-bedrock--get-model-id gptel-model model-region)
-                     "/" (if stream "converse-stream" "converse")))
-           ))))
+                     "/" (if stream "converse-stream" "converse")))))))
 
 (provide 'gptel-bedrock)
 ;;; gptel-bedrock.el ends here

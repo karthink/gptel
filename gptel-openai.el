@@ -41,6 +41,7 @@
 (defvar gptel-use-tools)
 (defvar gptel-tools)
 (defvar gptel--schema)
+(defvar gptel--request-params)
 (declare-function gptel-context--collect-media "gptel-context")
 (declare-function gptel--base64-encode "gptel")
 (declare-function gptel--trim-prefixes "gptel")
@@ -60,6 +61,8 @@
 (declare-function gptel--inject-prompt "gptel")
 (declare-function gptel--parse-tools "gptel")
 (declare-function gptel--parse-schema "gptel")
+(declare-function gptel--preprocess-schema "gptel")
+(declare-function gptel--dispatch-schema-type "gptel")
 
 ;; JSON conversion semantics used by gptel
 ;; empty object "{}" => empty list '() == nil
