@@ -35,7 +35,7 @@ gptel is a simple Large Language Model chat client for Emacs, with support for m
 | Github Models        | ✓        | [[https://github.com/settings/tokens][Token]]                      |
 | Novita AI            | ✓        | [[https://novita.ai/model-api/product/llm-api?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][Token]]                      |
 | xAI                  | ✓        | [[https://console.x.ai?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][API key]]                    |
-| Github CopilotChat   | ✓        | Github account             |
+| GitHub CopilotChat   | ✓        | GitHub account             |
 | Bedrock              | ✓        | AWS credentials            |
 | Moonshot (Kimi)      | ✓        | API key ([[https://platform.moonshot.cn/console][CN]] or [[https://platform.moonshot.ai/console][Global]])     |
 #+html: </div>
@@ -123,7 +123,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#novita-ai][Novita AI]]
       - [[#xai][xAI]]
       - [[#aiml-api][AI/ML API]]
-      - [[#github-copilotchat][Github CopilotChat]]
+      - [[#github-copilotchat][GitHub CopilotChat]]
       - [[#aws-bedrock][AWS Bedrock]]
       - [[#moonshot-kimi][Moonshot (Kimi)]]
   - [[#usage][Usage]]
@@ -1020,7 +1020,7 @@ The above code makes the backend available to select.  If you want it to be the 
 
 #+html: </details>
 #+html: <details><summary>
-**** Github CopilotChat
+**** GitHub CopilotChat
 #+html: </summary>
 
 Register a backend with
@@ -1028,7 +1028,7 @@ Register a backend with
 (gptel-make-gh-copilot "Copilot")
 #+end_src
 
-You will be informed to login into =Github= as required.
+You will be informed to login into =GitHub= as required.
 You can pick this backend from the menu when using gptel (see [[#usage][Usage]]).
 
 ***** (Optional) Set as the default gptel backend
@@ -1170,6 +1170,12 @@ gptel provides a few powerful, general purpose and flexible commands.  You can d
 | =gptel-org-set-topic=      | Limit conversation context to an Org heading.  (For branching conversations see below.) |
 | =gptel-org-set-properties= | Write gptel configuration as Org properties, for per-heading chat configuration.        |
 |----------------------------+-----------------------------------------------------------------------------------------|
+
+|------------------+-------------------------------------------------------------------------------------------|
+| *GitHub Copilot* |                                                                                           |
+|------------------+-------------------------------------------------------------------------------------------|
+| =gptel-gh-login= | Authenticate with GitHub Copilot. (Automatically handled, but can be forced if required.) |
+|------------------+-------------------------------------------------------------------------------------------|
 
 *** In any buffer:
 
