@@ -207,13 +207,9 @@
     (write-region (prin1-to-string obj) nil file nil :silent)
     obj))
 
-(defun gptel--gh-logged-in-p ()
-  "Return non-nil if the user is logged in to GitHub Copilot."
-  (and (gptel--gh-github-token gptel-backend)
-       (not (string-empty-p (gptel--gh-github-token gptel-backend)))))
-
 (defun gptel-gh-login ()
   "Login to GitHub Copilot API.
+
 This will prompt you to authorize in a browser and store the token."
   (interactive)
   (pcase-let (((map :device_code :user_code :verification_uri)
@@ -243,9 +239,11 @@ If your browser does not open automatically, browse to %s."
        :access_token)
       (gptel--gh-save gptel-gh-github-token-file)
       (setf (gptel--gh-github-token gptel-backend))))
-  (if (not (gptel--gh-logged-in-p))
-      (user-error "Error: You might not have access to GitHub Copilot Chat!")
-    (message "Successfully logged in to GitHub Copilot")))
+  (if (and (gptel--gh-github-token gptel-backend)
+           (not (string-empty-p
+                 (gptel--gh-github-token gptel-backend))))
+      (message "Successfully logged in to GitHub Copilot")
+    (user-error "Error: You might not have access to GitHub Copilot Chat!")))
 
 (defun gptel--gh-renew-token ()
   "Renew session token."
