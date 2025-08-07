@@ -1544,35 +1544,49 @@ This sets the variable `gptel-include-tool-results', which see."
                                  (substring s 1)))
                      args))
       (setq output-to-other-buffer-p t)
-      (let ((reduced-prompt             ;For inserting into the gptel buffer as
+      (let* ((reduced-prompt            ;For inserting into the gptel buffer as
                                         ;context, not the prompt used for the
                                         ;request itself
-             (or prompt
-                 (if (use-region-p)
-                     (buffer-substring-no-properties (region-beginning)
-                                                     (region-end))
-                   (buffer-substring-no-properties
-                    (save-excursion
-                      (text-property-search-backward
-                       'gptel 'response
-                       (when (get-char-property (max (point-min) (1- (point)))
-                                                'gptel)
-                         t))
-                      (point))
-                    (gptel--at-word-end (point)))))))
+              (or prompt
+                  (if (use-region-p)
+                      (buffer-substring-no-properties (region-beginning)
+                                                      (region-end))
+                    (buffer-substring-no-properties
+                     (save-excursion
+                       (text-property-search-backward
+                        'gptel 'response
+                        (when (get-char-property (max (point-min) (1- (point)))
+                                                 'gptel)
+                          t))
+                       (point))
+                     (gptel--at-word-end (point))))))
+             (gptel-buffer (get-buffer gptel-buffer-name))
+             (gptel-buffer-mode
+              (if (buffer-live-p gptel-buffer)
+                  (buffer-local-value 'major-mode gptel-buffer)
+                gptel-default-mode)))
+        ;; Add code fences or Org block around prompt
+        (cond ((eq major-mode gptel-buffer-mode))
+              ((provided-mode-derived-p gptel-buffer-mode 'org-mode)
+               (setq reduced-prompt
+                     (concat "#+begin_src " (gptel--strip-mode-suffix major-mode)
+                             "\n" reduced-prompt "\n#+end_src")))
+              (t (setq reduced-prompt
+                       (concat "``` " (gptel--strip-mode-suffix major-mode) "\n"
+                               reduced-prompt "\n```" ))))
         (cond
-         ((buffer-live-p (get-buffer gptel-buffer-name))
+         ((buffer-live-p gptel-buffer)
           ;; Insert into existing gptel session
-          (progn
-            (setq buffer (get-buffer gptel-buffer-name))
-            (with-current-buffer buffer
-              (goto-char (point-max))
-              (unless (or buffer-read-only
-                          (get-char-property (point) 'read-only))
-                (insert reduced-prompt))
-              (setq position (point))
-              (when (and gptel-mode (not dry-run))
-                (gptel--update-status " Waiting..." 'warning)))))
+          (setq buffer gptel-buffer)
+          (with-current-buffer buffer
+            (goto-char (point-max))
+            (unless (or buffer-read-only
+                        (get-char-property (point) 'read-only))
+              (unless (bolp) (insert "\n"))
+              (insert reduced-prompt))
+            (setq position (point))
+            (when (and gptel-mode (not dry-run))
+              (gptel--update-status " Waiting..." 'warning))))
          ;; Insert into new gptel session
          (t (setq buffer
                   (gptel gptel-buffer-name
