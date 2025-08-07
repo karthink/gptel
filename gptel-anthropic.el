@@ -536,8 +536,16 @@ files in the context."
      :input-cost 3
      :output-cost 15
      :cutoff-date "2025-03")
-    (claude-opus-4-20250514
+    (claude-opus-4-1-20250805
      :description "Most capable model for complex reasoning and advanced coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 15
+     :output-cost 75
+     :cutoff-date "2025-03")
+    (claude-opus-4-20250514
+     :description "Anthropic's previous flagship model"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
