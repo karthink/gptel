@@ -3800,9 +3800,13 @@ from a gptel preset applied.
 NAME is the name of a preset, or a spec (plist) of the form
  (:KEY1 VAL1 :KEY2 VAL2 ...).  It must be quoted."
   (declare (indent 1))
-  `(cl-progv (gptel--preset-syms ,name) nil
-    (gptel--apply-preset ,name)
-    ,@body))
+  ;; Use a unique uninterned symbol so that our let-binding doesn't
+  ;; interfere with symbols in the body.
+  (let ((preset-syms (gensym "gptel--preset-syms")))
+    `(let ((,preset-syms (gptel--preset-syms ,name)))
+       (cl-progv ,preset-syms (mapcar #'symbol-value ,preset-syms)
+         (gptel--apply-preset ,name)
+         ,@body))))
 
 ;;;; Presets in-buffer UI
 (defun gptel--transform-apply-preset (_fsm)
