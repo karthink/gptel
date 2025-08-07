@@ -66,6 +66,11 @@
   context.  This setting can be controlled via the user option
   ~gptel-context-restrict-to-project-files~.
 
+- ~gptel-make-bedrock~ now checks for the ~AWS_BEARER_TOKEN_BEDROCK~ environment
+  variable parameter and uses it for Bedrock API key based authentication if
+  present. See
+  https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html.
+
 * 0.9.9 2025-08-02
 
 ** Breaking changes
