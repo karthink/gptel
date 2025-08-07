@@ -643,6 +643,30 @@ the same as t."
      :input-cost 30
      :output-cost 60
      :cutoff-date "2023-11")
+    (gpt-5
+     :description "Flagship model for coding, reasoning, and agentic tasks across domains"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1.25
+     :output-cost 10
+     :cutoff-date "2024-09")
+    (gpt-5-mini
+     :description "Faster, more cost-efficient version of GPT-5"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 0.25
+     :output-cost 2.0
+     :cutoff-date "2024-09")
+    (gpt-5-nano
+     :description "Fastest, cheapest version of GPT-5"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 0.05
+     :output-cost 0.40
+     :cutoff-date "2024-09")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
      :capabilities (media reasoning)
