@@ -3791,6 +3791,8 @@ PRESET is the name of a preset, or a spec (plist) of the form
                       (car preset) key))))))
     (cl-delete-duplicates syms)))
 
+;; This is identical to `cl-progv', only we let-bind symbols SYM from the preset
+;; to their current values instead of evaluating the values explicitly. (#1005)
 (defmacro gptel-with-preset (name &rest body)
   "Run BODY with gptel preset NAME applied.
 
@@ -3800,9 +3802,14 @@ from a gptel preset applied.
 NAME is the name of a preset, or a spec (plist) of the form
  (:KEY1 VAL1 :KEY2 VAL2 ...).  It must be quoted."
   (declare (indent 1))
-  `(cl-progv (gptel--preset-syms ,name) nil
-    (gptel--apply-preset ,name)
-    ,@body))
+  (let ((syms (make-symbol "syms"))
+        (binds (make-symbol "binds"))
+        (bodyfun (make-symbol "body")))
+    `(let* ((,syms (gptel--preset-syms ,name))
+            (,bodyfun (lambda () (gptel--apply-preset ,name) ,@body))
+            (,binds nil))
+       (while ,syms (push (list (car ,syms) (pop ,syms)) ,binds))
+       (eval (list 'let (nreverse ,binds) (list 'funcall (list 'quote ,bodyfun)))))))
 
 ;;;; Presets in-buffer UI
 (defun gptel--transform-apply-preset (_fsm)
