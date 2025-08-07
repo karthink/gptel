@@ -588,17 +588,20 @@ REGION is one of apac, eu or us."
 
 (defun gptel-bedrock--curl-args (region)
   "Generate the curl arguments to get a bedrock request signed for use in REGION."
-  ;; https://curl.se/docs/manpage.html#--aws-sigv4
-  (cl-multiple-value-bind (key-id secret token) (gptel-bedrock--get-credentials)
-    (nconc
-     (list
-      "--user" (format "%s:%s" key-id secret)
-      "--aws-sigv4" (format "aws:amz:%s:bedrock" region))
-     (unless (memq system-type '(windows-nt ms-dos))
-       ;; Without this curl swallows the output
-       (list "--output" "/dev/stdout"))
-     (when token
-       (list (format "-Hx-amz-security-token: %s" token))))))
+  (let ((bearer-token (getenv "AWS_BEARER_TOKEN_BEDROCK"))
+         (output-args (unless (memq system-type '(windows-nt ms-dos))
+                        '("--output" "/dev/stdout"))))
+    (if bearer-token
+        (append
+         (list "-H" (format "Authorization: Bearer %s" bearer-token))
+         output-args)
+      (cl-multiple-value-bind (key-id secret token) (gptel-bedrock--get-credentials)
+        (append
+         (list "--user" (format "%s:%s" key-id secret)
+               "--aws-sigv4" (format "aws:amz:%s:bedrock" region))
+         output-args
+         (when token (list "-H" (format "x-amz-security-token: %s" token))))))))
+
 
 (defun gptel-bedrock--curl-version ()
   "Check Curl version required for gptel-bedrock."
@@ -627,9 +630,10 @@ STREAM - Whether to use streaming responses or not.
 REQUEST-PARAMS - a plist of additional HTTP request
 parameters (as plist keys) and values supported by the API."
   (declare (indent 1))
-  (unless (and gptel-use-curl (version<= "8.9" (gptel-bedrock--curl-version)))
-    (error "Bedrock-backend requires curl >= 8.9, but gptel-use-curl := %s, curl-version := %s"
-           gptel-use-curl (gptel-bedrock--curl-version)))
+  (unless (getenv "AWS_BEARER_TOKEN_BEDROCK")
+    (unless (and gptel-use-curl (version<= "8.9" (gptel-bedrock--curl-version)))
+      (error "Bedrock-backend requires curl >= 8.9, but gptel-use-curl := %s, curl-version := %s"
+             gptel-use-curl (gptel-bedrock--curl-version))))
   (let ((host (format "bedrock-runtime.%s.amazonaws.com" region)))
     (setf (alist-get name gptel--known-backends nil nil #'equal)
           (gptel--make-bedrock
