@@ -1333,6 +1333,246 @@ Note:
    may be used to rerun or continue the request at a later time.  See
    [[*gptel's finite state machine]].
 
+~gptel-request~ presents a versatile API, and its uses and arguments
+are specified in greater detail in the sections that follow.
+
+** Prompt transformations
+** Output in a specified JSON schema
+
+~gptel-request~ can force the LLM to generate output that follows a
+specified JSON schema.  This can be useful when it is used as part of
+a data processing pipeline, or when gptel-request needs to be plugged
+into Elisp code that expects structured data.
+
+Here is a frivolous example demonstrating this feature:
+
+#+begin_src emacs-lisp
+(gptel-request "Generate three quirky dogs"
+  :system nil
+  :schema "[name, age int, hobby, short_bio]")
+#+end_src
+
+This returns
+
+#+begin_src js-json
+{
+  "items": [
+    {
+      "name": "Baxter",
+      "age": 5,
+      "hobby": "Chasing shadows and hoarding squeaky toys",
+      "short_bio":
+      "Baxter is the neighborhood's self-declared shadow detective."
+    },
+    {
+      "name": "Peaches",
+      "age": 3,
+      "hobby": "Dancing on hind legs and stealing socks",
+      "short_bio":
+      "Peaches twirls through life with a sock in her mouth and a heart full of mischief."
+    },
+    {
+      "name": "Ziggy",
+      "age": 7,
+      "hobby": "Sniffing out hidden treats and composing howling symphonies",
+      "short_bio":
+      "Ziggy is a gourmet snack seeker and an opera star in the canine world."
+    }
+  ]
+}
+#+end_src
+
+A more useful example is generating diagnostics for an Emacs buffer.
+For example:
+
+#+begin_src emacs-lisp
+(save-excursion
+  (goto-char (point-max))
+  (gptel-request nil                    ;send whole buffer
+    :system
+    "Proofread this text buffer for stylistic errors, cliche and purple prose.
+     Ignore parts that look like markup or code.
+     Do NOT report text that is satisfactory."
+    :schema
+    "[start_line int: Starting line number of text to which this diagnostic applies
+      text: Text to which this diagnostic applies
+      problem: Short description of problem
+      replacement: Exact replacement text or fix for diagnostic]"))
+#+end_src
+
+The list of diagnostics can be plugged into a linting interface such
+as Flymake, for example. (See [[info:flymake]].)
+
+The =SCHEMA= argument may be specified in many ways.  From the easiest
+(and most restrictive) to the hardest (and most flexible), these are:
+
+As a comma-separated list of keys with optional types.  The following
+are equivalent ways of specifying a simple object, /i.e./ one that
+does not itself contain objects/arrays:
+
+#+begin_src elisp
+;; prop [type], prop [type], ...
+
+  "name, age integer, hobby, short_bio" ;type is assumed to be string
+#+end_src
+
+Type defaults to =string= if not specified.  Types can be shortened as
+long as they match a supported JSON schema type uniquely.  (=number=,
+=integer=, =string=, =boolean=, =null=).
+
+#+begin_src emacs-lisp
+"name str, age int, hobby, short_bio str" ;with shortened types
+#+end_src
+
+gptel expands this to the schema
+
+#+begin_src js-json
+{
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "age": { "type": "integer" },
+    "hobby": { "type": "string" },
+    "short_bio": { "type": "string" }
+  }
+}
+#+end_src
+
+To specify an array of objects of this type, enclose the above
+specifications in =[= and =]=:
+
+#+begin_src emacs-lisp
+;; [prop [type], prop [type], ...]
+
+  "[name, age integer, hobby, short_bio]"
+#+end_src
+
+gptel expands this to the schema[fn:2-json-array-schemas]
+
+#+begin_src js-json
+{ "type": "array",
+  "items": {
+      "type": "object",
+      "properties": {
+          "name": {"type": "string"},
+          "age": {"type": "integer"},
+          "hobby": {"type": "string"},
+          "short_bio": {"type": "string"}
+      }
+  }
+}
+#+end_src
+
+Often it is useful to add a description to JSON object properties to
+help guide the LLM.  You can do this by using a multi-line shorthand
+like the following:
+
+#+begin_src emacs-lisp
+;; key [type]: [description]
+;; key [type]: [description]...
+
+  "name: Name of the dog
+   age int: Age of the dog in years
+   hobby: What the dog likes to do
+   short_bio: A one-sentence biography of the dog"
+#+end_src
+
+gptel expands this to
+
+#+begin_src js-json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the dog"
+    },
+    "age": {
+      "type": "integer",
+      "description": "Age of the dog in years"
+    },
+    "hobby": {
+      "type": "string",
+      "description": "What the dog likes to do"
+    },
+    "short_bio": {
+      "type": "string",
+      "description": "A one-sentence biography of the dog"
+    }
+  }
+}
+#+end_src
+
+Whitespace between fields is not significant.  The type, separator
+=":"= and the description are all optional, so this is valid:
+
+#+begin_src emacs-lisp
+"name:
+ age int: Age of the dog in years
+ hobby
+ short_bio: A one-sentence biography of the dog"
+#+end_src
+
+As before, to specify an array of objects of this type you can enclose
+the text in =[= and =]=:
+
+#+begin_src emacs-lisp
+"[name:
+  age int: Age of the dog in years
+  hobby
+  short_bio: A one-sentence biography of the dog]"
+#+end_src
+
+More complex schema (with enums, optional entries etc) can be
+specified in two ways.
+
+If you have the JSON schema at hand, you can instead supply it
+directly as a serialized string:
+
+#+begin_src emacs-lisp
+(gptel-request "Generate a quirky dog"
+  :system nil
+  :schema "{\"type\":\"object\",\"properties\":
+           {\"name\":{\"type\":\"string\"},
+            \"age\":{\"type\":\"integer\"},
+            \"hobby\":{\"type\":\"string\"},
+            \"short_bio\":{\"type\":\"string\"}}}")
+#+end_src
+
+Otherwise, it must be specified as a plist, similar to how tool
+arguments are, see [[*Specifying tool arguments]].
+
+gptel's elisp specification object and array versions of the above
+examples are, for instance:
+
+#+begin_src emacs-lisp
+( :type object                        ;Object version
+  :properties
+  ( :name ( :type string)
+    :age ( :type integer
+           :description "Age of the dog in years")
+    :hobby ( :type string)
+    :short_bio ( :type string
+                 :description "A one-sentence biography of the dog")))
+#+end_src
+
+#+begin_src emacs-lisp
+( :type array                         ;Array of objects version
+  :items
+  ( :type object
+    :properties
+    ( :name ( :type string)
+      :age ( :type integer
+             :description "Age of the dog in years")
+      :hobby ( :type string)
+      :short_bio ( :type string
+                   :description "A one-sentence biography of the dog"))))
+#+end_src
+
+[fn:2-json-array-schemas] Note that this is not a valid JSON schema as
+the top-level is expected to be a JSON object, not an array.  gptel
+handles this issue internally and wraps it an object if required.
+
 ** gptel's finite state machine
 
 #+cindex: finite state machine
