@@ -57,13 +57,18 @@
   buffer.
 
 - Structured output support: ~gptel-request~ can now take an optional
-  schema argument to constrain LLM output to the specified JSON
-  schema.  The JSON schema can be provided as a serialized JSON string
-  or as an elisp object (a nested plist).  This feature works with all major
-  backends: OpenAI, Anthropic, Gemini, llama-cpp and Ollama.  It is
-  presently supported by some but not all "OpenAI-compatible API"
-  providers.  Note that this is only available via the ~gptel-request~
-  API, and currently unsupported by ~gptel-send~.
+  schema argument to constrain LLM output to the specified JSON schema.
+  The JSON schema can be provided as
+  - an elisp object, a nested plist structure.
+  - A JSON schema serialized to a string.
+  - A shorthand object/array description, described in the manual.
+
+  This feature works with all major backends: OpenAI, Anthropic, Gemini,
+  llama-cpp and Ollama.  It is presently supported by some but not all
+  "OpenAI-compatible API" providers.
+
+  Note that this is only available via the ~gptel-request~ API, and
+  currently unsupported by ~gptel-send~.
 
 - From the dry-run inspector buffer, you can now copy the Curl command
   for the request.  Like when continuing the query, the request is

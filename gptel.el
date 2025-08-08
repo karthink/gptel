@@ -1626,9 +1626,76 @@ which see for BEG, END and PRE."
   "Parse JSON schema in a backend-appropriate way.")
 
 (defun gptel--dispatch-schema-type (schema)
-  "Convert SCHEMA to a valid elisp representation."
-  (when (stringp schema)
-    (setq schema (gptel--json-read-string schema)))
+  "Convert SCHEMA to a valid elisp representation.
+
+SCHEMA can be specified in several ways:
+- As a plist readable by `gptel--json-encode'
+  Ex: (:type object :properties (:key1 (:type number :description \"...\")
+                                 :key2 (:type string)))
+
+- As a serialized JSON string, which will be passed as-is.
+
+- In shorthand form #1, a single-line comma-separated string with object
+  keys and (optionally) types:
+  Ex: \"key1, key2 number\"
+  Ex: \"key1 string, key2 int\"
+  The default type is string, and types can be shortened (integer -> int) as
+  long as they match a JSON schema type uniquely.
+
+- In shorthand form #2, a multi-line string with keys, (optionally) types and
+  (optionally) descriptions
+  Ex: \"key1: description 1 here
+       key2 integer: description 2 here\"
+
+- Shorthand forms can be placed inside [ and ] to specify an array of
+  objects:
+  Ex: \"[key1, key2 number]\"
+  Ex: \"[key1: description 1 here
+        key2 int: description 2 here]\""
+  (when (stringp schema)  ;Two possibilities: serialized JSON, or shorthand form
+    (let (wrap-in-array)  ;Flag to wrap the object type in an array
+      (with-temp-buffer   ;Parser for (possibly) shorthand forms
+        (insert schema)
+        (goto-char (point-min)) (skip-chars-forward " \n\r\t")
+        (if (= (char-after) ?{)
+            (setq schema (gptel--json-read)) ;Assume serialized JSON schema, we're done
+          (when (= (char-after) ?\[)    ;Shorthand: assume array top-level type
+            (save-excursion (goto-char (point-max)) (delete-char -1))
+            (delete-char 1)             ;Delete array markers [ and ]
+            (setq wrap-in-array t))
+          (let ( props types descriptions ;Nested object and array types are disallowed in shorthand
+                 (all-types '("number" "string" "integer" "boolean" "null")))
+            (if (= (point-max) (line-end-position)) ; Single or multi-line?
+                ;; Single line format (type optional): "key1 type, key2, ..."
+                (while (re-search-forward ",?\\([^ ,]+\\) *\\([^,]*\\]?\\)" nil t)
+                  (push (match-string 1) props)
+                  (push (if (string-empty-p (match-string 2))
+                            "string" (car (all-completions (match-string 2) all-types)))
+                        types)
+                  (push nil descriptions))
+              ;; Multi-line format (type, description optional):
+              ;; "key1 type: description1 \n key2: description2..."
+              (while (re-search-forward "\\([^ :]+\\) *\\([^ :]*\\):?"
+                                        (line-end-position) t)
+                (push (match-string 1) props)
+                (push (if (string-empty-p (match-string 2))
+                          "string" (car (all-completions (match-string 2) all-types)))
+                      types)
+                (skip-chars-forward " \t")
+                (push (if (eolp) nil (buffer-substring-no-properties
+                                      (point) (line-end-position)))
+                      descriptions)
+                (forward-line 1)))
+            (let ((object
+                   (list :type "object"
+                         :properties
+                         (cl-mapcan
+                          (lambda (prop type desc)
+                            `(,(intern (concat ":" prop))
+                              (:type ,type ,@(when desc (list :description desc)))))
+                          (nreverse props) (nreverse types) (nreverse descriptions)))))
+              (setq schema
+                    (if wrap-in-array (list :type "array" :items object) object))))))))
   ;; The OpenAI and Anthropic APIs don't allow arrays at the root of the schema.
   ;; Work around this by wrapping it in an object with the field "items".
   ;; TODO(schema): Find some way to strip this extra layer from the response.
@@ -2542,14 +2609,17 @@ additional information (such as from a RAG engine).
   and the state machine.  It should run the callback after finishing its
   transformation.
 
+See `gptel-prompt-transform-functions' for more.
+
 If provided, SCHEMA forces the LLM to generate JSON output.  Its value
-is a JSON schema, which can be provided as an elisp object, a nested
-plist structure.  See the manual or the wiki for examples.
+is a JSON schema, which can be provided as
+- an elisp object, a nested plist structure.
+- A JSON schema serialized to a string
+- A shorthand object/array description, see `gptel--dispatch-schema-type'.
+See the manual or the wiki for examples.
 
 Note: SCHEMA is presently experimental and subject to change, and not
 all providers support structured output.
-
-See `gptel-prompt-transform-functions' for more.
 
 FSM is the state machine driving the request.  This can be used
 to define a custom request control flow, see `gptel-fsm' for
