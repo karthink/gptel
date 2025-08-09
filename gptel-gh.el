@@ -43,17 +43,18 @@
      :description "Flagship model for complex tasks"
      :capabilities (media tool-use json url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1024
+     :context-window 128
      :input-cost 2.0
      :output-cost 8.0
      :cutoff-date "2024-05")
-    (gpt-4.5-preview
-     :description "Largest and most capable GPT model to date"
-     :capabilities (url)
+    (gpt-5
+     :description "Flagship model for coding, reasoning, and agentic tasks across domains"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 128
-     :input-cost 75
-     :output-cost 150
-     :cutoff-date "2023-10")
+     :input-cost 1.25
+     :output-cost 10
+     :cutoff-date "2024-09")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
      :capabilities (reasoning tool-use)
@@ -118,6 +119,14 @@
      :output-cost 15
      :cutoff-date "2025-03")
     (claude-opus-4
+     :description "Most capable model for complex reasoning and advanced coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 15
+     :output-cost 75
+     :cutoff-date "2025-03")
+    (claude-opus-41
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
