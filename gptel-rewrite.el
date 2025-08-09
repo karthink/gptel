@@ -593,7 +593,7 @@ By default, gptel uses the directive associated with the `rewrite'
   :display-nil "(None)"
   :key "d"
   :format " %k %d %v"
-  :prompt (concat "Instructions " gptel--read-with-prefix-help)
+  :prompt "Instructions: "
   :reader (lambda (prompt _ history)
             (let* ((rewrite-directive
                     (car-safe (gptel--parse-directive gptel--rewrite-directive

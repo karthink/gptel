@@ -2203,7 +2203,7 @@ buffer."
                               (format "#<lambda %#x>" (sxhash s)))
                              ((byte-code-function-p s)
                               (format "#<compiled %#x>" (sxhash s)))
-                             ((stringp s) (string-replace "\n" "⮐ " s))
+                             ((stringp s) (string-replace "\n" "⏎" s))
                              (t (prin1-to-string s)))))
            (inhibit-read-only t)
            (info (gptel-fsm-info fsm))
@@ -3644,7 +3644,7 @@ NAME and ARG-VALUES are the name and arguments for the call."
                         (cond ((stringp arg)
                                (prin1-to-string
                                 (replace-regexp-in-string
-                                 "\n" "⮐" (truncate-string-to-width
+                                 "\n" "⏎" (truncate-string-to-width
                                            arg (floor (window-width) 2)
                                            nil nil t))))
                               (t (prin1-to-string arg))))
