@@ -38,6 +38,13 @@
 
 ** New features and UI changes
 
+- ~gptel-rewrite~ now no longer pops up a Transient menu.  Instead, it
+  reads a rewrite instruction and starts the rewrite immediately.  This
+  is intended to reduce the friction of using ~gptel-rewrite~.  You can
+  still bring up the Transient menu by pressing =M-RET= instead of =RET=
+  when supplying the rewrite instruction.  If no region is selected and
+  there are pending rewrites, the rewrite menu is displayed.
+
 - New command ~gptel-gh-login~ to authenticate with GitHub Copilot.  The
   authentication step happens automatically when you use gptel, so
   invoking it manually is not required.  But you can use this command to

@@ -252,6 +252,66 @@ the changed regions. BUF is the (current) buffer."
           (gptel--rewrite-accept ovs newbuf)))
       newbuf)))
 
+(defun gptel--rewrite-read-message (prompt &optional _ history)
+  "Read a rewrite message from the minibuffer with custom keybindings for
+cycling, editing, and submitting the gptel rewrite.
+
+PROMPT is the prompt string to display.  HISTORY, if provided, is the
+input history list."
+  (let* ((rewrite-directive
+          (car-safe (gptel--parse-directive gptel--rewrite-directive 'raw)))
+         (cb (current-buffer))
+         (cycle-prefix (lambda () (interactive)
+                         (gptel--read-with-prefix rewrite-directive)
+                         (goto-char (point-max))))
+         (set-rewrite-message
+          (lambda ()
+            (let ((message (buffer-substring-no-properties
+                            (minibuffer-prompt-end) (point-max))))
+              (with-current-buffer cb (setq gptel--rewrite-message message))
+              (setf (alist-get 'gptel--infix-rewrite-extra transient-history)
+                    (delete-dups (cons message transient--history))))))
+         (start-rewrite-maybe
+          (lambda () (interactive)
+            (if transient--prefix    ;Called from transient? Don't start rewrite
+                (run-at-time 0 nil #'transient-setup 'gptel-rewrite)
+              (run-at-time 0 nil #'gptel--suffix-rewrite gptel--rewrite-message))
+            (when (minibufferp)
+              (funcall set-rewrite-message)
+              (minibuffer-quit-recursive-edit))))
+         (start-transient
+          (lambda () (interactive)
+            (run-at-time 0 nil #'transient-setup 'gptel-rewrite)
+            (when (minibufferp)
+              (funcall set-rewrite-message)
+              (minibuffer-quit-recursive-edit))))
+         (edit-in-buffer
+          (lambda () (interactive)
+            (let ((offset (- (point) (minibuffer-prompt-end))))
+              (gptel--edit-directive 'gptel--rewrite-message
+                :prompt rewrite-directive :initial (minibuffer-contents)
+                :buffer cb :setup (lambda () (ignore-errors (forward-char offset)))
+                ;; FIXME: We would like to (conditionally) start the rewrite
+                ;; here.  We can't because this callback is always called, even
+                ;; when quitting the edit buffer.
+                :callback
+                (lambda ()
+                  (run-at-time 0 nil #'transient-setup 'gptel-rewrite)
+                  (push (buffer-local-value 'gptel--rewrite-message cb)
+                        (alist-get 'gptel--infix-rewrite-extra transient-history))
+                  (when (minibufferp) (minibuffer-quit-recursive-edit)))))))
+         (minibuffer-local-map
+          (make-composed-keymap (define-keymap
+                                  "TAB" cycle-prefix "<tab>" cycle-prefix
+                                  "C-c C-e" edit-in-buffer
+                                  "<remap> <exit-minibuffer>" start-rewrite-maybe
+                                  "M-RET" start-transient)
+                                minibuffer-local-map)))
+    (minibuffer-with-setup-hook cycle-prefix
+      (read-string
+       prompt (or gptel--rewrite-message "Rewrite: ")
+       history))))
+
 ;; * Rewrite action functions
 
 (defun gptel--rewrite-reject (&optional ovs)
@@ -576,11 +636,20 @@ By default, gptel uses the directive associated with the `rewrite'
         'json)))]]
   (interactive)
   (gptel--rewrite-sanitize-overlays)
-  (unless (or gptel--rewrite-overlays (use-region-p))
-    (user-error "`gptel-rewrite' requires an active region or rewrite in progress."))
-  (unless gptel--rewrite-message
-    (setq gptel--rewrite-message "Rewrite: "))
-  (transient-setup 'gptel-rewrite))
+  (cond
+   ((use-region-p)                      ;Start a/another rewrite
+    (let ((transient--history ;No transient reader, so We manage history ourselves
+           (alist-get 'gptel--infix-rewrite-extra transient-history)))
+      (gptel--rewrite-read-message
+       (concat "Instructions (" gptel--read-with-prefix-help
+               (format " %s%s) "
+                       (propertize "M-RET" 'face 'help-key-binding)
+                       (propertize ": More options" 'face 'default)))
+       nil (cons 'transient--history 1))))
+   (gptel--rewrite-overlays             ;Rewrite actions pending, show options
+    (transient-setup 'gptel-rewrite))
+   (t (user-error
+       "`gptel-rewrite' requires an active region or rewrite in progress."))))
 
 ;; * Transient infixes for rewriting
 
@@ -593,36 +662,8 @@ By default, gptel uses the directive associated with the `rewrite'
   :display-nil "(None)"
   :key "d"
   :format " %k %d %v"
-  :prompt (concat "Instructions " gptel--read-with-prefix-help)
-  :reader (lambda (prompt _ history)
-            (let* ((rewrite-directive
-                    (car-safe (gptel--parse-directive gptel--rewrite-directive
-                                                      'raw)))
-                   (cb (current-buffer))
-                   (cycle-prefix
-                    (lambda () (interactive)
-                      (gptel--read-with-prefix rewrite-directive)))
-                   (edit-in-buffer
-                    (lambda () (interactive)
-                      (let ((offset (- (point) (minibuffer-prompt-end))))
-                        (gptel--edit-directive 'gptel--rewrite-message
-                          :prompt rewrite-directive :initial (minibuffer-contents)
-                          :buffer cb :setup (lambda () (ignore-errors (forward-char offset)))
-                          :callback
-                          (lambda ()
-                            (run-at-time 0 nil #'transient-setup 'gptel-rewrite)
-                            (push (buffer-local-value 'gptel--rewrite-message cb)
-                                  (alist-get 'gptel--infix-rewrite-extra transient-history))
-                            (when (minibufferp) (minibuffer-quit-recursive-edit)))))))
-                   (minibuffer-local-map
-                    (make-composed-keymap (define-keymap
-                                            "TAB" cycle-prefix "<tab>" cycle-prefix
-                                            "C-c C-e" edit-in-buffer)
-                                          minibuffer-local-map)))
-              (minibuffer-with-setup-hook cycle-prefix
-                (read-string
-                 prompt (or gptel--rewrite-message "Rewrite: ")
-                 history)))))
+  :prompt (concat "Instructions (" gptel--read-with-prefix-help ") ")
+  :reader #'gptel--rewrite-read-message)
 
 (transient-define-argument gptel--infix-rewrite-diff:-U ()
   :description "Context lines"

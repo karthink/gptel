@@ -153,13 +153,12 @@ Meant to be called when `gptel-menu' is active."
 
 (defconst gptel--read-with-prefix-help
   (concat
-   (propertize "(" 'face 'default)
    (propertize "TAB" 'face 'help-key-binding)
    (propertize ": expand, " 'face 'default)
    (propertize "M-n" 'face 'help-key-binding)
    (propertize "/" 'face 'default)
    (propertize "M-p" 'face 'help-key-binding)
-   (propertize ": next/previous) " 'face 'default))
+   (propertize ": next/previous" 'face 'default))
   "Help string ;TODO: ")
 
 (defun gptel--read-with-prefix (prefix)
@@ -1324,8 +1323,8 @@ Or in an extended conversation:
   :display-nil 'none
   :overlay nil
   :argument ":"
-  :prompt (concat "Add instructions for next request only "
-                  gptel--read-with-prefix-help)
+  :prompt (concat "Add instructions for next request only ("
+                  gptel--read-with-prefix-help ") ")
   :reader (lambda (prompt initial history)
             (let* ((directive
                     (car-safe (gptel--parse-directive gptel--system-message 'raw)))
