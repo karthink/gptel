@@ -2651,7 +2651,7 @@ be used to rerun or continue the request at a later time."
          (prompt-buffer
           (cond                       ;prompt from buffer or explicitly supplied
            ((null prompt)
-            (gptel--create-prompt-buffer start-marker))
+            (gptel--create-prompt-buffer (point)))
            ((stringp prompt)
             (gptel--with-buffer-copy buffer nil nil
               (insert prompt)
