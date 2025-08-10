@@ -263,7 +263,8 @@ input history list."
          (cb (current-buffer))
          (cycle-prefix (lambda () (interactive)
                          (gptel--read-with-prefix rewrite-directive)
-                         (goto-char (point-max))))
+                         (push-mark) (goto-char (point-max))
+                         (activate-mark)))
          (set-rewrite-message
           (lambda ()
             (let ((message (buffer-substring-no-properties
@@ -568,8 +569,6 @@ By default, gptel uses the directive associated with the `rewrite'
             (gptel--setup-directive-menu
              'gptel--rewrite-directive "Rewrite directive")))
     :pad-keys t])
-
-(define-obsolete-function-alias 'gptel-rewrite-menu 'gptel-rewrite "0.9.6")
 
 ;;;###autoload (autoload 'gptel-rewrite "gptel-rewrite" nil t)
 (transient-define-prefix gptel-rewrite ()
