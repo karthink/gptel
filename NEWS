@@ -23,6 +23,10 @@
 
 ** New models and backends
 
+- Add support for ~gpt-5~, ~gpt-5-mini~ and ~gpt-5-nano~.
+
+- Add support for ~claude-opus-4-1-20250805~.
+
 - Add support for ~gemini-2.5-pro~, ~gemini-2.5-flash~,
   ~gemini-2.5-flash-lite-preview-06-17~.
 
@@ -33,6 +37,18 @@
 - Add support for ~grok-4~.
 
 ** New features and UI changes
+
+- ~gptel-rewrite~ now no longer pops up a Transient menu.  Instead, it
+  reads a rewrite instruction and starts the rewrite immediately.  This
+  is intended to reduce the friction of using ~gptel-rewrite~.  You can
+  still bring up the Transient menu by pressing =M-RET= instead of =RET=
+  when supplying the rewrite instruction.  If no region is selected and
+  there are pending rewrites, the rewrite menu is displayed.
+
+- New command ~gptel-gh-login~ to authenticate with GitHub Copilot.  The
+  authentication step happens automatically when you use gptel, so
+  invoking it manually is not required.  But you can use this command to
+  change accounts or refresh your login if required.
 
 - gptel now supports handling reasoning/thinking blocks in responses
   from xAI's Grok models.  This is controlled by
@@ -48,13 +64,18 @@
   buffer.
 
 - Structured output support: ~gptel-request~ can now take an optional
-  schema argument to constrain LLM output to the specified JSON
-  schema.  The JSON schema can be provided as a serialized JSON string
-  or as an elisp object (a nested plist).  This feature works with all major
-  backends: OpenAI, Anthropic, Gemini, llama-cpp and Ollama.  It is
-  presently supported by some but not all "OpenAI-compatible API"
-  providers.  Note that this is only available via the ~gptel-request~
-  API, and currently unsupported by ~gptel-send~.
+  schema argument to constrain LLM output to the specified JSON schema.
+  The JSON schema can be provided as
+  - an elisp object, a nested plist structure.
+  - A JSON schema serialized to a string.
+  - A shorthand object/array description, described in the manual.
+
+  This feature works with all major backends: OpenAI, Anthropic, Gemini,
+  llama-cpp and Ollama.  It is presently supported by some but not all
+  "OpenAI-compatible API" providers.
+
+  Note that this is only available via the ~gptel-request~ API, and
+  currently unsupported by ~gptel-send~.
 
 - From the dry-run inspector buffer, you can now copy the Curl command
   for the request.  Like when continuing the query, the request is

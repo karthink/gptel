@@ -200,10 +200,9 @@ Otherwise the prompt text is constructed from the contents of the
 current buffer up to point, or PROMPT-END if provided.  Its contents
 depend on the value of `gptel-org-branching-context', which see."
   (when (use-region-p)
-    (narrow-to-region (region-beginning) (region-end)))
-  (if prompt-end
-      (goto-char prompt-end)
-    (setq prompt-end (point)))
+    (narrow-to-region (region-beginning) (region-end))
+    (setq prompt-end (point-max)))
+  (goto-char (or prompt-end (setq prompt-end (point))))
   (let ((topic-start (gptel-org--get-topic-start)))
     (when topic-start
       ;; narrow to GPTEL_TOPIC property scope
