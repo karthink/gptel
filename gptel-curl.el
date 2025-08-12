@@ -108,8 +108,15 @@ REQUEST-DATA is the data to send, TOKEN is a unique identifier."
        (list "--proxy" gptel-proxy
              "--proxy-negotiate"
              "--proxy-user" ":"))
-     (cl-loop for (key . val) in headers
-              collect (format "-H%s: %s" key val))
+     (letrec ((headers-string (cl-loop for (key . val) in headers
+                                       concat (format "%s: %s\n" key val)))
+              (temp-filename (make-temp-file "gptel-headers" nil ".txt" headers-string))
+              (cleanup-fn (lambda (&rest _)
+                            (when (file-exists-p temp-filename)
+                              (delete-file temp-filename)
+                              (remove-hook 'gptel-post-response-functions cleanup-fn)))))
+       (add-hook 'gptel-post-response-functions cleanup-fn)
+       (list "-H" (concat "@" temp-filename)))
      (list url))))
 
 ;;;###autoload
