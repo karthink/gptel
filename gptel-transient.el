@@ -1325,6 +1325,9 @@ Or in an extended conversation:
   :argument ":"
   :prompt (concat "Add instructions for next request only ("
                   gptel--read-with-prefix-help ") ")
+  ;; TODO: Add the ability to edit this in a separate buffer, with
+  ;; `gptel--edit-directive'.  This requires setting up gptel-menu with the
+  ;; result as the :scope.
   :reader (lambda (prompt initial history)
             (let* ((directive
                     (car-safe (gptel--parse-directive gptel--system-message 'raw)))
@@ -1497,14 +1500,28 @@ This sets the variable `gptel-include-tool-results', which see."
         (prompt
          (cond
           ((member "m" args)
-           (minibuffer-with-setup-hook
-               (lambda () (add-hook 'completion-at-point-functions
-                               #'gptel-preset-capf nil t))
-             (read-string
-              (format "Ask %s: " (gptel-backend-name gptel-backend))
-              (and (use-region-p)
-                   (buffer-substring-no-properties
-                    (region-beginning) (region-end))))))
+           (let* ((edit-in-buffer
+                   (lambda () (interactive)
+                     (gptel--edit-directive nil
+                       :initial (minibuffer-contents)
+                       :prompt "Edit prompt here"
+                       :setup (lambda () (goto-char (point-max)))
+                       :callback (lambda (msg)
+                                   (if (not msg)
+                                       (minibuffer-quit-recursive-edit)
+                                     (delete-region (minibuffer-prompt-end) (point-max))
+                                     (insert msg) (exit-minibuffer))))))
+                  (minibuffer-local-map
+                   (make-composed-keymap (define-keymap "C-c C-e" edit-in-buffer)
+                                         minibuffer-local-map)))
+             (minibuffer-with-setup-hook
+                 (lambda () (add-hook 'completion-at-point-functions
+                                 #'gptel-preset-capf nil t))
+               (read-string
+                (format "Ask %s: " (gptel-backend-name gptel-backend))
+                (and (use-region-p)
+                     (buffer-substring-no-properties
+                      (region-beginning) (region-end)))))))
           ((member "y" args)
            (unless (car-safe kill-ring)
              (user-error "`kill-ring' is empty!  Nothing to send"))
@@ -1732,7 +1749,8 @@ This uses the prompts in the variable
         (when-let* ((prompt (gethash choice gptel--crowdsourced-prompts)))
           (gptel--set-with-scope
            'gptel--system-message prompt gptel--set-buffer-locally)
-          (gptel--edit-directive 'gptel--system-message)))
+          (gptel--edit-directive 'gptel--system-message
+            :callback (lambda () (call-interactively #'gptel-menu)))))
     (message "No prompts available.")))
 
 (transient-define-suffix gptel--suffix-system-message (&optional cancel)
@@ -1750,17 +1768,20 @@ generated from functions."
                     "Active directive is dynamically generated: Edit its current value instead?")))))
   (if cancel (progn (message "Edit canceled")
                     (call-interactively #'gptel-menu))
-    (gptel--edit-directive 'gptel--system-message :setup #'activate-mark)))
+    (gptel--edit-directive 'gptel--system-message
+      :setup #'activate-mark
+      :callback (lambda (_) (call-interactively #'gptel-menu)))))
 
 ;; MAYBE: Eventually can be simplified with string-edit, after we drop support
 ;; for Emacs 28.2.
-(cl-defun gptel--edit-directive (sym &key prompt initial callback setup buffer)
+(cl-defun gptel--edit-directive (&optional sym &key prompt initial callback setup buffer)
   "Edit a gptel directive in a dedicated buffer.
 
-Store the result in SYM, a symbol.  PROMPT and INITIAL are the
-heading and initial text.  If CALLBACK is specified, it is run
-after exiting the edit.  If SETUP is a function, run it after
-setting up the buffer."
+Store the result in SYM, a symbol.  PROMPT and INITIAL are the heading
+and initial text.  If SETUP is a function, run it after setting up the
+buffer.  If CALLBACK is specified, it is run after exiting the edit.  It
+is called with one argument: the buffer text or with nil depending on
+whether the action is confirmed/cancelled."
   (declare (indent 1))
   (let ((orig-buf (or buffer (current-buffer)))
         (msg-start (make-marker))
@@ -1768,7 +1789,7 @@ setting up the buffer."
     (when (functionp directive)
       (setq directive (funcall directive)))
     ;; TODO: Handle editing list-of-strings directives
-    (with-current-buffer (get-buffer-create "*gptel-system*")
+    (with-current-buffer (get-buffer-create "*gptel-prompt*")
       (let ((inhibit-read-only t) (inhibit-message t))
         (erase-buffer)
         (text-mode)
@@ -1797,38 +1818,39 @@ setting up the buffer."
           (push-mark nil 'nomsg))
         (and (functionp setup) (funcall setup)))
       (display-buffer (current-buffer)
-                      `((display-buffer-below-selected)
+                      `((display-buffer-below-selected
+                         display-buffer-use-some-window)
+                        (some-window   . lru)
                         (body-function . ,#'select-window)
                         (window-height . ,#'fit-window-to-buffer)))
       (let ((quit-to-menu
-             (lambda ()
-               "Cancel system message update and return."
-               (interactive)
+             (lambda () "Cancel system message update and return."
                (quit-window)
                (unless (minibufferp)
                  (display-buffer orig-buf
                                  `((display-buffer-reuse-window
                                     display-buffer-use-some-window)
-                                   (body-function . ,#'select-window))))
-               (cond ((commandp callback) (call-interactively callback))
-                     ((functionp callback) (funcall callback))))))
+                                   (body-function . ,#'select-window)))))))
         (use-local-map
          (make-composed-keymap
           (define-keymap
             "C-c C-c"
-            (lambda ()
-              "Confirm system message and return."
+            (lambda () "Confirm system message and return."
               (interactive)
               (let ((system-message
                      (buffer-substring-no-properties msg-start (point-max))))
-                (with-current-buffer orig-buf
-                  (gptel--set-with-scope sym
-                                         (if (cdr-safe directive) ;Handle list of strings
-                                             (prog1 directive (setcar directive system-message))
-                                           system-message)
-                                         gptel--set-buffer-locally)))
-              (funcall quit-to-menu))
-            "C-c C-k" quit-to-menu)
+                (when sym
+                  (with-current-buffer orig-buf
+                    (gptel--set-with-scope
+                     sym (if (cdr-safe directive) ;Handle list of strings
+                             (prog1 directive (setcar directive system-message))
+                           system-message)
+                     gptel--set-buffer-locally)))
+                (funcall quit-to-menu)
+                (when (functionp callback) (funcall callback system-message))))
+            "C-c C-k" (lambda () (interactive)
+                        (funcall quit-to-menu)
+                        (when (functionp callback) (funcall callback nil))))
           text-mode-map))))))
 
 ;; ** Suffix for displaying and removing context

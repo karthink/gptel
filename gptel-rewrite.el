@@ -292,14 +292,12 @@ input history list."
               (gptel--edit-directive 'gptel--rewrite-message
                 :prompt rewrite-directive :initial (minibuffer-contents)
                 :buffer cb :setup (lambda () (ignore-errors (forward-char offset)))
-                ;; FIXME: We would like to (conditionally) start the rewrite
-                ;; here.  We can't because this callback is always called, even
-                ;; when quitting the edit buffer.
                 :callback
-                (lambda ()
-                  (run-at-time 0 nil #'transient-setup 'gptel-rewrite)
-                  (push (buffer-local-value 'gptel--rewrite-message cb)
-                        (alist-get 'gptel--infix-rewrite-extra transient-history))
+                (lambda (msg)
+                  (when msg
+                    (run-at-time 0 nil #'gptel--suffix-rewrite)
+                    (push (buffer-local-value 'gptel--rewrite-message cb)
+                          (alist-get 'gptel--infix-rewrite-extra transient-history)))
                   (when (minibufferp) (minibuffer-quit-recursive-edit)))))))
          (minibuffer-local-map
           (make-composed-keymap (define-keymap
@@ -688,7 +686,8 @@ generated from functions."
   (if cancel (progn (message "Edit canceled")
                     (call-interactively #'gptel-rewrite))
     (gptel--edit-directive 'gptel--rewrite-directive
-      :callback #'gptel-rewrite :setup #'activate-mark)))
+      :callback (lambda (_) (call-interactively #'gptel-rewrite))
+      :setup #'activate-mark)))
 
 (transient-define-suffix gptel--suffix-rewrite (&optional rewrite-message dry-run)
   "Rewrite or refactor region contents."
