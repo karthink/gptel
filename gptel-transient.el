@@ -179,42 +179,109 @@ will toggle its visibility state."
          (max-height (- (or (and (natnump max) max)
                             (floor (* max (frame-height))))
                         5)))
-    (when (and prefix (not (string-empty-p prefix)) (> max-height 1))
-      (unless visual-line-mode (visual-line-mode 1))
-      (goto-char (minibuffer-prompt-end))
-      (pcase-let ((`(,prop . ,ov)
-                   (get-char-property-and-overlay
-                    (point-min) 'gptel)))
-        (unless ov
-          (setq ov (make-overlay
-                    (point-min) (minibuffer-prompt-end) nil t)))
-        (pcase prop
-          ('partial
-           (if (> (length prefix) max-width)
-               (progn
-                 (overlay-put ov 'gptel 'prefix)
-                 (let ((disp-size
-                        (cl-loop for char across prefix
-                                 for idx upfrom 0
-                                 with n = 0 with max-length = (* max-height max-width)
-                                 if (eq char ?\n) do (cl-incf n)
-                                 if (> n max-height) return idx
-                                 if (> idx max-length)
-                                 return idx
-                                 finally return nil)))
-                   (funcall update ov
-                            (if disp-size
-                                (truncate-string-to-width
-                                 prefix disp-size  nil nil 'ellipsis)
-                              prefix))))
-             (overlay-put ov 'gptel 'hide)
-             (funcall update ov nil)))
-          ('prefix (overlay-put ov 'gptel 'hide)
-                 (funcall update ov nil))
-          (_ (overlay-put ov 'gptel 'partial)
-             (funcall update ov (truncate-string-to-width
-                                 prefix max-width nil nil
-                                 'ellipsis))))))))
+    (if (and prefix (not (string-empty-p prefix)) (> max-height 1))
+        (progn
+          (unless visual-line-mode (visual-line-mode 1))
+          (goto-char (minibuffer-prompt-end))
+          (pcase-let ((`(,prop . ,ov)
+                       (get-char-property-and-overlay
+                        (point-min) 'gptel)))
+            (unless ov
+              (setq ov (make-overlay
+                        (point-min) (minibuffer-prompt-end) nil t)))
+            (pcase prop
+              ('partial
+               (if (> (length prefix) max-width)
+                   (progn
+                     (overlay-put ov 'gptel 'prefix)
+                     (let ((disp-size
+                            (cl-loop for char across prefix
+                                     for idx upfrom 0
+                                     with n = 0 with max-length = (* max-height max-width)
+                                     if (eq char ?\n) do (cl-incf n)
+                                     if (> n max-height) return idx
+                                     if (> idx max-length)
+                                     return idx
+                                     finally return nil)))
+                       (funcall update ov
+                                (if disp-size
+                                    (truncate-string-to-width
+                                     prefix disp-size  nil nil 'ellipsis)
+                                  prefix))))
+                 (overlay-put ov 'gptel 'hide)
+                 (funcall update ov nil)))
+              ('prefix (overlay-put ov 'gptel 'hide)
+                       (funcall update ov nil))
+              (_ (overlay-put ov 'gptel 'partial)
+                 (funcall update ov (truncate-string-to-width
+                                     prefix max-width nil nil
+                                     'ellipsis))))))
+      (when-let* ((prop-ov (get-char-property-and-overlay (point-min) 'gptel)))
+        (when (overlayp (cdr prop-ov)) (delete-overlay (cdr prop-ov)))))))
+
+(defvar gptel--minibuffer-prompt-history nil
+  "History of prompts read from the minibuffer by gptel.")
+
+(defun gptel--read-minibuffer-prompt (&optional read-prompt)
+  "Read a user prompt from the minibuffer.
+
+Prompt with READ-PROMPT if supplied.  Optionally return the
+concatenation of the buffer region (if active) and the provided
+instructions."
+  (let* ((include-region (use-region-p))
+         (cb (current-buffer))
+         (get-region (lambda () (with-current-buffer cb
+                             (and include-region
+                                  (buffer-substring-no-properties
+                                   (region-beginning) (region-end))))))
+         (cycle-prefix (lambda () (interactive)
+                         (let ((p (point)))
+                           (gptel--read-with-prefix (funcall get-region))
+                           (goto-char p))))
+         (toggle-region (lambda () (interactive)
+                          (if include-region
+                              (progn (setq include-region nil)
+                                     (gptel--read-with-prefix nil))
+                            (setq include-region t)
+                            (funcall cycle-prefix))))
+         (edit-in-buffer
+          (lambda () (interactive)
+            (gptel--edit-directive nil
+              :initial (minibuffer-contents)
+              :prompt (if include-region
+                          (with-current-buffer cb (buffer-substring-no-properties
+                                                   (region-beginning) (region-end)))
+                        "# Edit prompt below")
+              :setup (lambda () (goto-char (point-max)) (run-at-time 0 nil #'recenter))
+              :callback (lambda (msg)
+                          (if (not msg)
+                              (minibuffer-quit-recursive-edit)
+                            (delete-region (minibuffer-prompt-end) (point-max))
+                            (insert msg) (exit-minibuffer))))))
+         (minibuffer-local-map
+          (make-composed-keymap (define-keymap
+                                  "M-RET" toggle-region "C-c C-e" edit-in-buffer)
+                                minibuffer-local-map)))
+    (let ((user-prompt
+           (minibuffer-with-setup-hook
+               (lambda () (add-hook 'completion-at-point-functions
+                               #'gptel-preset-capf nil t)
+                 (funcall cycle-prefix)
+                 ;; HACK for lucid Emacs, where `make-separator-line' is wonky.  The
+                 ;; minibuffer prompt gets cut off -- force redisplay to fix:
+                 (insert " ") (redisplay) (delete-char -1))
+             (read-string
+              (or read-prompt
+                  (concat (format "Ask %s" (gptel-backend-name gptel-backend))
+                          (if (use-region-p) ;NOTE: not "include-region" as this is only read once
+                            (concat " (" (propertize "M-RET" 'face 'help-key-binding)
+                                    (propertize ": Include/Ignore selection" 'face 'default)
+                                    "): ")
+                            ": ")))
+              nil 'gptel--minibuffer-prompt-history))))
+      (if include-region
+          (concat (funcall get-region) "\n" user-prompt)
+        user-prompt))))
 
 (defun gptel--transient-read-number (prompt _initial-input history)
   "Read a numeric value from the minibuffer.
@@ -1499,29 +1566,7 @@ This sets the variable `gptel-include-tool-results', which see."
         ;; Input redirection: grab prompt from elsewhere?
         (prompt
          (cond
-          ((member "m" args)
-           (let* ((edit-in-buffer
-                   (lambda () (interactive)
-                     (gptel--edit-directive nil
-                       :initial (minibuffer-contents)
-                       :prompt "Edit prompt here"
-                       :setup (lambda () (goto-char (point-max)))
-                       :callback (lambda (msg)
-                                   (if (not msg)
-                                       (minibuffer-quit-recursive-edit)
-                                     (delete-region (minibuffer-prompt-end) (point-max))
-                                     (insert msg) (exit-minibuffer))))))
-                  (minibuffer-local-map
-                   (make-composed-keymap (define-keymap "C-c C-e" edit-in-buffer)
-                                         minibuffer-local-map)))
-             (minibuffer-with-setup-hook
-                 (lambda () (add-hook 'completion-at-point-functions
-                                 #'gptel-preset-capf nil t))
-               (read-string
-                (format "Ask %s: " (gptel-backend-name gptel-backend))
-                (and (use-region-p)
-                     (buffer-substring-no-properties
-                      (region-beginning) (region-end)))))))
+          ((member "m" args) (gptel--read-minibuffer-prompt))
           ((member "y" args)
            (unless (car-safe kill-ring)
              (user-error "`kill-ring' is empty!  Nothing to send"))
