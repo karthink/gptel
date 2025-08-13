@@ -588,17 +588,23 @@ REGION is one of apac, eu or us."
 
 (defun gptel-bedrock--curl-args (region)
   "Generate the curl arguments to get a bedrock request signed for use in REGION."
-  ;; https://curl.se/docs/manpage.html#--aws-sigv4
-  (cl-multiple-value-bind (key-id secret token) (gptel-bedrock--get-credentials)
-    (nconc
-     (list
-      "--user" (format "%s:%s" key-id secret)
-      "--aws-sigv4" (format "aws:amz:%s:bedrock" region))
-     (unless (memq system-type '(windows-nt ms-dos))
-       ;; Without this curl swallows the output
-       (list "--output" "/dev/stdout"))
-     (when token
-       (list (format "-Hx-amz-security-token: %s" token))))))
+  ;; Only use AWS SigV4 authentication if no :key is set on the backend
+  (if (and gptel-backend (gptel-backend-key gptel-backend))
+      ;; If :key is set, only add the output argument for non-Windows systems
+      (unless (memq system-type '(windows-nt ms-dos))
+        (list "--output" "/dev/stdout"))
+    ;; Otherwise, use AWS SigV4 authentication
+    ;; https://curl.se/docs/manpage.html#--aws-sigv4
+    (cl-multiple-value-bind (key-id secret token) (gptel-bedrock--get-credentials)
+      (nconc
+       (list
+        "--user" (format "%s:%s" key-id secret)
+        "--aws-sigv4" (format "aws:amz:%s:bedrock" region))
+       (unless (memq system-type '(windows-nt ms-dos))
+         ;; Without this curl swallows the output
+         (list "--output" "/dev/stdout"))
+       (when token
+         (list (format "-Hx-amz-security-token: %s" token)))))))
 
 (defun gptel-bedrock--curl-version ()
   "Check Curl version required for gptel-bedrock."
@@ -613,7 +619,7 @@ REGION is one of apac, eu or us."
           region
           (models gptel--bedrock-models)
 	  (model-region nil)
-          stream curl-args request-params
+          stream curl-args bedrock-api-key request-params
           (protocol "https"))
   "Register an AWS Bedrock backend for gptel with NAME.
 
@@ -624,6 +630,7 @@ MODELS - The list of models supported by this backend
 MODEL-REGION - one of apac, eu, us or nil
 CURL-ARGS - additional curl args
 STREAM - Whether to use streaming responses or not.
+BEDROCK-API-KEY - An optional Bedrock API key for authenticating with AWS
 REQUEST-PARAMS - a plist of additional HTTP request
 parameters (as plist keys) and values supported by the API."
   (declare (indent 1))
@@ -635,7 +642,9 @@ parameters (as plist keys) and values supported by the API."
           (gptel--make-bedrock
            :name name
            :host host
-           :header nil           ; x-amz-security-token is set in curl-args if needed
+           :header (lambda () (when-let* ((key (gptel--get-api-key)))
+                         `(("Authorization" . ,(concat "Bearer " key)))))
+           :key bedrock-api-key
            :models (gptel--process-models models)
 	   :model-region model-region
            :protocol protocol
