@@ -1397,7 +1397,7 @@ Or in an extended conversation:
   ;; result as the :scope.
   :reader (lambda (prompt initial history)
             (let* ((directive
-                    (car-safe (gptel--parse-directive gptel--system-message 'raw)))
+                    (car-safe (gptel--parse-directive gptel--system-message 'raw t)))
                    (cycle-prefix (lambda () (interactive)
                                    (gptel--read-with-prefix directive)))
                    (minibuffer-local-map
