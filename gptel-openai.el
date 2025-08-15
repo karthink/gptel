@@ -241,7 +241,7 @@ information if the stream contains it."
                 ;; Check for reasoning blocks, currently only used by Openrouter
                 (unless (eq (plist-get info :reasoning-block) 'done)
                   (if-let* ((reasoning-chunk (plist-get delta :reasoning)) ;for Openrouter and co
-                            ((not (eq reasoning-chunk :null))))
+                            ((not (or (eq reasoning-chunk :null) (string-empty-p reasoning-chunk)))))
                       (plist-put info :reasoning
                                  (concat (plist-get info :reasoning) reasoning-chunk))
                     ;; Done with reasoning if we get non-empty content
