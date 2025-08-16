@@ -1667,7 +1667,7 @@ SCHEMA can be specified in several ways:
                  (all-types '("number" "string" "integer" "boolean" "null")))
             (if (= (point-max) (line-end-position)) ; Single or multi-line?
                 ;; Single line format (type optional): "key1 type, key2, ..."
-                (while (re-search-forward ",?\\([^ ,]+\\) *\\([^,]*\\]?\\)" nil t)
+                (while (re-search-forward ",?\\([^ ,]+\\) *\\([^ ,]*\\]?\\)" nil t)
                   (push (match-string 1) props)
                   (push (if (string-empty-p (match-string 2))
                             "string" (car (all-completions (match-string 2) all-types)))
