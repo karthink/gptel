@@ -971,7 +971,7 @@ together.  See `gptel-make-preset' for details."
   :transient-suffix #'transient--do-return
   [:description "Save or apply a preset collection of gptel options"
    [:pad-keys t
-    ("C-s" "Save current settings to preset" gptel--save-preset)]]
+    ("C-s" "Save current settings as new preset" gptel--save-preset)]]
   [:if (lambda () gptel--known-presets)
    :class transient-column
    :setup-children

@@ -1667,7 +1667,7 @@ SCHEMA can be specified in several ways:
                  (all-types '("number" "string" "integer" "boolean" "null")))
             (if (= (point-max) (line-end-position)) ; Single or multi-line?
                 ;; Single line format (type optional): "key1 type, key2, ..."
-                (while (re-search-forward ",?\\([^ ,]+\\) *\\([^,]*\\]?\\)" nil t)
+                (while (re-search-forward ",?\\([^ ,]+\\) *\\([^ ,]*\\]?\\)" nil t)
                   (push (match-string 1) props)
                   (push (if (string-empty-p (match-string 2))
                             "string" (car (all-completions (match-string 2) all-types)))
@@ -3909,7 +3909,9 @@ NAME is the name of a preset, or a spec (plist) of the form
 (defun gptel--transform-apply-preset (_fsm)
   "Apply a gptel preset to the buffer depending on the prompt.
 
-If the user prompt begins with @foo, the preset foo is applied."
+If the last user prompt includes @foo, the preset foo is applied.
+Before applying the preset, \"@foo\" is removed from the prompt and
+point is placed at its position."
   (when gptel--known-presets
     (text-property-search-backward 'gptel nil t)
     (while (re-search-forward "@\\([^[:blank:]]+\\)\\_>" nil t)
@@ -3921,6 +3923,8 @@ If the user prompt begins with @foo, the preset foo is applied."
                     (preset (or (gptel-get-preset (intern-soft name))
                                 (gptel-get-preset name))))
           (delete-region (match-beginning 0) (match-end 0))
+          ;; Point must be after @foo when the preset is applied to allow for
+          ;; more advanced transformations.
           (gptel--apply-preset preset
                                (lambda (sym val)
                                  (set (make-local-variable sym) val))))))))
