@@ -141,6 +141,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#model-context-protocol-mcp-integration][Model Context Protocol (MCP) integration]]
     - [[#rewrite-refactor-or-fill-in-a-region][Rewrite, refactor or fill in a region]]
     - [[#extra-org-mode-conveniences][Extra Org mode conveniences]]
+    - [[#introspection-examine-debug-or-modify-requests][Introspection (examine, debug or modify requests)]]
   - [[#faq][FAQ]]
     - [[#chat-buffer-ui][Chat buffer UI]]
       - [[#i-want-the-window-to-scroll-automatically-as-the-response-is-inserted][I want the window to scroll automatically as the response is inserted]]
@@ -1558,6 +1559,23 @@ Note: using this option requires Org 9.7 or higher to be available.  The [[https
 ***** Save gptel parameters to Org headings (reproducible chats)
 
 You can declare the gptel model, backend, temperature, system message and other parameters as Org properties with the command =gptel-org-set-properties=.  gptel queries under the corresponding heading will always use these settings, allowing you to create mostly reproducible LLM chat notebooks, and to have simultaneous chats with different models, model settings and directives under different Org headings.
+
+*** Introspection (examine, debug or modify requests)
+
+Set =gptel-expert-commands= to =t= to display additional options in gptel's transient menu.
+#+html: <img width="800" height="403" alt="Image" src="https://github.com/user-attachments/assets/636ff77c-73d9-449b-9d49-bb792d8abd45" align="center"/>
+
+*Examining prompts*: you can examine and edit gptel request payloads before sending them.
+
+- Pick one of the "dry run" options in the menu to produce a buffer containing the request payload.
+- You can edit this buffer as you would like and send the request.
+- You can also copy a Curl command corresponding to the request and invoke it from the shell.
+
+*Examining responses*: You can turn on logging to examine the full response from an LLM.
+
+- Set =gptel-log-level= to =info= or =debug=.
+- Send a request.
+- Open the log buffer from gptel's transient menu, or switch to the =*gptel-log*= buffer.
 
 ** FAQ
 *** Chat buffer UI
