@@ -112,7 +112,7 @@ so-called "instruct" models.  In this manual LLM refers only to
 LLMs are categorized by the information they were trained with, tasks
 they are trained for, by their capabilities, and by their size.  Their
 size is typically measured in billions of network parameters, where
-the smallest models (1-70 billion parameters) can run on today's
+the smallest models (1-120 billion parameters) can run on today's
 consumer hardware.  The larger models typically consist of hundreds of
 billions of parameters, and require clusters or supercomputers to run.
 
@@ -624,10 +624,11 @@ Request parameters (optional):
 
 - =STREAM= :: (Boolean) Stream responses when using this backend, if
   supported.
-- =REQUEST-PARAMS= :: A plist of additional HTTP request parameters
-  (as plist keys) and their values supported by the API.  Its contents
-  are API-specific, and can be used to set parameters that gptel does
-  not provide user options for.
+- =REQUEST-PARAMS= :: A plist of additional request parameters (as
+  plist keys) and their values supported by the API.  Its contents are
+  API-specific, and can be used to set parameters that gptel does not
+  provide user options for.  It will be converted to JSON and included
+  with all requests made with this backend.
 
 Here is an annotated example of a full backend specification.  In
 practice gptel provides several specialized backend-creation functions
@@ -735,7 +736,8 @@ Here is an example:
  :context-window 200
  :input-cost 3
  :output-cost 15
- :cutoff-date "2025-03")
+ :cutoff-date "2025-03"
+ :request-params (:thinking (:type "enabled" :budget_tokens 2048)))
 #+end_src
 
 This metadata is displayed when selecting models interactively.  It is
@@ -771,6 +773,12 @@ Keys used by gptel:
 - =MIME-TYPES= :: List of MIME types a =media= capable model can
   parse.
 
+- =REQUEST-PARAMS= :: A plist of additional request parameters (as
+  plist keys) and their values supported by the API.  Its contents are
+  API-specific, and can be used to set parameters that gptel does not
+  provide user options for.  It will be converted to JSON and included
+  with all requests made with this model.
+
 ** TODO Context
 
 # #+INCLUDE: ../gptel/README.org::#include-context :only-contents t
@@ -803,7 +811,8 @@ To use tools in gptel, you need
 - Tool specifications that gptel understands.  gptel does not
   currently include any tool specifications out of the box.
 
-*** Writing or obtaining tools
+*** Obtaining tools
+*** Writing tools
 
 A gptel tool is a structure specifying an Elisp function, the format
 of its arguments and accompanying documentation intended for the LLM.
@@ -1042,9 +1051,7 @@ South and West (resp) are negative.")
 
 [fn:1-json-schema] https://json-schema.org/understanding-json-schema/reference
 
-**** Obtaining tools
-
-**** Tools from MCP servers
+*** Tools from MCP servers
 *** Selecting tools
 
   #+findex: gptel-get-tool
@@ -1106,7 +1113,7 @@ To define a preset, use ~gptel-make-preset~.
 
   #+findex: gptel-make-preset
 - Function ~gptel-make-preset~ ::
-  Arguments:  =(NAME &rest KEYS ...)=
+  Arguments:
   : (NAME [KEY1 VALUE1] [KEY2 VALUE2] ...)
   Register a gptel options preset with =NAME=.
 
