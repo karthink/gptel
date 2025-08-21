@@ -711,3 +711,35 @@ body.dark-theme ::-moz-scrollbar-thumb:hover {
   background-color: #777777;
 }
 
+/**  THEME TOGGLE BUTTON ICON  **/
+#dark-theme-toggle {
+    position: fixed;
+    top: 0.25em;
+    left: 0.25em;
+    font-size: 1.4em;
+    background: none;
+    border: none;
+    transition: background 0.17s, color 0.17s;
+    user-select: none;
+    vertical-align: middle;
+    cursor: pointer;
+    /* color is set from body/html for normal/dark */
+}
+#dark-theme-toggle .toggle-icon {
+    pointer-events: none;
+    display: inline-block;
+}
+#dark-theme-toggle .icon-light {
+    display: inline;
+    filter: invert(0.9) hue-rotate(180deg) brightness(0.9) saturate(0.8);
+}
+#dark-theme-toggle .icon-dark {
+    display: none;
+}
+body.dark-theme #dark-theme-toggle .icon-light {
+    display: none;
+}
+body.dark-theme #dark-theme-toggle .icon-dark {
+    display: inline;
+}
+
