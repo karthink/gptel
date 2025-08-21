@@ -149,7 +149,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#i-want-to-change-the-formatting-of-the-prompt-and-llm-response][I want to change the formatting of the prompt and LLM response]]
       - [[#how-does-gptel-distinguish-between-user-prompts-and-llm-responses][How does gptel distinguish between user prompts and LLM responses?]]
     - [[#transient-menu-behavior][Transient menu behavior]]
-      - [[#i-want-to-set-gptel-options-but-only-for-this-buffer][I want to set gptel options, but only for this buffer]]
+      - [[#i-want-to-set-gptel-options-but-only-for-this-buffer][I want to set gptel options but only for this buffer]]
       - [[#i-want-the-transient-menu-options-to-be-saved-so-i-only-need-to-set-them-once][I want the transient menu options to be saved so I only need to set them once]]
       - [[#using-the-transient-menu-leaves-behind-extra-windows][Using the transient menu leaves behind extra windows]]
       - [[#can-i-change-the-transient-menu-key-bindings][Can I change the transient menu key bindings?]]
@@ -1625,7 +1625,7 @@ gptel does /not/ use any prefix or semantic/syntax element in the buffer (such a
 #+html: </details>
 *** Transient menu behavior
 #+html: <details><summary>
-**** I want to set gptel options, but only for this buffer
+**** I want to set gptel options but only for this buffer
 :PROPERTIES:
 :ID:       748cbc00-0c92-4705-8839-619b2c80e566
 :END:

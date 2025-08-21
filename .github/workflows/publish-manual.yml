@@ -50,6 +50,7 @@ jobs:
                       (require 'ox-html)
                       (require 'ox-texinfo)
                       (require 'htmlize)
+                      (setq org-html-htmlize-output-type 'css)
                       (setq org-html-postamble nil)
                       (setq org-export-exclude-tags '(\"noexport\" \"nohtmlexport\"))
                       (find-file \"manual.org\")
