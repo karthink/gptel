@@ -360,6 +360,40 @@ td > pre[class*="example"] {
 }
 
 
+/** HTMLIZE STYLES **/
+:root {
+    --pre-comment-delimiter: #595959;
+    --pre-comment: #595959;
+    --pre-keyword: #531ab6;
+    --pre-string: #3548cf;
+    --pre-builtin: #8f0075;
+}
+
+.org-src-container {
+    .org-comment-delimiter {
+        /* font-lock-comment-delimiter-face */
+        color: var(--pre-comment-delimiter);
+      }
+    .org-comment {
+        /* font-lock-comment-face */
+        color: var(--pre-comment);
+      }
+    .org-keyword {
+        /* font-lock-keyword-face */
+        color: var(--pre-keyword);
+        font-weight: bold;
+      }
+    .org-string {
+        /* font-lock-string-face */
+        color: var(--pre-string);
+      }
+    .org-builtin {
+        /* font-lock-builtin-face */
+        color: var(--pre-builtin);
+        font-weight: bold;
+      }
+}
+
 /** QUOTATIONS **/
 
 /* (gawk, gawkinet & mes) Keep short quotations and their signatures
