@@ -20,7 +20,7 @@
 #+macro: development-version 0.9.9-dev
 #+macro: space @@texinfo:@: @@
 #+macro: kbd (eval (org-texinfo-kbd-macro $1))
-#+texinfo_filename: gptel.info
+#+texinfo_filename: manual.info
 #+texinfo_dir_category: Misc
 #+texinfo_dir_desc: A simple LLM client for Emacs
 #+texinfo_header: @syncodeindex pg cp
