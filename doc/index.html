@@ -76,9 +76,13 @@
         }
         .video-label {
             writing-mode: horizontal-tb;
-            text-align: left;
+            text-align: center;
+            font-size: 1.3em;
+            font-weight: bold;
             margin-bottom: 3px; /* space under label in 1-col mode */
             padding: 0px 0 5px 0;
+            margin-bottom: 12px;
+            padding: 6px 12px;
             min-width: 0;
         }
     .video-section {
@@ -107,29 +111,7 @@
         background: var(--body-bg);
         padding: 2em 0;
     }
-    .video-label {
-        writing-mode: vertical-rl;
-        text-orientation: mixed;
-        text-align: center;
-        font-size: 1.3em;
-        font-weight: bold;
-        color: #2e901e;
-        letter-spacing: 0.1em;
-        border-radius: 12px;
-        padding: 10px 3px;
-        min-width: 32px;
-        flex-shrink: 0;
-    }
-    @media (max-width: 1200px) {
-        .video-label {
-            writing-mode: horizontal-tb;
-            text-align: left;
-            margin-bottom: 12px;
-            padding: 6px 12px;
-            min-width: 0;
-        }
-    }
-
+  }
   </style>
 </head>
 <body>
