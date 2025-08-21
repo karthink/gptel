@@ -1,23 +1,41 @@
-# -*- fill-column: 70; -*-
+# -*- fill-column: 70; org-html-postamble: nil; -*-
 #+title: gptel
 #+author: Karthik Chikmagalur
 #+email: contact@karthinks.com
 #+language: en
-#+options: ':t toc:nil author:t email:t num:t h:4 broken-links:mark html-style:nil
+#+options: ':t ^:{} toc:t author:nil email:nil num:t h:3
+#+options: broken-links:mark creator:nil date:nil html-style:nil html5-fancy:t
+#+property: header-args eval:never-export
 #+export_file_name: gptel
 #+startup: content
-#+macro: stable-version 0.9.6
+
+#+infojs_opt: view:info toc:nil mouse:underline ftoc:nil ltoc:nil
+#+html_head: <link rel="stylesheet" type="text/css" href="style.css" />
+#+html_head_extra: <style>blockquote { font-style: normal; }</style>
+#+html_head: <script src="toc-and-theme-loader.js"></script>
+#+bind: org-html-postamble nil
+
+#+macro: stable-version 0.9.8.5
 #+macro: release-date 2024-12-31
-#+macro: development-version 0.9.7-dev
+#+macro: development-version 0.9.9-dev
 #+macro: space @@texinfo:@: @@
 #+macro: kbd (eval (org-texinfo-kbd-macro $1))
 #+texinfo_filename: gptel.info
 #+texinfo_dir_category: Misc
 #+texinfo_dir_desc: A simple LLM client for Emacs
 #+texinfo_header: @syncodeindex pg cp
-
-
 #+texinfo: @insertcopying
+#+toc: headlines 8
+
+#+begin_export html
+<button id="dark-theme-toggle" aria-pressed="false"><span class="toggle-icon"><span class="icon-light">🌙</span><span class="icon-dark">☀️</span></span></button>
+<button id="toc-toggle-btn" style="display:none">☰ TOC</button>
+#+end_export
+
+* About
+:properties:
+:copying: t
+:end:
 
 This is the user and developer manual for gptel, a simple Large Language Model
 (LLM) client for Emacs.
@@ -30,13 +48,6 @@ dated {{{release-date}}}.  The development target is version
 + Official manual: TODO
 + Git repository: <https://github.com/karthink/gptel>
 + Bug tracker: <https://github.com/karthink/gptel/issues>
-
-#+toc: headlines 8
-
-* COPYING
-:properties:
-:copying: t
-:end:
 
 #+begin_quote
 Permission is granted to copy, distribute and/or modify this document
