@@ -132,9 +132,9 @@ models (nicknamed "instruct models") are among the most popular and
 easy to use without additional tooling, as the interaction format
 prescribes an interface by itself.
 
-#+INCLUDE: ../gptel/README.org::*Installation :minlevel 1
+#+INCLUDE: ../README.org::*Installation :minlevel 1
 
-#+INCLUDE: ../gptel/README.org::*Setup :minlevel 1
+#+INCLUDE: ../README.org::*Setup :minlevel 1
 
 * Quick start and commands
 :PROPERTIES:
@@ -781,7 +781,7 @@ Keys used by gptel:
 
 ** TODO Context
 
-# #+INCLUDE: ../gptel/README.org::#include-context :only-contents t
+# #+INCLUDE: ../README.org::#include-context :only-contents t
 
 ** TODO Tools
 
@@ -2000,9 +2000,9 @@ This section provides recipes for...
 
 ** Building an application
 
-#+INCLUDE: ../gptel/README.org::*FAQ :minlevel 1
-#+INCLUDE: ../gptel/README.org::*Alternatives :minlevel 1
-#+INCLUDE: ../gptel/README.org::*Acknowledgments :minlevel 1
+#+INCLUDE: ../README.org::*FAQ :minlevel 1
+#+INCLUDE: ../README.org::*Alternatives :minlevel 1
+#+INCLUDE: ../README.org::*Acknowledgments :minlevel 1
 * Concept Index :nohtmlexport:
 :PROPERTIES:
 :INDEX:    cp
