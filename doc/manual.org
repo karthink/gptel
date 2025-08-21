@@ -6,7 +6,7 @@
 #+options: ':t ^:{} toc:t author:nil email:nil num:t h:3
 #+options: broken-links:mark creator:nil date:nil html-style:nil html5-fancy:t
 #+property: header-args eval:never-export
-#+export_file_name: gptel
+#+export_file_name: manual
 #+startup: content
 
 #+infojs_opt: view:info toc:nil mouse:underline ftoc:nil ltoc:nil
