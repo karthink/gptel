@@ -31,9 +31,9 @@ jobs:
           ref: manual
       
       - name: Install Emacs 30
-        uses: purcell/setup-emacs@v14
+        uses: purcell/setup-emacs@master
         with:
-          version: '30.0'
+          version: '30.1'
         # 'emacs' will be on PATH
       
       - name: Export Org-mode manual to HTML
