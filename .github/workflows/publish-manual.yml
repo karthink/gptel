@@ -31,13 +31,10 @@ jobs:
           ref: manual
       
       - name: Install Emacs 30
-        run: |
-          sudo add-apt-repository ppa:ubuntu-elisp/ppa
-          sudo apt-get update
-          sudo apt-get install emacs-snapshot emacs-snapshot-el
-          # Create symlink so 'emacs' command works
-          sudo ln -sf /usr/bin/emacs-snapshot /usr/local/bin/emacs
-          emacs --version
+        uses: purcell/setup-emacs@v14
+        with:
+          version: '30.0'
+        # 'emacs' will be on PATH
       
       - name: Export Org-mode manual to HTML
         run: |
