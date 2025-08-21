@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>gptel</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="toc-and-theme-loader.js"></script>
+  <style>
+    /* Minimal tweaks for GPTel-branding. You probably already have similar in style.css */
+    /* body { background: #fff5e5; color: #4b4000; font-family: 'Segoe UI', Arial, sans-serif; border: 0px; } */
+    body { background: var(--body-bg); color: var(--fg); font-family: 'Segoe UI', Arial, sans-serif; border: 0px; }
+    /* html { background: #fff5e5; } */
+    html { background: var(--body-bg); }
+    .centered { text-align: center; margin: 2em 0; }
+    .tagline { color: #28a225; font-weight: bold; font-size: 1.4em; margin: 0.7em 0 1.5em; }
+    .section { margin: 2em auto; max-width: 660px; }
+    .install-box {
+        /* background: #ffffef; */
+        color: var(--pre-fg);
+        background: var(--pre-bg);
+        border-radius: 7px;
+        padding: 1em;
+        border: 1px solid var(--border);
+        margin: 1.5em 0;
+        font-family: monospace;
+        font-size:1.03em;
+    }
+    body.dark-theme .install-box {
+        filter: invert(0.9) hue-rotate(180deg) brightness(0.9) saturate(0.8);
+    }
+    a { color: #6287d1; }
+    .feature-list { margin-top: 1em; text-align: left;}
+    h1 { font-size:2.3em; }
+    .logo { width: 600px; height: auto; border-radius: 0px; box-shadow:0 0 4px #bbb;}
+    .video-label-grid {
+        display: grid;
+        grid-template-columns: max-content max-content;
+        grid-gap: 36px 32px;
+        align-items: center;
+        justify-content: center;
+        overflow: visible;
+        padding-bottom: 18px;
+    }
+    .video-label {
+        grid-row: span 1;
+        align-self: stretch;
+        writing-mode: vertical-rl;
+        text-orientation: mixed;
+        text-align: center;
+        font-size: 1.3em;
+        font-weight: bold;
+        color: #2e901e;
+        letter-spacing: 0.1em;
+        border-radius: 12px;
+        padding: 10px 3px;
+        min-width: 32px;
+        margin-right: 6px;
+    }
+    .video-pair {
+        display: flex;
+        flex-direction: row;
+        gap: 28px;
+        width: max-content;
+        background: var(--body-bg);
+    }
+    @media (max-width: 1200px) {
+        .video-pair {
+            flex-direction: column;
+            min-width: unset;
+            gap: 16px;
+            align-items: flex-start;
+        }
+        .video-label-grid {
+            grid-template-columns: 1fr;
+            gap: 12px 0;
+        }
+        .video-label {
+            writing-mode: horizontal-tb;
+            text-align: left;
+            margin-bottom: 3px; /* space under label in 1-col mode */
+            padding: 0px 0 5px 0;
+            min-width: 0;
+        }
+    .video-section {
+        overflow-x: auto;
+        margin: 2em 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100vw;
+        position: relative;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+    /* Override the inline styles and center properly */
+    div.video-label-grid {
+        width: 100vw;
+        position: relative;
+        left: 50%;
+        transform: translateX(-50%);
+        max-width: none;
+        margin: 0 auto;
+        overflow: visible;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: var(--body-bg);
+        padding: 2em 0;
+    }
+    .video-label {
+        writing-mode: vertical-rl;
+        text-orientation: mixed;
+        text-align: center;
+        font-size: 1.3em;
+        font-weight: bold;
+        color: #2e901e;
+        letter-spacing: 0.1em;
+        border-radius: 12px;
+        padding: 10px 3px;
+        min-width: 32px;
+        flex-shrink: 0;
+    }
+    @media (max-width: 1200px) {
+        .video-label {
+            writing-mode: horizontal-tb;
+            text-align: left;
+            margin-bottom: 12px;
+            padding: 6px 12px;
+            min-width: 0;
+        }
+    }
+
+  </style>
+</head>
+<body>
+  <button id="dark-theme-toggle" aria-pressed="false"><span class="toggle-icon"><span class="icon-light">🌙</span><span class="icon-dark">☀️</span></span></button>
+  <div class="section centered">
+    <img src="https://share.karthinks.com/gptel-logo.png" class="logo" alt="gptel logo">
+    <h1><b>gptel</b></h1>
+    <div class="tagline">A simple LLM client for Emacs</div>
+    <p>
+      <b>gptel</b> is a simple Large Language Model chat client for Emacs, with support for many models and backends. It works in the spirit of Emacs, available at any time and uniformly in any buffer.
+    </p>
+  </div>
+
+  <div class="section feature-list">
+    <p>
+      <b>gptel is available in <em>any</em> context:</b>
+    </p>
+    <ul>
+      <li>Interact with LLMs from anywhere in Emacs (any buffer, shell, minibuffer, wherever).</li>
+      <li>Carry on multiple independent conversations, one-off, ad hoc interactions or anything in between.</li>
+    </ul>
+    <p>but <em>unobtrusive</em>: it stays out of your way until you need it.</p>
+    <p>
+      <b>gptel can talk to most LLM services/runners:</b>
+    </p>
+    <ul>
+      <li> ChatGPT (OpenAI), Claude (Anthropic), Gemini (Google), Llama.cpp and Ollama models,</li>
+      <li> but also Perplexity, Kagi, Deepseek, Azure, GitHub Copilot (chat), xAI and AWS Bedrock, </li>
+      <li> and nearly every other inference provider or proxy: Openrouter, PrivateGPT, GitHub Models, Groq, Cerebras, Mistral Le Chat, Moonshot, Anyscale, Sambanova, Novita AI, ...</li>
+    <p>
+      <b>gptel can use LLMs as agents:</b>
+    </p>
+    <ul>
+      <li>Supports tool-use to equip LLMs with agentic capabilities.</li>
+      <li>Supports Model Context Protocol (MCP) integration using <a href="https://github.com/lizqwerscott/mcp.el">mcp.el</a>.</li>
+    </ul>
+    <p>
+      <b>gptel is featureful, it can:</b>
+    </p>
+    <ul>
+      <li>stream responses, and will never block Emacs. (If you know you know!)</li>
+      <li>handle multi-modal input — include images and documents with queries.</li>
+      <li>handle "reasoning" content in LLM responses.</li>
+    </ul>
+    <p>
+      <b>Chats are just regular Emacs buffers. This means you can:</b>
+    </p>
+    <ul>
+      <li>save chats as regular Markdown/Org/Text files and resume them later.</li>
+      <li>edit your previous prompts or LLM responses when continuing a conversation. These will be fed back to the model.</li>
+      <li>use gptel seamlessly in Org-mode.</li>
+    </ul>
+    <p>
+      <b>gptel is <em>transparent</em> and <em>composable</em>.</b>
+    </p>
+    <ul>
+      <li>It supports introspection, so you can see <em>exactly</em> what will be sent. Inspect and modify queries before sending them.</li>
+      <li>Pause multi-stage requests at an intermediate stage and resume them later.</li>
+      <li>Don't like gptel's workflow? gptel is fully scriptable. Use it to create your own for any supported model/backend with a <a href="https://github.com/karthink/gptel/wiki/Defining-custom-gptel-commands">simple API</a>.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2 style="color:#28a225;">Screencasts</h2>
+    <a href="https://www.youtube.com/watch?v=bsRnh_brggM">Walkthrough on YouTube, 18 minutes (Dec 2023) </a><br><br>
+    <div class="video-label-grid">
+      <div class="video-label">General usage</div>
+      <div class="video-pair">
+        <video preload="none" poster="https://share.karthinks.com/gptel-poster-small.png" controls width="600" style="border-radius:8px;">
+          <source src="https://user-images.githubusercontent.com/8607532/230516812-86510a09-a2fb-4cbd-b53f-cc2522d05a13.mp4" type="video/mp4">
+          <a href="https://user-images.githubusercontent.com/8607532/230516812-86510a09-a2fb-4cbd-b53f-cc2522d05a13.mp4">General usage demo 1</a>
+        </video>
+        <video preload="none" poster="https://share.karthinks.com/gptel-poster-small.png" controls width="600" style="border-radius:8px;">
+          <source src="https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-ad3f-b66fa73c6e45.mp4" type="video/mp4">
+          <a href="https://user-images.githubusercontent.com/8607532/230516816-ae4a613a-4d01-4073-ad3f-b66fa73c6e45.mp4">General usage demo 2</a>
+        </video>
+      </div>
+      <div class="video-label">Rewrite in place</div>
+      <div class="video-pair">
+        <video preload="none" poster="https://share.karthinks.com/gptel-poster-small.png" controls width="600" style="border-radius:8px;">
+          <source src="https://github.com/user-attachments/assets/cec11aec-52f6-412e-9e7a-9358e8b9b1bf" type="video/mp4">
+          <a href="https://github.com/user-attachments/assets/cec11aec-52f6-412e-9e7a-9358e8b9b1bf">Rewrite text in place 1</a>
+        </video>
+        <video preload="none" poster="https://share.karthinks.com/gptel-poster-small.png" controls width="600" style="border-radius:8px;">
+          <source src="https://github.com/user-attachments/assets/4067fdb8-85d3-4264-9b64-d727353f68f9" type="video/mp4">
+          <a href="https://github.com/user-attachments/assets/4067fdb8-85d3-4264-9b64-d727353f68f9">Rewrite text in place 2</a>
+        </video>
+      </div>
+      <div class="video-label">Tool use</div>
+      <div class="video-pair">
+        <video preload="none" poster="https://share.karthinks.com/gptel-poster-small.png" controls width="600" style="border-radius:8px;">
+          <source src="https://github.com/user-attachments/assets/5f993659-4cfd-49fa-b5cd-19c55766b9b2" type="video/mp4">
+          <a href="https://github.com/user-attachments/assets/5f993659-4cfd-49fa-b5cd-19c55766b9b2">Tool use 1</a>
+        </video>
+        <video preload="none" poster="https://share.karthinks.com/gptel-poster-small.png" controls width="600" style="border-radius:8px;">
+          <source src="https://github.com/user-attachments/assets/8f57c20b-e1b0-4d86-b972-f46fb90ae1e7" type="video/mp4">
+          <a href="https://github.com/user-attachments/assets/8f57c20b-e1b0-4d86-b972-f46fb90ae1e7">Tool use 2</a>
+        </video>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 style="color:#28a225;">Install</h2>
+    <center>
+      <div class="install-box">
+        <code>M-x package-install </code><strong><code>gptel</code></strong><br><br>
+        <strong>Manually:</strong><br>
+        <code>(package-install-file "/path/to/gptel")<br><br></code>
+        See <a href="https://github.com/karthink/gptel#installation">full installation instructions</a>
+        and <a href="https://github.com/karthink/gptel#usage">usage</a> in the README.
+      </div>
+    </center>
+  </div>
+  
+  <div class="section">
+    <h2 style="color:#28a225;">Documentation</h2>
+    <ul>
+      <li><b><a href="manual.html">gptel manual</a></b></li>
+      <li><a href="https://github.com/karthink/gptel/tree/master/README.org">Project README</a></li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2 style="color:#28a225;">Links</h2>
+    <ul>
+      <li><a href="https://github.com/karthink/gptel">GitHub repository</a></li>
+      <li><a href="https://gptel.org">Project website (You are here)</a></li>
+    </ul>
+  </div>
+
+  <!-- TODO -->
+  <!-- <div class="section"> -->
+  <!--   <h2 style="color:#28a225;">Quotes</h2> -->
+  <!--   <blockquote> -->
+  <!--     <em>“The fastest way to talk to ChatGPT and Gemini without leaving Emacs.”</em> -->
+  <!--   </blockquote> -->
+  <!--   <blockquote> -->
+  <!--     <em>“Simple, powerful, with streaming and org-mode support out of the box.”</em> -->
+  <!--   </blockquote> -->
+  <!-- </div> -->
+
+  <div class="section">
+    <h2 style="color:#28a225;">Resources</h2>
+    <ul>
+      <li><a href="https://github.com/karthink/gptel/issues">Report an issue</a></li>
+      <li><a href="https://github.com/karthink/gptel/discussions">Discussions</a></li>
+      <li><a href="https://emacs.stackexchange.com/questions/tagged/gptel">Ask on StackExchange</a></li>
+      <!-- <li><a href="https://www.reddit.com/r/emacs/search?q=gptel&restrict_sr=1">Reddit discussions</a></li> -->
+    </ul>
+  </div>
+
+  <div class="section centered" style="font-size:0.95em;">
+    <p>&copy; 2025 <a href="https://github.com/karthink">karthink</a></p>
+  </div>
+</body>
+</html>
