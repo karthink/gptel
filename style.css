@@ -1,0 +1,660 @@
+/* This stylesheet is used by manuals and a few older resources. */
+/* Public domain */
+/* Last update 2024-09-28 */
+
+/* (Definitions in /reset.css are included.) */
+
+
+                          /** COMMON DEFINITIONS **/
+
+
+/**  PAGE LAYOUT  **/
+
+html, body {
+   font-size: 16px;
+   text-align: left;
+   text-decoration: none;
+   color: #000;
+}
+html { background-color: #e7e7e7; }
+
+body {
+   max-width: 54.92em;
+   /* max-width: 74.92em; */
+   margin: 0 auto 2em;
+   padding: .5em 1em 1em 1em;
+   background-color: white;
+   border: .1em solid #c0c0c0;
+}
+
+
+/** BASIC ELEMENTS **/
+
+p, pre, li, dt, dd, table, code, address { line-height: 1.4em; }
+
+p, dl, dt, dd, ul, ol, li, h1, h2, h3, h4, h5, h6, blockquote {
+   padding: 0;
+}
+h1 { font-size: 2em; margin: 1em 0 }
+h2 { font-size: 1.50em; margin: 1.3em 0 0.87em 0; }
+h3 { font-size: 1.30em; margin: 1.6em 0 0.87em 0; }
+h4 { font-size: 1.13em; margin: 1.8em 0 0.88em 0; }
+h5, h6 { font-size: 1em; margin: 1em 0; }
+
+h1, h2, h3, h4, h5, h6, strong, dt, th { font-weight: bold; }
+/* The default color (black) is too dark for large text in
+   bold font. */
+h1, h2, h3, h4 { color: #333; }
+h5, h6, dt { color: #222; }
+
+p, pre { margin: 1em 0; }
+pre { overflow: auto; padding: .5em 0 .5em 2.5%; }
+address { margin-bottom: 1em; }
+
+hr {
+   margin: 2em 0;
+   background: #d5bb7d; border-color: #d5bb7d;
+}
+
+blockquote { margin-left: 3%; }
+
+ul, ol { margin-left: 1.5%; }
+/* Lists of underlined links are difficult to read. The top margin
+   gives a little more spacing between entries. */
+ul li { margin: .5em 0 .5em 1em; }
+ol li { margin: 1em 0 1em 1em; }
+ol ul li { margin: .5em 0 .5em 1em; }
+ul li p, ul ul li { margin-top: .3em; margin-bottom: .3em; }
+ul ul, ol ul { margin-top: 0; margin-bottom: 0; }
+
+ol { list-style: decimal outside;}
+ul { list-style: square outside; }
+ul ul, ol ul { list-style: circle; }
+li { list-style: inherit; }
+
+/* Separate description lists from preceding text */
+dl { margin: 1em 0; }
+/* separate the "term" from subsequent "description" */
+dt { margin: .5em 0; }
+/* separate the "description" from subsequent list item
+   when the final <dd> child is an anonymous box */
+dd { margin: .5em 0 1em 3%; }
+/* separate anonymous box (used to be the first element in <dd>)
+   from subsequent <p> */
+dd p { margin: .5em 0; }
+
+table, td, th { width: auto; }
+table {
+   margin: 1.2em 0 1.5em;
+   border-collapse: separate;
+   border: 0; border-spacing: 0;
+   vertical-align: middle;
+}
+td, th {
+   padding: .4em .6em;
+   text-align: left;
+   background: white;   /* In case overflow extends outside <body>. */
+}
+caption { padding: 0; margin: 0 0 .5em 0; text-align: center; }
+
+img {
+   max-width: 100%;
+   padding: 0; border: 0;
+   line-height: 2.5em; color: #666;   /* for the alt attribute. */
+}
+
+a[href] { color: #005090; }
+a[href]:visited { color: #100070; }
+a[href]:active, a[href]:hover {
+   color: #100070;
+   text-decoration: none;
+}
+h1 a[href]:visited, h2 a[href]:visited, h3 a[href]:visited,
+ h4 a[href]:visited { color: #005090; }
+h1 a[href]:hover, h2 a[href]:hover, h3 a[href]:hover,
+ h4 a[href]:hover { color: #100070; }
+
+abbr,acronym {
+   font-variant: normal;
+   border: 0;
+   border-bottom:1px dotted #000;
+   text-decoration: none;
+   cursor:help;
+}
+del { text-decoration: line-through; }
+em, var { font-style: italic; }
+small { font-size: .9em; }
+
+sup { vertical-align: super; }
+sub { vertical-align: sub; }
+
+address, caption, dfn {
+   font-style: inherit;
+   font-weight: inherit;
+}
+strong, td, th { font-style: inherit; }
+em, var, cite, code { font-weight: inherit; }
+
+
+/** UNUSED from reset.css **/
+
+form, fieldset, legend, input, button, textarea {
+   padding: 0; margin: 0;
+}
+fieldset { border: 0; }
+legend { color: #000; }
+input, button, textarea, select, optgroup, option {
+   font-family: inherit;
+   font-size: inherit;
+   font-style: inherit;
+   font-weight: inherit;
+}
+input, button, textarea, select { *font-size: 100%; }
+
+ins { text-decoration: none; }
+q:before, q:after { content: ''; }
+
+
+/** SIMPLE CLASSES **/
+
+.center, .c { text-align: center; }
+.nocenter{ text-align: left; }
+
+.underline { text-decoration: underline; }
+.nounderline { text-decoration: none; }
+
+.no-bullet { list-style: none; }
+.inline-list li { display: inline }
+
+.netscape4, .no-display { display: none; }
+
+
+/** FOR WIDE SCREENS **/
+
+@media (min-width: 45em) {
+   body { padding: .5em 2em 1em 2em; }
+   div.header, div.node { margin: 0 -2em; padding: 0 2em; }
+}
+
+
+                    /** DEFINITIONS FOR TEXINFO MANUALS **/
+
+
+/** MENUS & NAVIGATION **/
+
+/* Adjust the vertical spacing of menu comments. */
+pre.menu-comment { padding: 1em 0 0; margin: 0; }
+
+/* This makes the very long tables of contents in Gnulib and other
+   manuals easier to read. */
+.contents ul, .shortcontents ul { font-weight: bold; }
+.contents ul ul, .shortcontents ul ul { font-weight: normal; }
+.contents ul { list-style: none; }
+
+/* For colored navigation bars (Emacs manual): make the bar extend
+   across the whole width of the page and give it a decent height. */
+.header, .node { margin: 0 -1em; padding: 0 1em; }
+.header p, .node p, .nav-panel p { line-height: 2em; margin: 2em 0; }
+
+/* For navigation links. We can't use inline-block display to avoid wrapping
+   because this makes the links appear much smaller than normal text on 
+   phones with Chromium (RT #1872370). */
+.node a, .header a { /*display: inline-block;*/ line-height: 2em; }
+.node a:hover, .header a:hover { background: #f2efe4; }
+
+
+/** IMAGES & DATA TABLES **/
+
+.caption, .float-caption { display: table; margin: 1em auto; }
+.caption p, .float-caption p { margin: -.5em 0 0; }
+
+table.multitable { margin: 1.2em auto 1.5em; }
+.multitable td, .multitable th { width: auto; }
+table[border="1"], .multitable { border: 2px solid #95b0d8; }  /* blue */
+.multitable th { border-bottom: 2px solid #95b0d8; }
+
+.cartouche img { display: block; margin: auto; }
+
+
+/** CONTAINERS **/
+
+/* Turn 'cartouche' into a set of normal divs. */
+table.cartouche, table.cartouche > tbody, table.cartouche > tbody > tr,
+table.cartouche > tbody > tr > td, table.cartouche > tbody > tr > th {
+   display: block; width: 100%; padding: 0; margin: 0; border: 0;
+}
+div[class*="example"], div[class*="lisp"], div[class*="display"],
+table.cartouche {
+   margin: 1.2em 0 1.5em;
+}
+.float {
+   padding-bottom: .5em; margin: 1.2em 0 1em;
+   overflow: auto;
+}
+
+/* There is a great creativity in the use of these containers. To make
+   vertical spacing of examples and tables somewhat consistent, remove the
+   top and bottom margins of content and internal containers. */
+.pspp > *:first-child,
+.pspp > *:first-child > *:first-child,
+.float > *:first-child,
+.float > *:first-child > *:first-child,
+.cartouche>tbody>tr>td > *:first-child,
+.cartouche>tbody>tr>td > *:first-child > *:first-child { margin-top: 0; }
+.pspp > *:last-child,
+.pspp > *:last-child > *:last-child,
+.float > *:last-child,
+.float > *:last-child > *:last-child,
+.cartouche>tbody>tr>td > *:last-child,
+.cartouche>tbody>tr>td > *:last-child > *:last-child { margin-bottom: 0; }
+
+
+/** EXAMPLES, DISPLAYS, etc. **/
+
+/* Increase the size of 'small*' for comfortable reading. */
+blockquote[class^="small"], pre[class^="small"] {
+   font-size: .94em;    /* 16px -> 15px */
+}
+/* <pre>'s that have a background need to be padded. ('verbatim',
+   'smallexample' and 'smalllisp' don't have one unless within
+   'cartouche'.) */
+pre[class^="example"], pre[class^="lisp"], pre[class^="display"] {
+   padding: 1em 2.5%;
+}
+
+/* Backgrounds should more or less correspond to what the <pre> is used for,
+   but this varies a lot across manuals. */
+pre[class^="example"], pre[class^="lisp"] {
+   background: #f9f6ed;    /* very light tan */
+}
+pre[class^="display"] {
+   background: #e7eef9;    /* light blue */
+}
+pre[class*="example"], pre[class*="lisp"], pre[class^="display"],
+pre.verbatim, div[class*="example"], table.cartouche {
+   border-radius: .3em;
+}
+
+/* Simple layout of examples */
+
+div[class^="example"] pre, div[class^="lisp"] pre,
+div[class^="display"] pre {
+   margin: 0;
+}
+/* For make, gawk, bison, etc. */
+div[class*="example"] > pre + pre, div[class*="example"] > .group {
+   margin: 3px 0;
+}
+
+/* Modification of examples by 'cartouche' */
+
+/* When 'cartouche' contains only one <pre> (most cases), it simply adds
+   a border to the example and darkens the background. */
+.cartouche>tbody>tr>td > div[class*="example"] > pre[class*="example"],
+.cartouche>tbody>tr>td > div[class*="example"] > pre[class*="lisp"],
+.cartouche>tbody>tr>td > div[class*="example"] > pre.verbatim,
+.cartouche>tbody>tr>td > div[class*="lisp"] > pre[class*="lisp"],
+.cartouche>tbody>tr>td > pre[class*="example"],
+.cartouche>tbody>tr>td > pre[class*="lisp"] {
+   padding: 1em 2.5%;
+   background: #f2efe4;          /* light tan */
+   border: 1px solid #d4cbb6;    /* tan */
+}
+
+/* Combinations of divs and tables */
+
+/* All combinations are possible, including with basic tables.
+   This takes care of a few corner cases: */
+div[class*="example"] + div[class*="example"] {
+   margin-top: -.5em;                      /* bash */
+}
+div[class*="example"] > pre + .cartouche {
+   margin: 1em 0 0;                        /* gcal */
+}
+dd > pre[class^="example"] + br {
+   display: none;                          /* acct */
+}
+td > div[class*="example"] {
+   margin: 0;                              /* coreutils */
+}
+td > pre[class*="example"] {
+   padding: 0; margin: 0; background: 0;   /* autogen */
+}
+
+
+/* CARTOUCHE on <ul> */
+
+/* Currently used by automake. */
+.cartouche ul {
+   margin: 0;
+   padding: .5em 2.5%;
+   border: 3px solid #95b0d8;
+   border-radius: .3em;
+}
+
+
+/** QUOTATIONS **/
+
+/* (gawk, gawkinet & mes) Keep short quotations and their signatures
+   together. */
+blockquote.quotation + div.center, blockquote + div[align="center"] {
+   margin: -.5em 0 1.5em;
+}
+
+
+                             /** SPECIAL CASES **/
+
+
+/* == FDL & *GPL == */
+
+/* Suppress the background under the license notices of FDL and *GPL,
+   and center them. */
+*[id*="License"] ~ div.display pre, *[name*="License"] ~ div.display pre,
+*[id*="LICENSE"] ~ div.display pre, #Copying-This-Manual div.display pre {
+   display: table;
+   padding: 0 1em .5em 0;  margin: auto;
+   background: none;
+}
+*[name*="License"] ~ table pre.display {
+   padding: 0 0 .5em 0; margin: 0;
+   background: none;
+}
+
+
+/* == Gawk == */
+
+/* Remove the background under signatures */
+#Foreword3 pre.display-preformatted, #Foreword4 pre.display-preformatted {
+   background: none;
+}
+
+/* Italicize short quotations that are not within <i>. */
+#index-Plauger_002c-P_002eJ_002e ~ blockquote,
+#index-Brini_002c-Davide ~ blockquote,
+#index-Kelly_002c-Terence ~ blockquote,
+#index-Sherman_002c-Allan ~ blockquote,
+#Please-Don_0027t-Post-Bug-Reports-to-USENET ~ blockquote {
+   font-style: italic;
+}
+
+/* Cartouches */
+a[id^="index-sidebar-"] + .cartouche {
+   margin: 2em 0;
+   border: 3px solid #95b0d8;                /* blue */
+}
+a[id^="index-sidebar-"] + .cartouche>tbody>tr>th {
+   padding: 1em 2.5% 0; max-width: 95%;;
+   text-align: center;
+}
+a[id^="index-sidebar-"] + .cartouche>tbody>tr>td {
+   margin: 1em 2.5%; max-width: 95%;
+}
+a[id^="index-sidebar-"] + .cartouche>tbody>tr>td pre[class*="example"] {
+   background: #f9f6ed; border: none;
+}
+#History .cartouche table.multitable {
+   margin: 1em auto 0;
+}
+#History .multitable, #History .multitable td {
+   padding: 0 1em;
+}
+#History .multitable, #History .multitable tbody {
+   border: none;
+}
+#History .multitable td:first-child {
+   display: none;
+}
+
+/* Ascii tables */
+#Variable-Typing .verbatim,      /* Section 6.3.2.1 */
+#Bitwise-Functions .verbatim {   /* Section 9.1.7 */
+   display: table;
+   padding: .5em 2.5%;
+   background: white;
+   border: 2px solid #95b0d8;
+   font-family: monospace;                /* tan */
+}
+#Variable-Typing .verbatim { margin: 1.2em auto 1.5em; }
+#Bitwise-Functions .verbatim { margin: 0 auto 1.5em; }
+
+/* Tables 4.1 & 6.1, Sections 4.14, 8.1.1 & A.7 */
+#table_002dgetline_002dvariants .multitable  th:last-child,
+#table_002dgetline_002dvariants .multitable  td:last-child,
+#Input-Summary .multitable  th:last-child,
+#Input-Summary .multitable  td:last-child,
+#table_002dlocale_002daffects .multitable th:last-child,
+#table_002dlocale_002daffects .multitable td:last-child,
+#index-indexing-arrays ~ .multitable th,
+#index-indexing-arrays ~ .multitable td,
+#Common-Extensions .multitable th,
+#Common-Extensions .multitable td {
+   text-align: center;
+}
+#Common-Extensions .multitable th:nth-child(1),
+#Common-Extensions .multitable td:nth-child(1) {
+   text-align: left;
+}
+#index-indexing-arrays ~ .multitable th:first-child,
+#index-indexing-arrays ~ .multitable td:first-child {
+   display: none;
+}
+#Input-Summary .multitable th:last-child {
+   min-width: 6em;
+}
+
+/* Table 17.2 */
+/* Transform the thead-only table into a decent caption. */
+#table_002dvalue_002dtypes_002dreturned > .multitable:first-child {
+   border: none; margin: .5em auto;
+}
+#table_002dvalue_002dtypes_002dreturned > .multitable:first-child th:first-child {
+   display: none;
+}
+#table_002dvalue_002dtypes_002dreturned > .multitable:first-child thead,
+#table_002dvalue_002dtypes_002dreturned > .multitable:first-child th:last-child {
+   width: 100%; padding: 0; background: none; border: none;
+}
+#table_002dvalue_002dtypes_002dreturned > .multitable:nth-child(2) {
+   margin-top: 0;
+}
+
+
+/* == PSPP == */
+
+.pspp { margin: 1.2em 0 1.5em; }
+
+.pspp table {
+   display: block; overflow: auto;
+   width: max-content; max-width: 100%;
+   margin: 0 auto 1.5em;
+}
+.pspp table > thead > tr > td { padding-top: 0; }
+.pspp p { margin: 0 0 0 6%; font-style: italic; }
+.pspp p:nth-of-type(2) { margin-top: 1.5em; }
+
+#Time-and-Date-Formats div:nth-of-type(4) .multitable td:nth-of-type(2),
+#Time-and-Date-Formats div:nth-of-type(4) .multitable td:nth-of-type(3) {
+   text-align: center;
+}
+
+/* #How-to-report-bugs, weirdest construction ever!
+   * suppress backgrounds and add a border around examples.
+   * Wrap lines where possible. NetSurf doesn't display tables correctly
+     when white spaces don't wrap.
+   * Remove extra vertical spacing around the data table -- this is due to
+     empty lines, or lines with HTML tags only.*/
+#How-to-report-bugs .cartouche pre {
+   background: none; border: none;
+}
+#How-to-report-bugs table:nth-of-type(1) > tbody > tr > td >
+ div:first-child > pre:first-child {
+   padding-bottom: 0; white-space: normal;
+}
+#How-to-report-bugs > .cartouche { border: 3px solid #95b0d8; }
+#How-to-report-bugs table:nth-of-type(2) div pre {
+   white-space: normal;
+}
+#How-to-report-bugs .cartouche .pspp {
+   margin-top: -2.5em; white-space: normal;
+}
+#How-to-report-bugs .cartouche .cartouche + pre {
+   margin-top: -5em;
+}
+
+
+/* == Coreutils == */
+
+/* Sections 8.3.4 & 23.2.2 */
+#Paired-and-unpaired-lines .multitable {
+   width: 100%;
+}
+#Paired-and-unpaired-lines .multitable td {
+   width: 50%;
+}
+#g_t_002dS_002f_002d_002dsplit_002dstring-usage-in-scripts .multitable td:first-child {
+   width: 25%;
+}
+#g_t_002dS_002f_002d_002dsplit_002dstring-usage-in-scripts .multitable td:nth-child(2) {
+   width: 75%;
+}
+
+
+/* == Freetalk == */
+
+/* Blank examples */
+a[name="Hook-related-procedures-1"] ~ dl dd div.lisp pre.lisp {
+   padding: 0; margin: 0; background: none;
+}
+
+/* TABLE OF CONTENTS POSITIONING AND STYLING */
+#table-of-contents-1[role="doc-toc"] {
+   position: fixed;
+   top: 0em;
+   right: 0.5em;
+   width: 18em;
+   font-size: 0.85em;
+   overflow: auto;
+   max-height: 100vh;
+   background-color: #f9f9f9;
+   /* border: 1px solid #ccc; */
+   margin-top: 0;
+   padding: 0em 1em;
+   box-shadow: 0 0.1em 0.3em rgba(0,0,0,0.1);
+   z-index: 1000;
+}
+
+#table-of-contents-1[role="doc-toc"] h2 {
+    font-size: 1em;
+    text-align: center;
+}
+
+/* INFOJS settings */
+.org-info-js_info-navigation {
+    width: 100%;
+}
+
+#org-info-js_console-container {
+    padding: 1em 1em 1em 1em;
+}
+
+/* TOC toggle button always visible */
+#toc-toggle-btn {
+  display: block;
+  position: fixed;
+  top: 1em;
+  right: 0.2em;
+  z-index: 1001;
+  background: #f9f9f9;
+  border: 1px solid #ccc;
+  border-radius: 0.2em;
+  padding: 0.4em 0.8em;
+  font-size: 0.95em;
+  cursor: pointer;
+  opacity: 0.88;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+@media (max-width: 1500px) {
+  #table-of-contents-1[role="doc-toc"] {
+    position: fixed;
+    right: 0.2em;
+    top: 3.5em;
+    width: 18em;
+    max-width: 45vw;
+    max-height: 90vh;
+    transform: translateX(95%);
+    transition: transform 0.2s, opacity 0.3s;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 1000;
+  }
+  #table-of-contents-1[role="doc-toc"].visible {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: all;
+  }
+}
+
+@media (min-width: 1501px) {
+  #toc-toggle-btn { display: none; }
+  #table-of-contents-1[role="doc-toc"] {
+    transform: none !important;
+    opacity: 1 !important;
+    pointer-events: all !important;
+    display: block !important;
+  }
+}
+
+/* DARK THEME STYLING */
+body.dark-theme {
+  filter: invert(0.9) hue-rotate(180deg) brightness(0.9) saturate(0.8);
+}
+
+html.dark-theme {
+  background-color: #222222 !important;
+}
+
+body.dark-theme img,
+body.dark-theme .no-dark-theme-filter {
+  /* Add .no-dark-theme-filter to elements that should not be inverted */
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* Specific adjustments for elements that might not look right with the general filter */
+body.dark-theme #table-of-contents-1[role="doc-toc"] {
+  box-shadow: 0 0.1em 0.3em rgba(255,255,255,0.1); /* Adjust shadow for visibility in dark mode */
+}
+
+/* Scrollbar styles (keeping them explicit as they are not affected by filter) */
+body.dark-theme ::-webkit-scrollbar {
+  width: 12px;
+  background-color: #1e1e1e;
+}
+
+body.dark-theme ::-webkit-scrollbar-thumb {
+  background-color: #555555;
+  border-radius: 6px;
+}
+
+body.dark-theme ::-webkit-scrollbar-thumb:hover {
+  background-color: #777777;
+}
+
+body.dark-theme ::-moz-scrollbar {
+  width: 12px;
+  background-color: #1e1e1e;
+}
+
+body.dark-theme ::-moz-scrollbar-thumb {
+  background-color: #555555;
+  border-radius: 6px;
+}
+
+body.dark-theme ::-moz-scrollbar-thumb:hover {
+  background-color: #777777;
+}
+
+body.dark-theme button#dark-theme-toggle {
+  color: #80aaff;
+  border-color: #80aaff;
+}
