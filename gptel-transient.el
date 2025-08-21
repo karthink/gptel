@@ -681,7 +681,10 @@ This is used only for setting this variable via `gptel-menu'.")
   ((backend       :initarg :backend)
    (backend-value :initarg :backend-value)
    (always-read :initform t)
-   (set-value :initarg :set-value :initform #'set))
+   (set-value :initarg :set-value :initform #'set)
+   ;; Prevent storing the backend struct in transient history to avoid memory-report errors
+   (history-default :initform nil)
+   (history-key :initform nil))
   "Class used for gptel-backends.")
 
 (cl-defmethod transient-format-value ((obj gptel-provider-variable))
