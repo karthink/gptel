@@ -10,21 +10,44 @@
 
 /**  PAGE LAYOUT  **/
 
+:root {
+    --bg: #e7e7e7;
+    --fg: #000;
+    --body-bg: #ffffff;
+    --toc-bg: #f9f9f9;
+    --toc-shadow: rgba(0,0,0,0.1);
+    --toc-border: #ccc;
+    --accent: #005090;
+    --accent-visited: #100070;
+    --accent-hover: #100070;
+    --header: #333;
+    --subheader: #222;
+    --border: #c0c0c0;
+    --table-border: #95b0d8;
+    --hr: #d5bb7d;
+    --pre-fg: #000;
+    --pre-bg: #f9f6ed;
+    --display-bg: #e7eef9;
+    --node-hover: #f2efe4;
+    --cartouche-bg: #f2efe4;
+    --cartouche-border: #d4cbb6;
+}
+
 html, body {
    font-size: 16px;
    text-align: left;
    text-decoration: none;
-   color: #000;
+   color: var(--fg);
 }
-html { background-color: #e7e7e7; }
+html { background-color: var(--bg); }
 
 body {
    max-width: 54.92em;
    /* max-width: 74.92em; */
    margin: 0 auto 2em;
    padding: .5em 1em 1em 1em;
-   background-color: white;
-   border: .1em solid #c0c0c0;
+   background-color: var(--body-bg);
+   border: .1em solid var(--border);
 }
 
 
@@ -44,8 +67,8 @@ h5, h6 { font-size: 1em; margin: 1em 0; }
 h1, h2, h3, h4, h5, h6, strong, dt, th { font-weight: bold; }
 /* The default color (black) is too dark for large text in
    bold font. */
-h1, h2, h3, h4 { color: #333; }
-h5, h6, dt { color: #222; }
+h1, h2, h3, h4 { color: var(--header); }
+h5, h6, dt { color: var(--subheader); }
 
 p, pre { margin: 1em 0; }
 pre { overflow: auto; padding: .5em 0 .5em 2.5%; }
@@ -53,7 +76,7 @@ address { margin-bottom: 1em; }
 
 hr {
    margin: 2em 0;
-   background: #d5bb7d; border-color: #d5bb7d;
+   background: var(--hr); border-color: var(--hr);
 }
 
 blockquote { margin-left: 3%; }
@@ -93,31 +116,32 @@ table {
 td, th {
    padding: .4em .6em;
    text-align: left;
-   background: white;   /* In case overflow extends outside <body>. */
+   background: var(--body-bg);   /* In case overflow extends outside <body>. */
 }
 caption { padding: 0; margin: 0 0 .5em 0; text-align: center; }
 
 img {
    max-width: 100%;
    padding: 0; border: 0;
+   /*TODO: Semnaticize this color*/
    line-height: 2.5em; color: #666;   /* for the alt attribute. */
 }
 
-a[href] { color: #005090; }
-a[href]:visited { color: #100070; }
-a[href]:active, a[href]:hover {
-   color: #100070;
+a[href] { color: var(--accent); }
+a[href]:visited { color: var(--accent-visited); }
+a[href]:active, a[href]:hover  {
+   color: var(--accent-hover);
    text-decoration: none;
 }
 h1 a[href]:visited, h2 a[href]:visited, h3 a[href]:visited,
- h4 a[href]:visited { color: #005090; }
+ h4 a[href]:visited { color: var(--accent); }
 h1 a[href]:hover, h2 a[href]:hover, h3 a[href]:hover,
- h4 a[href]:hover { color: #100070; }
+ h4 a[href]:hover { color: var(--accent-hover); }
 
 abbr,acronym {
    font-variant: normal;
    border: 0;
-   border-bottom:1px dotted #000;
+   border-bottom:1px dotted var(--fg);
    text-decoration: none;
    cursor:help;
 }
@@ -142,7 +166,7 @@ form, fieldset, legend, input, button, textarea {
    padding: 0; margin: 0;
 }
 fieldset { border: 0; }
-legend { color: #000; }
+legend { color: var(--fg); }
 input, button, textarea, select, optgroup, option {
    font-family: inherit;
    font-size: inherit;
@@ -200,7 +224,7 @@ pre.menu-comment { padding: 1em 0 0; margin: 0; }
    because this makes the links appear much smaller than normal text on 
    phones with Chromium (RT #1872370). */
 .node a, .header a { /*display: inline-block;*/ line-height: 2em; }
-.node a:hover, .header a:hover { background: #f2efe4; }
+.node a:hover, .header a:hover { background: var(--node-hover); }
 
 
 /** IMAGES & DATA TABLES **/
@@ -210,8 +234,8 @@ pre.menu-comment { padding: 1em 0 0; margin: 0; }
 
 table.multitable { margin: 1.2em auto 1.5em; }
 .multitable td, .multitable th { width: auto; }
-table[border="1"], .multitable { border: 2px solid #95b0d8; }  /* blue */
-.multitable th { border-bottom: 2px solid #95b0d8; }
+table[border="1"], .multitable { border: 2px solid var(--table-border); }  /* blue */
+.multitable th { border-bottom: 2px solid var(--table-border); }
 
 .cartouche img { display: block; margin: auto; }
 
@@ -265,14 +289,17 @@ pre[class^="example"], pre[class^="lisp"], pre[class^="display"] {
 /* Backgrounds should more or less correspond to what the <pre> is used for,
    but this varies a lot across manuals. */
 pre[class^="example"], pre[class^="lisp"] {
-   background: #f9f6ed;    /* very light tan */
+   background: var(--pre-bg);    /* very light tan */
 }
 pre[class^="display"] {
-   background: #e7eef9;    /* light blue */
+   background: var(--display-bg);    /* light blue */
 }
 pre[class*="example"], pre[class*="lisp"], pre[class^="display"],
 pre.verbatim, div[class*="example"], table.cartouche {
    border-radius: .3em;
+   color: var(--pre-fg);
+   /*TODO: Fix this color for dark mode, lisp keywords are note readable*/
+   background: var(--pre-bg);
 }
 
 /* Simple layout of examples */
@@ -297,8 +324,8 @@ div[class*="example"] > pre + pre, div[class*="example"] > .group {
 .cartouche>tbody>tr>td > pre[class*="example"],
 .cartouche>tbody>tr>td > pre[class*="lisp"] {
    padding: 1em 2.5%;
-   background: #f2efe4;          /* light tan */
-   border: 1px solid #d4cbb6;    /* tan */
+   background: var(--cartouche-bg);          /* light tan */
+   border: 1px solid var(--cartouche-border);    /* tan */
 }
 
 /* Combinations of divs and tables */
@@ -328,7 +355,7 @@ td > pre[class*="example"] {
 .cartouche ul {
    margin: 0;
    padding: .5em 2.5%;
-   border: 3px solid #95b0d8;
+   border: 3px solid var(--table-border);
    border-radius: .3em;
 }
 
@@ -341,6 +368,18 @@ blockquote.quotation + div.center, blockquote + div[align="center"] {
    margin: -.5em 0 1.5em;
 }
 
+blockquote {
+    position: relative;
+}
+
+blockquote:before {
+    content: "“";
+    color: #cc2a41;
+    font-size: 3.4em;
+    position: absolute;
+    top: -0.25em;
+    left: -0.55em;
+}
 
                              /** SPECIAL CASES **/
 
@@ -380,7 +419,7 @@ blockquote.quotation + div.center, blockquote + div[align="center"] {
 /* Cartouches */
 a[id^="index-sidebar-"] + .cartouche {
    margin: 2em 0;
-   border: 3px solid #95b0d8;                /* blue */
+   border: 3px solid var(--table-border);                /* blue */
 }
 a[id^="index-sidebar-"] + .cartouche>tbody>tr>th {
    padding: 1em 2.5% 0; max-width: 95%;;
@@ -390,7 +429,7 @@ a[id^="index-sidebar-"] + .cartouche>tbody>tr>td {
    margin: 1em 2.5%; max-width: 95%;
 }
 a[id^="index-sidebar-"] + .cartouche>tbody>tr>td pre[class*="example"] {
-   background: #f9f6ed; border: none;
+   background: var(--pre-bg); border: none;
 }
 #History .cartouche table.multitable {
    margin: 1em auto 0;
@@ -410,8 +449,8 @@ a[id^="index-sidebar-"] + .cartouche>tbody>tr>td pre[class*="example"] {
 #Bitwise-Functions .verbatim {   /* Section 9.1.7 */
    display: table;
    padding: .5em 2.5%;
-   background: white;
-   border: 2px solid #95b0d8;
+   background: var(--body-bg);
+   border: 2px solid var(--table-border);
    font-family: monospace;                /* tan */
 }
 #Variable-Typing .verbatim { margin: 1.2em auto 1.5em; }
@@ -490,7 +529,7 @@ a[id^="index-sidebar-"] + .cartouche>tbody>tr>td pre[class*="example"] {
  div:first-child > pre:first-child {
    padding-bottom: 0; white-space: normal;
 }
-#How-to-report-bugs > .cartouche { border: 3px solid #95b0d8; }
+#How-to-report-bugs > .cartouche { border: 3px solid var(--table-border); }
 #How-to-report-bugs table:nth-of-type(2) div pre {
    white-space: normal;
 }
@@ -535,11 +574,11 @@ a[name="Hook-related-procedures-1"] ~ dl dd div.lisp pre.lisp {
    font-size: 0.85em;
    overflow: auto;
    max-height: 100vh;
-   background-color: #f9f9f9;
+   background-color: var(--toc-bg);
    /* border: 1px solid #ccc; */
    margin-top: 0;
    padding: 0em 1em;
-   box-shadow: 0 0.1em 0.3em rgba(0,0,0,0.1);
+   box-shadow: 0 0.1em 0.3em var(--toc-shadow);
    z-index: 1000;
 }
 
@@ -564,13 +603,14 @@ a[name="Hook-related-procedures-1"] ~ dl dd div.lisp pre.lisp {
   top: 1em;
   right: 0.2em;
   z-index: 1001;
-  background: #f9f9f9;
-  border: 1px solid #ccc;
+  color: var(--fg);
+  background: var(--toc-bg);
+  border: 1px solid var(--toc-border);
   border-radius: 0.2em;
   padding: 0.4em 0.8em;
   font-size: 0.95em;
   cursor: pointer;
-  opacity: 0.88;
+  opacity: 1.0;
   transition: background 0.15s, opacity 0.15s;
 }
 
@@ -606,23 +646,40 @@ a[name="Hook-related-procedures-1"] ~ dl dd div.lisp pre.lisp {
 }
 
 /* DARK THEME STYLING */
-body.dark-theme {
-  filter: invert(0.9) hue-rotate(180deg) brightness(0.9) saturate(0.8);
+body.dark-theme, html.dark-theme {
+    --fg: hsl(0, 0%, 85%);
+    /* --bg: hsl(225, 12%, 11%); */
+    /* --body-bg: hsl(225, 12%, 11%); */
+    --bg: hsl(225, 12%, 18%);
+    --body-bg: hsl(225, 12%, 16%);
+    --accent: hsl(212,100%,70%);
+    --accent-visited: hsl(271, 87%, 62%);
+    --accent-hover: hsl(271, 97%, 80%);
+    --header: hsl(0,0%,85%);
+    --subheader: hsl(0,0%,70%);
+    --border: hsl(225,10%,22%);
+    --toc-bg: hsl(225, 12%, 17%);
+    --toc-shadow: rgba(0,0,0,0.7);
+    --hr: #39321e;
+    /* Not required because we invert colors below */
+    /* --pre-bg: hsl(225, 12%, 18%); */
+    /* --pre-bg: hsl(45, 0%, 5.29%); */
+    --display-bg: hsl(216, 24%, 21%);
+    --cartouche-bg: hsl(55, 12%, 18%);
+    --toc-border: hsl(225, 10%, 28%);
+    --table-border: hsl(212, 100%, 45%);
+    --node-hover: hsl(225, 12%, 15%);
+    --cartouche-border: hsl(50, 15%, 30%);
 }
 
-html.dark-theme {
-  background-color: #222222 !important;
+body.dark-theme button#dark-theme-toggle {
+    color: var(--accent);
+    border-color: : var(--accent);
 }
 
-body.dark-theme img,
-body.dark-theme .no-dark-theme-filter {
-  /* Add .no-dark-theme-filter to elements that should not be inverted */
-  filter: invert(1) hue-rotate(180deg);
-}
-
-/* Specific adjustments for elements that might not look right with the general filter */
-body.dark-theme #table-of-contents-1[role="doc-toc"] {
-  box-shadow: 0 0.1em 0.3em rgba(255,255,255,0.1); /* Adjust shadow for visibility in dark mode */
+body.dark-theme pre[class*="lisp"], 
+body.dark-theme pre[class="example"] {
+    filter: invert(0.9) hue-rotate(180deg) brightness(0.9) saturate(0.8);
 }
 
 /* Scrollbar styles (keeping them explicit as they are not affected by filter) */
@@ -654,7 +711,3 @@ body.dark-theme ::-moz-scrollbar-thumb:hover {
   background-color: #777777;
 }
 
-body.dark-theme button#dark-theme-toggle {
-  color: #80aaff;
-  border-color: #80aaff;
-}
