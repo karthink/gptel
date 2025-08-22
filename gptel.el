@@ -1660,7 +1660,8 @@ SCHEMA can be specified in several ways:
         (if (= (char-after) ?{)
             (setq schema (gptel--json-read)) ;Assume serialized JSON schema, we're done
           (when (= (char-after) ?\[)    ;Shorthand: assume array top-level type
-            (save-excursion (goto-char (point-max)) (delete-char -1))
+            (save-excursion
+              (goto-char (point-max)) (skip-chars-backward " \n\r\t") (delete-char -1))
             (delete-char 1)             ;Delete array markers [ and ]
             (setq wrap-in-array t))
           (let ( props types descriptions ;Nested object and array types are disallowed in shorthand
@@ -1692,7 +1693,8 @@ SCHEMA can be specified in several ways:
                          (cl-mapcan
                           (lambda (prop type desc)
                             `(,(intern (concat ":" prop))
-                              (:type ,type ,@(when desc (list :description desc)))))
+                              (:type ,type ,@(when desc
+                                               (list :description (string-trim desc))))))
                           (nreverse props) (nreverse types) (nreverse descriptions)))))
               (setq schema
                     (if wrap-in-array (list :type "array" :items object) object))))))))
@@ -3202,9 +3204,9 @@ the response is inserted into the current buffer after point."
          (callback (or (plist-get info :callback) ;if not the first run
                        #'gptel--insert-response)) ;default callback
          (url-request-data
-          (encode-coding-string
+          (decode-coding-string
            (gptel--json-encode (plist-get info :data))
-           'utf-8)))
+           'utf-8 t)))
     (when (with-current-buffer (plist-get info :buffer)
             (and (derived-mode-p 'org-mode)
                  gptel-org-convert-response))
