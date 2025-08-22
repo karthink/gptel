@@ -506,9 +506,9 @@ Non-nil CLEAR-CACHE will refresh credentials."
              (or (and (not clear-cache) (cdr cell))
                  (setf (cdr cell)
                        (with-temp-buffer
-		           (unless (zerop (call-process "aws" nil t nil "configure" "export-credentials"
-					                (format "--profile=%s" profile)))
-		             (user-error "Failed to get AWS credentials from profile"))
+		           (unless (zerop (apply #'call-process "aws" nil t nil "configure" "export-credentials"
+                                     (if profile (list (format "--profile=%s" profile)) nil)))
+		             (user-error "Failed to get AWS credentials from profile %s" (if profile (format "from profile: %s" profile) "from IAM role")))
 		         (json-parse-string (buffer-string)))))))
 	 (expiration (if-let (exp (gethash "Expiration" creds-json))
 			     (date-to-time exp))))
@@ -529,6 +529,11 @@ Returns a list of 2-3 elements, depending on whether a session
 token is needed, with this form: (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 AWS_SESSION_TOKEN).
 
+Credentials are sourced in this order:
+1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+2. AWS_PROFILE environment variable
+3. Instance credentials via aws configure export-credentials
+
 Convenient to use with `cl-multiple-value-bind'"
   (let ((key-id (getenv "AWS_ACCESS_KEY_ID"))
         (secret-key (getenv "AWS_SECRET_ACCESS_KEY"))
@@ -537,7 +542,8 @@ Convenient to use with `cl-multiple-value-bind'"
     (cond
       ((and key-id secret-key) (cl-values key-id secret-key token))
       ((and profile) (gptel-bedrock--fetch-aws-profile-credentials profile))
-      (t (user-error "Missing AWS credentials; currently only environment variables are supported")))))
+      ((gptel-bedrock--fetch-aws-profile-credentials nil))
+      (t (user-error "Missing AWS credentials; tried environment variables, AWS profile, and instance credentials")))))
 
 (defvar gptel-bedrock--model-ids
   ;; https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
