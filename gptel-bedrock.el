@@ -506,9 +506,9 @@ Non-nil CLEAR-CACHE will refresh credentials."
              (or (and (not clear-cache) (cdr cell))
                  (setf (cdr cell)
                        (with-temp-buffer
-		           (unless (zerop (call-process "aws" nil t nil "configure" "export-credentials"
-					                (format "--profile=%s" profile)))
-		             (user-error "Failed to get AWS credentials from profile"))
+		           (unless (zerop (apply #'call-process "aws" nil t nil "configure" "export-credentials"
+                                     (if profile (list (format "--profile=%s" profile)) nil)))
+		             (user-error "Failed to get AWS credentials from profile %s" (if profile (format "from profile: %s" profile) "from IAM role")))
 		         (json-parse-string (buffer-string)))))))
 	 (expiration (if-let (exp (gethash "Expiration" creds-json))
 			     (date-to-time exp))))
@@ -521,22 +521,6 @@ Non-nil CLEAR-CACHE will refresh credentials."
       ((not clear-cache)
        (gptel-bedrock--fetch-aws-profile-credentials profile t))
       (t (user-error "AWS credentials expired for profile: %s" profile)))))
-
-(defun gptel-bedrock--fetch-instance-credentials ()
-  "Fetch AWS credentials using aws configure export-credentials.
-
-Returns a list of access key, secret key, and session token."
-  (with-temp-buffer
-    (condition-case nil
-        (progn
-          (call-process "aws" nil t nil "configure" "export-credentials")
-          (unless (zerop (buffer-size))
-            (let* ((creds (json-parse-string (buffer-string) :object-type 'plist))
-                   (access-key (plist-get creds :AccessKeyId))
-                   (secret-key (plist-get creds :SecretAccessKey))
-                   (session-token (plist-get creds :SessionToken)))
-              (cl-values access-key secret-key session-token))))
-      (error nil))))
 
 (defun gptel-bedrock--get-credentials ()
   "Return the AWS credentials to use for the request.
@@ -558,7 +542,7 @@ Convenient to use with `cl-multiple-value-bind'"
     (cond
       ((and key-id secret-key) (cl-values key-id secret-key token))
       ((and profile) (gptel-bedrock--fetch-aws-profile-credentials profile))
-      ((gptel-bedrock--fetch-instance-credentials))
+      ((gptel-bedrock--fetch-aws-profile-credentials nil))
       (t (user-error "Missing AWS credentials; tried environment variables, AWS profile, and instance credentials")))))
 
 (defvar gptel-bedrock--model-ids
