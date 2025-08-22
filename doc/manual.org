@@ -9,7 +9,7 @@
 #+export_file_name: manual
 #+startup: content
 
-#+infojs_opt: view:info toc:nil mouse:underline ftoc:nil ltoc:nil
+#+infojs_opt: view:overview toc:nil mouse:underline ftoc:nil ltoc:nil
 #+html_head: <link rel="stylesheet" type="text/css" href="style.css" />
 #+html_head_extra: <style>blockquote { font-style: normal; }</style>
 #+html_head: <script src="toc-and-theme-loader.js"></script>
@@ -477,6 +477,9 @@ always contains the last request as a gptel state-machine object (see
 - ~gptel-org-set-properties~
 
 ** Directives
+:PROPERTIES:
+:CUSTOM_ID: directives
+:END:
 
 #+cindex: system message
 In addition to the text in your buffer, LLMs can be prompted with
@@ -561,6 +564,9 @@ the box:
 #+end_src
 
 ** Backends
+:PROPERTIES:
+:CUSTOM_ID: backends
+:END:
 
 #+tindex: backend, gptel-backend
 A ~gptel-backend~ is an object containing LLM connection,
@@ -703,6 +709,9 @@ the list of models in the above backend, for example, you can use
 #+end_src
 
 ** Models
+:PROPERTIES:
+:CUSTOM_ID: models
+:END:
 
 #+cindex: model, gptel model
 A /model/ in gptel is a symbol denoting a specific LLM, whose name is
@@ -784,6 +793,9 @@ Keys used by gptel:
 # #+INCLUDE: ../README.org::#include-context :only-contents t
 
 ** TODO Tools
+:PROPERTIES:
+:CUSTOM_ID: tools
+:END:
 
 gptel can provide the LLM with client-side elisp "tools", or function
 specifications, along with the request.  A "tool" is an elisp function
@@ -813,6 +825,9 @@ To use tools in gptel, you need
 
 *** Obtaining tools
 *** Writing tools
+:PROPERTIES:
+:CUSTOM_ID: writing-tools
+:END:
 
 A gptel tool is a structure specifying an Elisp function, the format
 of its arguments and accompanying documentation intended for the LLM.
@@ -1070,6 +1085,9 @@ Interactively:
 Via elisp:
 
 ** Presets
+:PROPERTIES:
+:CUSTOM_ID: presets
+:END:
 
 #+cindex: agent
 #+cindex: preset
@@ -1243,6 +1261,9 @@ programmatic use of gptel, where you can let-bind ~gptel-backend~,
 simplify this too, see ~gptel-with-preset~ above.
 
 *** Specifying presets in the prompt
+:PROPERTIES:
+:CUSTOM_ID: presets-in-prompts
+:END:
 
 It is sometimes useful to be able to send a single LLM query with
 options different from the active ones.  One way to do this is to set
@@ -1371,6 +1392,9 @@ LLMs.)  gptel does not currently ship with tools, but a preset
 * Advanced configuration
 
 ** The ~gptel-request~ API
+:PROPERTIES:
+:CUSTOM_ID: gptel-request
+:END:
 
 The heart of gptel is the function ~gptel-request~.  It offers an
 easy, flexible and comprehensive way to interact with LLMs, and is
@@ -1612,6 +1636,9 @@ Note:
 are specified in greater detail in the sections that follow.
 
 ** Prompt transformations
+:PROPERTIES:
+:CUSTOM_ID: gptel-prompt-transform-functions
+:END:
 ** Output in a specified JSON schema
 
 ~gptel-request~ can force the LLM to generate output that follows a
@@ -1849,6 +1876,9 @@ the top-level is expected to be a JSON object, not an array.  gptel
 handles this issue internally and wraps it an object if required.
 
 ** gptel's finite state machine
+:PROPERTIES:
+:CUSTOM_ID: fsm
+:END:
 
 #+cindex: finite state machine
 gptel's interactions with LLMs are typically limited to a query
