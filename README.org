@@ -149,7 +149,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#i-want-to-change-the-formatting-of-the-prompt-and-llm-response][I want to change the formatting of the prompt and LLM response]]
       - [[#how-does-gptel-distinguish-between-user-prompts-and-llm-responses][How does gptel distinguish between user prompts and LLM responses?]]
     - [[#transient-menu-behavior][Transient menu behavior]]
-      - [[#i-want-to-set-gptel-options-but-only-for-this-buffer][I want to set gptel options, but only for this buffer]]
+      - [[#i-want-to-set-gptel-options-but-only-for-this-buffer][I want to set gptel options but only for this buffer]]
       - [[#i-want-the-transient-menu-options-to-be-saved-so-i-only-need-to-set-them-once][I want the transient menu options to be saved so I only need to set them once]]
       - [[#using-the-transient-menu-leaves-behind-extra-windows][Using the transient menu leaves behind extra windows]]
       - [[#can-i-change-the-transient-menu-key-bindings][Can I change the transient menu key bindings?]]
@@ -1625,7 +1625,7 @@ gptel does /not/ use any prefix or semantic/syntax element in the buffer (such a
 #+html: </details>
 *** Transient menu behavior
 #+html: <details><summary>
-**** I want to set gptel options, but only for this buffer
+**** I want to set gptel options but only for this buffer
 :PROPERTIES:
 :ID:       748cbc00-0c92-4705-8839-619b2c80e566
 :END:
@@ -1900,21 +1900,47 @@ There are several more: [[https://github.com/iwahbe/chat.el][chat.el]], [[https:
 
 gptel is a general-purpose package for chat and ad-hoc LLM interaction.  The following packages use gptel to provide additional or specialized functionality:
 
+*Lookup helpers*: Calling gptel quickly for one-off interactions
+
 - [[https://github.com/karthink/gptel-quick][gptel-quick]]: Quickly look up the region or text at point.
-- [[https://github.com/jwiegley/gptel-prompts][gptel-prompts]]: System prompt manager for gptel.
+
+*Task-driven workflows*: Different interfaces to specify tasks for LLMs.
+
+These differ from full "agentic" use in that the interactions are "one-shot", not chained.
+
 - [[https://github.com/dolmens/gptel-aibo/][gptel-aibo]]: A writing assistant system built on top of gptel.
-- [[https://github.com/kmontag/macher][Macher]]: Project-aware multi-file LLM editing for Emacs, based on gptel.
 - [[https://github.com/daedsidog/evedel][Evedel]]: Instructed LLM Programmer/Assistant.
-- [[https://github.com/lanceberge/elysium][Elysium]]: Automatically apply AI-generated changes as you code.
-- [[https://github.com/jwiegley/ob-gptel][ob-gptel]]: Org-babel backend for running gptel queries.
+- [[https://github.com/lanceberge/elysium][Elysium]]: Request AI-generated changes as you code.
+- [[https://github.com/ISouthRain/gptel-watch][gptel-watch]]: Automatically call gptel when typing lines that indicate intent.
+
+*Agentic use*: Use LLMs as agents, with tool-use
+
+- [[https://github.com/kmontag/macher][Macher]]: Project-aware multi-file LLM editing for Emacs.
+
+*Text completion*
+
 - [[https://github.com/JDNdeveloper/gptel-autocomplete][gptel-autocomplete]]: Inline completions using gptel.
+
+*Integration with major-modes*
+
+- [[https://github.com/jwiegley/ob-gptel][ob-gptel]]: Org-babel backend for running gptel queries.
 - [[https://github.com/kamushadenes/ai-blog.el][ai-blog.el]]: Streamline generation of blog posts in Hugo.
 - [[https://github.com/lakkiy/gptel-commit][gptel-commit]]: Generate commit messages using gptel.
 - [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate commit messages within magit-status Buffer using gptel.
 - [[https://github.com/ragnard/gptel-magit/][gptel-magit]]: Generate commit messages for magit using gptel.
-- [[https://github.com/armindarvish/consult-omni][consult-omni]]: Versatile multi-source search package.  It includes gptel as one of its many sources.
-- [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  (Note that gptel includes this feature as well (see =gptel-org-branching-context=), but requires a recent version of Org mode 9.7 or later to be installed.)
+
+*Chat interface addons*
+
 - [[https://github.com/rob137/Corsair][Corsair]]: Helps gather text to populate LLM prompts for gptel.
+- [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  (Note that gptel includes this feature as well (see =gptel-org-branching-context=), but requires a recent version of Org mode 9.7 or later to be installed.)
+
+*Integration with other packages*
+
+- [[https://github.com/armindarvish/consult-omni][consult-omni]]: Versatile multi-source search package.  It includes gptel as one of its many sources.
+
+*gptel configuration management*
+
+- [[https://github.com/jwiegley/gptel-prompts][gptel-prompts]]: System prompt manager for gptel.
 
 ** COMMENT Older Breaking Changes
 
