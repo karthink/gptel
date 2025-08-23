@@ -391,7 +391,9 @@ If the ID has the format used by a different backend, use as-is."
                 (list :type "function"
                       :id (plist-get call :id)
                       :function `( :name ,(plist-get call :name)
-                                   :arguments ,(gptel--json-encode (plist-get call :args))))))
+                                   :arguments ,(decode-coding-string
+                                                (gptel--json-encode (plist-get call :args))
+                                                'utf-8 t)))))
               full-prompt)
              (push (car (gptel--parse-tool-results backend (list (cdr entry)))) full-prompt))))
         (nreverse full-prompt))
@@ -417,7 +419,10 @@ If the ID has the format used by a different backend, use as-is."
                (condition-case nil
                    (let* ((tool-call (read (current-buffer)))
                           (name (plist-get tool-call :name))
-                          (arguments (gptel--json-encode (plist-get tool-call :args))))
+                          (arguments (decode-coding-string
+                                      (gptel--json-encode (plist-get tool-call :args))
+                                      'utf-8 t)))
+                     (setq id (gptel--openai-format-tool-id id))
                      (plist-put tool-call :id id)
                      (plist-put tool-call :result
                                 (string-trim (buffer-substring-no-properties
