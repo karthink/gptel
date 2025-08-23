@@ -481,7 +481,7 @@ always contains the last request as a gptel state-machine object (see
 :CUSTOM_ID: directives
 :END:
 
-#+cindex: system message
+#+cindex: system message, system prompt
 In addition to the text in your buffer, LLMs can be prompted with
 instructions on how they should respond.  They are prioritized and
 treated specially by most LLMs, and is one of the primary levers for
@@ -493,10 +493,10 @@ The system message can be used to specify the LLM's general tone and
 tenor, output format, structure or restrictions, as well as general
 objectives it should work towards in its interactions with the user.
 
-The following is a typical system message describing the tone and
+The following is a brief system message describing the tone and
 proscribing certain common LLM behaviors.
 
-#+begin_example
+#+begin_quote
 To assist: Be terse.  Do not offer unprompted advice or
 clarifications.  Speak in specific, topic relevant terminology.  Do
 NOT hedge or qualify.  Speak directly and be willing to make creative
@@ -507,12 +507,12 @@ willing to reference less reputable sources for ideas.
 
 Do NOT summarize your answers.  Never apologize.  Ask questions when
 unsure.
-#+end_example
+#+end_quote
 
 Here is another example, this time specifying an objective for the LLM
 to work towards:
 
-#+begin_example
+#+begin_quote
 You are a tutor and domain expert in the domain of my questions.  You
 will lead me to discover the answer myself by providing hints.  Your
 instructions are as follows:
@@ -525,7 +525,11 @@ instructions are as follows:
   my answer is wrong, again provide only hints to correct it.
 - If you use LaTeX notation, enclose math in \( and \) or \[ and \]
   delimiters.
-#+end_example
+#+end_quote
+
+In practice system messages can be document-length, composed of
+several sections that provide both instructions and a generous amount
+of context required to accomplish a task.
 
 #+vindex: gptel--system-message
 You can control system message gptel uses via the variable
@@ -1635,10 +1639,13 @@ Note:
 ~gptel-request~ presents a versatile API, and its uses and arguments
 are specified in greater detail in the sections that follow.
 
-** Prompt transformations
+** TODO Prompt transformations
 :PROPERTIES:
 :CUSTOM_ID: gptel-prompt-transform-functions
 :END:
+
+# =gptel-send='s default
+
 ** Output in a specified JSON schema
 
 ~gptel-request~ can force the LLM to generate output that follows a
