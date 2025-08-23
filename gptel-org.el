@@ -93,14 +93,19 @@ of Org."
   (if (fboundp 'org-element-begin)
       (progn (declare-function org-element-begin "org-element")
              (declare-function org-element-end "org-element")
+             (declare-function org-element-parent "org-element")
              (defalias 'gptel-org--element-begin 'org-element-begin)
-             (defalias 'gptel-org--element-end 'org-element-end))
-    (defun gptel-org--element-begin (node)
+             (defalias 'gptel-org--element-end 'org-element-end)
+             (defalias 'gptel-org--element-parent 'org-element-parent))
+    (defsubst gptel-org--element-begin (node)
       "Get `:begin' property of NODE."
       (org-element-property :begin node))
-    (defun gptel-org--element-end (node)
+    (defsubst gptel-org--element-end (node)
       "Get `:end' property of NODE."
-      (org-element-property :end node))))
+      (org-element-property :end node))
+    (defsubst gptel-org--element-parent (node)
+      "Return `:parent' property of NODE."
+      (org-element-property :parent node))))
 
 
 ;;; User options
@@ -397,8 +402,8 @@ for inclusion into the user prompt for the gptel request."
 
 (defun gptel-org--link-standalone-p (object)
   "Check if link OBJECT is on a line by itself."
-  ;; Specify ancestor TYPES as list (#245)
-  (when-let* ((par (org-element-lineage object '(paragraph))))
+  (when-let* ((par (gptel-org--element-parent object))
+              ((eq (org-element-type par) 'paragraph)))
     (and (= (gptel-org--element-begin object)
             (save-excursion
               (goto-char (org-element-property :contents-begin par))
