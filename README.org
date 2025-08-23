@@ -181,7 +181,8 @@ Note: gptel requires Transient 0.7.4 or higher.  Transient is a built-in package
 *** Straight
 #+html: </summary>
 #+begin_src emacs-lisp
-  (straight-use-package 'gptel)
+  (use-package gptel
+    :straight (:host github :repo "karthink/gptel" :nonrecursive t))
 #+end_src
 #+html: </details>
 #+html: <details><summary>
