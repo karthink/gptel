@@ -240,7 +240,8 @@ information if the stream contains it."
                       (push (plist-get func :arguments) (plist-get info :partial_json)))))
                 ;; Check for reasoning blocks, currently only used by Openrouter
                 (unless (eq (plist-get info :reasoning-block) 'done)
-                  (if-let* ((reasoning-chunk (plist-get delta :reasoning)) ;for Openrouter and co
+                  (if-let* ((reasoning-chunk (or (plist-get delta :reasoning) ;for Openrouter and co
+                                                 (plist-get delta :reasoning_content))) ;for Deepseek, Llama.cpp
                             ((not (or (eq reasoning-chunk :null) (string-empty-p reasoning-chunk)))))
                       (plist-put info :reasoning
                                  (concat (plist-get info :reasoning) reasoning-chunk))
@@ -281,7 +282,8 @@ Mutate state INFO with response metadata."
        collect call-spec into tool-use
        finally (plist-put info :tool-use tool-use)))
     (when (and content (not (or (eq content :null) (string-empty-p content))))
-      (when-let* ((reasoning (plist-get message :reasoning)) ;look for reasoning blocks
+      (when-let* ((reasoning (or (plist-get message :reasoning) ;for Openrouter and co
+                                 (plist-get message :reasoning_content))) ;for Deepseek, Llama.cpp
                   ((and (stringp reasoning) (not (string-empty-p reasoning)))))
         (plist-put info :reasoning reasoning))
       content)))
