@@ -3203,10 +3203,10 @@ the response is inserted into the current buffer after point."
          (backend (plist-get info :backend))
          (callback (or (plist-get info :callback) ;if not the first run
                        #'gptel--insert-response)) ;default callback
+         ;; NOTE: We don't need the decode-coding-string dance here since we
+         ;; don't pass it to the OS environment and Curl.
          (url-request-data
-          (decode-coding-string
-           (gptel--json-encode (plist-get info :data))
-           'utf-8 t)))
+          (gptel--json-encode (plist-get info :data))))
     (when (with-current-buffer (plist-get info :buffer)
             (and (derived-mode-p 'org-mode)
                  gptel-org-convert-response))
