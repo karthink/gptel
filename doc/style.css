@@ -295,7 +295,7 @@ pre[class^="display"] {
    background: var(--display-bg);    /* light blue */
 }
 pre[class*="example"], pre[class*="lisp"], pre[class^="display"],
-pre.verbatim, div[class*="example"], table.cartouche {
+pre.verbatim, pre[class*="json"], div[class*="example"], table.cartouche {
    border-radius: .3em;
    color: var(--pre-fg);
    /*TODO: Fix this color for dark mode, lisp keywords are note readable*/
@@ -711,7 +711,8 @@ body.dark-theme button#dark-theme-toggle {
     border-color: : var(--accent);
 }
 
-body.dark-theme pre[class*="lisp"], 
+body.dark-theme pre[class*="lisp"],
+body.dark-theme pre[class*="json"],
 body.dark-theme pre[class="example"] {
     filter: invert(0.9) hue-rotate(180deg) brightness(0.9) saturate(0.8);
 }
