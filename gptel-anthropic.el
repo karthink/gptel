@@ -470,10 +470,7 @@ format."
    `(:type ,type
      :source (:type "base64"
               :media_type ,(plist-get part :mime)
-              :data ,(gptel--base64-encode media))
-     ;; TODO Make media caching a user option
-     ,@(and (gptel--model-capable-p 'cache)
-        '(:cache_control (:type "ephemeral"))))
+              :data ,(gptel--base64-encode media)))
    into parts-array
    else if (plist-get part :textfile) collect
    `(:type "text"
