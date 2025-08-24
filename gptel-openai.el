@@ -248,7 +248,7 @@ information if the stream contains it."
                     ;; Done with reasoning if we get non-empty content
                     (if-let* (((plist-member info :reasoning)) ;Is this a reasoning model?
                               (c (plist-get delta :content)) ;Started receiving text content?
-                              ((not (or (eq c :null) (string-empty-p c)))))
+                              ((not (or (eq c :null) (string-blank-p c)))))
                         (plist-put info :reasoning-block t)))))))) ;Signal end of reasoning block
       (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
