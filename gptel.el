@@ -3236,8 +3236,8 @@ the response is inserted into the current buffer after point."
                              (gptel--fsm-transition fsm) ;WAIT -> TYPE
                              (when error (plist-put info :error error))
                              (when response ;Look for a reasoning block
-                               (if (string-match-p "^ *<think>\n" response)
-                                   (when-let* ((idx (string-search "</think>\n" response)))
+                               (if (string-match-p "^\\s-*<think>" response)
+                                   (when-let* ((idx (string-search "</think>" response)))
                                      (with-demoted-errors "gptel callback error: %S"
                                        (funcall callback
                                                 (cons 'reasoning
