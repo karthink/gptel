@@ -55,6 +55,14 @@
      :input-cost 1.25
      :output-cost 10
      :cutoff-date "2024-09")
+    (gpt-5-mini
+     :description "Faster, more cost-efficient version of GPT-5"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 0.25
+     :output-cost 2.0
+     :cutoff-date "2024-09")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
      :capabilities (reasoning tool-use)

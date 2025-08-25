@@ -74,7 +74,7 @@ REQUEST-DATA is the data to send, TOKEN is a unique identifier."
                     (with-current-buffer (plist-get info :buffer)
                       (funcall backend-url))
                   backend-url)))
-         (data-json (encode-coding-string (gptel--json-encode data) 'utf-8))
+         (data-json (decode-coding-string (gptel--json-encode data) 'utf-8 t))
          (headers
           (append '(("Content-Type" . "application/json"))
                   (when-let* ((header (gptel-backend-header gptel-backend)))
@@ -365,19 +365,22 @@ Optional RAW disables text properties and transformation."
                   (unless reasoning-block ;Record that we're in a reasoning block (#709)
                     (plist-put proc-info :reasoning-block 'in))
                   (plist-put proc-info :reasoning nil)) ;Reset for next parsing round
+                 ((string-blank-p response)) ;Defer checking if response is blank
                  ((and (null reasoning-block) (length> response 0))
-                  (if (string-match-p "^ *<think>" response)
-                      ;; Obtained from main response stream
-                      (progn (setq response (cons 'reasoning response))
-                             (plist-put proc-info :reasoning-block 'in))
+                  ;; Obtained from main response stream: reasoning block start
+                  (if-let*  ((idx (string-match-p "<think>" response)))
+                      (progn
+                        (when (> idx 0) ;Collect leading whitespace before <think>
+                          (funcall callback (substring response 0 idx) proc-info)
+                          (setq response (substring response idx)))
+                        (setq response (cons 'reasoning response))
+                        (plist-put proc-info :reasoning-block 'in))
                     (plist-put proc-info :reasoning-block 'done)))
                  ((and (not (eq reasoning-block t)) (length> response 0))
                   (if-let* ((idx (string-match-p "</think>" response)))
                       (progn
                         (funcall callback
-                                 (cons 'reasoning ;last reasoning chunk
-                                       (string-trim-left
-                                        (substring response nil (+ idx 8))))
+                                 (cons 'reasoning (substring response nil (+ idx 8)))
                                  proc-info)
                         (setq reasoning-block t) ;Signal end of reasoning stream
                         (plist-put proc-info :reasoning-block t)
@@ -419,8 +422,8 @@ PROCESS and _STATUS are process parameters."
         (gptel--fsm-transition fsm)     ;WAIT -> TYPE
         (when error (plist-put proc-info :error error))
         (when response                  ;Look for a reasoning block
-          (if (string-match-p "^ *<think>\n" response)
-              (when-let* ((idx (string-search "</think>\n" response)))
+          (if (string-match-p "^\\s-*<think>" response)
+              (when-let* ((idx (string-search "</think>" response)))
                 (with-demoted-errors "gptel callback error: %S"
                   (funcall proc-callback
                            (cons 'reasoning (substring response nil (+ idx 8)))

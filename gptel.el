@@ -3203,10 +3203,10 @@ the response is inserted into the current buffer after point."
          (backend (plist-get info :backend))
          (callback (or (plist-get info :callback) ;if not the first run
                        #'gptel--insert-response)) ;default callback
+         ;; NOTE: We don't need the decode-coding-string dance here since we
+         ;; don't pass it to the OS environment and Curl.
          (url-request-data
-          (decode-coding-string
-           (gptel--json-encode (plist-get info :data))
-           'utf-8 t)))
+          (gptel--json-encode (plist-get info :data))))
     (when (with-current-buffer (plist-get info :buffer)
             (and (derived-mode-p 'org-mode)
                  gptel-org-convert-response))
@@ -3236,8 +3236,8 @@ the response is inserted into the current buffer after point."
                              (gptel--fsm-transition fsm) ;WAIT -> TYPE
                              (when error (plist-put info :error error))
                              (when response ;Look for a reasoning block
-                               (if (string-match-p "^ *<think>\n" response)
-                                   (when-let* ((idx (string-search "</think>\n" response)))
+                               (if (string-match-p "^\\s-*<think>" response)
+                                   (when-let* ((idx (string-search "</think>" response)))
                                      (with-demoted-errors "gptel callback error: %S"
                                        (funcall callback
                                                 (cons 'reasoning

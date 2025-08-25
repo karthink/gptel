@@ -240,14 +240,15 @@ information if the stream contains it."
                       (push (plist-get func :arguments) (plist-get info :partial_json)))))
                 ;; Check for reasoning blocks, currently only used by Openrouter
                 (unless (eq (plist-get info :reasoning-block) 'done)
-                  (if-let* ((reasoning-chunk (plist-get delta :reasoning)) ;for Openrouter and co
+                  (if-let* ((reasoning-chunk (or (plist-get delta :reasoning) ;for Openrouter and co
+                                                 (plist-get delta :reasoning_content))) ;for Deepseek, Llama.cpp
                             ((not (or (eq reasoning-chunk :null) (string-empty-p reasoning-chunk)))))
                       (plist-put info :reasoning
                                  (concat (plist-get info :reasoning) reasoning-chunk))
                     ;; Done with reasoning if we get non-empty content
                     (if-let* (((plist-member info :reasoning)) ;Is this a reasoning model?
                               (c (plist-get delta :content)) ;Started receiving text content?
-                              ((not (or (eq c :null) (string-empty-p c)))))
+                              ((not (or (eq c :null) (string-blank-p c)))))
                         (plist-put info :reasoning-block t)))))))) ;Signal end of reasoning block
       (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
@@ -281,7 +282,8 @@ Mutate state INFO with response metadata."
        collect call-spec into tool-use
        finally (plist-put info :tool-use tool-use)))
     (when (and content (not (or (eq content :null) (string-empty-p content))))
-      (when-let* ((reasoning (plist-get message :reasoning)) ;look for reasoning blocks
+      (when-let* ((reasoning (or (plist-get message :reasoning) ;for Openrouter and co
+                                 (plist-get message :reasoning_content))) ;for Deepseek, Llama.cpp
                   ((and (stringp reasoning) (not (string-empty-p reasoning)))))
         (plist-put info :reasoning reasoning))
       content)))
@@ -389,7 +391,9 @@ If the ID has the format used by a different backend, use as-is."
                 (list :type "function"
                       :id (plist-get call :id)
                       :function `( :name ,(plist-get call :name)
-                                   :arguments ,(gptel--json-encode (plist-get call :args))))))
+                                   :arguments ,(decode-coding-string
+                                                (gptel--json-encode (plist-get call :args))
+                                                'utf-8 t)))))
               full-prompt)
              (push (car (gptel--parse-tool-results backend (list (cdr entry)))) full-prompt))))
         (nreverse full-prompt))
@@ -415,7 +419,10 @@ If the ID has the format used by a different backend, use as-is."
                (condition-case nil
                    (let* ((tool-call (read (current-buffer)))
                           (name (plist-get tool-call :name))
-                          (arguments (gptel--json-encode (plist-get tool-call :args))))
+                          (arguments (decode-coding-string
+                                      (gptel--json-encode (plist-get tool-call :args))
+                                      'utf-8 t)))
+                     (setq id (gptel--openai-format-tool-id id))
                      (plist-put tool-call :id id)
                      (plist-put tool-call :result
                                 (string-trim (buffer-substring-no-properties
