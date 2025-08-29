@@ -1411,7 +1411,7 @@ internally.
 functionality independent of that offered by gptel.  Below is a
 schematic and the full documentation of ~gptel-request~.  You may
 prefer to learn from examples and modify them to suit your needs
-instead, in which case see [[*Extending gptel]].
+instead, in which case see [[#gptel-cookbook][the gptel cookbook]].
 
 #+begin_example
 ╭────────────────────────────╮         GPTEL-REQUEST
@@ -1635,9 +1635,6 @@ Note:
 2. The return value of this function is a state machine object that
    may be used to rerun or continue the request at a later time.  See
    [[*gptel's finite state machine]].
-
-~gptel-request~ presents a versatile API, and its uses and arguments
-are specified in greater detail in the sections that follow.
 
 ** TODO Prompt transformations
 :PROPERTIES:
@@ -2029,11 +2026,68 @@ machine, although this requires exercising some care around the
 transitions that gptel imposes during its network handling.
 
 This is a sentence that will be filled in later.
-* TODO Extending gptel
+* TODO gptel cookbook
+:PROPERTIES:
+:CUSTOM_ID: gptel-cookbook
+:LAST_REVIEW: [2025-08-26 Tue]
+:NEXT_REVIEW: [2025-08-26 Tue]
+:REVIEWS:  0
+:END:
 
-This section provides recipes for...
+gptel is really the combination of two libraries: the request API and the =gptel= UI.  gptel's opinionated UI -- the chat buffer, the transient menus, the presentation of tool calls and so on -- comprise one way of using gptel, but it is certainly not the only one.
+
+The entry point to the request library is the ~gptel-request~ function, which presents a unified way to interact with any LLM that gptel supports.  It can be used as a building block for custom commands that live in your configuration, custom workflows, or even to build complex packages.
+
+By way of examples, this chapter describes how to do these things with ~gptel-request~.
 
 ** Simple ~gptel-request~ commands
+
+gptel provides gptel-request, a lower level function, to query ChatGPT with custom behavior.  It accepts a prompt to send to the the active ~gptel-model~, along with several keyword arguments that modify what will be sent and how the response will be handled:
+
+#+begin_src emacs-lisp
+(gptel-request "my prompt"                      ;the prompt to send to ChatGPT
+  ;; The below keys are all optional
+  :buffer   some-buffer-or-name      ;defaults to (current-buffer)
+  :system   "Chat directive here"    ;defaults to gptel--system-message
+  :position some-pt                  ;defaults to (point)
+  :context  (list "any other info")  ;will be available to the callback
+  :callback (lambda (response info) ...)) ;called with the response and an info plist
+                                        ;defaults to inserting the response at :position
+#+end_src
+
+For the full documentation of available keywords, see [[*The ~gptel-request~ API]].
+
+*The prompt*: changing what is sent
+
+gptel-request sends the string passed to it as the user prompt for a gptel query.  The following will send the string passed to it and insert the response where point is when you execute it:
+
+#+begin_src emacs-lisp
+(gptel-request "What is the capital of Belgium?")
+#+end_src
+
+If the prompt is nil, it sends the region (if it is active), or the contents of the buffer up to point instead:
+
+#+begin_src emacs-lisp
+(gptel-request nil)
+#+end_src
+
+If you want to send the whole buffer, you can move simply move the cursor to the end:
+
+#+begin_src emacs-lisp
+(save-excursion
+  (goto-char (point-max))
+  (gptel-request nil))
+#+end_src
+
+It is not recommended to grab the buffer contents as a string, as this will cause twice as much memory to be used:
+
+#+begin_src emacs-lisp
+(gptel-request (buffer-string))         ;NOT recommended
+#+end_src
+
+----
+
+We can now write our first (admittedly useless) custom command: 
 
 ** Building an application
 
