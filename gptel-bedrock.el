@@ -481,6 +481,8 @@ conversation."
 (defun gptel-bedrock--fetch-aws-profile-credentials (profile &optional clear-cache)
   "Fetch & cache AWS credentials for PROFILE using aws-cli.
 
+If PROFILE is the keyword ':static', then it fetches IAM credentials from the aws-cli without any profile argument.
+
 Non-nil CLEAR-CACHE will refresh credentials."
   (let* ((creds-json
            (let ((cell (or (assoc profile gptel-bedrock--aws-profile-cache #'string=)
@@ -488,8 +490,8 @@ Non-nil CLEAR-CACHE will refresh credentials."
              (or (and (not clear-cache) (cdr cell))
                  (setf (cdr cell)
                        (with-temp-buffer
-		           (unless (zerop (call-process "aws" nil t nil "configure" "export-credentials"
-					                (format "--profile=%s" profile)))
+		           (unless (zerop (apply #'call-process "aws" nil t nil "configure" "export-credentials"
+                                                 (unless (eql profile :static) (list (format "--profile=%s" profile)))))
 		             (user-error "Failed to get AWS credentials from profile"))
 		         (json-parse-string (buffer-string)))))))
 	 (expiration (if-let (exp (gethash "Expiration" creds-json))
@@ -524,8 +526,8 @@ Convenient to use with `cl-multiple-value-bind'"
         (token (getenv "AWS_SESSION_TOKEN"))
 	(profile (or profile (getenv "AWS_PROFILE"))))
     (cond
-      ((and key-id secret-key) (cl-values key-id secret-key token))
       ((and profile) (gptel-bedrock--fetch-aws-profile-credentials profile))
+      ((and key-id secret-key) (cl-values key-id secret-key token))
       (t (user-error "Missing AWS credentials; provide them either via environment variables or specify PROFILE when calling gptel-make-bedrock")))))
 
 (defvar gptel-bedrock--model-ids

@@ -1113,9 +1113,13 @@ Register a backend with
   :model-region 'apac)
 #+end_src
 
-When the ~:aws-profile~ option is specified, the Bedrock backend uses the shared AWS config and credentials files to obtain credentials based on the AWS Profile selected. Alternatively ~AWS_PROFILE~ environment variable can be used to provide the profile name. If ~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~ and ~AWS_SESSION_TOKEN~ environment variables are provided the profile will be ignored.
+AWS has numerous credential provisions; we follow this order precedence,
+- (argument) ~:aws-profile~
+  If this option is specified, the Bedrock-backend uses the shared AWS config and credentials files to obtain credentials based on the AWS Profile selected. If ~:aws-profile~ is set to the keyword ~:static~, the IAM credentials are imported without a profile argument.
+- (env. varible) ~AWS_PROFILE~
+- (env. varible) ~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~ and ~AWS_SESSION_TOKEN~
 
-NOTE: The Bedrock backend needs curl >= 8.5 in order for the sigv4 signing to work properly,
+NOTE: The Bedrock backend needs curl >= 8.9 in order for the sigv4 signing to work properly,
 https://github.com/curl/curl/issues/11794
 
 An error will be signalled if ~gptel-curl~ is ~NIL~.
