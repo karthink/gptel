@@ -1114,6 +1114,7 @@ Register a backend with
 #+end_src
 
 AWS has numerous credential provisions; we follow this order precedence,
+- (argument) ~:aws-bearer-token~
 - (env. variable) ~AWS_BEARER_TOKEN_BEDROCK~
 - (argument) ~:aws-profile~
   If this option is specified, the Bedrock-backend uses the shared AWS config and credentials files to obtain credentials based on the AWS Profile selected. If ~:aws-profile~ is set to the keyword ~:static~, the IAM credentials are imported without a profile argument.

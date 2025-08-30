@@ -577,11 +577,11 @@ REGION is one of apac, eu or us."
    (or (alist-get model gptel-bedrock--model-ids nil nil #'eq)
        (error "Unknown Bedrock model: %s" model))))
 
-(defun gptel-bedrock--curl-args (region profile)
+(defun gptel-bedrock--curl-args (region profile bearer-token)
   "Generate the curl arguments to get a bedrock request signed for use in REGION.
 
 PROFILE specifies the aws profile to use for aws configure export-credentials."
-  (let ((bearer-token (getenv "AWS_BEARER_TOKEN_BEDROCK"))
+  (let ((bearer-token (or bearer-token (getenv "AWS_BEARER_TOKEN_BEDROCK")))
         (output-args (unless (memq system-type '(windows-nt ms-dos))
                        '("--output" "/dev/stdout"))))
     (if bearer-token
@@ -610,7 +610,7 @@ PROFILE specifies the aws profile to use for aws configure export-credentials."
           (models gptel--bedrock-models)
 	  (model-region nil)
           stream curl-args request-params
-	  (aws-profile nil)
+          aws-profile aws-bearer-token
           (protocol "https"))
   "Register an AWS Bedrock backend for gptel with NAME.
 
@@ -620,12 +620,13 @@ REGION - AWS region name (e.g. \"us-east-1\")
 MODELS - The list of models supported by this backend
 MODEL-REGION - one of apac, eu, us or nil
 AWS-PROFILE - the aws profile to use for aws configure export-credentials
+AWS-BEARER-TOKEN - the aws bearer-token for authenticating with AWS
 CURL-ARGS - additional curl args
 STREAM - Whether to use streaming responses or not.
 REQUEST-PARAMS - a plist of additional HTTP request
 parameters (as plist keys) and values supported by the API."
   (declare (indent 1))
-  (unless (getenv "AWS_BEARER_TOKEN_BEDROCK")
+  (unless (or aws-bearer-token (getenv "AWS_BEARER_TOKEN_BEDROCK"))
     (unless (and gptel-use-curl (version<= "8.9" (gptel-bedrock--curl-version)))
       (error "Bedrock-backend requires curl >= 8.9, but gptel-use-curl := %s, curl-version := %s"
              gptel-use-curl (gptel-bedrock--curl-version))))
@@ -641,7 +642,7 @@ parameters (as plist keys) and values supported by the API."
            :endpoint "" ; Url is dynamically constructed based on other args
            :stream stream
            :coding-system (and stream 'binary)
-           :curl-args (lambda () (append curl-args (gptel-bedrock--curl-args region aws-profile)))
+           :curl-args (lambda () (append curl-args (gptel-bedrock--curl-args region aws-profile aws-bearer-token)))
            :request-params request-params
            :url
            (lambda ()
