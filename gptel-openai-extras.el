@@ -351,6 +351,13 @@ For the meanings of the keyword arguments, see `gptel-make-openai'."
               :input-cost 3
               :output-cost 15)
 
+             (grok-code-fast-1
+              :description "Fast reasoning model for agentic coding"
+              :capabilities '(tool-use json reasoning)
+              :context-window 256
+              :input-cost 0.2
+              :output-cost 1.5)
+
              (grok-3
               :description "Grok 3"
               :capabilities '(tool-use json reasoning)
