@@ -1644,11 +1644,18 @@ Note:
 # =gptel-send='s default
 
 ** Output in a specified JSON schema
+:PROPERTIES:
+:CUSTOM_ID: output-schema
+:END:
 
 ~gptel-request~ can force the LLM to generate output that follows a
 specified JSON schema.  This can be useful when it is used as part of
 a data processing pipeline, or when gptel-request needs to be plugged
 into Elisp code that expects structured data.
+
+NOTE(v{{{stable-version}}}): JSON output is compatible with tool-use
+for all gptel backends except for Anthropic.  Requests to Anthropic
+models cannot include both tools and a JSON schema.
 
 Here is a frivolous example demonstrating this feature:
 
