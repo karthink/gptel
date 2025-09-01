@@ -48,7 +48,7 @@
 (defvar mcp-hub-servers)
 (defvar mcp-server-connections)
 
-(defun gptel-mcp-connect (&optional servers server-callback interactive syncp)
+(defun gptel-mcp-connect (&optional servers server-callback interactive)
   "Add gptel tools from MCP servers using the mcp package.
 
 MCP servers are started if required.  SERVERS is a list of server
@@ -58,9 +58,9 @@ considered.
 If INTERACTIVE is non-nil (or called interactively), guide the user
 through setting up mcp, and query for servers to retrieve tools from.
 
-If SYNCP is non-nil, the server will be initialized synchronously.
-
-Call SERVER-CALLBACK after starting MCP servers."
+Call SERVER-CALLBACK after starting MCP servers.
+If SERVER-CALLBACK is not a function and non-nil, the server is started
+synchronously."
   (interactive (list nil nil t))
   (if (locate-library "mcp-hub")
       (unless (require 'mcp-hub nil t)
@@ -121,8 +121,9 @@ Call SERVER-CALLBACK after starting MCP servers."
                       (when (functionp server-callback) (funcall server-callback))))))
 
             (if inactive-servers        ;start servers
-                (mcp-hub-start-all-server
-                 add-all-tools (mapcar #'car inactive-servers) syncp)
+                (let ((syncp (and server-callback (not (functionp server-callback)) t)))
+                  (mcp-hub-start-all-server
+                   add-all-tools (mapcar #'car inactive-servers) syncp))
               (funcall add-all-tools (mapcar #'car servers))))
         (message "All MCP tools are already available to gptel!")
         (when (functionp server-callback) (funcall server-callback))))))
