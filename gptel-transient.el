@@ -1642,8 +1642,6 @@ This sets the variable `gptel-include-tool-results', which see."
                                    (cdr reduced-prompt))
                          (concat "``` " (gptel--strip-mode-suffix major-mode) "\n"
                                  (or (cdr-safe reduced-prompt) reduced-prompt) "\n```" )))))
-        ;; If the prompt is a cons (region-text . instructions), collapse it
-        (when (consp prompt) (setq prompt (concat (car prompt) "\n\n" (cdr prompt))))
         (cond
          ((buffer-live-p gptel-buffer)
           ;; Insert into existing gptel session
@@ -1683,6 +1681,10 @@ This sets the variable `gptel-include-tool-results', which see."
       (setq output-to-other-buffer-p t)
       (setq buffer (get-buffer-create gptel-buffer-name))
       (with-current-buffer buffer (setq position (point)))))
+
+    ;; MAYBE: This is no a good way to handle two-part (region + instruction) prompts
+    ;; If the prompt is a cons (region-text . instructions), collapse it
+    (when (consp prompt) (setq prompt (concat (car prompt) "\n\n" (cdr prompt))))
 
     (prog1 (gptel-request prompt
              :buffer (or buffer (current-buffer))
