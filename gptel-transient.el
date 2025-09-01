@@ -225,9 +225,8 @@ will toggle its visibility state."
 (defun gptel--read-minibuffer-prompt (&optional read-prompt)
   "Read a user prompt from the minibuffer.
 
-Prompt with READ-PROMPT if supplied.  Optionally return the
-concatenation of the buffer region (if active) and the provided
-instructions."
+Prompt with READ-PROMPT if supplied.  Return a cons cell of the buffer
+region (if included) and the provided instructions."
   (let* ((include-region (use-region-p))
          (cb (current-buffer))
          (get-region (lambda () (with-current-buffer cb
@@ -279,9 +278,7 @@ instructions."
                                     "): ")
                             ": ")))
               nil 'gptel--minibuffer-prompt-history))))
-      (if include-region
-          (concat (funcall get-region) "\n" user-prompt)
-        user-prompt))))
+      (cons (funcall get-region) user-prompt))))
 
 (defun gptel--transient-read-number (prompt _initial-input history)
   "Read a numeric value from the minibuffer.
@@ -1626,15 +1623,27 @@ This sets the variable `gptel-include-tool-results', which see."
               (if (buffer-live-p gptel-buffer)
                   (buffer-local-value 'major-mode gptel-buffer)
                 gptel-default-mode)))
-        ;; Add code fences or Org block around prompt
+        ;; Add code fences or Org src markers around the reduced-prompt
         (cond ((eq major-mode gptel-buffer-mode))
               ((provided-mode-derived-p gptel-buffer-mode 'org-mode)
                (setq reduced-prompt
-                     (concat "#+begin_src " (gptel--strip-mode-suffix major-mode)
-                             "\n" reduced-prompt "\n#+end_src")))
+                     (if (consp reduced-prompt);either (region . prompt) or prompt
+                         (concat (and (car reduced-prompt)
+                                      (concat "#+begin_src " (gptel--strip-mode-suffix major-mode)
+                                              "\n" (car reduced-prompt) "\n#+end_src\n\n"))
+                                 (cdr reduced-prompt))
+                       (concat "#+begin_src " (gptel--strip-mode-suffix major-mode)
+                               "\n" (or (cdr-safe reduced-prompt) reduced-prompt) "\n#+end_src"))))
               (t (setq reduced-prompt
-                       (concat "``` " (gptel--strip-mode-suffix major-mode) "\n"
-                               reduced-prompt "\n```" ))))
+                       (if (consp reduced-prompt);either (region . prompt) or prompt
+                           (concat (and (car reduced-prompt)
+                                        (concat  "``` " (gptel--strip-mode-suffix major-mode) "\n"
+                                                 (car reduced-prompt) "\n```\n\n"))
+                                   (cdr reduced-prompt))
+                         (concat "``` " (gptel--strip-mode-suffix major-mode) "\n"
+                                 (or (cdr-safe reduced-prompt) reduced-prompt) "\n```" )))))
+        ;; If the prompt is a cons (region-text . instructions), collapse it
+        (when (consp prompt) (setq prompt (concat (car prompt) "\n\n" (cdr prompt))))
         (cond
          ((buffer-live-p gptel-buffer)
           ;; Insert into existing gptel session
