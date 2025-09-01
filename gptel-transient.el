@@ -424,11 +424,11 @@ which see."
             (pth (s) (propertize s 'face 'transient-heading)))
     (let* ((args (or (and transient-current-command
                           (transient-args transient-current-command))
-	             ;; Not yet exported, simulate.  HACK: We are accessing
-	             ;; Transient's internal variables here for live updates.
-	             (let* ((transient-current-command (oref transient--prefix command))
-	                    (transient-current-suffixes transient--suffixes))
-	               (transient-args transient-current-command))))
+                     ;; Not yet exported, simulate.  HACK: We are accessing
+                     ;; Transient's internal variables here for live updates.
+                     (let* ((transient-current-command (oref transient--prefix command))
+                            (transient-current-suffixes transient--suffixes))
+                       (transient-args transient-current-command))))
            (lbeg (line-number-at-pos (if (use-region-p) (region-beginning)
                                        (point-min))))
            (lend (line-number-at-pos (if (use-region-p) (region-end)
@@ -457,22 +457,22 @@ which see."
                        (concat (pth ", insert response at point")))))
             ((member "y" args)
              (concat (pth "Send prompt from ")
-		     (concat (ptv "kill-ring (")
-			     (if-let* ((val (car-safe kill-ring))
-				       (val (substring-no-properties val))
-				       (len (length val)))
-				 (ptv (concat
+                     (concat (ptv "kill-ring (")
+                             (if-let* ((val (current-kill 0))
+                                       (val (substring-no-properties val))
+                                       (len (length val)))
+                                 (ptv (concat
                                        "\"" (string-replace
-					     "\n" "⮐"
-					     (truncate-string-to-width
-					      val 20 nil nil t))
-				       "\"" (when (> len 20)
-					      (concat
-					       ", "
-					       (file-size-human-readable len 'si " ")
-					       " chars"))))
-			     (propertize "empty" 'face 'error))
-			   (ptv ")"))
+                                             "\n" "⮐"
+                                             (truncate-string-to-width
+                                              val 20 nil nil t))
+                                       "\"" (when (> len 20)
+                                              (concat
+                                               ", "
+                                               (file-size-human-readable len 'si " ")
+                                               " chars"))))
+                               (propertize "empty" 'face 'error))
+                             (ptv ")"))
                      context
                      (if dest (concat (pth ", response to ") dest)
                        (concat (pth ", insert response at point")))))
