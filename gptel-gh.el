@@ -164,25 +164,16 @@
 (cl-defstruct (gptel--gh (:include gptel-openai)
                          (:copier nil)
                          (:constructor gptel--make-gh))
-  token github-token sessionid machineid)
-
-(defcustom gptel-gh-github-token-file (expand-file-name ".cache/copilot-chat/github-token"
-                                                        user-emacs-directory)
-  "File where the GitHub token is stored."
-  :type 'string
-  :group 'gptel)
-
-(defcustom gptel-gh-token-file (expand-file-name ".cache/copilot-chat/token"
-                                                 user-emacs-directory)
-  "File where the chat token is cached."
-  :type 'string
-  :group 'gptel)
+  sessionid machineid)
 
 (defconst gptel--gh-auth-common-headers
   `(("editor-plugin-version" . "gptel/*")
     ("editor-version" . ,(concat "emacs/" emacs-version))))
 
 (defconst gptel--gh-client-id "Iv1.b507a08c87ecfe98")
+
+(defvar gptel--gh-token nil)
+(defvar gptel--gh-github-token nil)
 
 ;; https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 (defun gptel--gh-uuid ()
@@ -203,26 +194,10 @@
       (setq hex (nconc hex (list (aref hex-chars (random 16))))))
     (apply #'string hex)))
 
-(defun gptel--gh-restore (file)
-  "Restore saved object from FILE."
-  (when (file-exists-p file)
-    ;; We set the coding system to `utf-8-auto-dos' when reading so that
-    ;; files with CR EOL can still be read properly
-    (let ((coding-system-for-read 'utf-8-auto-dos))
-      (with-temp-buffer
-        (set-buffer-multibyte nil)
-        (insert-file-contents-literally file)
-        (goto-char (point-min))
-        (read (current-buffer))))))
-
-(defun gptel--gh-save (file obj)
+(defun gptel--gh-save (obj)
   "Save OBJ to FILE."
-  (let ((print-length nil)
-        (print-level nil)
-        (coding-system-for-write 'utf-8-unix))
-    (make-directory (file-name-directory file) t)
-    (write-region (prin1-to-string obj) nil file nil :silent)
-    obj))
+  (message "New GitHub token: %s" (prin1-to-string obj))
+  (setq gptel--gh-github-token obj))
 
 (defun gptel-gh-login ()
   "Login to GitHub Copilot API.
@@ -254,13 +229,11 @@ If your browser does not open automatically, browse to %s."
                   :device_code ,device_code
                   :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
        :access_token)
-      (gptel--gh-save gptel-gh-github-token-file)
-      (setf (gptel--gh-github-token gptel-backend))))
-  (if (and (gptel--gh-github-token gptel-backend)
-           (not (string-empty-p
-                 (gptel--gh-github-token gptel-backend))))
-      (message "Successfully logged in to GitHub Copilot")
-    (user-error "Error: You might not have access to GitHub Copilot Chat!")))
+      (gptel--gh-save))
+    (if (and gptel--gh-github-token
+             (not (string-empty-p gptel--gh-github-token)))
+        (message "Successfully logged in to GitHub Copilot")
+      (user-error "Error: You might not have access to GitHub Copilot Chat!"))))
 
 (defun gptel--gh-renew-token ()
   "Renew session token."
@@ -269,34 +242,22 @@ If your browser does not open automatically, browse to %s."
              "https://api.github.com/copilot_internal/v2/token"
            :method 'get
            :headers `(("authorization"
-                       . ,(format "token %s" (gptel--gh-github-token gptel-backend)))
+                       . ,(format "token %s" gptel--gh-github-token))
                       ,@gptel--gh-auth-common-headers))))
     (if (not (plist-get token :token))
-        (progn
-          (setf (gptel--gh-github-token gptel-backend) nil)
-          (user-error "Error: You might not have access to GitHub Copilot Chat!"))
-      (thread-last
-        (gptel--gh-save gptel-gh-token-file token)
-        (setf (gptel--gh-token gptel-backend))))))
+        (user-error "Error: You might not have access to GitHub Copilot Chat!")
+      (setq gptel--gh-token token))))
 
 (defun gptel--gh-auth ()
   "Authenticate with GitHub Copilot API.
 
 We first need github authorization (github token).
 Then we need a session token."
-  (unless (gptel--gh-github-token gptel-backend)
-    (let ((token (gptel--gh-restore gptel-gh-github-token-file)))
-      (if token
-          (setf (gptel--gh-github-token gptel-backend) token)
-        (gptel-gh-login))))
-
-  (when (null (gptel--gh-token gptel-backend))
-    ;; try to load token from `gptel-gh-token-file'
-    (setf (gptel--gh-token gptel-backend)
-          (gptel--gh-restore gptel-gh-token-file)))
+  (unless gptel--gh-github-token
+    (gptel-gh-login))
 
   (pcase-let (((map :token :expires_at)
-               (gptel--gh-token gptel-backend)))
+               gptel--gh-token))
     (when (or (null token)
               (and expires_at
                    (> (round (float-time (current-time)))
@@ -309,8 +270,7 @@ Then we need a session token."
           (header (lambda ()
                     (gptel--gh-auth)
                     `(("openai-intent" . "conversation-panel")
-                      ("authorization" . ,(concat "Bearer "
-                                           (plist-get (gptel--gh-token gptel-backend) :token)))
+                      ("authorization" . ,(concat "Bearer " (plist-get gptel--gh-token :token)))
                       ("x-request-id" . ,(gptel--gh-uuid))
                       ("vscode-sessionid" . ,(or (gptel--gh-sessionid gptel-backend) ""))
                       ("vscode-machineid" . ,(or (gptel--gh-machineid gptel-backend) ""))
@@ -322,7 +282,8 @@ Then we need a session token."
           (protocol "https")
           (endpoint "/chat/completions")
           (stream t)
-          (models gptel--gh-models))
+          (models gptel--gh-models)
+          (github-token-init nil))
   "Register a Github Copilot chat backend for gptel with NAME.
 
 Keyword arguments:
@@ -374,6 +335,9 @@ parameters (as plist keys) and values supported by the API.  Use
 these to set parameters that gptel does not provide user options
 for."
   (declare (indent 1))
+  (if (and (not gptel--gh-github-token)
+           github-token-init)
+      (gptel--gh-save (funcall github-token-init)))
   (let ((backend (gptel--make-gh
                   :name name
                   :host host
