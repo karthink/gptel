@@ -7,39 +7,6 @@
 
 gptel is a simple Large Language Model chat client for Emacs, with support for multiple models and backends.  It works in the spirit of Emacs, available at any time and uniformly in any buffer.
 
-#+html: <div align="center">
-| LLM Backend          | Supports | Requires                   |
-|----------------------+----------+----------------------------|
-| ChatGPT              | ✓        | [[https://platform.openai.com/account/api-keys][API key]]                    |
-| Anthropic (Claude)   | ✓        | [[https://www.anthropic.com/api][API key]]                    |
-| Gemini               | ✓        | [[https://makersuite.google.com/app/apikey][API key]]                    |
-| Ollama               | ✓        | [[https://ollama.ai/][Ollama running locally]]     |
-| Open WebUI           | ✓        | [[https://openwebui.com/][Open WebUI running locally]] |
-| Llama.cpp            | ✓        | [[https://github.com/ggml-org/llama.cpp/tree/master/tools/server#quick-start][Llama.cpp running locally]]  |
-| Llamafile            | ✓        | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
-| GPT4All              | ✓        | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
-| Kagi FastGPT         | ✓        | [[https://kagi.com/settings?p=api][API key]]                    |
-| Kagi Summarizer      | ✓        | [[https://kagi.com/settings?p=api][API key]]                    |
-| Azure                | ✓        | Deployment and API key     |
-| Groq                 | ✓        | [[https://console.groq.com/keys][API key]]                    |
-| Mistral Le Chat      | ✓        | [[https://console.mistral.ai/api-keys][API key]]                    |
-| Perplexity           | ✓        | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
-| OpenRouter           | ✓        | [[https://openrouter.ai/keys][API key]]                    |
-| AI/ML API            | ✓        | [[https://aimlapi.com/app/?utm_source=gptel&utm_medium=github&utm_campaign=integration][API key]]                    |
-| together.ai          | ✓        | [[https://api.together.xyz/settings/api-keys][API key]]                    |
-| Anyscale             | ✓        | [[https://docs.endpoints.anyscale.com/][API key]]                    |
-| PrivateGPT           | ✓        | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
-| DeepSeek             | ✓        | [[https://platform.deepseek.com/api_keys][API key]]                    |
-| Sambanova (Deepseek) | ✓        | [[https://cloud.sambanova.ai/apis][API key]]                    |
-| Cerebras             | ✓        | [[https://cloud.cerebras.ai/][API key]]                    |
-| Github Models        | ✓        | [[https://github.com/settings/tokens][Token]]                      |
-| Novita AI            | ✓        | [[https://novita.ai/model-api/product/llm-api?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][Token]]                      |
-| xAI                  | ✓        | [[https://console.x.ai?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][API key]]                    |
-| GitHub CopilotChat   | ✓        | GitHub account             |
-| Bedrock              | ✓        | AWS credentials            |
-| Moonshot (Kimi)      | ✓        | API key ([[https://platform.moonshot.cn/console][CN]] or [[https://platform.moonshot.ai/console][Global]])     |
-#+html: </div>
-
 *General usage*: ([[https://www.youtube.com/watch?v=bsRnh_brggM][YouTube Demo]])
 
 https://user-images.githubusercontent.com/8607532/230516812-86510a09-a2fb-4cbd-b53f-cc2522d05a13.mp4
@@ -76,10 +43,9 @@ See also [[https://youtu.be/g1VMGhC5gRU][this youtube demo (2 minutes)]] by Armi
 
 ------
 
-- gptel is async and fast, streams responses.
 - Interact with LLMs from anywhere in Emacs (any buffer, shell, minibuffer, wherever).
 - LLM responses are in Markdown or Org markup.
-- Supports multiple independent conversations and one-off ad hoc interactions.
+- Supports multiple independent conversations, one-off ad hoc interactions and anything in between.
 - Supports tool-use to equip LLMs with agentic capabilities.
 - Supports Model Context Protocol (MCP) integration using [[https://github.com/lizqwerscott/mcp.el][mcp.el]].
 - Supports multi-modal input (include images, documents).
@@ -165,10 +131,6 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
     - [[#packages-using-gptel][Packages using gptel]]
   - [[#acknowledgments][Acknowledgments]]
 
-** COMMENT Breaking changes!
-
-- =gptel-model= is now expected to be a symbol, not a string.  Please update your configuration.
-
 ** Installation
 
 Note: gptel requires Transient 0.7.4 or higher.  Transient is a built-in package and Emacs does not update it by default.  Ensure that =package-install-upgrade-built-in= is true, or update Transient manually.
@@ -222,6 +184,42 @@ In your =.spacemacs= file, add =llm-client= to =dotspacemacs-configuration-layer
 #+end_src
 #+html: </details>
 ** Setup
+
+gptel supports a number of LLM providers:
+
+#+html: <div align="center">
+| LLM Backend          | Requires                   |
+|----------------------+----------------------------|
+| ChatGPT              | [[https://platform.openai.com/account/api-keys][API key]]                    |
+| Anthropic (Claude)   | [[https://www.anthropic.com/api][API key]]                    |
+| Gemini               | [[https://makersuite.google.com/app/apikey][API key]]                    |
+| Ollama               | [[https://ollama.ai/][Ollama running locally]]     |
+| Open WebUI           | [[https://openwebui.com/][Open WebUI running locally]] |
+| Llama.cpp            | [[https://github.com/ggml-org/llama.cpp/tree/master/tools/server#quick-start][Llama.cpp running locally]]  |
+| Llamafile            | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
+| GPT4All              | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
+| Kagi FastGPT         | [[https://kagi.com/settings?p=api][API key]]                    |
+| Kagi Summarizer      | [[https://kagi.com/settings?p=api][API key]]                    |
+| Azure                | Deployment and API key     |
+| Groq                 | [[https://console.groq.com/keys][API key]]                    |
+| Mistral Le Chat      | [[https://console.mistral.ai/api-keys][API key]]                    |
+| Perplexity           | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
+| OpenRouter           | [[https://openrouter.ai/keys][API key]]                    |
+| AI/ML API            | [[https://aimlapi.com/app/?utm_source=gptel&utm_medium=github&utm_campaign=integration][API key]]                    |
+| together.ai          | [[https://api.together.xyz/settings/api-keys][API key]]                    |
+| Anyscale             | [[https://docs.endpoints.anyscale.com/][API key]]                    |
+| PrivateGPT           | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
+| DeepSeek             | [[https://platform.deepseek.com/api_keys][API key]]                    |
+| Sambanova (Deepseek) | [[https://cloud.sambanova.ai/apis][API key]]                    |
+| Cerebras             | [[https://cloud.cerebras.ai/][API key]]                    |
+| Github Models        | [[https://github.com/settings/tokens][Token]]                      |
+| Novita AI            | [[https://novita.ai/model-api/product/llm-api?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][Token]]                      |
+| xAI                  | [[https://console.x.ai?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][API key]]                    |
+| GitHub CopilotChat   | GitHub account             |
+| Bedrock              | AWS credentials            |
+| Moonshot (Kimi)      | API key ([[https://platform.moonshot.cn/console][CN]] or [[https://platform.moonshot.ai/console][Global]])     |
+#+html: </div>
+
 *** ChatGPT
 Procure an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
 
