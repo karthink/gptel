@@ -1,6 +1,6 @@
 # -*- mode: org; -*-
 
-* 0.9.9-pre
+* 0.9.9 2025-08-02
 
 ** Breaking changes
 
@@ -20,7 +20,6 @@
         (gptel-backend-models (gptel-get-backend "Gemini")))
   #+end_src
 
-
 ** New models and backends
 
 - Add support for ~grok-code-fast-1~.
@@ -36,6 +35,10 @@
   OpenAI-compatible API, so the "support" is just a new section of the
   README with instructions.
 
+- Add support for Moonshot (Kimi), in a similar sense.
+
+- Add support for the AI/ML API, in a similar sense.
+
 - Add support for ~grok-4~.
 
 ** New features and UI changes
@@ -46,6 +49,10 @@
   still bring up the Transient menu by pressing =M-RET= instead of =RET=
   when supplying the rewrite instruction.  If no region is selected and
   there are pending rewrites, the rewrite menu is displayed.
+
+- ~gptel-rewrite~ will now produce more refined merge conflicts when
+  using the merge action.  It works by feeding the original and
+  rewritten text to git (when it is available).
 
 - New command ~gptel-gh-login~ to authenticate with GitHub Copilot.  The
   authentication step happens automatically when you use gptel, so
@@ -70,7 +77,8 @@
   The JSON schema can be provided as
   - an elisp object, a nested plist structure.
   - A JSON schema serialized to a string.
-  - A shorthand object/array description, described in the manual.
+  - A shorthand object/array description, described in the manual (and
+    the documentation of ~gptel--dispatch-schema-type~.)
 
   This feature works with all major backends: OpenAI, Anthropic, Gemini,
   llama-cpp and Ollama.  It is presently supported by some but not all
@@ -79,12 +87,28 @@
   Note that this is only available via the ~gptel-request~ API, and
   currently unsupported by ~gptel-send~.
 
+- gptel's log buffer and logging settings are now accessible from
+  gptel's Transient menu.  To see these turn on the full interface by
+  setting ~gptel-expert-commands~.
+
+- Presets: You can now specify ~:request-params~ (API-specific request
+  parameters) in a preset.
+
 - From the dry-run inspector buffer, you can now copy the Curl command
   for the request.  Like when continuing the query, the request is
   constructed from the contents of the buffer, which is editable.
 
 - gptel now handles Ollama models that return both reasoning content
   and tool calls in a single request.
+
+- The "Prompt from minibuffer" option in gptel's Transient menu
+  behaves slightly differently now.  If a region is active in the
+  buffer, it can optionally be included in the prompt.  The keybinding
+  to toggle this is displayed during the minibuffer-read.
+
+  Additionally, when reading a prompt or instructions from the
+  minibuffer you can switch to a dedicated composition buffer via
+  =C-c C-e=.
 
 * 0.9.8.5 2025-06-11
 
