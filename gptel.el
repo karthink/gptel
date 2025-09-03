@@ -3,7 +3,7 @@
 ;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
-;; Version: 0.9.8.5
+;; Version: 0.9.9
 ;; Package-Requires: ((emacs "27.1") (transient "0.7.4") (compat "30.1.0.0"))
 ;; Keywords: convenience, tools
 ;; URL: https://github.com/karthink/gptel
@@ -45,7 +45,6 @@
 ;;
 ;; Features:
 ;;
-;; - It’s async and fast, streams responses.
 ;; - Interact with LLMs from anywhere in Emacs (any buffer, shell, minibuffer,
 ;;   wherever).
 ;; - LLM responses are in Markdown or Org markup.
