@@ -353,8 +353,7 @@ Then we need a session token."
                (gptel--gh-token gptel-backend)))
     (when (or (null token)
               (and expires_at
-                   (> (round (float-time (current-time)))
-                      expires_at)))
+                   (> (round (float-time)) expires_at)))
       (gptel--gh-renew-token))))
 
 ;;;###autoload
