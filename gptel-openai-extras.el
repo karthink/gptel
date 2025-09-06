@@ -1,6 +1,6 @@
 ;;; gptel-openai-extras.el --- Extensions to the OpenAI API -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023  Karthik Chikmagalur
+;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
 ;; Authors: Karthik Chikmagalur <karthikchikmagalur@gmail.com> and pirminj
 
@@ -219,7 +219,7 @@ the response."
 ;;;###autoload
 (cl-defun gptel-make-perplexity
     (name &key curl-args stream key
-          (header 
+          (header
            (lambda () (when-let* ((key (gptel--get-api-key)))
                    `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.perplexity.ai")
@@ -278,57 +278,46 @@ parameters."
                               (:copier nil)
                               (:constructor gptel--make-deepseek)))
 
-(cl-defmethod gptel-curl--parse-stream :before ((_backend gptel-deepseek) info)
-  "Capture reasoning block stream into INFO."
-  (unless (eq (plist-get info :reasoning) 'done)
-    (save-excursion
-      (ignore-errors
-        (catch 'done
-          (while (re-search-forward "^data:" nil t)
-            (unless (looking-at-p " *\\[DONE\\]")
-              (when-let* ((response (gptel--json-read))
-                          (delta (map-nested-elt response '(:choices 0 :delta))))
-                (if-let* ((reasoning-content (plist-get delta :reasoning_content))
-                          ((not (eq reasoning-content :null))))
-                    ;; :reasoning will be consumed by the gptel-request callback
-                    ;; and reset by the stream filter.
-                    (plist-put info :reasoning
-                               (concat (plist-get info :reasoning) reasoning-content))
-                  (when-let* ((content (plist-get delta :content))
-                              ((not (eq content :null))))
-                    (unless (plist-get info :reasoning) ;Don't overwrite existing value
-                      (if (plist-member delta :reasoning_content) ;Check for reasoning model
-                          (plist-put info :reasoning t) ;End of streaming reasoning block
-                        (plist-put info :reasoning 'done))) ;Not using a reasoning model
-                    (throw 'done t)))))))))))
+(cl-defmethod gptel--parse-buffer :around ((_backend gptel-deepseek) _max-entries)
+  "Merge successive prompts in the prompts list that have the same role.
 
-(cl-defmethod gptel--parse-response :before ((_backend gptel-deepseek) response info)
-  "Capture reasoning block in RESPONSE into INFO."
-  (let* ((choice0 (map-nested-elt response '(:choices 0)))
-         (message (plist-get choice0 :message))
-         (reasoning (plist-get message :reasoning_content)))
-    (when (and (stringp reasoning) (length> reasoning 0))
-      (plist-put info :reasoning reasoning))))
+The Deepseek API requires strictly alternating roles (user/assistant) in messages."
+  (let* ((prompts (cl-call-next-method))
+         (index prompts))
+    (prog1 prompts
+      (while index
+        (let ((p1 (car index))
+              (p2 (cadr index))
+              (rest (cdr index)))
+          (when (and p2 (equal (plist-get p1 :role)
+                               (plist-get p2 :role)))
+            (setf (plist-get p1 :content)
+                  (concat (plist-get p1 :content) "\n"
+                          (plist-get p2 :content)))
+            (setcdr index (cdr rest)))
+          (setq index (cdr index)))))))
 
 ;;;###autoload
 (cl-defun gptel-make-deepseek
     (name &key curl-args stream key request-params
-          (header (lambda () (when-let (key (gptel--get-api-key))
+          (header (lambda () (when-let* ((key (gptel--get-api-key)))
                           `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.deepseek.com")
           (protocol "https")
           (endpoint "/v1/chat/completions")
           (models '((deepseek-reasoner
                      :capabilities (tool reasoning)
-                     :context-window 64
-                     :input-cost 0.55
-                     :output-cost 2.19)
+                     :context-window 128
+                     :input-cost 0.56
+                     :output-cost 1.68)
                     (deepseek-chat
                      :capabilities (tool)
-                     :context-window 64
-                     :input-cost 0.27
-                     :output-cost 1.10))))
-  "Register a DeepSeek backend for gptel with NAME."
+                     :context-window 128
+                     :input-cost 0.56
+                     :output-cost 1.68))))
+  "Register a DeepSeek backend for gptel with NAME.
+
+For the meanings of the keyword arguments, see `gptel-make-openai'."
   (declare (indent 1))
   (let ((backend (gptel--make-deepseek
                   :name name
@@ -345,5 +334,97 @@ parameters."
     (setf (alist-get name gptel--known-backends nil nil #'equal) backend)
     backend))
 
+;;; xAI
+;;;###autoload
+(cl-defun gptel-make-xai
+    (name &key curl-args stream key request-params
+          (header (lambda () (when-let* ((key (gptel--get-api-key)))
+                          `(("Authorization" . ,(concat "Bearer " key))))))
+          (host "api.x.ai")
+          (protocol "https")
+          (endpoint "/v1/chat/completions")
+          (models
+           '((grok-4
+              :description "Grok Flagship model"
+              :capabilities '(tool-use json reasoning)
+              :context-window 256
+              :input-cost 3
+              :output-cost 15)
+
+             (grok-code-fast-1
+              :description "Fast reasoning model for agentic coding"
+              :capabilities '(tool-use json reasoning)
+              :context-window 256
+              :input-cost 0.2
+              :output-cost 1.5)
+
+             (grok-3
+              :description "Grok 3"
+              :capabilities '(tool-use json reasoning)
+              :context-window 131
+              :input-cost 3
+              :output-cost 15)
+
+             (grok-3-fast
+              :description "Faster Grok 3"
+              :capabilities '(tool-use json reasoning)
+              :context-window 131
+              :input-cost 5
+              :output-cost 25)
+
+             (grok-3-mini
+              :description "Mini Grok 3"
+              :capabilities '(tool-use json reasoning)
+              :context-window 131
+              :input-cost 0.3
+              :output-cost 0.5)
+
+             (grok-3-mini-fast
+              :description "Faster mini Grok 3"
+              :capabilities '(tool-use json reasoning)
+              :context-window 131072
+              :input-cost 0.6
+              :output-cost 4)
+
+             (grok-2-vision-1212
+              :description "Grok 2 Vision"
+              :capabilities '(tool-use json media)
+              :mime-types '("image/jpeg" "image/png" "image/gif" "image/webp")
+              :context-window 32768
+              :input-cost 2
+              :output-cost 10))))
+  "Register an xAI backend for gptel with NAME.
+
+Keyword arguments:
+
+KEY is a variable whose value is the API key, or function that
+returns the key.
+
+STREAM is a boolean to toggle streaming responses, defaults to
+false.
+
+The other keyword arguments are all optional.  For their meanings
+see `gptel-make-openai'."
+  (declare (indent 1))
+  (let ((backend (gptel--make-deepseek
+                  :name name
+                  :host host
+                  :header header
+                  :key key
+                  :models (gptel--process-models models)
+                  :protocol protocol
+                  :endpoint endpoint
+                  :stream stream
+                  :request-params request-params
+                  :curl-args curl-args
+                  :url (concat protocol "://" host endpoint))))
+    (setf (alist-get name gptel--known-backends nil nil #'equal) backend)
+    backend))
+
+
 (provide 'gptel-openai-extras)
 ;;; gptel-openai-extras.el ends here
+
+;; Local Variables:
+;; byte-compile-warnings: (not docstrings)
+;; End:

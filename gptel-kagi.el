@@ -1,6 +1,6 @@
 ;;; gptel-kagi.el --- Kagi support for gptel     -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023  Karthik Chikmagalur
+;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthikchikmagalur@gmail.com>
 ;; Keywords: hypermedia
@@ -71,7 +71,8 @@
                      (concat "\n\n" (mapconcat #'identity ref-strings "\n")))))
     (concat output references)))
 
-;; TODO: Add model and backend-specific request-params support
+;; TODO: Add support for model/backend-specific request-params and
+;; gptel--request-params
 (cl-defmethod gptel--request-data ((_backend gptel-kagi) prompts)
   "JSON encode PROMPTS for Kagi."
   (pcase-exhaustive (gptel--model-name gptel-model)
@@ -190,3 +191,7 @@ Example:
 
 (provide 'gptel-kagi)
 ;;; gptel-kagi.el ends here
+
+;; Local Variables:
+;; byte-compile-warnings: (not docstrings)
+;; End:

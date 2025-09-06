@@ -1,0 +1,79 @@
+name: Deploy gptel manual to Pages
+
+on:
+  # Runs on pushes targeting the default branch
+  push:
+    branches: ["manual"]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # Build job to export Org-mode to HTML
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: manual
+      
+      - name: Install Emacs 30
+        uses: purcell/setup-emacs@master
+        with:
+          version: '30.1'
+        # 'emacs' will be on PATH
+      
+      - name: Export Org-mode manual to HTML
+        run: |
+          cd doc
+          emacs --batch \
+            --eval "(progn
+                      (load-theme 'modus-operandi t)
+                      (package-initialize)
+                      (unless (require 'htmlize nil t)
+                        (add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\") t)
+                        (package-refresh-contents)
+                        (package-install 'htmlize))
+                      (require 'ox-html)
+                      (require 'ox-texinfo)
+                      (require 'htmlize)
+                      (setq org-html-htmlize-output-type 'css)
+                      (setq org-html-postamble nil)
+                      (setq org-export-exclude-tags '(\"noexport\" \"nohtmlexport\"))
+                      (find-file \"manual.org\")
+                      (org-html-export-to-html)
+                      (kill-emacs))"
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload the doc directory containing the exported HTML and assets
+          path: './doc'
+
+  # Deployment job
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

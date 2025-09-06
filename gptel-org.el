@@ -23,7 +23,8 @@
 ;;
 
 ;;; Code:
-(eval-when-compile (require 'cl-lib))
+(eval-when-compile (require 'gptel))
+(require 'cl-lib)
 (require 'org-element)
 (require 'outline)
 
@@ -51,6 +52,8 @@
 (declare-function gptel--parse-buffer "gptel")
 (declare-function gptel--parse-directive "gptel")
 (declare-function gptel--restore-props "gptel")
+(declare-function gptel--with-buffer-copy "gptel")
+(declare-function gptel--file-binary-p "gptel")
 (declare-function org-entry-get "org")
 (declare-function org-entry-put "org")
 (declare-function org-with-wide-buffer "org-macs")
@@ -89,10 +92,20 @@ of Org."
           (nreverse acc)))))
   (if (fboundp 'org-element-begin)
       (progn (declare-function org-element-begin "org-element")
-             (defalias 'gptel-org--element-begin 'org-element-begin))
-    (defun gptel-org--element-begin (node)
+             (declare-function org-element-end "org-element")
+             (declare-function org-element-parent "org-element")
+             (defalias 'gptel-org--element-begin 'org-element-begin)
+             (defalias 'gptel-org--element-end 'org-element-end)
+             (defalias 'gptel-org--element-parent 'org-element-parent))
+    (defsubst gptel-org--element-begin (node)
       "Get `:begin' property of NODE."
-      (org-element-property :begin node))))
+      (org-element-property :begin node))
+    (defsubst gptel-org--element-end (node)
+      "Get `:end' property of NODE."
+      (org-element-property :end node))
+    (defsubst gptel-org--element-parent (node)
+      "Return `:parent' property of NODE."
+      (org-element-property :parent node))))
 
 
 ;;; User options
@@ -136,9 +149,22 @@ heading 2.2 text
 -----
 
 This makes it feasible to have multiple conversation branches."
-  :local t
   :type 'boolean
   :group 'gptel)
+
+(defcustom gptel-org-ignore-elements '(property-drawer)
+  "List of Org elements that should be stripped from the prompt
+before sending it.
+
+By default gptel will remove Org property drawers from the
+prompt.  For the full list of available elements, please see
+`org-element-all-elements'.
+
+Please note: Removing property-drawer elements is fast, but
+adding elements to this list can significantly slow down
+`gptel-send'."
+  :group 'gptel
+  :type '(repeat symbol))
 
 
 ;;; Setting context and creating queries
@@ -150,8 +176,8 @@ This makes it feasible to have multiple conversation branches."
 (defun gptel-org-set-topic (topic)
   "Set a TOPIC and limit this conversation to the current heading.
 
-This limits the context sent to the LLM to the text between the
-current heading and the cursor position."
+This limits the context sent to the LLM to the text between the current
+heading (i.e. the heading with the topic set) and the cursor position."
   (interactive
    (list
     (progn
@@ -164,26 +190,25 @@ current heading and the cursor position."
                                  (substring-no-properties
                                   (replace-regexp-in-string
                                    "\\s-+" "-"
-                                   (org-get-heading)))
+                                   (org-entry-get nil "ITEM")))
                                  50))))))
   (when (stringp topic) (org-set-property "GPTEL_TOPIC" topic)))
 
-;; NOTE: This can be converted to a cl-defmethod for `gptel--parse-buffer'
-;; (conceptually cleaner), but will cause load-order issues in gptel.el and
-;; might be harder to debug.
-(defun gptel-org--create-prompt (&optional prompt-end)
-  "Return a full conversation prompt from the contents of this Org buffer.
+;; NOTE: This can be converted to a cl-defmethod for
+;; `gptel--create-prompt-buffer' (conceptually cleaner), but will cause
+;; load-order issues in gptel.el and might be harder to debug.
+(defun gptel-org--create-prompt-buffer (&optional prompt-end)
+  "Return a buffer with the conversation prompt to be sent.
 
-If `gptel--num-messages-to-send' is set, limit to that many
-recent exchanges.
-
-The prompt is constructed from the contents of the buffer up to
-point, or PROMPT-END if provided.  Its contents depend on the
-value of `gptel-org-branching-context', which see."
-  (unless prompt-end (setq prompt-end (point)))
-  (let ((max-entries (and gptel--num-messages-to-send
-                          (* 2 gptel--num-messages-to-send)))
-        (topic-start (gptel-org--get-topic-start)))
+If the region is active limit the prompt text to the region contents.
+Otherwise the prompt text is constructed from the contents of the
+current buffer up to point, or PROMPT-END if provided.  Its contents
+depend on the value of `gptel-org-branching-context', which see."
+  (when (use-region-p)
+    (narrow-to-region (region-beginning) (region-end))
+    (setq prompt-end (point-max)))
+  (goto-char (or prompt-end (setq prompt-end (point))))
+  (let ((topic-start (gptel-org--get-topic-start)))
     (when topic-start
       ;; narrow to GPTEL_TOPIC property scope
       (narrow-to-region topic-start prompt-end))
@@ -196,67 +221,97 @@ value of `gptel-org-branching-context', which see."
         ;; Create prompt from direct ancestors of point
         (save-excursion
           (let* ((org-buf (current-buffer))
-                 (start-bounds (gptel-org--element-lineage-map
-                                   (org-element-at-point) #'gptel-org--element-begin
-                                 '(headline org-data) 'with-self))
+                 ;; Collect all heading start positions in the lineage
+                 (full-bounds (gptel-org--element-lineage-map
+                                  (org-element-at-point) #'gptel-org--element-begin
+                                '(headline) 'with-self) )
+                 ;; lineage-map returns the full lineage in the unnarrowed
+                 ;; buffer.  Remove heading start positions before (point-min)
+                 ;; that are invalid due to narrowing, and add (point-min) if
+                 ;; it's not already included in the lineage
+                 (start-bounds
+                  (nconc (cl-delete-if (lambda (p) (< p (point-min)))
+                                       full-bounds)
+                         (unless (save-excursion (goto-char (point-min))
+                                                 (looking-at-p outline-regexp))
+                           (list (point-min)))))
                  (end-bounds
                   (cl-loop
-                   for (pos . rest) on (cdr start-bounds)
-                   while
-                   (and (>= pos (point-min)) ;respect narrowing
-                        (goto-char pos)
-                        ;; org-element-lineage always returns an extra
-                        ;; (org-data) element at point 1.  If there is also a
-                        ;; heading here, it is either a false positive or we
-                        ;; would be double counting it.  So we reject this node
-                        ;; when also at a heading.
-                        (not (and (eq pos 1) (org-at-heading-p)
-                                  ;; Skip if at the last element of start-bounds,
-                                  ;; since we captured this heading already (#476)
-                                  (null rest))))
-                   do (outline-next-heading)
+                   ;; (car start-bounds) is the begining of the current element,
+                   ;; not relevant
+                   for pos in (cdr start-bounds)
+                   do (goto-char pos) (outline-next-heading)
                    collect (point) into ends
                    finally return (cons prompt-end ends))))
-            (with-temp-buffer
-              ;; TODO(org) duplicated below
-              (dolist (sym '( gptel-backend gptel--system-message gptel-model
-                              gptel-mode gptel-track-response gptel-track-media))
-                (set (make-local-variable sym)
-                     (buffer-local-value sym org-buf)))
+            (gptel--with-buffer-copy org-buf nil nil
               (cl-loop for start in start-bounds
-                       for end   in end-bounds
+                       for end in end-bounds
                        do (insert-buffer-substring org-buf start end)
                        (goto-char (point-min)))
               (goto-char (point-max))
               (gptel-org--unescape-tool-results)
-              (gptel-org--strip-tool-headers)
-              (let ((major-mode 'org-mode))
-                (gptel--parse-buffer gptel-backend max-entries)))))
+              (gptel-org--strip-block-headers)
+              (when-let* ((gptel-org-ignore-elements ;not copied by -with-buffer-copy
+                           (buffer-local-value 'gptel-org-ignore-elements
+                                               org-buf)))
+                (gptel-org--strip-elements))
+              (setq org-complex-heading-regexp ;For org-element-context to run
+                    (buffer-local-value 'org-complex-heading-regexp org-buf))
+              (current-buffer))))
       ;; Create prompt the usual way
       (let ((org-buf (current-buffer))
-            (beg (point-min))
-            (end (point-max)))
-        (with-temp-buffer
-          ;; TODO(org) duplicated above
-          (dolist (sym '( gptel-backend gptel--system-message gptel-model
-                          gptel-mode gptel-track-response gptel-track-media))
-            (set (make-local-variable sym)
-                 (buffer-local-value sym org-buf)))
-          (insert-buffer-substring org-buf beg end)
+            (beg (point-min)))
+        (gptel--with-buffer-copy org-buf beg prompt-end
           (gptel-org--unescape-tool-results)
-          (gptel-org--strip-tool-headers)
-          (let ((major-mode 'org-mode))
-            (gptel--parse-buffer gptel-backend max-entries)))))))
+          (gptel-org--strip-block-headers)
+          (when-let* ((gptel-org-ignore-elements ;not copied by -with-buffer-copy
+                       (buffer-local-value 'gptel-org-ignore-elements
+                                           org-buf)))
+                (gptel-org--strip-elements))
+          (setq org-complex-heading-regexp ;For org-element-context to run
+                (buffer-local-value 'org-complex-heading-regexp org-buf))
+          (current-buffer))))))
 
-(defun gptel-org--strip-tool-headers ()
-  "Remove all tool_call block headers and footers.
-Every line that matches will be removed entirely."
+(defun gptel-org--strip-elements ()
+  "Remove all elements in `gptel-org-ignore-elements' from the
+prompt."
+  (let ((major-mode 'org-mode) element-markers)
+    (if (equal '(property-drawer) gptel-org-ignore-elements)
+        (save-excursion
+          (goto-char (point-min))
+          (while (re-search-forward org-property-drawer-re nil t)
+            ;; ;; Slower but accurate
+            ;; (let ((drawer (org-element-at-point)))
+            ;;   (when (org-element-type-p drawer 'property-drawer)
+            ;;     (delete-region (org-element-begin drawer) (org-element-end drawer))))
+
+            ;; Fast but inexact, can have false positives
+            (delete-region (match-beginning 0) (match-end 0))))
+      ;; NOTE: Parsing the buffer is extremely slow.  Avoid this path unless
+      ;; required.
+      ;; NOTE: `org-element-map' takes a third KEEP-DEFERRED argument in newer
+      ;; Org versions
+      (org-element-map (org-element-parse-buffer 'element nil)
+          gptel-org-ignore-elements
+        (lambda (node)
+          (push (list (gptel-org--element-begin node)
+                      (gptel-org--element-end node))
+                element-markers)))
+      (dolist (bounds element-markers)
+        (apply #'delete-region bounds)))))
+
+(defun gptel-org--strip-block-headers ()
+  "Remove all gptel-specific block headers and footers.
+Every line that matches will be removed entirely.
+
+This removal is necessary to avoid auto-mimicry by LLMs."
   (save-excursion
     (goto-char (point-min))
-    (while (re-search-forward (rx line-start (literal "#+")
-                                  (or (literal "begin") (literal "end"))
-                                  (literal "_tool"))
-                              nil t)
+    (while (re-search-forward
+            (rx line-start (literal "#+")
+                (or (literal "begin") (literal "end"))
+                (or (literal "_tool") (literal "_reasoning")))
+            nil t)
       (delete-region (match-beginning 0)
                      (min (point-max) (1+ (line-end-position)))))))
 
@@ -300,12 +355,13 @@ Return a list of the form
   (:text \"More text\"))
 for inclusion into the user prompt for the gptel request."
   (require 'mailcap)                    ;FIXME Avoid this somehow
-  (let ((parts) (from-pt)
+  (let ((parts) (from-pt) (mime)
         (link-regex (concat "\\(?:" org-link-bracket-re "\\|"
                             org-link-angle-re "\\)")))
     (save-excursion
       (setq from-pt (goto-char beg))
       (while (re-search-forward link-regex end t)
+        (setq mime nil)
         (when-let* ((link (org-element-context))
                     ((gptel-org--link-standalone-p link))
                     (raw-link (org-element-property :raw-link link))
@@ -314,25 +370,30 @@ for inclusion into the user prompt for the gptel request."
                     ;; FIXME This is not a good place to check for url capability!
                     ((member type `("attachment" "file"
                                     ,@(and (gptel--model-capable-p 'url)
-                                       '("http" "https" "ftp")))))
-                    (mime (mailcap-file-name-to-mime-type path))
-                    ((gptel--model-mime-capable-p mime)))
+                                       '("http" "https" "ftp"))))))
           (cond
            ((member type '("file" "attachment"))
-            (when (file-readable-p path)
-              ;; Collect text up to this image, and
-              ;; Collect this image
-              (when-let* ((text (string-trim (buffer-substring-no-properties
-                                              from-pt (gptel-org--element-begin link)))))
-                (unless (string-empty-p text) (push (list :text text) parts)))
-              (push (list :media path :mime mime) parts)
-              (setq from-pt (point))))
-           ((member type '("http" "https" "ftp"))
-            ;; Collect text up to this image, and
-            ;; Collect this image url
-            (when-let* ((text (string-trim (buffer-substring-no-properties
-                                            from-pt (gptel-org--element-begin link)))))
-              (unless (string-empty-p text) (push (list :text text) parts)))
+            (if (file-readable-p path)
+              (if (or (not (gptel--file-binary-p path))
+                      (and (setq mime (mailcap-file-name-to-mime-type path))
+                           (gptel--model-mime-capable-p mime)))
+                  (progn                ; text file or supported binary file
+                    ;; collect text up to link
+                    (when-let* ((text (buffer-substring-no-properties
+                                       from-pt (gptel-org--element-begin link))))
+                      (unless (string-blank-p text) (push (list :text text) parts)))
+                    ;; collect link
+                    (push (if mime (list :media path :mime mime) (list :textfile path)) parts)
+                    (setq from-pt (point)))
+                (message "Ignoring unsupported binary file \"%s\"." path))
+              (message "Ignoring inaccessible file \"%s\"." path)))
+           ((and (member type '("http" "https" "ftp"))
+                 (setq mime (mailcap-file-name-to-mime-type path))
+                 (gptel--model-capable-p mime))
+            ;; Collect text up to this image, and collect this image url
+            (when-let* ((text (buffer-substring-no-properties
+                               from-pt (gptel-org--element-begin link))))
+              (unless (string-blank-p text) (push (list :text text) parts)))
             (push (list :url raw-link :mime mime) parts)
             (setq from-pt (point))))))
       (unless (= from-pt end)
@@ -341,8 +402,8 @@ for inclusion into the user prompt for the gptel request."
 
 (defun gptel-org--link-standalone-p (object)
   "Check if link OBJECT is on a line by itself."
-  ;; Specify ancestor TYPES as list (#245)
-  (when-let* ((par (org-element-lineage object '(paragraph))))
+  (when-let* ((par (gptel-org--element-parent object))
+              ((eq (org-element-type par) 'paragraph)))
     (and (= (gptel-org--element-begin object)
             (save-excursion
               (goto-char (org-element-property :contents-begin par))
@@ -405,28 +466,30 @@ ARGS are the original function call arguments."
 (defun gptel-org--restore-state ()
   "Restore gptel state for Org buffers when turning on `gptel-mode'."
   (save-restriction
-    (widen)
-    (condition-case status
-        (progn
-          (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
-            (gptel--restore-props (read bounds)))
-          (pcase-let ((`(,system ,backend ,model ,temperature ,tokens ,num)
-                       (gptel-org--entry-properties (point-min))))
-            (when system (setq-local gptel--system-message system))
-            (if backend (setq-local gptel-backend backend)
-              (message
-               (substitute-command-keys
-                (concat
-                 "Could not activate gptel backend \"%s\"!  "
-                 "Switch backends with \\[universal-argument] \\[gptel-send]"
-                 " before using gptel."))
-               backend))
-            (when model (setq-local gptel-model model))
-            (when temperature (setq-local gptel-temperature temperature))
-            (when tokens (setq-local gptel-max-tokens tokens))
-            (when num (setq-local gptel--num-messages-to-send num))))
-      (:success (message "gptel chat restored."))
-      (error (message "Could not restore gptel state, sorry! Error: %s" status)))))
+    (let ((modified (buffer-modified-p)))
+      (widen)
+      (condition-case status
+          (progn
+            (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
+              (gptel--restore-props (read bounds)))
+            (pcase-let ((`(,system ,backend ,model ,temperature ,tokens ,num)
+                         (gptel-org--entry-properties (point-min))))
+              (when system (setq-local gptel--system-message system))
+              (if backend (setq-local gptel-backend backend)
+                (message
+                 (substitute-command-keys
+                  (concat
+                   "Could not activate gptel backend \"%s\"!  "
+                   "Switch backends with \\[universal-argument] \\[gptel-send]"
+                   " before using gptel."))
+                 backend))
+              (when model (setq-local gptel-model model))
+              (when temperature (setq-local gptel-temperature temperature))
+              (when tokens (setq-local gptel-max-tokens tokens))
+              (when num (setq-local gptel--num-messages-to-send num))))
+        (:success (message "gptel chat restored."))
+        (error (message "Could not restore gptel state, sorry! Error: %s" status)))
+      (set-buffer-modified-p modified))))
 
 (defun gptel-org-set-properties (pt &optional msg)
   "Store the active gptel configuration under the current heading.
@@ -467,10 +530,10 @@ non-nil (default), display a message afterwards."
    ;; Save response boundaries
    (letrec ((write-bounds
              (lambda (attempts)
-               (let* ((bounds (gptel--get-buffer-bounds))
-                      ;; first value of ((prop . ((beg end val)...))...)
-                      (offset (caadar bounds))
-                      (offset-marker (set-marker (make-marker) offset)))
+               (when-let* ((bounds (gptel--get-buffer-bounds))
+                           ;; first value of ((prop . ((beg end val)...))...)
+                           (offset (caadar bounds))
+                           (offset-marker (set-marker (make-marker) offset)))
                  (org-entry-put (point-min) "GPTEL_BOUNDS"
                                 (prin1-to-string (gptel--get-buffer-bounds)))
                  (when (and (not (= (marker-position offset-marker) offset))
@@ -480,6 +543,7 @@ non-nil (default), display a message afterwards."
 
 
 ;;; Transforming responses
+;;;###autoload
 (defun gptel--convert-markdown->org (str)
   "Convert string STR from markdown to org markup.
 
@@ -527,7 +591,7 @@ elements."
             (save-excursion
               (when (and (re-search-forward (regexp-quote (match-string 0))
                                             (line-end-position) t)
-                         (looking-at "[[:space]]\\|\s")
+                         (looking-at "[[:space:][:punct:]]\\|\s")
                          (not (looking-back "\\(?:[[:space]]\\|\s\\)\\(?:_\\|\\*\\)"
                                             (max (- (point) 2) (point-min)))))
                 (delete-char -1) (insert "/") t))
@@ -556,6 +620,7 @@ This is intended for use in the markdown to org stream converter."
         (insert (if end "#+end_src" "#+begin_src "))
       (insert "="))))
 
+;;;###autoload
 (defun gptel--stream-convert-markdown->org (start-marker)
   "Return a Markdown to Org converter.
 
@@ -567,7 +632,8 @@ START-MARKER is used to identify the corresponding process when
 cleaning up after."
   (letrec ((in-src-block nil)           ;explicit nil to address BUG #183
            (in-org-src-block nil)
-           (temp-buf (generate-new-buffer " *gptel-temp*" t))
+           (temp-buf ; NOTE: Switch to `generate-new-buffer' after we drop Emacs 27.1
+            (gptel--temp-buffer " *gptel-temp*"))
            (start-pt (make-marker))
            (ticks-total 0)      ;MAYBE should we let-bind case-fold-search here?
            (cleanup-fn
@@ -657,12 +723,14 @@ cleaning up after."
                    (save-match-data
                      (save-excursion
                        (ignore-errors (backward-char 2))
-                       (cond      ; At bob, underscore/asterisk followed by word
-                        ((or (and (bobp) (looking-at "\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
-                             (looking-at ; word followed by underscore/asterisk
-                              "[^[:space:][:punct:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
-                             (looking-at ; underscore/asterisk followed by word
-                              "\\(?:[[:space:][:punct:]]\\)\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
+                       (cond
+                        ((and     ; At bob, underscore/asterisk followed by word
+                          (or (and (bobp) (looking-at "\\(?:_\\|\\*\\)\\([^[:space:][:punct:]]\\|$\\)"))
+                              (looking-at ; word followed by underscore/asterisk
+                               "[^[:space:]\n]\\(?:_\\|\\*\\)\\(?:[[:space:][:punct:]]\\|$\\)")
+                              (looking-at ; underscore/asterisk followed by word
+                               "\\(?:[[:space:]]\\)\\(?:_\\|\\*\\)\\([^[:space:]]\\|$\\)"))
+                          (not (looking-at "[[:punct:]]\\(?:_\\|\\*\\)[[:punct:]]")))
                          ;; Emphasis, replace with slashes
                          (forward-char (if (bobp) 1 2)) (delete-char -1) (insert "/"))
                         ((or (and (bobp) (looking-at "\\*[[:space:]]"))
@@ -676,3 +744,8 @@ cleaning up after."
 
 (provide 'gptel-org)
 ;;; gptel-org.el ends here
+
+;; Silence warnings about `org-element-type-p' and `org-element-parent', see #294.
+;; Local Variables:
+;; byte-compile-warnings: (not unresolved)
+;; End:
