@@ -387,7 +387,9 @@ files in the context."
                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
      :context-window 1048               ; 65536 output token limit
-     :input-cost 1.25)                   ; 2.50 for >200k tokens
+     :input-cost 1.25                   ; 2.50 for >200k tokens
+     :output-cost 10.00                 ; 15 for >200k tokens
+     :cutoff-date "2025-01")
     (gemini-2.5-pro-exp-03-25
      :description "Like gemini-2.5-pro-preview-03-25 but limited to 5 req/min, 25 req/day"
      :capabilities (tool-use json media)
@@ -406,7 +408,7 @@ files in the context."
      :output-cost 10.00 ; 15 for >200k tokens
      :cutoff-date "2025-01")
     (gemini-2.5-flash-preview-05-20
-     :description "DEPRECATED: Please use gemini-2.5-flash instead."
+     :description "DEPRECATED: Please use gemini-2.5-flash instead"
      :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
@@ -415,7 +417,7 @@ files in the context."
      :output-cost 0.60 ; 3.50 for thinking
      :cutoff-date "2025-01")
     (gemini-2.5-flash
-     :description "Best model in terms of price-performance, offering well-rounded capabilities"
+     :description "Best in terms of price-performance, with well-rounded capabilities"
      :capabilities (tool-use json media audio video)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html"
@@ -443,7 +445,7 @@ files in the context."
      :output-cost 10.00                 ; 15 for >200k tokens
      :cutoff-date "2025-01")
     (gemini-2.5-flash-lite
-     :description "Fastest and cheapest 2.5 model, for high-volume, latency-sensitive tasks."
+     :description "Fastest & cheapest 2.5 model, for high-volume, latency-sensitive tasks"
      :capabilities (tool-use json media)
      :capabilities (tool-use json media audio video)
      :mime-types ("image/png" "image/jpeg" "image/webp" "application/pdf" "text/plain"
@@ -456,7 +458,7 @@ files in the context."
      :output-cost 0.40
      :cutoff-date "2025-01")
     (gemini-2.5-flash-lite-preview-06-17
-     :description "Fastest and cheapest 2.5 model, for high-volume, latency-sensitive tasks."
+     :description "Fastest & cheapest 2.5 model, for high-volume, latency-sensitive tasks"
      :capabilities (tool-use json media audio video)
      :mime-types ("image/png" "image/jpeg" "image/webp" "application/pdf" "text/plain"
                   "audio/x-aac" "audio/flac" "audio/mp3" "audio/m4a" "audio/mpeg"
@@ -473,7 +475,9 @@ files in the context."
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
      :context-window 1000
-     :input-cost 0.10)
+     :input-cost 0.10
+     :output-cost 0.40
+     :cutoff-date "2024-08")
     (gemini-2.0-flash-lite-preview-02-05
      :description "Gemini 2.0 Flash model optimized for cost efficiency and low latency"
      :capabilities (json)
@@ -486,18 +490,22 @@ files in the context."
      :capabilities (tool-use json media)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")
-     :context-window 1000)
+     :context-window 1000
+     :input-cost 0.00
+     :output-cost 0.00)
     (gemini-2.0-flash-thinking-exp-01-21
      :description "Next gen, high speed, multimodal for a diverse variety of tasks"
      :capabilities (json)
      :input-cost 0.00
      :output-cost 0.00)
     (gemini-2.0-flash-thinking-exp
-     :description "DEPRECATED: Please use gemini-2.0-flash-thinking-exp-01-21 instead."
+     :description "DEPRECATED: Please use gemini-2.0-flash-thinking-exp-01-21 instead"
      :capabilities (tool-use media)
      :context-window 32
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "text/plain" "text/csv" "text/html"))
+                  "text/plain" "text/csv" "text/html")
+     :input-cost 0.00
+     :output-cost 0.00)
     (gemini-1.5-pro-latest
      :description "Google's latest model with enhanced capabilities across various tasks"
      :capabilities (tool-use json media)
@@ -550,7 +558,6 @@ Information about the Gemini models was obtained from the following
 source:
 
 - <https://ai.google.dev/pricing>
-- <https://cloud.google.com/vertex-ai/generative-ai/docs/learn/models>
 - <https://ai.google.dev/gemini-api/docs/models>")
 
 ;;;###autoload
