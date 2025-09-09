@@ -210,10 +210,9 @@
       (setq hex (nconc hex (list (aref hex-chars (random 16))))))
     (apply #'string hex)))
 
-(defun gptel--gh-save (obj)
-  "Save OBJ to FILE."
-  (message "New GitHub token: %s" (prin1-to-string obj))
-  (setq gptel--gh-github-token obj))
+(defun gptel--gh-github-token-save (token)
+  "Saves the new github token for use."
+  (setq gptel--gh-github-token token))
 
 (defun gptel-gh-login ()
   "Login to GitHub Copilot API.
@@ -245,10 +244,12 @@ If your browser does not open automatically, browse to %s."
                   :device_code ,device_code
                   :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
        :access_token)
-      (gptel--gh-save))
+      (gptel--gh-github-token-save))
     (if (and gptel--gh-github-token
              (not (string-empty-p gptel--gh-github-token)))
-        (message "Successfully logged in to GitHub Copilot")
+        (progn
+          (message "New GitHub token: %s" (prin1-to-string gptel--gh-github-token))
+          (message "Successfully logged in to GitHub Copilot"))
       (user-error "Error: You might not have access to GitHub Copilot Chat!"))))
 
 (defun gptel--gh-renew-token ()
@@ -352,7 +353,7 @@ for."
   (declare (indent 1))
   (if (and (not gptel--gh-github-token)
            github-token-init)
-      (gptel--gh-save (funcall github-token-init)))
+      (gptel--gh-github-token-save (funcall github-token-init)))
   (let ((backend (gptel--make-gh
                   :name name
                   :host host
