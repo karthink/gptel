@@ -1,5 +1,14 @@
 # -*- mode: org; -*-
 
+* 0.9.9.3-pre
+
+** New features and UI changes
+
+- ~gptel-mcp-connect~ can now start MCP servers synchronously.  This
+  is useful for scripting purposes, when MCP tools need to be
+  available before performing other actions.  One common use is
+  starting MCP servers when applying a gptel preset.
+
 * 0.9.9 2025-08-02
 
 ** Breaking changes
