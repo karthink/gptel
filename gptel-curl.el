@@ -426,7 +426,11 @@ PROCESS and _STATUS are process parameters."
             (when-let* ((reasoning (plist-get proc-info :reasoning))
                         ((stringp reasoning)))
               (funcall proc-callback (cons 'reasoning reasoning) proc-info))))
-        (when (or response (not (member http-status '("200" "100"))))
+        ;; The original condition failed to call the callback when a request
+        ;; succeeded (HTTP 200) but had an empty/malformed response body.
+        ;; This new condition ensures the callback always fires for any completed
+        ;; process, preventing a silent hang.
+        (when http-status
           (with-demoted-errors "gptel callback error: %S"
             (funcall proc-callback response proc-info))))
       (gptel--fsm-transition fsm))      ;TYPE -> next
