@@ -802,6 +802,13 @@ This opens up advanced options in `gptel-menu'.")
 (defvar gptel--num-messages-to-send nil)
 (put 'gptel--num-messages-to-send 'safe-local-variable #'always)
 
+(defvar-local gptel--tool-names nil
+  "Store to persist tool names to file across Emacs sessions.
+
+Note: Changing this variable does not affect gptel\\='s behavior
+in any way.")
+(put 'gptel--backend-name 'safe-local-variable #'always)
+
 (defcustom gptel-log-level nil
   "Logging level for gptel.
 
@@ -1429,7 +1436,17 @@ applied before being re-persisted in the new structure."
              "Could not activate gptel backend \"%s\"!  "
              "Switch backends with \\[universal-argument] \\[gptel-send]"
              " before using gptel."))
-           gptel--backend-name))))))
+           gptel--backend-name)))
+      (when gptel--tool-names
+        (if-let* ((tools (cl-loop
+                          for tname in gptel--tool-names
+                          for tool = (with-demoted-errors "gptel: %S"
+                                       (gptel-get-tool tname))
+                          if tool collect tool else do
+                          (display-warning
+                           '(gptel org tools)
+                           (format "Tool %s not found, ignoring" tname)))))
+            (setq-local gptel-tools tools))))))
 
 (defun gptel--save-state ()
   "Write the gptel state to the buffer.
@@ -1448,18 +1465,25 @@ file."
           (add-file-local-variable 'gptel-model gptel-model)
           (add-file-local-variable 'gptel--backend-name
                                    (gptel-backend-name gptel-backend))
-          (unless (equal (default-value 'gptel-temperature) gptel-temperature)
-            (add-file-local-variable 'gptel-temperature gptel-temperature))
           (unless (equal (default-value 'gptel--system-message)
                            gptel--system-message)
             (add-file-local-variable
-             'gptel--system-message
+             'gptel--system-message     ;TODO: Handle nil case correctly
              (car-safe (gptel--parse-directive gptel--system-message))))
-          (when gptel-max-tokens
-            (add-file-local-variable 'gptel-max-tokens gptel-max-tokens))
-          (when (natnump gptel--num-messages-to-send)
-            (add-file-local-variable 'gptel--num-messages-to-send
-                                     gptel--num-messages-to-send))
+          (if gptel-tools
+              (add-file-local-variable
+               'gptel--tool-names (mapcar #'gptel-tool-name gptel-tools))
+            (delete-file-local-variable 'gptel--tool-names))
+          (if (equal (default-value 'gptel-temperature) gptel-temperature)
+              (delete-file-local-variable 'gptel-temperature)
+            (add-file-local-variable 'gptel-temperature gptel-temperature))
+          (if gptel-max-tokens
+              (add-file-local-variable 'gptel-max-tokens gptel-max-tokens)
+            (delete-file-local-variable 'gptel-max-tokens))
+          (if (natnump gptel--num-messages-to-send)
+              (add-file-local-variable 'gptel--num-messages-to-send
+                                       gptel--num-messages-to-send)
+            (delete-file-local-variable 'gptel--num-messages-to-send))
           (add-file-local-variable 'gptel--bounds (gptel--get-buffer-bounds)))))))
 
 
