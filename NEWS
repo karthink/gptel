@@ -9,6 +9,10 @@
   available before performing other actions.  One common use is
   starting MCP servers when applying a gptel preset.
 
+- "gitignored" files are omitted by default when adding files to gptel's
+  context.  This setting can be controlled via the user option
+  ~gptel-context-restrict-to-project-files~.
+
 * 0.9.9 2025-08-02
 
 ** Breaking changes
