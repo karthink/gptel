@@ -27,7 +27,6 @@
 
 ;;; Code:
 
-;;; -*- lexical-binding: t -*-
 (require 'gptel)
 (require 'cl-lib)
 (require 'project)
@@ -101,6 +100,8 @@ listed in `.gitignore' in a Git repository) will not be added to the context."
 
 (defvar-local gptel-context--project-files nil
   "Cache of project files for the current directory.")
+
+;;; Commands
 
 (defun gptel-context-add-current-kill (&optional arg)
   "Add current-kill to gptel, accumulating if arg is non-nil"
@@ -231,8 +232,7 @@ ACTION should be either `add' or `remove'."
     (dolist (file (directory-files-recursively path "." t))
       (unless (file-directory-p file)
 	(if (and gptel-context-restrict-to-project-files
-		 root
-		 (eq action 'add)
+		 root (eq action 'add)
 		 (not (member file gptel-context--project-files)))
 	    (gptel-context--message-skipped file)
 	  (pcase-exhaustive action
@@ -257,10 +257,11 @@ be readable as text."
         ((and gptel-context-restrict-to-project-files
 	      (not (file-remote-p path))
               (if gptel-context--project-files
-		  (when-let ((project (project-current nil (car-safe gptel-context--project-files))))
-                    (let ((root (project-root project)))
-                      (and (file-in-directory-p path root)
-			   (not (member path gptel-context--project-files)))))
+		  (when-let* ((project (project-current
+                                        nil (car-safe gptel-context--project-files))))
+                    (and (file-in-directory-p path (project-root project))
+			 (not (member (expand-file-name path)
+                                      gptel-context--project-files))))
 		;; Otherwise check individually
 		(gptel-context--skip-p path)))
 	 (gptel-context--message-skipped path))
@@ -289,7 +290,7 @@ and `gptel-context--project-files' is not already set."
 
 (defun gptel-context--get-project-files (dir)
   "Return a list of files in the project DIR, or nil if no project is found."
-  (when-let ((project (project-current nil dir)))
+  (when-let* ((project (project-current nil dir)))
     (project-files project)))
 
 (defun gptel-context--skip-p (file)
@@ -297,7 +298,8 @@ and `gptel-context--project-files' is not already set."
   (when (and gptel-context-restrict-to-project-files
 	     (not (file-remote-p file)))
     (when-let* ((project (project-current nil file)))
-      (not (member file (gptel-context--get-project-files (project-root project)))))))
+      (not (member (expand-file-name file)
+                   (gptel-context--get-project-files (project-root project)))))))
 
 (defun gptel-context--message-skipped (file)
   "Message that FILE is skipped because it is not a project file."
@@ -310,6 +312,7 @@ and `gptel-context--project-files' is not already set."
 		 type rel-file (project-name project) reminder)
       (message "Skipping %s \"%s\". %s" type file reminder))))
 
+;;; Remove context
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
 
@@ -356,6 +359,7 @@ afterwards."
        finally do (setq gptel-context--alist nil)))
     (when verbose (message "Removed all gptel context sources."))))
 
+;;; Context wrap
 (defun gptel-context--make-overlay (start end &optional advance)
   "Highlight the region from START to END.
 
