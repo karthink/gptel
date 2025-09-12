@@ -1380,6 +1380,8 @@ You can examine the active context from the menu:
 And then browse through or remove context from the context buffer:
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/79a5ffe8-3d63-4bf7-9bf6-0457ab61bf2a" align="center" alt="Image showing gptel's context buffer.">
 
+By default, files in a version control system that are not project files ("gitignored" files) will not be added to the context.  To be able to add these files, set =gptel-context-restrict-to-project-files= to =nil=.  Note that remote files are always included, regardless of the value of =gptel-context-restrict-to-project-files=.
+
 *** Handle "reasoning" content
 
 Some LLMs include in their response a "thinking" or "reasoning" block.  This text improves the quality of the LLM’s final output, but may not be interesting to you by itself.  You can decide how you would like this "reasoning" content to be handled by gptel by setting the user option =gptel-include-reasoning=.  You can include it in the LLM response (the default), omit it entirely, include it in the buffer but ignore it on subsequent conversation turns, or redirect it to another buffer.  As with most options, you can specify this behvaior from gptel's transient menu globally, buffer-locally or for the next request only.
