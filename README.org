@@ -1262,8 +1262,6 @@ That's it. You can go back and edit previous prompts and responses if you want.
 
 The default mode is =markdown-mode= if available, else =text-mode=.  You can set =gptel-default-mode= to =org-mode= if desired.
 
-By default, a new window is created for the chat buffer and it can be changed to use current window by setting Chat UI option `(setq gptel-display-buffer-action '(display-buffer-same-window))`. 
-
 You can also define a "preset" bundle of options that are applied together, see [[#option-presets][Option presets]] below.
 
 #+html: <details><summary>
@@ -1615,6 +1613,17 @@ Anywhere in Emacs: Use =gptel-pre-response-hook= and =gptel-post-response-functi
 
 #+html: </details>
 #+html: <details><summary>
+
+**** How to open the chat buffer in current window?
+#+html: </summary>
+By default, gptel opens a new buffer for chat UI according to =display-buffer-alist= setting. This can be modified to use the current window with following:  
+
+#+begin_src emacs-lisp
+(setopt gptel-display-buffer-action '(pop-to-buffer-same-window))
+#+end_src
+#+html: </details>
+#+html: <details><summary>
+
 **** How does gptel distinguish between user prompts and LLM responses?
 #+html: </summary>
 
