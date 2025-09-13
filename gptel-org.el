@@ -93,14 +93,19 @@ of Org."
   (if (fboundp 'org-element-begin)
       (progn (declare-function org-element-begin "org-element")
              (declare-function org-element-end "org-element")
+             (declare-function org-element-parent "org-element")
              (defalias 'gptel-org--element-begin 'org-element-begin)
-             (defalias 'gptel-org--element-end 'org-element-end))
-    (defun gptel-org--element-begin (node)
+             (defalias 'gptel-org--element-end 'org-element-end)
+             (defalias 'gptel-org--element-parent 'org-element-parent))
+    (defsubst gptel-org--element-begin (node)
       "Get `:begin' property of NODE."
       (org-element-property :begin node))
-    (defun gptel-org--element-end (node)
+    (defsubst gptel-org--element-end (node)
       "Get `:end' property of NODE."
-      (org-element-property :end node))))
+      (org-element-property :end node))
+    (defsubst gptel-org--element-parent (node)
+      "Return `:parent' property of NODE."
+      (org-element-property :parent node))))
 
 
 ;;; User options
@@ -200,10 +205,9 @@ Otherwise the prompt text is constructed from the contents of the
 current buffer up to point, or PROMPT-END if provided.  Its contents
 depend on the value of `gptel-org-branching-context', which see."
   (when (use-region-p)
-    (narrow-to-region (region-beginning) (region-end)))
-  (if prompt-end
-      (goto-char prompt-end)
-    (setq prompt-end (point)))
+    (narrow-to-region (region-beginning) (region-end))
+    (setq prompt-end (point-max)))
+  (goto-char (or prompt-end (setq prompt-end (point))))
   (let ((topic-start (gptel-org--get-topic-start)))
     (when topic-start
       ;; narrow to GPTEL_TOPIC property scope
@@ -398,8 +402,8 @@ for inclusion into the user prompt for the gptel request."
 
 (defun gptel-org--link-standalone-p (object)
   "Check if link OBJECT is on a line by itself."
-  ;; Specify ancestor TYPES as list (#245)
-  (when-let* ((par (org-element-lineage object '(paragraph))))
+  (when-let* ((par (gptel-org--element-parent object))
+              ((eq (org-element-type par) 'paragraph)))
     (and (= (gptel-org--element-begin object)
             (save-excursion
               (goto-char (org-element-property :contents-begin par))
@@ -420,11 +424,13 @@ parameters.
 ARGS are the original function call arguments."
   (if (derived-mode-p 'org-mode)
       (pcase-let ((`(,gptel--system-message ,gptel-backend ,gptel-model
-                     ,gptel-temperature ,gptel-max-tokens)
+                     ,gptel-temperature ,gptel-max-tokens
+                     ,gptel--num-messages-to-send ,gptel-tools)
                    (seq-mapn (lambda (a b) (or a b))
                              (gptel-org--entry-properties)
                              (list gptel--system-message gptel-backend gptel-model
-                                   gptel-temperature gptel-max-tokens))))
+                                   gptel-temperature gptel-max-tokens
+                                   gptel--num-messages-to-send gptel-tools))))
         (apply send-fun args))
     (apply send-fun args)))
 
@@ -441,12 +447,12 @@ ARGS are the original function call arguments."
 (defun gptel-org--entry-properties (&optional pt)
   "Find gptel configuration properties stored at PT."
   (pcase-let
-      ((`(,system ,backend ,model ,temperature ,tokens ,num)
+      ((`(,system ,backend ,model ,temperature ,tokens ,num ,tools)
          (mapcar
           (lambda (prop) (org-entry-get (or pt (point)) prop 'selective))
           '("GPTEL_SYSTEM" "GPTEL_BACKEND" "GPTEL_MODEL"
             "GPTEL_TEMPERATURE" "GPTEL_MAX_TOKENS"
-            "GPTEL_NUM_MESSAGES_TO_SEND"))))
+            "GPTEL_NUM_MESSAGES_TO_SEND" "GPTEL_TOOLS"))))
     (when system
       (setq system (string-replace "\\n" "\n" system)))
     (when backend
@@ -457,7 +463,16 @@ ARGS are the original function call arguments."
       (setq temperature (gptel--to-number temperature)))
     (when tokens (setq tokens (gptel--to-number tokens)))
     (when num (setq num (gptel--to-number num)))
-    (list system backend model temperature tokens num)))
+    (when tools
+      (setq tools (cl-loop
+                   for tname in (split-string tools)
+                   for tool = (with-demoted-errors "gptel: %S"
+                                (gptel-get-tool tname))
+                   if tool collect tool else do
+                   (display-warning
+                    '(gptel org tools)
+                    (format "Tool %s not found, ignoring" tname)))))
+    (list system backend model temperature tokens num tools)))
 
 (defun gptel-org--restore-state ()
   "Restore gptel state for Org buffers when turning on `gptel-mode'."
@@ -468,7 +483,7 @@ ARGS are the original function call arguments."
           (progn
             (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
               (gptel--restore-props (read bounds)))
-            (pcase-let ((`(,system ,backend ,model ,temperature ,tokens ,num)
+            (pcase-let ((`(,system ,backend ,model ,temperature ,tokens ,num ,tools)
                          (gptel-org--entry-properties (point-min))))
               (when system (setq-local gptel--system-message system))
               (if backend (setq-local gptel-backend backend)
@@ -482,7 +497,8 @@ ARGS are the original function call arguments."
               (when model (setq-local gptel-model model))
               (when temperature (setq-local gptel-temperature temperature))
               (when tokens (setq-local gptel-max-tokens tokens))
-              (when num (setq-local gptel--num-messages-to-send num))))
+              (when num (setq-local gptel--num-messages-to-send num))
+              (when tools (setq-local gptel-tools tools))))
         (:success (message "gptel chat restored."))
         (error (message "Could not restore gptel state, sorry! Error: %s" status)))
       (set-buffer-modified-p modified))))
@@ -499,20 +515,27 @@ non-nil (default), display a message afterwards."
   (interactive (list (point) t))
   (org-entry-put pt "GPTEL_MODEL" (gptel--model-name gptel-model))
   (org-entry-put pt "GPTEL_BACKEND" (gptel-backend-name gptel-backend))
-  (unless (equal (default-value 'gptel-temperature) gptel-temperature)
-    (org-entry-put pt "GPTEL_TEMPERATURE"
-                   (number-to-string gptel-temperature)))
-  (when (natnump gptel--num-messages-to-send)
-    (org-entry-put pt "GPTEL_NUM_MESSAGES_TO_SEND"
-                   (number-to-string gptel--num-messages-to-send)))
-  (org-entry-put pt "GPTEL_SYSTEM"
+  (org-entry-put pt "GPTEL_SYSTEM"      ;TODO: Handle nil case correctly
                  (and-let* ((msg (car-safe
                                   (gptel--parse-directive
                                    gptel--system-message))))
                    (string-replace "\n" "\\n" msg)))
-  (when gptel-max-tokens
-    (org-entry-put
-     pt "GPTEL_MAX_TOKENS" (number-to-string gptel-max-tokens)))
+  (if gptel-tools
+      (org-entry-put
+       pt "GPTEL_TOOLS" (mapconcat #'gptel-tool-name gptel-tools " "))
+    (org-entry-delete pt "GPTEL_TOOLS"))
+  (if (equal (default-value 'gptel-temperature) gptel-temperature)
+      (org-entry-delete pt "GPTEL_TEMPERATURE")
+    (org-entry-put pt "GPTEL_TEMPERATURE"
+                   (number-to-string gptel-temperature)))
+  (if (natnump gptel--num-messages-to-send)
+      (org-entry-put pt "GPTEL_NUM_MESSAGES_TO_SEND"
+                     (number-to-string gptel--num-messages-to-send))
+    (org-entry-delete pt "GPTEL_NUM_MESSAGES_TO_SEND"))
+  (if gptel-max-tokens
+      (org-entry-put
+       pt "GPTEL_MAX_TOKENS" (number-to-string gptel-max-tokens))
+    (org-entry-delete pt "GPTEL_MAX_TOKENS"))
   (when msg
     (message "Added gptel configuration to current headline.")))
 

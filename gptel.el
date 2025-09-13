@@ -3,7 +3,7 @@
 ;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
-;; Version: 0.9.8.5
+;; Version: 0.9.9
 ;; Package-Requires: ((emacs "27.1") (transient "0.7.4") (compat "30.1.0.0"))
 ;; Keywords: convenience, tools
 ;; URL: https://github.com/karthink/gptel
@@ -45,7 +45,6 @@
 ;;
 ;; Features:
 ;;
-;; - It’s async and fast, streams responses.
 ;; - Interact with LLMs from anywhere in Emacs (any buffer, shell, minibuffer,
 ;;   wherever).
 ;; - LLM responses are in Markdown or Org markup.
@@ -643,6 +642,30 @@ the same as t."
      :input-cost 30
      :output-cost 60
      :cutoff-date "2023-11")
+    (gpt-5
+     :description "Flagship model for coding, reasoning, and agentic tasks across domains"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1.25
+     :output-cost 10
+     :cutoff-date "2024-09")
+    (gpt-5-mini
+     :description "Faster, more cost-efficient version of GPT-5"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 0.25
+     :output-cost 2.0
+     :cutoff-date "2024-09")
+    (gpt-5-nano
+     :description "Fastest, cheapest version of GPT-5"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 0.05
+     :output-cost 0.40
+     :cutoff-date "2024-09")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
      :capabilities (media reasoning)
@@ -778,6 +801,13 @@ This opens up advanced options in `gptel-menu'.")
 
 (defvar gptel--num-messages-to-send nil)
 (put 'gptel--num-messages-to-send 'safe-local-variable #'always)
+
+(defvar-local gptel--tool-names nil
+  "Store to persist tool names to file across Emacs sessions.
+
+Note: Changing this variable does not affect gptel\\='s behavior
+in any way.")
+(put 'gptel--backend-name 'safe-local-variable #'always)
 
 (defcustom gptel-log-level nil
   "Logging level for gptel.
@@ -1406,7 +1436,17 @@ applied before being re-persisted in the new structure."
              "Could not activate gptel backend \"%s\"!  "
              "Switch backends with \\[universal-argument] \\[gptel-send]"
              " before using gptel."))
-           gptel--backend-name))))))
+           gptel--backend-name)))
+      (when gptel--tool-names
+        (if-let* ((tools (cl-loop
+                          for tname in gptel--tool-names
+                          for tool = (with-demoted-errors "gptel: %S"
+                                       (gptel-get-tool tname))
+                          if tool collect tool else do
+                          (display-warning
+                           '(gptel org tools)
+                           (format "Tool %s not found, ignoring" tname)))))
+            (setq-local gptel-tools tools))))))
 
 (defun gptel--save-state ()
   "Write the gptel state to the buffer.
@@ -1425,18 +1465,25 @@ file."
           (add-file-local-variable 'gptel-model gptel-model)
           (add-file-local-variable 'gptel--backend-name
                                    (gptel-backend-name gptel-backend))
-          (unless (equal (default-value 'gptel-temperature) gptel-temperature)
-            (add-file-local-variable 'gptel-temperature gptel-temperature))
           (unless (equal (default-value 'gptel--system-message)
                            gptel--system-message)
             (add-file-local-variable
-             'gptel--system-message
+             'gptel--system-message     ;TODO: Handle nil case correctly
              (car-safe (gptel--parse-directive gptel--system-message))))
-          (when gptel-max-tokens
-            (add-file-local-variable 'gptel-max-tokens gptel-max-tokens))
-          (when (natnump gptel--num-messages-to-send)
-            (add-file-local-variable 'gptel--num-messages-to-send
-                                     gptel--num-messages-to-send))
+          (if gptel-tools
+              (add-file-local-variable
+               'gptel--tool-names (mapcar #'gptel-tool-name gptel-tools))
+            (delete-file-local-variable 'gptel--tool-names))
+          (if (equal (default-value 'gptel-temperature) gptel-temperature)
+              (delete-file-local-variable 'gptel-temperature)
+            (add-file-local-variable 'gptel-temperature gptel-temperature))
+          (if gptel-max-tokens
+              (add-file-local-variable 'gptel-max-tokens gptel-max-tokens)
+            (delete-file-local-variable 'gptel-max-tokens))
+          (if (natnump gptel--num-messages-to-send)
+              (add-file-local-variable 'gptel--num-messages-to-send
+                                       gptel--num-messages-to-send)
+            (delete-file-local-variable 'gptel--num-messages-to-send))
           (add-file-local-variable 'gptel--bounds (gptel--get-buffer-bounds)))))))
 
 
@@ -1602,9 +1649,78 @@ which see for BEG, END and PRE."
   "Parse JSON schema in a backend-appropriate way.")
 
 (defun gptel--dispatch-schema-type (schema)
-  "Convert SCHEMA to a valid elisp representation."
-  (when (stringp schema)
-    (setq schema (gptel--json-read-string schema)))
+  "Convert SCHEMA to a valid elisp representation.
+
+SCHEMA can be specified in several ways:
+- As a plist readable by `gptel--json-encode'
+  Ex: (:type object :properties (:key1 (:type number :description \"...\")
+                                 :key2 (:type string)))
+
+- As a serialized JSON string, which will be passed as-is.
+
+- In shorthand form #1, a single-line comma-separated string with object
+  keys and (optionally) types:
+  Ex: \"key1, key2 number\"
+  Ex: \"key1 string, key2 int\"
+  The default type is string, and types can be shortened (integer -> int) as
+  long as they match a JSON schema type uniquely.
+
+- In shorthand form #2, a multi-line string with keys, (optionally) types and
+  (optionally) descriptions
+  Ex: \"key1: description 1 here
+       key2 integer: description 2 here\"
+
+- Shorthand forms can be placed inside [ and ] to specify an array of
+  objects:
+  Ex: \"[key1, key2 number]\"
+  Ex: \"[key1: description 1 here
+        key2 int: description 2 here]\""
+  (when (stringp schema)  ;Two possibilities: serialized JSON, or shorthand form
+    (let (wrap-in-array)  ;Flag to wrap the object type in an array
+      (with-temp-buffer   ;Parser for (possibly) shorthand forms
+        (insert schema)
+        (goto-char (point-min)) (skip-chars-forward " \n\r\t")
+        (if (= (char-after) ?{)
+            (setq schema (gptel--json-read)) ;Assume serialized JSON schema, we're done
+          (when (= (char-after) ?\[)    ;Shorthand: assume array top-level type
+            (save-excursion
+              (goto-char (point-max)) (skip-chars-backward " \n\r\t") (delete-char -1))
+            (delete-char 1)             ;Delete array markers [ and ]
+            (setq wrap-in-array t))
+          (let ( props types descriptions ;Nested object and array types are disallowed in shorthand
+                 (all-types '("number" "string" "integer" "boolean" "null")))
+            (if (= (point-max) (line-end-position)) ; Single or multi-line?
+                ;; Single line format (type optional): "key1 type, key2, ..."
+                (while (re-search-forward ",?\\([^ ,]+\\) *\\([^ ,]*\\]?\\)" nil t)
+                  (push (match-string 1) props)
+                  (push (if (string-empty-p (match-string 2))
+                            "string" (car (all-completions (match-string 2) all-types)))
+                        types)
+                  (push nil descriptions))
+              ;; Multi-line format (type, description optional):
+              ;; "key1 type: description1 \n key2: description2..."
+              (while (re-search-forward "\\([^ :]+\\) *\\([^ :]*\\):?"
+                                        (line-end-position) t)
+                (push (match-string 1) props)
+                (push (if (string-empty-p (match-string 2))
+                          "string" (car (all-completions (match-string 2) all-types)))
+                      types)
+                (skip-chars-forward " \t")
+                (push (if (eolp) nil (buffer-substring-no-properties
+                                      (point) (line-end-position)))
+                      descriptions)
+                (forward-line 1)))
+            (let ((object
+                   (list :type "object"
+                         :properties
+                         (cl-mapcan
+                          (lambda (prop type desc)
+                            `(,(intern (concat ":" prop))
+                              (:type ,type ,@(when desc
+                                               (list :description (string-trim desc))))))
+                          (nreverse props) (nreverse types) (nreverse descriptions)))))
+              (setq schema
+                    (if wrap-in-array (list :type "array" :items object) object))))))))
   ;; The OpenAI and Anthropic APIs don't allow arrays at the root of the schema.
   ;; Work around this by wrapping it in an object with the field "items".
   ;; TODO(schema): Find some way to strip this extra layer from the response.
@@ -1848,9 +1964,11 @@ The following keys are optional
 CATEGORY: A string indicating a category for the tool.  This is
 used only for grouping in gptel's UI.  Defaults to \"misc\".
 
-CONFIRM: Whether the tool call should wait for the user to run
-it.  If true, the user will be prompted with the proposed tool
-call, which can be examined, accepted, deferred or canceled.
+CONFIRM: Whether the tool call should wait for the user to run it.  If
+true, the user will be prompted with the proposed tool call, which can
+be examined, accepted, deferred or canceled.  It can also be a function
+that receives the same arguments as FUNCTION and returns true if the
+user should be prompted.
 
 INCLUDE: Whether the tool results should be included as part of
 the LLM output.  This is useful for logging and as context for
@@ -2328,8 +2446,10 @@ Run post-response hooks."
                           (plist-get args key)))
                       (gptel-tool-args tool-spec)))
                ;; Check if tool requires confirmation
-               (if (and gptel-confirm-tool-calls (or (eq gptel-confirm-tool-calls t)
-                                                     (gptel-tool-confirm tool-spec)))
+               (if (and gptel-confirm-tool-calls
+                        (or (eq gptel-confirm-tool-calls t) ;always confirm, or
+                            (and-let* ((confirm (gptel-tool-confirm tool-spec)))
+                              (or (not (functionp confirm)) (apply confirm arg-values)))))
                    (push (list tool-spec arg-values process-tool-result)
                          pending-calls)
                  ;; If not, run the tool
@@ -2518,14 +2638,17 @@ additional information (such as from a RAG engine).
   and the state machine.  It should run the callback after finishing its
   transformation.
 
+See `gptel-prompt-transform-functions' for more.
+
 If provided, SCHEMA forces the LLM to generate JSON output.  Its value
-is a JSON schema, which can be provided as an elisp object, a nested
-plist structure.  See the manual or the wiki for examples.
+is a JSON schema, which can be provided as
+- an elisp object, a nested plist structure.
+- A JSON schema serialized to a string
+- A shorthand object/array description, see `gptel--dispatch-schema-type'.
+See the manual or the wiki for examples.
 
 Note: SCHEMA is presently experimental and subject to change, and not
 all providers support structured output.
-
-See `gptel-prompt-transform-functions' for more.
 
 FSM is the state machine driving the request.  This can be used
 to define a custom request control flow, see `gptel-fsm' for
@@ -2557,7 +2680,7 @@ be used to rerun or continue the request at a later time."
          (prompt-buffer
           (cond                       ;prompt from buffer or explicitly supplied
            ((null prompt)
-            (gptel--create-prompt-buffer start-marker))
+            (gptel--create-prompt-buffer (point)))
            ((stringp prompt)
             (gptel--with-buffer-copy buffer nil nil
               (insert prompt)
@@ -3107,10 +3230,10 @@ the response is inserted into the current buffer after point."
          (backend (plist-get info :backend))
          (callback (or (plist-get info :callback) ;if not the first run
                        #'gptel--insert-response)) ;default callback
+         ;; NOTE: We don't need the decode-coding-string dance here since we
+         ;; don't pass it to the OS environment and Curl.
          (url-request-data
-          (encode-coding-string
-           (gptel--json-encode (plist-get info :data))
-           'utf-8)))
+          (gptel--json-encode (plist-get info :data))))
     (when (with-current-buffer (plist-get info :buffer)
             (and (derived-mode-p 'org-mode)
                  gptel-org-convert-response))
@@ -3140,8 +3263,8 @@ the response is inserted into the current buffer after point."
                              (gptel--fsm-transition fsm) ;WAIT -> TYPE
                              (when error (plist-put info :error error))
                              (when response ;Look for a reasoning block
-                               (if (string-match-p "^ *<think>\n" response)
-                                   (when-let* ((idx (string-search "</think>\n" response)))
+                               (if (string-match-p "^\\s-*<think>" response)
+                                   (when-let* ((idx (string-search "</think>" response)))
                                      (with-demoted-errors "gptel callback error: %S"
                                        (funcall callback
                                                 (cons 'reasoning
@@ -3791,6 +3914,8 @@ PRESET is the name of a preset, or a spec (plist) of the form
                       (car preset) key))))))
     (cl-delete-duplicates syms)))
 
+;; This is identical to `cl-progv', only we let-bind symbols SYM from the preset
+;; to their current values instead of evaluating the values explicitly. (#1005)
 (defmacro gptel-with-preset (name &rest body)
   "Run BODY with gptel preset NAME applied.
 
@@ -3800,15 +3925,22 @@ from a gptel preset applied.
 NAME is the name of a preset, or a spec (plist) of the form
  (:KEY1 VAL1 :KEY2 VAL2 ...).  It must be quoted."
   (declare (indent 1))
-  `(cl-progv (gptel--preset-syms ,name) nil
-    (gptel--apply-preset ,name)
-    ,@body))
+  (let ((syms (make-symbol "syms"))
+        (binds (make-symbol "binds"))
+        (bodyfun (make-symbol "body")))
+    `(let* ((,syms (gptel--preset-syms ,name))
+            (,bodyfun (lambda () (gptel--apply-preset ,name) ,@body))
+            (,binds nil))
+       (while ,syms (push (list (car ,syms) (pop ,syms)) ,binds))
+       (eval (list 'let (nreverse ,binds) (list 'funcall (list 'quote ,bodyfun)))))))
 
 ;;;; Presets in-buffer UI
 (defun gptel--transform-apply-preset (_fsm)
   "Apply a gptel preset to the buffer depending on the prompt.
 
-If the user prompt begins with @foo, the preset foo is applied."
+If the last user prompt includes @foo, the preset foo is applied.
+Before applying the preset, \"@foo\" is removed from the prompt and
+point is placed at its position."
   (when gptel--known-presets
     (text-property-search-backward 'gptel nil t)
     (while (re-search-forward "@\\([^[:blank:]]+\\)\\_>" nil t)
@@ -3820,6 +3952,8 @@ If the user prompt begins with @foo, the preset foo is applied."
                     (preset (or (gptel-get-preset (intern-soft name))
                                 (gptel-get-preset name))))
           (delete-region (match-beginning 0) (match-end 0))
+          ;; Point must be after @foo when the preset is applied to allow for
+          ;; more advanced transformations.
           (gptel--apply-preset preset
                                (lambda (sym val)
                                  (set (make-local-variable sym) val))))))))

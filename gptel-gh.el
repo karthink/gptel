@@ -43,17 +43,26 @@
      :description "Flagship model for complex tasks"
      :capabilities (media tool-use json url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1024
+     :context-window 128
      :input-cost 2.0
      :output-cost 8.0
      :cutoff-date "2024-05")
-    (gpt-4.5-preview
-     :description "Largest and most capable GPT model to date"
-     :capabilities (url)
+    (gpt-5
+     :description "Flagship model for coding, reasoning, and agentic tasks across domains"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 128
-     :input-cost 75
-     :output-cost 150
-     :cutoff-date "2023-10")
+     :input-cost 1.25
+     :output-cost 10
+     :cutoff-date "2024-09")
+    (gpt-5-mini
+     :description "Faster, more cost-efficient version of GPT-5"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 0.25
+     :output-cost 2.0
+     :cutoff-date "2024-09")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
      :capabilities (reasoning tool-use)
@@ -118,6 +127,14 @@
      :output-cost 15
      :cutoff-date "2025-03")
     (claude-opus-4
+     :description "Most capable model for complex reasoning and advanced coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 15
+     :output-cost 75
+     :cutoff-date "2025-03")
+    (claude-opus-41
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
@@ -207,15 +224,18 @@
     (write-region (prin1-to-string obj) nil file nil :silent)
     obj))
 
-(defun gptel--gh-login()
-  "Manage github login."
+(defun gptel-gh-login ()
+  "Login to GitHub Copilot API.
+
+This will prompt you to authorize in a browser and store the token."
+  (interactive)
   (pcase-let (((map :device_code :user_code :verification_uri)
                (gptel--url-retrieve
-                "https://github.com/login/device/code"
-                :method 'post
-                :headers gptel--gh-auth-common-headers
-                :data `( :client_id ,gptel--gh-client-id
-                         :scope "read:user"))))
+                   "https://github.com/login/device/code"
+                 :method 'post
+                 :headers gptel--gh-auth-common-headers
+                 :data `( :client_id ,gptel--gh-client-id
+                          :scope "read:user"))))
     (gui-set-selection 'CLIPBOARD user_code)
     (read-from-minibuffer
      (format "Your one-time code %s is copied. \
@@ -227,15 +247,20 @@ If your browser does not open automatically, browse to %s."
     (thread-last
       (plist-get
        (gptel--url-retrieve
-        "https://github.com/login/oauth/access_token"
-        :method 'post
-        :headers gptel--gh-auth-common-headers
-        :data `( :client_id ,gptel--gh-client-id
-                 :device_code ,device_code
-                 :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
+           "https://github.com/login/oauth/access_token"
+         :method 'post
+         :headers gptel--gh-auth-common-headers
+         :data `( :client_id ,gptel--gh-client-id
+                  :device_code ,device_code
+                  :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
        :access_token)
       (gptel--gh-save gptel-gh-github-token-file)
-      (setf (gptel--gh-github-token gptel-backend)))))
+      (setf (gptel--gh-github-token gptel-backend))))
+  (if (and (gptel--gh-github-token gptel-backend)
+           (not (string-empty-p
+                 (gptel--gh-github-token gptel-backend))))
+      (message "Successfully logged in to GitHub Copilot")
+    (user-error "Error: You might not have access to GitHub Copilot Chat!")))
 
 (defun gptel--gh-renew-token ()
   "Renew session token."
@@ -249,7 +274,7 @@ If your browser does not open automatically, browse to %s."
     (if (not (plist-get token :token))
         (progn
           (setf (gptel--gh-github-token gptel-backend) nil)
-          (user-error "Error: You might not have access to Github Copilot Chat!"))
+          (user-error "Error: You might not have access to GitHub Copilot Chat!"))
       (thread-last
         (gptel--gh-save gptel-gh-token-file token)
         (setf (gptel--gh-token gptel-backend))))))
@@ -263,7 +288,7 @@ Then we need a session token."
     (let ((token (gptel--gh-restore gptel-gh-github-token-file)))
       (if token
           (setf (gptel--gh-github-token gptel-backend) token)
-        (gptel--gh-login))))
+        (gptel-gh-login))))
 
   (when (null (gptel--gh-token gptel-backend))
     ;; try to load token from `gptel-gh-token-file'

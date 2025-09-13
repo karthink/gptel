@@ -278,37 +278,6 @@ parameters."
                               (:copier nil)
                               (:constructor gptel--make-deepseek)))
 
-(cl-defmethod gptel-curl--parse-stream :before ((_backend gptel-deepseek) info)
-  "Capture reasoning block stream into INFO."
-  (unless (eq (plist-get info :reasoning-block) 'done)
-    (save-excursion
-      (ignore-errors
-        (catch 'done
-          (while (re-search-forward "^data:" nil t)
-            (unless (looking-at-p " *\\[DONE\\]")
-              (when-let* ((response (gptel--json-read))
-                          (delta (map-nested-elt response '(:choices 0 :delta))))
-                (if-let* ((reasoning (plist-get delta :reasoning_content))
-                          ((not (eq reasoning :null))))
-                    ;; :reasoning will be consumed by the gptel-request callback
-                    ;; and reset by the stream filter.
-                    (plist-put info :reasoning
-                               (concat (plist-get info :reasoning) reasoning))
-                  ;; Done with reasoning if we get non-empty content
-                  (when-let* (((plist-member info :reasoning)) ;Is this a reasoning model?
-                              (content (plist-get delta :content)) ;Started receiving text content?
-                              ((not (or (eq content :null) (string-empty-p content)))))
-                    (plist-put info :reasoning-block t) ;Signal end of reasoning block
-                    (throw 'done t)))))))))))
-
-(cl-defmethod gptel--parse-response :before ((_backend gptel-deepseek) response info)
-  "Capture reasoning block in RESPONSE into INFO."
-  (let* ((choice0 (map-nested-elt response '(:choices 0)))
-         (message (plist-get choice0 :message))
-         (reasoning (plist-get message :reasoning_content)))
-    (when (and (stringp reasoning) (length> reasoning 0))
-      (plist-put info :reasoning reasoning))))
-
 (cl-defmethod gptel--parse-buffer :around ((_backend gptel-deepseek) _max-entries)
   "Merge successive prompts in the prompts list that have the same role.
 
@@ -338,14 +307,14 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
           (endpoint "/v1/chat/completions")
           (models '((deepseek-reasoner
                      :capabilities (tool reasoning)
-                     :context-window 64
-                     :input-cost 0.55
-                     :output-cost 2.19)
+                     :context-window 128
+                     :input-cost 0.56
+                     :output-cost 1.68)
                     (deepseek-chat
                      :capabilities (tool)
-                     :context-window 64
-                     :input-cost 0.27
-                     :output-cost 1.10))))
+                     :context-window 128
+                     :input-cost 0.56
+                     :output-cost 1.68))))
   "Register a DeepSeek backend for gptel with NAME.
 
 For the meanings of the keyword arguments, see `gptel-make-openai'."
@@ -381,6 +350,13 @@ For the meanings of the keyword arguments, see `gptel-make-openai'."
               :context-window 256
               :input-cost 3
               :output-cost 15)
+
+             (grok-code-fast-1
+              :description "Fast reasoning model for agentic coding"
+              :capabilities '(tool-use json reasoning)
+              :context-window 256
+              :input-cost 0.2
+              :output-cost 1.5)
 
              (grok-3
               :description "Grok 3"
