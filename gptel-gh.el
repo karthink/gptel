@@ -159,7 +159,13 @@
      :context-window 1000
      :input-cost 0.10
      :output-cost 0.40
-     :cutoff-date "2024-08")))
+     :cutoff-date "2024-08")
+    (grok-code-fast-1
+     :description "Fast reasoning model for agentic coding"
+     :capabilities '(tool-use json reasoning)
+     :context-window 128
+     :input-cost 0.2
+     :output-cost 1.5)))
 
 (cl-defstruct (gptel--gh (:include gptel-openai)
                          (:copier nil)
