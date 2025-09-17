@@ -273,7 +273,8 @@ readable as text."
   "Return non-nil if FILE should not be added to the context."
   (when (and gptel-context-restrict-to-project-files
 	     (not (file-remote-p file)))
-    (and-let* ((project (project-current nil file)))
+    (and-let* ((file-dir (or (file-name-directory file) default-directory))
+               (project (project-current nil file-dir)))
       (not (member (expand-file-name file)
                    (gptel-context--get-project-files (project-root project)))))))
 
