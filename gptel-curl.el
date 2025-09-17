@@ -1602,9 +1602,7 @@ MACHINE is an instance of `gptel-fsm'"
        #'gptel-curl-get-response
      #'gptel--url-get-response)
    fsm)
-  (run-hooks 'gptel-post-request-hook)
-  (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
-    (gptel--update-status " Waiting..." 'warning)))
+  (run-hooks 'gptel-post-request-hook))
 
 (defun gptel--handle-tool-use (fsm)
   "Run tool calls captured in FSM, and advance the state machine with the results."
@@ -1616,10 +1614,6 @@ MACHINE is an instance of `gptel-fsm'"
               (ntools (length tool-use))
               (tool-idx 0))
     (with-current-buffer (plist-get info :buffer)
-      (when gptel-mode
-        (gptel--update-status
-         (format " Calling tool..." ) 'mode-line-emphasis))
-
       (let ((result-alist) (pending-calls))
         (mapc                           ; Construct function calls
          (lambda (tool-call)
@@ -1676,9 +1670,6 @@ MACHINE is an instance of `gptel-fsm'"
                      (funcall process-tool-result result)))))))
          tool-use)
         (when pending-calls
-          (setq gptel--fsm-last fsm)
-          (when gptel-mode (gptel--update-status
-                            (format " Run tools?" ) 'mode-line-emphasis))
           (funcall (plist-get info :callback)
                    (cons 'tool-call pending-calls) info))))))
 
@@ -1937,8 +1928,10 @@ be used to rerun or continue the request at a later time."
             (augment-idx 0))
         (if (null gptel-prompt-transform-functions)
             (gptel--realize-query fsm)
-          (with-current-buffer (plist-get info :buffer) ;Apply prompt transformations
-            (gptel--update-status " Augmenting..." 'mode-line-emphasis))
+          ;; FIXME(request-lib): Cannot use gptel--update-status from this file
+          ;; (with-current-buffer (plist-get info :buffer) ;Apply prompt transformations
+          ;;   (gptel--update-status " Augmenting..." 'mode-line-emphasis))
+
           ;; FIXME(augment): This needs to be converted into a linear callback
           ;; chain to avoid race conditions with multiple async augmentors.
           (run-hook-wrapped
@@ -2042,8 +2035,7 @@ BUF defaults to the current buffer."
         (funcall cb 'abort info)))
     (funcall abort-fn)
     (setf (alist-get proc gptel--request-alist nil 'remove) nil)
-    (with-current-buffer buf
-      (when gptel-mode (gptel--update-status  " Abort" 'error)))
+    (gptel--fsm-transition fsm 'ABRT)
     (message "Stopped gptel request in buffer %S" (buffer-name buf))))
 
 

@@ -671,11 +671,12 @@ which see for BEG, END and PRE."
 ;;; State machine additions for `gptel-send'.
 
 (defvar gptel-send--handlers
-  `((WAIT ,#'gptel--handle-wait)
+  `((WAIT ,#'gptel--handle-wait ,#'gptel--update-wait)
     (TYPE ,#'gptel--handle-pre-insert)
     (ERRS ,#'gptel--handle-error ,#'gptel--fsm-last)
-    (TOOL ,#'gptel--handle-tool-use)
-    (DONE ,#'gptel--handle-post-insert ,#'gptel--fsm-last))
+    (TOOL ,#'gptel--update-tool-call ,#'gptel--handle-tool-use ,#'gptel--update-tool-ask)
+    (DONE ,#'gptel--handle-post-insert ,#'gptel--fsm-last)
+    (ABRT ,#'gptel--update-abort))
   "Alist specifying handlers for `gptel-send' state transitions.
 
 See `gptel-request--handlers' for details.")
@@ -863,6 +864,31 @@ Run post-response hooks."
         (run-hook-with-args
          'gptel-post-response-functions
          (marker-position start-marker) (marker-position tracking-marker))))))
+
+(defun gptel--update-wait (fsm)
+  "Update gptel's status after sending a request."
+  (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
+    (when gptel-mode
+      (gptel--update-status " Waiting..." 'warning))))
+
+(defun gptel--update-tool-call (fsm)
+  "Update gptel's status when calling a tool."
+  (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
+    (when gptel-mode
+      (gptel--update-status " Calling tool..." 'mode-line-emphasis))))
+
+(defun gptel--update-tool-ask (fsm)
+  "Update gptel's status when there are pending tool calls."
+  (when (cl-some (lambda (tc) (not (plist-get tc :result)))
+                 (plist-get (gptel-fsm-info fsm) :tool-use))
+    (setq gptel--fsm-last fsm)
+    (when gptel-mode (gptel--update-status
+                      (format " Run tools?" ) 'mode-line-emphasis))))
+
+(defun gptel--update-abort (fsm)
+  "Update gptel's status when aborting a request."
+  (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
+    (when gptel-mode (gptel--update-status  " Abort" 'error))))
 
 
 ;;; Send queries, handle responses
