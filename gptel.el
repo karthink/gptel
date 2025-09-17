@@ -191,7 +191,6 @@
 
 ;;; Code:
 (declare-function markdown-mode "markdown-mode")
-(declare-function gptel-curl-get-response "gptel-curl")
 (declare-function gptel-menu "gptel-transient")
 (declare-function gptel-system-prompt "gptel-transient")
 (declare-function gptel-tools "gptel-transient")
@@ -216,7 +215,7 @@
 (require 'map)
 (require 'text-property-search)
 (require 'cl-generic)
-(require 'gptel-curl)
+(require 'gptel-request)
 
 
 ;;; User options
@@ -1006,9 +1005,8 @@ kill ring instead."
           (cl-assert (cl-typep gptel--fsm-last 'gptel-fsm))
           (plist-put (gptel-fsm-info gptel--fsm-last) :data data)
           (if copy                 ;Copy Curl command instead of sending request
-              (let ((args (and (require 'gptel-curl)
-                               (gptel-curl--get-args (gptel-fsm-info gptel--fsm-last)
-                                                     (md5 (format "%s" (random)))))))
+              (let ((args (gptel-curl--get-args (gptel-fsm-info gptel--fsm-last)
+                                                (md5 (format "%s" (random))))))
                 (kill-new
                  (mapconcat #'shell-quote-argument
                             (cons (gptel--curl-path) args) " \\\n"))

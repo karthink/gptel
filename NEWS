@@ -4,6 +4,23 @@
 
 ** New features and UI changes
 
+- =gptel-request= is now a standalone library, independent of gptel
+  and its UI.  This is intended
+  + to provide a clean separation between ~gptel-request~ (the LLM
+    querying library) and ~gptel~ (the LLM interaction UI).
+  + To make it simpler to create alternative UIs for gptel, wherein the
+    package author may simply =(require 'gptel-request)= to access the
+    gptel-request API.
+  + To make it so gptel does not need to be loaded to use
+    ~gptel-request~.
+
+  The =gptel-request= feature does not provide any response handling,
+  and expects the user to provide a response callback.  If you want to
+  reuse ~gptel-send~'s response handler you can =(require 'gptel)=.
+
+  For logistical reasons, the =gptel-request= library will continue to
+  be shipped with =gptel=.
+
 - ~gptel-mcp-connect~ can now start MCP servers synchronously.  This
   is useful for scripting purposes, when MCP tools need to be
   available before performing other actions.  One common use is

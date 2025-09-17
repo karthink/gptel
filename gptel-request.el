@@ -1,4 +1,4 @@
-;;; gptel-curl.el --- Curl support for gptel         -*- lexical-binding: t; -*-
+;;; gptel-request.el --- LLM request library for gptel         -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
@@ -26,7 +26,6 @@
 
 ;;; Code:
 
-;; (require 'gptel)
 (require 'gptel-openai)
 (eval-when-compile
   (require 'subr-x))
@@ -2756,5 +2755,5 @@ PROC-INFO is a plist with contextual information."
         (list nil http-status (concat "(" http-msg ") Could not parse HTTP response.")
               "Could not parse HTTP response.")))))
 
-(provide 'gptel-curl)
+(provide 'gptel-request)
 ;;; gptel-curl.el ends here
