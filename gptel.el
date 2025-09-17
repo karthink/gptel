@@ -226,7 +226,8 @@
 You can use this hook to store additional conversation state or
 model parameters to the chat buffer, or to modify the buffer in
 some other way."
-  :type 'hook)
+  :type 'hook
+  :group 'gptel)
 
 (defcustom gptel-default-mode (if (fboundp 'markdown-mode)
 				  'markdown-mode
@@ -235,14 +236,16 @@ some other way."
 
 If `markdown-mode' is available, it is used.  Otherwise gptel
 defaults to `text-mode'."
-  :type 'function)
+  :type 'function
+  :group 'gptel)
 
 (defcustom gptel-use-header-line t
   "Whether `gptel-mode' should use header-line for status information.
 
 When set to nil, use the mode line for (minimal) status
 information and the echo area for messages."
-  :type 'boolean)
+  :type 'boolean
+  :group 'gptel)
 
 ;; Set minimally to avoid display-buffer action alist conflicts (#533)
 (defcustom gptel-display-buffer-action `(nil (body-function . ,#'select-window))
@@ -257,7 +260,8 @@ where FUNCTION is a function or a list of functions.  Each such
 function should accept two arguments: a buffer to display and an
 alist of the same form as ALIST.  See info node `(elisp)Choosing
 Window' for details."
-  :type display-buffer--action-custom-type)
+  :type display-buffer--action-custom-type
+  :group 'gptel)
 
 (defcustom gptel-crowdsourced-prompts-file
   (let ((cache-dir (or (eval-when-compile
@@ -270,7 +274,8 @@ Window' for details."
 These are prompts cached from an online source (see
 `gptel--crowdsourced-prompts-url'), and can be set from the
 transient menu interface provided by `gptel-menu'."
-  :type 'file)
+  :type 'file
+  :group 'gptel)
 
 (defvar-local gptel--bounds nil)
 (put 'gptel--bounds 'safe-local-variable #'always)
@@ -981,8 +986,6 @@ JSON query instead of the Lisp structure gptel uses."
                   " Quit: \\[quit-window]"))))
         (display-buffer (current-buffer) gptel-display-buffer-action)))))
 
-(declare-function gptel-curl--get-args "gptel-curl")
-
 (defun gptel--continue-query (&optional copy)
   "Continue sending the gptel query displayed in this buffer.
 
@@ -1183,8 +1186,6 @@ INTERACTIVEP is t when gptel is called interactively."
 
 
 ;;; Reasoning content UI
-(declare-function gptel-curl--stream-insert-response "gptel-curl")
-
 (defun gptel--display-reasoning-stream (text info)
   "Show reasoning TEXT in an appropriate location.
 
