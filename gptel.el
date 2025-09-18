@@ -1618,6 +1618,36 @@ which see for BEG, END and PRE."
               gptel--old-header-line nil)
       (setq mode-line-process nil))))
 
+;;; Automatically enable `gptel-mode` for .gptel files.
+;;; This allows a user to start a new chat by simply opening a new file
+;;; ending in .gptel, or to resume a saved session without having to run
+;;; `M-x gptel-mode` manually.
+(defun gptel--auto-enable-mode-for-extension ()
+  "Enable `gptel-mode' if the buffer's file has a .gptel extension."
+  (when (and buffer-file-name (string-match-p "\\.gptel\\'" buffer-file-name))
+    (gptel-mode 1)))
+
+;;;###autoload
+(define-derived-mode gptel-file-mode text-mode "Gptel"
+  "Major mode for saved gptel chat files.
+Inherits from the user's `gptel-default-mode` and enables `gptel-mode'."
+  ;; Call the user's preferred major mode first.
+  (let ((mode-function (symbol-function gptel-default-mode)))
+    (if mode-function
+        (funcall mode-function)
+      (message "gptel: Could not find the major mode specified in `gptel-default-mode`.")))
+  ;; Now, enable the minor mode on top.
+  (gptel-mode 1))
+
+;; Associate .gptel files with the new major mode.
+;;;###autoload
+(add-to-list 'auto-mode-alist '("\\.gptel\\'" . gptel-file-mode))
+
+;; Then, enable the gptel minor mode on top of supported major modes.
+(add-hook 'text-mode-hook #'gptel--auto-enable-mode-for-extension)
+(add-hook 'markdown-mode-hook #'gptel--auto-enable-mode-for-extension)
+(add-hook 'org-mode-hook #'gptel--auto-enable-mode-for-extension)
+
 (defvar gptel--fsm-last)                ;Defined further below
 (defun gptel--update-status (&optional msg face)
   "Update status MSG in FACE."
