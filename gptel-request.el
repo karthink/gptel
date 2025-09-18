@@ -22,7 +22,23 @@
 
 ;;; Commentary:
 
-;; Curl support for gptel.  Utility functions.
+;; LLM querying library used by gptel.  This file provides the basic data
+;; structures (models, backends) and prompt construction functions used by
+;; gptel, along with the `gptel-request' API.
+;;
+;; This is everything required to use `gptel-request' to write custom commands,
+;; UIs or packages that use gptel to implement custom workflows.  To use gptel's
+;; LLM querying API, you can
+;;
+;; (require 'gptel-request)
+;;
+;; and make calls to `gptel-request'.
+;;
+;; Note that this file does not provide any of the UI components used by gptel
+;; (chat buffers, tool use prompts, transient menus), nor does it provide the
+;; default response callbacks used by `gptel-request'.  You will need to provide
+;; your own callback to `gptel-request' to act on the LLM response, or require
+;; the larger `gptel' feature.
 
 ;;; Code:
 
