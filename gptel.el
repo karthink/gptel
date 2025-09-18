@@ -303,7 +303,7 @@ command line arguments."
   'gptel-prompt-transform-functions "0.9.9")
 
 (defcustom gptel-prompt-transform-functions
-  '(gptel--transform-apply-preset gptel--transform-add-context)
+  '(gptel--transform-apply-preset gptel--transform-add-context gptel--transform-truncate-prompt)
   "Handlers to augment or transform a query before sending it.
 
 This hook is called in a temporary buffer containing the text to
@@ -334,6 +334,22 @@ value to be applied to all queries in all buffers, it meant to be set
 locally for a specific buffer, or chat topic, or only the context of a
 certain task."
   :type 'hook)
+
+(defcustom gptel-rolling-window-prompt nil
+  "Automatically truncate prompts to fit the model's context window.
+When non-nil, gptel will try to keep the prompt size below the
+model's advertised context window by removing the oldest parts of the
+conversation.
+
+- Set to `t` to enable (uses 90% of the context window as a safety margin).
+- Set to a number between 0.1 and 1.0 to specify the exact fraction of the
+  context window to use (e.g., 0.8 for 80%).
+- Set to nil to disable."
+  :group 'gptel
+  :type '(choice
+          (const :tag "Enable (use 90% of context window)" t)
+          (const :tag "Disable" nil)
+          (number :tag "Use fraction of context window")))
 
 (defcustom gptel-post-request-hook nil
   "Hook run after sending a gptel request.
@@ -1174,6 +1190,18 @@ in any way.")
 (defsubst gptel--curl-path ()
   "Curl executable to use."
   (if (stringp gptel-use-curl) gptel-use-curl "curl"))
+
+(defun gptel--transform-truncate-prompt ()
+  "Truncate the prompt buffer to fit the current model's context window.
+This function is intended to be run from `gptel-prompt-transform-functions`.
+It respects the `gptel-rolling-window-prompt` user option."
+  (when (and gptel-rolling-window-prompt (get gptel-model :context-window))
+    (let* ((context-window-k (get gptel-model :context-window))
+           (safety-margin (if (numberp gptel-rolling-window-prompt) gptel-rolling-window-prompt 0.9))
+           (max-chars (round (* context-window-k 1000 3 safety-margin)))) ; Approx 4 chars/token
+      (when (> (buffer-size) max-chars)
+        (message "gptel: Truncating prompt to the last %d characters." max-chars)
+        (delete-region (point-min) (- (point-max) max-chars))))))
 
 (defun gptel--transform-add-context (callback fsm)
   (if (and gptel-use-context gptel-context--alist)

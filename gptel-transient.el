@@ -783,6 +783,7 @@ Also format its value in the Transient menu."
     (gptel--infix-variable-scope)
     (gptel--infix-provider)
     (gptel--infix-max-tokens)
+    (gptel--infix-rolling-window-prompt)
     (gptel--infix-num-messages-to-send
      :if (lambda () (and gptel-expert-commands
                     (or gptel-mode gptel-track-response))))
@@ -1366,6 +1367,27 @@ supports.  See `gptel-track-media' for more information."
   (transient-setup))
 
 ;; ** Infix for additional directive
+(transient-define-infix gptel--infix-rolling-window-prompt ()
+  "Control prompt truncation for model context window.
+When enabled, gptel will automatically truncate prompts to fit the model's
+context window using the specified fraction (or 90% by default)."
+  :description "Auto-truncate prompt"
+  :class 'gptel-lisp-variable
+  :variable 'gptel-rolling-window-prompt
+  :set-value #'gptel--set-with-scope
+  :display-nil "Disable"
+  :display-map '((t . "Enable (90%)"))
+  :key "-w"
+  :prompt "Prompt truncation: "
+  :reader (lambda (prompt &rest _)
+            (let* ((choices '(("disable" . nil)
+                              ("enable (90%)" . t)
+                              ("custom fraction" . number)))
+                   (choice (completing-read prompt choices nil t)))
+              (if (equal choice "custom fraction")
+                  (let ((val (read-number "Fraction of context window (0.1-1.0): " 0.9)))
+                    (if (and (>= val 0.1) (<= val 1.0)) val (error "Invalid fraction")))
+                (cdr (assoc choice choices))))))
 
 (transient-define-infix gptel--infix-add-directive ()
   "Additional directive intended for the next query only.
