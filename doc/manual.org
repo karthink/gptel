@@ -67,35 +67,6 @@ gptel is a Large Language Model client for Emacs, with support for
 multiple models and backends.  It works in the spirit of Emacs,
 available at any time and uniformly in any buffer.
 
-gptel supports the following services.
-
-#+html: <div align="center">
-#+attr_texinfo: :columns .2 .7
-| LLM Backend        | Requires                   |
-|--------------------+----------------------------|
-| ChatGPT            | [[https://platform.openai.com/account/api-keys][API key]]                    |
-| Anthropic (Claude) | [[https://www.anthropic.com/api][API key]]                    |
-| Gemini             | [[https://makersuite.google.com/app/apikey][API key]]                    |
-| Ollama             | [[https://ollama.ai/][Ollama running locally]]     |
-| Llama.cpp          | [[https://github.com/ggerganov/llama.cpp/tree/master/examples/server#quick-start][Llama.cpp running locally]]  |
-| Llamafile          | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
-| GPT4All            | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
-| Kagi FastGPT       | [[https://kagi.com/settings?p=api][API key]]                    |
-| Kagi Summarizer    | [[https://kagi.com/settings?p=api][API key]]                    |
-| Azure              | Deployment and API key     |
-| Groq               | [[https://console.groq.com/keys][API key]]                    |
-| Perplexity         | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
-| OpenRouter         | [[https://openrouter.ai/keys][API key]]                    |
-| together.ai        | [[https://api.together.xyz/settings/api-keys][API key]]                    |
-| Anyscale           | [[https://docs.endpoints.anyscale.com/][API key]]                    |
-| PrivateGPT         | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
-| DeepSeek           | [[https://platform.deepseek.com/api_keys][API key]]                    |
-| Cerebras           | [[https://cloud.cerebras.ai/][API key]]                    |
-| Github Models      | [[https://github.com/settings/tokens][Token]]                      |
-| Novita AI          | [[https://novita.ai/model-api/product/llm-api?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][Token]]                      |
-| xAI                | [[https://console.x.ai?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][API key]]                    |
-#+html: </div>
-
 ** Basic concepts
 
 #+cindex: Large Language Model
@@ -135,6 +106,8 @@ prescribes an interface by itself.
 #+INCLUDE: ../README.org::*Installation :minlevel 1
 
 #+INCLUDE: ../README.org::*Setup :minlevel 1
+
+#+INCLUDE: ../README.org::*Usage :minlevel 1
 
 * Quick start and commands
 :PROPERTIES:
@@ -218,7 +191,11 @@ some extra niceties for chat interaction.
 
 ** Chat persistence
 
-** The rewrite interface
+** TODO The rewrite interface
+
+** TODO gptel in Org mode
+
+gptel offers a few extra conveniences in Org mode.
 
 * TODO gptel's design
 
@@ -451,14 +428,6 @@ always contains the last request as a gptel state-machine object (see
 [[*gptel's finite state machine][gptel's state machine]]).
 
 ** TODO gptel chat buffer UI
-
-  <<gptel-prompt-prefix-alist>>
-  #+vindex: gptel-prompt-prefix-alist
-- ~gptel-prompt-prefix-alist~
-
-  #+vindex: gptel-response-prefix-alist
-- ~gptel-response-prefix-alist~
-
 *** gptel in Org mode
 
   #+vindex: gptel-org-branching-context
@@ -828,9 +797,12 @@ To use tools in gptel, you need
   currently include any tool specifications out of the box.
 
 *** Obtaining tools
-*** Writing tools
+*** TODO Writing tools
 :PROPERTIES:
 :CUSTOM_ID: writing-tools
+:LAST_REVIEW: [2025-09-12 Fri]
+:NEXT_REVIEW: [2025-09-12 Fri]
+:REVIEWS:  0
 :END:
 
 A gptel tool is a structure specifying an Elisp function, the format
@@ -902,6 +874,43 @@ arguments.
   the LLM output.  This is useful for logging and as context for
   subsequent requests in the same buffer.  This is primarily useful
   in chat buffers.
+
+For example, to not prompt for user confirmation when creating files
+in the current working directory but in all other directories:
+
+#+begin_src emacs-lisp
+(gptel-make-tool
+ :name \"create_file\"
+ :description \"Create a new file with the specified content\"
+ :confirm  (lambda (&rest args)
+             (cl-destructuring-bind (path filename content)
+                 args
+               (not (my-filepath-within-current-directory-p path))))
+ :function (lambda (path filename content)
+             (let ((full-path (expand-file-name filename path)))
+               (with-temp-buffer
+                 (insert content)
+                 (write-file full-path))
+               (format \"Created file %s in %s\" filename path)))
+ :args (list '(:name \"path\"
+  	             :type string
+  	             :description \"The directory where to create the file\")
+             '(:name \"filename\"
+  	             :type string
+  	             :description \"The name of the file to create\")
+             '(:name \"content\"
+  	             :type string
+  	             :description \"The content to write to the file\"))
+ :category \"filesystem\")
+
+(defun my-filepath-within-current-directory-p (filepath)
+  \"Return t if FILEPATH is within the current working directory or its subdirectories.
+  FILEPATH can be relative or absolute, and may or may not end in a slash.\"
+  (let* ((current-dir-truename (file-truename (file-name-as-directory default-directory)))
+         (filepath-truename (file-truename (expand-file-name filepath)))
+         (filepath-dir-truename (file-name-as-directory (file-name-directory filepath-truename))))
+    (string-prefix-p current-dir-truename filepath-dir-truename)))
+#+end_src
 
 **** Specifying tool arguments
 
@@ -1106,11 +1115,25 @@ and applied together, making it feasible to switch rapidly between
 different kinds of LLM tasks.  A collection of such options is
 referred to as a "preset".
 
-Once defined, you can switch to a preset from gptel's transient menu
-(~gptel-menu~).  When a gptel preset is applied, the gptel options it
-specifies are set, and the ones it does not specify are simply left
-untouched.  So you can layer several presets on top of each other,
-with later presets taking precedence over the ones applied earlier.
+Once defined, there are two ways to use a preset:
+
+- You can apply it to just this request by referring to it anywhere in
+  your prompt, prefixed by the =@= key:
+
+  #+begin_example
+  @editor review the following explanation: ...
+  #+end_example
+
+  where =editor= is the name of a preset. This use is described below,
+  [[#presets-in-prompts]].
+
+- You can switch to a preset persistently from gptel's transient menu
+  (~gptel-menu~).  This use is described in this section.
+
+When a gptel preset is applied, the gptel options it specifies are
+set, and the ones it does not specify are simply left untouched.  So
+you can layer several presets on top of each other, with later presets
+taking precedence over the ones applied earlier.
 
 Presets can be applied globally (across the Emacs session),
 buffer-locally or for the next request only.  This is controlled by
@@ -1190,6 +1213,19 @@ to set the system message (and do nothing else):
   :system "Explain what this code does to a novice programmer.")
 #+end_src
 
+Specifying the value of a key will set the corresponding gptel option
+to it.  For example,
+
+#+begin_src emacs-lisp
+(gptel-make-preset 'websearch
+  :tools '("search_web" "read_url")
+  :system "Use the provided tools to search the web
+              for up-to-date information")
+#+end_src
+
+will replace the currently active option ~gptel-tools~ and the system
+message.
+
 Here are some more comprehensive examples of presets:
 
 #+begin_src emacs-lisp
@@ -1225,6 +1261,58 @@ other more specific presets.
   :include-reasoning nil                ;sets gptel-include-reasoning
   :use-context       'system)           ;sets gptel-use-context
 #+end_src
+
+
+Often it is convenient for a preset to modify the current value of a
+gptel option instead of setting it.
+
+- You can require that the value of an option be appended or prepended
+  to the existing value instead of replacing it.  This can be done by
+  specifying the value as a plist instead with the keys =:prepend= or
+  =:append=.
+
+  #+begin_src emacs-lisp
+  (gptel-make-preset 'websearch
+    :tools  '(:append ("search_web" "read_url"))
+    :system '(:prepend "Use the provided tools to search the web
+                        for up-to-date information."))
+  #+end_src
+
+  This preset will add the specified tools to the currently selected
+  set in ~gptel-tools~, and prepend the provided string to the system
+  message.
+
+- You can dynamically compute the value for a key at the time the preset
+  is applied with =:eval= or =:function=.  This is mostly useful when
+  using presets in the prompt, as =@preset-name=.
+
+  An =:eval= form is evaluated when the preset is applied:
+
+  #+begin_src emacs-lisp
+  (gptel-make-preset 'visible-buffers
+    :description "Include the full text of all buffers visible in the
+                 frame."
+    :context '(:eval (mapcar #'window-buffer (window-list))))
+  ; ▲                ▲
+  ; │                ╰╴evaluated when preset is applied
+  ; ╰╴sets `gptel-context'
+  #+end_src
+
+  =:function= should take the current value of the key as an input and
+  return the new value.  Here we combine it with =:append= in the plist.
+
+  #+begin_src emacs-lisp
+  (gptel-make-preset 'github-read-only
+    :description "Provide read-only GitHub tools"
+    :pre (lambda () (gptel-mcp-connect '("github") 'sync))
+    :tools
+    '( :append ("mcp-github")       ;Adds all github MCP tools
+       :function (lambda (tools)
+                   (cl-delete-if    ;Remove "write" access to GitHub
+                    (lambda (tool)
+                      (string-match-p "create_" (gptel-tool-name tool)))
+                    tools))))
+  #+end_src
 
 For programmatic use, you can use ~gptel-with-preset~ to send requests
 with presets temporarily applied.
@@ -2041,15 +2129,270 @@ This is a sentence that will be filled in later.
 :REVIEWS:  0
 :END:
 
-gptel is really the combination of two libraries: the request API and the =gptel= UI.  gptel's opinionated UI -- the chat buffer, the transient menus, the presentation of tool calls and so on -- comprise one way of using gptel, but it is certainly not the only one.
+gptel is really the combination of two libraries: the request API and
+the =gptel= UI.  For convenience both are made available in a single
+Emacs package.  gptel's opinionated UI -- the chat buffer, the
+transient menus, the presentation of tool calls and so on -- comprise
+one way of using gptel, but it is certainly not the only one.
 
-The entry point to the request library is the ~gptel-request~ function, which presents a unified way to interact with any LLM that gptel supports.  It can be used as a building block for custom commands that live in your configuration, custom workflows, or even to build complex packages.
+Accordingly, the first few sections of this cookbook describe how to
+customize gptel's UIs beyond simply setting user options. The final
+section, [[*Building applications with ~gptel-request~]] covers the use of
+gptel's API to write specialized LLM interaction commands, alternative
+UIs or packages.
 
-By way of examples, this chapter describes how to do these things with ~gptel-request~.
+** Improving the chat buffer experience
 
-** Simple ~gptel-request~ commands
+A "chat buffer" is any text, Markdown or Org mode buffer where
+~gptel-mode~ is turned on.  This is a regular Emacs buffer and is
+freely editable.
 
-gptel provides gptel-request, a lower level function, to query ChatGPT with custom behavior.  It accepts a prompt to send to the the active ~gptel-model~, along with several keyword arguments that modify what will be sent and how the response will be handled:
+While gptel provides a few knobs for modifying its behavior in chat
+buffers ([[*gptel chat buffer UI]]), it makes minimal assumptions about
+the format of the chat or the structure, layout of chat buffers.  In
+particular, it does not add any automatic behavior.  This section
+provides recipes for some quality of life improvements to gptel chat
+buffer behavior.
+
+*** Automatically persist chats to disk
+
+LLM chats can be one-off, transient interactions whose value is
+limited to the moment, or perhaps to the side effects they produce via
+tool calls (such as editing code in other files).  In this case there
+is little reason to keep the chat buffers around.  But the
+conversations may also contain information you may want to refer to in
+the future.
+
+Since they are regular Emacs buffers, they can be written to disk via
+~save-buffer~ (=C-x C-s= by default), but you will have to manually
+specify a location and a filename.  With a little elisp, you can
+automate this process so the chat buffers are automatically written to
+a predtermined directory with a timestamped name when you run
+~save-buffer~:
+
+#+begin_src emacs-lisp
+(require 'xdg)
+
+(defvar gptel-mode-chat-directory
+  (file-name-concat (xdg-data-home) "gptel-chat")
+  "Directory in which to store gptel chats")
+
+(defun gptel-mode-assign-filename ()
+  "If this is a dissociated chat buffer, save it to a predetermined location.
+
+Intended to be added to `before-save-hook' in gptel chat buffers.  Use a
+prefix-arg to save manually."
+  (unless (or (buffer-file-name) current-prefix-arg)
+    (make-directory gptel-mode-chat-directory t)
+    (setq buffer-file-name
+          (file-name-concat
+           gptel-mode-chat-directory
+           (concat
+            (format-time-string "%Y%m%d%H%M%2S-")
+            (file-name-sans-extension
+             (replace-regexp-in-string " " "-" (buffer-name)))
+            (pcase major-mode
+              ('org-mode ".org") ('markdown-mode ".md") (_ ".txt")))))
+    (rename-buffer (file-name-nondirectory buffer-file-name) t)))
+#+end_src
+
+Unless the chat buffer is already associated with a file,
+~gptel-mode-assign-filename~ sets a suitable timestamped file name for
+a buffer.  We ensure that this runs in gptel chat buffers right before
+~save-buffer~ is called:
+
+#+begin_src emacs-lisp
+(defun gptel-mode-auto-save-chat ()
+  "Enable saving chat buffers to predetermined location."
+  (add-hook 'before-save-hook #'gptel-mode-assign-filename
+            nil 'local))
+
+(add-hook 'gptel-mode-hook #'gptel-mode-auto-save-chat)
+#+end_src
+
+Note that ~gptel-mode-assign-filename~ does not alter the value of
+~default-directory~ in the buffer, and the chat buffer will continue
+to have access to the same environment until it is closed and reopened
+as a file from the custom location.  This is important, for example,
+if tool calls involving file paths are involved.
+
+*** Resume chat sessions more robustly
+
+ gptel adds metadata to a chat buffer when saving it to a file.  Among
+other information, this metadata includes the model, backend and tools
+in use, as well as the response boundaries.  When opening this file,
+~gptel-mode~ is not automatically enabled, so modifying the buffer can
+cause the recorded response boundaries to go out of sync.
+
+~gptel-mode~ can be automatically enabled on opening the file by
+adding a [[info:emacs#Specifying File Variables][property-line]] at the top of the file, like
+
+#+begin_src
+# -*- eval: (gptel-mode 1) -*-
+#+end_src
+
+We can get gptel to include this line automatically as follows:
+
+#+begin_src emacs-lisp
+(defun gptel-mode-auto-enable ()
+  "Ensure that this file opens with `gptel-mode' enabled."
+  (save-excursion
+    (let ((enable-local-variables t))  ; Ensure we can modify local variables
+      (if (and (save-excursion
+                 (goto-char (point-min))
+                 (looking-at ".*-\\*-")))  ; If there's a -*- line
+        ;; First remove any existing eval, then add the new one
+        (modify-file-local-variable-prop-line
+          'eval nil 'delete))
+      ;; Always add our eval
+      (add-file-local-variable-prop-line
+        'eval '(and (fboundp 'gptel-mode) (gptel-mode 1))))))
+
+(add-hook 'gptel-save-state-hook #'gptel-mode-auto-enable)
+#+end_src
+
+~gptel-save-state-hook~ runs just before gptel updates its metadata in
+the file.
+
+Note that this function will overwrite any other =eval= local variable
+specification already present on the line.
+
+** Tweaking LLM responses
+
+gptel does not modify or post-process LLM responses to ~gptel-send~
+commands in any way except one: when in an Org mode buffer, it
+converts (possibly) Markdown output to Org mode.  ([[*gptel in Org mode]])
+
+There are several commonly requested modifications that fall under the
+umbrella of "sanitizing" the response.  This section explains how to
+apply them when using ~gptel-send~ via the
+=gptel-post-response-functions= hook.
+
+Further below we cover more involved response transformations you can
+do by reaching into the guts of gptel's state machine.
+
+*** Response transformations with ~gptel-post-response-functions~
+
+~gptel-post-response-functions~ is called after inserting the LLM's
+response to ~gptel-send~, with buffer positions delimiting the
+response as arguments.
+
+Two simple uses first.  Both functions accept a start and end point as
+arguments, so they can simply be added to the hook.
+
+- Preview any LaTeX in the response:
+
+  #+begin_src emacs-lisp
+  (add-hook 'gptel-post-response-functions #'org--latex-preview-region)
+  #+end_src
+
+  This is an Org mode function, but it will work in Markdown mode too!
+  Expect Org mode to complain about it though.
+
+- Fill the response region:
+
+  #+begin_src emacs-lisp
+  (add-hook 'gptel-post-response-functions #'fill-region)
+  #+end_src
+
+  Unfortunately, this will also fill any code blocks in the region,
+  which can be catastrophic.
+
+We fix this problem below, where we use the hook to perform a number
+of different transformations:
+
+- In chat buffers, if ~auto-fill-mode~ is turned on, we fill the
+  response region while avoiding filling code blocks.
+- In code buffers, we remove any code fences (=```=) inserted around
+  code, and indent it.
+
+#+begin_src emacs-lisp
+(add-hook 'gptel-post-response-functions #'gptel-sanitize-response)
+
+(defun gptel-sanitize-response (beg end)
+  "Sanitize gptel-send response reasons."
+  (unless (= beg end)                   ;no response, skip
+    (cond
+     ;; Remove code fences from prog-mode buffers
+     ((derived-mode-p 'prog-mode)
+      (save-excursion
+        (goto-char end)
+        (when (looking-back "```\s-*" (line-beginning-position))
+          (delete-region (match-beginning 0) (point))
+          (setq end (point)))
+        (goto-char beg)
+        (when (looking-at "\s-*```")
+          (delete-region (point) (line-end-position))
+          (setq beg (point)))
+        (indent-region beg end)))
+     ;; Fill response regions in gptel-mode
+     ((and gptel-mode auto-fill-function)
+      (save-excursion
+        (if (derived-mode-p 'org-mode)
+            (let ((transient-mark-mode t))
+              (goto-char end) (push-mark)
+              (goto-char beg) (activate-mark)
+              (org-fill-paragraph nil t))
+          (goto-char beg)
+          (while (<= (point) end)
+            (markdown-fill-paragraph)
+            (markdown-forward-paragraph))))))))
+#+end_src
+
+Here is a second example.  If you use ~gptel-org-branching-context~
+([[*gptel in Org mode]]), the heading lineage at any point in the buffer
+determines the conversation context.  Any extra headings inserted by
+the LLM will then mess this up.  We use the post-response-functions
+hook to convert headings in the response into bold text instead:
+
+#+begin_src emacs-lisp
+(add-hook 'gptel-post-response-functions #'gptel-org-remove-headings)
+
+(defun gptel-org-remove-headings (beg end)
+  "Convert Org headings between BEG and END to bold text."
+  (when (derived-mode-p 'org-mode)
+    (save-excursion
+      (goto-char beg)
+      (while (re-search-forward org-heading-regexp end t)
+        (forward-line 0)
+        (delete-char (1+ (length (match-string 1))))
+        (insert-and-inherit "*")
+        (end-of-line)
+        (skip-chars-backward " \t\r")
+        (insert-and-inherit "*")))))
+#+end_src
+  
+*** TODO Response transformations using gptel's state machine
+
+** Adding UI elements to gptel
+** Extending gptel's Transient menus
+** TODO Building applications with ~gptel-request~
+
+The entry point to the request library is the ~gptel-request~
+function, which presents a unified way to interact with any LLM that
+gptel supports.  It can be used as a building block for custom
+commands that live in your configuration, for custom workflows, or
+even to build complex packages.
+
+If you intend to use ~gptel-request~ to write specialized LLM
+interaction commands or build a different UI, you can require only the
+=gptel-request= feature:
+
+#+begin_src emacs-lisp
+(require 'gptel-request)
+#+end_src 
+
+This way you avoid loading unnecessary code, such as gptel's chat
+buffer UI or Transient menus.
+
+By way of examples, this chapter describes how to do these things with
+~gptel-request~.
+
+*** Simple ~gptel-request~ commands
+
+~gptel-request~ accepts a prompt to send to the the active
+~gptel-model~, along with several keyword arguments that modify what
+will be sent and how the response will be handled:
 
 #+begin_src emacs-lisp
 (gptel-request "my prompt"                      ;the prompt to send to ChatGPT
@@ -2059,26 +2402,31 @@ gptel provides gptel-request, a lower level function, to query ChatGPT with cust
   :position some-pt                  ;defaults to (point)
   :context  (list "any other info")  ;will be available to the callback
   :callback (lambda (response info) ...)) ;called with the response and an info plist
-                                        ;defaults to inserting the response at :position
+                                     ;defaults to inserting the response at :position
 #+end_src
 
-For the full documentation of available keywords, see [[*The ~gptel-request~ API]].
+For the full documentation of available keywords, see [[*The
+~gptel-request~ API]].
 
-*The prompt*: changing what is sent
+*The prompt*: Changing what is sent
 
-gptel-request sends the string passed to it as the user prompt for a gptel query.  The following will send the string passed to it and insert the response where point is when you execute it:
+gptel-request sends the string passed to it as the user prompt for a
+gptel query.  The following will send the string passed to it and
+insert the response where point is when you execute it:
 
 #+begin_src emacs-lisp
 (gptel-request "What is the capital of Belgium?")
 #+end_src
 
-If the prompt is nil, it sends the region (if it is active), or the contents of the buffer up to point instead:
+If the prompt is nil, it sends the region (if it is active), or the
+contents of the buffer up to point instead:
 
 #+begin_src emacs-lisp
 (gptel-request nil)
 #+end_src
 
-If you want to send the whole buffer, you can move simply move the cursor to the end:
+If you want to send the whole buffer, you can move simply move the
+cursor to the end:
 
 #+begin_src emacs-lisp
 (save-excursion
@@ -2086,17 +2434,18 @@ If you want to send the whole buffer, you can move simply move the cursor to the
   (gptel-request nil))
 #+end_src
 
-It is not recommended to grab the buffer contents as a string, as this will cause twice as much memory to be used:
+It is not recommended to grab the buffer contents as a string, as this
+will cause twice as much memory to be used:
 
 #+begin_src emacs-lisp
-(gptel-request (buffer-string))         ;NOT recommended
+(gptel-request (buffer-string)) ;NOT recommended
 #+end_src
 
 ----
 
-We can now write our first (admittedly useless) custom command: 
+We can now write our first (admittedly useless) custom command:
 
-** Building an application
+*** Building an application
 
 #+INCLUDE: ../README.org::*FAQ :minlevel 1
 #+INCLUDE: ../README.org::*Alternatives :minlevel 1
