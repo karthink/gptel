@@ -25,6 +25,11 @@
 (require 'gptel)
 (require 'browse-url)
 
+(defgroup gptel-gh nil
+  "GitHub Copilot integration for gptel."
+  :group 'gptel
+  :prefix "gptel-gh-")
+
 ;;; Github Copilot
 (defconst gptel--gh-models
   '((gpt-4o
@@ -184,6 +189,21 @@
   :type 'string
   :group 'gptel)
 
+(defcustom gptel-gh-api-host "api.githubcopilot.com"
+  "Default host to use for the GitHub Copilot API.
+
+By default this is ""api.githubcopilot.com"" for the consumer Copilot
+service. If you are using GitHub Copilot for Business, set this to
+""api.business.githubcopilot.com"".
+
+This value is used when a host argument is not provided to
+`gptel-make-gh-copilot'."
+  :type '(choice
+          (const :tag "Consumer (api.githubcopilot.com)" "api.githubcopilot.com")
+          (const :tag "Business (api.business.githubcopilot.com)" "api.business.githubcopilot.com")
+          string)
+  :group 'gptel)
+
 (defconst gptel--gh-auth-common-headers
   `(("editor-plugin-version" . "gptel/*")
     ("editor-version" . ,(concat "emacs/" emacs-version))))
@@ -206,7 +226,7 @@
         (length 65)
         hex)
     (dotimes (_ length)
-      (setq hex (nconc hex (list (aref hex-chars (random 16))))))
+      (setq hex (nconc hex (list (aref hex-chars (random 16))))) )
     (apply #'string hex)))
 
 (defun gptel--gh-restore (file)
@@ -316,7 +336,7 @@ Then we need a session token."
                     (gptel--gh-auth)
                     `(("openai-intent" . "conversation-panel")
                       ("authorization" . ,(concat "Bearer "
-                                           (plist-get (gptel--gh-token gptel-backend) :token)))
+                                                  (plist-get (gptel--gh-token gptel-backend) :token)))
                       ("x-request-id" . ,(gptel--gh-uuid))
                       ("vscode-sessionid" . ,(or (gptel--gh-sessionid gptel-backend) ""))
                       ("vscode-machineid" . ,(or (gptel--gh-machineid gptel-backend) ""))
@@ -324,7 +344,7 @@ Then we need a session token."
                                    (gptel--model-capable-p 'media))
                           `(("copilot-vision-request" . "true")))
                       ("copilot-integration-id" . "vscode-chat"))))
-          (host "api.githubcopilot.com")
+          (host nil)
           (protocol "https")
           (endpoint "/chat/completions")
           (stream t)
@@ -335,7 +355,9 @@ Keyword arguments:
 
 CURL-ARGS (optional) is a list of additional Curl arguments.
 
-HOST (optional) is the API host, typically \"api.githubcopilot.com\".
+HOST (optional) is the API host, typically "api.githubcopilot.com".
+If nil, `gptel-gh-api-host' is used. Set this to
+"api.business.githubcopilot.com" when using Copilot for Business.
 
 MODELS is a list of available model names, as symbols.
 Additionally, you can specify supported LLM capabilities like
@@ -348,15 +370,15 @@ For a list of currently recognized plist keys, see
 `gptel--openai-models'.  An example of a model specification
 including both kinds of specs:
 
-:models
-\\='(gpt-3.5-turbo                         ;Simple specs
-  gpt-4-turbo
-  (gpt-4o-mini                          ;Full spec
-   :description
-   \"Affordable and intelligent small model for lightweight tasks\"
-   :capabilities (media tool json url)
-   :mime-types
-   (\"image/jpeg\" \"image/png\" \"image/gif\" \"image/webp\")))
+ :models
+ \\='(gpt-3.5-turbo                         ;Simple specs
+   gpt-4-turbo
+   (gpt-4o-mini                          ;Full spec
+    :description
+    "Affordable and intelligent small model for lightweight tasks"
+    :capabilities (media tool json url)
+    :mime-types
+    ("image/jpeg" "image/png" "image/gif" "image/webp")))
 
 Defaults to a list of models supported by GitHub Copilot.
 
@@ -366,12 +388,12 @@ false.
 PROTOCOL (optional) specifies the protocol, https by default.
 
 ENDPOINT (optional) is the API endpoint for completions, defaults to
-\"/chat/completions\".
+"/chat/completions".
 
 HEADER (optional) is for additional headers to send with each
 request.  It should be an alist or a function that returns an
 alist, like:
- ((\"Content-Type\" . \"application/json\"))
+ (("Content-Type" . "application/json"))
 
 Defaults to headers required by GitHub Copilot.
 
@@ -380,6 +402,8 @@ parameters (as plist keys) and values supported by the API.  Use
 these to set parameters that gptel does not provide user options
 for."
   (declare (indent 1))
+  (unless host
+    (setq host gptel-gh-api-host))
   (let ((backend (gptel--make-gh
                   :name name
                   :host host
