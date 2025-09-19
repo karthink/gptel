@@ -344,7 +344,7 @@ Keyword arguments:
 
 CURL-ARGS (optional) is a list of additional Curl arguments.
 
-HOST (optional) is the API host, typically "api.githubcopilot.com".
+HOST (optional) is the API host, typically \"api.githubcopilot.com\".
 If nil, `gptel-gh-api-host' is used. Set this to
 \"api.business.githubcopilot.com\" when using Copilot for Business.
 
