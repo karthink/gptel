@@ -213,7 +213,7 @@ Set this to "api.business.githubcopilot.com" when using Copilot for Business.
         (length 65)
         hex)
     (dotimes (_ length)
-      (setq hex (nconc hex (list (aref hex-chars (random 16))))) )
+      (setq hex (nconc hex (list (aref hex-chars (random 16))))))
     (apply #'string hex)))
 
 (defun gptel--gh-restore (file)
@@ -344,7 +344,7 @@ CURL-ARGS (optional) is a list of additional Curl arguments.
 
 HOST (optional) is the API host, typically "api.githubcopilot.com".
 If nil, `gptel-gh-api-host' is used. Set this to
-"api.business.githubcopilot.com" when using Copilot for Business.
+\"api.business.githubcopilot.com\" when using Copilot for Business.
 
 MODELS is a list of available model names, as symbols.
 Additionally, you can specify supported LLM capabilities like
@@ -362,10 +362,10 @@ including both kinds of specs:
    gpt-4-turbo
    (gpt-4o-mini                          ;Full spec
     :description
-    "Affordable and intelligent small model for lightweight tasks"
+    \"Affordable and intelligent small model for lightweight tasks\"
     :capabilities (media tool json url)
     :mime-types
-    ("image/jpeg" "image/png" "image/gif" "image/webp")))
+    (\"image/jpeg\" \"image/png\" \"image/gif\" \"image/webp\")))
 
 Defaults to a list of models supported by GitHub Copilot.
 
@@ -375,12 +375,12 @@ false.
 PROTOCOL (optional) specifies the protocol, https by default.
 
 ENDPOINT (optional) is the API endpoint for completions, defaults to
-"/chat/completions".
+\"/chat/completions\".
 
 HEADER (optional) is for additional headers to send with each
 request.  It should be an alist or a function that returns an
 alist, like:
- (("Content-Type" . "application/json"))
+ ((\"Content-Type\" . \"application/json\"))
 
 Defaults to headers required by GitHub Copilot.
 
