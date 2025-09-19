@@ -186,9 +186,11 @@
 
 (defcustom gptel-gh-api-host "api.githubcopilot.com"
   "Default host to use for the GitHub Copilot API.
-Set this to "api.business.githubcopilot.com" when using Copilot for Business.
+Set this to \"api.business.githubcopilot.com\" when using Copilot for Business.
 "
-  :type 'string
+  :type '(choice (const :tag "Consumer" "api.githubcopilot.com")
+                 (const :tag "Business" "api.business.githubcopilot.com")
+                 string)
   :group 'gptel)
 
 (defconst gptel--gh-auth-common-headers
