@@ -184,6 +184,15 @@
   :type 'string
   :group 'gptel)
 
+(defcustom gptel-gh-api-host "api.githubcopilot.com"
+  "Default host to use for the GitHub Copilot API.
+Set this to \"api.business.githubcopilot.com\" when using Copilot for Business.
+"
+  :type '(choice (const :tag "Consumer" "api.githubcopilot.com")
+                 (const :tag "Business" "api.business.githubcopilot.com")
+                 string)
+  :group 'gptel)
+
 (defconst gptel--gh-auth-common-headers
   `(("editor-plugin-version" . "gptel/*")
     ("editor-version" . ,(concat "emacs/" emacs-version))))
@@ -316,7 +325,7 @@ Then we need a session token."
                     (gptel--gh-auth)
                     `(("openai-intent" . "conversation-panel")
                       ("authorization" . ,(concat "Bearer "
-                                           (plist-get (gptel--gh-token gptel-backend) :token)))
+                                                  (plist-get (gptel--gh-token gptel-backend) :token)))
                       ("x-request-id" . ,(gptel--gh-uuid))
                       ("vscode-sessionid" . ,(or (gptel--gh-sessionid gptel-backend) ""))
                       ("vscode-machineid" . ,(or (gptel--gh-machineid gptel-backend) ""))
@@ -324,7 +333,7 @@ Then we need a session token."
                                    (gptel--model-capable-p 'media))
                           `(("copilot-vision-request" . "true")))
                       ("copilot-integration-id" . "vscode-chat"))))
-          (host "api.githubcopilot.com")
+          (host gptel-gh-api-host)
           (protocol "https")
           (endpoint "/chat/completions")
           (stream t)
@@ -336,6 +345,8 @@ Keyword arguments:
 CURL-ARGS (optional) is a list of additional Curl arguments.
 
 HOST (optional) is the API host, typically \"api.githubcopilot.com\".
+If nil, `gptel-gh-api-host' is used. Set this to
+\"api.business.githubcopilot.com\" when using Copilot for Business.
 
 MODELS is a list of available model names, as symbols.
 Additionally, you can specify supported LLM capabilities like
@@ -348,15 +359,15 @@ For a list of currently recognized plist keys, see
 `gptel--openai-models'.  An example of a model specification
 including both kinds of specs:
 
-:models
-\\='(gpt-3.5-turbo                         ;Simple specs
-  gpt-4-turbo
-  (gpt-4o-mini                          ;Full spec
-   :description
-   \"Affordable and intelligent small model for lightweight tasks\"
-   :capabilities (media tool json url)
-   :mime-types
-   (\"image/jpeg\" \"image/png\" \"image/gif\" \"image/webp\")))
+ :models
+ \\='(gpt-3.5-turbo                         ;Simple specs
+   gpt-4-turbo
+   (gpt-4o-mini                          ;Full spec
+    :description
+    \"Affordable and intelligent small model for lightweight tasks\"
+    :capabilities (media tool json url)
+    :mime-types
+    (\"image/jpeg\" \"image/png\" \"image/gif\" \"image/webp\")))
 
 Defaults to a list of models supported by GitHub Copilot.
 
