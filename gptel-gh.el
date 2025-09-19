@@ -25,11 +25,6 @@
 (require 'gptel)
 (require 'browse-url)
 
-(defgroup gptel-gh nil
-  "GitHub Copilot integration for gptel."
-  :group 'gptel
-  :prefix "gptel-gh-")
-
 ;;; Github Copilot
 (defconst gptel--gh-models
   '((gpt-4o
@@ -191,17 +186,9 @@
 
 (defcustom gptel-gh-api-host "api.githubcopilot.com"
   "Default host to use for the GitHub Copilot API.
-
-By default this is ""api.githubcopilot.com"" for the consumer Copilot
-service. If you are using GitHub Copilot for Business, set this to
-""api.business.githubcopilot.com"".
-
-This value is used when a host argument is not provided to
-`gptel-make-gh-copilot'."
-  :type '(choice
-          (const :tag "Consumer (api.githubcopilot.com)" "api.githubcopilot.com")
-          (const :tag "Business (api.business.githubcopilot.com)" "api.business.githubcopilot.com")
-          string)
+Set this to "api.business.githubcopilot.com" when using Copilot for Business.
+"
+  :type 'string
   :group 'gptel)
 
 (defconst gptel--gh-auth-common-headers
@@ -344,7 +331,7 @@ Then we need a session token."
                                    (gptel--model-capable-p 'media))
                           `(("copilot-vision-request" . "true")))
                       ("copilot-integration-id" . "vscode-chat"))))
-          (host nil)
+          (host gptel-gh-api-host)
           (protocol "https")
           (endpoint "/chat/completions")
           (stream t)
@@ -402,8 +389,6 @@ parameters (as plist keys) and values supported by the API.  Use
 these to set parameters that gptel does not provide user options
 for."
   (declare (indent 1))
-  (unless host
-    (setq host gptel-gh-api-host))
   (let ((backend (gptel--make-gh
                   :name name
                   :host host
