@@ -1384,7 +1384,7 @@ By default, files in a version control system that are not project files ("gitig
 
 *** Handle "reasoning" content
 
-Some LLMs include in their response a "thinking" or "reasoning" block.  This text improves the quality of the LLM’s final output, but may not be interesting to you by itself.  You can decide how you would like this "reasoning" content to be handled by gptel by setting the user option =gptel-include-reasoning=.  You can include it in the LLM response (the default), omit it entirely, include it in the buffer but ignore it on subsequent conversation turns, or redirect it to another buffer.  As with most options, you can specify this behvaior from gptel's transient menu globally, buffer-locally or for the next request only.
+Some LLMs include in their response a "thinking" or "reasoning" block.  This text improves the quality of the LLM’s final output, but may not be interesting to you by itself.  You can decide how you would like this "reasoning" content to be handled by gptel by setting the user option =gptel-include-reasoning=.  You can include it in the LLM response (the default), omit it entirely, include it in the buffer but ignore it on subsequent conversation turns, or redirect it to another buffer.  As with most options, you can specify this behavior from gptel's transient menu globally, buffer-locally or for the next request only.
 
 When included with the response, reasoning content will be delimited by Org blocks or markdown backticks.
 
