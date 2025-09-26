@@ -2,6 +2,34 @@
 
 * 0.9.9.3-pre
 
+** Breaking changes
+
+- The models =gemini-1.5-flash-8b=, =gemini-1.5-flash=,
+  =gemini-1.5-pro-latest=, =gemini-2.0-flash-thinking-exp-01-21=,
+  =gemini-2.0-flash-lite-preview-02-05=,
+  =gemini-2.5-flash-lite-preview-06-17=,
+  =gemini-2.5-pro-preview-06-05=, =gemini-2.5-pro-preview-05-06=,
+  =gemini-2.5-flash-preview-05-20=, =gemini-2.5-pro-preview-03-25= and
+  =gemini-2.5-pro-exp-03-25= have been removed from the default list
+  of Gemini models.  These models are either no longer available, or
+  they have been superseded by their stable, non-preview versions.  If
+  required, you can add these models back to the Gemini backend in
+  your personal configuration:
+  #+begin_src emacs-lisp
+  (push 'gemini-2.5-pro-preview-05-06
+        (gptel-backend-models (gptel-get-backend "Gemini")))
+  #+end_src
+
+
+** New models and backends
+
+- Add support for =gemini-pro-latest=, =gemini-flash-latest= and
+  =gemini-flash-lite-latest=.  These models point to the latest Gemini
+  models of the corresponding type.
+
+- Add support for =gemini-2.5-flash-preview-09-2025= and
+  =gemini-2.5-flash-lite-preview-09-2025=.
+
 ** New features and UI changes
 
 - =gptel-request= is now a standalone library, independent of gptel
