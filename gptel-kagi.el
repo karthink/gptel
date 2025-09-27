@@ -117,15 +117,6 @@
                      ""))))
           prompts)))))
 
-(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-kagi) prompts)
-  (cond
-   ((plist-get prompts :url)
-    (message "Ignoring gptel context for URL summary request."))
-   ((plist-get prompts :query)
-    (cl-callf gptel-context--wrap (plist-get prompts :query)))
-   ((plist-get prompts :text)
-    (cl-callf gptel-context--wrap (plist-get prompts :text)))))
-
 ;;;###autoload
 (cl-defun gptel-make-kagi
     (name &key curl-args stream key
@@ -187,7 +178,7 @@ Example:
     (prog1 backend
       (setf (alist-get name gptel--known-backends
                        nil nil #'equal)
-                  backend))))
+            backend))))
 
 (provide 'gptel-kagi)
 ;;; gptel-kagi.el ends here

@@ -136,31 +136,13 @@ Assumes this is a conversation with alternating roles."
            (list :role (if role "user" "assistant")
                  :content `[(:text ,text)])))
 
-(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-bedrock) prompts &optional inject-media)
-  "Inject context into a conversation.
+(cl-defmethod gptel--inject-media ((_backend gptel-bedrock) prompts)
+  "Wrap the first user prompt in PROMPTS with included media files.
 
-PROMPTS is list of prompt objects.  If INJECT-MEDIA is non-nil
-inject the media files from context into the beginning of the
-conversation; otherwise inject the context into the last prompt."
-  (if inject-media
-      (gptel-bedrock--inject-media-context prompts)
-    (gptel-bedrock--inject-text-context prompts)))
-
-(defun gptel-bedrock--inject-media-context (prompts)
-  "Inject media files from context into a conversation.
-Media files will be added at the beginning of the conversation.
-PROMPTS should be a non-empty list of prompt objects."
+Media files, if present, are placed in `gptel-context'."
   (when-let* ((media-list (gptel-context--collect-media)))
     (cl-callf2 vconcat (gptel-bedrock--parse-multipart media-list)
                (plist-get (car prompts) :content))))
-
-(defun gptel-bedrock--inject-text-context (prompts)
-  "Inject text context into the last prompt object from a conversation.
-PROMPTS should be a non-empty list of prompt objects."
-  (cl-assert prompts nil "Expected a non-empty list of prompts")
-  (when-let* ((wrapped (gptel-context--wrap nil)))
-    (cl-callf2 vconcat `[(:text ,wrapped)]
-               (plist-get (car (last prompts)) :content))))
 
 (defvar-local gptel-bedrock--stream-cursor nil
   "Marker to indicate last point parsed.")
@@ -499,6 +481,9 @@ conversation."
 (defun gptel-bedrock--fetch-aws-profile-credentials (profile &optional clear-cache)
   "Fetch & cache AWS credentials for PROFILE using aws-cli.
 
+If PROFILE is the keyword ':static', then it fetches IAM credentials
+from the aws-cli without any profile argument.
+
 Non-nil CLEAR-CACHE will refresh credentials."
   (let* ((creds-json
            (let ((cell (or (assoc profile gptel-bedrock--aws-profile-cache #'string=)
@@ -506,8 +491,8 @@ Non-nil CLEAR-CACHE will refresh credentials."
              (or (and (not clear-cache) (cdr cell))
                  (setf (cdr cell)
                        (with-temp-buffer
-		           (unless (zerop (call-process "aws" nil t nil "configure" "export-credentials"
-					                (format "--profile=%s" profile)))
+		           (unless (zerop (apply #'call-process "aws" nil t nil "configure" "export-credentials"
+                                                 (unless (eql profile :static) (list (format "--profile=%s" profile)))))
 		             (user-error "Failed to get AWS credentials from profile"))
 		         (json-parse-string (buffer-string)))))))
 	 (expiration (if-let (exp (gethash "Expiration" creds-json))
@@ -522,8 +507,15 @@ Non-nil CLEAR-CACHE will refresh credentials."
        (gptel-bedrock--fetch-aws-profile-credentials profile t))
       (t (user-error "AWS credentials expired for profile: %s" profile)))))
 
-(defun gptel-bedrock--get-credentials ()
+(defun gptel-bedrock--get-credentials (profile)
   "Return the AWS credentials to use for the request.
+
+If credentials are not available based on the AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN environment variables,
+aws configure export-credentials is used to obtain credentials.
+PROFILE specifies the AWS profile to use for retrieving
+credentials.  If PROFILE is unset, AWS_PROFILE environment
+variable is used.
 
 Returns a list of 2-3 elements, depending on whether a session
 token is needed, with this form: (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
@@ -533,11 +525,11 @@ Convenient to use with `cl-multiple-value-bind'"
   (let ((key-id (getenv "AWS_ACCESS_KEY_ID"))
         (secret-key (getenv "AWS_SECRET_ACCESS_KEY"))
         (token (getenv "AWS_SESSION_TOKEN"))
-	(profile (getenv "AWS_PROFILE")))
+	(profile (or profile (getenv "AWS_PROFILE"))))
     (cond
-      ((and key-id secret-key) (cl-values key-id secret-key token))
       ((and profile) (gptel-bedrock--fetch-aws-profile-credentials profile))
-      (t (user-error "Missing AWS credentials; currently only environment variables are supported")))))
+      ((and key-id secret-key) (cl-values key-id secret-key token))
+      (t (user-error "Missing AWS credentials; provide them either via environment variables or specify PROFILE when calling gptel-make-bedrock")))))
 
 (defvar gptel-bedrock--model-ids
   ;; https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
@@ -586,19 +578,25 @@ REGION is one of apac, eu or us."
    (or (alist-get model gptel-bedrock--model-ids nil nil #'eq)
        (error "Unknown Bedrock model: %s" model))))
 
-(defun gptel-bedrock--curl-args (region)
-  "Generate the curl arguments to get a bedrock request signed for use in REGION."
-  ;; https://curl.se/docs/manpage.html#--aws-sigv4
-  (cl-multiple-value-bind (key-id secret token) (gptel-bedrock--get-credentials)
-    (nconc
-     (list
-      "--user" (format "%s:%s" key-id secret)
-      "--aws-sigv4" (format "aws:amz:%s:bedrock" region))
-     (unless (memq system-type '(windows-nt ms-dos))
-       ;; Without this curl swallows the output
-       (list "--output" "/dev/stdout"))
-     (when token
-       (list (format "-Hx-amz-security-token: %s" token))))))
+(defun gptel-bedrock--curl-args (region profile bearer-token)
+  "Generate the curl arguments to get a bedrock request signed for use in REGION.
+
+PROFILE specifies the aws profile to use for aws configure
+export-credentials.  BEARER-TOKEN is the token used for authentication."
+  (let ((bearer-token (or bearer-token (getenv "AWS_BEARER_TOKEN_BEDROCK")))
+        (output-args (unless (memq system-type '(windows-nt ms-dos))
+                       '("--output" "/dev/stdout"))))
+    (if bearer-token
+        (append
+         (list "-H" (format "Authorization: Bearer %s" bearer-token))
+         output-args)
+      (cl-multiple-value-bind (key-id secret token) (gptel-bedrock--get-credentials profile)
+        (append
+         (list "--user" (format "%s:%s" key-id secret)
+               "--aws-sigv4" (format "aws:amz:%s:bedrock" region))
+         output-args
+         (when token (list "-H" (format "x-amz-security-token: %s" token))))))))
+
 
 (defun gptel-bedrock--curl-version ()
   "Check Curl version required for gptel-bedrock."
@@ -614,6 +612,7 @@ REGION is one of apac, eu or us."
           (models gptel--bedrock-models)
 	  (model-region nil)
           stream curl-args request-params
+          aws-profile aws-bearer-token
           (protocol "https"))
   "Register an AWS Bedrock backend for gptel with NAME.
 
@@ -622,14 +621,17 @@ Keyword arguments:
 REGION - AWS region name (e.g. \"us-east-1\")
 MODELS - The list of models supported by this backend
 MODEL-REGION - one of apac, eu, us or nil
+AWS-PROFILE - the aws profile to use for aws configure export-credentials
+AWS-BEARER-TOKEN - the aws bearer-token for authenticating with AWS
 CURL-ARGS - additional curl args
 STREAM - Whether to use streaming responses or not.
 REQUEST-PARAMS - a plist of additional HTTP request
 parameters (as plist keys) and values supported by the API."
   (declare (indent 1))
-  (unless (and gptel-use-curl (version<= "8.9" (gptel-bedrock--curl-version)))
-    (error "Bedrock-backend requires curl >= 8.9, but gptel-use-curl := %s, curl-version := %s"
-           gptel-use-curl (gptel-bedrock--curl-version)))
+  (unless (or aws-bearer-token (getenv "AWS_BEARER_TOKEN_BEDROCK"))
+    (unless (and gptel-use-curl (version<= "8.9" (gptel-bedrock--curl-version)))
+      (error "Bedrock-backend requires curl >= 8.9, but gptel-use-curl := %s, curl-version := %s"
+             gptel-use-curl (gptel-bedrock--curl-version))))
   (let ((host (format "bedrock-runtime.%s.amazonaws.com" region)))
     (setf (alist-get name gptel--known-backends nil nil #'equal)
           (gptel--make-bedrock
@@ -637,12 +639,12 @@ parameters (as plist keys) and values supported by the API."
            :host host
            :header nil           ; x-amz-security-token is set in curl-args if needed
            :models (gptel--process-models models)
-	   :model-region model-region
+           :model-region model-region
            :protocol protocol
            :endpoint "" ; Url is dynamically constructed based on other args
            :stream stream
            :coding-system (and stream 'binary)
-           :curl-args (lambda () (append curl-args (gptel-bedrock--curl-args region)))
+           :curl-args (lambda () (append curl-args (gptel-bedrock--curl-args region aws-profile aws-bearer-token)))
            :request-params request-params
            :url
            (lambda ()

@@ -242,22 +242,16 @@ format."
    `(,@(and text-array  (list :content (mapconcat #'identity text-array " ")))
      ,@(and media-array (list :images  (vconcat media-array))))))
 
-(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-ollama) prompts
-                                       &optional inject-media)
-  "Wrap the last user prompt in PROMPTS with the context string.
+(cl-defmethod gptel--inject-media ((_backend gptel-ollama) prompts)
+  "Wrap the first user prompt in PROMPTS with included media files.
 
-If INJECT-MEDIA is non-nil wrap it with base64-encoded media
-files in the context."
-  (if inject-media
-      ;; Wrap the first user prompt with included media files/contexts
-      (when-let* ((media-list (gptel-context--collect-media))
-                  (media-processed (gptel--ollama-parse-multipart media-list)))
-        (cl-callf (lambda (images)
-                    (vconcat (plist-get media-processed :images)
-                             images))
-            (plist-get (car prompts) :images)))
-    ;; Wrap the last user prompt with included text contexts
-    (cl-callf gptel-context--wrap (plist-get (car (last prompts)) :content))))
+Media files, if present, are placed in `gptel-context'."
+  (when-let* ((media-list (gptel-context--collect-media))
+              (media-processed (gptel--ollama-parse-multipart media-list)))
+    (cl-callf (lambda (images)
+                (vconcat (plist-get media-processed :images)
+                         images))
+        (plist-get (car prompts) :images))))
 
 ;;;###autoload
 (cl-defun gptel-make-ollama

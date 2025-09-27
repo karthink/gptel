@@ -346,50 +346,50 @@ For the meanings of the keyword arguments, see `gptel-make-openai'."
           (models
            '((grok-4
               :description "Grok Flagship model"
-              :capabilities '(tool-use json reasoning)
+              :capabilities (tool-use json reasoning)
               :context-window 256
               :input-cost 3
               :output-cost 15)
 
              (grok-code-fast-1
               :description "Fast reasoning model for agentic coding"
-              :capabilities '(tool-use json reasoning)
+              :capabilities (tool-use json reasoning)
               :context-window 256
               :input-cost 0.2
               :output-cost 1.5)
 
              (grok-3
               :description "Grok 3"
-              :capabilities '(tool-use json reasoning)
+              :capabilities (tool-use json reasoning)
               :context-window 131
               :input-cost 3
               :output-cost 15)
 
              (grok-3-fast
               :description "Faster Grok 3"
-              :capabilities '(tool-use json reasoning)
+              :capabilities (tool-use json reasoning)
               :context-window 131
               :input-cost 5
               :output-cost 25)
 
              (grok-3-mini
               :description "Mini Grok 3"
-              :capabilities '(tool-use json reasoning)
+              :capabilities (tool-use json reasoning)
               :context-window 131
               :input-cost 0.3
               :output-cost 0.5)
 
              (grok-3-mini-fast
               :description "Faster mini Grok 3"
-              :capabilities '(tool-use json reasoning)
+              :capabilities (tool-use json reasoning)
               :context-window 131072
               :input-cost 0.6
               :output-cost 4)
 
              (grok-2-vision-1212
               :description "Grok 2 Vision"
-              :capabilities '(tool-use json media)
-              :mime-types '("image/jpeg" "image/png" "image/gif" "image/webp")
+              :capabilities (tool-use json media)
+              :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
               :context-window 32768
               :input-cost 2
               :output-cost 10))))

@@ -1113,10 +1113,15 @@ Register a backend with
   :model-region 'apac)
 #+end_src
 
-The Bedrock backend gets your AWS credentials from the environment variables. It expects to find either
-~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~, ~AWS_SESSION_TOKEN~ (optional), or if present, can use ~AWS_PROFILE~ to get these directly from the ~aws~ cli.
+AWS has numerous credential provisions; we follow this order precedence,
+- (argument) ~:aws-bearer-token~
+- (env. variable) ~AWS_BEARER_TOKEN_BEDROCK~
+- (argument) ~:aws-profile~
+  If this option is specified, the Bedrock-backend uses the shared AWS config and credentials files to obtain credentials based on the AWS Profile selected. If ~:aws-profile~ is set to the keyword ~:static~, the IAM credentials are imported without a profile argument.
+- (env. varible) ~AWS_PROFILE~
+- (env. varible) ~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~ and ~AWS_SESSION_TOKEN~
 
-NOTE: The Bedrock backend needs curl >= 8.5 in order for the sigv4 signing to work properly,
+NOTE: Unless ~AWS_BEARER_TOKEN_BEDROCK~ token is used, the Bedrock backend needs curl >= 8.9 in order for the sigv4 signing to work properly,
 https://github.com/curl/curl/issues/11794
 
 An error will be signalled if ~gptel-curl~ is ~NIL~.
@@ -1134,6 +1139,8 @@ The above code makes the backend available to select.  If you want it to be the 
       (gptel-make-bedrock "AWS"
         ;; optionally enable streaming
         :stream t
+        ;; optionally specify the aws profile
+        ;; :profile
         :region "ap-northeast-1"
         ;; subset of gptel--bedrock-models
         :models '(claude-sonnet-4-20250514)
@@ -1384,7 +1391,7 @@ By default, files in a version control system that are not project files ("gitig
 
 *** Handle "reasoning" content
 
-Some LLMs include in their response a "thinking" or "reasoning" block.  This text improves the quality of the LLM’s final output, but may not be interesting to you by itself.  You can decide how you would like this "reasoning" content to be handled by gptel by setting the user option =gptel-include-reasoning=.  You can include it in the LLM response (the default), omit it entirely, include it in the buffer but ignore it on subsequent conversation turns, or redirect it to another buffer.  As with most options, you can specify this behvaior from gptel's transient menu globally, buffer-locally or for the next request only.
+Some LLMs include in their response a "thinking" or "reasoning" block.  This text improves the quality of the LLM’s final output, but may not be interesting to you by itself.  You can decide how you would like this "reasoning" content to be handled by gptel by setting the user option =gptel-include-reasoning=.  You can include it in the LLM response (the default), omit it entirely, include it in the buffer but ignore it on subsequent conversation turns, or redirect it to another buffer.  As with most options, you can specify this behavior from gptel's transient menu globally, buffer-locally or for the next request only.
 
 When included with the response, reasoning content will be delimited by Org blocks or markdown backticks.
 

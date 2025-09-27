@@ -572,25 +572,26 @@ which see for BEG, END and PRE."
                                 'mouse-face 'highlight
                                 'help-echo "System message for session"))
                               (context
-                               (and gptel-context--alist
-                                (cl-loop for entry in gptel-context--alist
-                                 if (bufferp (car entry)) count it into bufs
-                                 else count (stringp (car entry)) into files
-                                 finally return
-                                 (propertize
-                                  (buttonize
-                                   (concat "[Context: "
-                                    (and (> bufs 0) (format "%d buf" bufs))
-                                    (and (> bufs 1) "s")
-                                    (and (> bufs 0) (> files 0) ", ")
-                                    (and (> files 0) (format "%d file" files))
-                                    (and (> files 1) "s")
-                                    "]")
-                                   (lambda (&rest _)
-                                     (require 'gptel-context)
-                                     (gptel-context--buffer-setup)))
-                                  'mouse-face 'highlight
-                                  'help-echo "Active gptel context"))))
+                               (and gptel-context
+                                    (cl-loop
+                                     for entry in gptel-context
+                                     if (bufferp (or (car-safe entry) entry)) count it into bufs
+                                     else count (stringp (or (car-safe entry) entry)) into files
+                                     finally return
+                                     (propertize
+                                      (buttonize
+                                       (concat "[Context: "
+                                               (and (> bufs 0) (format "%d buf" bufs))
+                                               (and (> bufs 1) "s")
+                                               (and (> bufs 0) (> files 0) ", ")
+                                               (and (> files 0) (format "%d file" files))
+                                               (and (> files 1) "s")
+                                               "]")
+                                       (lambda (&rest _)
+                                         (require 'gptel-context)
+                                         (gptel-context--buffer-setup)))
+                                      'mouse-face 'highlight
+                                      'help-echo "Active gptel context"))))
                               (toggle-track-media
                                (lambda (&rest _)
                                  (setq-local gptel-track-media
