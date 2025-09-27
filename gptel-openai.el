@@ -496,33 +496,19 @@ format."
    into parts-array
    finally return (vconcat parts-array)))
 
-;; TODO: Does this need to be a generic function?
-(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-openai) prompts
-                                       &optional inject-media)
-  "Wrap the last user prompt in PROMPTS with the context string.
+(cl-defmethod gptel--inject-media ((_backend gptel-openai) prompts)
+  "Wrap the first user prompt in PROMPTS with included media files.
 
-If INJECT-MEDIA is non-nil wrap it with base64-encoded media
-files in the context."
-  (if inject-media
-      ;; Wrap the first user prompt with included media files/contexts
-      (when-let* ((media-list (gptel-context--collect-media)))
-        (cl-callf (lambda (current)
-                    (vconcat
-                     (gptel--openai-parse-multipart media-list)
-                     (cl-typecase current
-                       (string `((:type "text" :text ,current)))
-                       (vector current)
-                       (t current))))
-            (plist-get (car prompts) :content)))
-    ;; Wrap the last user prompt with included text contexts
+Media files, if present, are placed in `gptel-context'."
+  (when-let* ((media-list (gptel-context--collect-media)))
     (cl-callf (lambda (current)
-                (cl-etypecase current
-                  (string (gptel-context--wrap current))
-                  (vector (if-let* ((wrapped (gptel-context--wrap nil)))
-                              (vconcat `((:type "text" :text ,wrapped))
-                                       current)
-                            current))))
-        (plist-get (car (last prompts)) :content))))
+                (vconcat
+                 (gptel--openai-parse-multipart media-list)
+                 (cl-typecase current
+                   (string `((:type "text" :text ,current)))
+                   (vector current)
+                   (t current))))
+        (plist-get (car prompts) :content))))
 
 ;;;###autoload
 (cl-defun gptel-make-openai
