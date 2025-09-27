@@ -1486,7 +1486,7 @@ implementation, used by OpenAI-compatible APIs and Ollama."
 This will be injected into the messages list in the prompt to
 send to the LLM.")
 
-;; FIXME(fsm) unify this with `gptel--wrap-user-prompt', which is a mess
+;; FIXME(fsm) unify this with `gptel--inject-media', which is a mess
 (cl-defgeneric gptel--inject-prompt
     (_backend data new-prompt &optional _position)
   "Append NEW-PROMPT to existing prompts in query DATA.
@@ -2011,7 +2011,7 @@ Initiate the request when done."
         ;; TODO(augment): Find a way to do this in the prompt-buffer?
         (when (and gptel-context--alist gptel-use-context
                    gptel-track-media (gptel--model-capable-p 'media))
-          (gptel--wrap-user-prompt gptel-backend full-prompt 'media))
+          (gptel--inject-media gptel-backend full-prompt))
         (unless stream (cl-remf info :stream))
         (plist-put info :backend gptel-backend)
         (when gptel-include-reasoning   ;Required for next-request-only scope
@@ -2211,7 +2211,7 @@ for inclusion into the user prompt for the gptel request."
       (push (list :text (buffer-substring-no-properties from-pt end)) parts))
     (nreverse parts)))
 
-(cl-defgeneric gptel--wrap-user-prompt (backend _prompts)
+(cl-defgeneric gptel--inject-media (backend _prompts)
   "Wrap the last prompt in PROMPTS with gptel's context.
 
 PROMPTS is a structure as returned by `gptel--parse-buffer'.

@@ -136,31 +136,13 @@ Assumes this is a conversation with alternating roles."
            (list :role (if role "user" "assistant")
                  :content `[(:text ,text)])))
 
-(cl-defmethod gptel--wrap-user-prompt ((_backend gptel-bedrock) prompts &optional inject-media)
-  "Inject context into a conversation.
+(cl-defmethod gptel--inject-media ((_backend gptel-bedrock) prompts)
+  "Wrap the first user prompt in PROMPTS with included media files.
 
-PROMPTS is list of prompt objects.  If INJECT-MEDIA is non-nil
-inject the media files from context into the beginning of the
-conversation; otherwise inject the context into the last prompt."
-  (if inject-media
-      (gptel-bedrock--inject-media-context prompts)
-    (gptel-bedrock--inject-text-context prompts)))
-
-(defun gptel-bedrock--inject-media-context (prompts)
-  "Inject media files from context into a conversation.
-Media files will be added at the beginning of the conversation.
-PROMPTS should be a non-empty list of prompt objects."
+Media files, if present, are placed in `gptel-context--alist'."
   (when-let* ((media-list (gptel-context--collect-media)))
     (cl-callf2 vconcat (gptel-bedrock--parse-multipart media-list)
                (plist-get (car prompts) :content))))
-
-(defun gptel-bedrock--inject-text-context (prompts)
-  "Inject text context into the last prompt object from a conversation.
-PROMPTS should be a non-empty list of prompt objects."
-  (cl-assert prompts nil "Expected a non-empty list of prompts")
-  (when-let* ((wrapped (gptel-context--wrap nil)))
-    (cl-callf2 vconcat `[(:text ,wrapped)]
-               (plist-get (car (last prompts)) :content))))
 
 (defvar-local gptel-bedrock--stream-cursor nil
   "Marker to indicate last point parsed.")
