@@ -699,6 +699,9 @@ reasoning text will be inserted at the end of that buffer."
           (const :tag "Include but ignore" ignore)
           (string :tag "Include in buffer")))
 
+(define-obsolete-variable-alias 'gptel-context--alist 'gptel-context
+  "0.9.9.3")
+
 (defcustom gptel-context nil
   "List of gptel's context sources.
 
@@ -708,7 +711,7 @@ queries as additional context.
 Each entry can be a file path (string) or a buffer (object, not buffer
 name):
 
- '(\"~/path/to/file1\"
+ \\='(\"~/path/to/file1\"
    \"./file2\"
    #<buffer *scratch*>
    ...)
@@ -733,7 +736,8 @@ keys may be implemented in the future.
 Usage of context commands (such as `gptel-add' and `gptel-add-file')
 will modify this variable.  You can also set this variable
 buffer-locally, or let-bind it around calls to gptel queries, or via
-gptel presets.")
+gptel presets."
+  :type '(repeat string))
 
 (defvar gptel--request-alist nil
   "Alist of active gptel requests.
