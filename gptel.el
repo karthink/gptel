@@ -573,9 +573,10 @@ which see for BEG, END and PRE."
                                 'help-echo "System message for session"))
                               (context
                                (and gptel-context--alist
-                                (cl-loop for entry in gptel-context--alist
-                                 if (bufferp (car entry)) count it into bufs
-                                 else count (stringp (car entry)) into files
+                                (cl-loop
+                                 for entry in gptel-context--alist
+                                 if (bufferp (or (car-safe entry) entry)) count it into bufs
+                                 else count (stringp (or (car-safe entry) entry)) into files
                                  finally return
                                  (propertize
                                   (buttonize

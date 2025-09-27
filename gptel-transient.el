@@ -390,13 +390,13 @@ which see."
 (defun gptel--describe-infix-context ()
   (if (null gptel-context--alist) "Context"
     (pcase-let*
-        ((contexts (gptel-context--collect))
-         (buffer-count (length contexts))
+        ((buffer-count (length gptel-context--alist))
          (`(,file-count ,ov-count)
           (if (> buffer-count 0)
-              (cl-loop for (buf-file . ovs) in contexts
+              (cl-loop for entry in gptel-context--alist
+                       for (buf-file . ovs) = (ensure-list entry)
                        if (bufferp buf-file)
-                       sum (length ovs) into ov-count
+                       sum (if ovs (length ovs) 1) into ov-count
                        else count (stringp buf-file) into file-count
                        finally return (list file-count ov-count))
             (list 0 0))))

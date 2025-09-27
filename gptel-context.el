@@ -74,15 +74,15 @@ Synchronous: An alist of contexts with buffers or files (the context
 alist).
 Asynchronous: A callback to call with the result, and the context alist.
 
-The context alist is structured as follows:
+Entries in the context alist can have one of these forms:
 
- ((buffer1 . (overlay1 overlay2)
-  (\"path/to/file\")
-  (buffer2 . (overlay3 overlay4 overlay5))
-  (\"path/to/image/file\" :mime \"image/jpeg\")))
+ (buffer1 overlay1 overlay2 ...)             ;text overlays in a buffer
+ (buffer2)                                   ;a buffer object
+ (\"/path/to/file\")                         ;a text file
+ (\"/path/to/file\" :mime \"text/markdown\") ;with explicit mime type
+ (\"/path/to/image\" :mime \"image/jpeg\")   ;media file
 
-Each gptel \"context\" is either a file path or an overlay in a
-buffer.  Each overlay covers a buffer region containing the
+Each overlay covers a buffer region containing the
 context chunk.  This is accessible as, for example:
 
  (with-current-buffer buffer1
@@ -298,7 +298,7 @@ If CONTEXT is nil, removes the context at point.
 If selection is active, removes all contexts within selection.
 If CONTEXT is a directory, recursively removes all files in it."
   (cond
-   ((overlayp context)
+   ((overlayp context)                  ;Overlay in buffer
     (delete-overlay context)
     ;; FIXME: Quadratic cost when clearing a bunch of contexts at once
     (unless
@@ -306,17 +306,19 @@ If CONTEXT is a directory, recursively removes all files in it."
          for ov in (alist-get (current-buffer) gptel-context--alist)
          thereis (overlay-start ov))
       (setf (alist-get (current-buffer) gptel-context--alist nil 'remove) nil)))
+   ((bufferp context)                   ;Full buffer
+    (setf (alist-get context gptel-context--alist nil 'remove) nil))
    ((stringp context)                   ;file or directory
     (if (file-directory-p context)
         (gptel-context--add-directory context 'remove)
       (setf (alist-get context gptel-context--alist nil 'remove #'equal) nil)
       (message "File \"%s\" removed from context." context)))
-   ((region-active-p)
+   ((region-active-p)                   ;Overlays in region
     (when-let* ((contexts (gptel-context--in-region (current-buffer)
                                                     (region-beginning)
                                                     (region-end))))
       (cl-loop for ctx in contexts do (delete-overlay ctx))))
-   (t
+   (t                                   ;Anything at point
     (when-let* ((ctx (gptel-context--at-point)))
       (delete-overlay ctx)))))
 
@@ -330,8 +332,9 @@ afterwards."
       (when verbose (message "No gptel context sources to remove."))
     (when (or (not verbose) (y-or-n-p "Remove all context? "))
       (cl-loop
-       for (source . ovs) in gptel-context--alist
-       if (bufferp source) do           ;Buffers and buffer regions
+       for context in gptel-context--alist
+       for (source . ovs) = (ensure-list context)
+       if (cl-every #'overlayp ovs) do           ;Buffers and buffer regions
        (mapc #'gptel-context-remove ovs)
        else do (gptel-context-remove source) ;files or other types
        finally do (setq gptel-context--alist nil)))
@@ -409,7 +412,7 @@ This modifies the buffer."
 CONTEXTS, which are typically paths to binary files, are
 base64-encoded and prepended to the first user prompt."
   (cl-loop for context in (or contexts gptel-context--alist)
-           for (path . props) = context
+           for (path . props) = (ensure-list context)
            when (and (stringp path) (plist-get props :mime))
            collect (cons :media context)))
 
@@ -439,55 +442,65 @@ START and END signify the region delimiters."
 
 ;;;###autoload
 (defun gptel-context--collect ()
-  "Get the list of all active context overlays."
-  ;; Get only the non-degenerate overlays, collect them, and update the overlays variable.
-  (setq gptel-context--alist
-        (cl-loop for (buf . ovs) in gptel-context--alist
-                 if (buffer-live-p buf)
-                   if (cl-loop for ov in ovs when (overlay-start ov) collect ov)
-                   collect (cons buf it) into elements
-                   end
-                 else if (and (stringp buf) (file-exists-p buf))
-                 if (plist-get ovs :mime)
-                 collect (cons buf ovs) into elements
-                 else collect (list buf) into elements
-                 finally return elements)))
+  "Get the list of all active context sources.
 
-(defun gptel-context--insert-buffer-string (buffer contexts)
-  "Insert at point a context string from all CONTEXTS in BUFFER."
+Ignore overlays, buffers and files that are not live or readable."
+  ;; Get only the non-degenerate overlays, collect them, and update the overlays variable.
+  (let ((res))
+    (dolist (entry gptel-context--alist)
+      (pcase entry                      ;Context entry is:
+        (`(,buf . ,ovs)
+         (cond
+          ((buffer-live-p buf)          ;Overlay(s) in a buffer
+           (if-let* ((live-ovs (cl-loop for ov in ovs
+                                        when (overlay-start ov)
+                                        collect ov)))
+               (push (cons buf live-ovs) res)))
+          ((and (stringp buf) (file-readable-p buf))
+           (push (cons buf ovs) res)))) ;A file list with (maybe) a mimetype
+
+        ((and (pred stringp) (pred file-readable-p)) ;Just a file, figure out mimetype
+         (push `(,entry ,@(and (gptel--file-binary-p entry)
+                               (list :mime (mailcap-file-name-to-mime-type entry))))
+               res))
+        ((pred buffer-live-p) (push (list entry) res)))) ;Just a buffer
+    (nreverse res)))
+
+(defun gptel-context--insert-buffer-string (buffer overlays)
+  "Insert at point a context string from all OVERLAYS in BUFFER.
+
+If OVERLAYS is nil add the entire buffer text."
     (let ((is-top-snippet t)
           (previous-line 1))
       (insert (format "In buffer `%s`:" (buffer-name buffer))
               "\n\n```" (gptel--strip-mode-suffix (buffer-local-value
                                                    'major-mode buffer))
               "\n")
-      (dolist (context contexts)
-        (let* ((start (overlay-start context))
-               (end (overlay-end context))
-               content)
-          (let (lineno column)
-            (with-current-buffer buffer
-              (without-restriction
-                (setq lineno (line-number-at-pos start t)
-                      column (save-excursion (goto-char start)
-                                             (current-column))
-                      content (buffer-substring-no-properties start end))))
-            ;; We do not need to insert a line number indicator if we have two regions
-            ;; on the same line, because the previous region should have already put the
-            ;; indicator.
-            (unless (= previous-line lineno)
-              (unless (= lineno 1)
-                (unless is-top-snippet
-                  (insert "\n"))
-                (insert (format "... (Line %d)\n" lineno))))
-            (setq previous-line lineno)
-            (unless (zerop column) (insert " ..."))
-            (if is-top-snippet
-                (setq is-top-snippet nil)
-              (unless (= previous-line lineno) (insert "\n"))))
-          (insert content)))
-      (unless (>= (overlay-end (car (last contexts))) (point-max))
-        (insert "\n..."))
+      (if (not overlays)
+          (insert-buffer-substring-no-properties buffer)
+        (dolist (context overlays)
+          (let* ((start (overlay-start context))
+                 (end (overlay-end context)))
+            (let (lineno column)
+              (with-current-buffer buffer
+                (without-restriction
+                  (setq lineno (line-number-at-pos start t)
+                        column (save-excursion (goto-char start) (current-column)))))
+              ;; We do not need to insert a line number indicator if we have two regions
+              ;; on the same line, because the previous region should have already put the
+              ;; indicator.
+              (unless (= previous-line lineno)
+                (unless (= lineno 1)
+                  (unless is-top-snippet (insert "\n"))
+                  (insert (format "... (Line %d)\n" lineno))))
+              (setq previous-line lineno)
+              (unless (zerop column) (insert " ..."))
+              (if is-top-snippet
+                  (setq is-top-snippet nil)
+                (unless (= previous-line lineno) (insert "\n"))))
+            (insert-buffer-substring-no-properties buffer start end)))
+        (unless (>= (overlay-end (car (last overlays))) (point-max))
+          (insert "\n...")))
       (insert "\n```")))
 
 (defun gptel-context--string (context-alist)
@@ -496,10 +509,12 @@ START and END signify the region delimiters."
 Returns a string.  CONTEXT-ALIST is a structure containing
 context overlays, see `gptel-context--alist'."
   (with-temp-buffer
-    (cl-loop for (buf . ovs) in context-alist
+    (cl-loop for entry in context-alist
+             for (buf . ovs) = (ensure-list entry)
              if (bufferp buf)
              do (gptel-context--insert-buffer-string buf ovs)
-             else if (not (plist-get ovs :mime))
+             else if (or (not (plist-get ovs :mime))
+                         (string-match-p "^text/" (plist-get ovs :mime)))
              do (gptel--insert-file-string buf) end
              do (insert "\n\n")
              finally do
@@ -544,50 +559,59 @@ context overlays, see `gptel-context--alist'."
               "\\[gptel-context-quit]: cancel, "
               "\\[quit-window]: quit")))
       (save-excursion
-        (let ((contexts gptel-context--alist))
-          (if (length> contexts 0)
-              (let (beg ov l1 l2)
-                (pcase-dolist (`(,buf . ,ovs) contexts)
-                  (if (bufferp buf)
-                      ;; It's a buffer with some overlay(s)
-                      (dolist (source-ov ovs)
-                        (with-current-buffer buf
-                          (setq l1 (line-number-at-pos (overlay-start source-ov))
-                                l2 (line-number-at-pos (overlay-end source-ov))))
-                        (insert (propertize (format "In buffer %s (lines %d-%d):\n\n"
-                                                    (buffer-name buf) l1 l2)
+        (let ((contexts (gptel-context--collect)))
+          (if (length= contexts 0)
+              (insert "There are no active gptel contexts.")
+            (let (beg ov l1 l2)
+              (pcase-dolist (`(,buf . ,ovs) contexts)
+                (cond
+                 ((bufferp buf)
+                  (if (not ovs)     ;BUF is a full buffer, not specific overlays
+                      (progn
+                        (insert (propertize (format "In buffer %s:\n\n"
+                                                    (buffer-name buf))
                                             'face 'bold))
                         (setq beg (point))
-                        (insert-buffer-substring
-                         buf (overlay-start source-ov) (overlay-end source-ov))
+                        (insert-buffer-substring buf)
                         (insert "\n")
-                        (setq ov (make-overlay beg (point)))
-                        (overlay-put ov 'gptel-context source-ov)
-                        (overlay-put ov 'gptel-overlay t)
-                        (overlay-put ov 'evaporate t)
-                        (insert "\n" (make-separator-line) "\n"))
-                    ;; BUF is a file path, not a buffer
-                    (insert (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
-                                        'face 'bold))
-                    (setq beg (point))
-                    (if-let* ((mime (plist-get ovs :mime)))
-                        ;; BUF is a binary file
-                        (if-let* (((string-match-p (image-file-name-regexp) buf))
-                                  (img (create-image buf)))
-                            (insert-image img "*") ; Can be displayed
-                          (insert
-                           buf " " (propertize "(No preview for binary file)"
-                                               'face '(:inherit shadow :slant italic))))
-                      (insert-file-contents buf))
-                    (goto-char (point-max))
-                    (insert "\n")
-                    (setq ov (make-overlay beg (point)))
-                    (overlay-put ov 'gptel-context buf)
-                    (overlay-put ov 'gptel-overlay t)
-                    (overlay-put ov 'evaporate t)
-                    (insert "\n" (make-separator-line) "\n")))
-                (goto-char (point-min)))
-            (insert "There are no active gptel contexts.")))))
+                        (setq ov (make-overlay beg (point))))
+                    (dolist (source-ov ovs) ;BUF is a buffer with some overlay(s)
+                      (with-current-buffer buf
+                        (setq l1 (line-number-at-pos (overlay-start source-ov))
+                              l2 (line-number-at-pos (overlay-end source-ov))))
+                      (insert (propertize (format "In buffer %s (lines %d-%d):\n\n"
+                                                  (buffer-name buf) l1 l2)
+                                          'face 'bold))
+                      (setq beg (point))
+                      (insert-buffer-substring
+                       buf (overlay-start source-ov) (overlay-end source-ov))
+                      (insert "\n")
+                      (setq ov (make-overlay beg (point)))
+                      (overlay-put ov 'gptel-context source-ov)))
+                  (overlay-put ov 'gptel-overlay t)
+                  (overlay-put ov 'evaporate t)
+                  (insert "\n" (make-separator-line) "\n"))
+                 (t                     ;BUF is a file path, not a buffer
+                  (insert (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
+                                      'face 'bold))
+                  (setq beg (point))
+                  (if-let* ((mime (plist-get ovs :mime))
+                            ((not (string-match-p "^text/" mime)))) ;BUF is a binary file
+                      (if-let* (((string-match-p (image-file-name-regexp) buf))
+                                (img (create-image buf)))
+                          (insert-image img "*") ; Can be displayed
+                        (insert
+                         buf " " (propertize "(No preview for binary file)"
+                                             'face '(:inherit shadow :slant italic))))
+                    (insert-file-contents buf))
+                  (goto-char (point-max))
+                  (insert "\n")
+                  (setq ov (make-overlay beg (point)))
+                  (overlay-put ov 'gptel-context buf)
+                  (overlay-put ov 'gptel-overlay t)
+                  (overlay-put ov 'evaporate t)
+                  (insert "\n" (make-separator-line) "\n"))))
+              (goto-char (point-min)))))))
     (display-buffer (current-buffer)
                     `((display-buffer-reuse-window
                        display-buffer-reuse-mode-window
@@ -702,7 +726,10 @@ If non-nil, indicates backward movement.")
                              (overlay-get ov 'gptel-context)))
                           (overlays-in (point-min) (point-max))))))
     (mapc #'gptel-context-remove deletion-marks)
-    (gptel-context--collect)           ;Update contexts and revert buffer (#482)
+    ;; FIXME(context): This should run in the buffer from which the context
+    ;; inspection buffer was visited.
+    ;; Update contexts and revert buffer (#482)
+    (setq gptel-context--alist (gptel-context--collect))
     (revert-buffer))
   (gptel-context-quit))
 
