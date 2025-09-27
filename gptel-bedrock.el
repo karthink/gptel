@@ -481,7 +481,8 @@ conversation."
 (defun gptel-bedrock--fetch-aws-profile-credentials (profile &optional clear-cache)
   "Fetch & cache AWS credentials for PROFILE using aws-cli.
 
-If PROFILE is the keyword ':static', then it fetches IAM credentials from the aws-cli without any profile argument.
+If PROFILE is the keyword ':static', then it fetches IAM credentials
+from the aws-cli without any profile argument.
 
 Non-nil CLEAR-CACHE will refresh credentials."
   (let* ((creds-json
@@ -580,7 +581,8 @@ REGION is one of apac, eu or us."
 (defun gptel-bedrock--curl-args (region profile bearer-token)
   "Generate the curl arguments to get a bedrock request signed for use in REGION.
 
-PROFILE specifies the aws profile to use for aws configure export-credentials."
+PROFILE specifies the aws profile to use for aws configure
+export-credentials.  BEARER-TOKEN is the token used for authentication."
   (let ((bearer-token (or bearer-token (getenv "AWS_BEARER_TOKEN_BEDROCK")))
         (output-args (unless (memq system-type '(windows-nt ms-dos))
                        '("--output" "/dev/stdout"))))
