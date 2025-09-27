@@ -483,7 +483,7 @@ format."
 (cl-defmethod gptel--inject-media ((_backend gptel-anthropic) prompts)
   "Wrap the first user prompt in PROMPTS with included media files.
 
-Media files, if present, are placed in `gptel-context--alist'."
+Media files, if present, are placed in `gptel-context'."
   (when-let* ((media-list (gptel-context--collect-media)))
     (cl-callf (lambda (current)
                 (vconcat
@@ -494,7 +494,7 @@ Media files, if present, are placed in `gptel-context--alist'."
                    (t current))))
         (plist-get (car prompts) :content))))
 
-;; (if-let* ((context-string (gptel-context--string gptel-context--alist)))
+;; (if-let* ((context-string (gptel-context--string gptel-context)))
 ;;     (cl-callf (lambda (previous)
 ;;                 (cl-typecase previous
 ;;                   (string (concat context-string previous))

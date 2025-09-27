@@ -245,7 +245,7 @@ format."
 (cl-defmethod gptel--inject-media ((_backend gptel-ollama) prompts)
   "Wrap the first user prompt in PROMPTS with included media files.
 
-Media files, if present, are placed in `gptel-context--alist'."
+Media files, if present, are placed in `gptel-context'."
   (when-let* ((media-list (gptel-context--collect-media))
               (media-processed (gptel--ollama-parse-multipart media-list)))
     (cl-callf (lambda (images)

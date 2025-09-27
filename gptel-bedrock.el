@@ -139,7 +139,7 @@ Assumes this is a conversation with alternating roles."
 (cl-defmethod gptel--inject-media ((_backend gptel-bedrock) prompts)
   "Wrap the first user prompt in PROMPTS with included media files.
 
-Media files, if present, are placed in `gptel-context--alist'."
+Media files, if present, are placed in `gptel-context'."
   (when-let* ((media-list (gptel-context--collect-media)))
     (cl-callf2 vconcat (gptel-bedrock--parse-multipart media-list)
                (plist-get (car prompts) :content))))

@@ -499,7 +499,7 @@ format."
 (cl-defmethod gptel--inject-media ((_backend gptel-openai) prompts)
   "Wrap the first user prompt in PROMPTS with included media files.
 
-Media files, if present, are placed in `gptel-context--alist'."
+Media files, if present, are placed in `gptel-context'."
   (when-let* ((media-list (gptel-context--collect-media)))
     (cl-callf (lambda (current)
                 (vconcat

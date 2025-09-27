@@ -210,7 +210,7 @@ context."
 
 (defun gptel-context--add-text-file (path)
   "Add text file at PATH to context."
-  (cl-pushnew (list path) gptel-context--alist :test #'equal)
+  (cl-pushnew (list path) gptel-context :test #'equal)
   (message "File \"%s\" added to context." path)
   path)
 
@@ -222,7 +222,7 @@ Return PATH if added, nil if ignored."
             ((gptel--model-mime-capable-p mime)))
       (prog1 path
         (cl-pushnew (list path :mime mime)
-                    gptel-context--alist :test #'equal)
+                    gptel-context :test #'equal)
         (message "File \"%s\" added to context." path))
     (message "Ignoring unsupported binary file \"%s\"." path)
     nil))
@@ -234,7 +234,7 @@ ACTION should be either `add' or `remove'."
     (pcase-exhaustive action
       ('add (gptel-context-add-file file))
       ('remove
-       (setf (alist-get file gptel-context--alist nil 'remove #'equal) nil)))))
+       (setf (alist-get file gptel-context nil 'remove #'equal) nil)))))
 
 (defun gptel-context-add-file (path)
   "Add the file at PATH to the gptel context.
@@ -303,15 +303,15 @@ If CONTEXT is a directory, recursively removes all files in it."
     ;; FIXME: Quadratic cost when clearing a bunch of contexts at once
     (unless
         (cl-loop
-         for ov in (alist-get (current-buffer) gptel-context--alist)
+         for ov in (alist-get (current-buffer) gptel-context)
          thereis (overlay-start ov))
-      (setf (alist-get (current-buffer) gptel-context--alist nil 'remove) nil)))
+      (setf (alist-get (current-buffer) gptel-context nil 'remove) nil)))
    ((bufferp context)                   ;Full buffer
-    (setf (alist-get context gptel-context--alist nil 'remove) nil))
+    (setf (alist-get context gptel-context nil 'remove) nil))
    ((stringp context)                   ;file or directory
     (if (file-directory-p context)
         (gptel-context--add-directory context 'remove)
-      (setf (alist-get context gptel-context--alist nil 'remove #'equal) nil)
+      (setf (alist-get context gptel-context nil 'remove #'equal) nil)
       (message "File \"%s\" removed from context." context)))
    ((region-active-p)                   ;Overlays in region
     (when-let* ((contexts (gptel-context--in-region (current-buffer)
@@ -328,16 +328,16 @@ If CONTEXT is a directory, recursively removes all files in it."
 If VERBOSE is non-nil, ask for confirmation and message
 afterwards."
   (interactive (list t))
-  (if (null gptel-context--alist)
+  (if (null gptel-context)
       (when verbose (message "No gptel context sources to remove."))
     (when (or (not verbose) (y-or-n-p "Remove all context? "))
       (cl-loop
-       for context in gptel-context--alist
+       for context in gptel-context
        for (source . ovs) = (ensure-list context)
        if (cl-every #'overlayp ovs) do           ;Buffers and buffer regions
        (mapc #'gptel-context-remove ovs)
        else do (gptel-context-remove source) ;files or other types
-       finally do (setq gptel-context--alist nil)))
+       finally do (setq gptel-context nil)))
     (when verbose (message "Removed all gptel context sources."))))
 
 ;;; Context wrap
@@ -350,7 +350,7 @@ ADVANCE controls the overlay boundary behavior."
     (overlay-put overlay 'face 'gptel-context-highlight-face)
     (overlay-put overlay 'gptel-context t)
     (push overlay (alist-get (current-buffer)
-                             gptel-context--alist))
+                             gptel-context))
     overlay))
 
 ;;;###autoload
@@ -411,7 +411,7 @@ This modifies the buffer."
 
 CONTEXTS, which are typically paths to binary files, are
 base64-encoded and prepended to the first user prompt."
-  (cl-loop for context in (or contexts gptel-context--alist)
+  (cl-loop for context in (or contexts gptel-context)
            for (path . props) = (ensure-list context)
            when (and (stringp path) (plist-get props :mime))
            collect (cons :media context)))
@@ -447,7 +447,7 @@ START and END signify the region delimiters."
 Ignore overlays, buffers and files that are not live or readable."
   ;; Get only the non-degenerate overlays, collect them, and update the overlays variable.
   (let ((res))
-    (dolist (entry gptel-context--alist)
+    (dolist (entry gptel-context)
       (pcase entry                      ;Context entry is:
         (`(,buf . ,ovs)
          (cond
@@ -507,7 +507,7 @@ If OVERLAYS is nil add the entire buffer text."
   "Format the aggregated gptel context as annotated markdown fragments.
 
 Returns a string.  CONTEXT-ALIST is a structure containing
-context overlays, see `gptel-context--alist'."
+context overlays, see `gptel-context'."
   (with-temp-buffer
     (cl-loop for entry in context-alist
              for (buf . ovs) = (ensure-list entry)
@@ -729,7 +729,7 @@ If non-nil, indicates backward movement.")
     ;; FIXME(context): This should run in the buffer from which the context
     ;; inspection buffer was visited.
     ;; Update contexts and revert buffer (#482)
-    (setq gptel-context--alist (gptel-context--collect))
+    (setq gptel-context (gptel-context--collect))
     (revert-buffer))
   (gptel-context-quit))
 

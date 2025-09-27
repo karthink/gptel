@@ -388,12 +388,12 @@ which see."
     gptel--crowdsourced-prompts))
 
 (defun gptel--describe-infix-context ()
-  (if (null gptel-context--alist) "Context"
+  (if (null gptel-context) "Context"
     (pcase-let*
-        ((buffer-count (length gptel-context--alist))
+        ((buffer-count (length gptel-context))
          (`(,file-count ,ov-count)
           (if (> buffer-count 0)
-              (cl-loop for entry in gptel-context--alist
+              (cl-loop for entry in gptel-context
                        for (buf-file . ovs) = (ensure-list entry)
                        if (bufferp buf-file)
                        sum (if ovs (length ovs) 1) into ov-count
@@ -443,8 +443,8 @@ which see."
                                    (concat (pth "buffer ") (ptv (substring s 1)))))
                             args))))
       (setq context
-            (and gptel-context--alist
-                 (let ((lc (length gptel-context--alist)))
+            (and gptel-context
+                 (let ((lc (length gptel-context)))
                    (concat (pth " along with ") (ptv (format "%d" lc))
                            (pth (concat " context source" (and (/= lc 1) "s")))))))
       (cond ((member "m" args)
@@ -1357,7 +1357,7 @@ supports.  See `gptel-track-media' for more information."
 
 (transient-define-suffix gptel--infix-context-remove-all ()
   "Clear gptel's context."
-  :if (lambda () gptel-context--alist)
+  :if (lambda () gptel-context)
   :transient 'transient--do-stay
   :key "-d"
   :description "Remove all"
@@ -1917,7 +1917,7 @@ whether the action is confirmed/cancelled."
   "Display all contexts from all buffers & files."
   :transient 'transient--do-exit
   :key " C"
-  :if (lambda () gptel-context--alist)
+  :if (lambda () gptel-context)
   :description "Inspect context"
   (interactive)
   (gptel-context--buffer-setup))

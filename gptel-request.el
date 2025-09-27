@@ -699,13 +699,41 @@ reasoning text will be inserted at the end of that buffer."
           (const :tag "Include but ignore" ignore)
           (string :tag "Include in buffer")))
 
-(defvar gptel-context--alist nil
+(defcustom gptel-context nil
   "List of gptel's context sources.
 
-Each entry is of the form
- (buffer . (overlay1 overlay2 ...))
-or
- (\"path/to/file\").")
+The items in this list (file names or buffers) are included with gptel
+queries as additional context.
+
+Each entry can be a file path (string) or a buffer (object, not buffer
+name):
+
+ '(\"~/path/to/file1\"
+   \"./file2\"
+   #<buffer *scratch*>
+   ...)
+
+You can also specify context sources with more detail.  Overlay regions
+in buffers can be specified as
+
+  (buf ov1 ov2 ...)
+
+where ov1, ov2 are overlays.  In this case the text of the overlay
+regions is sent instead of the text of the entire buffer.
+
+Instead of as a string, file paths can also be specified along with
+their MIME-types:
+
+  (\"/path/to/image\" :mime \"image/png\")
+
+gptel tries to guess file MIME types, but is not always successful.
+Additional plist keys (besides :mime) are ignored, but support for more
+keys may be implemented in the future.
+
+Usage of context commands (such as `gptel-add' and `gptel-add-file')
+will modify this variable.  You can also set this variable
+buffer-locally, or let-bind it around calls to gptel queries, or via
+gptel presets.")
 
 (defvar gptel--request-alist nil
   "Alist of active gptel requests.
@@ -932,7 +960,7 @@ content on this line."
   (if (stringp gptel-use-curl) gptel-use-curl "curl"))
 
 (defun gptel--transform-add-context (callback fsm)
-  (if (and gptel-use-context gptel-context--alist)
+  (if (and gptel-use-context gptel-context)
       (gptel-context--wrap callback (plist-get (gptel-fsm-info fsm) :data))
     (funcall callback)))
 
@@ -2009,7 +2037,7 @@ Initiate the request when done."
         ;; irrespective of the preference in `gptel-use-context'.  This is
         ;; because media cannot be included (in general) with system messages.
         ;; TODO(augment): Find a way to do this in the prompt-buffer?
-        (when (and gptel-context--alist gptel-use-context
+        (when (and gptel-context gptel-use-context
                    gptel-track-media (gptel--model-capable-p 'media))
           (gptel--inject-media gptel-backend full-prompt))
         (unless stream (cl-remf info :stream))
