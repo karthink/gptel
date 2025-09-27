@@ -147,8 +147,8 @@ context."
    ;; A region is selected.
    ((use-region-p)
     (gptel-context--add-region (current-buffer)
-                                  (region-beginning)
-                                  (region-end))
+                               (region-beginning)
+                               (region-end))
     (deactivate-mark)
     (message "Current region added as context."))
    ;; If in dired
@@ -170,9 +170,9 @@ context."
 	 (buffer-file-name)
 	 (not (gptel-context--skip-p (buffer-file-name))))
     (funcall (if (and arg (< (prefix-numeric-value arg) 0))
-              #'gptel-context-remove
-              #'gptel-context-add-file)
-          (buffer-file-name)))
+                 #'gptel-context-remove
+               #'gptel-context-add-file)
+             (buffer-file-name)))
    ;; No region is selected, and ARG is positive.
    ((and arg (> (prefix-numeric-value arg) 0))
     (let* ((buffer-name (read-buffer "Choose buffer to add as context: "
@@ -247,7 +247,7 @@ readable as text."
     (run-at-time
      0 nil
      (lambda () (setq gptel-context--reset-cache nil
-                 gptel-context--project-files nil))))
+                      gptel-context--project-files nil))))
   (cond ((file-directory-p path)
          (gptel-context--add-directory path 'add))
         ((gptel-context--skip-p path)
@@ -361,7 +361,7 @@ DATA-BUF is the buffer where the request prompt is constructed."
   (if (= (car (func-arity gptel-context-string-function)) 2)
       (funcall gptel-context-string-function
                (lambda (c) (with-current-buffer data-buf
-                        (gptel-context--wrap-in-buffer c))
+                             (gptel-context--wrap-in-buffer c))
                  (funcall callback))
                (gptel-context--collect))
     (with-current-buffer data-buf
@@ -426,7 +426,7 @@ the beginning and end."
         (gptel-context--in-region buffer region-beginning region-end))
   (prog1 (with-current-buffer buffer
            (gptel-context--make-overlay region-beginning region-end advance))
-      (message "Region added to context buffer.")))
+    (message "Region added to context buffer.")))
 
 (defun gptel-context--in-region (buffer start end)
   "Return the list of context overlays in the given region, if any, in BUFFER.
@@ -470,38 +470,38 @@ Ignore overlays, buffers and files that are not live or readable."
   "Insert at point a context string from all OVERLAYS in BUFFER.
 
 If OVERLAYS is nil add the entire buffer text."
-    (let ((is-top-snippet t)
-          (previous-line 1))
-      (insert (format "In buffer `%s`:" (buffer-name buffer))
-              "\n\n```" (gptel--strip-mode-suffix (buffer-local-value
-                                                   'major-mode buffer))
-              "\n")
-      (if (not overlays)
-          (insert-buffer-substring-no-properties buffer)
-        (dolist (context overlays)
-          (let* ((start (overlay-start context))
-                 (end (overlay-end context)))
-            (let (lineno column)
-              (with-current-buffer buffer
-                (without-restriction
-                  (setq lineno (line-number-at-pos start t)
-                        column (save-excursion (goto-char start) (current-column)))))
-              ;; We do not need to insert a line number indicator if we have two regions
-              ;; on the same line, because the previous region should have already put the
-              ;; indicator.
-              (unless (= previous-line lineno)
-                (unless (= lineno 1)
-                  (unless is-top-snippet (insert "\n"))
-                  (insert (format "... (Line %d)\n" lineno))))
-              (setq previous-line lineno)
-              (unless (zerop column) (insert " ..."))
-              (if is-top-snippet
-                  (setq is-top-snippet nil)
-                (unless (= previous-line lineno) (insert "\n"))))
-            (insert-buffer-substring-no-properties buffer start end)))
-        (unless (>= (overlay-end (car (last overlays))) (point-max))
-          (insert "\n...")))
-      (insert "\n```")))
+  (let ((is-top-snippet t)
+        (previous-line 1))
+    (insert (format "In buffer `%s`:" (buffer-name buffer))
+            "\n\n```" (gptel--strip-mode-suffix (buffer-local-value
+                                                 'major-mode buffer))
+            "\n")
+    (if (not overlays)
+        (insert-buffer-substring-no-properties buffer)
+      (dolist (context overlays)
+        (let* ((start (overlay-start context))
+               (end (overlay-end context)))
+          (let (lineno column)
+            (with-current-buffer buffer
+              (without-restriction
+                (setq lineno (line-number-at-pos start t)
+                      column (save-excursion (goto-char start) (current-column)))))
+            ;; We do not need to insert a line number indicator if we have two regions
+            ;; on the same line, because the previous region should have already put the
+            ;; indicator.
+            (unless (= previous-line lineno)
+              (unless (= lineno 1)
+                (unless is-top-snippet (insert "\n"))
+                (insert (format "... (Line %d)\n" lineno))))
+            (setq previous-line lineno)
+            (unless (zerop column) (insert " ..."))
+            (if is-top-snippet
+                (setq is-top-snippet nil)
+              (unless (= previous-line lineno) (insert "\n"))))
+          (insert-buffer-substring-no-properties buffer start end)))
+      (unless (>= (overlay-end (car (last overlays))) (point-max))
+        (insert "\n...")))
+    (insert "\n```")))
 
 (defun gptel-context--string (context-alist)
   "Format the aggregated gptel context as annotated markdown fragments.
@@ -524,8 +524,8 @@ context overlays, see `gptel-context'."
                (goto-char (point-min))
                (insert "Request context:\n\n"))
              finally return
-              (and (> (buffer-size) 0)
-                   (buffer-string)))))
+             (and (> (buffer-size) 0)
+                  (buffer-string)))))
 
 ;;; Major mode for context inspection buffers
 (defvar-keymap gptel-context-buffer-mode-map
