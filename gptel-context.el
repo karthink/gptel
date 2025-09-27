@@ -109,7 +109,7 @@ context."
 ;;; Commands
 
 (defun gptel-context-add-current-kill (&optional arg)
-  "Add current-kill to gptel, accumulating if arg is non-nil"
+  "Add current kill to gptel, accumulating if ARG is non-nil."
   (interactive "P")
   (let ((kill (current-kill 0)))
     (with-current-buffer (get-buffer-create " *gptel-kill-ring-context*")
@@ -130,10 +130,10 @@ context."
   context.  If there is already a gptel context at point, remove it
   instead.
 
-- If in Dired, add marked files or file at point to the context. If
+- If in Dired, add marked files or file at point to the context.  If
   the selection includes directories, add all their files recursively,
   prompting the user for confirmation if called interactively or
-  CONFIRM is non-nil. With negative prefix ARG, remove all files from
+  CONFIRM is non-nil.  With negative prefix ARG, remove all files from
   the context instead.
 
 - Otherwise add the current buffer to the context.  With positive
@@ -460,9 +460,22 @@ Ignore overlays, buffers and files that are not live or readable."
            (push (cons buf ovs) res)))) ;A file list with (maybe) a mimetype
 
         ((and (pred stringp) (pred file-readable-p)) ;Just a file, figure out mimetype
-         (push `(,entry ,@(and (gptel--file-binary-p entry)
-                               (list :mime (mailcap-file-name-to-mime-type entry))))
-               res))
+         (if (file-directory-p entry)
+             (progn
+               (unless gptel-context--reset-cache
+                 (setq gptel-context--reset-cache t)
+                 (run-at-time
+                  0 nil
+                  (lambda () (setq gptel-context--reset-cache nil
+                              gptel-context--project-files nil))))
+               (dolist (f (directory-files-recursively entry "."))
+                 (unless (gptel-context--skip-p f)
+                   (push `(,f ,@(and (gptel--file-binary-p f)
+                                     (list :mime (mailcap-file-name-to-mime-type entry))))
+                         res))))
+           (push `(,entry ,@(and (gptel--file-binary-p entry)
+                                 (list :mime (mailcap-file-name-to-mime-type entry))))
+                 res)))
         ((pred buffer-live-p) (push (list entry) res)))) ;Just a buffer
     (nreverse res)))
 
