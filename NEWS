@@ -23,6 +23,8 @@
 
 ** New models and backends
 
+- Add support for ~claude-sonnet-4.5~ and ~gpt-5-codex~.
+
 - Add support for =gemini-pro-latest=, =gemini-flash-latest= and
   =gemini-flash-lite-latest=.  These models point to the latest Gemini
   models of the corresponding type.
