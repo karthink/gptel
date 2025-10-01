@@ -508,6 +508,32 @@ which see."
             (propertize "@" 'face 'transient-key)
             (propertize "preset" 'face 'transient-inactive-value))))
 
+;; TODO(preset): Unify this with `gptel--apply-preset'?
+(defun gptel--read-apply-preset (name)
+  "Read gptel preset NAME and apply it."
+  (interactive
+   (list
+    (let ((completion-extra-properties
+           `(:annotation-function
+             ,(lambda (comp)
+                (and-let* ((desc
+                            (plist-get (gptel-get-preset (intern-soft comp))
+                                       :description)))
+                  (concat (propertize " " 'display '(space :align-to 32))
+                          (if (string-match "\\(\n\\)" desc)
+                              (substring desc 0 (match-beginning 1))
+                            desc)))))))
+      (intern
+       (completing-read (format "Apply preset (%s): "
+                                (pcase gptel--set-buffer-locally
+                                  (1 "for next request only")
+                                  ('t "buffer-locally")
+                                  (_ "globally")))
+                        gptel--known-presets nil t)))))
+  (gptel--apply-preset
+   name (lambda (sym val)
+          (gptel--set-with-scope sym val gptel--set-buffer-locally))))
+
 
 ;; * Transient classes and methods for gptel
 
@@ -968,6 +994,7 @@ together.  See `gptel-make-preset' for details."
   :transient-suffix #'transient--do-return
   [:description "Save or apply a preset collection of gptel options"
    [:pad-keys t
+    ("@" "Select via completing-read" gptel--read-apply-preset)
     ("C-s" "Save current settings as new preset" gptel--save-preset)]]
   [:if (lambda () gptel--known-presets)
    :class transient-column
