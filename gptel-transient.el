@@ -532,7 +532,10 @@ which see."
                         gptel--known-presets nil t)))))
   (gptel--apply-preset
    name (lambda (sym val)
-          (gptel--set-with-scope sym val gptel--set-buffer-locally))))
+          (gptel--set-with-scope sym val gptel--set-buffer-locally)))
+  (message "Applied gptel preset %s"
+           (propertize (symbol-name name) 'face 'transient-value))
+  (when transient--stack (run-at-time 0 nil #'transient-setup)))
 
 
 ;; * Transient classes and methods for gptel
