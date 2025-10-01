@@ -38,6 +38,15 @@
 
 ** New features and UI changes
 
+- You can now apply a preset from gptel's menu using ~completing-read~
+  instead of the menu.  This is bound to =@= in the presets menu, so
+  that =@ @= in gptel's menu will bring up the ~completing-read~
+  prompter.
+
+  This is an interim solution to the problem of the gptel presets menu
+  not scaling well to more than about 25 presets.  This menu is intended
+  to be redesigned eventually.
+
 - =gptel-request= is now a standalone library, independent of gptel
   and its UI.  This is intended
   + to provide a clean separation between ~gptel-request~ (the LLM
