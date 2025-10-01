@@ -121,7 +121,7 @@
 (cl-defun gptel-make-kagi
     (name &key curl-args stream key
           (host "kagi.com")
-          (header (lambda () `(("Authorization" . ,(concat "Bot " (gptel--get-api-key))))))
+          (header (lambda () `(("Authorization" . ,(concat "Bot " (gptel--get-api-key key))))))
           (models '((fastgpt :capabilities (nosystem))
                     (summarize:cecil :capabilities (nosystem))
                     (summarize:agnes :capabilities (nosystem))
