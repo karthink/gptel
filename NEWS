@@ -4,6 +4,10 @@
 
 ** Breaking changes
 
+- The model =claude-3-sonnet-20240229= has been removed from the default
+  list of Anthropic models.  This model is no longer available in the
+  Anthropic API.
+
 - The models =gemini-1.5-flash-8b=, =gemini-1.5-flash=,
   =gemini-1.5-pro-latest=, =gemini-2.0-flash-thinking-exp-01-21=,
   =gemini-2.0-flash-lite-preview-02-05=,
@@ -23,7 +27,9 @@
 
 ** New models and backends
 
-- Add support for ~claude-sonnet-4.5~ and ~gpt-5-codex~.
+- Add support for =gpt-5-codex=.
+
+- Add support for =claude-sonnet-4-5-20250929=.
 
 - Add support for =gemini-pro-latest=, =gemini-flash-latest= and
   =gemini-flash-lite-latest=.  These models point to the latest Gemini

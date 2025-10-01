@@ -529,7 +529,7 @@ file."
 
 Intended to be added to `after-change-functions' in gptel chat buffers,
 which see for BEG, END and PRE."
-  (and (= pre 0) (< end (point-max))
+  (and (/= beg end) (< end (point-max))
        (and-let* ((val (get-text-property end 'gptel)))
          (add-text-properties
           beg end `(gptel ,val front-sticky (gptel))))))
