@@ -366,9 +366,9 @@ Note: This will move the cursor."
   "Return the gptel response boundaries around point."
   (let (prop)
     (save-excursion
-      (when (text-property-search-backward
-             'gptel 'response t)
-        (when (setq prop (text-property-search-forward
+      (when (text-property-search-forward
+                          'gptel 'response t)
+        (when (setq prop (text-property-search-backward
                           'gptel 'response t))
           (cons (prop-match-beginning prop)
                 (prop-match-end prop)))))))
