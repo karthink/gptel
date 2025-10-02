@@ -1582,7 +1582,7 @@ This sets the variable `gptel-include-tool-results', which see."
                       (or transient-current-command 'gptel-menu))))
   (let ((stream gptel-stream)
         (in-place (and (member "i" args) t))
-        (output-to-other-buffer-p)
+        (redirect-output)
         (backend gptel-backend)
         (model gptel-model)
         (backend-name (gptel-backend-name gptel-backend))
@@ -1604,6 +1604,7 @@ This sets the variable `gptel-include-tool-results', which see."
     ;; Output redirection: Send response elsewhere?
     (cond
      ((member "e" args)
+      (setq redirect-output t)
       (setq stream nil)
       (setq callback
             (lambda (resp info &optional _raw)
@@ -1615,6 +1616,7 @@ This sets the variable `gptel-include-tool-results', which see."
                      (message "%s response error: %s"
                               backend-name (plist-get info :status))))))))
      ((member "k" args)
+      (setq redirect-output t)
       (setq stream nil)
       (setq callback
             (lambda (resp info &optional _raw)
@@ -1631,7 +1633,7 @@ This sets the variable `gptel-include-tool-results', which see."
             (cl-some (lambda (s) (and (stringp s) (string-prefix-p "g" s)
                                  (substring s 1)))
                      args))
-      (setq output-to-other-buffer-p t)
+      (setq redirect-output t)
       (let* ((reduced-prompt            ;For inserting into the gptel buffer as
                                         ;context, not the prompt used for the
                                         ;request itself
@@ -1708,7 +1710,7 @@ This sets the variable `gptel-include-tool-results', which see."
             (cl-some (lambda (s) (and (stringp s) (string-prefix-p "b" s)
                                  (substring s 1)))
                      args))
-      (setq output-to-other-buffer-p t)
+      (setq redirect-output t)
       (setq buffer (get-buffer-create gptel-buffer-name))
       (with-current-buffer buffer (setq position (point)))))
 
@@ -1719,7 +1721,7 @@ This sets the variable `gptel-include-tool-results', which see."
     (prog1 (gptel-request prompt
              :buffer (or buffer (current-buffer))
              :position position
-             :in-place (and in-place (not output-to-other-buffer-p))
+             :in-place in-place
              :stream stream
              :system
              (if system-extra
@@ -1746,13 +1748,13 @@ This sets the variable `gptel-include-tool-results', which see."
                             (previous-single-property-change
                              (point) 'read-only nil (point-min)))))
                 (end (if (use-region-p) (region-end) (point))))
-            (unless output-to-other-buffer-p
+            (unless redirect-output
               ;; store the killed text in gptel-history
               (gptel--attach-response-history
                (list (buffer-substring-no-properties beg end))))
             (kill-region beg end))))
 
-      (when output-to-other-buffer-p
+      (when (and redirect-output gptel-buffer-name)
         (message (concat "Prompt sent to buffer: "
                          (propertize gptel-buffer-name 'face 'help-key-binding)))
         (display-buffer

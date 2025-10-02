@@ -821,9 +821,10 @@ No state transition here since that's handled by the process sentinels."
           (when gptel-mode (gptel--update-status " Empty response" 'success))
         (pulse-momentary-highlight-region start-marker tracking-marker)
         (when gptel-mode
-          (save-excursion (goto-char tracking-marker)
-                          (insert gptel-response-separator
-                                  (gptel-prompt-prefix-string)))
+          (unless (plist-get info :in-place)
+            (save-excursion (goto-char tracking-marker)
+                            (insert gptel-response-separator
+                                    (gptel-prompt-prefix-string))))
           (gptel--update-status  " Ready" 'success))))
     ;; Run hook in visible window to set window-point, BUG #269
     (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
