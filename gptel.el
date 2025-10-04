@@ -1579,6 +1579,22 @@ kill-ring."
     (message "Preset %s saved. (Lisp expression for preset saved to kill-ring)"
              (propertize (symbol-name name) 'face 'highlight))))
 
+(defun gptel--modify-list (original mutation)
+  (let ((current original) (tail mutation))
+    (while tail
+      (let ((key (pop tail)) (form (pop tail)))
+        (pcase key
+          (:append
+           (setq current (funcall (if (stringp form) #'concat #'append)
+                                  current form)))
+          (:prepend
+           (setq current (funcall (if (stringp form) #'concat #'append)
+                                  form current)))
+          (:eval (setq current (eval form)))
+          (:function (setq current (funcall form current)))
+          (_ (setq current mutation)))))
+    current))
+
 (defvar gptel--rewrite-directive)
 (defun gptel--apply-preset (preset &optional setter)
   "Apply gptel PRESET with SETTER.
@@ -1606,6 +1622,7 @@ example) apply the preset buffer-locally."
        ((or :system :system-message :rewrite-directive)
         (let ((sym (if (eq key :rewrite-directive)
                        'gptel--rewrite-directive 'gptel--system-message)))
+          (setq val (gptel--modify-list (symbol-value sym) val))
           (if (and (symbolp val) (not (functionp val)))
               (if-let* ((directive (alist-get val gptel-directives)))
                   (funcall setter sym directive)
@@ -1619,8 +1636,8 @@ example) apply the preset buffer-locally."
           (user-error "gptel preset: Cannot find backend %s." val))
         (funcall setter 'gptel-backend val))
        (:tools                          ;TEMP Confirm this `:append' convention
-        (let* ((append (when (eq (car-safe val) :append) (setq val (cdr val)) t))
-               (tools
+        (setq val (gptel--modify-list gptel-tools val))
+        (let* ((tools
                 (flatten-list
                  (cl-loop for tool-name in (ensure-list val)
                           for tool = (cl-etypecase tool-name
@@ -1630,14 +1647,15 @@ example) apply the preset buffer-locally."
                           do (unless tool
                                (user-error "gptel preset: Cannot find tool %s." val))
                           collect tool))))
-          (funcall setter 'gptel-tools ;append makes a copy of gptel-tools, intentional
-                   (if append (delete-dups (append gptel-tools tools)) tools))))
+          (funcall setter 'gptel-tools (cl-delete-duplicates tools :test #'eq))))
        ((and (let sym (or (intern-soft
                            (concat "gptel-" (substring (symbol-name key) 1)))
                           (intern-soft
                            (concat "gptel--" (substring (symbol-name key) 1)))))
              (guard (and sym (boundp sym))))
-        (funcall setter sym val))
+        (funcall setter sym (if (consp val)
+                                (gptel--modify-list (symbol-value sym) val)
+                              val)))
        (_ (display-warning
            '(gptel presets)
            (format "gptel preset: setting for %s not found, ignoring." key)))))
