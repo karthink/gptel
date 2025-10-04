@@ -27,6 +27,8 @@
 
 ** New models and backends
 
+- GitHub Copilot backend: Add support for =gpt-5-codex= and =claude-sonnet-4.5=.
+
 - Add support for =claude-sonnet-4-5-20250929=.
 
 - Add support for =gemini-pro-latest=, =gemini-flash-latest= and
