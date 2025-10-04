@@ -297,6 +297,40 @@ in any way.")
 
 
 ;;; Utility functions
+(defun gptel--modify-value (original new-spec)
+  "Combine ORIGINAL with NEW-SPEC and return the new result.
+
+This function is non-destructive, ORIGINAL is not modified.
+
+NEW-SPEC is either a declarative action spec (plist) of the form
+ (:key val ...), or a simple value.  Recognized spec keys are :append,
+:prepend, :eval, :function and :merge.  If NEW-SPEC does not have this
+form it is returned as is.
+
+- :append and :prepend will append/prepend val (a list or string) to ORIGINAL.
+- :eval will evaluate val and return the result, and
+- :function will call val with ORIGINAL as its argument, and return the result.
+- :merge will treat ORIGINAL and NEW-SPEC as plists and return a merged plist,
+  with NEW-SPEC taking precedence."
+  (if (not (and (consp new-spec)
+                (symbolp (car new-spec))
+                (string-prefix-p ":" (symbol-name (car new-spec)))))
+      new-spec
+    (let ((current original) (tail new-spec))
+      (while tail
+        (let ((key (pop tail)) (form (pop tail)))
+          (setq current
+                (pcase key
+                  (:append (funcall (if (stringp form) #'concat #'append)
+                                    current form))
+                  (:prepend (funcall (if (stringp form) #'concat #'append)
+                                     form current))
+                  (:eval (eval form t))
+                  (:function (funcall form current))
+                  (:merge (gptel--merge-plists (copy-sequence current) form))
+                  (_ new-spec)))))
+      current)))
+
 (defun gptel-auto-scroll ()
   "Scroll window if LLM response continues below viewport.
 
@@ -1516,7 +1550,7 @@ applied.  They take no arguments.
 
 BACKEND is the gptel-backend to set, or its name (like \"ChatGPT\").
 
-MODEL is the gptel-model.
+MODEL is the gptel-model, a symbol.
 
 SYSTEM is the directive. It can be
 - the system message (a string),
@@ -1533,7 +1567,26 @@ Recognized keys are not limited to the above.  Any other key (like
 - So TOOLS corresponds to `gptel-tools',
 - CONFIRM-TOOL-CALLS to `gptel-confirm-tool-calls',
 - TEMPERATURE to `gptel-temperature' and so on.
-See gptel's customization options for all available settings."
+See gptel's customization options for all available settings.
+
+Specifying the value of a key will set the corresponding gptel option to
+it.  For example,
+
+  (gptel-make-preset \\='websearch
+    :tools \\='(\"search_web\" \"read_url\")
+    :system \"Use the provided tools to search the web
+              for up-to-date information\")
+
+will replace the currently active `gptel-tools' and the system message.
+Alternatively, you can specify that the specified values should be
+appended or prepended to the existing values instead of replacing it.
+This can be done by specifying the value as a plist instead with the
+keys `:prepend' or `:append'.
+
+  (gptel-make-preset \\='websearch
+    :tools  \\='(:append (\"search_web\" \"read_url\"))
+    :system \\='(:prepend \"Use the provided tools to search the web
+                        for up-to-date information.\"))"
   (declare (indent 1))
   (if-let* ((p (assoc name gptel--known-presets)))
       (setcdr p keys)
@@ -1606,6 +1659,14 @@ example) apply the preset buffer-locally."
        ((or :system :system-message :rewrite-directive)
         (let ((sym (if (eq key :rewrite-directive)
                        'gptel--rewrite-directive 'gptel--system-message)))
+          (when (consp val)
+            ;; Possibly complain about trying to compose a system message string
+            ;; with a non-string
+            ;; TODO(modify-list): Catch other incompatible combinations
+            (and (or (plist-member val :append) (plist-member val :prepend))
+                 (not (stringp (symbol-value sym)))
+                 (user-error "Composing non-string system messages is not implemented."))
+            (setq val (gptel--modify-value (symbol-value sym) val)))
           (if (and (symbolp val) (not (functionp val)))
               (if-let* ((directive (alist-get val gptel-directives)))
                   (funcall setter sym directive)
@@ -1619,8 +1680,8 @@ example) apply the preset buffer-locally."
           (user-error "gptel preset: Cannot find backend %s." val))
         (funcall setter 'gptel-backend val))
        (:tools                          ;TEMP Confirm this `:append' convention
-        (let* ((append (when (eq (car-safe val) :append) (setq val (cdr val)) t))
-               (tools
+        (setq val (gptel--modify-value gptel-tools val))
+        (let* ((tools
                 (flatten-list
                  (cl-loop for tool-name in (ensure-list val)
                           for tool = (cl-etypecase tool-name
@@ -1630,14 +1691,15 @@ example) apply the preset buffer-locally."
                           do (unless tool
                                (user-error "gptel preset: Cannot find tool %s." val))
                           collect tool))))
-          (funcall setter 'gptel-tools ;append makes a copy of gptel-tools, intentional
-                   (if append (delete-dups (append gptel-tools tools)) tools))))
+          (funcall setter 'gptel-tools (cl-delete-duplicates tools :test #'eq))))
        ((and (let sym (or (intern-soft
                            (concat "gptel-" (substring (symbol-name key) 1)))
                           (intern-soft
                            (concat "gptel--" (substring (symbol-name key) 1)))))
              (guard (and sym (boundp sym))))
-        (funcall setter sym val))
+        (funcall setter sym (if (consp val)
+                                (gptel--modify-value (symbol-value sym) val)
+                              val)))
        (_ (display-warning
            '(gptel presets)
            (format "gptel preset: setting for %s not found, ignoring." key)))))

@@ -38,6 +38,21 @@
 
 ** New features and UI changes
 
+- gptel preset specifications can now modify the current values of gptel
+  options instead of replacing them, allowing better composition of
+  presets with your Emacs environment and with each other.
+
+  For example, it is common to want to add more LLM tools via a preset
+  to an existing set in gptel-tools.  To this end, add a small,
+  declarative DSL for use in gptel preset definitions.  For example, you
+  can now do the following:
+  #+begin_src emacs-lisp
+  (gptel-make-preset 'websearch
+    :tools '(:append ("search_web" "read_url")))
+  #+end_src
+  to add to the current list in ~gptel-tools~ instead of replacing it.
+  See the documentation of ~gptel-make-preset~ for more details.
+
 - You can now apply a preset from gptel's menu using ~completing-read~
   instead of the menu.  This is bound to =@= in the presets menu, so
   that =@ @= in gptel's menu will bring up the ~completing-read~
