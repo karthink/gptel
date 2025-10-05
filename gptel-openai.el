@@ -210,8 +210,15 @@ information if the stream contains it."
                    for spec = (plist-get tool-call :function)
                    collect (list :id (plist-get tool-call :id)
                                  :name (plist-get spec :name)
-                                 :args (ignore-errors (gptel--json-read-string
-                                                       (plist-get spec :arguments))))
+                                 :args (condition-case err
+                                           (gptel--json-read-string
+                                            (plist-get spec :arguments))
+                                         (error
+                                          (gptel--log 'error "Failed to parse tool call arguments for %s: %s\nArguments string: %s"
+                                                      (plist-get spec :name)
+                                                      (error-message-string err)
+                                                      (plist-get spec :arguments))
+                                          nil)))
                    into call-specs
                    finally (plist-put info :tool-use call-specs)))
               (when-let* ((response (gptel--json-read))
@@ -274,9 +281,15 @@ Mutate state INFO with response metadata."
       (cl-loop             ;Then capture the tool call data for running the tool
        for tool-call across tool-calls  ;replace ":arguments" with ":args"
        for call-spec = (copy-sequence (plist-get tool-call :function))
-       do (ignore-errors (plist-put call-spec :args
-                                    (gptel--json-read-string
-                                     (plist-get call-spec :arguments))))
+       do (condition-case err
+              (plist-put call-spec :args
+                         (gptel--json-read-string
+                          (plist-get call-spec :arguments)))
+            (error
+             (gptel--log 'error "Failed to parse tool call arguments for %s: %s\nArguments string: %s"
+                         (plist-get call-spec :name)
+                         (error-message-string err)
+                         (plist-get call-spec :arguments))))
        (plist-put call-spec :arguments nil)
        (plist-put call-spec :id (plist-get tool-call :id))
        collect call-spec into tool-use
