@@ -729,9 +729,10 @@ their MIME-types:
 
   (\"/path/to/image\" :mime \"image/png\")
 
-gptel tries to guess file MIME types, but is not always successful.
-Additional plist keys (besides :mime) are ignored, but support for more
-keys may be implemented in the future.
+gptel tries to guess file MIME types, but is not always successful, so
+it is recommended to provide it with non-text files.  Additional plist
+keys (besides :mime) are ignored, but support for more keys may be
+implemented in the future.
 
 Usage of context commands (such as `gptel-add' and `gptel-add-file')
 will modify this variable.  You can also set this variable
