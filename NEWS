@@ -85,9 +85,16 @@
   additional context sources for gptel queries, usually files or
   buffers.  It serves the longstanding requests of enabling buffer-local
   context specification, as well as context specification in gptel
-  presets and programmatic gptel use.  Each entry is a file path or a
-  buffer object, but other kinds of specification are possible.  See its
-  documentation for details.
+  presets and programmatic gptel use.  As always, in a preset definition
+  this corresponds to the key with name of the variable with the
+  "gptel-" prefix stripped:
+  #+begin_src emacs-lisp
+  (gptel-make-preset 'with-docs
+    :context '("./README.md" "./README" "./README.org"))
+  #+end_src
+  Each entry in ~gptel-context~ is a file path or a buffer object, but
+  other kinds of specification are possible.  See its documentation for
+  details.
 
 - ~gptel-mcp-connect~ can now start MCP servers synchronously.  This
   is useful for scripting purposes, when MCP tools need to be
