@@ -441,13 +441,15 @@ START and END signify the region delimiters."
               (overlays-at (point))))
 
 ;;;###autoload
-(defun gptel-context--collect ()
-  "Get the list of all active context sources.
+(defun gptel-context--collect (&optional context-alist)
+  "Get the list of all active context sources from CONTEXT-ALIST.
+
+CONTEXT-ALIST defaults to the current value of `gptel-context'.
 
 Ignore overlays, buffers and files that are not live or readable."
   ;; Get only the non-degenerate overlays, collect them, and update the overlays variable.
   (let ((res))
-    (dolist (entry gptel-context)
+    (dolist (entry (or context-alist gptel-context))
       (pcase entry                      ;Context entry is:
         (`(,buf . ,ovs)
          (cond
@@ -556,8 +558,10 @@ context overlays, see `gptel-context'."
             nil t)
   (setq-local revert-buffer-function #'gptel-context--buffer-setup))
 
-(defun gptel-context--buffer-setup (&optional _ignore-auto _noconfirm)
-  "Set up the gptel context buffer."
+(defun gptel-context--buffer-setup (&optional _ignore-auto _noconfirm context-alist)
+  "Set up the gptel context buffer.
+
+CONTEXT-ALIST is the alist of contexts to use to populate the buffer."
   (with-current-buffer (get-buffer-create "*gptel-context*")
     (gptel-context-buffer-mode)
     (let ((inhibit-read-only t))
@@ -572,7 +576,7 @@ context overlays, see `gptel-context'."
               "\\[gptel-context-quit]: cancel, "
               "\\[quit-window]: quit")))
       (save-excursion
-        (let ((contexts (gptel-context--collect)))
+        (let ((contexts (gptel-context--collect context-alist)))
           (if (length= contexts 0)
               (insert "There are no active gptel contexts.")
             (let (beg ov l1 l2)

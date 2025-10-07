@@ -1952,7 +1952,7 @@ whether the action is confirmed/cancelled."
   :if (lambda () gptel-context)
   :description "Inspect context"
   (interactive)
-  (gptel-context--buffer-setup))
+  (gptel-context--buffer-setup nil nil gptel-context))
 
 (provide 'gptel-transient)
 ;;; gptel-transient.el ends here
