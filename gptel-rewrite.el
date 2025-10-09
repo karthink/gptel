@@ -708,7 +708,9 @@ generated from functions."
                              "\n\n" (car prompt))))
     (prog1 (gptel-request prompt
              :dry-run dry-run
-             :system gptel--rewrite-directive
+             :system (if (functionp gptel--rewrite-directive)
+                         (funcall gptel--rewrite-directive)
+                       gptel--rewrite-directive)
              :stream gptel-stream
              :context
              (let ((ov (or (cdr-safe (get-char-property-and-overlay (point) 'gptel-rewrite))
