@@ -101,9 +101,14 @@ For internal use only.")
          ((eq key :tools)
           (if (eq (car-safe val) :append)
               (cl-loop for name in (cdr val) ;preset tools contained in gptel-tools
-                       unless (memq (gptel-get-tool name) gptel-tools)
+                       unless (memq (cl-etypecase tool-name
+                                       (gptel-tool tool-name)
+                                       (string (ignore-errors
+                                                 (gptel-get-tool tool-name)))) gptel-tools)
                        do (throw 'mismatch t))
-            (or (equal (sort val #'string-lessp) ;preset tools same as gptel-tools
+            (or (equal (cl-etypecase (car val)
+                         (gptel-tool (sort (mapcar #'gptel-tool-name val)))
+                         (string (sort val #'string-lessp))) ;preset tools same as gptel-tools
                        (sort (mapcar #'gptel-tool-name gptel-tools)
                              #'string-lessp))
                 (throw 'mismatch t))))
