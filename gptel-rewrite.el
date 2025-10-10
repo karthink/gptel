@@ -514,6 +514,8 @@ INFO is the async communication channel for the rewrite request."
             (let ((inhibit-read-only t))
               (delete-region (point) (point-max))
               ;; Run post-rewrite-functions on rewritten text in its buffer
+              (setq-local gptel-post-rewrite-functions
+                          (buffer-local-value 'gptel-post-rewrite-functions buf))
               (with-demoted-errors "gptel-post-rewrite-functions: %S"
                 (run-hook-with-args 'gptel-post-rewrite-functions (point-min) (point-max)))
               (when (and (plist-get info :newline)
