@@ -1782,7 +1782,7 @@ for details."
   (setq full (or full gptel--system-message))
   (cl-typecase full
     (string (concat full "\n\n" additional))
-    (list (let ((copy (copy-sequence full)))
+    (cons (let ((copy (copy-sequence full)))
             (setcar copy (concat (car copy) "\n\n" additional))
             copy))
     (function (lambda () (gptel--merge-additional-directive
