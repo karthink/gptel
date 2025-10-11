@@ -104,6 +104,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
     - [[#tool-use][Tool use]]
       - [[#defining-gptel-tools][Defining gptel tools]]
       - [[#selecting-tools][Selecting tools]]
+      - [[#llm-tool-collections][LLM tool collections]]
       - [[#model-context-protocol-mcp-integration][Model Context Protocol (MCP) integration]]
     - [[#rewrite-refactor-or-fill-in-a-region][Rewrite, refactor or fill in a region]]
     - [[#extra-org-mode-conveniences][Extra Org mode conveniences]]
@@ -1470,7 +1471,25 @@ Once defined, tools can be selected (globally, buffer-locally or for the next re
 
 #+html: <img src="https://github.com/user-attachments/assets/fd878596-b313-4385-b675-3d6546909d8b" align="center" alt="Image showing gptel's tool selection menu.">
 
-From here you can also require confirmation for all tool calls, and decide if tool call results should be included in the LLM response.  See [[#additional-configuration][Additional Configuration]] for doing these things via elisp.
+From here you can also require confirmation for all tool calls, and decide if tool call results should be included in the LLM response.
+
+Alternatively, you can add/remove tools via
+
+- Elisp, see [[#additional-configuration][Additional Configuration]].
+- gptel presets, see [[#option-presets][Option presets]].
+
+#+html: </details>
+#+html: <details><summary>
+**** LLM tool collections
+#+html: </summary>
+
+The following repositories provide collections of tools written by gptel users.
+
+- [[https://github.com/skissue/llm-tool-collection][llm-tool-collection]] :: A community collection of tools for use with LLM clients in Emacs. To discuss tools, check out the [[https://github.com/skissue/llm-tool-collection/discussions][discussions page]].
+- [[https://github.com/positron-solutions/ragmacs][ragmacs]] :: A collection of tools for Emacs introspection.
+- [[https://github.com/ultronozm/codel.el][codel.el]] :: A collection of code editing tools.
+- [[https://codeberg.org/bajsicki/gptel-org-tools][gptel-org-tools]] :: Tools for interacting with Org files.
+- [[https://github.com/munen/emacs.d?tab=readme-ov-file#tool-use][Alain Lafon’s tool collection]]
 
 #+html: </details>
 #+html: <details><summary>
