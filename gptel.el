@@ -312,9 +312,7 @@ form it is returned as is.
 - :function will call val with ORIGINAL as its argument, and return the result.
 - :merge will treat ORIGINAL and NEW-SPEC as plists and return a merged plist,
   with NEW-SPEC taking precedence."
-  (if (not (and (consp new-spec)
-                (symbolp (car new-spec))
-                (string-prefix-p ":" (symbol-name (car new-spec)))))
+  (if (not (and (consp new-spec) (keywordp (car new-spec))))
       new-spec
     (let ((current original) (tail new-spec))
       (while tail
