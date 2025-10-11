@@ -89,6 +89,8 @@ For internal use only.")
          ((memq key '(:description :parents)) 'nil)
          ((eq key :system)
           (or (equal gptel--system-message val)
+              (functionp val)    ; Ignore functions, modify-specs for speed here
+              (and (consp val) (keywordp (car val)))
               (and-let* (((symbolp val))
                          (p (assq val gptel-directives)))
                 (equal gptel--system-message (cdr p)))
@@ -99,18 +101,22 @@ For internal use only.")
                 (eq gptel-backend val))
               (throw 'mismatch t)))
          ((eq key :tools)
-          (if (eq (car-safe val) :append)
-              (cl-loop for name in (cdr val) ;preset tools contained in gptel-tools
-                       unless (memq (gptel-get-tool name) gptel-tools)
-                       do (throw 'mismatch t))
-            (or (equal (sort val #'string-lessp) ;preset tools same as gptel-tools
-                       (sort (mapcar #'gptel-tool-name gptel-tools)
-                             #'string-lessp))
-                (throw 'mismatch t))))
+          (setq val (cl-loop ; Check against tool names, not tools (faster with sorting)
+                     for tool in (ensure-list (gptel--modify-value gptel-tools val))
+                     for tool-name = (or (and (stringp tool) tool)
+                                         (ignore-errors (gptel-tool-name tool)))
+                     if (not (member tool-name uniq-tool-names))
+                     collect tool-name into uniq-tool-names
+                     finally return uniq-tool-names))
+          (or (equal (sort val #'string-lessp) ;preset tools same as gptel-tools?
+                     (sort (mapcar #'gptel-tool-name gptel-tools)
+                           #'string-lessp))
+              (throw 'mismatch t)))
          (t (let* ((suffix (substring
                             (if (symbolp key) (symbol-name key) key) 1))
                    (sym (or (intern-soft (concat "gptel-" suffix))
                             (intern-soft (concat "gptel--" suffix)))))
+              ;; FIXME(modify-list): Fix for values specified with a spec, like :eval
               (or (null sym)
                   (and (boundp sym) (equal (eval sym) val))
                   (throw 'mismatch t)))))))))
@@ -530,6 +536,7 @@ which see."
                                   ('t "buffer-locally")
                                   (_ "globally")))
                         gptel--known-presets nil t)))))
+  (gptel--set-with-scope 'gptel--preset name gptel--set-buffer-locally)
   (gptel--apply-preset
    name (lambda (sym val)
           (gptel--set-with-scope sym val gptel--set-buffer-locally)))
