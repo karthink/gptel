@@ -101,9 +101,11 @@
   available before performing other actions.  One common use is
   starting MCP servers when applying a gptel preset.
 
-- "gitignored" files are omitted by default when adding files to gptel's
+- "gitignored" files are omitted by default when adding directories to gptel's
   context.  This setting can be controlled via the user option
-  ~gptel-context-restrict-to-project-files~.
+  ~gptel-context-restrict-to-project-files~.  (This only applies to directories,
+  individual files specified via ~gptel-add-file~ will always be added to the
+  context.)
 
 - ~gptel-make-bedrock~ now checks for the ~AWS_BEARER_TOKEN_BEDROCK~ environment
   variable parameter and uses it for Bedrock API key based authentication if

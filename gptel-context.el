@@ -232,7 +232,18 @@ Return PATH if added, nil if ignored."
 ACTION should be either `add' or `remove'."
   (dolist (file (directory-files-recursively path "."))
     (pcase-exhaustive action
-      ('add (gptel-context-add-file file))
+      ('add
+       (unless gptel-context--reset-cache
+         (setq gptel-context--reset-cache t)
+         (run-at-time
+          0 nil
+          (lambda () (setq gptel-context--reset-cache nil
+                      gptel-context--project-files nil))))
+       (if (gptel-context--skip-p file)
+           ;; Don't message about .git, as this creates thousands of messages
+           (unless (string-match-p "\\.git/" file)
+             (gptel-context--message-skipped file))
+         (gptel-context-add-file file)))
       ('remove
        (setf (alist-get file gptel-context nil 'remove #'equal) nil)))))
 
@@ -242,18 +253,8 @@ ACTION should be either `add' or `remove'."
 If PATH is a directory, recursively add all files in it.  PATH should be
 readable as text."
   (interactive "fChoose file to add to context: ")
-  (unless gptel-context--reset-cache
-    (setq gptel-context--reset-cache t)
-    (run-at-time
-     0 nil
-     (lambda () (setq gptel-context--reset-cache nil
-                      gptel-context--project-files nil))))
   (cond ((file-directory-p path)
          (gptel-context--add-directory path 'add))
-        ((gptel-context--skip-p path)
-         ;; Don't message about .git, as this creates thousands of messages
-         (unless (string-match-p "\\.git/" path)
-           (gptel-context--message-skipped path)))
 	((gptel--file-binary-p path)
          (gptel-context--add-binary-file path))
 	(t (gptel-context--add-text-file path))))
