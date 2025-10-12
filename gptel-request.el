@@ -1718,6 +1718,7 @@ MACHINE is an instance of `gptel-fsm'"
                      (funcall process-tool-result result)))))))
          tool-use)
         (when pending-calls
+          (plist-put info :tool-pending t)
           (funcall (plist-get info :callback)
                    (cons 'tool-call pending-calls) info))))))
 
