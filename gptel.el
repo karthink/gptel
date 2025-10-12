@@ -917,11 +917,11 @@ Run post-response hooks."
 
 (defun gptel--update-tool-ask (fsm)
   "Update gptel's status when there are pending tool calls."
-  (when (cl-some (lambda (tc) (not (plist-get tc :result)))
-                 (plist-get (gptel-fsm-info fsm) :tool-use))
+  (when (plist-get (gptel-fsm-info fsm) :tool-pending)
     (setq gptel--fsm-last fsm)
-    (when gptel-mode (gptel--update-status
-                      (format " Run tools?" ) 'mode-line-emphasis))))
+    (plist-put (gptel-fsm-info fsm) :tool-pending nil)
+    (when gptel-mode
+      (gptel--update-status " Run tools?" 'mode-line-emphasis))))
 
 (defun gptel--update-abort (fsm)
   "Update gptel's status when aborting a request."
