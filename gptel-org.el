@@ -166,6 +166,10 @@ adding elements to this list can significantly slow down
   :group 'gptel
   :type '(repeat symbol))
 
+(defconst gptel-org--link-regex
+  (concat "\\(?:" org-link-bracket-re "\\|" org-link-angle-re "\\)")
+  "Link regex for gptel-mode in Org mode.")
+
 
 ;;; Setting context and creating queries
 (defun gptel-org--get-topic-start ()
@@ -355,12 +359,10 @@ Return a list of the form
   (:text \"More text\"))
 for inclusion into the user prompt for the gptel request."
   (require 'mailcap)                    ;FIXME Avoid this somehow
-  (let ((parts) (from-pt) (mime)
-        (link-regex (concat "\\(?:" org-link-bracket-re "\\|"
-                            org-link-angle-re "\\)")))
+  (let ((parts) (from-pt) (mime))
     (save-excursion
       (setq from-pt (goto-char beg))
-      (while (re-search-forward link-regex end t)
+      (while (re-search-forward gptel-org--link-regex end t)
         (setq mime nil)
         (when-let* ((link (org-element-context))
                     ((gptel-org--link-standalone-p link))
@@ -399,6 +401,45 @@ for inclusion into the user prompt for the gptel request."
       (unless (= from-pt end)
         (push (list :text (buffer-substring-no-properties from-pt end)) parts)))
     (nreverse parts)))
+
+(defun gptel-org--annotate-links (beg end)
+  (when gptel-track-media
+    (save-excursion
+      (goto-char beg)
+      (forward-line -1)
+      (let ((link-ovs (cl-delete-if-not
+                       (lambda (o) (overlay-get o 'gptel-track-media))
+                       (overlays-in (point) end))))
+        (while (re-search-forward gptel-org--link-regex end t)
+          (if-let* ((link (org-element-context))
+                    (from (org-element-begin link))
+                    (to (org-element-end link))
+                    ((gptel-org--link-standalone-p link))
+                    (type (org-element-property :type link))
+                    ;; (path (org-element-property :path link))
+                    ((member type `("attachment" "file"
+                                    ,@(and (gptel--model-capable-p 'url)
+                                           '("http" "https" "ftp"))))))
+              (if-let* ((ov (cl-loop
+                             for o in (overlays-in from to)
+                             if (overlay-get o 'gptel-track-media)
+                             return o)))
+                  (progn (move-overlay ov from to)
+                         (setq link-ovs (delq ov link-ovs)))
+                (setq ov (make-overlay from to nil t))
+                (overlay-put ov 'gptel-track-media t)
+                (overlay-put ov 'before-string
+                             (concat
+                              (propertize "SEND" 'face '( :inherit success :box t
+                                                          :height 0.9 :weight semi-light))
+                              (propertize " @" 'face 'success)))
+                (overlay-put ov 'help-echo
+                             (propertize "Sending file with gptel requests"))
+                (overlay-put ov 'priority -80))
+            (dolist (o (overlays-in from to))
+              (when (overlay-get o 'gptel-track-media) (delete-overlay o)))))
+        (and link-ovs (mapc #'delete-overlay link-ovs))))
+    `(jit-lock-bounds ,beg . ,end)))
 
 (defun gptel-org--link-standalone-p (object)
   "Check if link OBJECT is on a line by itself."
