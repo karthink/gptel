@@ -1162,7 +1162,12 @@ Optional RAW disables text properties and transformation."
     (`(tool-call . ,tool-calls)
      (gptel--display-tool-calls tool-calls info))
     (`(tool-result . ,tool-results)
-     (gptel--display-tool-results tool-results info))))
+     (gptel--display-tool-results tool-results info)
+     ;; Adjust for tool calls inside reasoning blocks
+     (when (eq (plist-get info :reasoning-block) 'in)
+       (when-let* ((rm (plist-get info :reasoning-marker))
+                   (tm (plist-get info :tracking-marker)))
+         (move-marker rm tm))))))
 
 ;;;###autoload
 (defun gptel (name &optional _ initial interactivep)
