@@ -504,13 +504,21 @@ Media files, if present, are placed in `gptel-context'."
 ;;         (plist-get (car (last prompts)) :content)))
 
 (defconst gptel--anthropic-models
-  '((claude-3-7-sonnet-20250219
-     :description "Hybrid model capable of standard thinking and extended thinking modes"
+  '((claude-sonnet-4-5-20250929
+     :description "High-performance model with exceptional reasoning and efficiency"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
      :input-cost 3
      :output-cost 15
+     :cutoff-date "2025-07")
+    (claude-haiku-4-5-20251001
+     :description "Near-frontier intelligence at blazing speeds with extended thinking"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 1
+     :output-cost 5
      :cutoff-date "2025-02")
     (claude-sonnet-4-20250514
      :description "High-performance model with exceptional reasoning and efficiency"
@@ -520,14 +528,6 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 3
      :output-cost 15
      :cutoff-date "2025-03")
-    (claude-sonnet-4-5-20250929
-     :description "High-performance model with exceptional reasoning and efficiency"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2025-07")
     (claude-opus-4-1-20250805
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
@@ -544,6 +544,14 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 15
      :output-cost 75
      :cutoff-date "2025-03")
+    (claude-3-7-sonnet-20250219
+     :description "Hybrid model capable of standard thinking and extended thinking modes"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 3
+     :output-cost 15
+     :cutoff-date "2025-02")
     (claude-3-5-sonnet-20241022
      :description "Highest level of intelligence and capability"
      :capabilities (media tool-use cache)
