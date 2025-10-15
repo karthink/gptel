@@ -204,6 +204,7 @@
 (declare-function gptel-org-set-topic "gptel-org")
 (declare-function gptel-org--save-state "gptel-org")
 (declare-function gptel-org--restore-state "gptel-org")
+(declare-function gptel-org--annotate-links "gptel-org")
 (define-obsolete-function-alias
   'gptel-set-topic 'gptel-org-set-topic "0.7.5")
 
@@ -695,12 +696,15 @@ Search between BEG and END."
         (gptel--prettify-preset)
         (cond
          ((derived-mode-p 'org-mode)
+          (require 'gptel-org)
+          (jit-lock-register 'gptel-org--annotate-links)
           ;; Work around bug in `org-fontify-extend-region'.
           (add-hook 'gptel-post-response-functions #'font-lock-flush nil t))
          ((derived-mode-p 'markdown-mode)
           (font-lock-add-keywords ;keymap is a font-lock-managed property in markdown-mode
            nil '(("^```[ \t]*\\([[:alpha:]][^\n]*\\)?$" ;match code fences
-                  0 (list 'face nil 'keymap gptel--markdown-block-map))))))
+                  0 (list 'face nil 'keymap gptel--markdown-block-map))))
+          (jit-lock-register 'gptel-markdown--annotate-links)))
         (gptel--restore-state)
         (if gptel-use-header-line
           (setq gptel--old-header-line header-line-format
@@ -793,6 +797,13 @@ Search between BEG and END."
                             (lambda (&rest _) (gptel-menu))))))))
     (remove-hook 'before-save-hook #'gptel--save-state t)
     (remove-hook 'after-change-functions 'gptel--inherit-stickiness t)
+    (cond
+     ((derived-mode-p 'org-mode)
+      (jit-lock-unregister #'gptel-org--annotate-links)
+      (without-restriction (gptel--annotate-link-clear)))
+     ((derived-mode-p 'markdown-mode)
+      (jit-lock-unregister #'gptel-markdown--annotate-links)
+      (without-restriction (gptel--annotate-link-clear))))
     (gptel--prettify-preset)
     (if gptel-use-header-line
         (setq header-line-format gptel--old-header-line
