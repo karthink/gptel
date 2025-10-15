@@ -678,6 +678,94 @@ Search between BEG and END."
         (and link-ovs (mapc #'delete-overlay link-ovs))))
     `(jit-lock-bounds ,beg . ,end)))
 
+(defun gptel-use-header-line ()
+  "Set up the header-line for a gptel buffer."
+  (setq
+   header-line-format
+   (list
+    '(:eval (concat (propertize " " 'display '(space :align-to 0))
+                    (format "%s" (gptel-backend-name gptel-backend))))
+    (propertize " Ready" 'face 'success)
+    '(:eval
+      (let* ((model (gptel--model-name gptel-model))
+             (system
+              (propertize
+               (buttonize
+                (format "[Prompt: %s]"
+                        (or (car-safe (rassoc gptel--system-message gptel-directives))
+                            (gptel--describe-directive gptel--system-message 15)))
+                (lambda (&rest _) (gptel-system-prompt)))
+               'mouse-face 'highlight
+               'help-echo "System message for session"))
+             (context
+              (and gptel-context
+                   (cl-loop
+                    for entry in gptel-context
+                    if (bufferp (or (car-safe entry) entry)) count it into bufs
+                    else count (stringp (or (car-safe entry) entry)) into files
+                    finally return
+                    (propertize
+                     (buttonize
+                      (concat "[Context: "
+                              (and (> bufs 0) (format "%d buf" bufs))
+                              (and (> bufs 1) "s")
+                              (and (> bufs 0) (> files 0) ", ")
+                              (and (> files 0) (format "%d file" files))
+                              (and (> files 1) "s")
+                              "]")
+                      (lambda (&rest _)
+                        (require 'gptel-context)
+                        (gptel-context--buffer-setup)))
+                     'mouse-face 'highlight
+                     'help-echo "Active gptel context"))))
+             (toggle-track-media
+              (lambda (&rest _)
+                (setq-local gptel-track-media
+                            (not gptel-track-media))
+                (if gptel-track-media
+                    (message
+                     (concat
+                      "Sending media from included links.  To include media, create "
+                      "a \"standalone\" link in a paragraph by itself, separated from surrounding text."))
+                  (message "Ignoring image links.  Only link text will be sent."))
+                (run-at-time 0 nil #'force-mode-line-update)))
+             (track-media
+              (and (gptel--model-capable-p 'media)
+                   (if gptel-track-media
+                       (propertize
+                        (buttonize "[Sending media]" toggle-track-media)
+                        'mouse-face 'highlight
+                        'help-echo
+                        "Sending media from standalone links/urls when supported.\nClick to toggle")
+                     (propertize
+                      (buttonize "[Ignoring media]" toggle-track-media)
+                      'mouse-face 'highlight
+                      'help-echo
+                      "Ignoring images from standalone links/urls.\nClick to toggle"))))
+             (toggle-tools (lambda (&rest _) (interactive)
+                             (run-at-time 0 nil
+                                          (lambda () (call-interactively #'gptel-tools)))))
+             (tools (when (and gptel-use-tools gptel-tools)
+                      (propertize
+                       (buttonize (pcase (length gptel-tools)
+                                    (0 "[No tools]") (1 "[1 tool]")
+                                    (len (format "[%d tools]" len)))
+                                  toggle-tools)
+                       'mouse-face 'highlight
+                       'help-echo "Select tools"))))
+        (concat
+         (propertize
+          " " 'display
+          `(space :align-to (- right
+                               ,(+ 5 (length model) (length system)
+                                   (length track-media) (length context) (length tools)))))
+         tools (and track-media " ") track-media (and context " ") context " " system " "
+         (propertize
+          (buttonize (concat "[" model "]")
+                     (lambda (&rest _) (gptel-menu)))
+          'mouse-face 'highlight
+          'help-echo "Model in use")))))))
+
 ;;;###autoload
 (define-minor-mode gptel-mode
   "Minor mode for interacting with LLMs."
@@ -707,94 +795,11 @@ Search between BEG and END."
           (jit-lock-register 'gptel-markdown--annotate-links)))
         (gptel--restore-state)
         (if gptel-use-header-line
-          (setq gptel--old-header-line header-line-format
-                header-line-format
-                (list '(:eval (concat (propertize " " 'display '(space :align-to 0))
-                               (format "%s" (gptel-backend-name gptel-backend))))
-                      (propertize " Ready" 'face 'success)
-                      '(:eval
-                        (let* ((model (gptel--model-name gptel-model))
-                              (system
-                               (propertize
-                                (buttonize
-                                 (format "[Prompt: %s]"
-                                  (or (car-safe (rassoc gptel--system-message gptel-directives))
-                                   (gptel--describe-directive gptel--system-message 15)))
-                                 (lambda (&rest _) (gptel-system-prompt)))
-                                'mouse-face 'highlight
-                                'help-echo "System message for session"))
-                              (context
-                               (and gptel-context
-                                    (cl-loop
-                                     for entry in gptel-context
-                                     if (bufferp (or (car-safe entry) entry)) count it into bufs
-                                     else count (stringp (or (car-safe entry) entry)) into files
-                                     finally return
-                                     (propertize
-                                      (buttonize
-                                       (concat "[Context: "
-                                               (and (> bufs 0) (format "%d buf" bufs))
-                                               (and (> bufs 1) "s")
-                                               (and (> bufs 0) (> files 0) ", ")
-                                               (and (> files 0) (format "%d file" files))
-                                               (and (> files 1) "s")
-                                               "]")
-                                       (lambda (&rest _)
-                                         (require 'gptel-context)
-                                         (gptel-context--buffer-setup)))
-                                      'mouse-face 'highlight
-                                      'help-echo "Active gptel context"))))
-                              (toggle-track-media
-                               (lambda (&rest _)
-                                 (setq-local gptel-track-media
-                                  (not gptel-track-media))
-                                 (if gptel-track-media
-                                     (message
-                                      (concat
-                                       "Sending media from included links.  To include media, create "
-                                       "a \"standalone\" link in a paragraph by itself, separated from surrounding text."))
-                                   (message "Ignoring image links.  Only link text will be sent."))
-                                 (run-at-time 0 nil #'force-mode-line-update)))
-                              (track-media
-                               (and (gptel--model-capable-p 'media)
-                                (if gptel-track-media
-                                    (propertize
-                                     (buttonize "[Sending media]" toggle-track-media)
-                                     'mouse-face 'highlight
-                                     'help-echo
-                                     "Sending media from standalone links/urls when supported.\nClick to toggle")
-                                  (propertize
-                                   (buttonize "[Ignoring media]" toggle-track-media)
-                                   'mouse-face 'highlight
-                                   'help-echo
-                                   "Ignoring images from standalone links/urls.\nClick to toggle"))))
-                              (toggle-tools (lambda (&rest _) (interactive)
-                                              (run-at-time 0 nil
-                                               (lambda () (call-interactively #'gptel-tools)))))
-                              (tools (when (and gptel-use-tools gptel-tools)
-                                      (propertize
-                                       (buttonize (pcase (length gptel-tools)
-                                                   (0 "[No tools]") (1 "[1 tool]")
-                                                   (len (format "[%d tools]" len)))
-                                        toggle-tools)
-                                       'mouse-face 'highlight
-                                       'help-echo "Select tools"))))
-                         (concat
-                          (propertize
-                           " " 'display
-                           `(space :align-to (- right
-                                              ,(+ 5 (length model) (length system)
-                                                (length track-media) (length context) (length tools)))))
-                          tools (and track-media " ") track-media (and context " ") context " " system " "
-                          (propertize
-                           (buttonize (concat "[" model "]")
-                            (lambda (&rest _) (gptel-menu)))
-                           'mouse-face 'highlight
-                           'help-echo "Model in use"))))))
+            (progn (setq gptel--old-header-line header-line-format)
+                   (gptel-use-header-line))
           (setq mode-line-process
-                '(:eval (concat " "
-                         (buttonize (gptel--model-name gptel-model)
-                            (lambda (&rest _) (gptel-menu))))))))
+                '(:eval (concat " " (buttonize (gptel--model-name gptel-model)
+                                               (lambda (&rest _) (gptel-menu))))))))
     (remove-hook 'before-save-hook #'gptel--save-state t)
     (remove-hook 'after-change-functions 'gptel--inherit-stickiness t)
     (cond
