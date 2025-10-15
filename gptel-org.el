@@ -487,34 +487,7 @@ Search between BEG and END."
                 (overlay-put ov 'evaporate t)
                 (overlay-put ov 'priority -80))
               ;; Check if link will be sent, and annotate accordingly
-              (cl-destructuring-bind
-                  (valid _ path filep placementp readablep supportedp _mime)
-                  link-status
-                (if valid
-                    (progn
-                      (overlay-put
-                       ov 'before-string
-                       (concat (propertize "SEND" 'face '(:inherit success :height 0.8))
-                               (if (display-graphic-p)
-                                   (propertize " " 'display '(space :width 0.5)) " ")))
-                      (overlay-put ov 'help-echo
-                                   (format "Sending file %s with gptel requests" path)))
-                  (overlay-put ov 'before-string
-                               (concat (propertize "!" 'face '(:inherit error))
-                                       (propertize " " 'display '(space :width 0.3))))
-                  (overlay-put
-                   ov 'help-echo
-                   (concat
-                    "Sending only link text with gptel requests, "
-                    "link will not be followed to source.\n\nReason: "
-                    (cond
-                     ((not filep) "Not a supported link type \
-(Only \"file\" or \"attachment\" are supported)")
-                     ((not placementp)
-                      "Not a standalone link.  (Separate link from text around it.)")
-                     ((not readablep) (format "File %s is not readable" path))
-                     ((not supportedp) (format "%s does not support binary file %s"
-                                               gptel-model path))))))))))
+              (gptel--annotate-link ov link-status))))
         (and link-ovs (mapc #'delete-overlay link-ovs))))
     `(jit-lock-bounds ,beg . ,end)))
 

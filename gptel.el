@@ -407,6 +407,42 @@ Note: This will move the cursor."
             (overlay-put hide-ov 'before-string
                          (propertize "..." 'face 'shadow))))))))
 
+(defsubst gptel--annotate-link (ov link-status)
+  "Annotate link overlay OV according to LINK-STATUS.
+
+LINK-STATUS is a list of link properties relevant to gptel queries, of
+the form (valid . REST).  See `gptel-markdown--validate-link' for
+details.  Indicate the (in)validity of the link for inclusion with gptel
+queries via OV."
+  (cl-destructuring-bind
+      (valid _ path filep placementp readablep supportedp _mime)
+      link-status
+    (if valid
+        (progn
+          (overlay-put
+           ov 'before-string
+           (concat (propertize "SEND" 'face '(:inherit success :height 0.8))
+                   (if (display-graphic-p)
+                       (propertize " " 'display '(space :width 0.5)) " ")))
+          (overlay-put ov 'help-echo
+                       (format "Sending file %s with gptel requests" path)))
+      (overlay-put ov 'before-string
+                   (concat (propertize "!" 'face '(:inherit error))
+                           (propertize " " 'display '(space :width 0.3))))
+      (overlay-put
+       ov 'help-echo
+       (concat
+        "Sending only link text with gptel requests, "
+        "this link will not be followed to its source.\n\nReason: "
+        (cond
+         ((not filep) "Not a supported link type\
+ (Only \"file\" or \"attachment\" are supported)")
+         ((not placementp)
+          "Not a standalone link.  (Separate link from text around it.)")
+         ((not readablep) (format "File %s is not readable" path))
+         ((not supportedp) (format "%s does not support binary file %s"
+                                   gptel-model path))))))))
+
 (defun gptel--annotate-link-clear (&optional beg end)
   "Delete all gptel org link annotations between BEG and END."
   (mapc #'delete-overlay
