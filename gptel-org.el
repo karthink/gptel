@@ -41,6 +41,7 @@
 (defvar org-link-angle-re)
 (defvar org-link-bracket-re)
 (declare-function mailcap-file-name-to-mime-type "mailcap")
+(declare-function org-attach-expand "org-attach")
 (declare-function gptel--model-capable-p "gptel")
 (declare-function gptel--model-mime-capable-p "gptel")
 (declare-function gptel--model-name "gptel")
@@ -365,8 +366,11 @@ for inclusion into the user prompt for the gptel request."
         (when-let* ((link (org-element-context))
                     ((gptel-org--link-standalone-p link))
                     (raw-link (org-element-property :raw-link link))
-                    (path (org-element-property :path link))
+                    (raw-path (org-element-property :path link))
                     (type (org-element-property :type link))
+                    (path (if (string= type "attachment")
+                              (org-attach-expand raw-path)
+                            raw-path))
                     ;; FIXME This is not a good place to check for url capability!
                     ((member type `("attachment" "file"
                                     ,@(and (gptel--model-capable-p 'url)

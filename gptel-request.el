@@ -2035,9 +2035,12 @@ Initiate the request when done."
           (save-excursion (goto-char (point-min))
                           (gptel--parse-list-and-insert (cdr directive))))
         (goto-char (point-max))
-        (setq full-prompt (gptel--parse-buffer ;prompt from buffer or explicitly supplied
-                           gptel-backend (and gptel--num-messages-to-send
-                                              (* 2 gptel--num-messages-to-send))))
+        ;; Parse buffer in original buffer context so org-attach-expand can access
+        ;; Org properties (ID, ATTACH_DIR) not present in the temp copy buffer
+        (setq full-prompt (with-current-buffer (plist-get info :buffer)
+                            (gptel--parse-buffer ;prompt from buffer or explicitly supplied
+                             gptel-backend (and gptel--num-messages-to-send
+                                                (* 2 gptel--num-messages-to-send)))))
         ;; Inject media chunks into the first user prompt if required.  Media
         ;; chunks are always included with the first user message,
         ;; irrespective of the preference in `gptel-use-context'.  This is
