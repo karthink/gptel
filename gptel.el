@@ -407,6 +407,13 @@ Note: This will move the cursor."
             (overlay-put hide-ov 'before-string
                          (propertize "..." 'face 'shadow))))))))
 
+(defun gptel--annotate-link-clear (&optional beg end)
+  "Delete all gptel org link annotations between BEG and END."
+  (mapc #'delete-overlay
+        (cl-delete-if-not
+         (lambda (o) (overlay-get o 'gptel-track-media))
+         (overlays-in (or beg (point-min)) (or end (point-max))))))
+
 ;;;; Response text recognition
 
 (defun gptel--get-buffer-bounds ()

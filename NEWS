@@ -40,6 +40,16 @@
 
 ** New features and UI changes
 
+- New user option ~gptel-org-validate-link~: When including links to
+  files in the prompt via ~gptel-track-media~, only "standalone" links
+  are included by default -- these are links placed on a line by
+  themselves, separated from other text.  This is to ensure that the
+  file is being included intentionally.  This behavior is now
+  customizable in Org buffers via ~gptel-org-validate-link~, which is a
+  function that determines if a link is to be considered valid for
+  inclusion with the gptel query.  You can set it to the function
+  ~always~ to try to send all links.
+
 - gptel preset specifications can now modify the current values of gptel
   options instead of replacing them, allowing better composition of
   presets with your Emacs environment and with each other.

@@ -27,6 +27,7 @@
 (require 'cl-lib)
 (require 'org-element)
 (require 'outline)
+(require 'mailcap)                    ;FIXME Avoid this somehow
 
 ;; Functions used for saving/restoring gptel state in Org buffers
 (defvar gptel--num-messages-to-send)
@@ -166,6 +167,28 @@ adding elements to this list can significantly slow down
 `gptel-send'."
   :group 'gptel
   :type '(repeat symbol))
+
+(defcustom gptel-org-validate-link #'gptel-org--link-standalone-p
+  "Validate links to be sent as context with gptel queries.
+
+When `gptel-track-media' is enabled, this option determines if a
+supported link will be followed and its source included with gptel
+queries from Org buffers.  Currently only \"file\" and \"attachment\"
+link types are supported (along with web URLs if the model supports
+them).
+
+It should be a function that accepts an Org link object and return
+non-nil if the link should be followed.
+
+By default, links are considered valid if they are placed on a line by
+themselves, separated from surrounding text.  This is to ensure that
+links to be sent are intentionally placed.  You can set it to the
+function `always' to try to send all links."
+  :group 'gptel
+  :type '(choice
+          (const :tag "Standalone links" gptel-org--link-standalone-p)
+          (const :tag "All links" always)
+          (function :tag "Function")))
 
 (defconst gptel-org--link-regex
   (concat "\\(?:" org-link-bracket-re "\\|" org-link-angle-re "\\)")
@@ -351,6 +374,46 @@ unescapes the remainder."
           (goto-char (setq prev-pt backward-progress)))))))
 
 ;; Handle media links in the buffer
+(defun gptel-org--link-standalone-p (object)
+  "Check if link OBJECT is on a line by itself."
+  (when-let* ((par (gptel-org--element-parent object))
+              ((eq (org-element-type par) 'paragraph)))
+    (and (= (gptel-org--element-begin object)
+            (save-excursion
+              (goto-char (org-element-property :contents-begin par))
+              (skip-chars-forward "\t ")
+              (point)))                 ;account for leading space before object
+         (<= (- (org-element-property :contents-end par)
+                (org-element-property :end object))
+             1))))
+
+(defsubst gptel-org--validate-link (link)
+  "Validate an Org LINK as sendable under the current gptel settings.
+
+Return a form (validp link-type path . REST), where REST is a list
+explaining why sending the link is not supported by gptel.  Only the
+first nil value in REST is guaranteed to be correct."
+  (let ((mime))
+    (if-let* ((type (org-element-property :type link))
+              (filep (member type `("attachment" "file"
+                                    ,@(and (gptel--model-capable-p 'url)
+                                           '("http" "https" "ftp")))))
+              (path (org-element-property :path link))
+              (placementp (funcall gptel-org-validate-link link))
+              (readablep (or (member type '("http" "https" "ftp"))
+                             (file-remote-p path)
+                             (file-readable-p path)))
+              (supportedp
+               (or (not (cdr (with-memoization
+                                 (alist-get (expand-file-name path)
+                                            gptel--link-type-cache
+                                            nil nil #'string=)
+                               (cons t (gptel--file-binary-p path)))))
+                   (gptel--model-mime-capable-p
+                    (setq mime (mailcap-file-name-to-mime-type path))))))
+        (list t type path filep placementp readablep supportedp mime)
+      (list nil type path filep placementp readablep supportedp mime))))
+
 (cl-defmethod gptel--parse-media-links ((_mode (eql 'org-mode)) beg end)
   "Parse text and actionable links between BEG and END.
 
@@ -359,52 +422,46 @@ Return a list of the form
   (:media \"/path/to/media.png\" :mime \"image/png\")
   (:text \"More text\"))
 for inclusion into the user prompt for the gptel request."
-  (require 'mailcap)                    ;FIXME Avoid this somehow
-  (let ((parts) (from-pt) (mime))
+  (let ((parts) (from-pt))
     (save-excursion
       (setq from-pt (goto-char beg))
       (while (re-search-forward gptel-org--link-regex end t)
-        (setq mime nil)
-        (when-let* ((link (org-element-context))
-                    ((gptel-org--link-standalone-p link))
-                    (raw-link (org-element-property :raw-link link))
-                    (path (org-element-property :path link))
-                    (type (org-element-property :type link))
-                    ;; FIXME This is not a good place to check for url capability!
-                    ((member type `("attachment" "file"
-                                    ,@(and (gptel--model-capable-p 'url)
-                                       '("http" "https" "ftp"))))))
-          (cond
-           ((member type '("file" "attachment"))
-            (if (file-readable-p path)
-              (if (or (not (gptel--file-binary-p path))
-                      (and (setq mime (mailcap-file-name-to-mime-type path))
-                           (gptel--model-mime-capable-p mime)))
-                  (progn                ; text file or supported binary file
-                    ;; collect text up to link
-                    (when-let* ((text (buffer-substring-no-properties
-                                       from-pt (gptel-org--element-begin link))))
-                      (unless (string-blank-p text) (push (list :text text) parts)))
-                    ;; collect link
-                    (push (if mime (list :media path :mime mime) (list :textfile path)) parts)
-                    (setq from-pt (point)))
-                (message "Ignoring unsupported binary file \"%s\"." path))
-              (message "Ignoring inaccessible file \"%s\"." path)))
-           ((and (member type '("http" "https" "ftp"))
-                 (setq mime (mailcap-file-name-to-mime-type path))
-                 (gptel--model-capable-p mime))
-            ;; Collect text up to this image, and collect this image url
-            (when-let* ((text (buffer-substring-no-properties
-                               from-pt (gptel-org--element-begin link))))
-              (unless (string-blank-p text) (push (list :text text) parts)))
-            (push (list :url raw-link :mime mime) parts)
-            (setq from-pt (point))))))
+        (let* ((link (org-element-context))
+               (link-status (gptel-org--validate-link link)))
+          (cl-destructuring-bind
+              (valid type path filep placementp readablep supportedp mime)
+              link-status
+            (cond
+             ((and valid (member type '("file" "attachment")))
+              ;; Text file or supported binary file: collect text up to link
+              (when-let* ((text (buffer-substring-no-properties
+                                 from-pt (gptel-org--element-begin link))))
+                (unless (string-blank-p text) (push (list :text text) parts)))
+              ;; collect link
+              (push (if mime (list :media path :mime mime) (list :textfile path))
+                    parts)
+              (setq from-pt (point)))
+             ((and valid (member type '("http" "https" "ftp")))
+              ;; Collect text up to this image, and collect this image url
+              (when-let* ((text (buffer-substring-no-properties
+                                 from-pt (gptel-org--element-begin link))))
+                (unless (string-blank-p text) (push (list :text text) parts)))
+              (push (list :url (org-element-property :raw-link link) :mime mime) parts)
+              (setq from-pt (point)))
+             ((not filep)
+              (message "Link source not followed for unsupported link type \"%s\"." type))
+             ((not placementp)
+              (message "Ignoring non-standalone link \"%s\"." path))
+             ((not readablep)
+              (message "Ignoring inaccessible file \"%s\"." path))
+             ((not supportedp)
+              (message "Ignoring unsupported binary file \"%s\"." path))))))
       (unless (= from-pt end)
         (push (list :text (buffer-substring-no-properties from-pt end)) parts)))
     (nreverse parts)))
 
 (defun gptel-org--annotate-links (beg end)
-  "Annotate links whose sources are eligible to be sent with `gptel-send.'
+  "Annotate Org links whose sources are eligible to be sent with `gptel-send.'
 
 Search between BEG and END."
   (when gptel-track-media
@@ -418,6 +475,7 @@ Search between BEG and END."
             (let* ((link (org-element-context))
                    (from (org-element-begin link))
                    (to (org-element-end link))
+                   (link-status (gptel-org--validate-link link))
                    (ov (cl-loop for o in (overlays-in from to)
                                 if (overlay-get o 'gptel-track-media)
                                 return o)))
@@ -429,62 +487,36 @@ Search between BEG and END."
                 (overlay-put ov 'evaporate t)
                 (overlay-put ov 'priority -80))
               ;; Check if link will be sent, and annotate accordingly
-              (if-let* ((type (org-element-property :type link))
-                        (filep (member type `("attachment" "file"
-                                              ,@(and (gptel--model-capable-p 'url)
-                                                     '("http" "https" "ftp")))))
-                        (placementp (gptel-org--link-standalone-p link))
-                        (path (org-element-property :path link))
-                        (readablep (or (member type '("http" "https" "ftp"))
-                                       (file-remote-p path)
-                                       (file-readable-p path)))
-                        (supportedp
-                         (or (not (cdr (with-memoization
-                                           (alist-get (expand-file-name path)
-                                                      gptel--link-type-cache
-                                                      nil nil #'string=)
-                                         (cons t (gptel--file-binary-p path)))))
-                             (gptel--model-mime-capable-p
-                              (mailcap-file-name-to-mime-type path)))))
-                  (progn
-                    (overlay-put
-                     ov 'before-string
-                     (concat (propertize "SEND" 'face '(:inherit success :height 0.9))
-                             (if (display-graphic-p)
-                                 (propertize " " 'display '(space :width 0.5)) " ")))
-                    (overlay-put ov 'help-echo
-                                 (format "Sending file %s with gptel requests" path)))
-                (overlay-put ov 'before-string
-                             (concat (propertize "!" 'face '(:inherit error))
-                                     (propertize " " 'display '(space :width 0.3))))
-                (overlay-put
-                 ov 'help-echo
-                 (concat
-                  "Only sending link text with gptel requests, "
-                  "link will not be followed to source.\n\nReason: "
-                  (cond
-                   ((not filep) "Not a supported link type \
+              (cl-destructuring-bind
+                  (valid _ path filep placementp readablep supportedp _mime)
+                  link-status
+                (if valid
+                    (progn
+                      (overlay-put
+                       ov 'before-string
+                       (concat (propertize "SEND" 'face '(:inherit success :height 0.8))
+                               (if (display-graphic-p)
+                                   (propertize " " 'display '(space :width 0.5)) " ")))
+                      (overlay-put ov 'help-echo
+                                   (format "Sending file %s with gptel requests" path)))
+                  (overlay-put ov 'before-string
+                               (concat (propertize "!" 'face '(:inherit error))
+                                       (propertize " " 'display '(space :width 0.3))))
+                  (overlay-put
+                   ov 'help-echo
+                   (concat
+                    "Sending only link text with gptel requests, "
+                    "link will not be followed to source.\n\nReason: "
+                    (cond
+                     ((not filep) "Not a supported link type \
 (Only \"file\" or \"attachment\" are supported)")
-                   ((not placementp)
-                    "Not a standalone link.  (Separate link from text around it.)")
-                   ((not readablep) (format "File %s is not readable" path))
-                   ((not supportedp) (format "%s does not support binary file %s"
-                                             gptel-model path)))))))))
+                     ((not placementp)
+                      "Not a standalone link.  (Separate link from text around it.)")
+                     ((not readablep) (format "File %s is not readable" path))
+                     ((not supportedp) (format "%s does not support binary file %s"
+                                               gptel-model path))))))))))
         (and link-ovs (mapc #'delete-overlay link-ovs))))
     `(jit-lock-bounds ,beg . ,end)))
-
-(defun gptel-org--link-standalone-p (object)
-  "Check if link OBJECT is on a line by itself."
-  (when-let* ((par (gptel-org--element-parent object))
-              ((eq (org-element-type par) 'paragraph)))
-    (and (= (gptel-org--element-begin object)
-            (save-excursion
-              (goto-char (org-element-property :contents-begin par))
-              (skip-chars-forward "\t ")
-              (point)))                 ;account for leading space before object
-         (<= (- (org-element-property :contents-end par)
-                (org-element-property :end object))
-             1))))
 
 (defun gptel-org--send-with-props (send-fun &rest args)
   "Conditionally modify SEND-FUN's calling environment.

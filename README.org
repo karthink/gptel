@@ -1818,6 +1818,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 |-------------------------------+-------------------------------------------------------|
 | =gptel-org-branching-context= | Make each outline path a separate conversation branch |
 | =gptel-org-ignore-elements=   | Ignore parts of the buffer when sending a query       |
+| =gptel-org-validate-link=     | Function to validate links to include with a query    |
 |-------------------------------+-------------------------------------------------------|
 
 |------------------------------------+-------------------------------------------------------------|
