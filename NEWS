@@ -64,6 +64,11 @@
   not scaling well to more than about 25 presets.  This menu is intended
   to be redesigned eventually.
 
+- Tool result and reasoning blocks are now folded by default in Markdown
+  and text buffers.  You can cycle their folded state by pressing =Tab=
+  with the cursor on the opening or closing line containing the code
+  fences.
+
 - =gptel-request= is now a standalone library, independent of gptel
   and its UI.  This is intended
   + to provide a clean separation between ~gptel-request~ (the LLM
