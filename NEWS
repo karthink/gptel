@@ -40,15 +40,29 @@
 
 ** New features and UI changes
 
-- New user option ~gptel-org-validate-link~: When including links to
-  files in the prompt via ~gptel-track-media~, only "standalone" links
-  are included by default -- these are links placed on a line by
-  themselves, separated from other text.  This is to ensure that the
-  file is being included intentionally.  This behavior is now
-  customizable in Org buffers via ~gptel-org-validate-link~, which is a
-  function that determines if a link is to be considered valid for
-  inclusion with the gptel query.  You can set it to the function
-  ~always~ to try to send all links.
+- Link annotations: When ~gptel-track-media~ is enabled in gptel chat
+  buffers, gptel follows (Markdown/Org) links to files in the prompt and
+  includes these files with queries.  However, it was not clear if a
+  link type was supported and would be included, making this feature
+  unreliable and difficult to use.
+
+  Now all links in the prompt are explicitly annotated in real-time in
+  gptel buffers.  Links that will not be sent are marked as such, and
+  the link tooltip explains why.  Links that will be sent are explicitly
+  indicated as well.
+
+- New user options ~gptel-org-validate-link~ and
+  ~gptel-markdown-validate-link~: When including links to files in the
+  prompt via ~gptel-track-media~, only "standalone" links are included
+  by default -- these are links placed on a line by themselves,
+  separated from other text.  This is to ensure that the file is being
+  included intentionally.
+
+  This behavior is now customizable in Markdown/Org buffers via these
+  options.  Its value should be a function that determines if a link is
+  to be considered valid for inclusion with the gptel query.  You can
+  set it to the function ~always~ to try to send all links, irrespective
+  of their placement.
 
 - gptel preset specifications can now modify the current values of gptel
   options instead of replacing them, allowing better composition of
