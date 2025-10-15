@@ -647,6 +647,36 @@ which see for BEG, END and PRE."
          (add-text-properties
           beg end `(gptel ,val front-sticky (gptel))))))
 
+(defun gptel-markdown--annotate-links (beg end)
+  "Annotate Markdown links whose sources are eligible to be sent with `gptel-send.'
+
+Search between BEG and END."
+  (when gptel-track-media
+    (save-excursion
+      (goto-char beg) (forward-line -1)
+      (let ((link-ovs (cl-loop for o in (overlays-in (point) end)
+                               if (overlay-get o 'gptel-track-media)
+                               collect o into os finally return os)))
+        (while (re-search-forward gptel-markdown--link-regex end t)
+          (unless (gptel--in-response-p (1- (point)))
+            (let* ((link (markdown-link-at-pos (point)))
+                   (from (car link)) (to (cadr link))
+                   (link-status (gptel-markdown--validate-link link))
+                   (ov (cl-loop for o in (overlays-in from to)
+                                if (overlay-get o 'gptel-track-media)
+                                return o)))
+              (if ov                    ; Ensure overlay over each link
+                  (progn (move-overlay ov from to)
+                         (setq link-ovs (delq ov link-ovs)))
+                (setq ov (make-overlay from to nil t))
+                (overlay-put ov 'gptel-track-media t)
+                (overlay-put ov 'evaporate t)
+                (overlay-put ov 'priority -80))
+              ;; Check if link will be sent, and annotate accordingly
+              (gptel--annotate-link ov link-status))))
+        (and link-ovs (mapc #'delete-overlay link-ovs))))
+    `(jit-lock-bounds ,beg . ,end)))
+
 ;;;###autoload
 (define-minor-mode gptel-mode
   "Minor mode for interacting with LLMs."
