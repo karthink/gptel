@@ -37,6 +37,7 @@
 (defvar gptel-model)
 (defvar gptel-temperature)
 (defvar gptel-max-tokens)
+(defvar gptel--link-type-cache)
 
 (defvar org-link-angle-re)
 (defvar org-link-bracket-re)
@@ -403,41 +404,72 @@ for inclusion into the user prompt for the gptel request."
     (nreverse parts)))
 
 (defun gptel-org--annotate-links (beg end)
+  "Annotate links whose sources are eligible to be sent with `gptel-send.'
+
+Search between BEG and END."
   (when gptel-track-media
     (save-excursion
-      (goto-char beg)
-      (forward-line -1)
-      (let ((link-ovs (cl-delete-if-not
-                       (lambda (o) (overlay-get o 'gptel-track-media))
-                       (overlays-in (point) end))))
+      (goto-char beg) (forward-line -1)
+      (let ((link-ovs (cl-loop for o in (overlays-in (point) end)
+                               if (overlay-get o 'gptel-track-media)
+                               collect o into os finally return os)))
         (while (re-search-forward gptel-org--link-regex end t)
-          (if-let* ((link (org-element-context))
-                    (from (org-element-begin link))
-                    (to (org-element-end link))
-                    ((gptel-org--link-standalone-p link))
-                    (type (org-element-property :type link))
-                    ;; (path (org-element-property :path link))
-                    ((member type `("attachment" "file"
-                                    ,@(and (gptel--model-capable-p 'url)
-                                           '("http" "https" "ftp"))))))
-              (if-let* ((ov (cl-loop
-                             for o in (overlays-in from to)
-                             if (overlay-get o 'gptel-track-media)
-                             return o)))
+          (unless (gptel--in-response-p (1- (point)))
+            (let* ((link (org-element-context))
+                   (from (org-element-begin link))
+                   (to (org-element-end link))
+                   (ov (cl-loop for o in (overlays-in from to)
+                                if (overlay-get o 'gptel-track-media)
+                                return o)))
+              (if ov                    ; Ensure overlay over each link
                   (progn (move-overlay ov from to)
                          (setq link-ovs (delq ov link-ovs)))
                 (setq ov (make-overlay from to nil t))
                 (overlay-put ov 'gptel-track-media t)
-                (overlay-put ov 'before-string
-                             (concat
-                              (propertize "SEND" 'face '( :inherit success :box t
-                                                          :height 0.9 :weight semi-light))
-                              (propertize " @" 'face 'success)))
-                (overlay-put ov 'help-echo
-                             (propertize "Sending file with gptel requests"))
+                (overlay-put ov 'evaporate t)
                 (overlay-put ov 'priority -80))
-            (dolist (o (overlays-in from to))
-              (when (overlay-get o 'gptel-track-media) (delete-overlay o)))))
+              ;; Check if link will be sent, and annotate accordingly
+              (if-let* ((type (org-element-property :type link))
+                        (filep (member type `("attachment" "file"
+                                              ,@(and (gptel--model-capable-p 'url)
+                                                     '("http" "https" "ftp")))))
+                        (placementp (gptel-org--link-standalone-p link))
+                        (path (org-element-property :path link))
+                        (readablep (or (member type '("http" "https" "ftp"))
+                                       (file-remote-p path)
+                                       (file-readable-p path)))
+                        (supportedp
+                         (or (not (cdr (with-memoization
+                                           (alist-get (expand-file-name path)
+                                                      gptel--link-type-cache
+                                                      nil nil #'string=)
+                                         (cons t (gptel--file-binary-p path)))))
+                             (gptel--model-mime-capable-p
+                              (mailcap-file-name-to-mime-type path)))))
+                  (progn
+                    (overlay-put
+                     ov 'before-string
+                     (concat (propertize "SEND" 'face '(:inherit success :height 0.9))
+                             (if (display-graphic-p)
+                                 (propertize " " 'display '(space :width 0.5)) " ")))
+                    (overlay-put ov 'help-echo
+                                 (format "Sending file %s with gptel requests" path)))
+                (overlay-put ov 'before-string
+                             (concat (propertize "!" 'face '(:inherit error))
+                                     (propertize " " 'display '(space :width 0.3))))
+                (overlay-put
+                 ov 'help-echo
+                 (concat
+                  "Only sending link text with gptel requests, "
+                  "link will not be followed to source.\n\nReason: "
+                  (cond
+                   ((not filep) "Not a supported link type \
+(Only \"file\" or \"attachment\" are supported)")
+                   ((not placementp)
+                    "Not a standalone link.  (Separate link from text around it.)")
+                   ((not readablep) (format "File %s is not readable" path))
+                   ((not supportedp) (format "%s does not support binary file %s"
+                                             gptel-model path)))))))))
         (and link-ovs (mapc #'delete-overlay link-ovs))))
     `(jit-lock-bounds ,beg . ,end)))
 
