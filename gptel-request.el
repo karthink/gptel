@@ -780,6 +780,11 @@ See `gptel-backend'."
       "-XPOST" "-y7200" "-Y1" "-D-"))
   "Arguments always passed to Curl for gptel queries.")
 
+(defvar gptel--link-type-cache nil
+  "Cache of checks for binary files.  Each alist entry maps an absolute
+file path to a cons cell of the form (t . binaryp), where binaryp is
+non-nil if the file is binary-encoded.")
+
 
 ;;; Utility functions
 
