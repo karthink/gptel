@@ -480,7 +480,7 @@ Ignore overlays, buffers and files that are not live or readable."
                                  (list :mime (mailcap-file-name-to-mime-type entry))))
                  res)))
         ((pred buffer-live-p) (push (list entry) res)))) ;Just a buffer
-    (nreverse res)))
+    res))
 
 (defun gptel-context--insert-buffer-string (buffer overlays)
   "Insert at point a context string from all OVERLAYS in BUFFER.
