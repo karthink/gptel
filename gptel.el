@@ -208,6 +208,8 @@
 (define-obsolete-function-alias
   'gptel-set-topic 'gptel-org-set-topic "0.7.5")
 
+(declare-function markdown-link-at-pos "markdown-mode")
+
 (eval-when-compile
   (require 'subr-x))
 (require 'cl-lib)
@@ -638,7 +640,7 @@ file."
 ;; NOTE: It's not clear that this is the best strategy:
 (add-to-list 'text-property-default-nonsticky '(gptel . t))
 
-(defun gptel--inherit-stickiness (beg end pre)
+(defun gptel--inherit-stickiness (beg end _pre)
   "Mark any change to an LLM response region as a response.
 
 Intended to be added to `after-change-functions' in gptel chat buffers,
