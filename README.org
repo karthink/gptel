@@ -1754,26 +1754,27 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-tools=         | List of tools to include with requests                  |
 |-----------------------+---------------------------------------------------------|
 
-|-------------------------------+----------------------------------------------------------------|
-| *Chat UI options*             |                                                                |
-|-------------------------------+----------------------------------------------------------------|
-| =gptel-default-mode=          | Major mode for dedicated chat buffers.                         |
-| =gptel-prompt-prefix-alist=   | Text inserted before queries.                                  |
-| =gptel-response-prefix-alist= | Text inserted before responses.                                |
-| =gptel-track-response=        | Distinguish between user messages and LLM responses?           |
-| =gptel-track-media=           | Send text, images or other media from links?                   |
-| =gptel-confirm-tool-calls=    | Confirm all tool calls?                                        |
-| =gptel-include-tool-results=  | Include tool results in the LLM response?                      |
-| =gptel-use-header-line=       | Display status messages in header-line (default) or minibuffer |
-| =gptel-display-buffer-action= | Placement of the gptel chat buffer.                            |
-|-------------------------------+----------------------------------------------------------------|
+|--------------------------------+----------------------------------------------------------------|
+| *Chat UI options*              |                                                                |
+|--------------------------------+----------------------------------------------------------------|
+| =gptel-default-mode=           | Major mode for dedicated chat buffers.                         |
+| =gptel-prompt-prefix-alist=    | Text inserted before queries.                                  |
+| =gptel-response-prefix-alist=  | Text inserted before responses.                                |
+| =gptel-track-response=         | Distinguish between user messages and LLM responses?           |
+| =gptel-track-media=            | Send text, images or other media from links?                   |
+| =gptel-markdown-validate-link= | Function to validate links to include with queries             |
+| =gptel-confirm-tool-calls=     | Confirm all tool calls?                                        |
+| =gptel-include-tool-results=   | Include tool results in the LLM response?                      |
+| =gptel-use-header-line=        | Display status messages in header-line (default) or minibuffer |
+| =gptel-display-buffer-action=  | Placement of the gptel chat buffer.                            |
+|--------------------------------+----------------------------------------------------------------|
 
 |-------------------------------+-------------------------------------------------------|
 | *Org mode UI options*         |                                                       |
 |-------------------------------+-------------------------------------------------------|
 | =gptel-org-branching-context= | Make each outline path a separate conversation branch |
 | =gptel-org-ignore-elements=   | Ignore parts of the buffer when sending a query       |
-| =gptel-org-validate-link=     | Function to validate links to include with a query    |
+| =gptel-org-validate-link=     | Function to validate links to include with queries    |
 |-------------------------------+-------------------------------------------------------|
 
 |------------------------------------+-------------------------------------------------------------|
