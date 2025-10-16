@@ -393,25 +393,27 @@ Return a form (validp link-type path . REST), where REST is a list
 explaining why sending the link is not supported by gptel.  Only the
 first nil value in REST is guaranteed to be correct."
   (let ((mime))
-    (if-let* ((type (org-element-property :type link))
-              (filep (member type `("attachment" "file"
-                                    ,@(and (gptel--model-capable-p 'url)
-                                           '("http" "https" "ftp")))))
+    (if-let* ((link-type (org-element-property :type link))
+              (resource-type
+               (or (and (member link-type '("attachment" "file")) 'file)
+                   (and (gptel--model-capable-p 'url)
+                        (member link-type '("http" "https" "ftp")) 'url)))
               (path (org-element-property :path link))
-              (placementp (funcall gptel-org-validate-link link))
-              (readablep (or (member type '("http" "https" "ftp"))
-                             (file-remote-p path)
+              (user-check (funcall gptel-org-validate-link link))
+              (readablep (or (eq resource-type 'url) (file-remote-p path)
                              (file-readable-p path)))
-              (supportedp
-               (or (not (cdr (with-memoization
-                                 (alist-get (expand-file-name path)
-                                            gptel--link-type-cache
-                                            nil nil #'string=)
-                               (cons t (gptel--file-binary-p path)))))
+              (mime-valid
+               (if (or (eq resource-type 'url)
+                       (cdr (with-memoization
+                                (alist-get (expand-file-name path)
+                                           gptel--link-type-cache
+                                           nil nil #'string=)
+                              (cons t (gptel--file-binary-p path)))))
                    (gptel--model-mime-capable-p
-                    (setq mime (mailcap-file-name-to-mime-type path))))))
-        (list t type path filep placementp readablep supportedp mime)
-      (list nil type path filep placementp readablep supportedp mime))))
+                    (setq mime (mailcap-file-name-to-mime-type path)))
+                 t)))
+        (list t link-type path resource-type user-check readablep mime-valid mime)
+      (list nil link-type path resource-type user-check readablep mime-valid mime))))
 
 (cl-defmethod gptel--parse-media-links ((_mode (eql 'org-mode)) beg end)
   "Parse text and actionable links between BEG and END.
@@ -428,7 +430,7 @@ for inclusion into the user prompt for the gptel request."
         (let* ((link (org-element-context))
                (link-status (gptel-org--validate-link link)))
           (cl-destructuring-bind
-              (valid type path filep placementp readablep supportedp mime)
+              (valid type path resource-type user-check readablep mime-valid mime)
               link-status
             (cond
              ((and valid (member type '("file" "attachment")))
@@ -447,16 +449,16 @@ for inclusion into the user prompt for the gptel request."
                 (unless (string-blank-p text) (push (list :text text) parts)))
               (push (list :url (org-element-property :raw-link link) :mime mime) parts)
               (setq from-pt (point)))
-             ((not filep)
+             ((not resource-type)
               (message "Link source not followed for unsupported link type \"%s\"." type))
-             ((not placementp)
+             ((not user-check)
               (message (if (eq gptel-org-validate-link 'gptel--link-standalone-p)
                            "Ignoring non-standalone link \"%s\"."
                          "Link %s failed to validate, see `gptel-org-validate-link'.")
                        path))
              ((not readablep)
               (message "Ignoring inaccessible file \"%s\"." path))
-             ((not supportedp)
+             ((and (not mime-valid) (eq resource-type 'file))
               (message "Ignoring unsupported binary file \"%s\"." path))))))
       (unless (= from-pt end)
         (push (list :text (buffer-substring-no-properties from-pt end)) parts)))
