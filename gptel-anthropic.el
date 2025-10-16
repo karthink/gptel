@@ -392,6 +392,7 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
                             ;; (id (gptel--anthropic-format-tool-id id))
                             (name (plist-get tool-call :name))
                             (arguments (plist-get tool-call :args)))
+                       (unless id (setq id (gptel--anthropic-format-tool-id nil)))
                        (plist-put tool-call :id id)
                        (plist-put tool-call :result
                                   (string-trim (buffer-substring-no-properties
