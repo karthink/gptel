@@ -425,7 +425,7 @@ the form (valid . REST).  See `gptel-markdown--validate-link' for
 details.  Indicate the (in)validity of the link for inclusion with gptel
 queries via OV."
   (cl-destructuring-bind
-      (valid _ path filep placementp readablep supportedp _mime)
+      (valid _ path resource-type user-check readablep mime-valid _mime)
       link-status
     (if valid
         (progn
@@ -435,7 +435,7 @@ queries via OV."
                    (if (display-graphic-p)
                        (propertize " " 'display '(space :width 0.5)) " ")))
           (overlay-put ov 'help-echo
-                       (format "Sending file %s with gptel requests" path)))
+                       (format "Sending %s %s with gptel requests" resource-type path)))
       (overlay-put ov 'before-string
                    (concat (propertize "!" 'face '(:inherit error))
                            (propertize " " 'display '(space :width 0.3))))
@@ -445,15 +445,17 @@ queries via OV."
         "Sending only link text with gptel requests, "
         "this link will not be followed to its source.\n\nReason: "
         (cond
-         ((not filep) "Not a supported link type\
- (Only \"file\" or \"attachment\" are supported)")
-         ((not placementp)
+         ((not resource-type) "Not a supported link type\
+ (Only \"file\" and \"attachment\" are supported)")
+         ((not user-check)
           (concat
            "\nNot a standalone link -- separate link from text around it. \n           (OR)
 Link failed to validate, see `gptel-markdown-validate-link' or `gptel-org-validate-link'."))
          ((not readablep) (format "File %s is not readable" path))
-         ((not supportedp) (format "%s does not support binary file %s"
-                                   gptel-model path))))))))
+         ((not mime-valid)
+          (pcase resource-type
+            ('file (format "%s does not support binary file %s" gptel-model path))
+            ('url (format "%s does not support fetching non-image URLs" gptel-model))))))))))
 
 (defun gptel--annotate-link-clear (&optional beg end)
   "Delete all gptel org link annotations between BEG and END."

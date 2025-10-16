@@ -2231,24 +2231,28 @@ first nil value in REST is guaranteed to be correct."
   (let ((mime))
     (if-let* ((path (nth 3 link))
               (prefix (or (string-search "://" path) 0))
-              (type (if (= prefix 0) "file" (substring path 0 prefix)))
+              (link-type (if (= prefix 0) "file" (substring path 0 prefix)))
               (path (if (= prefix 0) path (substring path (+ prefix 3))))
-              (filep (member type `("file" ,@(and (gptel--model-capable-p 'url)
-                                                  '("http" "https" "ftp")))))
-              (placementp (funcall gptel-markdown-validate-link link))
-              (readablep (or (member type '("http" "https" "ftp"))
+              (resource-type
+               (or (and (equal link-type "file") 'file)
+                   (and (gptel--model-capable-p 'url)
+                        (member link-type '("http" "https" "ftp")) 'url)))
+              (user-check (funcall gptel-markdown-validate-link link))
+              (readablep (or (member link-type '("http" "https" "ftp"))
                              (file-remote-p path)
                              (file-readable-p path)))
-              (supportedp
-               (or (not (cdr (with-memoization
-                                 (alist-get (expand-file-name path)
-                                            gptel--link-type-cache
-                                            nil nil #'string=)
-                               (cons t (gptel--file-binary-p path)))))
+              (mime-valid
+               (if (or (eq resource-type 'url)
+                       (cdr (with-memoization
+                                (alist-get (expand-file-name path)
+                                           gptel--link-type-cache
+                                           nil nil #'string=)
+                              (cons t (gptel--file-binary-p path)))))
                    (gptel--model-mime-capable-p
-                    (setq mime (mailcap-file-name-to-mime-type path))))))
-        (list t type path filep placementp readablep supportedp mime)
-      (list nil type path filep placementp readablep supportedp mime))))
+                    (setq mime (mailcap-file-name-to-mime-type path)))
+                 t)))
+        (list t link-type path resource-type user-check readablep mime-valid mime)
+      (list nil link-type path resource-type user-check readablep mime-valid mime))))
 
 (cl-defmethod gptel--parse-media-links ((_mode (eql 'markdown-mode)) beg end)
   "Parse text and actionable links between BEG and END.
@@ -2265,7 +2269,7 @@ for inclusion into the user prompt for the gptel request."
         (let* ((link-at-pt (markdown-link-at-pos (point)))
                (link-status (gptel-markdown--validate-link link-at-pt)))
           (cl-destructuring-bind
-              (valid type path filep placementp readablep supportedp mime)
+              (valid type path resource-type user-check readablep mime-valid mime)
               link-status
             (cond
              ((and valid (member type '("http" "https" "ftp")))
@@ -2279,17 +2283,16 @@ for inclusion into the user prompt for the gptel request."
                 (unless (string-blank-p text) (push (list :text text) parts))
                 (push (if mime (list :media path :mime mime) (list :textfile path)) parts)
                 (setq from-pt (cadr link-at-pt))))
-             ((not filep)
+             ((not resource-type)
               (message "Link source not followed for unsupported link type \"%s\"." type))
-             ((not placementp)
+             ((not user-check)
               (message
                (if (eq gptel-markdown-validate-link 'gptel--link-standalone-p)
                    "Ignoring non-standalone link \"%s\"."
                  "Link %s failed to validate, see `gptel-markdown-validate-link'.")
                path))
-             ((not readablep)
-              (message "Ignoring inaccessible file \"%s\"." path))
-             ((not supportedp)
+             ((not readablep) (message "Ignoring inaccessible file \"%s\"." path))
+             ((and (not mime-valid) (eq resource-type 'file))
               (message "Ignoring unsupported binary file \"%s\"." path)))))))
     (unless (= from-pt end)
       (push (list :text (buffer-substring-no-properties from-pt end)) parts))
