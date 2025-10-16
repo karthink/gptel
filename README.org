@@ -1279,7 +1279,7 @@ You can also define a "preset" bundle of options that are applied together, see 
 gptel supports sending media in Markdown and Org chat buffers, but this feature is disabled by default.
 
 - You can enable it globally, for all models that support it, by setting =gptel-track-media=.  
-- Or you can set it locally, just for the chat buffer, via the header line:
+- Or you can set it locally, just for the chat buffer, via the header line or gptel's transient menu:
 
 #+html: <img src="https://github.com/user-attachments/assets/91f6aaab-2ea4-4806-9cc9-39b4b46a8e6c" align="center" alt="Image showing a gptel chat buffer's header line with the button to toggle media support">
 
@@ -1287,72 +1287,27 @@ gptel supports sending media in Markdown and Org chat buffers, but this feature 
 
 There are two ways to include media or plain-text files with requests:
 
-1. Adding media files to the context with =gptel-add-file=, described further below.
-2. Including links to media in chat buffers, described here:
+1. Add files to gptel's context with =gptel-add-file=, described further below.
 
-To include plain-text files, images or other supported document types with requests in chat buffers, you can include links to them in the chat buffer.  Such a link must be "standalone", i.e. on a line by itself surrounded by whitespace.
+2. Include links to media in chat buffers.  gptel will annotate the link to indicate that the linked files will be sent along with the prompt.  If a link cannot be sent for some reason, that will be indicated too, and the reason will be shown in a tooltip:
 
-In Org mode, for example, the following are all *valid* ways of including an image with the request:
+#+html: <img width="848" height="336" alt="Image showing a gptel chat buffer with annotated links, two of which are marked with SEND.  A third link will not be sent, and the echo area contains an explanation for why." src="https://github.com/user-attachments/assets/00fd0187-f964-4f55-a392-0a1562bb9118" align="center"/>
 
-- "Standalone" file links:
-#+begin_src 
-In this yaml file, I have some key-remapping configuration:
+Most ways of specifying links to files/URLs are respected by gptel:
 
-[[file:/path/to/remap.yaml]]
+- In Markdown mode:
+  + =[](file:///path/to/file.txt)= and =[](/path/to/file.txt)=
+  + =[Description](file:///path/to/file.txt)= and =[Description](/path/to/file.txt)=
+  + =<file:///path/to/file.txt>=
+  "Plain" links of the form =file:///path/to/file.txt= will not be recognized.
+- In Org mode:
+  + =[[file:/path/to/file.txt]]= 
+  + =[[file:/path/to/file.txt][Description]]=
+  + =<file:/path/to/file.txt>=
+  + =[[attachment:data.txt]]=
+  "Plain" links of the form =file:/path/to/file.txt= will not be recognized.
 
-Could you explain what it does, and which program might be using it?
-#+end_src
-
-#+begin_src
-Describe this picture
-
-[[file:/path/to/screenshot.png]]
-
-Focus specifically on the text content.
-#+end_src
-
-- "Standalone" file link with description:
-#+begin_src 
-Describe this picture
-
-[[file:/path/to/screenshot.png][some picture]]
-
-Focus specifically on the text content.
-#+end_src
-
-- "Standalone", angle file link:
-#+begin_src 
-Describe this picture
-
-<file:/path/to/screenshot.png>
-
-Focus specifically on the text content.
-#+end_src
-
-The following links are *not valid*, and the text of the link will be sent instead of the file contents:
-
-- Inline link:
-#+begin_src 
-Describe this [[file:/path/to/screenshot.png][picture]].
-
-Focus specifically on the text content.
-#+end_src
-
-- Link not "standalone":
-#+begin_src
-Describe this picture: 
-[[file:/path/to/screenshot.png]]
-Focus specifically on the text content.
-#+end_src
-
-- Not a valid Org link:
-#+begin_src 
-Describe the picture
-
-file:/path/to/screenshot.png
-#+end_src
-
-Similar criteria apply to Markdown chat buffers.
+Support for custom Org link types is planned.
 
 #+html: </details>
 #+html: <details><summary>
