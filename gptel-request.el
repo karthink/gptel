@@ -627,31 +627,17 @@ always handled separately."
 (defcustom gptel-track-media nil
   "Whether supported media in chat buffers should be sent.
 
-When the active `gptel-model' supports it, gptel can send text, images
-or other media from links in chat buffers to the LLM.  To use this, the
-following steps are required.
+When this is non-nil, gptel will send text, images or other media from
+links in chat buffers to the LLM.
 
-1. `gptel-track-media' (this variable) should be non-nil
-
-2. The LLM should provide vision or document support.  (See
-`gptel-make-openai', `gptel-make-anthropic', `gptel-make-ollama' or
-`gptel-make-gemini' for details on how to specify media support for
-models.)
-
-3. Only \"standalone\" links in chat buffers are considered.
-These are links on their own line with no surrounding text.
-Further:
-
-- In Org mode, only files or URLs of the form
-  [[/path/to/media][bracket links]] and <angle/link/path>
-  are sent.
-
-- In Markdown mode, only files or URLS of the form
-  [bracket link](/path/to/media) and <angle/link/path>
-  are sent.
+Sending images or other binary media from links requires the
+active `gptel-model' to support it.  See `gptel-make-openai',
+`gptel-make-anthropic', `gptel-make-ollama' or `gptel-make-gemini' for
+details on how to specify media support for models.
 
 This option has no effect in non-chat buffers.  To include
-media (including images) more generally, use `gptel-add'."
+media (including images) more generally, use `gptel-add' or
+`gptel-add-file'."
   :type 'boolean)
 
 (defcustom gptel-use-context 'system
@@ -741,7 +727,7 @@ buffer-locally, or let-bind it around calls to gptel queries, or via
 gptel presets."
   :type '(repeat string))
 
-(defcustom gptel-markdown-validate-link #'gptel--link-standalone-p
+(defcustom gptel-markdown-validate-link #'always
   "Validate links to be sent as context with gptel queries.
 
 When `gptel-track-media' is enabled, this option determines if a
@@ -753,13 +739,13 @@ It should be a function that accepts a Markdown link and return non-nil
 if the link should be followed.  See `markdown-link-at-pos' for the
 structure of a Markdown link object.
 
-By default, links are considered valid if they are placed on a line by
-themselves, separated from surrounding text.  This is to ensure that
-links to be sent are intentionally placed.  You can set it to the
-function `always' to try to send all links."
+By default, all links are considered valid.
+
+Set this to `gptel--link-standalone-p' to only follow links placed on a
+line by themselves, separated from surrounding text."
   :type '(choice
-          (const :tag "Standalone links" gptel--link-standalone-p)
           (const :tag "All links" always)
+          (const :tag "Standalone links" gptel--link-standalone-p)
           (function :tag "Function"))
   :group 'gptel)
 
@@ -2296,7 +2282,11 @@ for inclusion into the user prompt for the gptel request."
              ((not filep)
               (message "Link source not followed for unsupported link type \"%s\"." type))
              ((not placementp)
-              (message "Ignoring non-standalone link \"%s\"." path))
+              (message
+               (if (eq gptel-markdown-validate-link 'gptel--link-standalone-p)
+                   "Ignoring non-standalone link \"%s\"."
+                 "Link %s failed to validate, see `gptel-markdown-validate-link'.")
+               path))
              ((not readablep)
               (message "Ignoring inaccessible file \"%s\"." path))
              ((not supportedp)

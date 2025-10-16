@@ -168,7 +168,7 @@ adding elements to this list can significantly slow down
   :group 'gptel
   :type '(repeat symbol))
 
-(defcustom gptel-org-validate-link #'gptel-org--link-standalone-p
+(defcustom gptel-org-validate-link #'always
   "Validate links to be sent as context with gptel queries.
 
 When `gptel-track-media' is enabled, this option determines if a
@@ -180,14 +180,14 @@ them).
 It should be a function that accepts an Org link object and return
 non-nil if the link should be followed.
 
-By default, links are considered valid if they are placed on a line by
-themselves, separated from surrounding text.  This is to ensure that
-links to be sent are intentionally placed.  You can set it to the
-function `always' to try to send all links."
+By default, all links are considered valid.
+
+Set this to `gptel-org--link-standalone-p' to only follow links placed
+on a line by themselves, separated from surrounding text."
   :group 'gptel
   :type '(choice
-          (const :tag "Standalone links" gptel-org--link-standalone-p)
           (const :tag "All links" always)
+          (const :tag "Standalone links" gptel-org--link-standalone-p)
           (function :tag "Function")))
 
 (defconst gptel-org--link-regex
@@ -373,7 +373,6 @@ unescapes the remainder."
              (min prev-pt (point)) prev-pt))
           (goto-char (setq prev-pt backward-progress)))))))
 
-;; Handle media links in the buffer
 (defun gptel-org--link-standalone-p (object)
   "Check if link OBJECT is on a line by itself."
   (when-let* ((par (gptel-org--element-parent object))
@@ -451,7 +450,10 @@ for inclusion into the user prompt for the gptel request."
              ((not filep)
               (message "Link source not followed for unsupported link type \"%s\"." type))
              ((not placementp)
-              (message "Ignoring non-standalone link \"%s\"." path))
+              (message (if (eq gptel-org-validate-link 'gptel--link-standalone-p)
+                           "Ignoring non-standalone link \"%s\"."
+                         "Link %s failed to validate, see `gptel-org-validate-link'.")
+                       path))
              ((not readablep)
               (message "Ignoring inaccessible file \"%s\"." path))
              ((not supportedp)

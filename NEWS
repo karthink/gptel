@@ -4,6 +4,21 @@
 
 ** Breaking changes
 
+- Link handling in gptel chat buffers has changed, hopefully for the
+  better.  When ~gptel-track-media~ is non-nil, gptel follows links in
+  the prompt and includes their contents with queries.  Previously,
+  links to files had to be placed "standalone", surrounded by blank
+  lines, for the files to be included in the prompt.  This limitation
+  has been removed -- all supported links in the prompt will be followed
+  now.
+
+  The "standalone" limitation was imposed to make included links stand
+  out visually and avoid accidental inclusions, but in practice users
+  were often confused about whether a link would be sent.  gptel now
+  prominently annotates links that will be followed and sent (see
+  below), so it should be visually obvious when links will be followed.
+  You can revert to the old behavior by customizing gptel, see below.
+
 - The model =claude-3-sonnet-20240229= has been removed from the default
   list of Anthropic models.  This model is no longer available in the
   Anthropic API.
@@ -51,18 +66,13 @@
   the link tooltip explains why.  Links that will be sent are explicitly
   indicated as well.
 
-- New user options ~gptel-org-validate-link~ and
-  ~gptel-markdown-validate-link~: When including links to files in the
-  prompt via ~gptel-track-media~, only "standalone" links are included
-  by default -- these are links placed on a line by themselves,
-  separated from other text.  This is to ensure that the file is being
-  included intentionally.
-
-  This behavior is now customizable in Markdown/Org buffers via these
-  options.  Its value should be a function that determines if a link is
-  to be considered valid for inclusion with the gptel query.  You can
-  set it to the function ~always~ to try to send all links, irrespective
-  of their placement.
+- New user options ~gptel-markdown-validate-link~ and
+  ~gptel-org-validate-link~: These control whether links in Markdown/Org
+  buffers are followed and their sources included in gptel's prompt.
+  Their value should be a function that determines if a link is to be
+  considered valid for inclusion with the gptel query.  By default they
+  allow all links, but they can be customized to require "standalone"
+  link placement, which is gptel's past behavior.
 
 - gptel preset specifications can now modify the current values of gptel
   options instead of replacing them, allowing better composition of

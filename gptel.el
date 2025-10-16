@@ -447,7 +447,9 @@ queries via OV."
          ((not filep) "Not a supported link type\
  (Only \"file\" or \"attachment\" are supported)")
          ((not placementp)
-          "Not a standalone link.  (Separate link from text around it.)")
+          (concat
+           "\nNot a standalone link -- separate link from text around it. \n           (OR)
+Link failed to validate, see `gptel-markdown-validate-link' or `gptel-org-validate-link'."))
          ((not readablep) (format "File %s is not readable" path))
          ((not supportedp) (format "%s does not support binary file %s"
                                    gptel-model path))))))))
@@ -732,12 +734,9 @@ Search between BEG and END."
                 (if gptel-track-media
                     (progn
                       (run-hooks 'gptel-refresh-buffer-hook)
-                      (message
-                       (concat
-                        "Sending media from included links.  To include media, create "
-                        "a \"standalone\" link in a paragraph by itself, separated from surrounding text.")))
+                      (message "Sending media from included links."))
                   (without-restriction (gptel--annotate-link-clear))
-                  (message "Ignoring image links.  Only link text will be sent."))
+                  (message "Ignoring links.  Only link text will be sent."))
                 (run-at-time 0 nil #'force-mode-line-update)))
              (track-media
               (and (gptel--model-capable-p 'media)
@@ -746,12 +745,12 @@ Search between BEG and END."
                         (buttonize "[Sending media]" toggle-track-media)
                         'mouse-face 'highlight
                         'help-echo
-                        "Sending media from standalone links/urls when supported.\nClick to toggle")
+                        "Sending media from links/urls when supported.\nClick to toggle")
                      (propertize
                       (buttonize "[Ignoring media]" toggle-track-media)
                       'mouse-face 'highlight
                       'help-echo
-                      "Ignoring images from standalone links/urls.\nClick to toggle"))))
+                      "Ignoring media from links/urls.\nClick to toggle"))))
              (toggle-tools (lambda (&rest _) (interactive)
                              (run-at-time 0 nil
                                           (lambda () (call-interactively #'gptel-tools)))))
