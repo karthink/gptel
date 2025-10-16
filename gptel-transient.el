@@ -1241,6 +1241,7 @@ responses."
   :prompt "Response length in tokens (leave empty: default, 80-200: short, 200-500: long): "
   :reader 'gptel--transient-read-number)
 
+;; TODO(links): Run `gptel-refresh-buffer-hook' after a model change
 (transient-define-infix gptel--infix-provider ()
   "AI Provider for Chat."
   :description "Model"
@@ -1319,7 +1320,7 @@ querying the LLM."
   :display-if-false "No"
   :key "-R")
 
-(transient-define-infix gptel--infix-track-media ()
+(transient-define-suffix gptel--infix-track-media ()
   "Send media from \"standalone\" links in the prompt.
 
 When the active `gptel-model' supports it, gptel can send images
@@ -1330,12 +1331,20 @@ line with no surrounding text.
 What link types are sent depends on the mime-types the model
 supports.  See `gptel-track-media' for more information."
   :description "Send media from links"
+  :transient t
   :class 'gptel--switches
   :variable 'gptel-track-media
   :set-value #'gptel--set-with-scope
   :display-if-true "Yes"
   :display-if-false "No"
-  :key "-I")
+  :key "-I"
+  (interactive)
+  (let ((obj (transient-suffix-object)))
+    (transient-infix-set obj (transient-infix-read obj))
+    (transient--show))
+  (if gptel-track-media
+      (run-hooks 'gptel-refresh-buffer-hook)
+    (gptel--annotate-link-clear)))
 
 ;; ** Infixes for adding and removing context
 

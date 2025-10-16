@@ -279,6 +279,12 @@ transient menu interface provided by `gptel-menu'."
   :type 'file
   :group 'gptel)
 
+(defvar gptel-refresh-buffer-hook '(jit-lock-refontify)
+  "Hook run in gptel buffers after changing gptel's configuration.
+
+This hook runs in gptel chat buffers after making a change to gptel's
+configuration that might require a UI update.")
+
 (defvar-local gptel--bounds nil)
 (put 'gptel--bounds 'safe-local-variable #'always)
 
@@ -722,13 +728,15 @@ Search between BEG and END."
                      'help-echo "Active gptel context"))))
              (toggle-track-media
               (lambda (&rest _)
-                (setq-local gptel-track-media
-                            (not gptel-track-media))
+                (setq-local gptel-track-media (not gptel-track-media))
                 (if gptel-track-media
-                    (message
-                     (concat
-                      "Sending media from included links.  To include media, create "
-                      "a \"standalone\" link in a paragraph by itself, separated from surrounding text."))
+                    (progn
+                      (run-hooks 'gptel-refresh-buffer-hook)
+                      (message
+                       (concat
+                        "Sending media from included links.  To include media, create "
+                        "a \"standalone\" link in a paragraph by itself, separated from surrounding text.")))
+                  (without-restriction (gptel--annotate-link-clear))
                   (message "Ignoring image links.  Only link text will be sent."))
                 (run-at-time 0 nil #'force-mode-line-update)))
              (track-media
