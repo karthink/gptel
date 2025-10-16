@@ -412,6 +412,7 @@ Note: This will move the cursor."
           (if (and hide-ov (eq value t))
               (delete-overlay hide-ov)
             (unless hide-ov (setq hide-ov (make-overlay (point) end)))
+            (overlay-put hide-ov 'evaporate t)
             (overlay-put hide-ov 'invisible t)
             (overlay-put hide-ov 'before-string
                          (propertize "..." 'face 'shadow))))))))
@@ -1312,7 +1313,7 @@ Optional RAW disables text properties and transformation."
      (when (eq (plist-get info :reasoning-block) 'in)
        (when-let* ((rm (plist-get info :reasoning-marker))
                    (tm (plist-get info :tracking-marker)))
-         (move-marker rm tm))))))
+         (move-marker rm tm (marker-buffer tm)))))))
 
 ;;;###autoload
 (defun gptel (name &optional _ initial interactivep)
