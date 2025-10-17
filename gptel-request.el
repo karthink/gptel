@@ -2232,7 +2232,8 @@ first nil value in REST is guaranteed to be correct."
     (if-let* ((path (nth 3 link))
               (prefix (or (string-search "://" path) 0))
               (link-type (if (= prefix 0) "file" (substring path 0 prefix)))
-              (path (if (= prefix 0) path (substring path (+ prefix 3))))
+              (path (if (equal link-type "file")
+                        (substring path (+ prefix 3)) path))
               (resource-type
                (or (and (equal link-type "file") 'file)
                    (and (gptel--model-capable-p 'url)
