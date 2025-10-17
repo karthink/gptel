@@ -651,7 +651,7 @@ file."
           (add-file-local-variable 'gptel--bounds (gptel--get-buffer-bounds)))))))
 
 
-;;; Minor mode and UI
+;;; Minor modes and UI
 
 ;; NOTE: It's not clear that this is the best strategy:
 (add-to-list 'text-property-default-nonsticky '(gptel . t))
@@ -852,6 +852,120 @@ Search between BEG and END."
                             (lambda (&rest _) (gptel-menu))))))
         (message (propertize msg 'face face))))
     (force-mode-line-update)))
+
+
+;;;; gptel-indicator-mode
+
+(define-fringe-bitmap 'gptel-indicator-bar
+  (make-vector 28 #b01100000)
+  nil nil 'center)
+
+(defun gptel-indicator--make-prefix (type)
+  "Create fringe prefix string for TYPE ('response or 'ignore)."
+  (propertize " " 'display
+              `( left-fringe gptel-indicator-bar
+                 ,(pcase type
+                    ('response 'gptel-response-fringe-face)
+                    ('ignore 'shadow)
+                    (`(tool . _) '(:inherit shadow :inverse-video t))))))
+
+(defun gptel-indicator--decorate (ov &optional val)
+  "Decorate gptel indicator overlay OV whose type is VAL."
+  (overlay-put ov 'evaporate t)
+  (overlay-put ov 'gptel-indicator t)
+  (when (memq 'face gptel-indicator-types)
+    (overlay-put ov 'font-lock-face
+                 (pcase val
+                   ('ignore 'shadow)
+                   (_ 'gptel-response-face))))
+  (when (memq 'fringe gptel-indicator-types)
+    (let ((prefix (gptel-indicator--make-prefix
+                   (or val 'response))))
+      (overlay-put ov 'line-prefix prefix)
+      (overlay-put ov 'wrap-prefix prefix))))
+
+(defun gptel-indicator--update (beg end)
+  "JIT-lock function: mark gptel response/reasoning regions.
+
+BEG and END delimit the region to refresh."
+  (save-excursion                ;Scan across region for the gptel text property
+    (let ((prev-pt (goto-char end)))
+      (while (and (goto-char (previous-single-property-change
+                              (point) 'gptel nil beg))
+                  (/= (point) prev-pt))
+        (pcase (get-char-property (point) 'gptel)
+          ((and (or 'response 'ignore `(tool . _)) val)
+           (if-let* ((ov (or (cdr-safe (get-char-property-and-overlay
+                                        (point) 'gptel-indicator))
+                             (cdr-safe (get-char-property-and-overlay
+                                        prev-pt 'gptel-indicator))))
+                     (from (overlay-start ov)) (to (overlay-end ov)))
+               (cond                    ;Move any existing overlay over region
+                ((<= from (point) to))  ;fully inside, noop
+                ((= to (point)) (move-overlay ov from prev-pt)) ;overlay at left end
+                ((= from prev-pt) (move-overlay ov (point) to))) ;overlay at right end
+             (gptel-indicator--decorate ;Or make new overlay covering just region
+              (make-overlay (point) prev-pt nil t) val)))
+          ('nil                     ;If there's an overlay, we need to split it.
+           (when-let* ((ov (cdr-safe (get-char-property-and-overlay
+                                      (point) 'gptel-indicator)))
+                       (from (overlay-start ov)) (to (overlay-end ov)))
+             (move-overlay ov from (point)) ;Move overlay to left side
+             (gptel-indicator--decorate     ;Make a new one on the right
+              (make-overlay prev-pt to nil t)))))
+        (setq prev-pt (point)))))
+  `(jit-lock-bounds ,beg . ,end))
+
+(defcustom gptel-indicator-types '(fringe)
+  "Decorations used by `gptel-indicator-mode' to highlight responses.
+
+This must be a list of symbols denoting types of indicators:
+- fringe to highlight LLM responses via a fringe marker.
+- face to highlight LLM responses in a special face.
+
+The list can contain either or both. See `gptel-indicator-faces' for the
+faces used for both."
+  :type '(set (const :tag "Fringe marker" fringe)
+              (const :tag "Face highlighting" face))
+  :group 'gptel)
+
+(defface gptel-response-face
+  '((((background light) (min-colors 88)) :background "linen" :extend t)
+    (((background dark)  (min-colors 88)) :background "gray14" :extend t)
+    (t :inherit mode-line))
+  "Face used to highlight LLM responses when using `gptel-indicator-mode'.
+
+To enable response highlighting, you also need to set
+`gptel-indicator-types', which see."
+  :group 'gptel)
+
+(defface gptel-response-fringe-face
+  '((t :inherit outline-1))
+  "LLM response fringe face when using `gptel-indicator-mode'.
+
+To enable response indication in the fringe, you also need to set
+`gptel-indicator-types', which see."
+  :group 'gptel)
+
+(define-minor-mode gptel-indicator-mode
+  "Show fringe indicators for gptel response/reasoning regions.
+
+This mode adds visual indicators for lines that contain gptel responses,
+tool results or internal reasoning.
+
+The indicators appear on both the main line and any visual continuation
+lines when text wraps."
+  :global nil
+  (cond
+   (gptel-indicator-mode
+    (jit-lock-register #'gptel-indicator--update)
+    (gptel-indicator--update (point-min) (point-max))
+    (add-hook 'gptel-post-response-functions #'gptel-indicator--update
+              60 t))
+   (t (jit-lock-unregister #'gptel-indicator--update)
+      (remove-hook 'gptel-post-response-functions #'gptel-indicator--update t)
+      (without-restriction
+        (remove-overlays nil nil 'gptel-indicator t)))))
 
 
 ;;; State machine additions for `gptel-send'.
