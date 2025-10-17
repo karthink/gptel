@@ -55,6 +55,14 @@
 
 ** New features and UI changes
 
+- New minor-mode ~gptel-highlight-mode~ to highlight LLM responses and
+  more.  An oft-requested feature, gptel can now highlight responses by
+  decorating the (left) margin or fringe, and apply a face to the
+  response region.  To use it, just turn on ~gptel-highlight-mode~ in
+  any buffer (and not just dedicated chat buffers).  You can customize
+  the type of decoration performed via ~gptel-highlight-methods~, which
+  see.
+
 - Link annotations: When ~gptel-track-media~ is enabled in gptel chat
   buffers, gptel follows (Markdown/Org) links to files in the prompt and
   includes these files with queries.  However, it was not clear if a

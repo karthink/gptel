@@ -1252,6 +1252,8 @@ gptel provides a few powerful, general purpose and flexible commands.  You can d
 
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/3562a6e2-7a5c-4f7e-8e57-bf3c11589c73" align="center" alt="Image showing gptel's menu with some of the available query options.">
 
+You can use =gptel-highlight-mode= to highlight LLM responses in different ways.
+
 You can also define a "preset" bundle of options that are applied together, see [[#option-presets][Option presets]] below.
 
 *** In a dedicated chat buffer:
@@ -1269,6 +1271,8 @@ You can also define a "preset" bundle of options that are applied together, see 
 That's it. You can go back and edit previous prompts and responses if you want.
 
 The default mode is =markdown-mode= if available, else =text-mode=.  You can set =gptel-default-mode= to =org-mode= if desired.
+
+You can use =gptel-highlight-mode= to highlight LLM responses in different ways.
 
 You can also define a "preset" bundle of options that are applied together, see [[#option-presets][Option presets]] below.
 
@@ -1588,9 +1592,11 @@ You can also call =gptel-end-of-response= as a command at any time.
 **** I want to change the formatting of the prompt and LLM response
 #+html: </summary>
 
-For dedicated chat buffers: customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=.  You can set a different pair for each major-mode.
+Anywhere in Emacs: Turn on =gptel-highlight-mode=.  See its documentation for customization options.
 
-Anywhere in Emacs: Use =gptel-pre-response-hook= and =gptel-post-response-functions=, which see.
+In dedicated chat buffers: you can additionally customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=, which are prefixes inserted before the prompt and response.  You can set a different pair for each major-mode.
+
+For more custom formatting: Use =gptel-pre-response-hook= and =gptel-post-response-functions=, which see.
 
 #+html: </details>
 #+html: <details><summary>

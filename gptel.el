@@ -651,7 +651,7 @@ file."
           (add-file-local-variable 'gptel--bounds (gptel--get-buffer-bounds)))))))
 
 
-;;; Minor mode and UI
+;;; Minor modes and UI
 
 ;; NOTE: It's not clear that this is the best strategy:
 (cl-pushnew '(gptel . t) (default-value 'text-property-default-nonsticky)
@@ -853,6 +853,150 @@ Search between BEG and END."
                             (lambda (&rest _) (gptel-menu))))))
         (message (propertize msg 'face face))))
     (force-mode-line-update)))
+
+
+;;;; gptel-highlight-mode
+
+(defcustom gptel-highlight-methods '(margin)
+  "Types of LLM response highlighting used by `gptel-highlight-mode'.
+
+This must be a list of symbols denoting types of highlighting for LLM responses:
+- face: highlight LLM responses using face `gptel-response-highlight'.
+- fringe: highlight using a (left) fringe marker.
+- margin: highlight in the (left) display margin.
+
+margin and fringe markings are mutually exclusive, and use the
+`gptel-response-fringe-highlight' face."
+  :type '(set (const :tag "Fringe marker" fringe)
+              (const :tag "Face highlighting" face)
+              (const :tag "Margin indicator" margin))
+  :group 'gptel)
+
+(defface gptel-response-highlight
+  '((((background light) (min-colors 88)) :background "linen" :extend t)
+    (((background dark)  (min-colors 88)) :background "gray14" :extend t)
+    (t :inherit mode-line))
+  "Face used to highlight LLM responses when using `gptel-highlight-mode'.
+
+To enable this face for responses, `gptel-highlight-methods' must be set."
+  :group 'gptel)
+
+(defface gptel-response-fringe-highlight
+  '((t :inherit outline-1 :height reset))
+  "LLM response fringe/margin face when using `gptel-highlight-mode'.
+
+To enable response highlights in the fringe, `gptel-highlight-methods'
+must be set."
+  :group 'gptel)
+
+(define-fringe-bitmap 'gptel-highlight-fringe
+  (make-vector 28 #b01100000)
+  nil nil 'center)
+
+;; Common options for margin indicator:
+;; BOX DRAWINGS LIGHT VERTICAL  0x002502
+;; LEFT ONE QUARTER BLOCK       0x00258E
+;; LEFT THREE EIGHTHS BLOCK     0x00258D
+;; BOX DRAWINGS HEAVY VERTICAL  0x002503
+;; VERTICAL ONE EIGHTH BLOCK-2  0x01FB70
+
+(defun gptel-highlight--margin-prefix (type)
+  "Create margin prefix string for TYPE.
+
+Supported TYPEs are response, ignore and tool calls."
+  (propertize ">" 'display
+              `( (margin left-margin)
+                 ,(propertize "▎" 'face
+                              (pcase type
+                                ('response 'gptel-response-fringe-highlight)
+                                ('ignore 'shadow)
+                                (`(tool . ,_) 'shadow))))))
+
+(defun gptel-highlight--fringe-prefix (type)
+  "Create fringe prefix string for TYPE.
+
+Supported TYPEs are response, ignore and tool calls."
+  (propertize ">" 'display
+              `( left-fringe gptel-highlight-fringe
+                 ,(pcase type
+                    ('response 'gptel-response-fringe-highlight)
+                    ('ignore 'shadow)
+                    (`(tool . ,_) 'shadow)))))
+
+(defun gptel-highlight--decorate (ov &optional val)
+  "Decorate gptel indicator overlay OV whose type is VAL."
+  (overlay-put ov 'evaporate t)
+  (overlay-put ov 'gptel-highlight t)
+  (when (memq 'face gptel-highlight-methods)
+    (overlay-put ov 'font-lock-face
+                 (pcase val
+                   ('response 'gptel-response-highlight)
+                   ('ignore 'shadow)
+                   (`(tool . ,_) 'shadow))))
+  (when-let* ((prefix
+               (cond ((memq 'margin gptel-highlight-methods)
+                      (gptel-highlight--margin-prefix (or val 'response)))
+                     ((memq 'fringe gptel-highlight-methods)
+                      (gptel-highlight--fringe-prefix (or val 'response))))))
+    (overlay-put ov 'line-prefix prefix)
+    (overlay-put ov 'wrap-prefix prefix)))
+
+(defun gptel-highlight--update (beg end)
+  "JIT-lock function: mark gptel response/reasoning regions.
+
+BEG and END delimit the region to refresh."
+  (save-excursion                ;Scan across region for the gptel text property
+    (let ((prev-pt (goto-char end)))
+      (while (and (goto-char (previous-single-property-change
+                              (point) 'gptel nil beg))
+                  (/= (point) prev-pt))
+        (pcase (get-char-property (point) 'gptel)
+          ((and (or 'response 'ignore `(tool . ,_)) val)
+           (if-let* ((ov (or (cdr-safe (get-char-property-and-overlay
+                                        (point) 'gptel-highlight))
+                             (cdr-safe (get-char-property-and-overlay
+                                        prev-pt 'gptel-highlight))))
+                     (from (overlay-start ov)) (to (overlay-end ov)))
+               (unless (<= from (point) prev-pt to)
+                 (move-overlay ov (min from (point)) (max to prev-pt)))
+             (gptel-highlight--decorate ;Or make new overlay covering just region
+              (make-overlay (point) prev-pt nil t) val)))
+          ('nil                     ;If there's an overlay, we need to split it.
+           (when-let* ((ov (cdr-safe (get-char-property-and-overlay
+                                      (point) 'gptel-highlight)))
+                       (from (overlay-start ov)) (to (overlay-end ov)))
+             (move-overlay ov from (point)) ;Move overlay to left side
+             (gptel-highlight--decorate     ;Make a new one on the right
+              (make-overlay prev-pt to nil t)
+              (get-char-property prev-pt 'gptel)))))
+        (setq prev-pt (point)))))
+  `(jit-lock-bounds ,beg . ,end))
+
+(define-minor-mode gptel-highlight-mode
+  "Visually highlight LLM respones regions.
+
+Highlighting is via fringe or margin markers, and optionally a response
+face.  See `gptel-highlight-methods' for highlighting methods, and
+`gptel-response-highlight' and `gptel-response-fringe-highlight' for the
+faces.
+
+This minor mode can be used anywhere in Emacs, and not just gptel chat
+buffers."
+  :lighter nil
+  :global nil
+  (cond
+   (gptel-highlight-mode
+    (when (memq 'margin gptel-highlight-methods)
+      (setq left-margin-width (1+ left-margin-width))
+      (set-window-buffer (selected-window) (current-buffer)))
+    (jit-lock-register #'gptel-highlight--update)
+    (gptel-highlight--update (point-min) (point-max)))
+   (t (when (memq 'margin gptel-highlight-methods)
+        (setq left-margin-width (max (1- left-margin-width) 0))
+        (set-window-buffer (selected-window) (current-buffer)))
+      (jit-lock-unregister #'gptel-highlight--update)
+      (without-restriction
+        (remove-overlays nil nil 'gptel-highlight t)))))
 
 
 ;;; State machine additions for `gptel-send'.
