@@ -385,14 +385,14 @@ This modifies the buffer."
              (cl-etypecase gptel--system-message
                (string
                 (setq gptel--system-message
-                      (concat gptel--system-message "\n\n" context-string)))
+                      (concat context-string "\n\n" gptel--system-message)))
                (function
                 (setq gptel--system-message
                       (gptel--parse-directive gptel--system-message 'raw))
                 (gptel-context--wrap-in-buffer context-string))
                (list
                 (setq gptel--system-message ;cons a new list to avoid mutation
-                      (cons (concat (car gptel--system-message) "\n\n" context-string)
+                      (cons (concat context-string "\n\n" (car gptel--system-message))
                             (cdr gptel--system-message)))))
            (setq gptel--system-message context-string))))
       ('user
