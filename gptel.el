@@ -323,6 +323,7 @@ NEW-SPEC is either a declarative action spec (plist) of the form
 form it is returned as is.
 
 - :append and :prepend will append/prepend val (a list or string) to ORIGINAL.
+  Actions on strings are idempotent, they will only be appended/prepended once.
 - :eval will evaluate val and return the result, and
 - :function will call val with ORIGINAL as its argument, and return the result.
 - :merge will treat ORIGINAL and NEW-SPEC as plists and return a merged plist,
@@ -334,10 +335,14 @@ form it is returned as is.
         (let ((key (pop tail)) (form (pop tail)))
           (setq current
                 (pcase key
-                  (:append (funcall (if (stringp form) #'concat #'append)
-                                    current form))
-                  (:prepend (funcall (if (stringp form) #'concat #'append)
-                                     form current))
+                  (:append (if (stringp form)
+                               (if (string-suffix-p form current t)
+                                   current (concat current form))
+                             (append current form)))
+                  (:prepend (if (stringp form)
+                                (if (string-prefix-p form current t)
+                                    current (concat form current))
+                              (append form current)))
                   (:eval (eval form t))
                   (:function (funcall form current))
                   (:merge (gptel--merge-plists (copy-sequence current) form))
