@@ -1,0 +1,40 @@
+name: Emacs ERT Tests
+
+on:
+  workflow_dispatch:  # Allow manual triggering from GitHub UI
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: purcell/setup-emacs@master
+        with:
+          version: '30.1'
+
+      - name: Run ERT tests
+        run: |
+          git submodule update --init --recursive
+          cd test
+          emacs -Q -L .. -L . \
+            --eval "(progn
+                      (require 'package)
+                      (add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\") t)
+                      (add-to-list 'package-archives '(\"gnu\" . \"https://elpa.gnu.org/packages/\") t)
+                      (package-initialize)
+                      (setq package-install-upgrade-built-in t)
+                      (package-refresh-contents)
+                      (package-install 'transient)
+                      ;; Verify version
+                      (require 'transient)
+                      (message \"Transient version: %s\" (package-desc-version (package-get-descriptor 'transient)))
+                      (require 'compat)
+                      (message \"Compat version: %s\" (package-desc-version (package-get-descriptor 'compat))))" \
+            $(find .. -mindepth 1 -maxdepth 1 \
+              \( -name '.*.el' -prune -o -name '*.el' -type f -printf ' -l %p' \)) \
+            $(find . -mindepth 1 -maxdepth 1 \
+              \( -name '.*.el' -prune -o -name '*.el' -type f -printf ' -l %p' \)) \
+            -l ert --batch -f ert-run-tests-batch-and-exit
