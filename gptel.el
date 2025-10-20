@@ -654,7 +654,8 @@ file."
 ;;; Minor mode and UI
 
 ;; NOTE: It's not clear that this is the best strategy:
-(add-to-list 'text-property-default-nonsticky '(gptel . t))
+(cl-pushnew '(gptel . t) (default-value 'text-property-default-nonsticky)
+            :test #'equal)
 
 (defun gptel--inherit-stickiness (beg end _pre)
   "Mark any change to an LLM response region as a response.
