@@ -346,12 +346,14 @@ afterwards."
   "Highlight the region from START to END.
 
 ADVANCE controls the overlay boundary behavior."
-  (let ((overlay (make-overlay start end nil (not advance) advance)))
+  (let ((overlay (make-overlay start end nil (not advance) advance))
+        (buf-entry (alist-get (current-buffer) gptel-context)))
     (overlay-put overlay 'evaporate t)
     (overlay-put overlay 'face 'gptel-context-highlight-face)
     (overlay-put overlay 'gptel-context t)
-    (push overlay (alist-get (current-buffer)
-                             gptel-context))
+    (setf (alist-get (current-buffer) gptel-context)
+          (plist-put buf-entry :overlays
+                     (cons overlay (plist-get buf-entry :overlays))))
     overlay))
 
 ;;;###autoload
@@ -452,15 +454,16 @@ Ignore overlays, buffers and files that are not live or readable."
   (let ((res))
     (dolist (entry (or context-alist gptel-context))
       (pcase entry                      ;Context entry is:
-        (`(,buf . ,ovs)
+        (`(,buf . ,data)
          (cond
-          ((buffer-live-p buf)          ;Overlay(s) in a buffer
-           (if-let* ((live-ovs (cl-loop for ov in ovs
-                                        when (overlay-start ov)
-                                        collect ov)))
-               (push (cons buf live-ovs) res)))
+          ((buffer-live-p buf)
+           ;; (<buf> :overlays ... :lines ... :bounds ...)
+           (when-let* ((ovs (plist-get data :overlays))) ;Clear dead overlays
+             (plist-put data :overlays (cl-remove-if-not #'overlay-start ovs)))
+           (push (cons buf data) res))
           ((and (stringp buf) (file-readable-p buf))
-           (push (cons buf ovs) res)))) ;A file list with (maybe) a mimetype
+           ;; ("/file/path" :mime ... :bounds ... :line ...)
+           (push (cons buf data) res))))
 
         ((and (pred stringp) (pred file-readable-p)) ;Just a file, figure out mimetype
          (if (file-directory-p entry)
@@ -482,21 +485,56 @@ Ignore overlays, buffers and files that are not live or readable."
         ((pred buffer-live-p) (push (list entry) res)))) ;Just a buffer
     res))
 
-(defun gptel-context--insert-buffer-string (buffer overlays)
-  "Insert at point a context string from all OVERLAYS in BUFFER.
+(defun gptel-context--insert-buffer-string (buffer context-data &optional header)
+  "Insert at point a context string from CONTEXT-DATA in BUFFER.
 
-If OVERLAYS is nil add the entire buffer text."
+CONTEXT-DATA is a plist with keys :overlays, :lines and :bounds to
+include specific overlays, line ranges or position bounds instead of the
+entire buffer.  See `gptel-context'.
+
+HEADER is an optional header to insert before the contents."
   (let ((is-top-snippet t)
-        (previous-line 1))
-    (insert (format "In buffer `%s`:" (buffer-name buffer))
-            "\n\n```" (gptel--strip-mode-suffix (buffer-local-value
-                                                 'major-mode buffer))
+        (previous-line 1)
+        regions)
+    ;; Collect all regions into a unified list of (start . end) pairs
+    (with-current-buffer buffer
+      (without-restriction
+        ;; Collect overlays
+        (dolist (ov (plist-get context-data :overlays))
+          (when (overlay-start ov)
+            (push (cons (overlay-start ov) (overlay-end ov))
+                  regions)))
+        ;; Collect bounds (already in position format)
+        (when-let* ((bounds (plist-get context-data :bounds)))
+          (if (consp (car bounds))
+              (setq regions (nconc regions bounds)) ;((start1 . end1) (start2 . end2) ...)
+            (push bounds regions)))                 ;(start1 . end1)
+        ;; Collect lines (convert line numbers to positions)
+        (when-let* ((line-bounds (plist-get context-data :lines)))
+          ;; Convert singleton (start1 . end1) to ((start1 . end1))
+          (unless (consp (car line-bounds)) (setq line-bounds (list line-bounds)))
+          (dolist (pair line-bounds)
+            (push (cons (progn (goto-char (point-min))
+                               (forward-line (1- (car pair)))
+                               (point))
+                        (progn (goto-char (point-min))
+                               (forward-line (cdr pair))
+                               (point)))
+                  regions)))))
+
+    ;; TODO: Update sort for Emacs 28+ calling convention
+    ;; Sort by start position.  In-place, but assign to be sure.
+    (setq regions (sort regions (lambda (a b) (< (car a) (car b)))))
+
+    ;; Insert header
+    (insert (or header (format "In buffer `%s`:\n\n```"(buffer-name buffer)))
+            (gptel--strip-mode-suffix (buffer-local-value
+                                       'major-mode buffer))
             "\n")
-    (if (not overlays)
+    (if (not regions)
         (insert-buffer-substring-no-properties buffer)
-      (dolist (context overlays)
-        (let* ((start (overlay-start context))
-               (end (overlay-end context)))
+      (dolist (region regions)
+        (let ((start (car region)) (end (cdr region)))
           (let (lineno column)
             (with-current-buffer buffer
               (without-restriction
@@ -515,9 +553,30 @@ If OVERLAYS is nil add the entire buffer text."
                 (setq is-top-snippet nil)
               (unless (= previous-line lineno) (insert "\n"))))
           (insert-buffer-substring-no-properties buffer start end)))
-      (unless (>= (overlay-end (car (last overlays))) (point-max))
+      (unless (>= (cdr (car (last regions))) (point-max))
         (insert "\n...")))
     (insert "\n```")))
+
+(defun gptel-context--insert-file-string (path &optional spec)
+  "Insert at point the contents of file at PATH as context.
+
+SPEC is a plist specifying :lines or position :bounds to include instead
+of the entire file.  See `gptel-context' for details."
+  (if (not (and spec (or (plist-member spec :lines)
+                         (plist-member spec :bounds))))
+      ;; Insert whole file
+      (gptel--insert-file-string path)
+    ;; Insert only regions from lines and/or bounds
+    (let* ((visiting-buf (find-buffer-visiting ;Reuse buffer
+                          path (lambda (b) (not (buffer-modified-p b)))))
+           (file-buf (or visiting-buf   ;temp buf to dump file contents
+                         (gptel--temp-buffer " *gptel-file-context*"))))
+      (unless visiting-buf
+        (with-current-buffer file-buf (insert-file-contents path)))
+      (gptel-context--insert-buffer-string
+       file-buf spec (format "In file `%s`:\n\n```\n"
+                             (abbreviate-file-name path)))
+      (unless visiting-buf (kill-buffer file-buf)))))
 
 (defun gptel-context--string (context-alist)
   "Format the aggregated gptel context as annotated markdown fragments.
@@ -526,12 +585,12 @@ Returns a string.  CONTEXT-ALIST is a structure containing
 context overlays, see `gptel-context'."
   (with-temp-buffer
     (cl-loop for entry in context-alist
-             for (buf . ovs) = (ensure-list entry)
-             if (bufferp buf)
-             do (gptel-context--insert-buffer-string buf ovs)
-             else if (or (not (plist-get ovs :mime))
-                         (string-match-p "^text/" (plist-get ovs :mime)))
-             do (gptel--insert-file-string buf) end
+             for (source . spec) = (ensure-list entry)
+             if (bufferp source)
+             do (gptel-context--insert-buffer-string source spec)
+             else if (or (not (plist-get spec :mime))
+                         (string-match-p "^text/" (plist-get spec :mime)))
+             do (gptel-context--insert-file-string source spec) end
              do (insert "\n\n")
              finally do
              (skip-chars-backward "\n\t\r ")
@@ -559,6 +618,8 @@ context overlays, see `gptel-context'."
             nil t)
   (setq-local revert-buffer-function #'gptel-context--buffer-setup))
 
+;; FIXME(targeted-context): This does not handle :bounds and :lines.  Reuse
+;; `gptel-context--insert-buffer-string'?
 (defun gptel-context--buffer-setup (&optional _ignore-auto _noconfirm context-alist)
   "Set up the gptel context buffer.
 
@@ -581,10 +642,10 @@ CONTEXT-ALIST is the alist of contexts to use to populate the buffer."
           (if (length= contexts 0)
               (insert "There are no active gptel contexts.")
             (let (beg ov l1 l2)
-              (pcase-dolist (`(,buf . ,ovs) contexts)
+              (pcase-dolist (`(,buf . ,spec) contexts)
                 (cond
                  ((bufferp buf)
-                  (if (not ovs)     ;BUF is a full buffer, not specific overlays
+                  (if (not spec)      ;BUF is a full buffer, not specific ranges
                       (progn
                         (insert (propertize (format "In buffer %s:\n\n"
                                                     (buffer-name buf))
@@ -593,7 +654,7 @@ CONTEXT-ALIST is the alist of contexts to use to populate the buffer."
                         (insert-buffer-substring buf)
                         (insert "\n")
                         (setq ov (make-overlay beg (point))))
-                    (dolist (source-ov ovs) ;BUF is a buffer with some overlay(s)
+                    (dolist (source-ov (plist-get spec :overlays)) ;BUF is a buffer with some overlay(s)
                       (with-current-buffer buf
                         (setq l1 (line-number-at-pos (overlay-start source-ov))
                               l2 (line-number-at-pos (overlay-end source-ov))))
@@ -613,7 +674,7 @@ CONTEXT-ALIST is the alist of contexts to use to populate the buffer."
                   (insert (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
                                       'face 'bold))
                   (setq beg (point))
-                  (if-let* ((mime (plist-get ovs :mime))
+                  (if-let* ((mime (plist-get spec :mime))
                             ((not (string-match-p "^text/" mime)))) ;BUF is a binary file
                       (if-let* (((string-match-p (image-file-name-regexp) buf))
                                 (img (create-image buf)))

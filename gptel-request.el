@@ -703,28 +703,36 @@ name):
    #<buffer *scratch*>
    ...)
 
-You can also specify context sources with more detail.  Overlay regions
-in buffers can be specified as
+The above covers the most common cases.  You can also specify context
+sources in a more targeted way, with entries of the form
 
-  (buf ov1 ov2 ...)
+  (<buffer> . spec)
+  (\"/path/to/file\" . spec)
 
-where ov1, ov2 are overlays.  In this case the text of the overlay
-regions is sent instead of the text of the entire buffer.
+where spec is a plist declaring specific parts of the buffer/file to
+include instead of the entire text.
 
-Instead of as a string, file paths can also be specified along with
-their MIME-types:
+For buffers, you can specify regions to include using buffer spans and
+line number ranges as conses, and overlays as a list:
 
-  (\"/path/to/image\" :mime \"image/png\")
+  (<buffer> :bounds ((start1 . end1) (start2 . end2) ...)
+            :lines  ((from1 . to1) (from2 . end2) ...)
+            :overlays (ov1 ov2 ...))
+
+For files, spec can include buffer spans and line number ranges, as well as
+the MIME type of the file:
+
+  (\"/path/to/file\" :bounds ((start1 . end1) (start2 . end2) ...)
+                     :lines  ((from1 . to1) (from2 . end2) ...)
+                     :mime \"image/png\")
 
 gptel tries to guess file MIME types, but is not always successful, so
-it is recommended to provide it with non-text files.  Additional plist
-keys (besides :mime) are ignored, but support for more keys may be
-implemented in the future.
+it is recommended to provide it with non-text files.
 
 Usage of context commands (such as `gptel-add' and `gptel-add-file')
 will modify this variable.  You can also set this variable
 buffer-locally, or let-bind it around calls to gptel queries, or via
-gptel presets."
+gptel presets with the :context key."
   :type '(repeat string))
 
 (defcustom gptel-markdown-validate-link #'always
@@ -1666,8 +1674,7 @@ MACHINE is an instance of `gptel-fsm'"
   ;; a second network request: gptel tests for the presence of these flags to
   ;; handle state transitions.  (NOTE: Don't add :token to this.)
   (let ((info (gptel-fsm-info fsm)))
-    (dolist (key '(:tool-success :tool-use :error
-                                 :http-status :reasoning :reasoning-block))
+    (dolist (key '(:tool-success :tool-use :error :http-status :reasoning))
       (when (plist-get info key)
         (plist-put info key nil))))
   (funcall

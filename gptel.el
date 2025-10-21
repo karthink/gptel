@@ -323,6 +323,7 @@ NEW-SPEC is either a declarative action spec (plist) of the form
 form it is returned as is.
 
 - :append and :prepend will append/prepend val (a list or string) to ORIGINAL.
+  Actions on strings are idempotent, they will only be appended/prepended once.
 - :eval will evaluate val and return the result, and
 - :function will call val with ORIGINAL as its argument, and return the result.
 - :merge will treat ORIGINAL and NEW-SPEC as plists and return a merged plist,
@@ -334,10 +335,14 @@ form it is returned as is.
         (let ((key (pop tail)) (form (pop tail)))
           (setq current
                 (pcase key
-                  (:append (funcall (if (stringp form) #'concat #'append)
-                                    current form))
-                  (:prepend (funcall (if (stringp form) #'concat #'append)
-                                     form current))
+                  (:append (if (stringp form)
+                               (if (string-suffix-p form current t)
+                                   current (concat current form))
+                             (append current form)))
+                  (:prepend (if (stringp form)
+                                (if (string-prefix-p form current t)
+                                    current (concat form current))
+                              (append form current)))
                   (:eval (eval form t))
                   (:function (funcall form current))
                   (:merge (gptel--merge-plists (copy-sequence current) form))
@@ -646,10 +651,11 @@ file."
           (add-file-local-variable 'gptel--bounds (gptel--get-buffer-bounds)))))))
 
 
-;;; Minor mode and UI
+;;; Minor modes and UI
 
 ;; NOTE: It's not clear that this is the best strategy:
-(add-to-list 'text-property-default-nonsticky '(gptel . t))
+(cl-pushnew '(gptel . t) (default-value 'text-property-default-nonsticky)
+            :test #'equal)
 
 (defun gptel--inherit-stickiness (beg end _pre)
   "Mark any change to an LLM response region as a response.
@@ -847,6 +853,150 @@ Search between BEG and END."
                             (lambda (&rest _) (gptel-menu))))))
         (message (propertize msg 'face face))))
     (force-mode-line-update)))
+
+
+;;;; gptel-highlight-mode
+
+(defcustom gptel-highlight-methods '(margin)
+  "Types of LLM response highlighting used by `gptel-highlight-mode'.
+
+This must be a list of symbols denoting types of highlighting for LLM responses:
+- face: highlight LLM responses using face `gptel-response-highlight'.
+- fringe: highlight using a (left) fringe marker.
+- margin: highlight in the (left) display margin.
+
+margin and fringe markings are mutually exclusive, and use the
+`gptel-response-fringe-highlight' face."
+  :type '(set (const :tag "Fringe marker" fringe)
+              (const :tag "Face highlighting" face)
+              (const :tag "Margin indicator" margin))
+  :group 'gptel)
+
+(defface gptel-response-highlight
+  '((((background light) (min-colors 88)) :background "linen" :extend t)
+    (((background dark)  (min-colors 88)) :background "gray14" :extend t)
+    (t :inherit mode-line))
+  "Face used to highlight LLM responses when using `gptel-highlight-mode'.
+
+To enable this face for responses, `gptel-highlight-methods' must be set."
+  :group 'gptel)
+
+(defface gptel-response-fringe-highlight
+  '((t :inherit outline-1 :height reset))
+  "LLM response fringe/margin face when using `gptel-highlight-mode'.
+
+To enable response highlights in the fringe, `gptel-highlight-methods'
+must be set."
+  :group 'gptel)
+
+(define-fringe-bitmap 'gptel-highlight-fringe
+  (make-vector 28 #b01100000)
+  nil nil 'center)
+
+;; Common options for margin indicator:
+;; BOX DRAWINGS LIGHT VERTICAL  0x002502
+;; LEFT ONE QUARTER BLOCK       0x00258E
+;; LEFT THREE EIGHTHS BLOCK     0x00258D
+;; BOX DRAWINGS HEAVY VERTICAL  0x002503
+;; VERTICAL ONE EIGHTH BLOCK-2  0x01FB70
+
+(defun gptel-highlight--margin-prefix (type)
+  "Create margin prefix string for TYPE.
+
+Supported TYPEs are response, ignore and tool calls."
+  (propertize ">" 'display
+              `( (margin left-margin)
+                 ,(propertize "▎" 'face
+                              (pcase type
+                                ('response 'gptel-response-fringe-highlight)
+                                ('ignore 'shadow)
+                                (`(tool . ,_) 'shadow))))))
+
+(defun gptel-highlight--fringe-prefix (type)
+  "Create fringe prefix string for TYPE.
+
+Supported TYPEs are response, ignore and tool calls."
+  (propertize ">" 'display
+              `( left-fringe gptel-highlight-fringe
+                 ,(pcase type
+                    ('response 'gptel-response-fringe-highlight)
+                    ('ignore 'shadow)
+                    (`(tool . ,_) 'shadow)))))
+
+(defun gptel-highlight--decorate (ov &optional val)
+  "Decorate gptel indicator overlay OV whose type is VAL."
+  (overlay-put ov 'evaporate t)
+  (overlay-put ov 'gptel-highlight t)
+  (when (memq 'face gptel-highlight-methods)
+    (overlay-put ov 'font-lock-face
+                 (pcase val
+                   ('response 'gptel-response-highlight)
+                   ('ignore 'shadow)
+                   (`(tool . ,_) 'shadow))))
+  (when-let* ((prefix
+               (cond ((memq 'margin gptel-highlight-methods)
+                      (gptel-highlight--margin-prefix (or val 'response)))
+                     ((memq 'fringe gptel-highlight-methods)
+                      (gptel-highlight--fringe-prefix (or val 'response))))))
+    (overlay-put ov 'line-prefix prefix)
+    (overlay-put ov 'wrap-prefix prefix)))
+
+(defun gptel-highlight--update (beg end)
+  "JIT-lock function: mark gptel response/reasoning regions.
+
+BEG and END delimit the region to refresh."
+  (save-excursion                ;Scan across region for the gptel text property
+    (let ((prev-pt (goto-char end)))
+      (while (and (goto-char (previous-single-property-change
+                              (point) 'gptel nil beg))
+                  (/= (point) prev-pt))
+        (pcase (get-char-property (point) 'gptel)
+          ((and (or 'response 'ignore `(tool . ,_)) val)
+           (if-let* ((ov (or (cdr-safe (get-char-property-and-overlay
+                                        (point) 'gptel-highlight))
+                             (cdr-safe (get-char-property-and-overlay
+                                        prev-pt 'gptel-highlight))))
+                     (from (overlay-start ov)) (to (overlay-end ov)))
+               (unless (<= from (point) prev-pt to)
+                 (move-overlay ov (min from (point)) (max to prev-pt)))
+             (gptel-highlight--decorate ;Or make new overlay covering just region
+              (make-overlay (point) prev-pt nil t) val)))
+          ('nil                     ;If there's an overlay, we need to split it.
+           (when-let* ((ov (cdr-safe (get-char-property-and-overlay
+                                      (point) 'gptel-highlight)))
+                       (from (overlay-start ov)) (to (overlay-end ov)))
+             (move-overlay ov from (point)) ;Move overlay to left side
+             (gptel-highlight--decorate     ;Make a new one on the right
+              (make-overlay prev-pt to nil t)
+              (get-char-property prev-pt 'gptel)))))
+        (setq prev-pt (point)))))
+  `(jit-lock-bounds ,beg . ,end))
+
+(define-minor-mode gptel-highlight-mode
+  "Visually highlight LLM respones regions.
+
+Highlighting is via fringe or margin markers, and optionally a response
+face.  See `gptel-highlight-methods' for highlighting methods, and
+`gptel-response-highlight' and `gptel-response-fringe-highlight' for the
+faces.
+
+This minor mode can be used anywhere in Emacs, and not just gptel chat
+buffers."
+  :lighter nil
+  :global nil
+  (cond
+   (gptel-highlight-mode
+    (when (memq 'margin gptel-highlight-methods)
+      (setq left-margin-width (1+ left-margin-width))
+      (set-window-buffer (selected-window) (current-buffer)))
+    (jit-lock-register #'gptel-highlight--update)
+    (gptel-highlight--update (point-min) (point-max)))
+   (t (when (memq 'margin gptel-highlight-methods)
+        (setq left-margin-width (max (1- left-margin-width) 0))
+        (set-window-buffer (selected-window) (current-buffer)))
+      (jit-lock-unregister #'gptel-highlight--update)
+      (without-restriction
+        (remove-overlays nil nil 'gptel-highlight t)))))
 
 
 ;;; State machine additions for `gptel-send'.
@@ -1705,11 +1855,11 @@ one.
 PRE and POST are functions to run before and after the preset is
 applied.  They take no arguments.
 
-BACKEND is the gptel-backend to set, or its name (like \"ChatGPT\").
+BACKEND is the `gptel-backend' to set, or its name (like \"ChatGPT\").
 
-MODEL is the gptel-model, a symbol.
+MODEL is the `gptel-model', a symbol.
 
-SYSTEM is the directive. It can be
+SYSTEM is the directive.  It can be
 - the system message (a string),
 - a list of strings (a conversation template)
 - or a function (dynamic system message).
@@ -1721,7 +1871,7 @@ TOOLS is a list of gptel tools or tool names, like
 Recognized keys are not limited to the above.  Any other key (like
 `:foo') corresponds to the value of either `gptel-foo' (preferred) or
 `gptel--foo'.
-- So TOOLS corresponds to `gptel-tools',
+- So TOOLS corresponds to option `gptel-tools',
 - CONFIRM-TOOL-CALLS to `gptel-confirm-tool-calls',
 - TEMPERATURE to `gptel-temperature' and so on.
 See gptel's customization options for all available settings.
@@ -1734,16 +1884,48 @@ it.  For example,
     :system \"Use the provided tools to search the web
               for up-to-date information\")
 
-will replace the currently active `gptel-tools' and the system message.
-Alternatively, you can specify that the specified values should be
-appended or prepended to the existing values instead of replacing it.
-This can be done by specifying the value as a plist instead with the
-keys `:prepend' or `:append'.
+will replace the currently active option `gptel-tools' and the system
+message.
+
+Alternatively,
+
+- You can require that the value be appended or prepended to the
+  existing value instead of replacing it.  This can be done by
+  specifying the value as a plist instead with the keys `:prepend' or
+  `:append'.
 
   (gptel-make-preset \\='websearch
     :tools  \\='(:append (\"search_web\" \"read_url\"))
     :system \\='(:prepend \"Use the provided tools to search the web
-                        for up-to-date information.\"))"
+                        for up-to-date information.\"))
+
+- You can dynamically compute the value for a key at the time the preset
+  is applied with `:eval' or `:function'.  This is mostly useful when
+  using presets in the prompt, as @preset-name.
+
+  An `:eval' form is evaluated when the preset is applied:
+
+  (gptel-make-preset \\='visible-buffers
+    :description \"Include the full text of all buffers visible in the
+                 frame.\"
+    :context \\='(:eval                 ;sets `gptel-context'
+               (mapcar #\\='window-buffer
+                       (delq (unless (minibufferp) (selected-window))
+                             (window-list)))))
+
+  `:function' should take the current value of the key as an input and
+  return the new value.  Here we combine it with `:append' in the plist.
+
+  (gptel-make-preset \\='github-read-only
+    :description \"Provide read-only GitHub tools\"
+    :pre (lambda () (gptel-mcp-connect \\='(\"github\") \\='sync))
+    :tools
+    \\='( :append (\"mcp-github\")       ;Adds all github MCP tools
+       :function (lambda (tools)
+                   (cl-delete-if    ;Remove non-query tools from list
+                    (lambda (tool)
+                      (string-match-p \"create_\" (gptel-tool-name tool)))
+                    tools))))"
   (declare (indent 1))
   (if-let* ((p (assoc name gptel--known-presets)))
       (setcdr p keys)

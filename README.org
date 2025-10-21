@@ -1252,6 +1252,12 @@ gptel provides a few powerful, general purpose and flexible commands.  You can d
 
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/3562a6e2-7a5c-4f7e-8e57-bf3c11589c73" align="center" alt="Image showing gptel's menu with some of the available query options.">
 
+-----
+
+You can use =gptel-highlight-mode= to highlight LLM responses in different ways:
+
+#+html: <img width="1226" height="764" alt="Image" src="https://github.com/user-attachments/assets/1a3d5411-3cbc-41cf-b9fa-5089a1ffa096" />
+
 You can also define a "preset" bundle of options that are applied together, see [[#option-presets][Option presets]] below.
 
 *** In a dedicated chat buffer:
@@ -1269,6 +1275,8 @@ You can also define a "preset" bundle of options that are applied together, see 
 That's it. You can go back and edit previous prompts and responses if you want.
 
 The default mode is =markdown-mode= if available, else =text-mode=.  You can set =gptel-default-mode= to =org-mode= if desired.
+
+You can use =gptel-highlight-mode= to highlight LLM responses in different ways.
 
 You can also define a "preset" bundle of options that are applied together, see [[#option-presets][Option presets]] below.
 
@@ -1588,9 +1596,11 @@ You can also call =gptel-end-of-response= as a command at any time.
 **** I want to change the formatting of the prompt and LLM response
 #+html: </summary>
 
-For dedicated chat buffers: customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=.  You can set a different pair for each major-mode.
+Anywhere in Emacs: Turn on =gptel-highlight-mode=.  See its documentation for customization options.
 
-Anywhere in Emacs: Use =gptel-pre-response-hook= and =gptel-post-response-functions=, which see.
+In dedicated chat buffers: you can additionally customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=, which are prefixes inserted before the prompt and response.  You can set a different pair for each major-mode.
+
+For more custom formatting: Use =gptel-pre-response-hook= and =gptel-post-response-functions=, which see.
 
 #+html: </details>
 #+html: <details><summary>
@@ -1750,6 +1760,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-temperature=   | Randomness in response text, 0 to 2.                    |
 | =gptel-cache=         | Cache prompts, system message or tools (Anthropic only) |
 | =gptel-use-context=   | How/whether to include additional context               |
+| =gptel-context=       | List of context sources (files/buffers) for queries     |
 | =gptel-use-tools=     | Disable, allow or force LLM tool-use                    |
 | =gptel-tools=         | List of tools to include with requests                  |
 |-----------------------+---------------------------------------------------------|
@@ -1758,6 +1769,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | *Chat UI options*              |                                                                |
 |--------------------------------+----------------------------------------------------------------|
 | =gptel-default-mode=           | Major mode for dedicated chat buffers.                         |
+| =gptel-highlight-methods=      | Highlighting type(s) used by =gptel-highlight-mode=            |
 | =gptel-prompt-prefix-alist=    | Text inserted before queries.                                  |
 | =gptel-response-prefix-alist=  | Text inserted before responses.                                |
 | =gptel-track-response=         | Distinguish between user messages and LLM responses?           |
@@ -1820,7 +1832,7 @@ More generally, you can specify a bundle of options:
   :tools '("read_buffer" "modify_buffer")) ;gptel tools or tool names
 #+end_src
 
-Besides a couple of special keys (=:description=, =:parents= to inherit other presets), there is no predefined list of keys.  Instead, the key =:foo= corresponds to setting =gptel-foo= (preferred) or =gptel--foo=.  So the preset can include the value of any gptel option.  For example, the following preset sets =gptel-temperature= and =gptel-use-context=:
+Besides a couple of special keys (=:description=, =:parents= to inherit other presets), there is no predefined list of keys.  Instead, the key =:foo= corresponds to setting =gptel-foo= (preferred) or =gptel--foo=.  So the preset can include the value of any gptel option.  For example, the following preset sets =gptel-temperature=, =gptel-use-context= and =gptel-context=, a list of files to include as context:
 
 #+begin_src emacs-lisp
 (gptel-make-preset 'proofreader
@@ -1828,8 +1840,9 @@ Besides a couple of special keys (=:description=, =:parents= to inherit other pr
   :backend "ChatGPT"
   :model 'gpt-4.1-mini
   :tools '("read_buffer" "spell_check" "grammar_check")
-  :temperature 0.7                      ;sets gptel-temperature
-  :use-context 'system)                 ;sets gptel-use-context
+  :use-context 'system                                ;sets gptel-use-context
+  :context '("./.grammar_rules.md" "./jargonfile.md") ;sets gptel-context
+  :temperature 0.2)                                   ;sets gptel-temperature
 #+end_src
 
 Switching to a preset applies the specified settings without affecting other settings.  Depending on the scope option (~=~ in gptel's transient menu), presets can be applied globally, buffer-locally or for the next request only.
