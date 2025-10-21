@@ -1855,11 +1855,11 @@ one.
 PRE and POST are functions to run before and after the preset is
 applied.  They take no arguments.
 
-BACKEND is the gptel-backend to set, or its name (like \"ChatGPT\").
+BACKEND is the `gptel-backend' to set, or its name (like \"ChatGPT\").
 
-MODEL is the gptel-model, a symbol.
+MODEL is the `gptel-model', a symbol.
 
-SYSTEM is the directive. It can be
+SYSTEM is the directive.  It can be
 - the system message (a string),
 - a list of strings (a conversation template)
 - or a function (dynamic system message).
@@ -1871,7 +1871,7 @@ TOOLS is a list of gptel tools or tool names, like
 Recognized keys are not limited to the above.  Any other key (like
 `:foo') corresponds to the value of either `gptel-foo' (preferred) or
 `gptel--foo'.
-- So TOOLS corresponds to `gptel-tools',
+- So TOOLS corresponds to option `gptel-tools',
 - CONFIRM-TOOL-CALLS to `gptel-confirm-tool-calls',
 - TEMPERATURE to `gptel-temperature' and so on.
 See gptel's customization options for all available settings.
@@ -1884,16 +1884,48 @@ it.  For example,
     :system \"Use the provided tools to search the web
               for up-to-date information\")
 
-will replace the currently active `gptel-tools' and the system message.
-Alternatively, you can specify that the specified values should be
-appended or prepended to the existing values instead of replacing it.
-This can be done by specifying the value as a plist instead with the
-keys `:prepend' or `:append'.
+will replace the currently active option `gptel-tools' and the system
+message.
+
+Alternatively,
+
+- You can require that the value be appended or prepended to the
+  existing value instead of replacing it.  This can be done by
+  specifying the value as a plist instead with the keys `:prepend' or
+  `:append'.
 
   (gptel-make-preset \\='websearch
     :tools  \\='(:append (\"search_web\" \"read_url\"))
     :system \\='(:prepend \"Use the provided tools to search the web
-                        for up-to-date information.\"))"
+                        for up-to-date information.\"))
+
+- You can dynamically compute the value for a key at the time the preset
+  is applied with `:eval' or `:function'.  This is mostly useful when
+  using presets in the prompt, as @preset-name.
+
+  An `:eval' form is evaluated when the preset is applied:
+
+  (gptel-make-preset \\='visible-buffers
+    :description \"Include the full text of all buffers visible in the
+                 frame.\"
+    :context \\='(:eval                 ;sets `gptel-context'
+               (mapcar #\\='window-buffer
+                       (delq (unless (minibufferp) (selected-window))
+                             (window-list)))))
+
+  `:function' should take the current value of the key as an input and
+  return the new value.  Here we combine it with `:append' in the plist.
+
+  (gptel-make-preset \\='github-read-only
+    :description \"Provide read-only GitHub tools\"
+    :pre (lambda () (gptel-mcp-connect \\='(\"github\") \\='sync))
+    :tools
+    \\='( :append (\"mcp-github\")       ;Adds all github MCP tools
+       :function (lambda (tools)
+                   (cl-delete-if    ;Remove non-query tools from list
+                    (lambda (tool)
+                      (string-match-p \"create_\" (gptel-tool-name tool)))
+                    tools))))"
   (declare (indent 1))
   (if-let* ((p (assoc name gptel--known-presets)))
       (setcdr p keys)
