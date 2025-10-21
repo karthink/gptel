@@ -1252,7 +1252,11 @@ gptel provides a few powerful, general purpose and flexible commands.  You can d
 
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/3562a6e2-7a5c-4f7e-8e57-bf3c11589c73" align="center" alt="Image showing gptel's menu with some of the available query options.">
 
-You can use =gptel-highlight-mode= to highlight LLM responses in different ways.
+-----
+
+You can use =gptel-highlight-mode= to highlight LLM responses in different ways:
+
+#+html: <img width="1226" height="764" alt="Image" src="https://github.com/user-attachments/assets/1a3d5411-3cbc-41cf-b9fa-5089a1ffa096" />
 
 You can also define a "preset" bundle of options that are applied together, see [[#option-presets][Option presets]] below.
 
@@ -1765,6 +1769,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | *Chat UI options*              |                                                                |
 |--------------------------------+----------------------------------------------------------------|
 | =gptel-default-mode=           | Major mode for dedicated chat buffers.                         |
+| =gptel-highlight-methods=      | Highlighting type(s) used by =gptel-highlight-mode=            |
 | =gptel-prompt-prefix-alist=    | Text inserted before queries.                                  |
 | =gptel-response-prefix-alist=  | Text inserted before responses.                                |
 | =gptel-track-response=         | Distinguish between user messages and LLM responses?           |
