@@ -1750,6 +1750,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-temperature=   | Randomness in response text, 0 to 2.                    |
 | =gptel-cache=         | Cache prompts, system message or tools (Anthropic only) |
 | =gptel-use-context=   | How/whether to include additional context               |
+| =gptel-context=       | List of context sources (files/buffers) for queries     |
 | =gptel-use-tools=     | Disable, allow or force LLM tool-use                    |
 | =gptel-tools=         | List of tools to include with requests                  |
 |-----------------------+---------------------------------------------------------|
@@ -1820,7 +1821,7 @@ More generally, you can specify a bundle of options:
   :tools '("read_buffer" "modify_buffer")) ;gptel tools or tool names
 #+end_src
 
-Besides a couple of special keys (=:description=, =:parents= to inherit other presets), there is no predefined list of keys.  Instead, the key =:foo= corresponds to setting =gptel-foo= (preferred) or =gptel--foo=.  So the preset can include the value of any gptel option.  For example, the following preset sets =gptel-temperature= and =gptel-use-context=:
+Besides a couple of special keys (=:description=, =:parents= to inherit other presets), there is no predefined list of keys.  Instead, the key =:foo= corresponds to setting =gptel-foo= (preferred) or =gptel--foo=.  So the preset can include the value of any gptel option.  For example, the following preset sets =gptel-temperature=, =gptel-use-context= and =gptel-context=, a list of files to include as context:
 
 #+begin_src emacs-lisp
 (gptel-make-preset 'proofreader
@@ -1828,8 +1829,9 @@ Besides a couple of special keys (=:description=, =:parents= to inherit other pr
   :backend "ChatGPT"
   :model 'gpt-4.1-mini
   :tools '("read_buffer" "spell_check" "grammar_check")
-  :temperature 0.7                      ;sets gptel-temperature
-  :use-context 'system)                 ;sets gptel-use-context
+  :use-context 'system                                ;sets gptel-use-context
+  :context '("./.grammar_rules.md" "./jargonfile.md") ;sets gptel-context
+  :temperature 0.2)                                   ;sets gptel-temperature
 #+end_src
 
 Switching to a preset applies the specified settings without affecting other settings.  Depending on the scope option (~=~ in gptel's transient menu), presets can be applied globally, buffer-locally or for the next request only.
