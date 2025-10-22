@@ -304,7 +304,8 @@ If CONTEXT is a directory, recursively removes all files in it."
     ;; FIXME: Quadratic cost when clearing a bunch of contexts at once
     (unless
         (cl-loop
-         for ov in (alist-get (current-buffer) gptel-context)
+         for ov in
+         (plist-get (alist-get (current-buffer) gptel-context) :overlays)
          thereis (overlay-start ov))
       (setf (alist-get (current-buffer) gptel-context nil 'remove) nil)))
    ((bufferp context)                   ;Full buffer
@@ -666,9 +667,9 @@ CONTEXT-ALIST is the alist of contexts to use to populate the buffer."
                        buf (overlay-start source-ov) (overlay-end source-ov))
                       (insert "\n")
                       (setq ov (make-overlay beg (point)))
-                      (overlay-put ov 'gptel-context source-ov)))
-                  (overlay-put ov 'gptel-overlay t)
-                  (overlay-put ov 'evaporate t)
+                      (overlay-put ov 'gptel-context source-ov)
+                      (overlay-put ov 'gptel-overlay t)
+                      (overlay-put ov 'evaporate t)))
                   (insert "\n" (make-separator-line) "\n"))
                  (t                     ;BUF is a file path, not a buffer
                   (insert (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
