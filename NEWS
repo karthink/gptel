@@ -4,6 +4,10 @@
 
 ** Breaking changes
 
+- The models =gpt-4-copilot= and =o1= have been removed from the default
+  list of GitHub Copilot models.  These models are no longer available
+  in the GitHub Copilot API.
+
 - Link handling in gptel chat buffers has changed, hopefully for the
   better.  When ~gptel-track-media~ is non-nil, gptel follows links in
   the prompt and includes their contents with queries.  Previously,
@@ -42,9 +46,11 @@
 
 ** New models and backends
 
-- GitHub Copilot backend: Add support for =gpt-5-codex= and =claude-sonnet-4.5=.
+- GitHub Copilot backend: Add support for =gpt-5-codex=,
+  =claude-sonnet-4.5= and =claude-haiku-4.5=
 
-- Add support for =claude-sonnet-4-5-20250929= and =claude-haiku-4-5-20251001=.
+- Add support for =claude-sonnet-4-5-20250929= and
+  =claude-haiku-4-5-20251001=.
 
 - Add support for =gemini-pro-latest=, =gemini-flash-latest= and
   =gemini-flash-lite-latest=.  These models point to the latest Gemini

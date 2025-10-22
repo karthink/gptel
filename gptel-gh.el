@@ -33,12 +33,6 @@
      :capabilities (media tool-use json url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 128 :input-cost 2.5 :output-cost 10 :cutoff-date "2023-10")
-    (gpt-4o-copilot
-     :description "Cheap model for fast tasks; cheaper & more capable than GPT-3.5 Turbo"
-     :context-window 128
-     :input-cost 0.15
-     :output-cost 0.60
-     :cutoff-date "2023-10")
     (gpt-4.1
      :description "Flagship model for complex tasks"
      :capabilities (media tool-use json url)
@@ -71,14 +65,6 @@
      :input-cost 0.25
      :output-cost 2.0
      :cutoff-date "2024-09")
-    (o1
-     :description "Reasoning model designed to solve hard problems across domains"
-     :capabilities (reasoning tool-use)
-     :context-window 200
-     :input-cost 15
-     :output-cost 60
-     :cutoff-date "2023-10"
-     :request-params (:stream :json-false))
     (o3
      :description "Well-rounded and powerful model across domains"
      :capabilities (reasoning media tool-use json url)
@@ -142,6 +128,14 @@
      :input-cost 3
      :output-cost 15
      :cutoff-date "2025-07")
+    (claude-haiku-4.5
+     :description "Near-frontier intelligence at blazing speeds with extended thinking"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 144
+     :input-cost 1
+     :output-cost 5
+     :cutoff-date "2025-02")
    (claude-opus-4
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
