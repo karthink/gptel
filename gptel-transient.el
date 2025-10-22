@@ -50,10 +50,10 @@
 Affects the system message too.")
 
 (defun gptel--set-with-scope (sym value &optional scope)
-  "Set SYMBOL's symbol-value to VALUE with SCOPE.
+  "Set SYM's symbol value to VALUE with SCOPE.
 
 If SCOPE is t, set it buffer-locally.
-If SCOPE is 1, reset it after the next gptel-request. (oneshot)
+If SCOPE is 1, reset it after the next gptel request.  (oneshot)
 Otherwise, clear any buffer-local value and set its default
 global value."
   (pcase scope
@@ -165,7 +165,7 @@ Meant to be called when `gptel-menu' is active."
    (propertize "/" 'face 'default)
    (propertize "M-p" 'face 'help-key-binding)
    (propertize ": next/previous" 'face 'default))
-  "Help string ;TODO: ")
+  "Help string (TODO).")
 
 (defun gptel--read-with-prefix (prefix)
   "Show string PREFIX in the minibuffer after the minibuffer prompt.
@@ -173,7 +173,7 @@ Meant to be called when `gptel-menu' is active."
 PREFIX is shown in an overlay.  Repeated calls to this function
 will toggle its visibility state."
   (unless (minibufferp)
-    (user-error "This command is intended to be used in the minibuffer."))
+    (user-error "This command is intended to be used in the minibuffer"))
   (let* ((update
          (lambda (ov s)
            (overlay-put
@@ -318,7 +318,7 @@ Handle formatting for system messages when the active
       "[No system message set]")))
 
 (defun gptel--tools-init-value (obj)
-  "Set the initial state of a tool OBJ in `gptel-tools'.
+  "Set the initial state of a tool OBJ in variable `gptel-tools'.
 
 OBJ is a tool-infix of type `gptel--switch'."
   (when-let* ((name (car (member (oref obj argument)
@@ -657,10 +657,10 @@ Their own value is ignored")
 (defclass gptel--switches (gptel-lisp-variable)
   ((display-if-true :initarg :display-if-true :initform "True")
    (display-if-false :initarg :display-if-false :initform "False"))
-  "Boolean lisp variable class for gptel-transient.")
+  "Boolean Lisp variable class for gptel-transient.")
 
 (cl-defmethod transient-infix-read ((obj gptel--switches))
-  "Cycle through the mutually exclusive switches."
+  "Cycle through the mutually exclusive switches for OBJ."
   (not (oref obj value)))
 
 (cl-defmethod transient-format-value ((obj gptel--switches))
@@ -679,12 +679,12 @@ Their own value is ignored")
 (defclass gptel--scope (gptel--switches)
   ((display-if-true :initarg :display-if-true :initform "buffer")
    (display-if-false :initarg :display-if-false :initform "global"))
-  "Singleton lisp variable class for `gptel--set-buffer-locally'.
+  "Singleton Lisp variable class for `gptel--set-buffer-locally'.
 
 This is used only for setting this variable via `gptel-menu'.")
 
 (cl-defmethod transient-infix-read ((obj gptel--scope))
-  "Cycle through the mutually exclusive switches."
+  "Cycle through the mutually exclusive switches for OBJ."
   (with-slots (value) obj
     (pcase value
       ('t (message "Parameters will be set for the next request only"))
@@ -749,7 +749,7 @@ This is used only for setting this variable via `gptel-menu'.")
 (cl-defmethod transient-format-value ((obj gptel-option-overlaid))
   "Set up the in-buffer overlay for additional directive, a string.
 
-Also format its value in the Transient menu."
+Also format the value of OBJ in the transient menu."
   (let ((value (oref obj value))
         (ov    (oref obj overlay))
         (argument (oref obj argument)))
@@ -930,8 +930,7 @@ Also format its value in the Transient menu."
 ;; ** Prefix for setting the system prompt.
 
 (defun gptel--setup-directive-menu (sym msg &optional external)
-  "Return a list of transient infix definitions for setting gptel
-directives.
+  "Return a list of infix definitions for setting gptel directives.
 
 SYM is the symbol whose value is set to the selected directive..
 MSG is the meaning of symbol, used when messaging.
@@ -1223,8 +1222,8 @@ value of `gptel-use-context', set from here."
   "Number of recent messages to send with each exchange.
 
 By default, the full conversation history is sent with every new
-prompt. This retains the full context of the conversation, but
-can be expensive in token size. Set how many recent messages to
+prompt.  This retains the full context of the conversation, but
+can be expensive in token size.  Set how many recent messages to
 include."
   :description "previous responses"
   :class 'gptel-lisp-variable
@@ -1239,7 +1238,7 @@ include."
 (transient-define-infix gptel--infix-max-tokens ()
   "Max tokens per response.
 
-This is roughly the number of words in the response. 100-300 is a
+This is roughly the number of words in the response.  100-300 is a
 reasonable range for short answers, 400 or more for longer
 responses."
   :description "Response length (tokens)"
