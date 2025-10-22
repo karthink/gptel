@@ -155,8 +155,7 @@ This makes it feasible to have multiple conversation branches."
   :group 'gptel)
 
 (defcustom gptel-org-ignore-elements '(property-drawer)
-  "List of Org elements that should be stripped from the prompt
-before sending it.
+  "Types of Org elements to be stripped from the prompt before sending.
 
 By default gptel will remove Org property drawers from the
 prompt.  For the full list of available elements, please see
@@ -192,7 +191,7 @@ on a line by themselves, separated from surrounding text."
 
 (defconst gptel-org--link-regex
   (concat "\\(?:" org-link-bracket-re "\\|" org-link-angle-re "\\)")
-  "Link regex for gptel-mode in Org mode.")
+  "Link regex for `gptel-mode' in Org mode.")
 
 
 ;;; Setting context and creating queries
@@ -301,8 +300,7 @@ depend on the value of `gptel-org-branching-context', which see."
           (current-buffer))))))
 
 (defun gptel-org--strip-elements ()
-  "Remove all elements in `gptel-org-ignore-elements' from the
-prompt."
+  "Remove all elements in `gptel-org-ignore-elements' from the prompt."
   (let ((major-mode 'org-mode) element-markers)
     (if (equal '(property-drawer) gptel-org-ignore-elements)
         (save-excursion
@@ -465,7 +463,7 @@ for inclusion into the user prompt for the gptel request."
     (nreverse parts)))
 
 (defun gptel-org--annotate-links (beg end)
-  "Annotate Org links whose sources are eligible to be sent with `gptel-send.'
+  "Annotate Org links whose sources will be sent with `gptel-send'.
 
 Search between BEG and END."
   (when gptel-track-media

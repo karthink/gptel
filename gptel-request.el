@@ -347,7 +347,7 @@ behavior of other backends.
 
 This variable controls which parts of the query will be cached,
 and can be the symbols t or nil to cache everything or nothing
-respectively. It can also be a list of symbols:
+respectively.  It can also be a list of symbols:
 
 - message: Cache conversation messages
 - system: Cache the system message
@@ -798,9 +798,11 @@ See `gptel-backend'."
   "Arguments always passed to Curl for gptel queries.")
 
 (defvar gptel--link-type-cache nil
-  "Cache of checks for binary files.  Each alist entry maps an absolute
-file path to a cons cell of the form (t . binaryp), where binaryp is
-non-nil if the file is binary-encoded.")
+  "Cache of checks for binary files.
+
+Each alist entry maps an absolute file path to a cons cell of the
+form (t . binaryp), where binaryp is non-nil if the file is
+binary-encoded.")
 
 ;; The following is derived from:
 ;;
@@ -810,7 +812,7 @@ non-nil if the file is binary-encoded.")
 ;; guaranteed to be available, we have to hardcode it.
 (defconst gptel-markdown--link-regex
   "\\(?:\\(?1:!\\)?\\(?2:\\[\\)\\(?3:\\^?\\(?:\\\\\\]\\|[^]]\\)*\\|\\)\\(?4:\\]\\)\\(?5:(\\)\\s-*\\(?6:[^)]*?\\)\\(?:\\s-+\\(?7:\"[^\"]*\"\\)\\)?\\s-*\\(?8:)\\)\\|\\(<\\)\\([a-z][a-z0-9.+-]\\{1,31\\}:[^]	\n<>,;()]+\\)\\(>\\)\\)"
-  "Link regex for gptel-mode in Markdown mode.")
+  "Link regex for `gptel-mode' in Markdown mode.")
 
 
 ;;; Utility functions
@@ -1260,9 +1262,9 @@ Tools are capabilities provided by you to the LLM as functions an
 LLM can choose to call.  gptel runs the function call on your
 machine.
 
-If set to t, any tools selected in `gptel-tools' will be made
-available to the LLM.  This is the default.  It has no effect if
-no tools are selected.
+If set to t, any tools selected in variable `gptel-tools' will be made
+available to the LLM.  This is the default.  It has no effect if no
+tools are selected.
 
 If set to force, gptel will try to force the LLM to call one or
 more of the provided tools.  Support for this feature depends on
@@ -1373,7 +1375,7 @@ assigned a category when it is created, with a category of
 
 This is a two-level alist mapping categories and tool names to
 the tool itself.  It is used as a global register of available
-tools and in gptel's UI, see `gptel-tools'.
+tools and in gptel's UI, see variable `gptel-tools'.
 
 In this example structure, cat-tool and the rest are cl-structs
 of type `gptel-tool':
@@ -1413,7 +1415,7 @@ returned."
   "Make a gptel tool for LLM use.
 
 The following keyword arguments are available, of which the first
-four are required.
+four SLOTS are required.
 
 NAME: The name of the tool, recommended to be in Javascript style snake_case.
 
@@ -1547,7 +1549,7 @@ implementation, used by OpenAI-compatible APIs and Ollama."
     (ensure-list tools))))
 
 (cl-defgeneric gptel--parse-tool-results (backend results)
-  "Return a BACKEND-appropriate prompt containing tool call RESULTS.
+  "Return a BACKEND appropriate prompt containing tool call RESULTS.
 
 This will be injected into the messages list in the prompt to
 send to the LLM.")
@@ -1586,10 +1588,10 @@ OpenAI-compatible and Ollama message formats."
 
 Each entry is a list whose car is a request state (any symbol)
 and whose cdr is an alist listing possible next states.  Each key
-is either a predicate function or `t'.  When `gptel--fsm-next' is
+is either a predicate function or t.  When `gptel--fsm-next' is
 called, the predicates are called in the order they appear here
 to find the next state.  Each predicate is called with the state
-machine's INFO, see `gptel-fsm'.  A predicate of `t' is
+machine's INFO, see `gptel-fsm'.  A predicate of t is
 considered a success and acts as a default.")
 
 (defvar gptel-request--handlers
@@ -2204,8 +2206,7 @@ lists with explicit roles (prompt/response/tool).  See the documentation of
                   'gptel `(tool . ,(plist-get call :id)))))))))
 
 (cl-defgeneric gptel--parse-list (backend prompt-list)
-  "Parse PROMPT-LIST and return a list of prompts suitable for
-BACKEND.
+  "Parse PROMPT-LIST and return a list of prompts for BACKEND.
 
 PROMPT-LIST is interpreted as a conversation, i.e. an alternating
 series of user prompts and LLM responses.  The returned structure
@@ -2495,7 +2496,7 @@ See `gptel-curl--get-response' for its contents.")
 (defun gptel-curl--get-args (info token)
   "Produce list of arguments for calling Curl.
 
-REQUEST-DATA is the data to send, TOKEN is a unique identifier."
+INFO contains the request data, TOKEN is a unique identifier."
   (let* ((data (plist-get info :data))
          ;; We have to let-bind the following two variables since their dynamic
          ;; values are used for key lookup and url resoloution
@@ -2867,4 +2868,4 @@ PROC-INFO is a plist with contextual information."
               "Could not parse HTTP response.")))))
 
 (provide 'gptel-request)
-;;; gptel-curl.el ends here
+;;; gptel-request.el ends here
