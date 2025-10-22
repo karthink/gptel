@@ -1081,6 +1081,14 @@ Register a backend with
 (gptel-make-gh-copilot "Copilot")
 #+end_src
 
+Github copilot is configured to use public end-point `api.githubcopilot.com`.
+However private endpoints can be configure like so -
+
+#+begin_src emacs-lisp
+(gptel-make-gh-copilot "Copilot"
+    :host "api.business.githubcopilot.com")
+#+end_src
+
 You will be informed to login into =GitHub= as required.
 You can pick this backend from the menu when using gptel (see [[#usage][Usage]]).
 
