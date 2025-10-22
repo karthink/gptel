@@ -2015,6 +2015,7 @@ example) apply the preset buffer-locally."
                 (user-error "gptel preset: Cannot find directive %s" val))
             (funcall setter sym val))))
        (:backend
+        (when (consp val) (setq val (gptel--modify-value 'gptel-backend val)))
         (setq val (cl-etypecase val
                     (gptel-backend val)
                     (string (gptel-get-backend val))))
