@@ -918,6 +918,13 @@ Also format its value in the Transient menu."
   [(gptel--suffix-send)]
   (interactive)
   (gptel--sanitize-model)
+  (when gptel-context        ;MAYBE: Move this to a dedicated sanitize function?
+    (setq gptel-context
+          (cl-delete-if
+           (lambda (entry)
+             (let ((first (or (car-safe entry) entry)))
+               (and (bufferp first) (not (buffer-live-p first)))))
+           gptel-context)))
   (transient-setup 'gptel-menu))
 
 ;; ** Prefix for setting the system prompt.
