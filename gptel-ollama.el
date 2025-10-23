@@ -54,9 +54,19 @@ Intended for internal use only.")
         (while (setq content (gptel--json-read))
           (setq pt (point))
           (let ((done (map-elt content :done))
+                (thinking (map-nested-elt content '(:message :thinking)))
                 (response (map-nested-elt content '(:message :content))))
             (when (and response (not (eq response :null)))
               (push response content-strs))
+            ;; If thinking is present, put it into the :reasoning entry of info
+            ;; Otherwise, if the :reasoning-block indicates we have been
+            ;; processing thinking, set the :reasoning-block to t to signal
+            ;; completion
+            ;; See gptel-curl--stream-filter in gptel-request.el
+            (if (and thinking (not (eq thinking :null)))
+              (plist-put info :reasoning (concat (plist-get info :reasoning) thinking))
+              (when (eq 'in (plist-get info :reasoning-block))
+                (plist-put info :reasoning-block t)))
             (unless (eq done :json-false)
               (with-current-buffer (plist-get info :buffer)
                 (cl-incf gptel--ollama-token-count
@@ -73,7 +83,10 @@ Store response metadata in state INFO."
   (plist-put info :stop-reason (plist-get response :done_reason))
   (plist-put info :output-tokens (plist-get response :eval_count))
   (let* ((message (plist-get response :message))
+         (thinking (plist-get message :thinking))
          (content (plist-get message :content)))
+    (when thinking
+      (plist-put info :reasoning thinking))
     (when-let* ((tool-calls (plist-get message :tool_calls)))
       ;; First add the tool call to the prompts list
       (let* ((data (plist-get info :data))
