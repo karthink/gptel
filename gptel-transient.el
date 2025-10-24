@@ -1677,7 +1677,7 @@ This sets the variable `gptel-include-tool-results', which see."
                   (buffer-local-value 'major-mode gptel-buffer)
                 gptel-default-mode)))
         ;; Add code fences or Org src markers around the reduced-prompt
-        (cond ((eq major-mode gptel-buffer-mode))
+        (cond ((and (stringp prompt) (eq major-mode gptel-buffer-mode)))
               ((provided-mode-derived-p gptel-buffer-mode 'org-mode)
                (setq reduced-prompt
                      (if (consp reduced-prompt);either (region . prompt) or prompt
