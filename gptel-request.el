@@ -2529,7 +2529,9 @@ INFO contains the request data, TOKEN is a unique identifier."
      (if (length< data-json gptel-curl-file-size-threshold)
          (list (format "-d%s" data-json))
        (letrec
-           ((temp-filename (make-temp-file "gptel-curl-data" nil ".json" data-json))
+           ((write-region-inhibit-fsync t)
+            (file-name-handler-alist nil)
+            (temp-filename (make-temp-file "gptel-curl-data" nil ".json" data-json))
             (cleanup-fn (lambda (&rest _)
                           (when (file-exists-p temp-filename)
                             (delete-file temp-filename)
