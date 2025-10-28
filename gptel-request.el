@@ -1065,10 +1065,9 @@ The result is a string intended for display.  Newlines are
 replaced with REPLACEMENT."
   (cl-typecase directive
     (string
-     (concat
-      (string-replace "\n" (or replacement " ")
-                      (truncate-string-to-width
-                       directive width nil nil t))))
+     (string-replace
+      "\n" (or replacement " ")
+      (substring directive 0 (min width (length directive)))))
     (function
      (concat
       "λ: "
