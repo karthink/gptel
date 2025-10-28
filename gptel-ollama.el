@@ -54,9 +54,15 @@ Intended for internal use only.")
         (while (setq content (gptel--json-read))
           (setq pt (point))
           (let ((done (map-elt content :done))
+                (reasoning (map-nested-elt content '(:message :thinking)))
                 (response (map-nested-elt content '(:message :content))))
             (when (and response (not (eq response :null)))
               (push response content-strs))
+            (if (and reasoning (not (eq reasoning :null)))
+                (plist-put info :reasoning
+                           (concat (plist-get info :reasoning) reasoning))
+              (when (eq 'in (plist-get info :reasoning-block))
+                (plist-put info :reasoning-block t)))
             (unless (eq done :json-false)
               (with-current-buffer (plist-get info :buffer)
                 (cl-incf gptel--ollama-token-count
@@ -73,7 +79,10 @@ Store response metadata in state INFO."
   (plist-put info :stop-reason (plist-get response :done_reason))
   (plist-put info :output-tokens (plist-get response :eval_count))
   (let* ((message (plist-get response :message))
+         (reasoning (plist-get message :thinking))
          (content (plist-get message :content)))
+    (when reasoning
+      (plist-put info :reasoning reasoning))
     (when-let* ((tool-calls (plist-get message :tool_calls)))
       ;; First add the tool call to the prompts list
       (let* ((data (plist-get info :data))
