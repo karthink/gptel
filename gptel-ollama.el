@@ -61,8 +61,9 @@ Intended for internal use only.")
             (if (and reasoning (not (eq reasoning :null)))
                 (plist-put info :reasoning
                            (concat (plist-get info :reasoning) reasoning))
-              (when (eq 'in (plist-get info :reasoning-block))
-                (plist-put info :reasoning-block t)))
+              (if (eq 'in (plist-get info :reasoning-block))
+                  (plist-put info :reasoning-block t)
+                (plist-put info :reasoning-block nil)))
             (unless (eq done :json-false)
               (with-current-buffer (plist-get info :buffer)
                 (cl-incf gptel--ollama-token-count
