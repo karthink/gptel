@@ -2050,9 +2050,6 @@ Initiate the request when done."
              ;; TODO(tool) Limit tool use to capable models after documenting :capabilities
              ;; (gptel-use-tools (and (gptel--model-capable-p 'tool-use) gptel-use-tools))
              (stream (and (plist-get info :stream) gptel-use-curl gptel-stream
-                          ;; HACK(tool): no stream if Ollama + tools.  Need to find a better way
-                          (not (and (eq (type-of gptel-backend) 'gptel-ollama)
-                                    gptel-tools gptel-use-tools))
                           ;; Check model-specific request-params for streaming preference
                           (let* ((model-params (gptel--model-request-params gptel-model))
                                  (stream-spec (plist-get model-params :stream)))
