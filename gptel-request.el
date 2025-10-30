@@ -723,8 +723,8 @@ For files, spec can include buffer spans and line number ranges, as well as
 the MIME type of the file:
 
   (\"/path/to/file\" :bounds ((start1 . end1) (start2 . end2) ...)
-                     :lines  ((from1 . to1) (from2 . end2) ...)
-                     :mime \"image/png\")
+                   :lines  ((from1 . to1) (from2 . end2) ...)
+                   :mime \"image/png\")
 
 gptel tries to guess file MIME types, but is not always successful, so
 it is recommended to provide it with non-text files.
