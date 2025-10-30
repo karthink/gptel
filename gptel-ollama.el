@@ -55,9 +55,22 @@ Intended for internal use only.")
           (setq pt (point))
           (let ((done (map-elt content :done))
                 (reasoning (map-nested-elt content '(:message :thinking)))
-                (response (map-nested-elt content '(:message :content))))
+                (response (map-nested-elt content '(:message :content)))
+                (tool-calls (map-nested-elt content '(:message :tool_calls))))
             (when (and response (not (eq response :null)))
               (push response content-strs))
+            (when (and tool-calls (not (eq tool-calls :null)))
+              (gptel--inject-prompt
+               (plist-get info :backend) (plist-get info :data)
+               `(:role "assistant" :content :null :tool_calls ,(vconcat tool-calls)))
+              (cl-loop
+               for tool-call across tool-calls  ;replace ":arguments" with ":args"
+               for call-spec = (copy-sequence (plist-get tool-call :function))
+               do (plist-put call-spec :args
+                             (plist-get call-spec :arguments))
+               (plist-put call-spec :arguments nil)
+               collect call-spec into tool-use
+               finally (plist-put info :tool-use tool-use)))
             (if (and reasoning (not (eq reasoning :null)))
                 (plist-put info :reasoning
                            (concat (plist-get info :reasoning) reasoning))
