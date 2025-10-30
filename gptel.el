@@ -1723,9 +1723,11 @@ for tool call results.  INFO contains the state of the request."
                     (display-call (format "(%s %s)" name
                                           (string-trim (prin1-to-string args) "(" ")")))
                     (call (prin1-to-string `(:name ,name :args ,args)))
-                    (truncated-call (truncate-string-to-width
-                                     display-call
-                                     (floor (* (window-width) 0.6)) 0 nil " ...)")))
+                    (truncated-call
+                     (string-replace "\n" " "
+                                     (truncate-string-to-width
+                                      display-call
+                                      (floor (* (window-width) 0.6)) 0 nil " ...)"))))
                (if (derived-mode-p 'org-mode)
                    (concat
                     separator
