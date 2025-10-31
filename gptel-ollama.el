@@ -55,14 +55,28 @@ Intended for internal use only.")
           (setq pt (point))
           (let ((done (map-elt content :done))
                 (reasoning (map-nested-elt content '(:message :thinking)))
-                (response (map-nested-elt content '(:message :content))))
+                (response (map-nested-elt content '(:message :content)))
+                (tool-calls (map-nested-elt content '(:message :tool_calls))))
             (when (and response (not (eq response :null)))
               (push response content-strs))
+            (when (and tool-calls (not (eq tool-calls :null)))
+              (gptel--inject-prompt
+               (plist-get info :backend) (plist-get info :data)
+               `(:role "assistant" :content :null :tool_calls ,(vconcat tool-calls)))
+              (cl-loop
+               for tool-call across tool-calls  ;replace ":arguments" with ":args"
+               for call-spec = (copy-sequence (plist-get tool-call :function))
+               do (plist-put call-spec :args
+                             (plist-get call-spec :arguments))
+               (plist-put call-spec :arguments nil)
+               collect call-spec into tool-use
+               finally (plist-put info :tool-use tool-use)))
             (if (and reasoning (not (eq reasoning :null)))
                 (plist-put info :reasoning
                            (concat (plist-get info :reasoning) reasoning))
-              (when (eq 'in (plist-get info :reasoning-block))
-                (plist-put info :reasoning-block t)))
+              (if (eq 'in (plist-get info :reasoning-block))
+                  (plist-put info :reasoning-block t)
+                (plist-put info :reasoning-block nil)))
             (unless (eq done :json-false)
               (with-current-buffer (plist-get info :buffer)
                 (cl-incf gptel--ollama-token-count
@@ -123,8 +137,7 @@ Store response metadata in state INFO."
     (when (and gptel-use-tools gptel-tools)
       ;; TODO(tool): Find out how to force tool use for Ollama
       (plist-put prompts-plist :tools
-                 (gptel--parse-tools backend gptel-tools))
-      (plist-put prompts-plist :stream :json-false))
+                 (gptel--parse-tools backend gptel-tools)))
     ;; if the temperature and max-tokens aren't set as
     ;; backend/model-specific, use the global settings
     (when (and gptel-temperature (not (plist-get options-plist :temperature)))
