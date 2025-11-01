@@ -1007,7 +1007,7 @@ buffers."
     (ERRS ,#'gptel--handle-error ,#'gptel--fsm-last)
     (TOOL ,#'gptel--update-tool-call ,#'gptel--handle-tool-use ,#'gptel--update-tool-ask)
     (DONE ,#'gptel--handle-post-insert ,#'gptel--fsm-last)
-    (ABRT ,#'gptel--update-abort))
+    (ABRT ,#'gptel--handle-abort))
   "Alist specifying handlers for `gptel-send' state transitions.
 
 See `gptel-request--handlers' for details.")
@@ -1142,6 +1142,22 @@ No state transition here since that's handled by the process sentinels."
                               start-marker))
          ;; start-marker may have been moved if :buffer was read-only
          (gptel-buffer (marker-buffer start-marker)))
+    ;; Run hook in visible window to set window-point, BUG #269
+    (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
+        (with-selected-window gptel-window
+          (mapc (lambda (f) (funcall f (marker-position start-marker)
+                                (marker-position tracking-marker)))
+                (plist-get info :post))
+          (run-hook-with-args
+           'gptel-post-response-functions
+           (marker-position start-marker) (marker-position tracking-marker)))
+      (with-current-buffer gptel-buffer
+        (mapc (lambda (f) (funcall f (marker-position start-marker)
+                              (marker-position tracking-marker)))
+              (plist-get info :post))
+        (run-hook-with-args
+         'gptel-post-response-functions
+         (marker-position start-marker) (marker-position tracking-marker))))
     (with-current-buffer gptel-buffer
       (if (not tracking-marker)         ;Empty response
           (when gptel-mode (gptel--update-status " Empty response" 'success))
@@ -1151,17 +1167,7 @@ No state transition here since that's handled by the process sentinels."
             (save-excursion (goto-char tracking-marker)
                             (insert gptel-response-separator
                                     (gptel-prompt-prefix-string))))
-          (gptel--update-status  " Ready" 'success))))
-    ;; Run hook in visible window to set window-point, BUG #269
-    (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
-        (with-selected-window gptel-window
-          (run-hook-with-args
-           'gptel-post-response-functions
-           (marker-position start-marker) (marker-position tracking-marker)))
-      (with-current-buffer gptel-buffer
-        (run-hook-with-args
-         'gptel-post-response-functions
-         (marker-position start-marker) (marker-position tracking-marker))))))
+          (gptel--update-status  " Ready" 'success))))))
 
 (defun gptel--handle-error (fsm)
   "Check for errors in request state FSM.
@@ -1183,19 +1189,50 @@ Perform UI updates and run post-response hooks."
         (setq http-msg (concat "("  http-msg ") " (string-trim error-type))))
       (when-let* ((error-msg (plist-get error-data :message)))
         (message "%s error: (%s) %s" backend-name http-msg (string-trim error-msg))))
-    (with-current-buffer gptel-buffer
-      (when gptel-mode
-        (gptel--update-status
-         (format " Error: %s" http-msg) 'error)))
     (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
         (with-selected-window gptel-window
+          (mapc (lambda (f) (funcall f (marker-position start-marker)
+                                (marker-position tracking-marker)))
+                (plist-get info :post))
           (run-hook-with-args
            'gptel-post-response-functions
            (marker-position start-marker) (marker-position tracking-marker)))
       (with-current-buffer gptel-buffer
+        (mapc (lambda (f) (funcall f (marker-position start-marker)
+                              (marker-position tracking-marker)))
+              (plist-get info :post))
         (run-hook-with-args
          'gptel-post-response-functions
-         (marker-position start-marker) (marker-position tracking-marker))))))
+         (marker-position start-marker) (marker-position tracking-marker))))
+    (with-current-buffer gptel-buffer
+      (when gptel-mode
+        (gptel--update-status
+         (format " Error: %s" http-msg) 'error)))))
+
+(defun gptel--handle-abort (fsm)
+  "Perform UI update on `gptel-abort' for FSM."
+  (when-let* ((info (gptel-fsm-info fsm))
+              (gptel-buffer (plist-get info :buffer))
+              (start-marker (plist-get info :position))
+              (tracking-marker (or (plist-get info :tracking-marker)
+                                   start-marker)))
+    (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
+        (with-selected-window gptel-window
+          (mapc (lambda (f) (funcall f (marker-position start-marker)
+                                (marker-position tracking-marker)))
+                (plist-get info :post))
+          (run-hook-with-args
+           'gptel-post-response-functions
+           (marker-position start-marker) (marker-position tracking-marker)))
+      (with-current-buffer gptel-buffer
+        (mapc (lambda (f) (funcall f (marker-position start-marker)
+                              (marker-position tracking-marker)))
+              (plist-get info :post))
+        (run-hook-with-args
+         'gptel-post-response-functions
+         (marker-position start-marker) (marker-position tracking-marker))))
+    (with-current-buffer gptel-buffer
+      (when gptel-mode (gptel--update-status  " Abort" 'error)))))
 
 (defun gptel--update-wait (fsm)
   "Update gptel's status after sending a request."
@@ -1206,21 +1243,16 @@ Perform UI updates and run post-response hooks."
 (defun gptel--update-tool-call (fsm)
   "Update gptel's status when calling a tool."
   (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
+    (setq gptel--fsm-last fsm)
     (when gptel-mode
       (gptel--update-status " Calling tool..." 'mode-line-emphasis))))
 
 (defun gptel--update-tool-ask (fsm)
   "Update gptel's status when there are pending tool calls."
   (when (plist-get (gptel-fsm-info fsm) :tool-pending)
-    (setq gptel--fsm-last fsm)
     (plist-put (gptel-fsm-info fsm) :tool-pending nil)
     (when gptel-mode
       (gptel--update-status " Run tools?" 'mode-line-emphasis))))
-
-(defun gptel--update-abort (fsm)
-  "Update gptel's status when aborting a request."
-  (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
-    (when gptel-mode (gptel--update-status  " Abort" 'error))))
 
 
 ;;; Send queries, handle responses
