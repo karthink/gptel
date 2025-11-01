@@ -129,6 +129,14 @@ Meant to be called when `gptel-menu' is active."
                        (substring s 1)))
                   args))
 
+(defun gptel--get-user-instruction (args)
+  "Find the additional user instruction in the transient ARGS.
+
+Meant to be called when `gptel-menu' is active."
+  (cl-some (lambda (s) (and (stringp s) (string-prefix-p ">" s)
+                       (substring s 1)))
+                  args))
+
 (defun gptel--instructions-make-overlay (text &optional ov)
   "Make or move overlay OV with TEXT."
   (save-excursion
@@ -786,7 +794,8 @@ Also format the value of OBJ in the transient menu."
     :if (lambda () (not (gptel--model-capable-p 'nosystem)))
     "Instructions"
     ("s" "Set system message" gptel-system-prompt :transient t)
-    (gptel--infix-add-directive)]
+    (gptel--infix-add-directive)
+    (gptel--infix-add-user-instruction)]
    [:pad-keys t ""
     (:info #'gptel--describe-infix-context
      :face transient-heading :format "%d")
@@ -1458,7 +1467,46 @@ Or in an extended conversation:
   :format " %k %d %v"
   :key "d"
   :argument ":"
-  :description "Add instruction"
+  :description "Add system instruction"
+  :transient t)
+
+;; ** Infix for additional user instruction
+
+(transient-define-infix gptel--infix-add-user-instruction ()
+  "Additional user instruction intended for the next query only.
+
+This appends instructions to the user message instead of the system prompt.
+Useful for one-off questions about selected code or text.
+
+For example, with code/text selected:
+
+- Explain what this function does.
+- What are the potential bugs in this code?
+- How can I optimize this?
+
+The instruction is appended to the user message, not the system prompt."
+  :class 'gptel-option-overlaid
+  :display-nil 'none
+  :overlay nil
+  :argument ">"
+  :prompt (concat "Add user instructions for next request only ("
+                  gptel--read-with-prefix-help ") ")
+  :reader (lambda (prompt initial history)
+            (let* ((directive
+                    (car-safe (gptel--parse-directive gptel--system-message 'raw)))
+                   (cycle-prefix (lambda () (interactive)
+                                   (gptel--read-with-prefix directive)))
+                   (minibuffer-local-map
+                    (make-composed-keymap
+                     (define-keymap "TAB" cycle-prefix "<tab>" cycle-prefix)
+                     minibuffer-local-map))
+                   (extra (minibuffer-with-setup-hook cycle-prefix
+                            (read-string prompt (or initial " ") history))))
+              (unless (string-empty-p extra) extra)))
+  :format " %k %d %v"
+  :key "D"
+  :argument ">"
+  :description "Add user instruction"
   :transient t)
 
 ;; ** Infix for reasoning block control
@@ -1595,6 +1643,74 @@ This sets the variable `gptel-include-tool-results', which see."
 
 ;; ** Suffix to send prompt
 
+(defun gptel--suffix-join-nonempty (&rest parts)
+  "Join non-empty string PARTS using blank lines.
+
+Whitespace-only entries are skipped.  Return nil if all parts are empty."
+  (let ((pieces))
+    (dolist (part parts)
+      (when (and (stringp part)
+                 (not (string-empty-p (string-trim part))))
+        (push part pieces)))
+    (pcase (nreverse pieces)
+      ('() nil)
+      (`(,only) only)
+      (pieces (mapconcat #'identity pieces "\n\n")))))
+
+(defun gptel--suffix-normalize-prompt (prompt user-instruction)
+  "Normalize PROMPT for explicit submissions.
+
+When PROMPT is a cons cell of (region-text . minibuffer-input), fold both
+strings (and USER-INSTRUCTION when non-nil) into a single prompt string.
+Return nil when prompt should be gathered by `gptel-request'."
+  (cond
+   ((consp prompt)
+    (gptel--suffix-join-nonempty (car prompt) (cdr prompt) user-instruction))
+   ((stringp prompt)
+    (gptel--suffix-join-nonempty prompt user-instruction))
+   (t nil)))
+
+(defun gptel--suffix-insert-transform (transforms transform)
+  "Insert TRANSFORM before adding context in TRANSFORMS.
+
+If TRANSFORM is nil fall back to TRANSFORMS."
+  (if (null transform)
+      transforms
+    (let ((result nil)
+          (inserted nil))
+      (dolist (fn transforms)
+        (when (and (not inserted)
+                   (eq fn 'gptel--transform-add-context))
+          (push transform result)
+          (setq inserted t))
+        (push fn result))
+      (unless inserted
+        (push transform result))
+      (nreverse result))))
+
+(defun gptel--suffix-make-instruction-transform (instruction)
+  "Return a prompt transform to append INSTRUCTION at send time."
+  (let ((text (and instruction (string-trim instruction))))
+    (when (and text (not (string-empty-p text)))
+      (lambda (&optional _fsm)
+        (goto-char (point-max))
+        (let ((need
+               (cond
+                ((bobp) 0)
+                ((and (> (point) (point-min))
+                      (eq (char-before) ?\n)
+                      (> (point) (1+ (point-min)))
+                      (save-excursion
+                        (backward-char)
+                        (eq (char-before) ?\n)))
+                 0)
+                ((and (> (point) (point-min))
+                      (eq (char-before) ?\n))
+                 1)
+                (t 2))))
+          (dotimes (_ need) (insert "\n")))
+        (insert text)))))
+
 (transient-define-suffix gptel--suffix-send (args)
   "Send ARGS."
   :key "RET"
@@ -1610,7 +1726,9 @@ This sets the variable `gptel-include-tool-results', which see."
         (buffer) (position)
         (callback) (gptel-buffer-name)
         (system-extra (gptel--get-directive args))
+        (user-instruction (gptel--get-user-instruction args))
         (dry-run (and (member "I" args) t))
+        (transforms gptel-prompt-transform-functions)
         ;; Input redirection: grab prompt from elsewhere?
         (prompt
          (cond
@@ -1735,9 +1853,17 @@ This sets the variable `gptel-include-tool-results', which see."
       (setq buffer (get-buffer-create gptel-buffer-name))
       (with-current-buffer buffer (setq position (point)))))
 
-    ;; MAYBE: This is no a good way to handle two-part (region + instruction) prompts
-    ;; If the prompt is a cons (region-text . instructions), collapse it
-    (when (consp prompt) (setq prompt (concat (car prompt) "\n\n" (cdr prompt))))
+    ;; Normalize explicit prompts and prepare transient instructions.
+    (let* ((explicit (gptel--suffix-normalize-prompt prompt user-instruction))
+           (instruction-transform
+            (when (and user-instruction (not explicit))
+              (gptel--suffix-make-instruction-transform user-instruction))))
+      (when explicit
+        (setq prompt explicit
+              user-instruction nil))
+      (when instruction-transform
+        (setq transforms
+              (gptel--suffix-insert-transform transforms instruction-transform))))
 
     (prog1 (gptel-request prompt
              :buffer (or buffer (current-buffer))
@@ -1749,7 +1875,7 @@ This sets the variable `gptel-include-tool-results', which see."
                  (gptel--merge-additional-directive system-extra)
                gptel--system-message)
              :callback callback
-             :transforms gptel-prompt-transform-functions
+             :transforms transforms
              :fsm (gptel-make-fsm :handlers gptel-send--handlers)
              :dry-run dry-run)
 
