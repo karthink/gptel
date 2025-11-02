@@ -1896,6 +1896,7 @@ Other Emacs clients for LLMs include
 - [[https://github.com/s-kostyaev/ellama][Ellama]]: A full-fledged LLM client built on llm, that supports many LLM providers (Ollama, Open AI, Vertex, GPT4All and more).  Its usage differs from gptel in that it provides separate commands for dozens of common tasks, like general chat, summarizing code/text, refactoring code, improving grammar, translation and so on.
 - [[https://github.com/xenodium/chatgpt-shell][chatgpt-shell]]: comint-shell based interaction with ChatGPT.  Also supports DALL-E, executable code blocks in the responses, and more.
 - [[https://github.com/rksm/org-ai][org-ai]]: Interaction through special =#+begin_ai ... #+end_ai= Org-mode blocks.  Also supports DALL-E, querying ChatGPT with the contents of project files, and more.
+- [[https://github.com/yibie/superchat][Superchat]]: A Claude Code style chat UI for gptel in Emacs, focusing on making structured prompts and file‑grounded conversations effortless.
 - [[https://github.com/milanglacier/minuet-ai.el][Minuet]]: Code-completion using LLM. Supports fill-in-the-middle (FIM) completion for compatible models such as DeepSeek and Codestral.
 
 There are several more: [[https://github.com/iwahbe/chat.el][chat.el]], [[https://github.com/stuhlmueller/gpt.el][gpt.el]], [[https://github.com/AnselmC/le-gpt.el][le-gpt]], [[https://github.com/stevemolitor/robby][robby]].
