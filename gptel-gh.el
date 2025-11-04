@@ -243,40 +243,72 @@
 (defun gptel-gh-login ()
   "Login to GitHub Copilot API.
 
-This will prompt you to authorize in a browser and store the token."
+This will prompt you to authorize in a browser and store the token.
+
+In SSH sessions, the URL and code will be displayed for manual entry
+instead of attempting to open a browser automatically."
   (interactive)
-  (pcase-let (((map :device_code :user_code :verification_uri)
-               (gptel--url-retrieve
-                   "https://github.com/login/device/code"
-                 :method 'post
-                 :headers gptel--gh-auth-common-headers
-                 :data `( :client_id ,gptel--gh-client-id
-                          :scope "read:user"))))
-    (gui-set-selection 'CLIPBOARD user_code)
-    (read-from-minibuffer
-     (format "Your one-time code %s is copied. \
+  ;; Determine which GitHub backend to use
+  (let ((gh-backend
+         (cond
+          ;; If current backend is GitHub, use it
+          ((and (boundp 'gptel-backend)
+                gptel-backend
+                (gptel--gh-p gptel-backend))
+           gptel-backend)
+          ;; Otherwise, find any GitHub backend
+          ((cl-find-if (lambda (b) (gptel--gh-p b))
+                       (mapcar #'cdr gptel--known-backends)))
+          ;; No GitHub backend found
+          (t (user-error "No GitHub Copilot backend found.  \
+Please set one up with `gptel-make-gh-copilot' first"))))
+        ;; Detect SSH sessions
+        (in-ssh-session (or (getenv "SSH_CLIENT")
+                            (getenv "SSH_CONNECTION")
+                            (getenv "SSH_TTY"))))
+    (pcase-let (((map :device_code :user_code :verification_uri)
+                 (gptel--url-retrieve
+                     "https://github.com/login/device/code"
+                   :method 'post
+                   :headers gptel--gh-auth-common-headers
+                   :data `( :client_id ,gptel--gh-client-id
+                            :scope "read:user"))))
+      (gui-set-selection 'CLIPBOARD user_code)
+      (if in-ssh-session
+          ;; SSH session: display URL and code, don't auto-open browser
+          (progn
+            (message "GitHub Device Code: %s (copied to clipboard)" user_code)
+            (read-from-minibuffer
+             (format "Code %s is copied. Visit https://github.com/login/device \
+in your local browser, enter the code, and authorize.  Press ENTER after authorizing. "
+                     user_code)))
+        ;; Local session: auto-open browser
+        (read-from-minibuffer
+         (format "Your one-time code %s is copied. \
 Press ENTER to open GitHub in your browser. \
 If your browser does not open automatically, browse to %s."
-             user_code verification_uri))
-    (browse-url verification_uri)
-    (read-from-minibuffer "Press ENTER after authorizing.")
-    (thread-last
-      (plist-get
-       (gptel--url-retrieve
-           "https://github.com/login/oauth/access_token"
-         :method 'post
-         :headers gptel--gh-auth-common-headers
-         :data `( :client_id ,gptel--gh-client-id
-                  :device_code ,device_code
-                  :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
-       :access_token)
-      (gptel--gh-save gptel-gh-github-token-file)
-      (setf (gptel--gh-github-token gptel-backend))))
-  (if (and (gptel--gh-github-token gptel-backend)
-           (not (string-empty-p
-                 (gptel--gh-github-token gptel-backend))))
-      (message "Successfully logged in to GitHub Copilot")
-    (user-error "Error: You might not have access to GitHub Copilot Chat!")))
+                 user_code verification_uri))
+        (browse-url verification_uri)
+        (read-from-minibuffer "Press ENTER after authorizing. "))
+      ;; Use gh-backend for token storage
+      (thread-last
+        (plist-get
+         (gptel--url-retrieve
+             "https://github.com/login/oauth/access_token"
+           :method 'post
+           :headers gptel--gh-auth-common-headers
+           :data `( :client_id ,gptel--gh-client-id
+                    :device_code ,device_code
+                    :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
+         :access_token)
+        (gptel--gh-save gptel-gh-github-token-file)
+        (setf (gptel--gh-github-token gh-backend))))
+    ;; Check gh-backend for success
+    (if (and (gptel--gh-github-token gh-backend)
+             (not (string-empty-p
+                   (gptel--gh-github-token gh-backend))))
+        (message "Successfully logged in to GitHub Copilot.")
+      (user-error "Error: You might not have access to GitHub Copilot Chat!"))))
 
 (defun gptel--gh-renew-token ()
   "Renew session token."
