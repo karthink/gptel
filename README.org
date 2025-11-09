@@ -1777,7 +1777,7 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | *Chat UI options*              |                                                                |
 |--------------------------------+----------------------------------------------------------------|
 | =gptel-default-mode=           | Major mode for dedicated chat buffers.                         |
-| =gptel-highlight-methods=      | Highlighting type(s) used by =gptel-highlight-mode=            |
+| =gptel-highlight-methods=      | Response highlighting used by =gptel-highlight-mode=           |
 | =gptel-prompt-prefix-alist=    | Text inserted before queries.                                  |
 | =gptel-response-prefix-alist=  | Text inserted before responses.                                |
 | =gptel-track-response=         | Distinguish between user messages and LLM responses?           |
@@ -1890,16 +1890,31 @@ In chat buffers this prefix will be offered as a completion and fontified, makin
 
 ** Alternatives
 
-Other Emacs clients for LLMs include
+Other LLM clients for Emacs include
+
+*Libraries*:
 
 - [[https://github.com/ahyatt/llm][llm]]: llm provides a uniform API across language model providers for building LLM clients in Emacs, and is intended as a library for use by package authors.  For similar scripting purposes, gptel provides the command =gptel-request=, which see.
+
+*Chat clients*:
+
 - [[https://github.com/s-kostyaev/ellama][Ellama]]: A full-fledged LLM client built on llm, that supports many LLM providers (Ollama, Open AI, Vertex, GPT4All and more).  Its usage differs from gptel in that it provides separate commands for dozens of common tasks, like general chat, summarizing code/text, refactoring code, improving grammar, translation and so on.
 - [[https://github.com/xenodium/chatgpt-shell][chatgpt-shell]]: comint-shell based interaction with ChatGPT.  Also supports DALL-E, executable code blocks in the responses, and more.
 - [[https://github.com/rksm/org-ai][org-ai]]: Interaction through special =#+begin_ai ... #+end_ai= Org-mode blocks.  Also supports DALL-E, querying ChatGPT with the contents of project files, and more.
 - [[https://github.com/yibie/superchat][Superchat]]: A Claude Code style chat UI for gptel in Emacs, focusing on making structured prompts and file‑grounded conversations effortless.
-- [[https://github.com/milanglacier/minuet-ai.el][Minuet]]: Code-completion using LLM. Supports fill-in-the-middle (FIM) completion for compatible models such as DeepSeek and Codestral.
 
 There are several more: [[https://github.com/iwahbe/chat.el][chat.el]], [[https://github.com/stuhlmueller/gpt.el][gpt.el]], [[https://github.com/AnselmC/le-gpt.el][le-gpt]], [[https://github.com/stevemolitor/robby][robby]].
+
+*Coding agents*:
+
+- [[https://github.com/manzaltu/claude-code-ide.el][claude-code-ide]] and [[https://github.com/stevemolitor/claude-code.el][claude-code.el]]: Emacs interfaces to Claude Code.
+- [[https://github.com/xenodium/agent-shell][agent-shell]]: Emacs interface to various coding agents, like Claude Code, Gemini, Codex, Opencode, Goose and more.
+- [[https://github.com/MatthewZMD/aidermacs][Aidermacs]] and [[https://github.com/tninja/aider.el][aider.el]]: Emacs interfaces to [[https://aider.chat/][Aider]].
+
+*Completion at point*:
+
+- [[https://github.com/copilot-emacs/copilot.el][copilot.el]]: Code completion using Copilot.
+- [[https://github.com/milanglacier/minuet-ai.el][Minuet]]: Code-completion using LLM. Supports fill-in-the-middle (FIM) completion for compatible models such as DeepSeek and Codestral.
 
 *** Packages using gptel
 
@@ -1937,7 +1952,7 @@ These differ from full "agentic" use in that the interactions are "one-shot", no
 *Chat interface addons*
 
 - [[https://github.com/rob137/Corsair][Corsair]]: Helps gather text to populate LLM prompts for gptel.
-- [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  (Note that gptel includes this feature as well (see =gptel-org-branching-context=), but requires a recent version of Org mode 9.7 or later to be installed.)
+- [[https://github.com/ultronozm/ai-org-chat.el][ai-org-chat]]: Provides branching conversations in Org buffers using gptel.  Note that gptel includes this feature as well (see =gptel-org-branching-context=), but requires a recent version of Org mode 9.7 or later to be installed.
 
 *Integration with other packages*
 
