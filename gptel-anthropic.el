@@ -206,18 +206,27 @@ Mutate state INFO with response metadata."
 (cl-defmethod gptel--request-data ((backend gptel-anthropic) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
   (let ((prompts-plist
-         `(:model ,(gptel--model-name gptel-model)
-           :stream ,(or gptel-stream :json-false)
-           :max_tokens ,(or gptel-max-tokens 4096)
-           :messages [,@prompts])))
+         `( :model ,(gptel--model-name gptel-model)
+            :stream ,(or gptel-stream :json-false)
+            :max_tokens ,(or gptel-max-tokens 4096)
+            :messages [,@prompts]))
+        (cachep (and (or (eq gptel-cache t) (memq 'system gptel-cache))
+                     (gptel--model-capable-p 'cache))))
     (when gptel--system-message
-      (if (and (or (eq gptel-cache t) (memq 'system gptel-cache))
-               (gptel--model-capable-p 'cache))
-          ;; gptel--system-message is guaranteed to be a string
-          (plist-put prompts-plist :system
-                     `[(:type "text" :text ,gptel--system-message
-                        :cache_control (:type "ephemeral" :ttl "1h"))])
-        (plist-put prompts-plist :system gptel--system-message)))
+      ;; gptel--system-message is a string or a list of strings
+      (plist-put
+       prompts-plist :system
+       (cond
+        ((consp gptel--system-message)  ;multi-part system message
+         (vconcat (mapcar (lambda (part)
+                            (nconc (list :type "text" :text part)
+                                   (and cachep
+                                        (list :cache_control
+                                              '(:type "ephemeral")))))
+                          gptel--system-message)))
+        (cachep `[(:type "text" :text ,gptel--system-message
+                         :cache_control (:type "ephemeral"))])
+        (t gptel--system-message))))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-use-tools
@@ -229,7 +238,7 @@ Mutate state INFO with response metadata."
           (when (and (or (eq gptel-cache t) (memq 'tool gptel-cache))
                      (gptel--model-capable-p 'cache))
             (nconc (aref tools-array (1- (length tools-array)))
-                   '(:cache_control (:type "ephemeral" :ttl "1h")))))))
+                   '(:cache_control (:type "ephemeral")))))))
     (when gptel--schema
       (plist-put prompts-plist :tools
                  (vconcat
@@ -362,7 +371,7 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
     (when (and (or (eq gptel-cache t) (memq 'message gptel-cache))
                (gptel--model-capable-p 'cache))
       (nconc (aref (plist-get (car (last full-prompt)) :content) 0)
-             '(:cache_control (:type "ephemeral" :ttl "1h"))))
+             '(:cache_control (:type "ephemeral"))))
     full-prompt))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-anthropic) &optional max-entries)
@@ -431,9 +440,9 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
               (plist-put
                (car (last prompts)) :content
                `[(:type "text" :text ,last-message
-                  :cache_control (:type "ephemeral" :ttl "1h"))])
+                  :cache_control (:type "ephemeral"))])
             (nconc (aref (plist-get (car (last prompts)) :content) 0)
-                   '(:cache_control (:type "ephemeral" :ttl "1h"))))))
+                   '(:cache_control (:type "ephemeral"))))))
     prompts))
 
 (defun gptel--anthropic-parse-multipart (parts)
