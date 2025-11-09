@@ -1621,8 +1621,36 @@ for streaming responses only."
             (plist-put info :reasoning-marker
                        (copy-marker tracking-marker nil))))))))
 
+(defvar gptel--tool-preview-alist nil
+  "Alist mapping tool names to preview functions for tools.
+
+Each key is a tool name (string) and value is a list of one or two
+functions, for preview-setup and (optional) preview-teardown.
+
+The preview-setup function is called with two arguments: a list of the
+corresponding tool call arguments and the request INFO plist.  It must
+set up the preview for the tool call and return a handle to the preview,
+which can be any object, but typically an overlay or a buffer.
+
+The preview-setup can integrate with gptel's default previewer by
+inserting at point (and moving point), or use a different preview method
+entirely.
+
+The preview-teardown function, if provided, is called with this handle
+when the tool call is accepted or rejected, and it must clear the
+preview.
+
+Note: This tool call preview API is currently experimental.")
+
 
 ;;; Tool use UI
+(defvar-keymap gptel-tool-call-actions-map
+  :doc "Keymap for actions on tool calls."
+  "<mouse-1>" #'gptel--dispatch-tool-calls
+  "C-c C-c" #'gptel--accept-tool-calls
+  "C-c C-k" #'gptel--reject-tool-calls
+  "C-c C-i" #'gptel--inspect-tool-calls)
+
 (defun gptel--display-tool-calls (tool-calls info &optional use-minibuffer)
   "Handle tool call confirmation.
 
@@ -1639,7 +1667,11 @@ USE-MINIBUFFER is non-nil)."
          (tracking-marker (plist-get info :tracking-marker)))
     ;; pending tool calls look like ((tool callback args) ...)
     (with-current-buffer (plist-get info :buffer)
-      (if use-minibuffer            ;prompt for confirmation from the minibuffer
+      (if (or use-minibuffer        ;prompt for confirmation from the minibuffer
+              buffer-read-only ;TEMP(tool-preview) Handle read-only buffers better
+              (get-char-property
+               (max (point-min) (1- (or tracking-marker start-marker)))
+               'read-only))
           (let* ((minibuffer-allow-text-properties t)
                  (backend-name (gptel-backend-name (plist-get info :backend)))
                  (prompt (format "%s wants to run " backend-name)))
@@ -1673,51 +1705,62 @@ USE-MINIBUFFER is non-nil)."
                         (propertize "C-c C-k" 'face 'help-key-binding)
                         (propertize ", Inspect: " 'face 'font-lock-string-face)
                         (propertize "C-c C-i" 'face 'help-key-binding)))
-               (confirm-strings
-                (list (concat "\n" actions-string
-                              (propertize "\n" 'face '(:inherit font-lock-string-face
-                                                                :underline t :extend t))
-                              (format (propertize "\n%s wants to run:\n"
-                                                  'face 'font-lock-string-face)
-                                      backend-name))))
+               (confirm-strings)
                ;; FIXME(tool) use a wrapper instead of a manual text-property search,
                ;; this is fragile
                (ov-start (save-excursion
                            (goto-char start-marker)
                            (text-property-search-backward 'gptel 'response)
                            (point)))
+               (preview-handlers)
                (ov (or (cdr-safe (get-char-property-and-overlay
                                   start-marker 'gptel-tool))
-                       (make-overlay ov-start (or tracking-marker start-marker)))))
+                       (make-overlay ov-start (or tracking-marker start-marker)
+                                     nil nil nil)))
+               (prompt-ov))
           ;; If the cursor is at the overlay-end, it ends up outside, so move it back
           (unless tracking-marker
             (when (= (point) start-marker) (ignore-errors (backward-char))))
-          (pcase-dolist (`(,tool-spec ,arg-values _) tool-calls)
-            (push (gptel--format-tool-call (gptel-tool-name tool-spec) arg-values)
-                  confirm-strings))
-          (push (concat (propertize "\n" 'face '(:inherit font-lock-string-face
-                                                          :underline t :extend t)))
-                confirm-strings)
+          (save-excursion
+            (goto-char (overlay-end ov))
+            (pcase-dolist (`(,tool-spec ,arg-values _) tool-calls)
+              ;; Call tool-specific confirmation prompt
+              (if-let* ((funcs (cdr (assoc (gptel-tool-name tool-spec)
+                                           gptel--tool-preview-alist)))
+                        ((functionp (car-safe funcs))))
+                  ;;preview-teardown func   preview-handle overlay/buffer
+                  (push (list (cadr funcs) (funcall (car funcs) arg-values info))
+                        preview-handlers)
+                (push (gptel--format-tool-call (gptel-tool-name tool-spec) arg-values)
+                      confirm-strings)))
+            (and confirm-strings (apply #'insert (nreverse confirm-strings)))
+            (add-text-properties (overlay-end ov) (1- (point))
+                                 '(read-only t font-lock-fontified t))
+            (setq prompt-ov (make-overlay (overlay-end ov) (point) nil t))
+            (overlay-put
+             prompt-ov 'before-string
+             (concat "\n"
+                     (propertize " " 'display `(space :align-to (- right ,(length actions-string)))
+                                 'face '(:inherit font-lock-string-face :underline t :extend t))
+                     actions-string
+                     (format (propertize "\n%s wants to run:\n\n"
+                                         'face 'font-lock-string-face)
+                             backend-name)))
+            (overlay-put
+             prompt-ov 'after-string
+             (concat (propertize "\n" 'face
+                                 '(:inherit font-lock-string-face :underline t :extend t))))
+            (overlay-put prompt-ov 'evaporate t)
+            (overlay-put ov 'prompt prompt-ov)
+            (move-overlay ov ov-start (point)))
           ;; Add confirmation prompt to the overlay
-          (overlay-put ov 'after-string
-                       (apply #'concat (nreverse confirm-strings)))
+          (when preview-handlers (overlay-put ov 'previews preview-handlers))
           (overlay-put ov 'mouse-face 'highlight)
           (overlay-put ov 'gptel-tool tool-calls)
           (overlay-put ov 'help-echo
                        (concat "Tool call(s) requested: " actions-string))
-          (overlay-put ov 'keymap
-                       (define-keymap
-                         "<mouse-1>" #'gptel--dispatch-tool-calls
-                         "C-c C-c" #'gptel--accept-tool-calls
-                         "C-c C-k" #'gptel--reject-tool-calls
-                         "C-c C-i"
-                         (lambda () (interactive)
-                           (with-selected-window
-                               (gptel--inspect-fsm gptel--fsm-last)
-                             (goto-char (point-min))
-                             (when (search-forward-regexp "^:tool-use" nil t)
-                               (forward-line 0)
-                               (hl-line-highlight)))))))))))
+          (overlay-put ov 'keymap gptel-tool-call-actions-map)
+          prompt-ov)))))
 
 (defun gptel--display-tool-results (tool-results info)
   "Insert TOOL-RESULTS into buffer.
@@ -1812,7 +1855,7 @@ for tool call results.  INFO contains the state of the request."
 
 NAME and ARG-VALUES are the name and arguments for the call."
   (format "(%s %s)\n"
-          (propertize name 'face 'font-lock-keyword-face)
+          (propertize name 'font-lock-face 'font-lock-keyword-face)
           (propertize
            (mapconcat (lambda (arg)
                         (cond ((stringp arg)
@@ -1823,7 +1866,16 @@ NAME and ARG-VALUES are the name and arguments for the call."
                                            nil nil t))))
                               (t (prin1-to-string arg))))
                       arg-values " ")
-           'face 'font-lock-constant-face)))
+           'font-lock-face 'font-lock-constant-face)))
+
+(defun gptel--inspect-tool-calls ()
+  (interactive)
+  (with-selected-window
+      (gptel--inspect-fsm gptel--fsm-last)
+    (goto-char (point-min))
+    (when (search-forward-regexp "^:tool-use" nil t)
+      (forward-line 0)
+      (hl-line-highlight))))
 
 (defun gptel--accept-tool-calls (&optional response ov)
   (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
@@ -1841,7 +1893,16 @@ NAME and ARG-VALUES are the name and arguments for the call."
                         (apply (gptel-tool-function tool-spec) arg-values)
                       (error (mapconcat #'gptel--to-string errdata " ")))))
                (funcall process-tool-result result))))
-  (and (overlayp ov) (delete-overlay ov)))
+  (when (overlayp ov)
+    (when-let* ((preview-handles (overlay-get ov 'previews)))
+      (dolist (func-to-handle preview-handles)
+        (when (car func-to-handle) (apply func-to-handle))))
+    (when-let* ((prompt-ov (overlay-get ov 'prompt))
+                ((overlay-buffer prompt-ov))
+                (inhibit-read-only t))
+      (delete-region (overlay-start prompt-ov)
+                     (overlay-end prompt-ov)))
+    (delete-overlay ov)))
 
 (defun gptel--reject-tool-calls (&optional _response ov)
   (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
@@ -1850,7 +1911,16 @@ NAME and ARG-VALUES are the name and arguments for the call."
   (gptel--update-status " Tools cancelled" 'error)
   (message (substitute-command-keys
             "Tool calls canceled.  \\[gptel-menu] to continue them!"))
-  (and (overlayp ov) (delete-overlay ov)))
+  (when (overlayp ov)
+    (when-let* ((preview-handles (overlay-get ov 'previews)))
+      (dolist (func-to-handle preview-handles)
+        (when (car func-to-handle) (apply func-to-handle))))
+    (when-let* ((prompt-ov (overlay-get ov 'prompt))
+                ((overlay-buffer prompt-ov))
+                (inhibit-read-only t))
+      (delete-region (overlay-start prompt-ov)
+                     (overlay-end prompt-ov)))
+    (delete-overlay ov)))
 
 (defun gptel--dispatch-tool-calls (choice)
   (interactive
