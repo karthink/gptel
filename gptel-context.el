@@ -27,7 +27,7 @@
 
 ;;; Code:
 
-(require 'gptel)
+(require 'gptel-request)
 (require 'cl-lib)
 (require 'project)
 
