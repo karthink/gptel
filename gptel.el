@@ -1725,7 +1725,7 @@ USE-MINIBUFFER is non-nil)."
             (overlay-put
              prompt-ov 'before-string
              (concat "\n"
-                     (propertize " " 'display `(space :align-to (- right ,(length actions-string)))
+                     (propertize " " 'display `(space :align-to (- right ,(length actions-string) 2))
                                  'face '(:inherit font-lock-string-face :underline t :extend t))
                      actions-string
                      (format (propertize "\n%s wants to run:\n\n"
