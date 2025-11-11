@@ -486,18 +486,12 @@ Ignore overlays, buffers and files that are not live or readable."
         ((pred buffer-live-p) (push (list entry) res)))) ;Just a buffer
     res))
 
-(defun gptel-context--insert-buffer-string (buffer context-data &optional header)
-  "Insert at point a context string from CONTEXT-DATA in BUFFER.
+(defun gptel-context--collect-regions (buffer context-data)
+  "Collect BUFFER regions from CONTEXT-DATA specification.
 
-CONTEXT-DATA is a plist with keys :overlays, :lines and :bounds to
-include specific overlays, line ranges or position bounds instead of the
-entire buffer.  See `gptel-context'.
-
-HEADER is an optional header to insert before the contents."
-  (let ((is-top-snippet t)
-        (previous-line 1)
-        regions)
-    ;; Collect all regions into a unified list of (start . end) pairs
+CONTEXT-DATA is a plist with keys :overlays, :lines and :bounds.
+Returns a sorted list of (START . END) position pairs."
+  (let (regions)
     (with-current-buffer buffer
       (without-restriction
         ;; Collect overlays
@@ -522,10 +516,21 @@ HEADER is an optional header to insert before the contents."
                                (forward-line (cdr pair))
                                (point)))
                   regions)))))
-
     ;; TODO: Update sort for Emacs 28+ calling convention
-    ;; Sort by start position.  In-place, but assign to be sure.
-    (setq regions (sort regions (lambda (a b) (< (car a) (car b)))))
+    ;; Sort by start position.
+    (sort regions (lambda (a b) (< (car a) (car b))))))
+
+(defun gptel-context--insert-buffer-string (buffer context-data &optional header)
+  "Insert at point a context string from CONTEXT-DATA in BUFFER.
+
+CONTEXT-DATA is a plist with keys :overlays, :lines and :bounds to
+include specific overlays, line ranges or position bounds instead of the
+entire buffer.  See `gptel-context'.
+
+HEADER is an optional header to insert before the contents."
+  (let ((is-top-snippet t)
+        (previous-line 1)
+        (regions (gptel-context--collect-regions buffer context-data)))
 
     ;; Insert header
     (insert (or header (format "In buffer `%s`:\n\n```"(buffer-name buffer)))
