@@ -1632,7 +1632,6 @@ This sets the variable `gptel-include-tool-results', which see."
               (pcase resp
                 ((pred stringp) (message "%s response: %s" backend-name resp))
                 (`(tool-call . ,tool-calls) (gptel--display-tool-calls tool-calls info 'minibuffer))
-                (`(tool-result . ,tool-results) (gptel--display-tool-results tool-results info))
                 (_ (when (and (null resp) (plist-get info :error))
                      (message "%s response error: %s"
                               backend-name (plist-get info :status))))))))
@@ -1640,16 +1639,21 @@ This sets the variable `gptel-include-tool-results', which see."
       (setq redirect-output t)
       (setq stream nil)
       (setq callback
-            (lambda (resp info &optional _raw)
-              (pcase resp
-                ((pred stringp) (kill-new resp)
-                 (message "%s response: \"%s\" copied to kill-ring." backend-name
-                          (truncate-string-to-width resp 30)))
-                (`(tool-call . ,tool-calls) (gptel--display-tool-calls tool-calls info 'minibuffer))
-                (`(tool-result . ,tool-results) (gptel--display-tool-results tool-results info))
-                (_ (when (and (null resp) (plist-get info :error))
-                     (message "%s response error: %s" backend-name
-                              (plist-get info :status))))))))
+            (let ((accum))
+              (lambda (resp info &optional _raw)
+                (pcase resp
+                  ((pred stringp) (push resp accum)
+                   (unless (plist-get info :tool-use)
+                     (kill-new (apply #'concat (nreverse accum)))
+                     (message "%s response: \"%s\" copied to kill-ring." backend-name
+                              (truncate-string-to-width resp 30 nil nil t))))
+                  (`(tool-call . ,tool-calls) (gptel--display-tool-calls tool-calls info 'minibuffer))
+                  (_ (when (and (null resp) (plist-get info :error))
+                       (if accum (kill-new (apply #'concat (nreverse accum))))
+                       (message
+                        (concat "%s response error: %s."
+                                (and accum "  Partial response copied to kill-ring."))
+                                backend-name (plist-get info :status)))))))))
      ((setq gptel-buffer-name
             (cl-some (lambda (s) (and (stringp s) (string-prefix-p "g" s)
                                  (substring s 1)))
