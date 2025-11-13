@@ -161,6 +161,7 @@ which see."
                             "- Generate ONLY %s code as output, without "
                             "any explanation or markdown code fences.\n"
                             "- Generate code in full, do not abbreviate or omit code.\n"
+                            "- Do not produce intermediate text or report on your progress.\n"
                             "- Do not ask for further clarification, and make "
                             "any assumptions you need to follow instructions.")
                     article lang lang lang)
@@ -169,8 +170,14 @@ which see."
                "You are an editor."
              (format "You are %s %s editor." article lang))
            "  Follow my instructions and improve or rewrite the text I provide."
+           "  Do not produce intermediate text or report on your progress."
            "  Generate ONLY the replacement text,"
            " without any explanation or markdown code fences.")))))
+
+(defvar gptel--rewrite-handlers
+  `((WAIT ,#'gptel--handle-wait)
+    (TOOL ,#'gptel--update-tool-call ,#'gptel--handle-tool-use))
+  "Alist specifying FSM handlers for `gptel-rewrite' state transitions.")
 
 ;; * Helper functions
 
@@ -481,8 +488,8 @@ INFO is the async communication channel for the rewrite request."
               (proc-buf (cdr ov-and-buf))
               (buf (overlay-buffer ov)))
     (cond
-     ((stringp response)                ;partial or fully successful result
-      (with-current-buffer proc-buf     ;auxiliary buffer, insert text here and copy to overlay
+     ((stringp response)            ;partial or fully successful result
+      (with-current-buffer proc-buf ;auxiliary buffer, insert text here and copy to overlay
         (let ((inhibit-modification-hooks nil)
               (inhibit-read-only t))
           (when (= (buffer-size) 0)
@@ -499,17 +506,28 @@ INFO is the async communication channel for the rewrite request."
           (font-lock-ensure)
           (overlay-put ov 'display (buffer-string))))
       (unless (plist-get info :stream) (gptel--rewrite-callback t info)))
+
      ((eq response 'abort)              ;request aborted
       (when-let* ((proc-buf (cdr-safe (plist-get info :context))))
         (kill-buffer proc-buf))
       (delete-overlay ov))
+
+     ((eq (car-safe response) 'tool-call) ;tool call confirmation
+      (gptel--display-tool-calls          ;use minibuffer if buffer is read-only
+       (cdr response) info (buffer-local-value 'buffer-read-only buf)))
+
      ((null response)                   ;finished with error
       (message (concat "LLM response error: %s. Rewrite in buffer %s canceled.")
                (plist-get info :status) (plist-get info :buffer))
       (gptel--rewrite-callback 'abort info))
-     ((consp response)) ;reasoning or tool calls -- don't care and not implemented, respectively
-     (t (let ((proc-buf (cdr-safe (plist-get info :context))) ;finished successfully
-              (mkb (propertize "<mouse-1>" 'face 'help-key-binding)))
+
+     ((consp response))             ;reasoning or tool call result -- don't care
+
+     (t
+      (if (plist-get info :tool-use)    ;stopped to use tools
+          ;; Clear text inserted so far
+          (with-current-buffer proc-buf (delete-region (point-min) (point)))
+        (let ((mkb (propertize "<mouse-1>" 'face 'help-key-binding))) ;or finished successfully
           (with-current-buffer proc-buf
             (let ((inhibit-read-only t))
               (delete-region (point) (point-max))
@@ -549,7 +567,7 @@ INFO is the async communication channel for the rewrite request."
                         (unless (eq (current-buffer) buf)
                           (format " in buffer %s " (buffer-name buf)))
                         (concat " ready: " mkb ", " (propertize "RET" 'face 'help-key-binding)
-                                " or " (substitute-command-keys "\\[gptel-rewrite] to continue.")))))))))))
+                                " or " (substitute-command-keys "\\[gptel-rewrite] to continue."))))))))))))
 
 ;; * Transient Prefixes for rewriting
 
@@ -702,7 +720,7 @@ generated from functions."
           (and gptel-use-context (if nosystem 'user 'system)))
          (prompt (list (or (get-char-property (point) 'gptel-rewrite)
                            (buffer-substring-no-properties (region-beginning) (region-end)))
-                       "What is the required change?"
+                       "What is the required change?  I will generate only the final replacement."
                        (or rewrite-message gptel--rewrite-message))))
     (when nosystem
       (setcar prompt (concat (car-safe (gptel--parse-directive
@@ -720,6 +738,7 @@ generated from functions."
                ;; NOTE: Switch to `generate-new-buffer' after we drop Emacs 27.1 (#724)
                (cons ov (gptel--temp-buffer " *gptel-rewrite*")))
              :transforms gptel-prompt-transform-functions
+             :fsm (gptel-make-fsm :handlers gptel--rewrite-handlers)
              :callback #'gptel--rewrite-callback)
       ;; Move back so that the cursor is on the overlay when done.
       (unless (get-char-property (point) 'gptel-rewrite)
