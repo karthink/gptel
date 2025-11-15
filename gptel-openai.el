@@ -473,14 +473,24 @@ format."
    for n upfrom 1
    with last = (length parts)
    for text = (plist-get part :text)
+   for mime = (plist-get part :mime)
    for media = (plist-get part :media)
    if text do
    (and (or (= n 1) (= n last)) (setq text (gptel--trim-prefixes text)))
    and if text
    collect `(:type "text" :text ,text) into parts-array end
-   else if media collect
+   else if media
+   do
+   ;; Validate that media is a supported image format
+   (unless (and mime (member mime '("image/jpeg" "image/png" "image/gif" "image/webp")))
+     (error (concat "(gptel-openai) Request aborted: "
+                    "OpenAI API only supports image formats (JPEG, PNG, GIF, WebP). "
+                    "Unsupported MIME type: %s. "
+                    "For PDF support, use native Anthropic or Gemini backends")
+            (or mime "unknown")))
+   and collect
    `(:type "image_url"
-     :image_url (:url ,(concat "data:" (plist-get part :mime)
+     :image_url (:url ,(concat "data:" mime
                         ";base64," (gptel--base64-encode media))))
    into parts-array
    else if (plist-get part :textfile) collect
