@@ -1172,7 +1172,7 @@ only (\"oneshot\")."
   (interactive)
   (transient-setup
    'gptel-tools nil nil
-   :scope (list :tools (mapcar (lambda (tool) (list (gptel-tool-category tool)
+   :scope (list :tools (mapcar (lambda (tool) (list (or (gptel-tool-category tool) "misc")
                                                (gptel-tool-name tool)))
                                gptel-tools))))
 
