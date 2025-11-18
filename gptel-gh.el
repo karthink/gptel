@@ -211,6 +211,17 @@
 (defconst gptel--gh-client-id "Iv1.b507a08c87ecfe98")
 
 (defvar gptel--gh-token nil "Variable that holds the chat token in memory")
+(defvar gptel--gh-github-token nil "Variable that holds the GitHub OAuth token in memory")
+
+(defun gptel--gh-load-github-token ()
+  "Function that ensures that the GitHub OAuth token cache is used and is set."
+  (if gptel--gh-github-token
+      gptel--gh-github-token
+    (setq gptel--gh-github-token (funcall gptel-gh-github-token-load-function))))
+
+(defun gptel--gh-save-github-token (token)
+  "Function that updates the GitHub OAuth token cache and calls the save function."
+  (funcall gptel-gh-github-token-save-function (setq gptel--gh-github-token token)))
 
 ;; https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 (defun gptel--gh-uuid ()
@@ -299,8 +310,8 @@ If your browser does not open automatically, browse to %s."
                   :device_code ,device_code
                   :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
        :access_token)
-      (funcall gptel-gh-github-token-save-function))
-    (let ((github-token (funcall gptel-gh-github-token-load-function)))
+      (gptel--gh-save-github-token))
+    (let ((github-token (gptel--gh-load-github-token)))
       (if (and github-token (not (string-empty-p github-token)))
           (message "Successfully logged in to GitHub Copilot")
         (user-error "Error: You might not have access to GitHub Copilot Chat!"))))))
@@ -312,7 +323,7 @@ If your browser does not open automatically, browse to %s."
              "https://api.github.com/copilot_internal/v2/token"
            :method 'get
            :headers `(("authorization"
-                       . ,(format "token %s" (funcall gptel-gh-github-token-load-function)))
+                       . ,(format "token %s" (gptel--gh-load-github-token)))
                       ,@gptel--gh-auth-common-headers))))
     (if (not (plist-get token :token))
         (user-error "Error: You might not have access to GitHub Copilot Chat!")
@@ -323,7 +334,7 @@ If your browser does not open automatically, browse to %s."
 
 We first need github authorization (github token).
 Then we need a session token."
-  (unless (funcall gptel-gh-github-token-load-function)
+  (unless (gptel--gh-load-github-token)
     (gptel-gh-login))
 
   (pcase-let (((map :token :expires_at)
