@@ -4,6 +4,12 @@
 
 ** Breaking changes
 
+- =gptel-track-media= now controls whether links to media files are
+  tracked /only/ in chat buffers.  Previously it also controlled
+  whether media files added to the context explicitly via
+  =gptel-add-file= were sent.  This is considered a bug and has now
+  been fixed.
+
 ** New models and backends
 
 ** New features and UI changes

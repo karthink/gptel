@@ -2088,8 +2088,7 @@ Initiate the request when done."
         ;; irrespective of the preference in `gptel-use-context'.  This is
         ;; because media cannot be included (in general) with system messages.
         ;; TODO(augment): Find a way to do this in the prompt-buffer?
-        (when (and gptel-context gptel-use-context
-                   gptel-track-media (gptel--model-capable-p 'media))
+        (when (and gptel-context gptel-use-context (gptel--model-capable-p 'media))
           (gptel--inject-media gptel-backend full-prompt))
         (unless stream (cl-remf info :stream))
         (plist-put info :backend gptel-backend)
