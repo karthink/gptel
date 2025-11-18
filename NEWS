@@ -12,6 +12,8 @@
 
 ** New models and backends
 
+- Add support for =gemini-3-pro-preview=.
+
 ** New features and UI changes
 
 - When redirecting LLM responses to the kill ring or echo area, gptel
