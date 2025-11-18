@@ -151,11 +151,15 @@
   :type 'string
   :group 'gptel)
 
-(defvar gptel-gh-github-token-load 'gptel--gh-restore-from-file
-  "Function to load the current github token.")
+(defcustom gptel-gh-github-token-load-function 'gptel--gh-restore-from-file
+  "Function to load the current github token."
+  :type 'function
+  :group 'gptel)
 
-(defvar gptel-gh-github-token-save 'gptel--gh-save-to-file
-  "Function to save the new github token.")
+(defcustom gptel-gh-github-token-save-function 'gptel--gh-save-to-file
+  "Function to save the new github token."
+  :type 'function
+  :group 'gptel)
 
 (defconst gptel--gh-auth-common-headers
   `(("editor-plugin-version" . "gptel/*")
@@ -252,8 +256,8 @@ If your browser does not open automatically, browse to %s."
                   :device_code ,device_code
                   :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
        :access_token)
-      (funcall gptel-gh-github-token-save))
-    (let ((github-token (funcall gptel-gh-github-token-load)))
+      (funcall gptel-gh-github-token-save-function))
+    (let ((github-token (funcall gptel-gh-github-token-load-function)))
       (if (and github-token (not (string-empty-p github-token)))
           (message "Successfully logged in to GitHub Copilot")
         (user-error "Error: You might not have access to GitHub Copilot Chat!"))))))
@@ -265,7 +269,7 @@ If your browser does not open automatically, browse to %s."
              "https://api.github.com/copilot_internal/v2/token"
            :method 'get
            :headers `(("authorization"
-                       . ,(format "token %s" (funcall gptel-gh-github-token-load)))
+                       . ,(format "token %s" (funcall gptel-gh-github-token-load-function)))
                       ,@gptel--gh-auth-common-headers))))
     (if (not (plist-get token :token))
         (user-error "Error: You might not have access to GitHub Copilot Chat!")
@@ -276,7 +280,7 @@ If your browser does not open automatically, browse to %s."
 
 We first need github authorization (github token).
 Then we need a session token."
-  (unless (funcall gptel-gh-github-token-load)
+  (unless (funcall gptel-gh-github-token-load-function)
     (gptel-gh-login))
 
   (pcase-let (((map :token :expires_at)
