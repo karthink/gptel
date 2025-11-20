@@ -208,6 +208,25 @@ context."
 ;;;###autoload (autoload 'gptel-add "gptel-context" "Add/remove regions or buffers from gptel's context." t)
 (defalias 'gptel-add #'gptel-context-add)
 
+(defcustom gptel-context-enable-compilation-auto-add nil
+  "Whether to automatically add the compilation buffer to gptel context.
+
+When non-nil, the compilation buffer is added to the bottom of the
+gptel's context whenever the compilation filter runs. This allows the
+last compilation output to be always in context of the next gptel
+requests."
+  :group 'gptel
+  :type 'boolean)
+
+(defun gptel-context--compilation-filter ()
+  "Add gptel context when compilation filter runs."
+  (when (and gptel-context-enable-compilation-auto-add
+             (equal (buffer-name) "*compilation*"))
+    (let ((curbuf (list (current-buffer))))
+      (cl-delete curbuf gptel-context :test 'equal)
+      (cl-pushnew curbuf gptel-context :test 'equal))))
+(add-hook 'compilation-filter-hook #'gptel-context--compilation-filter)
+
 (defun gptel-context--file-already-added (path)
   "Check if PATH is already in gptel-context."
   (let ((expanded-path (expand-file-name path)))
