@@ -208,10 +208,56 @@ context."
 ;;;###autoload (autoload 'gptel-add "gptel-context" "Add/remove regions or buffers from gptel's context." t)
 (defalias 'gptel-add #'gptel-context-add)
 
+(defcustom gptel-context-enable-compilation-auto-add nil
+  "Whether to automatically add the compilation buffer to gptel context.
+
+When non-nil, the compilation buffer is added to the bottom of the
+gptel's context whenever the compilation filter runs. This allows the
+last compilation output to be always in context of the next gptel
+requests."
+  :group 'gptel
+  :type 'boolean)
+
+(defun gptel-context--compilation-filter ()
+  "Add gptel context when compilation filter runs."
+  (when (and gptel-context-enable-compilation-auto-add
+             (equal (buffer-name) "*compilation*"))
+    (let ((curbuf (list (current-buffer))))
+      (cl-delete curbuf gptel-context :test 'equal)
+      (cl-pushnew curbuf gptel-context :test 'equal))))
+(add-hook 'compilation-filter-hook #'gptel-context--compilation-filter)
+
+(defun gptel-context--file-already-added (path)
+  "Check if PATH is already in gptel-context."
+  (let ((expanded-path (expand-file-name path)))
+    (cl-find expanded-path
+             (mapcar (lambda (entry)
+		       (let ((orig (car entry)))
+			 (list (if (stringp orig) (expand-file-name orig) nil) orig)))
+                       gptel-context)
+             :test (lambda (x y)
+                     (equal x (car y))))))
+
+(defun gptel-context--move-to-bottom ()
+  "Move the current buffer's file to the bottom of the context.
+
+This is a LRU optimization to reduce kvcache invalidation: the last file
+that was saved or reverted is statistically the most likely to be
+change again in a subsequent edit."
+  (when (and gptel-context (buffer-file-name))
+    (let ((entry (gptel-context--file-already-added (buffer-file-name))))
+      (when entry
+	(let ((path (list (cadr entry))))
+	  (cl-delete path gptel-context :test 'equal)
+	  (cl-pushnew path gptel-context :test 'equal))))))
+(add-hook 'after-save-hook #'gptel-context--move-to-bottom)
+(add-hook 'after-revert-hook #'gptel-context--move-to-bottom)
+
 (defun gptel-context--add-text-file (path)
   "Add text file at PATH to context."
-  (cl-pushnew (list path) gptel-context :test #'equal)
-  (message "File \"%s\" added to context." path)
+  (unless (gptel-context--file-already-added path)
+    (cl-pushnew (list path) gptel-context :test #'equal)
+    (message "File \"%s\" added to context." path))
   path)
 
 (defun gptel-context--add-binary-file (path)
@@ -220,10 +266,11 @@ Return PATH if added, nil if ignored."
   (if-let* (((gptel--model-capable-p 'media))
             (mime (mailcap-file-name-to-mime-type path))
             ((gptel--model-mime-capable-p mime)))
-      (prog1 path
-        (cl-pushnew (list path :mime mime)
-                    gptel-context :test #'equal)
-        (message "File \"%s\" added to context." path))
+      (unless (gptel-context--file-already-added path)
+        (prog1 path
+          (cl-pushnew (list path :mime mime)
+                      gptel-context :test #'equal)
+          (message "File \"%s\" added to context." path)))
     (message "Ignoring unsupported binary file \"%s\"." path)
     nil))
 
