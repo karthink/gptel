@@ -65,6 +65,14 @@
      :input-cost 0.25
      :output-cost 2.0
      :cutoff-date "2024-09")
+    (gpt-5.1
+     :description "The best model for coding and agentic tasks"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1.25
+     :output-cost 10
+     :cutoff-date "2024-09")
     (o3
      :description "Well-rounded and powerful model across domains"
      :capabilities (reasoning media tool-use json url)
