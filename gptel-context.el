@@ -33,6 +33,8 @@
 
 (declare-function gptel-menu "gptel-transient")
 (declare-function dired-get-marked-files "dired")
+(declare-function ibuffer-get-marked-buffers "ibuffer")
+(declare-function ibuffer-current-buffer "ibuffer")
 (declare-function image-file-name-regexp "image-file")
 (declare-function create-image "image")
 
@@ -136,6 +138,9 @@ context."
   CONFIRM is non-nil.  With negative prefix ARG, remove all files from
   the context instead.
 
+- If in IBuffer, add marked buffers or buffer at point to the context.
+  With negative prefix ARG, remove buffers from the context instead.
+
 - Otherwise add the current buffer to the context.  With positive
   prefix ARG, prompt for a buffer name and add it to the context.
 
@@ -164,6 +169,15 @@ context."
 				  (length dirs)
 				  (if (= (length dirs) 1) "y" "ies"))))
 	(mapc action-fn files))))
+   ;; If in ibuffer
+   ((derived-mode-p 'ibuffer-mode)
+    (let* ((buffers (or (ibuffer-get-marked-buffers)
+                        (list (ibuffer-current-buffer))))
+           (remove-p (< (prefix-numeric-value arg) 0))
+	   (action-fn (if remove-p
+			  #'gptel-context-remove
+			#'gptel-context--add-buffer)))
+      (mapc action-fn buffers)))
    ;; If in an image buffer
    ((and (derived-mode-p 'image-mode)
 	 (gptel--model-capable-p 'media)
@@ -198,15 +212,21 @@ context."
    (t ; Default behavior
     (if (gptel-context--at-point)
         (progn
-          (gptel-context-remove (car (gptel-context--in-region (current-buffer)
-                                                               (max (point-min) (1- (point)))
-                                                               (point))))
+          (gptel-context-remove
+           (car (gptel-context--in-region (current-buffer)
+                                          (max (point-min) (1- (point)))
+                                          (point))))
           (message "Context under point has been removed."))
-      (gptel-context--add-region (current-buffer) (point-min) (point-max) t)
-      (message "Current buffer added as context.")))))
+      (gptel-context--add-buffer (current-buffer))))))
 
 ;;;###autoload (autoload 'gptel-add "gptel-context" "Add/remove regions or buffers from gptel's context." t)
 (defalias 'gptel-add #'gptel-context-add)
+
+(defun gptel-context--add-buffer (buffer)
+  "Add BUFFER to context."
+  (with-current-buffer buffer
+    (gptel-context--add-region (current-buffer) (point-min) (point-max) t))
+  (message "Buffer \"%s\" added to context." (buffer-name buffer)))
 
 (defun gptel-context--add-text-file (path)
   "Add text file at PATH to context."

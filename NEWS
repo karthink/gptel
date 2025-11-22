@@ -27,6 +27,12 @@
 
 ** New features and UI changes
 
+- Running ~gptel-add~ in IBuffer now adds marked buffers or the buffer
+  at point to gptel's context, and running ~gptel-add~ with a negative
+  prefix-arg removes them.  This is similar to its behavior in Dired.
+  To add the literal contents of the IBuffer to the context, you can
+  select a text region first.
+
 - When redirecting LLM responses to the kill ring or echo area, gptel
   now omits tool call results, as these tend to be very noisy.  Kill
   ring redirection now correctly captures the full response from the
