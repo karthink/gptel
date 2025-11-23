@@ -297,24 +297,24 @@ in your local browser, enter the code, and authorize.  Press ENTER after authori
          (format "Your one-time code %s is copied. \
 Press ENTER to open GitHub in your browser. \
 If your browser does not open automatically, browse to %s."
-             user_code verification_uri))
-    (browse-url verification_uri)
-    (read-from-minibuffer "Press ENTER after authorizing."))
-    (thread-last
-      (plist-get
-       (gptel--url-retrieve
-           "https://github.com/login/oauth/access_token"
-         :method 'post
-         :headers gptel--gh-auth-common-headers
-         :data `( :client_id ,gptel--gh-client-id
-                  :device_code ,device_code
-                  :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
-       :access_token)
-      (gptel--gh-save-github-token))
-    (let ((github-token (gptel--gh-load-github-token)))
-      (if (and github-token (not (string-empty-p github-token)))
-          (message "Successfully logged in to GitHub Copilot")
-        (user-error "Error: You might not have access to GitHub Copilot Chat!"))))))
+                 user_code verification_uri))
+        (browse-url verification_uri)
+        (read-from-minibuffer "Press ENTER after authorizing."))
+      (thread-last
+        (plist-get
+         (gptel--url-retrieve
+             "https://github.com/login/oauth/access_token"
+           :method 'post
+           :headers gptel--gh-auth-common-headers
+           :data `( :client_id ,gptel--gh-client-id
+                    :device_code ,device_code
+                    :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
+         :access_token)
+        (gptel--gh-save-github-token))
+      (let ((github-token (gptel--gh-load-github-token)))
+        (if (and github-token (not (string-empty-p github-token)))
+            (message "Successfully logged in to GitHub Copilot")
+          (user-error "Error: You might not have access to GitHub Copilot Chat!"))))))
 
 (defun gptel--gh-renew-token ()
   "Renew session token."
