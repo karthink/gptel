@@ -320,14 +320,15 @@ If selection is active, removes all contexts within selection.
 If CONTEXT is a directory, recursively removes all files in it."
   (cond
    ((overlayp context)                  ;Overlay in buffer
-    (delete-overlay context)
-    ;; FIXME: Quadratic cost when clearing a bunch of contexts at once
-    (unless
-        (cl-loop
-         for ov in
-         (plist-get (alist-get (current-buffer) gptel-context) :overlays)
-         thereis (overlay-start ov))
-      (setf (alist-get (current-buffer) gptel-context nil 'remove) nil)))
+    (when-let* ((buf (overlay-buffer context)))
+      (delete-overlay context)
+      ;; FIXME: Quadratic cost when clearing a bunch of contexts at once
+      (unless
+          (cl-loop
+           for ov in
+           (plist-get (alist-get buf gptel-context) :overlays)
+           thereis (overlay-start ov))
+        (setf (alist-get buf gptel-context nil 'remove) nil))))
    ((bufferp context)                   ;Full buffer
     (setf (alist-get context gptel-context nil 'remove) nil)
     (when (buffer-live-p context)
