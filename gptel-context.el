@@ -329,7 +329,11 @@ If CONTEXT is a directory, recursively removes all files in it."
          thereis (overlay-start ov))
       (setf (alist-get (current-buffer) gptel-context nil 'remove) nil)))
    ((bufferp context)                   ;Full buffer
-    (setf (alist-get context gptel-context nil 'remove) nil))
+    (setf (alist-get context gptel-context nil 'remove) nil)
+    (when (buffer-live-p context)
+      (with-current-buffer context
+        (without-restriction
+          (remove-overlays nil nil 'gptel-context t)))))
    ((stringp context)                   ;file or directory
     (if (file-directory-p context)
         (gptel-context--add-directory context 'remove)
