@@ -2130,7 +2130,8 @@ example) apply the preset buffer-locally."
                                        (string (ignore-errors
                                                  (gptel-get-tool tool-name))))
                           do (unless tool
-                               (user-error "gptel preset: Cannot find tool %s" val))
+                               (user-error "gptel preset: Cannot find tool %S"
+                                           tool-name))
                           collect tool))))
           (funcall setter 'gptel-tools (cl-delete-duplicates tools :test #'eq))))
        ((and (let sym (or (intern-soft
