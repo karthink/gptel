@@ -194,7 +194,7 @@
   :type 'string
   :group 'gptel)
 
-(defcustom gptel-gh-github-token-load-function 'gptel--gh-restore-from-file
+(defcustom gptel-gh-github-token-load-function 'gptel--gh-restore-github-token-from-file
   "Function to load the current github token. Default behavior is file-based based on `gptel-gh-github-token-file'."
   :type 'function
   :group 'gptel)
@@ -242,15 +242,19 @@
       (setq hex (nconc hex (list (aref hex-chars (random 16))))))
     (apply #'string hex)))
 
-(defun gptel--gh-restore-from-file ()
-  "Restore saved object from gptel-gh-github-token-file."
-  (when (file-exists-p gptel-gh-github-token-file)
+(defun gptel--gh-restore-github-token-from-file ()
+  "Restore GitHub token from the file gptel-gh-github-token-file."
+  (gptel--gh-restore-from-file gptel-gh-github-token-file))
+
+(defun gptel--gh-restore-from-file (file)
+  "Restore saved object from FILE."
+  (when (file-exists-p file)
     ;; We set the coding system to `utf-8-auto-dos' when reading so that
     ;; files with CR EOL can still be read properly
     (let ((coding-system-for-read 'utf-8-auto-dos))
       (with-temp-buffer
         (set-buffer-multibyte nil)
-        (insert-file-contents-literally gptel-gh-github-token-file)
+        (insert-file-contents-literally file)
         (goto-char (point-min))
         (read (current-buffer))))))
 
