@@ -319,18 +319,21 @@ Then we need a session token."
     (name &key curl-args request-params
           (header (lambda ()
                     (gptel--gh-auth)
-                    `(("openai-intent" . "conversation-panel")
-                      ("authorization" . ,(concat "Bearer "
-                                           (plist-get (gptel--gh-token gptel-backend) :token)))
-                      ("x-request-id" . ,(gptel--gh-uuid))
-                      ("vscode-sessionid" . ,(or (gptel--gh-sessionid gptel-backend) ""))
-                      ("vscode-machineid" . ,(or (gptel--gh-machineid gptel-backend) ""))
-                      ,@(when (and gptel-track-media
-                                   (gptel--model-capable-p 'media))
-                          `(("copilot-vision-request" . "true")))
-                      ("copilot-integration-id" . "vscode-chat"))))
-          (host "api.githubcopilot.com")
-          (protocol "https")
+                    (pcase-let* (((map :token (:endpoints (map :api)))
+                                  (gptel--gh-token gptel-backend))
+                                 ((cl-struct url host type) (url-generic-parse-url api)))
+                      (setf (gptel-backend-host gptel-backend) (or host "api.githubcopilot.com")
+                            (gptel-backend-protocol gptel-backend) (or type "https"))
+                      `(("openai-intent" . "conversation-panel")
+                        ("authorization" . ,(concat "Bearer " token))
+                        ("x-request-id" . ,(gptel--gh-uuid))
+                        ("vscode-sessionid" . ,(or (gptel--gh-sessionid gptel-backend) ""))
+                        ("vscode-machineid" . ,(or (gptel--gh-machineid gptel-backend) ""))
+                        ,@(when (and gptel-track-media
+                                     (gptel--model-capable-p 'media))
+                            `(("copilot-vision-request" . "true")))
+                        ("copilot-integration-id" . "vscode-chat")))))
+          host protocol
           (endpoint "/chat/completions")
           (stream t)
           (models gptel--gh-models))
@@ -395,7 +398,10 @@ for."
                   :stream stream
                   :request-params request-params
                   :curl-args curl-args
-                  :url (concat protocol "://" host endpoint)
+                  :url (lambda ()
+                         (pcase-let (((cl-struct gptel-backend protocol host endpoint)
+                                      gptel-backend))
+                           (concat protocol "://" host endpoint)))
                   :machineid (gptel--gh-machine-id))))
     (setf (alist-get name gptel--known-backends nil nil #'equal) backend)
     backend))
