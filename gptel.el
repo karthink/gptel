@@ -1178,9 +1178,11 @@ Perform UI updates and run post-response hooks."
     (if (stringp error-data)
         (message "%s error: (%s) %s" backend-name http-msg (string-trim error-data))
       (when-let* ((error-type (plist-get error-data :type)))
-        (setq http-msg (concat "("  http-msg ") " (string-trim error-type))))
+        (setq http-msg (concat "("  http-msg ") "
+                               (string-trim (gptel--to-string error-type)))))
       (when-let* ((error-msg (plist-get error-data :message)))
-        (message "%s error: (%s) %s" backend-name http-msg (string-trim error-msg))))
+        (message "%s error: (%s) %s" backend-name http-msg
+                 (string-trim (gptel--to-string error-msg)))))
     (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
         (with-selected-window gptel-window
           (mapc (lambda (f) (funcall f (marker-position start-marker)
