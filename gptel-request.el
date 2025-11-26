@@ -1999,11 +1999,16 @@ be used to rerun or continue the request at a later time."
               ;; TEMP Decide on the annoated prompt-list format
               (gptel--parse-list-and-insert prompt)
               (current-buffer)))))
+         (system-list (gptel--parse-directive system 'raw)) ;eval function-valued system prompts
          (info (list :data prompt-buffer
                      :buffer buffer
                      :position start-marker)))
     (when transforms (plist-put info :transforms transforms))
-    (with-current-buffer prompt-buffer (setq gptel--system-message system))
+    (with-current-buffer prompt-buffer
+      (setq gptel--system-message       ;guaranteed to be buffer-local
+            ;; Retain single-part system messages as strings to avoid surprises
+            ;; when applying presets
+            (if (cdr system-list) system-list (car system-list))))
     (when stream (plist-put info :stream stream))
     ;; This context should not be confused with the context aggregation context!
     (when callback (plist-put info :callback callback))

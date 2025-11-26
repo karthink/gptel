@@ -38,6 +38,14 @@
   ring redirection now correctly captures the full response from the
   LLM, including pre- and post-tool-call text.
 
+** Notable bug fixes
+
+- Function-valued system messages/directives are now evaluated in the
+  buffer from which the gptel request is sent, so they can use the
+  context of the current buffer correctly.  (Previously they were
+  evaluated in a temporary buffer used to construct the query, leading
+  to unexpected behavior.)
+
 * 0.9.9.3
 
 ** Breaking changes
