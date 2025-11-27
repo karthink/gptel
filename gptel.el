@@ -190,6 +190,8 @@
 ;; usage.
 
 ;;; Code:
+(defconst gptel-version "0.9.9.3")
+
 (declare-function markdown-mode "markdown-mode")
 (declare-function gptel-menu "gptel-transient")
 (declare-function gptel-system-prompt "gptel-transient")
