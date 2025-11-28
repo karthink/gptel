@@ -571,10 +571,10 @@ IDs can be added or replaced by calling
 (defun gptel-bedrock--get-model-id (model &optional region)
   "Return the Bedrock model ID for MODEL.
 
-REGION is one of apac, eu or us."
+REGION is one of global, apac, eu or us."
   (concat
    (when region
-     (or (member region '(apac eu us))
+     (or (member region '(global apac eu us))
 	 (error "Unknown Bedrock region %s" region))
      (concat (symbol-name region) "."))
    (or (alist-get model gptel-bedrock--model-ids nil nil #'eq)

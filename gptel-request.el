@@ -819,7 +819,8 @@ binary-encoded.")
 ;; Since we want this known at compile time, when markdown-mode is not
 ;; guaranteed to be available, we have to hardcode it.
 (defconst gptel-markdown--link-regex
-  "\\(?:\\(?1:!\\)?\\(?2:\\[\\)\\(?3:\\^?\\(?:\\\\\\]\\|[^]]\\)*\\|\\)\\(?4:\\]\\)\\(?5:(\\)\\s-*\\(?6:[^)]*?\\)\\(?:\\s-+\\(?7:\"[^\"]*\"\\)\\)?\\s-*\\(?8:)\\)\\|\\(<\\)\\([a-z][a-z0-9.+-]\\{1,31\\}:[^]	\n<>,;()]+\\)\\(>\\)\\)"
+  "\\(?:\\(?1:!\\)?\\(?2:\\[\\)\\(?3:\\^?\\(?:\\\\\\]\\|[^]]\\)*\\|\\)\\(?4:\\]\\)\\(?5:(\\)\\s-*\\(?6:[^)]*?\\)\\(?:\\s-+\\(?7:\"[^\"]*\"\\)\\)?\\s-*\\(?8:)\\)\\|\\(<\\)\\([a-z][a-z0-9.+-]\\{1,31\\}:[^]	\n
+<>,;()]+\\)\\(>\\)\\)"
   "Link regex for `gptel-mode' in Markdown mode.")
 
 
@@ -2038,16 +2039,20 @@ SYNC is non-nil, the response string is returned instead."
               ;; TEMP Decide on the annoated prompt-list format
               (gptel--parse-list-and-insert prompt)
               (current-buffer)))))
+         (system-list (gptel--parse-directive system 'raw)) ;eval function-valued system prompts
          (info (list :data prompt-buffer
                      :buffer buffer
                      :position start-marker)))
     (when transforms (plist-put info :transforms transforms))
     (with-current-buffer prompt-buffer
-      (setq gptel--system-message system)
-      ;; For sync mode, disable tool use (requires user interaction)
-      (when sync
-        (setq-local gptel-use-tools nil)
-        (setq-local gptel-tools nil)))
+    (setq gptel--system-message       ;guaranteed to be buffer-local
+      ;; Retain single-part system messages as strings to avoid surprises
+      ;; when applying presets
+      (if (cdr system-list) system-list (car system-list))))
+    ;; For sync mode, disable tool use (requires user interaction)
+    (when sync
+      (setq-local gptel-use-tools nil)
+      (setq-local gptel-tools nil)))
     (when stream (plist-put info :stream stream))
     ;; This context should not be confused with the context aggregation context!
     (when callback (plist-put info :callback callback))
@@ -2720,7 +2725,9 @@ PROC-INFO is the plist containing process metadata."
   (with-current-buffer proc-buf
     (save-excursion
       (goto-char (point-min))
-      (when (re-search-forward "?\n?\n" nil t)
+      (when (re-search-forward "
+?\n
+?\n" nil t)
         (when (eq gptel-log-level 'debug)
           (gptel--log (gptel--json-encode
                        (buffer-substring-no-properties
