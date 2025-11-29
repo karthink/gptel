@@ -38,6 +38,10 @@
   ring redirection now correctly captures the full response from the
   LLM, including pre- and post-tool-call text.
 
+- ~gptel-gemini~: Add support for =thoughtSignature= in tool calls.
+  This allows capturing reasoning output that accompanies tool use in
+  Gemini models.
+
 ** Notable bug fixes
 
 - Function-valued system messages/directives are now evaluated in the

@@ -80,6 +80,7 @@ list."
     (cl-loop
      for part across parts
      for tx = (plist-get part :text)
+     for sig = (plist-get part :thoughtSignature)
      if (and tx (not (eq tx :null)))
      if (plist-get part :thought)
      do (unless (plist-get info :reasoning-block)
@@ -90,7 +91,11 @@ list."
        (plist-put info :reasoning-block t))
      and collect tx into content-strs end
      else if (plist-get part :functionCall)
-     collect (copy-sequence it) into tool-use
+     collect (let ((fc (copy-sequence it)))
+               ;; Store thoughtSignature in the tool-use plist
+               (if sig (plist-put fc :thoughtSignature sig)
+                 fc))
+     into tool-use
      finally do                         ;Add text and tool-calls to prompts list
      (when (or tool-use include-text)
        (let* ((data (plist-get info :data))
@@ -109,7 +114,11 @@ list."
        (plist-put info :tool-use
                   (nconc (plist-get info :tool-use) tool-use)))
      finally return
-     (and content-strs (apply #'concat content-strs)))))
+     (if-let ((response-content (apply #'concat content-strs)))
+       (if sig
+           ;; Store thoughtSignature as a text property on the response text
+           (propertize response-content 'gptel-gemini-thought-signature sig)
+         response-content)))))
 
 (cl-defmethod gptel--request-data ((backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
@@ -284,24 +293,28 @@ See generic implementation for full documentation."
                     (not (= (point) prev-pt)))
           (pcase (get-char-property (point) 'gptel)
             ('response
-             (when-let* ((content (gptel--trim-prefixes
-                                   (buffer-substring-no-properties (point) prev-pt))))
-               (push (list :role "model" :parts (list :text content)) prompts)))
+             (when-let* ((content (gptel--trim-prefixes (buffer-substring-no-properties (point) prev-pt)))
+                         (part (list :text content)))
+                 (when-let ((sig (get-text-property (point) 'gptel-gemini-thought-signature)))
+                   ;; Retrieve thoughtSignature from text property, if present
+                   (plist-put part :thoughtSignature sig))
+                 (push (list :role "model" :parts (vector part)) prompts)))
             (`(tool . ,_id)
              (save-excursion
                (condition-case nil
                    (let* ((tool-call (read (current-buffer)))
                           (name (plist-get tool-call :name))
-                          (arguments  (plist-get tool-call :args)))
+                          (arguments  (plist-get tool-call :args))
+                          (sig (plist-get tool-call :thoughtSignature))
+                          (fc `(:functionCall (:name ,name :args ,arguments))))
+                     ;; Retrieve thoughtSignature from tool call plist
+                     (when sig (plist-put fc :thoughtSignature sig))
                      (plist-put tool-call :result
                                 (string-trim (buffer-substring-no-properties
                                               (point) prev-pt)))
                      (push (gptel--parse-tool-results backend (list tool-call))
                            prompts)
-                     (push (list :role "model"
-                                 :parts
-                                 (vector `(:functionCall ( :name ,name
-                                                           :args ,arguments))))
+                     (push (list :role "model" :parts (vector fc))
                            prompts))
                  ((end-of-file invalid-read-syntax)
                   (message (format "Could not parse tool-call on line %s"
