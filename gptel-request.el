@@ -221,6 +221,8 @@ response beginning and end positions are both the cursor position
 at the time of the request."
   :type 'hook)
 
+(add-hook 'gptel-post-response-functions 'pulse-momentary-highlight-region 70)
+
 ;; (defcustom gptel-pre-stream-insert-hook nil
 ;;   "Hook run before each insertion of the LLM's streaming response.
 

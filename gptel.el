@@ -1136,6 +1136,16 @@ No state transition here since that's handled by the process sentinels."
                               start-marker))
          ;; start-marker may have been moved if :buffer was read-only
          (gptel-buffer (marker-buffer start-marker)))
+    (with-current-buffer gptel-buffer
+      (if (not tracking-marker)         ;Empty response
+          (when gptel-mode (gptel--update-status " Empty response" 'success))
+        (set-marker-insertion-type tracking-marker nil) ;Lock tracking-marker
+        (when gptel-mode
+          (unless (plist-get info :in-place)
+            (save-excursion (goto-char tracking-marker)
+                            (insert gptel-response-separator
+                                    (gptel-prompt-prefix-string))))
+          (gptel--update-status  " Ready" 'success))))
     ;; Run hook in visible window to set window-point, BUG #269
     (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
         (with-selected-window gptel-window
@@ -1147,17 +1157,7 @@ No state transition here since that's handled by the process sentinels."
         (mapc (lambda (f) (funcall f info)) (plist-get info :post))
         (run-hook-with-args
          'gptel-post-response-functions
-         (marker-position start-marker) (marker-position tracking-marker))))
-    (with-current-buffer gptel-buffer
-      (if (not tracking-marker)         ;Empty response
-          (when gptel-mode (gptel--update-status " Empty response" 'success))
-        (pulse-momentary-highlight-region start-marker tracking-marker)
-        (when gptel-mode
-          (unless (plist-get info :in-place)
-            (save-excursion (goto-char tracking-marker)
-                            (insert gptel-response-separator
-                                    (gptel-prompt-prefix-string))))
-          (gptel--update-status  " Ready" 'success))))))
+         (marker-position start-marker) (marker-position tracking-marker))))))
 
 (defun gptel--handle-error (fsm)
   "Check for errors in request state FSM.
