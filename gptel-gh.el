@@ -199,7 +199,7 @@
   :type 'function
   :group 'gptel)
 
-(defcustom gptel-gh-github-token-save-function 'gptel--gh-save-to-file
+(defcustom gptel-gh-github-token-save-function 'gptel--gh-save-github-token-from-file
   "Function to save the new github token. Default behavior is file-based based on `gptel-gh-github-token-file'."
   :type 'function
   :group 'gptel)
@@ -246,6 +246,10 @@
   "Restore GitHub token from the file gptel-gh-github-token-file."
   (gptel--gh-restore-from-file gptel-gh-github-token-file))
 
+(defun gptel--gh-save-github-token-from-file (token)
+  "Save GitHub token to the file gptel-gh-github-token-file."
+  (gptel--gh-save-to-file gptel-gh-github-token-file token))
+
 (defun gptel--gh-restore-from-file (file)
   "Restore saved object from FILE."
   (when (file-exists-p file)
@@ -258,13 +262,13 @@
         (goto-char (point-min))
         (read (current-buffer))))))
 
-(defun gptel--gh-save-to-file (obj)
-  "Save OBJ to gptel-gh-github-token-file."
+(defun gptel--gh-save-to-file (file obj)
+  "Save OBJ to FILE."
   (let ((print-length nil)
         (print-level nil)
         (coding-system-for-write 'utf-8-unix))
-    (make-directory (file-name-directory gptel-gh-github-token-file) t)
-    (write-region (prin1-to-string obj) nil gptel-gh-github-token-file nil :silent)
+    (make-directory (file-name-directory file) t)
+    (write-region (prin1-to-string obj) nil file nil :silent)
     obj))
 
 (defun gptel-gh-login ()
