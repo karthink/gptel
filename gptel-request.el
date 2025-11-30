@@ -1618,7 +1618,10 @@ considered a success and acts as a default.")
 
 (defvar gptel-request--handlers
   `((WAIT ,#'gptel--handle-wait)
-    (TOOL ,#'gptel--handle-tool-use))
+    (TOOL ,#'gptel--handle-tool-use)
+    (DONE ,#'gptel--handle-post)
+    (ERRS ,#'gptel--handle-post)
+    (ABRT ,#'gptel--handle-post))
   "Alist specifying handlers for gptel's default state transitions.
 
 Each entry is a list whose car is a request state (a symbol) and
@@ -1777,6 +1780,12 @@ MACHINE is an instance of `gptel-fsm'"
           (plist-put info :tool-pending t)
           (funcall (plist-get info :callback)
                    (cons 'tool-call pending-calls) info))))))
+
+(defun gptel--handle-post (fsm)
+  "Run cleanup for `gptel-request' with FSM."
+  (when-let* ((info (gptel-fsm-info fsm))
+              (post (plist-get info :post)))
+    (mapc (lambda (f) (funcall f info)) post)))
 
 ;;;; State machine predicates
 ;; Predicates used to find the next state to transition to, see
@@ -2553,17 +2562,14 @@ INFO contains the request data, TOKEN is a unique identifier."
      (list (format "-w(%s . %%{size_header})" token))
      (if (length< data-json gptel-curl-file-size-threshold)
          (list (format "-d%s" data-json))
-       (letrec
-           ((write-region-inhibit-fsync t)
-            (file-name-handler-alist nil)
-            (temp-filename (make-temp-file "gptel-curl-data" nil ".json" data-json))
-            (cleanup-fn (lambda (&rest _)
-                          (when (file-exists-p temp-filename)
-                            (delete-file temp-filename)
-                            (remove-hook 'gptel-post-response-functions cleanup-fn)))))
-         (add-hook 'gptel-post-response-functions cleanup-fn)
-         (list "--data-binary"
-               (format "@%s" temp-filename))))
+       (let* ((write-region-inhibit-fsync t)
+              (file-name-handler-alist nil)
+              (inhibit-message t)
+              (temp-filename (make-temp-file "gptel-curl-data" nil ".json" data-json))
+              (cleanup-fn (lambda (&rest _) (when (file-exists-p temp-filename)
+                                         (delete-file temp-filename)))))
+         (plist-put info :post (cons cleanup-fn (plist-get info :post)))
+         (list "--data-binary" (format "@%s" temp-filename))))
      (when (not (string-empty-p gptel-proxy))
        (list "--proxy" gptel-proxy
              "--proxy-negotiate"
