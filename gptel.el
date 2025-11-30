@@ -224,6 +224,46 @@
 
 
 ;;; User options
+(defcustom gptel-pre-response-hook nil
+  "Hook run before inserting the LLM response into the current buffer.
+
+This hook is called in the buffer where the LLM response will be
+inserted.
+
+Note: this hook only runs if the request succeeds."
+  :type 'hook
+  :group 'gptel)
+
+(define-obsolete-variable-alias
+  'gptel-post-response-hook 'gptel-post-response-functions
+  "0.6.0"
+  "Post-response functions are now called with two arguments: the
+start and end buffer positions of the response.")
+
+(defcustom gptel-post-response-functions nil
+  "Abnormal hook run after inserting the LLM response into the current buffer.
+
+This hook is called in the buffer to which the LLM response is
+sent, and after the full response has been inserted.  Each
+function is called with two arguments: the response beginning and
+end positions.
+
+Note: this hook runs even if the request fails.  In this case the
+response beginning and end positions are both the cursor position
+at the time of the request."
+  :type 'hook
+  :group 'gptel)
+
+(add-hook 'gptel-post-response-functions 'pulse-momentary-highlight-region 70)
+
+(defcustom gptel-post-stream-hook nil
+  "Hook run after each insertion of the LLM's streaming response.
+
+This hook is called in the buffer from which the prompt was sent
+to the LLM, and after a text insertion."
+  :type 'hook
+  :group 'gptel)
+
 (defcustom gptel-save-state-hook nil
   "Hook run before gptel saves model parameters to a file.
 
