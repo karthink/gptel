@@ -186,7 +186,7 @@
 (cl-defstruct (gptel--gh (:include gptel-openai)
                          (:copier nil)
                          (:constructor gptel--make-gh))
-  sessionid machineid)
+  token github-token sessionid machineid)
 
 (defcustom gptel-gh-github-token-file (expand-file-name ".cache/copilot-chat/github-token"
                                                         user-emacs-directory)
@@ -210,18 +210,15 @@
 
 (defconst gptel--gh-client-id "Iv1.b507a08c87ecfe98")
 
-(defvar gptel--gh-token nil "Variable that holds the chat token in memory")
-(defvar gptel--gh-github-token nil "Variable that holds the GitHub OAuth token in memory")
-
 (defun gptel--gh-load-github-token ()
   "Function that ensures that the GitHub OAuth token cache is used and is set."
-  (if gptel--gh-github-token
-      gptel--gh-github-token
-    (setq gptel--gh-github-token (funcall gptel-gh-github-token-load-function))))
+  (if (gptel--gh-github-token gptel-backend)
+      (gptel--gh-github-token gptel-backend)
+    (setf (gptel--gh-github-token gptel-backend) (funcall gptel-gh-github-token-load-function))))
 
 (defun gptel--gh-save-github-token (token)
   "Function that updates the GitHub OAuth token cache and calls the save function."
-  (funcall gptel-gh-github-token-save-function (setq gptel--gh-github-token token)))
+  (funcall gptel-gh-github-token-save-function (setf (gptel--gh-github-token gptel-backend) token)))
 
 ;; https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 (defun gptel--gh-uuid ()
@@ -331,11 +328,11 @@ If your browser does not open automatically, browse to %s."
              "https://api.github.com/copilot_internal/v2/token"
            :method 'get
            :headers `(("authorization"
-                       . ,(format "token %s" (gptel--gh-load-github-token)))
+                       . ,(format "token %s" (gptel--gh-github-token gptel-backend)))
                       ,@gptel--gh-auth-common-headers))))
     (if (not (plist-get token :token))
         (user-error "Error: You might not have access to GitHub Copilot Chat!")
-      (setq gptel--gh-token token))))
+      (setf (gptel--gh-token gptel-backend) token))))
 
 (defun gptel--gh-auth ()
   "Authenticate with GitHub Copilot API.
@@ -346,7 +343,7 @@ Then we need a session token."
     (gptel-gh-login))
 
   (pcase-let (((map :token :expires_at)
-               gptel--gh-token))
+               (gptel--gh-token gptel-backend)))
     (when (or (null token)
               (and expires_at
                    (> (round (float-time)) expires_at)))
@@ -358,7 +355,8 @@ Then we need a session token."
           (header (lambda ()
                     (gptel--gh-auth)
                     `(("openai-intent" . "conversation-panel")
-                      ("authorization" . ,(concat "Bearer " (plist-get gptel--gh-token :token)))
+                      ("authorization" . ,(concat "Bearer "
+                                                  (plist-get (gptel--gh-token gptel-backend) :token)))
                       ("x-request-id" . ,(gptel--gh-uuid))
                       ("vscode-sessionid" . ,(or (gptel--gh-sessionid gptel-backend) ""))
                       ("vscode-machineid" . ,(or (gptel--gh-machineid gptel-backend) ""))
