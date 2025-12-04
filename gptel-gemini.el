@@ -90,7 +90,12 @@ list."
        (plist-put info :reasoning-block t))
      and collect tx into content-strs end
      else if (plist-get part :functionCall)
-     collect (copy-sequence it) into tool-use
+     collect (let ((fc (copy-sequence it))
+                   (sig (plist-get part :thoughtSignature)))
+               ;; Store thoughtSignature in :id to persist it via gptel properties
+               (when sig (plist-put fc :id sig))
+               fc)
+     into tool-use
      finally do                         ;Add text and tool-calls to prompts list
      (when (or tool-use include-text)
        (let* ((data (plist-get info :data))
@@ -272,7 +277,7 @@ See generic implementation for full documentation."
              if text
              if role
              collect (list :role "user" :parts `[(:text ,text)]) into prompts
-             else collect (list :role "model" :parts `(:text ,text)) into prompts
+             else collect (list :role "model" :parts `[(:text ,text)]) into prompts
              finally return prompts)))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-gemini) &optional max-entries)
@@ -287,21 +292,19 @@ See generic implementation for full documentation."
              (when-let* ((content (gptel--trim-prefixes
                                    (buffer-substring-no-properties (point) prev-pt))))
                (push (list :role "model" :parts (list :text content)) prompts)))
-            (`(tool . ,_id)
+            (`(tool . ,sig)
              (save-excursion
                (condition-case nil
                    (let* ((tool-call (read (current-buffer)))
-                          (name (plist-get tool-call :name))
-                          (arguments  (plist-get tool-call :args)))
+                          (part `(:functionCall ( :name ,(plist-get tool-call :name)
+                                                  :args ,(plist-get tool-call :args)))))
+                     (when sig (plist-put part :thoughtSignature sig))
                      (plist-put tool-call :result
                                 (string-trim (buffer-substring-no-properties
                                               (point) prev-pt)))
                      (push (gptel--parse-tool-results backend (list tool-call))
                            prompts)
-                     (push (list :role "model"
-                                 :parts
-                                 (vector `(:functionCall ( :name ,name
-                                                           :args ,arguments))))
+                     (push (list :role "model" :parts (vector part))
                            prompts))
                  ((end-of-file invalid-read-syntax)
                   (message (format "Could not parse tool-call on line %s"
