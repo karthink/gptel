@@ -840,7 +840,7 @@ If non-nil, indicates backward movement.")
   ;; FIXME(context): This should run in the buffer from which the context
   ;; inspection buffer was visited.
   ;; Update contexts and revert buffer (#482)
-  (setq gptel-context (gptel-context--collect))
+  (setq gptel-context (nreverse (gptel-context--collect)))
   (gptel-context-quit))
 
 (provide 'gptel-context)
