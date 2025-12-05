@@ -80,6 +80,7 @@ list."
     (cl-loop
      for part across parts
      for tx = (plist-get part :text)
+     for sig = (plist-get part :thoughtSignature)
      if (and tx (not (eq tx :null)))
      if (plist-get part :thought)
      do (unless (plist-get info :reasoning-block)
@@ -90,7 +91,12 @@ list."
        (plist-put info :reasoning-block t))
      and collect tx into content-strs end
      else if (plist-get part :functionCall)
-     collect (copy-sequence it) into tool-use
+     collect (let ((fc (copy-sequence (plist-get part :functionCall))))
+               ;; Store thoughtSignature in :id to persist it via gptel properties
+               (when sig (plist-put fc :id sig))
+               fc)
+     into tool-use
+     do (when sig (plist-put info :gemini-thought-signature sig))
      finally do                         ;Add text and tool-calls to prompts list
      (when (or tool-use include-text)
        (let* ((data (plist-get info :data))
@@ -109,7 +115,12 @@ list."
        (plist-put info :tool-use
                   (nconc (plist-get info :tool-use) tool-use)))
      finally return
-     (and content-strs (apply #'concat content-strs)))))
+     (and content-strs
+          (let ((response-text (apply #'concat content-strs)))
+            (if-let ((sig (plist-get info :gemini-thought-signature)))
+                ;; Attach thoughtSignature to text response as a property
+                (propertize response-text 'gptel-gemini-thought-signature sig)
+              response-text))))))
 
 (cl-defmethod gptel--request-data ((backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
@@ -262,8 +273,8 @@ See generic implementation for full documentation."
                    full-prompt))
             (`(tool . ,call)
              (push (list :role "model"
-                         :parts (vector `(:functionCall ( :name ,(plist-get call :name)
-                                                          :args ,(plist-get call :args)))))
+                         :parts `[(:functionCall (:name ,(plist-get call :name)
+                                                  :args ,(plist-get call :args)))])
                    full-prompt)
              (push (gptel--parse-tool-results backend (list (cdr entry))) full-prompt))))
         (nreverse full-prompt))
@@ -272,7 +283,7 @@ See generic implementation for full documentation."
              if text
              if role
              collect (list :role "user" :parts `[(:text ,text)]) into prompts
-             else collect (list :role "model" :parts `(:text ,text)) into prompts
+             else collect (list :role "model" :parts `[(:text ,text)]) into prompts
              finally return prompts)))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-gemini) &optional max-entries)
@@ -284,24 +295,30 @@ See generic implementation for full documentation."
                     (not (= (point) prev-pt)))
           (pcase (get-char-property (point) 'gptel)
             ('response
-             (when-let* ((content (gptel--trim-prefixes
-                                   (buffer-substring-no-properties (point) prev-pt))))
-               (push (list :role "model" :parts (list :text content)) prompts)))
-            (`(tool . ,_id)
+             (let ((sig (get-char-property (point) 'gptel-gemini-thought-signature)))
+               (when-let* ((content (gptel--trim-prefixes
+                                     (buffer-substring-no-properties (point) prev-pt))))
+                 (push `(:role "model"
+                         :parts ,(if sig
+                                    `[(:text ,content :thoughtSignature ,sig)]
+                                  `[(:text ,content)]))
+                       prompts))))
+            (`(tool . ,sig)
              (save-excursion
                (condition-case nil
                    (let* ((tool-call (read (current-buffer)))
                           (name (plist-get tool-call :name))
-                          (arguments  (plist-get tool-call :args)))
+                          (arguments  (plist-get tool-call :args))
+                          (part `(:functionCall (:name ,name
+                                                 :args ,arguments))))
+                     (when sig (plist-put part :thoughtSignature sig))
                      (plist-put tool-call :result
                                 (string-trim (buffer-substring-no-properties
                                               (point) prev-pt)))
                      (push (gptel--parse-tool-results backend (list tool-call))
                            prompts)
                      (push (list :role "model"
-                                 :parts
-                                 (vector `(:functionCall ( :name ,name
-                                                           :args ,arguments))))
+                                 :parts (vector part))
                            prompts))
                  ((end-of-file invalid-read-syntax)
                   (message (format "Could not parse tool-call on line %s"
