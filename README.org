@@ -128,6 +128,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
   - [[#additional-configuration][Additional Configuration]]
     - [[#option-presets][Option presets]]
       - [[#applying-presets-to-requests-automatically][Applying presets to requests automatically]]
+    - [[#example-function-to-pick-up-api-keys-from-the-environment][Example function to pick up API keys from the environment]]
   - [[#alternatives][Alternatives]]
     - [[#packages-using-gptel][Packages using gptel]]
   - [[#acknowledgments][Acknowledgments]]
@@ -1888,6 +1889,63 @@ What do you make of the above description, @proofreader?
 
 In chat buffers this prefix will be offered as a completion and fontified, making it easy to use and spot.
 
+*** Example function to pick up API keys from the environment
+
+You can use =gptel-api-key= to define a custom function to lookup the API key for your provider. Here is a custom function which looks for the appropriate ENV variable based on the name of your gptel backend.
+
+#+begin_src emacs-lisp
+  (defun gptel-api-key-from-os-env ()
+    "Dynamically get the key based on the active backend name.
+    Reads from standard environment variables matching the providers supported by gptel.
+
+    NOTE: Name your backends exactly as described inside this function for it to work."
+    (if (not (boundp 'gptel-backend))
+        (error "gptel-backend is not bound; cannot determine API key")
+      (let ((backend-name (gptel-backend-name gptel-backend)))
+        (cond
+         ;; --- NOTE: backend-name must match exactly ---
+         ((string= backend-name "ChatGPT")        (getenv "OPENAI_API_KEY"))
+         ((string= backend-name "Claude")         (getenv "ANTHROPIC_API_KEY"))
+         ((string= backend-name "Gemini")         (getenv "GOOGLE_API_KEY"))
+         ((string= backend-name "OpenRouter")     (getenv "OPENROUTER_API_KEY"))
+         ((string= backend-name "Groq")           (getenv "GROQ_API_KEY"))
+         ((string= backend-name "Mistral")        (getenv "MISTRAL_API_KEY"))
+         ((string= backend-name "Perplexity")     (getenv "PERPLEXITY_API_KEY"))
+         ((string= backend-name "DeepSeek")       (getenv "DEEPSEEK_API_KEY"))
+         ((string= backend-name "Cerebras")       (getenv "CEREBRAS_API_KEY"))
+         ((string= backend-name "Moonshot")       (getenv "MOONSHOT_API_KEY"))
+         ((string= backend-name "Together")       (getenv "TOGETHER_API_KEY"))
+         ((string= backend-name "Anyscale")       (getenv "ANYSCALE_API_KEY"))
+         ((string= backend-name "Novita AI")      (getenv "NOVITA_API_KEY"))
+         ((string= backend-name "xAI")            (getenv "XAI_API_KEY"))
+         ((string= backend-name "Sambanova")      (getenv "SAMBANOVA_API_KEY"))
+         ((string= backend-name "AI/ML API")      (getenv "AIML_API_KEY"))
+
+         ;; --- Kagi ---
+         ;; Matches "Kagi FastGPT" or "Kagi Summarizer"
+         ((string-prefix-p "Kagi" backend-name)   (getenv "KAGI_API_KEY"))
+
+         ;; --- Microsoft / GitHub ---
+         ((string= backend-name "Azure")          (getenv "AZURE_OPENAI_API_KEY"))
+         ((member backend-name '("Github Models" "GitHub Copilot"))
+          (getenv "GITHUB_TOKEN"))
+
+         ;; --- Local / No-Key Required ---
+         ;; These usually do not require an API key in the configuration
+         ;; returning nil is safe for local instances.
+         ((member backend-name '("Ollama"
+                                 "Llama.cpp"
+                                 "Llamafile"
+                                 "GPT4All"
+                                 "PrivateGPT"
+                                 "Open WebUI"))
+          nil)
+
+         ;; --- Fallback ---
+         (t (message "Warning: No environment variable mapping found for backend '%s'. Please check `gptel-api-key-from-os-env`." backend-name))))))
+
+  (setq gptel-api-key #'gptel-api-key-from-os-env)
+#+end_src
 ** Alternatives
 
 Other LLM clients for Emacs include
