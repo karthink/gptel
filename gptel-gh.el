@@ -186,7 +186,7 @@
 (cl-defstruct (gptel--gh (:include gptel-openai)
                          (:copier nil)
                          (:constructor gptel--make-gh))
-  token github-token sessionid machineid)
+  token github-token sessionid machineid github-username)
 
 (defcustom gptel-gh-github-token-file (expand-file-name ".cache/copilot-chat/github-token"
                                                         user-emacs-directory)
@@ -210,15 +210,32 @@
 
 (defconst gptel--gh-client-id "Iv1.b507a08c87ecfe98")
 
-(defun gptel--gh-load-github-token ()
+(defun gptel--gh-get-backends-by-username (github-username)
+  (seq-filter (lambda (b) (and (gptel--gh-p b)
+                               (string= (gptel--gh-github-username b)
+                                        github-username)))
+              (mapcar #'cdr gptel--known-backends)))
+
+(defun gptel--gh-load-github-token (github-username)
   "Function that ensures that the GitHub OAuth token cache is used and is set."
   (if (gptel--gh-github-token gptel-backend)
       (gptel--gh-github-token gptel-backend)
-    (setf (gptel--gh-github-token gptel-backend) (funcall gptel-gh-github-token-load-function))))
+    (let ((token (funcall gptel-gh-github-token-load-function github-username)))
+      (if (string= token "")
+          ;; Empty string should be interpreted as no data. Return nil so that a
+          ;; proper login is performed.
+          nil
+        ;; Iterate over the known backends for the same username and set the GitHub token
+        (dolist (b (gptel--gh-get-backends-by-username github-username) token)
+          (setf (gptel--gh-github-token b) token))))))
 
-(defun gptel--gh-save-github-token (token)
+(defun gptel--gh-save-github-token (github-username token)
   "Function that updates the GitHub OAuth token cache and calls the save function."
-  (funcall gptel-gh-github-token-save-function (setf (gptel--gh-github-token gptel-backend) token)))
+  ;; Update the token for all connected backends
+  (dolist (b (gptel--gh-get-backends-by-username github-username))
+    (setf (gptel--gh-github-token b) token))
+  (funcall gptel-gh-github-token-save-function github-username
+           (setf (gptel--gh-github-token gptel-backend) token)))
 
 ;; https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 (defun gptel--gh-uuid ()
@@ -239,13 +256,39 @@
       (setq hex (nconc hex (list (aref hex-chars (random 16))))))
     (apply #'string hex)))
 
-(defun gptel--gh-restore-github-token-from-file ()
-  "Restore GitHub token from the file gptel-gh-github-token-file."
-  (gptel--gh-restore-from-file gptel-gh-github-token-file))
+(defun gptel--gh-validate-github-username (github-username)
+  "Ensures that the given GITHUB-USERNAME conforms to the rules from GitHub:
 
-(defun gptel--gh-save-github-token-from-file (token)
+'Username may only contain alphanumeric characters or single hyphens,
+and cannot begin or end with a hyphen.'
+
+An empty string value is considered to be a general account to be used.
+"
+  (cond
+   ;; Ensure that the username is a string
+   ((not (stringp github-username)) (user-error "Provided GitHub username is not string"))
+
+   ;; Length of zero is a default value
+   ((= (length github-username) 0) t)
+
+   ;; We have some characters, ensure that they conform to the rules
+   ((string-match-p "\\`[0-9A-Za-z]\\(?:[0-9A-Za-z]\\|-[0-9A-Za-z]\\)*\\'" github-username) t)
+   (t (user-error "Provided GitHub username '%s' doesn't conform to GitHub's username rules"
+                  github-username))))
+
+(defun gptel--gh-generate-github-token-filename (github-username)
+  (gptel--gh-validate-github-username github-username)
+  (if (= (length github-username) 0)
+      gptel-gh-github-token-file
+    (concat gptel-gh-github-token-file "_" github-username)))
+
+(defun gptel--gh-restore-github-token-from-file (github-username)
+  "Restore GitHub token from the file gptel-gh-github-token-file."
+  (gptel--gh-restore-from-file (gptel--gh-generate-github-token-filename github-username)))
+
+(defun gptel--gh-save-github-token-from-file (github-username token)
   "Save GitHub token to the file gptel-gh-github-token-file."
-  (gptel--gh-save-to-file gptel-gh-github-token-file token))
+  (gptel--gh-save-to-file (gptel--gh-generate-github-token-filename github-username) token))
 
 (defun gptel--gh-restore-from-file (file)
   "Restore saved object from FILE."
@@ -268,7 +311,7 @@
     (write-region (prin1-to-string obj) nil file nil :silent)
     obj))
 
-(defun gptel-gh-login ()
+(defun gptel-gh-login (github-username)
   "Login to GitHub Copilot API.
 
 This will prompt you to authorize in a browser and store the token.
@@ -276,11 +319,15 @@ This will prompt you to authorize in a browser and store the token.
 In SSH sessions, the URL and code will be displayed for manual entry
 instead of attempting to open a browser automatically."
   (interactive)
-  ;; Determine which GitHub backend to use
-  (let (;; Detect SSH sessions
+  (message "Logging in using '%s'" github-username)
+  (let ((gh-backends (gptel--gh-get-backends-by-username github-username))
+        ;; Detect SSH sessions
         (in-ssh-session (or (getenv "SSH_CLIENT")
                             (getenv "SSH_CONNECTION")
                             (getenv "SSH_TTY"))))
+    ;; It shall only be possible to login when there exists a corresponding backend
+    (if (= (length gh-backends) 0)
+        (user-error "No GitHub CoPilot backend found for username '%s'" github-username))
     (pcase-let (((map :device_code :user_code :verification_uri)
                  (gptel--url-retrieve
                      "https://github.com/login/device/code"
@@ -305,21 +352,20 @@ If your browser does not open automatically, browse to %s."
                  user_code verification_uri))
         (browse-url verification_uri)
         (read-from-minibuffer "Press ENTER after authorizing."))
-      (thread-last
-        (plist-get
-         (gptel--url-retrieve
-             "https://github.com/login/oauth/access_token"
-           :method 'post
-           :headers gptel--gh-auth-common-headers
-           :data `( :client_id ,gptel--gh-client-id
-                    :device_code ,device_code
-                    :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
-         :access_token)
-        (gptel--gh-save-github-token))
-      (let ((github-token (gptel--gh-load-github-token)))
-        (if (and github-token (not (string-empty-p github-token)))
-            (message "Successfully logged in to GitHub Copilot")
-          (user-error "Error: You might not have access to GitHub Copilot Chat!"))))))
+      (let ((github-token
+            (plist-get
+             (gptel--url-retrieve
+                 "https://github.com/login/oauth/access_token"
+               :method 'post
+               :headers gptel--gh-auth-common-headers
+               :data `( :client_id ,gptel--gh-client-id
+                        :device_code ,device_code
+                        :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
+             :access_token)))
+        (if (or (null github-token) (string-empty-p github-token))
+            (user-error "Error: You might not have access to GitHub Copilot Chat!"))
+        (message "Successfully logged in to GitHub Copilot")
+        (gptel--gh-save-github-token github-username github-token)))))
 
 (defun gptel--gh-renew-token ()
   "Renew session token."
@@ -339,8 +385,12 @@ If your browser does not open automatically, browse to %s."
 
 We first need github authorization (github token).
 Then we need a session token."
-  (unless (gptel--gh-load-github-token)
-    (gptel-gh-login))
+  (unless (gptel--gh-github-token gptel-backend)
+    (let* ((github-username (gptel--gh-github-username gptel-backend))
+           (token (gptel--gh-load-github-token github-username)))
+      (if token
+          (setf (gptel--gh-github-token gptel-backend) token)
+        (gptel-gh-login github-username))))
 
   (pcase-let (((map :token :expires_at)
                (gptel--gh-token gptel-backend)))
@@ -351,7 +401,7 @@ Then we need a session token."
 
 ;;;###autoload
 (cl-defun gptel-make-gh-copilot
-    (name &key curl-args request-params
+    (name &key (github-username "") curl-args request-params
           (header (lambda ()
                     (gptel--gh-auth)
                     `(("openai-intent" . "conversation-panel")
@@ -372,6 +422,9 @@ Then we need a session token."
   "Register a Github Copilot chat backend for gptel with NAME.
 
 Keyword arguments:
+
+GITHUB-USERNAME (optional) is an indicator of which GitHub account to associate
+the backend with. This enables backends to be logged in as a separate user.
 
 CURL-ARGS (optional) is a list of additional Curl arguments.
 
@@ -420,6 +473,7 @@ parameters (as plist keys) and values supported by the API.  Use
 these to set parameters that gptel does not provide user options
 for."
   (declare (indent 1))
+  (gptel--gh-validate-github-username github-username)
   (let ((backend (gptel--make-gh
                   :name name
                   :host host
@@ -430,6 +484,7 @@ for."
                   :stream stream
                   :request-params request-params
                   :curl-args curl-args
+                  :github-username github-username
                   :url (concat protocol "://" host endpoint)
                   :machineid (gptel--gh-machine-id))))
     (setf (alist-get name gptel--known-backends nil nil #'equal) backend)
