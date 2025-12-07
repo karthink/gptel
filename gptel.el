@@ -403,33 +403,44 @@ Note: This will move the cursor."
           (scroll-up-command))
       (error nil))))
 
-(defun gptel-beginning-of-response (&optional _ _ arg)
-  "Move point to the beginning of the LLM response ARG times."
+(defun gptel-beginning-of-response (&optional beg _end arg)
+  "Move point to BEG, or to the beginning of the LLM response ARG times."
   (interactive (list nil nil
                      (prefix-numeric-value current-prefix-arg)))
-  (gptel-end-of-response nil nil (- (or arg 1))))
+  (gptel-end-of-response beg nil (- (or arg 1))))
 
-(defun gptel-end-of-response (&optional _ _ arg)
-  "Move point to the end of the LLM response ARG times."
+(defun gptel-end-of-response (&optional beg end arg)
+  "Move point to end of LLM response.
+
+With BEG, start search from BEG when ARG is negative.
+With END, start search from END when ARG is positive.
+Otherwise move ARG times, defaulting to 1."
   (interactive (list nil nil
                      (prefix-numeric-value current-prefix-arg)))
   (unless arg (setq arg 1))
-  (let ((search (if (> arg 0)
-                    #'text-property-search-forward
-                  #'text-property-search-backward)))
+  (let* ((search (if (> arg 0)
+                     #'text-property-search-forward
+                   #'text-property-search-backward))
+         (goto-prefix-end
+          (lambda () (when-let* ((prefix (gptel-prompt-prefix-string))
+                            ((not (string-empty-p prefix)))
+                            ((looking-at (concat "\n\\{1,2\\}"
+                                                 (regexp-quote prefix) "?"))))
+                  (goto-char (match-end 0)))))
+         (goto-prefix-beg
+          (lambda () (when-let* ((prefix (gptel-response-prefix-string))
+                            ((not (string-empty-p prefix)))
+                            ((looking-back (concat (regexp-quote prefix) "?")
+                                           (point-min))))
+                  (goto-char (match-beginning 0))))))
+    (cond
+     ((and end (> arg 0)) (goto-char end) (cl-decf arg) (funcall goto-prefix-end))
+     ((and beg (< arg 0)) (goto-char beg) (cl-incf arg) (funcall goto-prefix-beg)))
     (dotimes (_ (abs arg))
       (funcall search 'gptel 'response t)
       (if (> arg 0)
-          (when-let* ((prefix (gptel-prompt-prefix-string))
-                      ((not (string-empty-p prefix)))
-                      ((looking-at (concat "\n\\{1,2\\}"
-                                           (regexp-quote prefix) "?"))))
-            (goto-char (match-end 0)))
-        (when-let* ((prefix (gptel-response-prefix-string))
-                    ((not (string-empty-p prefix)))
-                    ((looking-back (concat (regexp-quote prefix) "?")
-                                   (point-min))))
-          (goto-char (match-beginning 0)))))))
+          (funcall goto-prefix-end)
+        (funcall goto-prefix-beg)))))
 
 (defun gptel-markdown-cycle-block ()
   "Cycle code blocks in Markdown."
