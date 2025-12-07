@@ -1456,11 +1456,14 @@ Alternatively, you can add/remove tools via
 
 The following repositories provide collections of tools written by gptel users.
 
-- [[https://github.com/skissue/llm-tool-collection][llm-tool-collection]] :: A community collection of tools for use with LLM clients in Emacs. To discuss tools, check out the [[https://github.com/skissue/llm-tool-collection/discussions][discussions page]].
-- [[https://github.com/positron-solutions/ragmacs][ragmacs]] :: A collection of tools for Emacs introspection.
+- [[https://github.com/skissue/llm-tool-collection][llm-tool-collection]] :: A community collection of tools for use with LLM clients in Emacs.  Includes LLM tools for interacting with files, Emacs buffers and running system commands.
+- [[https://github.com/karthink/gptel-agent][gptel-agent]] :: A collection of tools meant for agentic LLM use.  Includes tools for filesystem access and manipulation, running Bash commands, Emacs introspection and Elisp evaluation, web search and YouTube.
 - [[https://github.com/ultronozm/codel.el][codel.el]] :: A collection of code editing tools.
 - [[https://codeberg.org/bajsicki/gptel-org-tools][gptel-org-tools]] :: Tools for interacting with Org files.
+- [[https://github.com/positron-solutions/ragmacs][ragmacs]] :: A collection of tools for Emacs introspection.
 - [[https://github.com/munen/emacs.d?tab=readme-ov-file#tool-use][Alain Lafon’s tool collection]]
+
+Additionally, the [[https://github.com/karthink/gptel/wiki/Tools-collection][wiki has some examples]] of common tools.  These are not maintained, but might serve instructional when writing custom tools.
 
 #+html: </details>
 #+html: <details><summary>
@@ -1936,6 +1939,7 @@ These differ from full "agentic" use in that the interactions are "one-shot", no
 *Agentic use*: Use LLMs as agents, with tool-use
 
 - [[https://github.com/kmontag/macher][Macher]]: Project-aware multi-file LLM editing for Emacs.
+- [[https://github.com/karthink/gptel-agent][gptel-agent]]: Tools, presets and configuration for general agentic LLM use.
 
 *Text completion*
 
