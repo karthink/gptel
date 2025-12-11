@@ -31,6 +31,7 @@
 
 (declare-function ediff-regions-internal "ediff")
 (declare-function ediff-make-cloned-buffer "ediff-utils")
+(declare-function org-escape-code-in-string "org-src")
 
 
 ;; * Helper functions and vars
@@ -1687,10 +1688,13 @@ This sets the variable `gptel-include-tool-results', which see."
                      (if (consp reduced-prompt);either (region . prompt) or prompt
                          (concat (and (car reduced-prompt)
                                       (concat "#+begin_src " (gptel--strip-mode-suffix major-mode)
-                                              "\n" (car reduced-prompt) "\n#+end_src\n\n"))
+                                              "\n" (org-escape-code-in-string (car reduced-prompt))
+                                              "\n#+end_src\n\n"))
                                  (cdr reduced-prompt))
                        (concat "#+begin_src " (gptel--strip-mode-suffix major-mode)
-                               "\n" (or (cdr-safe reduced-prompt) reduced-prompt) "\n#+end_src"))))
+                               "\n" (org-escape-code-in-string
+                                     (or (cdr-safe reduced-prompt) reduced-prompt))
+                               "\n#+end_src"))))
               (t (setq reduced-prompt
                        (if (consp reduced-prompt);either (region . prompt) or prompt
                            (concat (and (car reduced-prompt)
