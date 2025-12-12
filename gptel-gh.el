@@ -316,6 +316,9 @@ An empty string value is considered to be a general account to be used.
 
 This will prompt you to authorize in a browser and store the token.
 
+GITHUB-USERNAME is used to provide a hint which account to login to.
+It must match an existing backend.
+
 In SSH sessions, the URL and code will be displayed for manual entry
 instead of attempting to open a browser automatically."
   (interactive)
@@ -427,7 +430,8 @@ Then we need a session token."
 Keyword arguments:
 
 GITHUB-USERNAME (optional) is an indicator of which GitHub account to associate
-the backend with. This enables backends to be logged in as a separate user.
+the backend with. This enables backends to be logged in as a separate user. Note
+that this is only a hint and will be used when a GitHub is saved/loaded.
 
 CURL-ARGS (optional) is a list of additional Curl arguments.
 
