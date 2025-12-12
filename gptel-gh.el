@@ -336,32 +336,35 @@ instead of attempting to open a browser automatically."
                    :data `( :client_id ,gptel--gh-client-id
                             :scope "read:user"))))
       (gui-set-selection 'CLIPBOARD user_code)
-      (if in-ssh-session
-          ;; SSH session: display URL and code, don't auto-open browser
-          (progn
-            (message "GitHub Device Code: %s (copied to clipboard)" user_code)
-            (read-from-minibuffer
-             (format "Code %s is copied. Visit https://github.com/login/device \
+      (let ((username-text (if (string= github-username "")
+                               "Login for the default account."
+                             (format "Login for '%s'." github-username))))
+        (if in-ssh-session
+            ;; SSH session: display URL and code, don't auto-open browser
+            (progn
+              (message "GitHub Device Code: %s (copied to clipboard)" user_code)
+              (read-from-minibuffer
+               (format "%s Code %s is copied. Visit %s \
 in your local browser, enter the code, and authorize.  Press ENTER after authorizing. "
-                     user_code)))
-        ;; Local session: auto-open browser
-        (read-from-minibuffer
-         (format "Your one-time code %s is copied. \
+                       username-text user_code verification_uri)))
+          ;; Local session: auto-open browser
+          (read-from-minibuffer
+           (format "%s Your one-time code %s is copied. \
 Press ENTER to open GitHub in your browser. \
 If your browser does not open automatically, browse to %s."
-                 user_code verification_uri))
-        (browse-url verification_uri)
-        (read-from-minibuffer "Press ENTER after authorizing."))
+                   username-text user_code verification_uri))
+          (browse-url verification_uri)
+          (read-from-minibuffer "Press ENTER after authorizing.")))
       (let ((github-token
-            (plist-get
-             (gptel--url-retrieve
-                 "https://github.com/login/oauth/access_token"
-               :method 'post
-               :headers gptel--gh-auth-common-headers
-               :data `( :client_id ,gptel--gh-client-id
-                        :device_code ,device_code
-                        :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
-             :access_token)))
+             (plist-get
+              (gptel--url-retrieve
+                  "https://github.com/login/oauth/access_token"
+                :method 'post
+                :headers gptel--gh-auth-common-headers
+                :data `( :client_id ,gptel--gh-client-id
+                         :device_code ,device_code
+                         :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
+              :access_token)))
         (if (or (null github-token) (string-empty-p github-token))
             (user-error "Error: You might not have access to GitHub Copilot Chat!"))
         (message "Successfully logged in to GitHub Copilot")
