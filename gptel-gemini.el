@@ -196,7 +196,7 @@ TOOLS is a list of `gptel-tool' structs, which see."
     :description (gptel-tool-description tool)
     :parameters
     (if (not (gptel-tool-args tool))
-         :null           ;NOTE: Gemini wants :null if the function takes no args
+        :null           ;NOTE: Gemini wants :null if the function takes no args
       (list :type "object"
             ;; See the generic implementation for an explanation of this
             ;; transformation.
@@ -206,7 +206,7 @@ TOOLS is a list of `gptel-tool' structs, which see."
              for argspec = (copy-sequence arg)
              for name = (plist-get arg :name) ;handled differently
              for newname = (or (and (keywordp name) name)
-                               (make-symbol (concat ":" name)))
+                               (intern (concat ":" name)))
              do                        ;ARGSPEC is ARG without unrecognized keys
              (cl-remf argspec :name)
              (cl-remf argspec :optional)
