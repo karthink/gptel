@@ -46,6 +46,10 @@
   evaluated in a temporary buffer used to construct the query, leading
   to unexpected behavior.)
 
+- When using OpenAI-compatible APIs (such as Deepseek), models that
+  call tools within their "reasoning" phase are now correctly handled
+  by gptel.
+
 * 0.9.9.3
 
 ** Breaking changes

@@ -2796,18 +2796,19 @@ PROCESS and _STATUS are process parameters."
         (plist-put proc-info :status http-msg)
         (gptel--fsm-transition fsm)     ;WAIT -> TYPE
         (when error (plist-put proc-info :error error))
-        (when response                  ;Look for a reasoning block
-          (if (string-match-p "^\\s-*<think>" response)
-              (when-let* ((idx (string-search "</think>" response)))
-                (with-demoted-errors "gptel callback error: %S"
-                  (funcall proc-callback
-                           (cons 'reasoning (substring response nil (+ idx 8)))
-                           proc-info))
-                (setq response
-                      (string-trim-left (substring response (+ idx 8)))))
-            (when-let* ((reasoning (plist-get proc-info :reasoning))
-                        ((stringp reasoning)))
-              (funcall proc-callback (cons 'reasoning reasoning) proc-info))))
+        ;; Look for a reasoning block
+        (if (and (stringp response) (string-match-p "^\\s-*<think>" response))
+            (when-let* ((idx (string-search "</think>" response)))
+              (with-demoted-errors "gptel callback error: %S"
+                (funcall proc-callback
+                         (cons 'reasoning (substring response nil (+ idx 8)))
+                         proc-info))
+              (setq response
+                    (string-trim-left (substring response (+ idx 8)))))
+          (when-let* ((reasoning (plist-get proc-info :reasoning))
+                      ((stringp reasoning)))
+            (funcall proc-callback (cons 'reasoning reasoning) proc-info)))
+        ;; Call callback with response text
         (when (or response (not (member http-status '("200" "100"))))
           (with-demoted-errors "gptel callback error: %S"
             (funcall proc-callback response proc-info))))
