@@ -1802,8 +1802,8 @@ for tool call results.  INFO contains the state of the request."
          (tool-marker (plist-get info :tool-marker))
          (tracking-marker (plist-get info :tracking-marker)))
     ;; Insert tool results
-    (when gptel-include-tool-results
-      (with-current-buffer (marker-buffer start-marker)
+    (with-current-buffer (marker-buffer start-marker)
+      (when gptel-include-tool-results
         (cl-loop
          for (tool args result) in tool-results
          with include-names =
@@ -1867,9 +1867,9 @@ for tool call results.  INFO contains the state of the request."
          (unless tracking-marker
            (setq tracking-marker (plist-get info :tracking-marker)))
          (if tool-marker
-               (move-marker tool-marker tracking-marker)
-             (setq tool-marker (copy-marker tracking-marker nil))
-             (plist-put info :tool-marker tool-marker))
+             (move-marker tool-marker tracking-marker)
+           (setq tool-marker (copy-marker tracking-marker nil))
+           (plist-put info :tool-marker tool-marker))
          (ignore-errors                 ;fold drawer
            (save-excursion
              (goto-char tracking-marker)
