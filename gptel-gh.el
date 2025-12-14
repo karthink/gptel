@@ -57,13 +57,13 @@
      :input-cost 1
      :output-cost 1
      :cutoff-date "2024-09")
-    (gpt-5-codex
+    (gpt-5.1-codex-max
      :description "Flagship model for coding, reasoning, and agentic tasks across domains"
      :capabilities (media tool-use json url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 272
-     :input-cost 1.25
-     :output-cost 10
+     :context-window 400
+     :input-cost 1
+     :output-cost 1
      :cutoff-date "2024-09")
     (gpt-5-mini
      :description "Faster, more cost-efficient version of GPT-5"
@@ -81,6 +81,14 @@
      :input-cost 1
      :output-cost 1
      :cutoff-date "2024-09")
+    (gpt-5.2
+     :description "The best model for coding and agentic tasks"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 264
+     :input-cost 1
+     :output-cost 1
+     :cutoff-date "2025-08")
     (claude-sonnet-4
      :description "High-performance model with exceptional reasoning and efficiency"
      :capabilities (media tool-use cache)
@@ -113,6 +121,14 @@
      :input-cost 10
      :output-cost 10
      :cutoff-date "2025-03")
+    (claude-opus-4.5
+     :description "Most capable model for complex reasoning and advanced coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 144
+     :input-cost 3
+     :output-cost 3
+     :cutoff-date "2025-05")
     (gemini-2.5-pro
      :description "Next gen, high speed, multimodal for a diverse variety of tasks"
      :capabilities (tool-use json media)
