@@ -1952,7 +1952,7 @@ These differ from full "agentic" use in that the interactions are "one-shot", no
 - [[https://github.com/lakkiy/gptel-commit][gptel-commit]]: Generate commit messages using gptel.
 - [[https://github.com/douo/magit-gptcommit][magit-gptcommit]]: Generate commit messages within magit-status Buffer using gptel.
 - [[https://github.com/ragnard/gptel-magit/][gptel-magit]]: Generate commit messages for magit using gptel.
-- [[https://github.com/ArthurHeymans/gptel-forge][gptel-forge]]: Generate pull request message for forge using gptel.
+- [[https://github.com/ArthurHeymans/gptel-forge-prs][gptel-forge-prs]]: Generate pull request message for forge using gptel.
 
 *Chat interface addons*
 
