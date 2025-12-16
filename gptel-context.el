@@ -364,8 +364,8 @@ afterwards."
        if (bufferp source) do           ;Buffers and buffer regions
        (mapc #'gptel-context-remove (plist-get spec :overlays))
        else do (gptel-context-remove source) ;files or other types
-       finally do (setq gptel-context nil)))
-    (when verbose (message "Removed all gptel context sources."))))
+       finally do (setq gptel-context nil))
+      (when verbose (message "Removed all gptel context sources.")))))
 
 ;;; Context wrap
 (defun gptel-context--make-overlay (start end &optional advance)
