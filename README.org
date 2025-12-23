@@ -68,6 +68,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
     - [[#chatgpt][ChatGPT]]
     - [[#other-llm-backends][Other LLM backends]]
       - [[#optional-securing-api-keys-with-authinfo][(Optional) Securing API keys with =authinfo=]]
+      - [[#optional-reading-api-keys-from-environment-variables][(Optional) Reading API keys from environment variables]]
       - [[#azure][Azure]]
       - [[#gpt4all][GPT4All]]
       - [[#ollama][Ollama]]
@@ -253,6 +254,43 @@ You can use Emacs' built-in support for =authinfo= to store API keys required by
 machine api.openai.com login apikey password sk-secret-openai-api-key-goes-here
 machine api.anthropic.com login apikey password sk-secret-anthropic-api-key-goes-here
 #+end_src
+
+#+html: </details>
+#+html: <details><summary>
+**** (Optional) Reading API keys from environment variables
+#+html: </summary>
+Alternatively, you can fetch API keys from variables in Emacs' environment (such
+as =OPENAI_API_KEY=) using a function like this:
+
+#+begin_src emacs-lisp
+(defun gptel-api-key-from-environment (&optional var)
+  (lambda ()
+    (getenv (or var                     ;provided key
+                (thread-first           ;or fall back to <TYPE>_API_KEY
+                  (type-of gptel-backend)
+                  (symbol-name)
+                  (substring 6)
+                  (upcase)
+                  (concat "_API_KEY"))))))
+#+end_src
+
+Then set the =:key= when defining backend to the appropriate environment
+variable:
+
+#+begin_src emacs-lisp
+(gptel-make-anthropic "My-Claude-backend"
+  :key (gptel-api-key-from-environment "ANTHROPIC_API_KEY"))
+#+end_src
+
+If no environment variable is provided:
+
+#+begin_src emacs-lisp
+(gptel-make-gemini "My-Gemini-backend"
+  :key (gptel-api-key-from-environment))
+#+end_src
+
+it will try to guess the key from the backend type, /i.e./ try to use
+=GEMINI_API_KEY= when using the Gemini backend, and so on.
 
 #+html: </details>
 #+html: <details><summary>
