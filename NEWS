@@ -38,6 +38,10 @@
   ring redirection now correctly captures the full response from the
   LLM, including pre- and post-tool-call text.
 
+- =gptel-rewrite= now supports tool calling.  If =gptel-tools= is
+  non-nil the LLM can, for instance, read files to fetch more context
+  for the rewrite action.
+
 ** Notable bug fixes
 
 - Function-valued system messages/directives are now evaluated in the
