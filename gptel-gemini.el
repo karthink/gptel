@@ -72,44 +72,74 @@ Mutate state INFO with response metadata.
 If INCLUDE-TEXT is non-nil, include response text in the prompts
 list."
   (let* ((cand0 (map-nested-elt response '(:candidates 0)))
-         (parts (map-nested-elt cand0 '(:content :parts))))
+         (parts (map-nested-elt cand0 '(:content :parts)))
+         (grounding-meta (plist-get cand0 :groundingMetadata)))
     (plist-put info :stop-reason (plist-get cand0 :finishReason))
     (plist-put info :output-tokens
                (map-nested-elt
                 response '(:usageMetadata :candidatesTokenCount)))
-    (cl-loop
-     for part across parts
-     for tx = (plist-get part :text)
-     if (and tx (not (eq tx :null)))
-     if (plist-get part :thought)
-     do (unless (plist-get info :reasoning-block)
-          (plist-put info :reasoning-block 'in))
-     (plist-put info :reasoning (concat (plist-get info :reasoning) tx))
-     else do
-     (if (eq (plist-get info :reasoning-block) 'in)
-       (plist-put info :reasoning-block t))
-     and collect tx into content-strs end
-     else if (plist-get part :functionCall)
-     collect (copy-sequence it) into tool-use
-     finally do                         ;Add text and tool-calls to prompts list
-     (when (or tool-use include-text)
-       (let* ((data (plist-get info :data))
-              (prompts (plist-get data :contents))
-              (last-prompt (aref prompts (1- (length prompts)))))
-         (if (equal (plist-get last-prompt :role) "model")
-             ;; When streaming, the last prompt may already have the role
-             ;; "model" from prior calls to this function.  Append to its parts
-             ;; instead of adding a new model role then.
-             (plist-put last-prompt :parts
-                        (vconcat (plist-get last-prompt :parts) parts))
-           (plist-put                   ;otherwise create a new "model" role
-            data :contents
-            (vconcat prompts `((:role "model" :parts ,parts)))))))
-     (when tool-use                    ;Capture tool call data for running tools
-       (plist-put info :tool-use
-                  (nconc (plist-get info :tool-use) tool-use)))
-     finally return
-     (and content-strs (apply #'concat content-strs)))))
+    (concat
+     (cl-loop
+      for part across parts
+      for tx = (plist-get part :text)
+      if (and tx (not (eq tx :null)))
+      if (plist-get part :thought)
+      do (unless (plist-get info :reasoning-block)
+           (plist-put info :reasoning-block 'in))
+      (plist-put info :reasoning (concat (plist-get info :reasoning) tx))
+      else do
+      (if (eq (plist-get info :reasoning-block) 'in)
+          (plist-put info :reasoning-block t))
+      and collect tx into content-strs end
+      else if (plist-get part :functionCall)
+        collect (copy-sequence it) into tool-use
+      else if (plist-get part :executableCode)
+        collect (format "Executing code:\n```%s\n%s\n```\n\n"
+                        (downcase (plist-get it :language))
+                        (string-trim (plist-get it :code)))
+        into content-strs
+      else if (plist-get part :codeExecutionResult)
+        collect (format "Execution result (%s):\n```\n%s\n```\n\n"
+                        (plist-get it :outcome)
+                        (string-trim (plist-get it :output)))
+        into content-strs
+      finally do                         ;Add text and tool-calls to prompts list
+      (when (or tool-use include-text)
+        (let* ((data (plist-get info :data))
+               (prompts (plist-get data :contents))
+               (last-prompt (aref prompts (1- (length prompts)))))
+          (if (equal (plist-get last-prompt :role) "model")
+              ;; When streaming, the last prompt may already have the role
+              ;; "model" from prior calls to this function.  Append to its parts
+              ;; instead of adding a new model role then.
+              (plist-put last-prompt :parts
+                         (vconcat (plist-get last-prompt :parts) parts))
+            (plist-put                   ;otherwise create a new "model" role
+             data :contents
+             (vconcat prompts `((:role "model" :parts ,parts)))))))
+      (when tool-use                    ;Capture tool call data for running tools
+        (plist-put info :tool-use
+                   (nconc (plist-get info :tool-use) tool-use)))
+      finally return
+      (and content-strs (apply #'concat content-strs)))
+     ;; grounding metadata
+     (when grounding-meta
+       (concat
+        "\n"
+        (when-let ((queries (plist-get grounding-meta :webSearchQueries)))
+          (concat
+           "\nGrounding web search queries: "
+           (string-join (seq-into queries 'list) ", ")))
+        (when-let ((chunks (plist-get grounding-meta :groundingChunks)))
+          (cl-loop
+           for chunk being the elements of chunks using (index chunk-id)
+           collect (format "[%s]: %s (%s)\n"  ; markdown reference link syntax
+                           (1+ chunk-id)
+                           (map-nested-elt chunk '(:web :uri))
+                           (map-nested-elt chunk '(:web :title)))
+           into chunk-strs
+           finally return
+           (and chunk-strs (concat "\nGroundings:\n" (apply #'concat chunk-strs))))))))))
 
 (cl-defmethod gptel--request-data ((backend gptel-gemini) prompts)
   "JSON encode PROMPTS for sending to Gemini."
