@@ -19,7 +19,7 @@
 ** New models and backends
 
 - GitHub Copilot backend: Add support for =gpt-5.2=, =gpt-41-copilot=,
-  =clause-opus-4.5=, =gemini-3-pro-preview= and =gemini-3-flash-preview=
+  =claude-opus-4.5=, =gemini-3-pro-preview= and =gemini-3-flash-preview=
 
 - Add support for =gemini-3-pro-preview=, =gemini-3-flash-preview=.
 
