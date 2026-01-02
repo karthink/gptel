@@ -535,6 +535,7 @@ Convenient to use with `cl-multiple-value-bind'"
   ;; https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
   '((claude-sonnet-4-5-20250929  . "anthropic.claude-sonnet-4-5-20250929-v1:0")
     (claude-haiku-4-5-20251001   . "anthropic.claude-haiku-4-5-20251001-v1:0")
+	(claude-opus-4-5-20251101    . "anthropic.claude-opus-4-5-20251101-v1:0")
     (claude-opus-4-1-20250805    . "anthropic.claude-opus-4-1-20250805-v1:0")
     (claude-sonnet-4-20250514    . "anthropic.claude-sonnet-4-20250514-v1:0")
     (claude-opus-4-20250514      . "anthropic.claude-opus-4-20250514-v1:0")
