@@ -4,7 +4,7 @@
 
 ** Breaking changes
 
-- The models =o3=, =o3-mini=, =o4-mini=, =claude-3.5-sonnet=,
+- The models =gpt-5-codex=, =o3=, =o3-mini=, =o4-mini=, =claude-3.5-sonnet=,
   =claude-3.7-sonnet=, =claude-3.7-sonnet-thought=, =claude-opus-4= and
   =gemini-2.0-flash-001= have been removed from the default list of GitHub
   Copilot models.  These models are no longer available in the GitHub Copilot
@@ -18,10 +18,12 @@
 
 ** New models and backends
 
-- GitHub Copilot backend: Add support for =gpt-41-copilot= and
-  =gemini-3-pro-preview=
+- GitHub Copilot backend: Add support for =gpt-5.2=, =gpt-41-copilot=,
+  =claude-opus-4.5=, =gemini-3-pro-preview= and =gemini-3-flash-preview=
 
-- Add support for =gemini-3-pro-preview=.
+- Bedrock backend: Add support for =claude-opus-4.5= and =nova-2-lite=
+
+- Add support for =gemini-3-pro-preview=, =gemini-3-flash-preview=.
 
 - Add support for =gpt-5.1=.
 
@@ -38,6 +40,10 @@
   ring redirection now correctly captures the full response from the
   LLM, including pre- and post-tool-call text.
 
+- =gptel-rewrite= now supports tool calling.  If =gptel-tools= is
+  non-nil the LLM can, for instance, read files to fetch more context
+  for the rewrite action.
+
 ** Notable bug fixes
 
 - Function-valued system messages/directives are now evaluated in the
@@ -45,6 +51,10 @@
   context of the current buffer correctly.  (Previously they were
   evaluated in a temporary buffer used to construct the query, leading
   to unexpected behavior.)
+
+- When using OpenAI-compatible APIs (such as Deepseek), models that
+  call tools within their "reasoning" phase are now correctly handled
+  by gptel.
 
 * 0.9.9.3
 

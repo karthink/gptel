@@ -272,7 +272,7 @@ See generic implementation for full documentation."
              if text
              if role
              collect (list :role "user" :parts `[(:text ,text)]) into prompts
-             else collect (list :role "model" :parts `(:text ,text)) into prompts
+             else collect (list :role "model" :parts `[(:text ,text)]) into prompts
              finally return prompts)))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-gemini) &optional max-entries)
@@ -286,7 +286,7 @@ See generic implementation for full documentation."
             ('response
              (when-let* ((content (gptel--trim-prefixes
                                    (buffer-substring-no-properties (point) prev-pt))))
-               (push (list :role "model" :parts (list :text content)) prompts)))
+               (push (list :role "model" :parts `[(:text ,content)]) prompts)))
             (`(tool . ,_id)
              (save-excursion
                (condition-case nil
@@ -414,6 +414,17 @@ Media files, if present, are placed in `gptel-context'."
      :context-window 1048               ; 65536 output token limit
      :input-cost 2.0                    ; 4.0 for >200k tokens
      :output-cost 12.00                 ; 18.0 for >200k tokens
+     :cutoff-date "2025-01")
+    (gemini-3-flash-preview
+     :description "Most intelligent Gemini model built for speed"
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"
+                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 1048               ; 65536 output token limit
+     :input-cost 0.50
+     :output-cost 3.00
      :cutoff-date "2025-01")
     (gemini-2.5-pro
      :description "Most powerful Gemini thinking model with state-of-the-art performance"

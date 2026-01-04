@@ -224,6 +224,46 @@
 
 
 ;;; User options
+(defcustom gptel-pre-response-hook nil
+  "Hook run before inserting the LLM response into the current buffer.
+
+This hook is called in the buffer where the LLM response will be
+inserted.
+
+Note: this hook only runs if the request succeeds."
+  :type 'hook
+  :group 'gptel)
+
+(define-obsolete-variable-alias
+  'gptel-post-response-hook 'gptel-post-response-functions
+  "0.6.0"
+  "Post-response functions are now called with two arguments: the
+start and end buffer positions of the response.")
+
+(defcustom gptel-post-response-functions nil
+  "Abnormal hook run after inserting the LLM response into the current buffer.
+
+This hook is called in the buffer to which the LLM response is
+sent, and after the full response has been inserted.  Each
+function is called with two arguments: the response beginning and
+end positions.
+
+Note: this hook runs even if the request fails.  In this case the
+response beginning and end positions are both the cursor position
+at the time of the request."
+  :type 'hook
+  :group 'gptel)
+
+(add-hook 'gptel-post-response-functions 'pulse-momentary-highlight-region 70)
+
+(defcustom gptel-post-stream-hook nil
+  "Hook run after each insertion of the LLM's streaming response.
+
+This hook is called in the buffer from which the prompt was sent
+to the LLM, and after a text insertion."
+  :type 'hook
+  :group 'gptel)
+
 (defcustom gptel-save-state-hook nil
   "Hook run before gptel saves model parameters to a file.
 
@@ -363,33 +403,44 @@ Note: This will move the cursor."
           (scroll-up-command))
       (error nil))))
 
-(defun gptel-beginning-of-response (&optional _ _ arg)
-  "Move point to the beginning of the LLM response ARG times."
+(defun gptel-beginning-of-response (&optional beg _end arg)
+  "Move point to BEG, or to the beginning of the LLM response ARG times."
   (interactive (list nil nil
                      (prefix-numeric-value current-prefix-arg)))
-  (gptel-end-of-response nil nil (- (or arg 1))))
+  (gptel-end-of-response beg nil (- (or arg 1))))
 
-(defun gptel-end-of-response (&optional _ _ arg)
-  "Move point to the end of the LLM response ARG times."
+(defun gptel-end-of-response (&optional beg end arg)
+  "Move point to end of LLM response.
+
+With BEG, start search from BEG when ARG is negative.
+With END, start search from END when ARG is positive.
+Otherwise move ARG times, defaulting to 1."
   (interactive (list nil nil
                      (prefix-numeric-value current-prefix-arg)))
   (unless arg (setq arg 1))
-  (let ((search (if (> arg 0)
-                    #'text-property-search-forward
-                  #'text-property-search-backward)))
+  (let* ((search (if (> arg 0)
+                     #'text-property-search-forward
+                   #'text-property-search-backward))
+         (goto-prefix-end
+          (lambda () (when-let* ((prefix (gptel-prompt-prefix-string))
+                            ((not (string-empty-p prefix)))
+                            ((looking-at (concat "\n\\{1,2\\}"
+                                                 (regexp-quote prefix) "?"))))
+                  (goto-char (match-end 0)))))
+         (goto-prefix-beg
+          (lambda () (when-let* ((prefix (gptel-response-prefix-string))
+                            ((not (string-empty-p prefix)))
+                            ((looking-back (concat (regexp-quote prefix) "?")
+                                           (point-min))))
+                  (goto-char (match-beginning 0))))))
+    (cond
+     ((and end (> arg 0)) (goto-char end) (cl-decf arg) (funcall goto-prefix-end))
+     ((and beg (< arg 0)) (goto-char beg) (cl-incf arg) (funcall goto-prefix-beg)))
     (dotimes (_ (abs arg))
       (funcall search 'gptel 'response t)
       (if (> arg 0)
-          (when-let* ((prefix (gptel-prompt-prefix-string))
-                      ((not (string-empty-p prefix)))
-                      ((looking-at (concat "\n\\{1,2\\}"
-                                           (regexp-quote prefix) "?"))))
-            (goto-char (match-end 0)))
-        (when-let* ((prefix (gptel-response-prefix-string))
-                    ((not (string-empty-p prefix)))
-                    ((looking-back (concat (regexp-quote prefix) "?")
-                                   (point-min))))
-          (goto-char (match-beginning 0)))))))
+          (funcall goto-prefix-end)
+        (funcall goto-prefix-beg)))))
 
 (defun gptel-markdown-cycle-block ()
   "Cycle code blocks in Markdown."
@@ -1136,32 +1187,28 @@ No state transition here since that's handled by the process sentinels."
                               start-marker))
          ;; start-marker may have been moved if :buffer was read-only
          (gptel-buffer (marker-buffer start-marker)))
-    ;; Run hook in visible window to set window-point, BUG #269
-    (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
-        (with-selected-window gptel-window
-          (mapc (lambda (f) (funcall f (marker-position start-marker)
-                                (marker-position tracking-marker)))
-                (plist-get info :post))
-          (run-hook-with-args
-           'gptel-post-response-functions
-           (marker-position start-marker) (marker-position tracking-marker)))
-      (with-current-buffer gptel-buffer
-        (mapc (lambda (f) (funcall f (marker-position start-marker)
-                              (marker-position tracking-marker)))
-              (plist-get info :post))
-        (run-hook-with-args
-         'gptel-post-response-functions
-         (marker-position start-marker) (marker-position tracking-marker))))
     (with-current-buffer gptel-buffer
       (if (not tracking-marker)         ;Empty response
           (when gptel-mode (gptel--update-status " Empty response" 'success))
-        (pulse-momentary-highlight-region start-marker tracking-marker)
+        (set-marker-insertion-type tracking-marker nil) ;Lock tracking-marker
         (when gptel-mode
           (unless (plist-get info :in-place)
             (save-excursion (goto-char tracking-marker)
                             (insert gptel-response-separator
                                     (gptel-prompt-prefix-string))))
-          (gptel--update-status  " Ready" 'success))))))
+          (gptel--update-status  " Ready" 'success))))
+    ;; Run hook in visible window to set window-point, BUG #269
+    (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
+        (with-selected-window gptel-window
+          (mapc (lambda (f) (funcall f info)) (plist-get info :post))
+          (run-hook-with-args
+           'gptel-post-response-functions
+           (marker-position start-marker) (marker-position tracking-marker)))
+      (with-current-buffer gptel-buffer
+        (mapc (lambda (f) (funcall f info)) (plist-get info :post))
+        (run-hook-with-args
+         'gptel-post-response-functions
+         (marker-position start-marker) (marker-position tracking-marker))))))
 
 (defun gptel--handle-error (fsm)
   "Check for errors in request state FSM.
@@ -1187,16 +1234,12 @@ Perform UI updates and run post-response hooks."
                  (string-trim (gptel--to-string error-msg)))))
     (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
         (with-selected-window gptel-window
-          (mapc (lambda (f) (funcall f (marker-position start-marker)
-                                (marker-position tracking-marker)))
-                (plist-get info :post))
+          (mapc (lambda (f) (funcall f info)) (plist-get info :post))
           (run-hook-with-args
            'gptel-post-response-functions
            (marker-position start-marker) (marker-position tracking-marker)))
       (with-current-buffer gptel-buffer
-        (mapc (lambda (f) (funcall f (marker-position start-marker)
-                              (marker-position tracking-marker)))
-              (plist-get info :post))
+        (mapc (lambda (f) (funcall f info)) (plist-get info :post))
         (run-hook-with-args
          'gptel-post-response-functions
          (marker-position start-marker) (marker-position tracking-marker))))
@@ -1214,16 +1257,12 @@ Perform UI updates and run post-response hooks."
                                    start-marker)))
     (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
         (with-selected-window gptel-window
-          (mapc (lambda (f) (funcall f (marker-position start-marker)
-                                (marker-position tracking-marker)))
-                (plist-get info :post))
+          (mapc (lambda (f) (funcall f info)) (plist-get info :post))
           (run-hook-with-args
            'gptel-post-response-functions
            (marker-position start-marker) (marker-position tracking-marker)))
       (with-current-buffer gptel-buffer
-        (mapc (lambda (f) (funcall f (marker-position start-marker)
-                              (marker-position tracking-marker)))
-              (plist-get info :post))
+        (mapc (lambda (f) (funcall f info)) (plist-get info :post))
         (run-hook-with-args
          'gptel-post-response-functions
          (marker-position start-marker) (marker-position tracking-marker))))
@@ -1763,8 +1802,8 @@ for tool call results.  INFO contains the state of the request."
          (tool-marker (plist-get info :tool-marker))
          (tracking-marker (plist-get info :tracking-marker)))
     ;; Insert tool results
-    (when gptel-include-tool-results
-      (with-current-buffer (marker-buffer start-marker)
+    (with-current-buffer (marker-buffer start-marker)
+      (when gptel-include-tool-results
         (cl-loop
          for (tool args result) in tool-results
          with include-names =
@@ -1828,9 +1867,9 @@ for tool call results.  INFO contains the state of the request."
          (unless tracking-marker
            (setq tracking-marker (plist-get info :tracking-marker)))
          (if tool-marker
-               (move-marker tool-marker tracking-marker)
-             (setq tool-marker (copy-marker tracking-marker nil))
-             (plist-put info :tool-marker tool-marker))
+             (move-marker tool-marker tracking-marker)
+           (setq tool-marker (copy-marker tracking-marker nil))
+           (plist-put info :tool-marker tool-marker))
          (ignore-errors                 ;fold drawer
            (save-excursion
              (goto-char tracking-marker)
@@ -2095,7 +2134,7 @@ example) apply the preset buffer-locally."
   (unless setter (setq setter #'set))
   (when-let* ((func (plist-get preset :pre))) (funcall func))
   (when-let* ((parents (plist-get preset :parents)))
-    (mapc #'gptel--apply-preset (ensure-list parents)))
+    (mapc (lambda (parent) (gptel--apply-preset parent setter)) (ensure-list parents)))
   (map-do
    (lambda (key val)
      (pcase key
@@ -2170,8 +2209,7 @@ PRESET is the name of a preset, or a spec (plist) of the form
         ((or :description :pre :post))
         (:parents
          (mapc (lambda (parent-preset)
-                 (nconc syms (gptel--preset-syms
-                              (gptel-get-preset parent-preset))))
+                 (nconc syms (gptel--preset-syms parent-preset)))
                (ensure-list val)))
         (:system (push 'gptel--system-message syms))
         (_ (if-let* ((var (or (intern-soft
