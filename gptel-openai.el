@@ -100,6 +100,7 @@
 (defmacro gptel--json-encode (object)
   (if (fboundp 'json-serialize)
       `(json-serialize ,object
+                       :object-type 'plist  ;; <--- FIX: Add this parameter
                        :null-object :null
                        :false-object :json-false)
     (require 'json)
@@ -107,7 +108,8 @@
     (defvar json-null)
     (declare-function json-encode "json" (object))
     `(let ((json-false :json-false)
-           (json-null  :null))
+           (json-null  :null)
+           (json-object-type 'plist))  ;; <--- FIX: Add this for fallback
        (json-encode ,object))))
 
 (defun gptel--process-models (models)
@@ -164,6 +166,12 @@ Throw an error if there is no match."
 (cl-defstruct (gptel-openai (:constructor gptel--make-openai)
                             (:copier nil)
                             (:include gptel-backend)))
+
+;;; Responses API State Management
+
+(defvar-local gptel--last-response-id nil
+  "ID of the last response from the Responses API.
+Used for stateful continuity via `previous_response_id'.")
 
 ;;; Responses API Detection
 
@@ -282,14 +290,18 @@ streaming."
                 ;; Stream completed
                 nil
 
-              ;; Parse JSON event
-              (when-let* ((event (gptel--json-read)))
-                (let ((item (plist-get event :output_item)))
+              ;; Parse JSON event with better error handling
+              (when-let* ((event (ignore-errors (gptel--json-read))))
+                (let ((item (and event (plist-get event :output_item))))
                   (when (and item (equal (plist-get item :type) "message"))
-                    (push (plist-get item :content) content-strs)))))))
+                    ;; FIX: Content is a vector of blocks, extract text from them
+                    (let ((content-blocks (plist-get item :content)))
+                      (dolist (block content-blocks)
+                        (when (equal (plist-get block :type) "output_text")
+                          (push (plist-get block :text) content-strs))))))))
       (error (goto-char (match-beginning 0))))
 
-    (apply #'concat (nreverse content-strs))))
+    (apply #'concat (nreverse content-strs))))))
 
 (cl-defmethod gptel--parse-response :around ((backend gptel-openai) response info)
   "Parse OpenAI API RESPONSE, dispatching by endpoint type."
@@ -338,10 +350,17 @@ Mutate state INFO with response metadata."
 
 BACKEND is a gptel-openai struct.
 RESPONSE is the API response as a plist.
-INFO is an info plist to update with metadata."
+INFO is an info plist to update with metadata.
+
+Also updates `gptel--last-response-id' for stateful continuity."
   (let ((output-items (plist-get response :output))
         (response-text "")
-        (tool-calls nil))
+        (tool-calls nil)
+        (resp-id (plist-get response :id)))
+
+    ;; Update stateful response ID for continuity
+    (when resp-id
+      (setq gptel--last-response-id resp-id))
 
     ;; Process each output item
     (when output-items
@@ -350,9 +369,14 @@ INFO is an info plist to update with metadata."
                 (cond
                  ;; Handle text output
                  ((equal item-type "message")
-                  (let ((content (plist-get item :content)))
-                    (when (and content (stringp content))
-                      (setq response-text (concat response-text content)))))
+                  ;; FIX: Content is an array of blocks, not a raw string
+                  (let ((content-blocks (plist-get item :content)))
+                    (when content-blocks
+                      (dolist (block content-blocks)
+                        (when (equal (plist-get block :type) "output_text")
+                          (let ((text (plist-get block :text)))
+                            (when (and text (stringp text))
+                              (setq response-text (concat response-text text)))))))))
 
                  ;; Handle function calls (tool support for future use)
                  ((equal item-type "function_call")
@@ -392,8 +416,9 @@ ITEM is an output item plist with type `function_call'."
   "Parse TOOLS for Responses API format.
 
 For now, return built-in tool types like 'apply_patch' and 'shell'."
-  (list (list :type "apply_patch")
-        (list :type "shell")))
+  (vector ;; <--- FIX: Changed 'list' to 'vector' for JSON array compliance
+   (list :type "apply_patch")
+   (list :type "shell")))
 
 (cl-defmethod gptel--request-data :around ((backend gptel-openai) prompts)
   "Format PROMPTS for OpenAI API, dispatching by endpoint type."
@@ -449,18 +474,18 @@ PROMPTS is a list of prompt property lists."
   (condition-case err
       (let ((input-items (mapcar
                           (lambda (prompt)
-                            (list :type (if (equal (plist-get prompt :role) "user")
-                                            "text"
-                                          "message")
+                            ;; FIX: Type must be "message" when using :role.
+                            ;; "input_text" is a shortcut but does not allow a :role field.
+                            (list :type "message" 
                                   :role (plist-get prompt :role)
-                                  :content (plist-get prompt :content)))
+                                  :content (vector (list :type "input_text"
+                                                        :text (plist-get prompt :content)))))
                           prompts)))
 
-        ;; Build core request
-        (let ((request-plist
-               `(:model ,(gptel--model-name gptel-model)
-                 :input [,@input-items]
-                 :store :json-false)))
+        ;; Build core request - FIX: Use proper plist instead of template
+        (let ((request-plist (list :model (gptel--model-name gptel-model)
+                                   :input (vconcat input-items)
+                                   :store :json-false)))
 
           ;; Add system message as instructions (Responses API uses `instructions')
           (when gptel--system-message
@@ -478,6 +503,10 @@ PROMPTS is a list of prompt property lists."
           (when (and gptel-use-tools gptel-tools)
             (plist-put request-plist :tools
                        (gptel--parse-responses-tools backend gptel-tools)))
+
+          ;; FIX: Add stateful response ID for continuity
+          (when gptel--last-response-id
+            (plist-put request-plist :previous_response_id gptel--last-response-id))
 
           ;; Merge with request parameters
           (gptel--merge-plists
