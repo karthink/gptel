@@ -98,19 +98,20 @@
        (json-read-from-string ,str))))
 
 (defmacro gptel--json-encode (object)
-  (if (fboundp 'json-serialize)
-      `(json-serialize ,object
-                       :object-type 'plist  ;; <--- FIX: Add this parameter
-                       :null-object :null
-                       :false-object :json-false)
-    (require 'json)
-    (defvar json-false)
-    (defvar json-null)
-    (declare-function json-encode "json" (object))
-    `(let ((json-false :json-false)
-           (json-null  :null)
-           (json-object-type 'plist))  ;; <--- FIX: Add this for fallback
-       (json-encode ,object))))
+  ;; FIX: We force the use of `json-encode` (Lisp implementation) instead of
+  ;; `json-serialize` (C implementation).
+  ;; Why: Your code uses Property Lists (plists) for requests. `json-serialize`
+  ;; treats lists as Arrays, not Objects, and does not support an :object-type
+  ;; parameter to change this behavior. `json-encode` supports plists via the
+  ;; `json-object-type` variable.
+  (require 'json)
+  (defvar json-false)
+  (defvar json-null)
+  (declare-function json-encode "json" (object))
+  `(let ((json-false :json-false)
+         (json-null  :null)
+         (json-object-type 'plist))
+     (json-encode ,object)))
 
 (defun gptel--process-models (models)
   "Convert items in MODELS to symbols with appropriate properties."
@@ -286,22 +287,21 @@ streaming."
     (condition-case nil
         (while (re-search-forward "^data:" nil t)
           (save-match-data
-            (if (looking-at " *\\[DONE\\]")
-                ;; Stream completed
-                nil
-
-              ;; Parse JSON event with better error handling
+            (unless (looking-at " *\\[DONE\\]")
+              ;; Parse JSON event
+              ;; Note: ignore-errors handles partial JSON chunks common in streams
               (when-let* ((event (ignore-errors (gptel--json-read))))
-                (let ((item (and event (plist-get event :output_item))))
-                  (when (and item (equal (plist-get item :type) "message"))
-                    ;; FIX: Content is a vector of blocks, extract text from them
-                    (let ((content-blocks (plist-get item :content)))
-                      (dolist (block content-blocks)
-                        (when (equal (plist-get block :type) "output_text")
-                          (push (plist-get block :text) content-strs))))))))
+                (when-let* ((item (plist-get event :output_item))
+                            ((equal (plist-get item :type) "message"))
+                            (content-blocks (plist-get item :content)))
+                  ;; Extract text from output_text blocks (handle Vectors or Lists)
+                  (seq-do (lambda (block)
+                            (when (equal (plist-get block :type) "output_text")
+                              (push (plist-get block :text) content-strs)))
+                          content-blocks))))))
       (error (goto-char (match-beginning 0))))
 
-    (apply #'concat (nreverse content-strs))))))
+    (apply #'concat (nreverse content-strs))))
 
 (cl-defmethod gptel--parse-response :around ((backend gptel-openai) response info)
   "Parse OpenAI API RESPONSE, dispatching by endpoint type."
@@ -358,32 +358,30 @@ Also updates `gptel--last-response-id' for stateful continuity."
         (tool-calls nil)
         (resp-id (plist-get response :id)))
 
-    ;; Update stateful response ID for continuity
-    (when resp-id
-      (setq gptel--last-response-id resp-id))
+    ;; Update stateful response ID in the original buffer (not the temp process buffer)
+    (when (and resp-id (plist-get info :buffer))
+      (with-current-buffer (plist-get info :buffer)
+        (setq gptel--last-response-id resp-id)))
 
-    ;; Process each output item
+    ;; Process output items
     (when output-items
-      (mapc (lambda (item)
-              (let ((item-type (plist-get item :type)))
-                (cond
-                 ;; Handle text output
-                 ((equal item-type "message")
-                  ;; FIX: Content is an array of blocks, not a raw string
-                  (let ((content-blocks (plist-get item :content)))
-                    (when content-blocks
-                      (dolist (block content-blocks)
-                        (when (equal (plist-get block :type) "output_text")
-                          (let ((text (plist-get block :text)))
-                            (when (and text (stringp text))
-                              (setq response-text (concat response-text text)))))))))
+      (seq-do (lambda (item)
+                (let ((item-type (plist-get item :type)))
+                  (cond
+                   ;; Handle text output - content is array of blocks
+                   ((equal item-type "message")
+                    (when-let* ((content-blocks (plist-get item :content)))
+                      (seq-do (lambda (block)
+                                (when (equal (plist-get block :type) "output_text")
+                                  (when-let* ((text (plist-get block :text)))
+                                    (setq response-text (concat response-text text)))))
+                              content-blocks)))
 
-                 ;; Handle function calls (tool support for future use)
-                 ((equal item-type "function_call")
-                  (let ((call-spec (gptel--parse-responses-tool-call item)))
-                    (when call-spec
-                      (push call-spec tool-calls)))))))
-            output-items))
+                   ;; Handle function calls (tool support)
+                   ((equal item-type "function_call")
+                    (when-let* ((call-spec (gptel--parse-responses-tool-call item)))
+                      (push call-spec tool-calls))))))
+              output-items))
 
     ;; Store tool calls in info
     (when tool-calls
@@ -393,7 +391,8 @@ Also updates `gptel--last-response-id' for stateful continuity."
     (plist-put info :stop-reason (plist-get response :stop_reason))
 
     (when-let* ((usage (plist-get response :usage)))
-      (plist-put info :output-tokens (plist-get usage :completion_tokens)))
+      ;; FIX: Use :output_tokens for Responses API
+      (plist-put info :output-tokens (plist-get usage :output_tokens)))
 
     response-text))
 
@@ -476,10 +475,10 @@ PROMPTS is a list of prompt property lists."
                           (lambda (prompt)
                             ;; FIX: Type must be "message" when using :role.
                             ;; "input_text" is a shortcut but does not allow a :role field.
-                            (list :type "message" 
+                            (list :type "message"
                                   :role (plist-get prompt :role)
                                   :content (vector (list :type "input_text"
-                                                        :text (plist-get prompt :content)))))
+                                                         :text (plist-get prompt :content)))))
                           prompts)))
 
         ;; Build core request - FIX: Use proper plist instead of template
