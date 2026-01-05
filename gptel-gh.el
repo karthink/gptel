@@ -336,19 +336,19 @@ It must match an existing backend.
 
 In SSH sessions, the URL and code will be displayed for manual entry
 instead of attempting to open a browser automatically."
-  (interactive (list (let ((known-usernames (gptel--gh-get-registered-usernames)))
-                       (cond
-                        ((= 0 (length known-usernames))
-                         (user-error "No GitHub copilot backends registered"))
-                        ((= 1 (length known-usernames))
-                         (car known-usernames))
-                        (t
-                         (let ((choice (completing-read "Choose GitHub username: " known-usernames
-                                                        nil t nil nil nil nil)))
-                           (if (string= choice gptel--gh-default-username-placeholder)
-                               ""
-                             choice)))))))
-  (message "Logging in using '%s'" github-username)
+  (interactive (list (let* ((known-usernames (gptel--gh-get-registered-usernames))
+                            (chosen-username (cond
+                                              ((= 0 (length known-usernames))
+                                               (user-error "No GitHub copilot backends registered"))
+                                              ((= 1 (length known-usernames))
+                                              (car known-usernames))
+                                              (t
+                                               (completing-read "Choose GitHub username: "
+                                                                known-usernames nil t nil
+                                                                nil nil nil)))))
+                       (if (string= chosen-username gptel--gh-default-username-placeholder)
+                           ""
+                         chosen-username))))
   (let ((gh-backends (gptel--gh-get-backends-by-username github-username))
         ;; Detect SSH sessions
         (in-ssh-session (or (getenv "SSH_CLIENT")
