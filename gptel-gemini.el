@@ -125,12 +125,12 @@ list."
                                  :threshold "BLOCK_NONE")]))
         params)
     (if gptel--system-message
-        (plist-put prompts-plist :system_instruction
-                   `(:parts (:text ,gptel--system-message))))
+        (plist-put prompts-plist :systemInstruction
+                   `(:parts [(:text ,gptel--system-message)])))
     (when gptel-use-tools
       (when (eq gptel-use-tools 'force)
-        (plist-put prompts-plist :tool_config
-                   '(:function_calling_config (:mode "ANY"))))
+        (plist-put prompts-plist :toolConfig
+                   '(:functionCallingConfig (:mode "ANY"))))
       (when gptel-tools
         (plist-put prompts-plist :tools
                    (gptel--parse-tools backend gptel-tools))))
@@ -223,7 +223,7 @@ TOOLS is a list of `gptel-tool' structs, which see."
                                       (plist-get arg :name)))
                         (gptel-tool-args tool)))))))
    into tool-specs
-   finally return `[(:function_declarations ,(vconcat tool-specs))]))
+   finally return `[(:functionDeclarations ,(vconcat tool-specs))]))
 
 (cl-defmethod gptel--parse-tool-results ((_backend gptel-gemini) tool-use)
   "Return a prompt containing tool call results in TOOL-USE."
