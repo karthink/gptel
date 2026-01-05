@@ -212,7 +212,7 @@
 (defconst gptel--gh-default-username-placeholder "[Default account]")
 
 (defun gptel--gh-get-registered-usernames ()
-  (if-let* ((gh-backends (seq-filter
+  (when-let* ((gh-backends (seq-filter
                           (lambda (b)
                             (gptel--gh-p b))
                           (mapcar #'cdr gptel--known-backends)))
