@@ -209,6 +209,21 @@
     ("editor-version" . ,(concat "emacs/" emacs-version))))
 
 (defconst gptel--gh-client-id "Iv1.b507a08c87ecfe98")
+(defconst gptel--gh-default-username-placeholder "[Default account]")
+
+(defun gptel--gh-get-registered-usernames ()
+  (if-let* ((gh-backends (seq-filter
+                          (lambda (b)
+                            (gptel--gh-p b))
+                          (mapcar #'cdr gptel--known-backends)))
+            (usernames (mapcar
+                        (lambda (b)
+                          (let ((username (gptel--gh-github-username b)))
+                            (if (string= username "")
+                                gptel--gh-default-username-placeholder
+                              username)))
+                        gh-backends)))
+      (seq-uniq usernames)))
 
 (defun gptel--gh-get-backends-by-username (github-username)
   (seq-filter (lambda (b) (and (gptel--gh-p b)
@@ -321,7 +336,18 @@ It must match an existing backend.
 
 In SSH sessions, the URL and code will be displayed for manual entry
 instead of attempting to open a browser automatically."
-  (interactive)
+  (interactive (list (let ((known-usernames (gptel--gh-get-registered-usernames)))
+                       (cond
+                        ((= 0 (length known-usernames))
+                         (user-error "No GitHub copilot backends registered"))
+                        ((= 1 (length known-usernames))
+                         (car known-usernames))
+                        (t
+                         (let ((choice (completing-read "Choose GitHub username: " known-usernames
+                                                        nil t nil nil nil nil)))
+                           (if (string= choice gptel--gh-default-username-placeholder)
+                               ""
+                             choice)))))))
   (message "Logging in using '%s'" github-username)
   (let ((gh-backends (gptel--gh-get-backends-by-username github-username))
         ;; Detect SSH sessions
