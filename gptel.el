@@ -2252,7 +2252,7 @@ Before applying the preset, \"@foo\" is removed from the prompt and
 point is placed at its position."
   (when gptel--known-presets
     (text-property-search-backward 'gptel nil t)
-    (while (re-search-forward "@\\([^[:blank:]]+\\)\\_>" nil t)
+    (while (re-search-forward "@\\([^[:space:]]+\\)\\_>" nil t)
       ;; The following convoluted check is because re-search is much faster if
       ;; the search pattern begins with a non-whitespace char.
       (when (or (= (match-beginning 0) (point-min))
