@@ -743,7 +743,7 @@ generated from functions."
       ;; Move back so that the cursor is on the overlay when done.
       (unless (get-char-property (point) 'gptel-rewrite)
         (when (= (point) (region-end)) (run-at-time 0 nil #'backward-char 1)))
-      (deactivate-mark))))
+      (setq deactivate-mark t))))
 
 ;; Allow this to be called non-interactively for dry runs
 (put 'gptel--suffix-rewrite 'interactive-only nil)
