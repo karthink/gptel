@@ -281,12 +281,12 @@ input history list."
                     (delete-dups (cons message transient--history))))))
          (start-rewrite-maybe
           (lambda () (interactive)
+            (when (minibufferp) (funcall set-rewrite-message))
             (if transient--prefix    ;Called from transient? Don't start rewrite
                 (run-at-time 0 nil #'transient-setup 'gptel-rewrite)
-              (run-at-time 0 nil #'gptel--suffix-rewrite gptel--rewrite-message))
-            (when (minibufferp)
-              (funcall set-rewrite-message)
-              (exit-minibuffer))))
+              (with-current-buffer cb
+                (gptel--suffix-rewrite gptel--rewrite-message)))
+            (when (minibufferp) (exit-minibuffer))))
          (start-transient
           (lambda () (interactive)
             (run-at-time 0 nil #'transient-setup 'gptel-rewrite)
@@ -302,9 +302,9 @@ input history list."
                 :callback
                 (lambda (msg)
                   (when msg
-                    (run-at-time 0 nil #'gptel--suffix-rewrite)
                     (push (buffer-local-value 'gptel--rewrite-message cb)
-                          (alist-get 'gptel--infix-rewrite-extra transient-history)))
+                          (alist-get 'gptel--infix-rewrite-extra transient-history))
+                    (with-current-buffer cb (gptel--suffix-rewrite)))
                   (when (minibufferp) (exit-minibuffer)))))))
          (minibuffer-local-map
           (make-composed-keymap (define-keymap
@@ -742,7 +742,7 @@ generated from functions."
              :callback #'gptel--rewrite-callback)
       ;; Move back so that the cursor is on the overlay when done.
       (unless (get-char-property (point) 'gptel-rewrite)
-        (when (= (point) (region-end)) (backward-char 1)))
+        (when (= (point) (region-end)) (run-at-time 0 nil #'backward-char 1)))
       (deactivate-mark))))
 
 ;; Allow this to be called non-interactively for dry runs
