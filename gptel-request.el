@@ -884,8 +884,8 @@ MODE-SYM is typically a major-mode symbol."
 (cl-defun gptel--url-retrieve (url &key method data headers)
   "Retrieve URL synchronously with METHOD, DATA and HEADERS."
   (declare (indent 1))
-  (let ((url-request-method (if (eq method'post) "POST" "GET"))
-        (url-request-data (encode-coding-string (gptel--json-encode data) 'utf-8))
+  (let ((url-request-method (if (eq method 'post) "POST" "GET"))
+        (url-request-data (when (eq method 'post) (encode-coding-string (gptel--json-encode data) 'utf-8)))
         (url-mime-accept-string "application/json")
         (url-request-extra-headers
          `(("content-type" . "application/json")
