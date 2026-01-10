@@ -47,47 +47,39 @@ Values:
   on  Highlight tools and categories involved in duplicate tool names.
   off Do not highlight duplicates.
 
-When highlighting is on:
-- Category entries that contain one or more duplicated tool names display a warning symbol (⚠) after the category name.
-- Each duplicated tool name within a category also displays a warning symbol (⚠) after the tool name.
+When highlighting is on: - Category entries that contain one or more
+duplicated tool names display a warning symbol plus the count (⚠N) after
+the category name, where N is the number of duplicated tool names in
+that category.  - Each duplicated tool name within a category also
+displays a warning symbol (⚠) after the tool name.
 
-No other disambiguation text (tags, counts, provider lists) is shown.
+No other disambiguation text (tags, provider lists) is shown.
 
 Changing this requires reopening the transient to take effect."
   :group 'gptel-transient-ui
   :type '(choice (const :tag "Highlight duplicates" on)
                  (const :tag "No highlighting" off)))
 
-;; Backwards compatibility: convert legacy values auto/always/off -> on/off
-(when (and (boundp 'gptel-transient-disambiguate-tools)
-           (not (memq gptel-transient-disambiguate-tools '(on off))))
-  (setq gptel-transient-disambiguate-tools
-        (if (eq gptel-transient-disambiguate-tools 'off) 'off 'on)))
-
-(defun gptel-transient--cat-label (category)
-  "Return a short label for CATEGORY. Drops the mcp- prefix if present."
-  (if (string-prefix-p "mcp-" category)
-      (substring category 4)
-    category))
-
 (defun gptel-transient--providers-for (tool-name &optional exclude-category)
-  "Return list of category labels providing TOOL-NAME.
+  "Return list of categories providing TOOL-NAME.
 Exclude EXCLUDE-CATEGORY if non-nil."
   (cl-loop for (category . tools) in gptel--known-tools
            when (and (not (equal category exclude-category))
                      (assoc tool-name tools))
-           collect (gptel-transient--cat-label category)))
+           collect category))
 
 (defun gptel-transient--ambiguous-p (tool-name)
   "Return non-nil if TOOL-NAME appears in more than one category."
   (> (length (gptel-transient--providers-for tool-name)) 1))
 
-(defun gptel-transient--category-conflict-p (category)
-  "Return non-nil if CATEGORY has any tools whose name also appears in another category."
-  (when-let* ((tools-alist (cdr (assoc category gptel--known-tools))))
-    (cl-some (lambda (tool-pair)
-               (gptel-transient--ambiguous-p (car tool-pair)))
-             tools-alist)))
+(defun gptel-transient--category-conflict-count (category)
+  "Return count of duplicated tool names in CATEGORY.
+A duplicated tool name is one that appears in more than one category."
+  (let ((count 0))
+    (when-let* ((tools-alist (cdr (assoc category gptel--known-tools))))
+      (dolist (tool-pair tools-alist count)
+        (when (gptel-transient--ambiguous-p (car tool-pair))
+          (setq count (1+ count)))))))
 
 (defvar-local gptel--rewrite-overlays nil
   "List of active rewrite overlays in the buffer.")
@@ -1198,9 +1190,10 @@ only (\"oneshot\")."
         collect (list (key-description (list category-key))
                       (let* ((base (concat (propertize category 'face 'transient-heading)
                                             (make-string (max (- 14 (length category)) 0) ? )))
-                             (display (if (and (eq gptel-transient-disambiguate-tools 'on)
-                                               (gptel-transient--category-conflict-p category))
-                                          (concat base (propertize " ⚠" 'face 'warning))
+                             (count (and (eq gptel-transient-disambiguate-tools 'on)
+                                         (gptel-transient--category-conflict-count category)))
+                             (display (if (and count (> count 0))
+                                          (concat base (propertize (format " ⚠%d" count) 'face 'warning))
                                         base)))
                         display)
                       (char-to-string category-key)
