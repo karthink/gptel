@@ -281,15 +281,17 @@ input history list."
                     (delete-dups (cons message transient--history))))))
          (start-rewrite-maybe
           (lambda () (interactive)
-            (if transient--prefix    ;Called from transient? Don't start rewrite
-                (run-at-time 0 nil #'transient-setup 'gptel-rewrite)
-              (run-at-time 0 nil #'gptel--suffix-rewrite gptel--rewrite-message))
+            (with-current-buffer (window-buffer (minibuffer-selected-window))
+              (if transient--prefix    ;Called from transient? Don't start rewrite
+                  (transient-setup 'gptel-rewrite)
+                (gptel--suffix-rewrite gptel--rewrite-message)))
             (when (minibufferp)
               (funcall set-rewrite-message)
               (exit-minibuffer))))
          (start-transient
           (lambda () (interactive)
-            (run-at-time 0 nil #'transient-setup 'gptel-rewrite)
+            (with-current-buffer (window-buffer (minibuffer-selected-window))
+              (transient-setup 'gptel-rewrite))
             (when (minibufferp)
               (funcall set-rewrite-message)
               (exit-minibuffer))))
@@ -302,7 +304,8 @@ input history list."
                 :callback
                 (lambda (msg)
                   (when msg
-                    (run-at-time 0 nil #'gptel--suffix-rewrite)
+                    (with-current-buffer (window-buffer (minibuffer-selected-window))
+                      (gptel--suffix-rewrite))
                     (push (buffer-local-value 'gptel--rewrite-message cb)
                           (alist-get 'gptel--infix-rewrite-extra transient-history)))
                   (when (minibufferp) (exit-minibuffer)))))))
@@ -743,7 +746,7 @@ generated from functions."
       ;; Move back so that the cursor is on the overlay when done.
       (unless (get-char-property (point) 'gptel-rewrite)
         (when (= (point) (region-end)) (backward-char 1)))
-      (deactivate-mark))))
+      (setq deactivate-mark t))))
 
 ;; Allow this to be called non-interactively for dry runs
 (put 'gptel--suffix-rewrite 'interactive-only nil)
