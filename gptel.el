@@ -1033,12 +1033,14 @@ buffers."
    (gptel-highlight-mode
     (when (memq 'margin gptel-highlight-methods)
       (setq left-margin-width (1+ left-margin-width))
-      (set-window-buffer (selected-window) (current-buffer)))
+      (if-let* ((win (get-buffer-window (current-buffer))))
+          (set-window-buffer win (current-buffer))))
     (jit-lock-register #'gptel-highlight--update)
     (gptel-highlight--update (point-min) (point-max)))
    (t (when (memq 'margin gptel-highlight-methods)
         (setq left-margin-width (max (1- left-margin-width) 0))
-        (set-window-buffer (selected-window) (current-buffer)))
+        (if-let* ((win (get-buffer-window (current-buffer))))
+            (set-window-buffer win (current-buffer))))
       (jit-lock-unregister #'gptel-highlight--update)
       (without-restriction
         (remove-overlays nil nil 'gptel-highlight t)))))
