@@ -83,32 +83,35 @@
     (declare-function json-read "json" ())
     `(let ((json-object-type 'plist)
            (json-null :null))
-      (json-read))))
+       (json-read))))
 
 (defmacro gptel--json-read-string (str)
   (if (fboundp 'json-parse-string)
       `(json-parse-string ,str
-        :object-type 'plist
-        :null-object nil
-        :false-object :json-false)
+                          :object-type 'plist
+                          :null-object nil
+                          :false-object :json-false)
     (require 'json)
     (defvar json-object-type)
     (declare-function json-read-from-string "json" ())
     `(let ((json-object-type 'plist))
-      (json-read-from-string ,str))))
+       (json-read-from-string ,str))))
 
 (defmacro gptel--json-encode (object)
-  (if (fboundp 'json-serialize)
-      `(json-serialize ,object
-        :null-object :null
-        :false-object :json-false)
-    (require 'json)
-    (defvar json-false)
-    (defvar json-null)
-    (declare-function json-encode "json" (object))
-    `(let ((json-false :json-false)
-           (json-null  :null))
-      (json-encode ,object))))
+  ;; FIX: We force the use of `json-encode` (Lisp implementation) instead of
+  ;; `json-serialize` (C implementation).
+  ;; Why: Your code uses Property Lists (plists) for requests. `json-serialize`
+  ;; treats lists as Arrays, not Objects, and does not support an :object-type
+  ;; parameter to change this behavior. `json-encode` supports plists via the
+  ;; `json-object-type` variable.
+  (require 'json)
+  (defvar json-false)
+  (defvar json-null)
+  (declare-function json-encode "json" (object))
+  `(let ((json-false :json-false)
+         (json-null  :null)
+         (json-object-type 'plist))
+     (json-encode ,object)))
 
 (defun gptel--process-models (models)
   "Convert items in MODELS to symbols with appropriate properties."
@@ -149,8 +152,8 @@ Throw an error if there is no match."
 
 (gv-define-setter gptel-get-backend (val name)
   `(setf (alist-get ,name gptel--known-backends
-          nil t #'equal)
-    ,val))
+                    nil t #'equal)
+         ,val))
 
 (cl-defstruct
     (gptel-backend (:constructor gptel--make-backend)
@@ -164,6 +167,21 @@ Throw an error if there is no match."
 (cl-defstruct (gptel-openai (:constructor gptel--make-openai)
                             (:copier nil)
                             (:include gptel-backend)))
+
+;;; Responses API State Management
+
+(defvar-local gptel--last-response-id nil
+  "ID of the last response from the Responses API.
+Used for stateful continuity via `previous_response_id'.")
+
+;;; Responses API Detection
+
+(defun gptel--is-responses-api-p (endpoint)
+  "Check if ENDPOINT is for Responses API.
+
+Returns non-nil if endpoint contains `responses', nil otherwise."
+  (and (stringp endpoint)
+       (string-match-p "/responses" endpoint)))
 
 ;; How the following function works:
 ;;
@@ -190,6 +208,13 @@ Throw an error if there is no match."
 ;;
 ;; Finally we append any tool calls and accumulated reasoning text (from
 ;; :reasoning-chunks) to the (INFO -> :data -> :messages) list of prompts.
+
+(cl-defmethod gptel-curl--parse-stream :around ((backend gptel-openai) info)
+  "Parse OpenAI API streaming response, dispatching by endpoint type."
+  (let ((endpoint (gptel-backend-endpoint backend)))
+    (if (gptel--is-responses-api-p endpoint)
+        (gptel--parse-stream-responses backend info)
+      (cl-call-next-method))))
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai) info)
   "Parse an OpenAI API data stream.
@@ -250,7 +275,7 @@ information if the stream contains it."
                           (plist-put info :partial_json (list (plist-get func :arguments)))
                           ;; NOTE: Do NOT use `push' for this, it prepends and we lose the reference
                           (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
-                      ;; old tool block continues, so continue collecting arguments in :partial_json 
+                      ;; old tool block continues, so continue collecting arguments in :partial_json
                       (push (plist-get func :arguments) (plist-get info :partial_json)))))
                 ;; Check for reasoning blocks, currently only used by Openrouter
                 (unless (eq (plist-get info :reasoning-block) 'done)
@@ -272,6 +297,38 @@ information if the stream contains it."
       (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
+(defun gptel--parse-stream-responses (_backend _info)
+  "Parse Responses API streaming response via Server-Sent Events (SSE).
+
+BACKEND and INFO are passed but INFO is currently unused for basic
+streaming."
+  (let ((content-strs nil))
+    (condition-case nil
+        (while (re-search-forward "^data:" nil t)
+          (save-match-data
+            (unless (looking-at " *\\[DONE\\]")
+              ;; Parse JSON event
+              ;; Note: ignore-errors handles partial JSON chunks common in streams
+              (when-let* ((event (ignore-errors (gptel--json-read))))
+                (when-let* ((item (plist-get event :output_item))
+                            ((equal (plist-get item :type) "message"))
+                            (content-blocks (plist-get item :content)))
+                  ;; Extract text from output_text blocks (handle Vectors or Lists)
+                  (seq-do (lambda (block)
+                            (when (equal (plist-get block :type) "output_text")
+                              (push (plist-get block :text) content-strs)))
+                          content-blocks))))))
+      (error (goto-char (match-beginning 0))))
+
+    (apply #'concat (nreverse content-strs))))
+
+(cl-defmethod gptel--parse-response :around ((backend gptel-openai) response info)
+  "Parse OpenAI API RESPONSE, dispatching by endpoint type."
+  (let ((endpoint (gptel-backend-endpoint backend)))
+    (if (gptel--is-responses-api-p endpoint)
+        (gptel--parse-response-responses backend response info)
+      (cl-call-next-method))))
+
 (cl-defmethod gptel--parse-response ((_backend gptel-openai) response info)
   "Parse an OpenAI (non-streaming) RESPONSE and return response text.
 
@@ -288,9 +345,9 @@ Mutate state INFO with response metadata."
     ;; we check for both tool calls and responses independently.
     (when-let* ((tool-calls (plist-get message :tool_calls))
                 ((not (eq tool-calls :null))))
-      (gptel--inject-prompt        ; First add the tool call to the prompts list
+      (gptel--inject-prompt         ; First add the tool call to the prompts list
        (plist-get info :backend) (plist-get info :data) message)
-      (cl-loop             ;Then capture the tool call data for running the tool
+      (cl-loop                     ;Then capture the tool call data for running the tool
        for tool-call across tool-calls  ;replace ":arguments" with ":args"
        for call-spec = (copy-sequence (plist-get tool-call :function))
        do (ignore-errors (plist-put call-spec :args
@@ -306,6 +363,87 @@ Mutate state INFO with response metadata."
       (plist-put info :reasoning reasoning))
     (when (and content (not (or (eq content :null) (string-empty-p content))))
       content)))
+
+(defun gptel--parse-response-responses (_backend response info)
+  "Parse Responses API RESPONSE and extract response text.
+
+BACKEND is a gptel-openai struct.
+RESPONSE is the API response as a plist.
+INFO is an info plist to update with metadata.
+
+Also updates `gptel--last-response-id' for stateful continuity."
+  (let ((output-items (plist-get response :output))
+        (response-text "")
+        (tool-calls nil)
+        (resp-id (plist-get response :id)))
+
+    ;; Update stateful response ID in the original buffer (not the temp process buffer)
+    (when (and resp-id (plist-get info :buffer))
+      (with-current-buffer (plist-get info :buffer)
+        (setq gptel--last-response-id resp-id)))
+
+    ;; Process output items
+    (when output-items
+      (seq-do (lambda (item)
+                (let ((item-type (plist-get item :type)))
+                  (cond
+                   ;; Handle text output - content is array of blocks
+                   ((equal item-type "message")
+                    (when-let* ((content-blocks (plist-get item :content)))
+                      (seq-do (lambda (block)
+                                (when (equal (plist-get block :type) "output_text")
+                                  (when-let* ((text (plist-get block :text)))
+                                    (setq response-text (concat response-text text)))))
+                              content-blocks)))
+
+                   ;; Handle function calls (tool support)
+                   ((equal item-type "function_call")
+                    (when-let* ((call-spec (gptel--parse-responses-tool-call item)))
+                      (push call-spec tool-calls))))))
+              output-items))
+
+    ;; Store tool calls in info
+    (when tool-calls
+      (plist-put info :tool-use (nreverse tool-calls)))
+
+    ;; Store stop reason and usage
+    (plist-put info :stop-reason (plist-get response :stop_reason))
+
+    (when-let* ((usage (plist-get response :usage)))
+      ;; FIX: Use :output_tokens for Responses API
+      (plist-put info :output-tokens (plist-get usage :output_tokens)))
+
+    response-text))
+
+(defun gptel--parse-responses-tool-call (item)
+  "Parse a tool call from a Responses API output item.
+
+ITEM is an output item plist with type `function_call'."
+  (let ((name (plist-get item :name))
+        (arguments (plist-get item :arguments))
+        (call-id (plist-get item :id)))
+
+    (when (and name arguments)
+      (list :id call-id
+            :name name
+            :args (if (stringp arguments)
+                      (ignore-errors (gptel--json-read-string arguments))
+                    arguments)))))
+
+(defun gptel--parse-responses-tools (_backend _tools)
+  "Parse TOOLS for Responses API format.
+
+For now, return built-in tool types like 'apply_patch' and 'shell'."
+  (vector ;; <--- FIX: Changed 'list' to 'vector' for JSON array compliance
+   (list :type "apply_patch")
+   (list :type "shell")))
+
+(cl-defmethod gptel--request-data :around ((backend gptel-openai) prompts)
+  "Format PROMPTS for OpenAI API, dispatching by endpoint type."
+  (let ((endpoint (gptel-backend-endpoint backend)))
+    (if (gptel--is-responses-api-p endpoint)
+        (gptel--request-data-responses backend prompts)
+      (cl-call-next-method))))
 
 (cl-defmethod gptel--request-data ((backend gptel-openai) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
@@ -345,6 +483,58 @@ Mutate state INFO with response metadata."
      gptel--request-params
      (gptel-backend-request-params gptel-backend)
      (gptel--model-request-params  gptel-model))))
+
+(defun gptel--request-data-responses (backend prompts)
+  "Format PROMPTS for Responses API.
+
+BACKEND is a gptel-openai struct.
+PROMPTS is a list of prompt property lists."
+  (condition-case err
+      (let ((input-items (mapcar
+                          (lambda (prompt)
+                            ;; FIX: Type must be "message" when using :role.
+                            ;; "input_text" is a shortcut but does not allow a :role field.
+                            (list :type "message"
+                                  :role (plist-get prompt :role)
+                                  :content (vector (list :type "input_text"
+                                                         :text (plist-get prompt :content)))))
+                          prompts)))
+
+        ;; Build core request - FIX: Use proper plist instead of template
+        (let ((request-plist (list :model (gptel--model-name gptel-model)
+                                   :input (vconcat input-items)
+                                   :store :json-false)))
+
+          ;; Add system message as instructions (Responses API uses `instructions')
+          (when gptel--system-message
+            (plist-put request-plist :instructions gptel--system-message))
+
+          ;; Add temperature if specified
+          (when gptel-temperature
+            (plist-put request-plist :temperature gptel-temperature))
+
+          ;; Add max tokens (Responses API uses max_completion_tokens)
+          (when gptel-max-tokens
+            (plist-put request-plist :max_completion_tokens gptel-max-tokens))
+
+          ;; Add tools if enabled (Responses API has built-in tool support)
+          (when (and gptel-use-tools gptel-tools)
+            (plist-put request-plist :tools
+                       (gptel--parse-responses-tools backend gptel-tools)))
+
+          ;; FIX: Add stateful response ID for continuity
+          (when gptel--last-response-id
+            (plist-put request-plist :previous_response_id gptel--last-response-id))
+
+          ;; Merge with request parameters
+          (gptel--merge-plists
+           request-plist
+           (gptel--model-request-params gptel-model)
+           (gptel-backend-request-params backend))))
+    (error
+     (message "GPTel Responses API error formatting request: %s"
+              (error-message-string err))
+     nil)))
 
 (cl-defmethod gptel--parse-schema ((_backend gptel-openai) schema)
   (list :type "json_schema"
@@ -472,7 +662,7 @@ If the ID has the format used by a different backend, use as-is."
                  (push (list :role "user" :content content) prompts)))))
           (setq prev-pt (point)))
       (let ((content (string-trim (buffer-substring-no-properties
-                                    (point-min) (point-max)))))
+                                   (point-min) (point-max)))))
         (push (list :role "user" :content content) prompts)))
     prompts))
 
@@ -500,7 +690,7 @@ format."
    else if media collect
    `(:type "image_url"
      :image_url (:url ,(concat "data:" (plist-get part :mime)
-                        ";base64," (gptel--base64-encode media))))
+                               ";base64," (gptel--base64-encode media))))
    into parts-array
    else if (plist-get part :textfile) collect
    `(:type "text"
@@ -534,11 +724,14 @@ Media files, if present, are placed in `gptel-context'."
     (name &key curl-args models stream key request-params
           (header
            (lambda () (when-let* ((key (gptel--get-api-key)))
-                   `(("Authorization" . ,(concat "Bearer " key))))))
+                        `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.openai.com")
           (protocol "https")
           (endpoint "/v1/chat/completions"))
   "Register an OpenAI API-compatible backend for gptel with NAME.
+
+Supports both Chat Completions (/v1/chat/completions) and Responses API
+(/v1/responses) endpoints based on the ENDPOINT parameter.
 
 Keyword arguments:
 
@@ -558,9 +751,9 @@ For a list of currently recognized plist keys, see
 including both kinds of specs:
 
 :models
-\\='(gpt-3.5-turbo                         ;Simple specs
+\\='(gpt-3.5-turbo                          ;Simple specs
   gpt-4-turbo
-  (gpt-4o-mini                          ;Full spec
+  (gpt-4o-mini                           ;Full spec
    :description
    \"Affordable and intelligent small model for lightweight tasks\"
    :capabilities (media tool json url)
@@ -574,6 +767,7 @@ PROTOCOL (optional) specifies the protocol, https by default.
 
 ENDPOINT (optional) is the API endpoint for completions, defaults to
 \"/v1/chat/completions\".
+  For Responses API (agentic workflows), use \"/v1/responses\".
 
 HEADER (optional) is for additional headers to send with each
 request.  It should be an alist or a function that returns an
@@ -605,7 +799,7 @@ for."
     (prog1 backend
       (setf (alist-get name gptel--known-backends
                        nil nil #'equal)
-                  backend))))
+            backend))))
 
 ;;; Azure
 ;;;###autoload
