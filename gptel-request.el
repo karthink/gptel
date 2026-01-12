@@ -421,6 +421,14 @@ the same as t."
      :input-cost 1.25
      :output-cost 10
      :cutoff-date "2024-09")
+    (gpt-5.2
+     :description "The best model for coding and agentic tasks"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1.75
+     :output-cost 14
+     :cutoff-date "2025-08")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
      :capabilities (media reasoning)
@@ -884,8 +892,8 @@ MODE-SYM is typically a major-mode symbol."
 (cl-defun gptel--url-retrieve (url &key method data headers)
   "Retrieve URL synchronously with METHOD, DATA and HEADERS."
   (declare (indent 1))
-  (let ((url-request-method (if (eq method'post) "POST" "GET"))
-        (url-request-data (encode-coding-string (gptel--json-encode data) 'utf-8))
+  (let ((url-request-method (if (eq method 'post) "POST" "GET"))
+        (url-request-data (when (eq method 'post) (encode-coding-string (gptel--json-encode data) 'utf-8)))
         (url-mime-accept-string "application/json")
         (url-request-extra-headers
          `(("content-type" . "application/json")
