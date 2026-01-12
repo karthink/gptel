@@ -1846,7 +1846,7 @@ for tool call results.  INFO contains the state of the request."
                     "#+begin_tool "
                     truncated-call
                     (propertize
-                     (concat "\n" call "\n\n" (org-escape-code-in-string result))
+                     (org-escape-code-in-string (concat "\n" call "\n\n" result))
                      'gptel `(tool . ,id))
                     "\n#+end_tool\n")
                  ;; TODO(tool) else branch is handling all front-ends as markdown.

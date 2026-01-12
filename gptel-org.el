@@ -343,8 +343,8 @@ This removal is necessary to avoid auto-mimicry by LLMs."
 
 (defun gptel-org--unescape-tool-results ()
   "Undo escapes done to keep results from escaping blocks.
-Scans backward for gptel tool text property, reads the arguments, then
-unescapes the remainder."
+Scans backward for gptel tool text property, then unescapes the block
+contents."
   (save-excursion
     (goto-char (point-max))
     (let ((prev-pt (point)))
@@ -359,10 +359,6 @@ unescapes the remainder."
             ;; propertized.
             (when (looking-at-p "[[:space:]]*#\\+begin_tool")
               (goto-char (match-end 0)))
-            (condition-case nil
-                (read (current-buffer))
-              ((end-of-file invalid-read-syntax)
-               (message "Could not read tool arguments")))
             ;; TODO this code is able to put the point behind prev-pt, which
             ;; makes the region inverted.  The `max' catches this, but really
             ;; `read' and `looking-at' are the culprits.  Badly formed tool
