@@ -1432,6 +1432,8 @@ Optional RAW disables text properties and transformation."
            (with-current-buffer (marker-buffer start-marker)
              (goto-char (or tracking-marker start-marker))
              ;; (run-hooks 'gptel-pre-response-hook)
+             (message "DEBUG gptel-response-insert: bobp=%s in-place=%s tracking-marker=%s gptel-mode=%s"
+                      (bobp) (plist-get info :in-place) tracking-marker gptel-mode)
              (unless (or (bobp) (plist-get info :in-place)
                          tracking-marker)
                (insert gptel-response-separator)
