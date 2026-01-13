@@ -365,6 +365,11 @@ org heading."
       (let* ((parent-level (gptel-org--get-parent-heading-level))
              (target-level (if (> parent-level 0) (1+ parent-level) 1))
              (stars (make-string target-level ?*)))
+        (message "DEBUG dynamic-prefix: point=%s base=%S parent=%s target=%s at-heading=%s heading=%S"
+                 (point) base-prefix parent-level target-level
+                 (org-at-heading-p)
+                 (when (save-excursion (ignore-errors (org-back-to-heading t)) (org-at-heading-p))
+                   (org-get-heading t t t t)))
         (cond
          ;; Prefix starts with stars - replace them
          ((string-match "^\\(\\*+\\)\\(\\(?:.*\n?\\)?\\)" base-prefix)
