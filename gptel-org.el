@@ -1057,6 +1057,53 @@ is enabled, adjusts the prefix to use the correct heading level."
 (advice-add 'gptel-prompt-prefix-string :around #'gptel-org--advice-prompt-prefix)
 (advice-add 'gptel-response-prefix-string :around #'gptel-org--advice-response-prefix)
 
+
+;;; Response heading adjustment for subtree context
+
+(defun gptel-org--adjust-response-headings (beg end)
+  "Adjust heading levels in the response region from BEG to END.
+
+When `gptel-org-subtree-context' is enabled, any org headings in
+the AI response should be demoted to be children of the @assistant
+heading.  This prevents response headings from escaping the
+assistant subtree and breaking the conversation structure.
+
+For example, if the @assistant heading is at level 4 (****), any
+headings in the response should be at level 5 or deeper."
+  (when (and gptel-org-subtree-context
+             (derived-mode-p 'org-mode))
+    (save-excursion
+      ;; Find the @assistant heading level BEFORE narrowing
+      (let ((assistant-level
+             (save-excursion
+               (goto-char beg)
+               (if (re-search-backward org-outline-regexp-bol nil t)
+                   (org-outline-level)
+                 1)))
+            (min-response-level nil))
+        (save-restriction
+          (narrow-to-region beg end)
+          ;; First pass: find the minimum heading level in the response
+          (goto-char (point-min))
+          (while (re-search-forward org-outline-regexp-bol nil t)
+            (let ((level (org-outline-level)))
+              (when (or (null min-response-level)
+                        (< level min-response-level))
+                (setq min-response-level level))))
+          ;; Second pass: adjust headings if needed
+          (when (and min-response-level
+                     (<= min-response-level assistant-level))
+            ;; Need to demote all headings by (assistant-level - min-response-level + 1)
+            (let ((level-diff (- (1+ assistant-level) min-response-level)))
+              (goto-char (point-min))
+              (while (re-search-forward "^\\(\\*+\\)\\( \\)" nil t)
+                (let* ((current-stars (match-string 1))
+                       (new-level (+ (length current-stars) level-diff))
+                       (new-stars (make-string new-level ?*)))
+                  (replace-match (concat new-stars "\\2")))))))))))
+
+(add-hook 'gptel-post-response-functions #'gptel-org--adjust-response-headings)
+
 (provide 'gptel-org)
 ;;; gptel-org.el ends here
 
