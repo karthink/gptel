@@ -365,11 +365,6 @@ org heading."
       (let* ((parent-level (gptel-org--get-parent-heading-level))
              (target-level (if (> parent-level 0) (1+ parent-level) 1))
              (stars (make-string target-level ?*)))
-        (message "DEBUG dynamic-prefix: point=%s base=%S parent=%s target=%s at-heading=%s heading=%S"
-                 (point) base-prefix parent-level target-level
-                 (org-at-heading-p)
-                 (when (save-excursion (ignore-errors (org-back-to-heading t)) (org-at-heading-p))
-                   (org-get-heading t t t t)))
         (cond
          ;; Prefix starts with stars - replace them
          ((string-match "^\\(\\*+\\)\\(\\(?:.*\n?\\)?\\)" base-prefix)
@@ -1102,12 +1097,9 @@ headings in the response should be at level 5 or deeper."
              (save-excursion
                (goto-char beg)
                (if (re-search-backward org-outline-regexp-bol nil t)
-                   (prog1 (org-outline-level)
-                     (message "DEBUG adjust-headings: found heading=%S level=%s"
-                              (org-get-heading t t t t) (org-outline-level)))
+                   (org-outline-level)
                  1)))
             (min-response-level nil))
-        (message "DEBUG adjust-headings: beg=%s end=%s assistant-level=%s" beg end assistant-level)
         (save-restriction
           (narrow-to-region beg end)
           ;; First pass: find the minimum heading level in the response
@@ -1117,19 +1109,16 @@ headings in the response should be at level 5 or deeper."
               (when (or (null min-response-level)
                         (< level min-response-level))
                 (setq min-response-level level))))
-          (message "DEBUG adjust-headings: min-response-level=%s" min-response-level)
           ;; Second pass: adjust headings if needed
           (when (and min-response-level
                      (<= min-response-level assistant-level))
             ;; Need to demote all headings by (assistant-level - min-response-level + 1)
             (let ((level-diff (- (1+ assistant-level) min-response-level)))
-              (message "DEBUG adjust-headings: level-diff=%s, will adjust" level-diff)
               (goto-char (point-min))
               (while (re-search-forward "^\\(\\*+\\)\\( \\)" nil t)
                 (let* ((current-stars (match-string 1))
                        (new-level (+ (length current-stars) level-diff))
                        (new-stars (make-string new-level ?*)))
-                  (message "DEBUG adjust-headings: replacing %s with %s" current-stars new-stars)
                   (replace-match (concat new-stars "\\2")))))))))))
 
 (add-hook 'gptel-post-response-functions #'gptel-org--adjust-response-headings)

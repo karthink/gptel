@@ -1194,10 +1194,6 @@ No state transition here since that's handled by the process sentinels."
           (when gptel-mode (gptel--update-status " Empty response" 'success))
         (set-marker-insertion-type tracking-marker nil) ;Lock tracking-marker
         (when gptel-mode
-          (unless (plist-get info :in-place)
-            (save-excursion (goto-char tracking-marker)
-                            (insert gptel-response-separator
-                                    (gptel-prompt-prefix-string))))
           (gptel--update-status  " Ready" 'success))))
     ;; Run hook in visible window to set window-point, BUG #269
     (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
@@ -1210,7 +1206,14 @@ No state transition here since that's handled by the process sentinels."
         (mapc (lambda (f) (funcall f info)) (plist-get info :post))
         (run-hook-with-args
          'gptel-post-response-functions
-         (marker-position start-marker) (marker-position tracking-marker))))))
+         (marker-position start-marker) (marker-position tracking-marker))))
+    ;; Insert prompt prefix AFTER post-response hooks have run
+    ;; This ensures heading adjustments are complete before calculating prefix level
+    (when (and gptel-mode tracking-marker (not (plist-get info :in-place)))
+      (with-current-buffer gptel-buffer
+        (save-excursion (goto-char tracking-marker)
+                        (insert gptel-response-separator
+                                (gptel-prompt-prefix-string)))))))
 
 (defun gptel--handle-error (fsm)
   "Check for errors in request state FSM.
