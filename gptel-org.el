@@ -245,36 +245,55 @@ This is used to determine the correct heading level for chat entries
 when `gptel-org-subtree-context' is enabled."
   (save-excursion
     ;; First, get to the current heading if not already there
-    (unless (org-at-heading-p)
-      (ignore-errors (outline-back-to-heading t)))
-    ;; Walk up to find the task heading
-    ;; A heading is the task heading if:
-    ;; 1. It's not a chat heading itself, AND
-    ;; 2. It has at least one direct child that is a chat heading,
-    ;;    OR we've walked out of all chat-related subtrees
-    (let ((found nil))
-      (while (and (org-at-heading-p) (not found))
-        (if (gptel-org--chat-heading-p)
-            ;; This is a chat heading, keep going up
-            (ignore-errors (outline-up-heading 1 t))
-          ;; Not a chat heading - check if its children include chat headings
-          (let ((current-level (org-outline-level))
-                (has-chat-child nil))
-            (save-excursion
-              (outline-next-heading)
-              (when (and (org-at-heading-p)
-                         (= (org-outline-level) (1+ current-level))
-                         (gptel-org--chat-heading-p))
-                (setq has-chat-child t)))
-            (if has-chat-child
-                (setq found t)
-              ;; No chat children, continue up
-              (unless (ignore-errors (outline-up-heading 1 t))
-                ;; Can't go up anymore, use this level
-                (setq found t))))))
-      (if (org-at-heading-p)
-          (org-outline-level)
-        0))))
+    (let ((started-at-heading (org-at-heading-p)))
+      (unless started-at-heading
+        (ignore-errors (outline-back-to-heading t)))
+      ;; Check if we're inside a chat subtree by looking at ancestors
+      (let ((inside-chat-subtree
+             (save-excursion
+               (let ((in-chat nil))
+                 (while (and (not in-chat)
+                             (ignore-errors (outline-up-heading 1 t)))
+                   (when (gptel-org--chat-heading-p)
+                     (setq in-chat t)))
+                 in-chat))))
+        ;; Walk up to find the task heading
+        ;; A heading is the task heading if:
+        ;; 1. It's not a chat heading itself, AND
+        ;; 2. It has at least one direct child that is a chat heading,
+        ;;    OR we started from body text NOT inside a chat subtree (new conversation)
+        ;;    OR we've walked out of all chat-related subtrees
+        (let ((found nil)
+              (started-from-chat (and started-at-heading
+                                      (gptel-org--chat-heading-p))))
+          (while (and (org-at-heading-p) (not found))
+            (if (gptel-org--chat-heading-p)
+                ;; This is a chat heading, keep going up
+                (ignore-errors (outline-up-heading 1 t))
+              ;; Not a chat heading - this is the parent if:
+              ;; - It has chat children, OR
+              ;; - We started from body/heading NOT inside a chat subtree (new conversation), OR
+              ;; - We walked up from a chat heading
+              (let ((current-level (org-outline-level))
+                    (has-chat-child nil))
+                (save-excursion
+                  (outline-next-heading)
+                  (when (and (org-at-heading-p)
+                             (= (org-outline-level) (1+ current-level))
+                             (gptel-org--chat-heading-p))
+                    (setq has-chat-child t)))
+                (if (or has-chat-child
+                        (and (not started-at-heading)      ; Started from body text
+                             (not inside-chat-subtree))    ; and NOT inside chat subtree
+                        started-from-chat)                 ; Walked up from chat heading
+                    (setq found t)
+                  ;; No chat children, continue up
+                  (unless (ignore-errors (outline-up-heading 1 t))
+                    ;; Can't go up anymore, use this level
+                    (setq found t))))))
+          (if (org-at-heading-p)
+              (org-outline-level)
+            0))))))
 
 (defun gptel-org--chat-heading-p (&optional heading-text)
   "Check if HEADING-TEXT (or current heading) is a chat entry.
