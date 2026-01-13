@@ -1432,16 +1432,11 @@ Optional RAW disables text properties and transformation."
            (with-current-buffer (marker-buffer start-marker)
              (goto-char (or tracking-marker start-marker))
              ;; (run-hooks 'gptel-pre-response-hook)
-             (message "DEBUG gptel-response-insert: bobp=%s in-place=%s tracking-marker=%s gptel-mode=%s"
-                      (bobp) (plist-get info :in-place) tracking-marker gptel-mode)
              (unless (or (bobp) (plist-get info :in-place)
                          tracking-marker)
                (insert gptel-response-separator)
                (when gptel-mode
-                 (let ((prefix (gptel-response-prefix-string)))
-                   (message "DEBUG gptel-response-prefix: major-mode=%s gptel-mode=%s prefix=%S gptel-response-prefix-alist=%S"
-                            major-mode gptel-mode prefix gptel-response-prefix-alist)
-                   (insert prefix)))
+                 (insert (gptel-response-prefix-string)))
                (move-marker start-marker (point)))
              (unless raw
                (when-let* ((transformer (plist-get info :transformer)))
@@ -1510,16 +1505,11 @@ Optional RAW disables text properties and transformation."
          (save-excursion
            (unless tracking-marker
              (goto-char start-marker)
-             (message "DEBUG gptel--insert-response: bobp=%s in-place=%s gptel-mode=%s"
-                      (bobp) (plist-get info :in-place) gptel-mode)
              (unless (or (bobp) (plist-get info :in-place))
                (insert gptel-response-separator)
                (when gptel-mode
                  ;; Put prefix before AI response.
-                 (let ((prefix (gptel-response-prefix-string)))
-                   (message "DEBUG gptel--insert-response prefix: major-mode=%s prefix=%S"
-                            major-mode prefix)
-                   (insert prefix)))
+                 (insert (gptel-response-prefix-string)))
                (move-marker start-marker (point)))
              (setq tracking-marker (set-marker (make-marker) (point)))
              (set-marker-insertion-type tracking-marker t)
