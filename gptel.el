@@ -1436,7 +1436,10 @@ Optional RAW disables text properties and transformation."
                          tracking-marker)
                (insert gptel-response-separator)
                (when gptel-mode
-                 (insert (gptel-response-prefix-string)))
+                 (let ((prefix (gptel-response-prefix-string)))
+                   (message "DEBUG gptel-response-prefix: major-mode=%s gptel-mode=%s prefix=%S gptel-response-prefix-alist=%S"
+                            major-mode gptel-mode prefix gptel-response-prefix-alist)
+                   (insert prefix)))
                (move-marker start-marker (point)))
              (unless raw
                (when-let* ((transformer (plist-get info :transformer)))

@@ -360,21 +360,32 @@ If BASE-PREFIX starts with stars, those stars are replaced with
 the correct number.  If BASE-PREFIX doesn't start with stars
 \(e.g. \"@user\\n\"), stars are prepended to create a proper
 org heading."
+  (message "DEBUG gptel-org--dynamic-prefix-string: base-prefix=%S gptel-org-subtree-context=%s derived-mode-p=%s"
+           base-prefix gptel-org-subtree-context (derived-mode-p 'org-mode))
   (if (and gptel-org-subtree-context
            (derived-mode-p 'org-mode))
       (let* ((parent-level (gptel-org--get-parent-heading-level))
              (target-level (if (> parent-level 0) (1+ parent-level) 1))
              (stars (make-string target-level ?*)))
+        (message "DEBUG gptel-org--dynamic-prefix-string: parent-level=%s target-level=%s stars=%S"
+                 parent-level target-level stars)
         (cond
          ;; Prefix starts with stars - replace them
          ((string-match "^\\(\\*+\\)\\(\\(?:.*\n?\\)?\\)" base-prefix)
           (let ((rest (match-string 2 base-prefix)))
+            (message "DEBUG gptel-org--dynamic-prefix-string: stars branch, rest=%S result=%S"
+                     rest (concat stars rest))
             (concat stars rest)))
          ;; Prefix doesn't start with stars but is non-empty - prepend stars and space
          ((not (string-empty-p base-prefix))
+          (message "DEBUG gptel-org--dynamic-prefix-string: prepend branch, result=%S"
+                   (concat stars " " base-prefix))
           (concat stars " " base-prefix))
          ;; Empty prefix - just return stars with space and newline
-         (t (concat stars " \n"))))
+         (t
+          (message "DEBUG gptel-org--dynamic-prefix-string: empty branch, result=%S"
+                   (concat stars " \n"))
+          (concat stars " \n"))))
     base-prefix))
 
 ;;; Setting context and creating queries
@@ -1069,8 +1080,12 @@ is enabled, adjusts the prefix to use the correct heading level."
 ORIG-FUN is the original function.  When `gptel-org-subtree-context'
 is enabled, adjusts the prefix to use the correct heading level."
   (let ((result (funcall orig-fun)))
+    (message "DEBUG gptel-org--advice-response-prefix: orig-result=%S derived-mode-p=%s gptel-org-subtree-context=%s"
+             result (derived-mode-p 'org-mode) gptel-org-subtree-context)
     (if (derived-mode-p 'org-mode)
-        (gptel-org--dynamic-prefix-string result)
+        (let ((adjusted (gptel-org--dynamic-prefix-string result)))
+          (message "DEBUG gptel-org--advice-response-prefix: adjusted=%S" adjusted)
+          adjusted)
       result)))
 
 (advice-add 'gptel-prompt-prefix-string :around #'gptel-org--advice-prompt-prefix)
