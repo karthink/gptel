@@ -1366,6 +1366,7 @@ supports.  See `gptel-track-media' for more information."
   :description
   "Yank to context"
   (interactive "P")
+  (require 'gptel-context)
   (gptel-context-add-current-kill arg)
   (transient-setup))
 
