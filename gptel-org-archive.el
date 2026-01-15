@@ -47,6 +47,7 @@
 
 (defvar gptel-backend)
 (defvar gptel-model)
+(defvar gptel-max-tokens)
 
 
 ;;; User options
@@ -172,11 +173,12 @@ CALLBACK receives the summary string on success, or nil on failure."
          (content (plist-get task-info :content))
          (conversation (gptel-org-archive--extract-conversation content))
          (prompt (format "Summarize the following completed task conversation.\n\nTask: %s\n\nConversation:\n%s"
-                         heading conversation)))
+                         heading conversation))
+         ;; Temporarily bind max-tokens for the summary request
+         (gptel-max-tokens gptel-org-archive-summary-max-tokens))
     (require 'gptel)
     (gptel-request prompt
       :system gptel-org-archive-summary-system-prompt
-      :max-tokens gptel-org-archive-summary-max-tokens
       :stream nil
       :callback
       (lambda (response info)
