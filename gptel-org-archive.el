@@ -147,6 +147,73 @@ Returns a plist with :heading, :level, :content, :todo-state, and :properties."
             :backend gptel-backend-prop
             :model gptel-model-prop))))
 
+;;; Git metadata extraction
+
+(defun gptel-org-archive--git-run (directory &rest args)
+  "Run git with ARGS in DIRECTORY, return trimmed output or nil on error."
+  (when (and directory (file-directory-p directory))
+    (let ((default-directory directory))
+      (condition-case nil
+          (let ((output (apply #'process-lines "git" args)))
+            (when output (string-trim (car output))))
+        (error nil)))))
+
+(defun gptel-org-archive--get-git-info (directory)
+  "Get git repository info for DIRECTORY.
+
+Returns a plist with :repo-url, :commit, :branch, or nil if not a git repo."
+  (when-let* ((git-dir (locate-dominating-file directory ".git")))
+    (let ((repo-url (gptel-org-archive--git-run
+                     git-dir "config" "--get" "remote.origin.url"))
+          (commit (gptel-org-archive--git-run
+                   git-dir "rev-parse" "--short" "HEAD"))
+          (branch (gptel-org-archive--git-run
+                   git-dir "rev-parse" "--abbrev-ref" "HEAD")))
+      (when (or repo-url commit branch)
+        (list :repo-url repo-url
+              :commit commit
+              :branch branch
+              :root (abbreviate-file-name git-dir))))))
+
+(defun gptel-org-archive--collect-repo-metadata ()
+  "Collect git metadata for the current task context.
+
+Returns a list of plists, one for each unique repository involved:
+- The current working directory
+- Any other repositories found in the task (future expansion)."
+  (let ((repos nil)
+        (seen-roots nil))
+    ;; Primary: current working directory's repo
+    (when-let* ((info (gptel-org-archive--get-git-info default-directory)))
+      (let ((root (plist-get info :root)))
+        (unless (member root seen-roots)
+          (push root seen-roots)
+          (push (append (list :name "working-dir") info) repos))))
+    (nreverse repos)))
+
+(defun gptel-org-archive--format-repo-metadata (repos)
+  "Format REPOS list as org properties."
+  (when repos
+    (let ((result "")
+          (idx 0))
+      (dolist (repo repos)
+        (let* ((name (plist-get repo :name))
+               (prefix (if (= idx 0) "" (format "_%d" idx)))
+               (repo-url (plist-get repo :repo-url))
+               (commit (plist-get repo :commit))
+               (branch (plist-get repo :branch)))
+          (when repo-url
+            (setq result (concat result (format ":GIT_REPO%s: %s\n" prefix repo-url))))
+          (when commit
+            (setq result (concat result (format ":GIT_COMMIT%s: %s\n" prefix commit))))
+          (when branch
+            (setq result (concat result (format ":GIT_BRANCH%s: %s\n" prefix branch)))))
+        (cl-incf idx))
+      result)))
+
+
+;;; Conversation extraction
+
 (defun gptel-org-archive--extract-conversation (content)
   "Extract the conversation parts from CONTENT for summarization.
 
@@ -211,16 +278,19 @@ Preserves the original heading level."
        (format "%s %s\n" stars heading))
      ;; Metadata as properties
      (when gptel-org-archive-include-metadata
-       (concat
-        ":PROPERTIES:\n"
-        (format ":ARCHIVE_DATE: %s\n" timestamp)
-        (when original-backend
-          (format ":ORIGINAL_BACKEND: %s\n" original-backend))
-        (when original-model
-          (format ":ORIGINAL_MODEL: %s\n" original-model))
-        (format ":SUMMARY_BACKEND: %s\n" current-backend)
-        (format ":SUMMARY_MODEL: %s\n" current-model)
-        ":END:\n"))
+       (let ((repo-metadata (gptel-org-archive--format-repo-metadata
+                             (gptel-org-archive--collect-repo-metadata))))
+         (concat
+          ":PROPERTIES:\n"
+          (format ":ARCHIVE_DATE: %s\n" timestamp)
+          (when original-backend
+            (format ":ORIGINAL_BACKEND: %s\n" original-backend))
+          (when original-model
+            (format ":ORIGINAL_MODEL: %s\n" original-model))
+          (format ":SUMMARY_BACKEND: %s\n" current-backend)
+          (format ":SUMMARY_MODEL: %s\n" current-model)
+          repo-metadata
+          ":END:\n")))
      ;; Summary content (one level deeper than heading)
      (format "\n%s* Summary\n" stars)
      summary
