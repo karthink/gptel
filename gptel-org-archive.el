@@ -48,6 +48,7 @@
 (defvar gptel-backend)
 (defvar gptel-model)
 (defvar gptel-max-tokens)
+(defvar org-state)  ; Dynamically bound by org-mode after TODO state change
 
 
 ;;; User options
@@ -104,6 +105,23 @@ the archive file path.  Default transforms *-ai.org to *-ai-archive.org."
 (defcustom gptel-org-archive-summary-max-tokens 500
   "Maximum tokens for the generated summary."
   :type 'integer
+  :group 'gptel)
+
+(defcustom gptel-org-archive-auto-on-done nil
+  "When non-nil, automatically prepare archive when task is marked DONE.
+
+This adds a hook to `org-after-todo-state-change-hook' that triggers
+`gptel-org-prepare-archive' when a task transitions to a DONE state
+in AI document buffers (files matching *-ai.org pattern) with
+`gptel-mode' active.
+
+The automatic archiving will:
+1. Generate a summary using the LLM
+2. Replace the conversation with the summary
+3. Leave the task ready for `org-archive-subtree' (C-c C-x C-s)
+
+Use `gptel-org-restore-original' to undo the summary if needed."
+  :type 'boolean
   :group 'gptel)
 
 
@@ -509,6 +527,56 @@ the *-ai.org pattern."
 
 ;; Automatically set archive location for AI documents
 (add-hook 'org-mode-hook #'gptel-org-archive--setup-location)
+
+
+;;; Auto-archive on DONE
+
+(defun gptel-org-archive--auto-on-done ()
+  "Automatically prepare archive when a task is marked DONE in gptel buffers.
+
+This function is designed to be added to `org-after-todo-state-change-hook'.
+It only triggers when:
+- `gptel-org-archive-auto-on-done' is non-nil
+- The task transitions to a DONE state
+- The buffer is an AI document (file matches *-ai.org pattern)
+- `gptel-mode' is active
+
+After triggering, the task conversation will be replaced with a summary.
+Use `gptel-org-restore-original' to undo, or `org-archive-subtree' to archive."
+  (when (and gptel-org-archive-auto-on-done
+             (bound-and-true-p gptel-mode)
+             (buffer-file-name)
+             (string-match-p "-ai\\.org$" (buffer-file-name))
+             (member org-state org-done-keywords))
+    (message "gptel: Auto-preparing archive for DONE task...")
+    ;; Set archive location for this buffer
+    (when-let* ((archive-loc (gptel-org-archive--get-location)))
+      (setq-local org-archive-location (concat archive-loc "::* Archived Tasks")))
+    (let ((task-info (gptel-org-archive--get-subtree-content)))
+      ;; Save original for undo
+      (setq gptel-org-archive--original-content
+            (cons (plist-get task-info :beg)
+                  (plist-get task-info :content)))
+      (setq gptel-org-archive--task-metadata task-info)
+      (gptel-org-archive--generate-summary
+       task-info
+       (lambda (summary)
+         (if summary
+             (progn
+               (gptel-org-archive--replace-with-summary summary task-info)
+               (message "gptel: Summary generated. Use `org-archive-subtree' (C-c C-x C-s) to archive, or `gptel-org-restore-original' to undo."))
+           (message "gptel: Summary generation failed. Original content preserved.")))))))
+
+(defun gptel-org-archive--setup-auto-archive ()
+  "Set up auto-archive hook for the current buffer if appropriate."
+  (when (and (buffer-file-name)
+             (string-match-p "-ai\\.org$" (buffer-file-name))
+             (derived-mode-p 'org-mode))
+    (add-hook 'org-after-todo-state-change-hook
+              #'gptel-org-archive--auto-on-done nil t)))
+
+;; Set up auto-archive hook for AI documents
+(add-hook 'org-mode-hook #'gptel-org-archive--setup-auto-archive)
 
 (provide 'gptel-org-archive)
 ;;; gptel-org-archive.el ends here
