@@ -229,6 +229,19 @@ of these strings will be recognized as part of the conversation."
   :type '(repeat string)
   :group 'gptel)
 
+(defcustom gptel-org-save-state t
+  "Whether to save gptel state as Org properties when saving the buffer.
+
+When non-nil (the default), gptel will save model, backend, system
+message, and other state as properties at the top of Org buffers
+when they are saved.
+
+Set to nil to disable automatic property saving for Org files.
+This can be useful when you don't want gptel to modify your Org
+files with GPTEL_* properties."
+  :type 'boolean
+  :group 'gptel)
+
 
 
 ;;; Subtree context helper functions
@@ -829,25 +842,27 @@ non-nil (default), display a message afterwards."
     (message "Added gptel configuration to current headline.")))
 
 (defun gptel-org--save-state ()
-  "Write the gptel state to the Org buffer as Org properties."
-  (org-with-wide-buffer
-   (goto-char (point-min))
-   (when (org-at-heading-p)
-     (org-open-line 1))
-   (gptel-org-set-properties (point-min))
-   ;; Save response boundaries
-   (letrec ((write-bounds
-             (lambda (attempts)
-               (when-let* ((bounds (gptel--get-buffer-bounds))
-                           ;; first value of ((prop . ((beg end val)...))...)
-                           (offset (caadar bounds))
-                           (offset-marker (set-marker (make-marker) offset)))
-                 (org-entry-put (point-min) "GPTEL_BOUNDS"
-                                (prin1-to-string (gptel--get-buffer-bounds)))
-                 (when (and (not (= (marker-position offset-marker) offset))
-                            (> attempts 0))
-                   (funcall write-bounds (1- attempts)))))))
-     (funcall write-bounds 6))))
+  "Write the gptel state to the Org buffer as Org properties.
+Respects `gptel-org-save-state'; does nothing if that is nil."
+  (when gptel-org-save-state
+    (org-with-wide-buffer
+     (goto-char (point-min))
+     (when (org-at-heading-p)
+       (org-open-line 1))
+     (gptel-org-set-properties (point-min))
+     ;; Save response boundaries
+     (letrec ((write-bounds
+               (lambda (attempts)
+                 (when-let* ((bounds (gptel--get-buffer-bounds))
+                             ;; first value of ((prop . ((beg end val)...))...)
+                             (offset (caadar bounds))
+                             (offset-marker (set-marker (make-marker) offset)))
+                   (org-entry-put (point-min) "GPTEL_BOUNDS"
+                                  (prin1-to-string (gptel--get-buffer-bounds)))
+                   (when (and (not (= (marker-position offset-marker) offset))
+                              (> attempts 0))
+                     (funcall write-bounds (1- attempts)))))))
+       (funcall write-bounds 6)))))
 
 
 ;;; Transforming responses
