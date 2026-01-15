@@ -62,7 +62,22 @@ Instructions:
 - Use bullet points for multiple outcomes
 - Keep the summary brief (3-7 sentences typically)
 - If code was written, mention the key functions/features without full implementation details
-- Preserve any important decisions or rationale that would be useful for future reference"
+- Preserve any important decisions or rationale that would be useful for future reference
+
+Git Repository Tracking:
+If the conversation includes git commits, include a \"Git Changes\" section at the END of your summary with this exact format:
+
+#+begin_src
+Git Changes:
+- REPO_PATH: path/to/repo
+  COMMITS: abc1234, def5678
+#+end_src
+
+Where:
+- REPO_PATH is the relative path to the repository root (use \".\" for the working directory)
+- COMMITS is a comma-separated list of short commit hashes created during this task
+- Include multiple REPO_PATH entries if commits were made to different repositories
+- Only include this section if actual git commits were made"
   "System prompt used when generating archive summaries."
   :type 'string
   :group 'gptel)
@@ -197,8 +212,7 @@ Returns a list of plists, one for each unique repository involved:
     (let ((result "")
           (idx 0))
       (dolist (repo repos)
-        (let* ((name (plist-get repo :name))
-               (prefix (if (= idx 0) "" (format "_%d" idx)))
+        (let* ((prefix (if (= idx 0) "" (format "_%d" idx)))
                (repo-url (plist-get repo :repo-url))
                (commit (plist-get repo :commit))
                (branch (plist-get repo :branch)))
@@ -208,6 +222,56 @@ Returns a list of plists, one for each unique repository involved:
             (setq result (concat result (format ":GIT_COMMIT%s: %s\n" prefix commit))))
           (when branch
             (setq result (concat result (format ":GIT_BRANCH%s: %s\n" prefix branch)))))
+        (cl-incf idx))
+      result)))
+
+(defun gptel-org-archive--parse-git-changes (summary)
+  "Parse git changes section from SUMMARY.
+
+Returns a cons cell (CLEAN-SUMMARY . GIT-CHANGES) where:
+- CLEAN-SUMMARY is the summary with the Git Changes section removed
+- GIT-CHANGES is a list of plists with :path and :commits keys"
+  (let ((git-changes nil)
+        (clean-summary summary))
+    ;; Look for Git Changes section
+    (when (string-match
+           "\\(?:\n\\|^\\)Git Changes:[ \t]*\n\\(\\(?:- REPO_PATH:.*\n\\(?:  COMMITS:.*\n?\\)?\\)+\\)"
+           summary)
+      (let ((changes-text (match-string 1 summary)))
+        ;; Remove the Git Changes section from summary
+        (setq clean-summary
+              (string-trim
+               (replace-regexp-in-string
+                "\\(?:\n\\|^\\)Git Changes:[ \t]*\n\\(?:- REPO_PATH:.*\n\\(?:  COMMITS:.*\n?\\)?\\)+"
+                "" summary)))
+        ;; Parse each repo entry
+        (with-temp-buffer
+          (insert changes-text)
+          (goto-char (point-min))
+          (while (re-search-forward
+                  "- REPO_PATH:[ \t]*\\(.+?\\)[ \t]*\n\\(?:  COMMITS:[ \t]*\\(.+?\\)[ \t]*\\)?$"
+                  nil t)
+            (let ((path (string-trim (match-string 1)))
+                  (commits (when (match-string 2)
+                             (string-trim (match-string 2)))))
+              (push (list :path path :commits commits) git-changes))))))
+    (cons clean-summary (nreverse git-changes))))
+
+(defun gptel-org-archive--format-git-changes (git-changes)
+  "Format GIT-CHANGES as org properties.
+
+GIT-CHANGES is a list of plists with :path and :commits keys."
+  (when git-changes
+    (let ((result "")
+          (idx 0))
+      (dolist (change git-changes)
+        (let* ((prefix (if (= idx 0) "" (format "_%d" idx)))
+               (path (plist-get change :path))
+               (commits (plist-get change :commits)))
+          (when path
+            (setq result (concat result (format ":GIT_PATH%s: %s\n" prefix path))))
+          (when commits
+            (setq result (concat result (format ":GIT_COMMITS%s: %s\n" prefix commits)))))
         (cl-incf idx))
       result)))
 
@@ -261,8 +325,14 @@ CALLBACK receives the summary string on success, or nil on failure."
   "Format SUMMARY with metadata from TASK-INFO for archival.
 
 Returns the formatted string to replace the subtree content.
-Preserves the original heading level."
-  (let* ((heading (plist-get task-info :heading))
+Preserves the original heading level.
+
+If SUMMARY contains a \"Git Changes\" section (as instructed by the
+system prompt), it will be parsed and included in the properties."
+  (let* ((parsed (gptel-org-archive--parse-git-changes summary))
+         (clean-summary (car parsed))
+         (git-changes (cdr parsed))
+         (heading (plist-get task-info :heading))
          (level (or (plist-get task-info :level) 1))
          (stars (make-string level ?*))
          (todo-state (plist-get task-info :todo-state))
@@ -279,7 +349,9 @@ Preserves the original heading level."
      ;; Metadata as properties
      (when gptel-org-archive-include-metadata
        (let ((repo-metadata (gptel-org-archive--format-repo-metadata
-                             (gptel-org-archive--collect-repo-metadata))))
+                             (gptel-org-archive--collect-repo-metadata)))
+             (git-changes-metadata (gptel-org-archive--format-git-changes
+                                    git-changes)))
          (concat
           ":PROPERTIES:\n"
           (format ":ARCHIVE_DATE: %s\n" timestamp)
@@ -290,10 +362,11 @@ Preserves the original heading level."
           (format ":SUMMARY_BACKEND: %s\n" current-backend)
           (format ":SUMMARY_MODEL: %s\n" current-model)
           repo-metadata
+          git-changes-metadata
           ":END:\n")))
      ;; Summary content (one level deeper than heading)
      (format "\n%s* Summary\n" stars)
-     summary
+     clean-summary
      "\n")))
 
 
