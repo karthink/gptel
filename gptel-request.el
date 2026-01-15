@@ -2529,7 +2529,7 @@ INFO contains the request data, TOKEN is a unique identifier."
      (and-let* ((curl-args (gptel-backend-curl-args gptel-backend)))
        (if (functionp curl-args) (funcall curl-args) curl-args))
      (list (format "-w(%s . %%{size_header})" token))
-     (if (length< data-json gptel-curl-file-size-threshold)
+     (if (< (string-bytes data-json) gptel-curl-file-size-threshold)
          (list (format "-d%s" data-json))
        (let* ((write-region-inhibit-fsync t)
               (file-name-handler-alist nil)
