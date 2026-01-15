@@ -125,10 +125,11 @@ Falls back to filename_archive.org for non -ai.org files."
 (defun gptel-org-archive--get-subtree-content ()
   "Get the content of the current subtree for summarization.
 
-Returns a plist with :heading, :content, :todo-state, and :properties."
+Returns a plist with :heading, :level, :content, :todo-state, and :properties."
   (save-excursion
     (org-back-to-heading t)
     (let* ((heading (org-get-heading t t t t))
+           (level (org-current-level))
            (todo-state (org-get-todo-state))
            (beg (point))
            (end (save-excursion (org-end-of-subtree t t) (point)))
@@ -138,6 +139,7 @@ Returns a plist with :heading, :content, :todo-state, and :properties."
            (gptel-backend-prop (cdr (assoc "GPTEL_BACKEND" props)))
            (gptel-model-prop (cdr (assoc "GPTEL_MODEL" props))))
       (list :heading heading
+            :level level
             :todo-state todo-state
             :content content
             :beg beg
@@ -191,8 +193,11 @@ CALLBACK receives the summary string on success, or nil on failure."
 (defun gptel-org-archive--format-summary (summary task-info)
   "Format SUMMARY with metadata from TASK-INFO for archival.
 
-Returns the formatted string to replace the subtree content."
+Returns the formatted string to replace the subtree content.
+Preserves the original heading level."
   (let* ((heading (plist-get task-info :heading))
+         (level (or (plist-get task-info :level) 1))
+         (stars (make-string level ?*))
          (todo-state (plist-get task-info :todo-state))
          (original-backend (plist-get task-info :backend))
          (original-model (plist-get task-info :model))
@@ -200,10 +205,10 @@ Returns the formatted string to replace the subtree content."
          (current-model (gptel--model-name gptel-model))
          (timestamp (format-time-string "[%Y-%m-%d %a %H:%M]")))
     (concat
-     ;; Heading with TODO state
+     ;; Heading with TODO state, preserving original level
      (if todo-state
-         (format "* %s %s\n" todo-state heading)
-       (format "* %s\n" heading))
+         (format "%s %s %s\n" stars todo-state heading)
+       (format "%s %s\n" stars heading))
      ;; Metadata as properties
      (when gptel-org-archive-include-metadata
        (concat
@@ -216,8 +221,8 @@ Returns the formatted string to replace the subtree content."
         (format ":SUMMARY_BACKEND: %s\n" current-backend)
         (format ":SUMMARY_MODEL: %s\n" current-model)
         ":END:\n"))
-     ;; Summary content
-     "\n** Summary\n"
+     ;; Summary content (one level deeper than heading)
+     (format "\n%s* Summary\n" stars)
      summary
      "\n")))
 
