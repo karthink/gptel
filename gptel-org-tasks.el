@@ -262,9 +262,13 @@ Returns t if inside an AI task, nil otherwise."
 
 ;;; Advice for gptel-send
 
-(defun gptel-org-tasks--before-send (&rest _args)
-  "Advice to run before `gptel-send' for AI task handling."
-  (gptel-org-tasks--maybe-transition-and-apply))
+(defun gptel-org-tasks--before-send (&optional arg &rest _args)
+  "Advice to run before `gptel-send' for AI task handling.
+When ARG (prefix arg) is non-nil, `gptel-send' opens the transient
+menu instead of sending, so we skip the state transition."
+  ;; Only transition when actually sending, not when opening menu
+  (unless (and arg (eq this-command 'gptel-send))
+    (gptel-org-tasks--maybe-transition-and-apply)))
 
 ;;;###autoload
 (define-minor-mode gptel-org-tasks-mode
