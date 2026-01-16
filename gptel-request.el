@@ -1002,8 +1002,10 @@ non-whitespace content on its line."
 ;; another map from these symbols to the actual model structs.
 
 (defsubst gptel--model-name (model)
-  "Get name of gptel MODEL."
-  (gptel--to-string model))
+  "Get name of gptel MODEL.
+If MODEL has a :model-id property, return that instead (for aliases)."
+  (or (get model :model-id)
+      (gptel--to-string model)))
 
 (defsubst gptel--model-capabilities (model)
   "Get MODEL capabilities."
