@@ -474,10 +474,12 @@ For each DONE task, this will:
     (user-error "This command only works in Org mode"))
   (let ((done-tasks nil))
     ;; Collect all DONE tasks
+    ;; Use regexp match with TODO={regexp} syntax for custom keywords
+    ;; The "/" syntax doesn't work with custom done keywords like AI-DONE
     (org-map-entries
      (lambda ()
        (push (point-marker) done-tasks))
-     (concat "/" (mapconcat #'identity org-done-keywords "|"))
+     (format "TODO={%s}" (regexp-opt org-done-keywords))
      'file)
     (setq done-tasks (nreverse done-tasks))
     (if (null done-tasks)
