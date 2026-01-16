@@ -282,8 +282,12 @@ your tasks with the profile name:
   :lighter " AI-Tasks"
   :group 'gptel-org-tasks
   (if gptel-org-tasks-mode
-      (advice-add 'gptel-send :before #'gptel-org-tasks--before-send)
-    (advice-remove 'gptel-send #'gptel-org-tasks--before-send)))
+      (progn
+        (advice-add 'gptel-send :before #'gptel-org-tasks--before-send)
+        ;; Also advise gptel--suffix-send for transient menu (C-c RET)
+        (advice-add 'gptel--suffix-send :before #'gptel-org-tasks--before-send))
+    (advice-remove 'gptel-send #'gptel-org-tasks--before-send)
+    (advice-remove 'gptel--suffix-send #'gptel-org-tasks--before-send)))
 
 ;;; Convenience Commands
 
