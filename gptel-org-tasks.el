@@ -26,25 +26,28 @@
 ;; - Model profiles: map simple tag names (haiku, opus, gpt4) to actual models
 ;; - Auto state transition: AI-DO -> AI-DOING when gptel-send is called
 ;; - Tag-based model selection: apply model config from task tags
+;; - Built-in support for Anthropic model aliases (haiku, sonnet, opus)
 ;;
 ;; Setup:
-;; 1. Define model profiles in your config:
-;;
-;;    (gptel-org-tasks-define-profile 'haiku
-;;      :backend "Claude"
-;;      :model 'claude-3-5-haiku-latest)
-;;
-;;    (gptel-org-tasks-define-profile 'opus
-;;      :backend "Claude"
-;;      :model 'claude-opus-4-5-20251101)
-;;
-;; 2. Add TODO keywords to your org file:
+;; 1. Add TODO keywords to your org file:
 ;;
 ;;    #+SEQ_TODO: AI-DO(a) AI-DOING(i!) HI-FEEDBACK(h@) | AI-DONE(d!) HI-DONE(D!)
 ;;
-;; 3. Tag tasks with model profiles:
+;; 2. Tag tasks with model names:
 ;;
 ;;    ** AI-DO Implement feature X :haiku:
+;;    ** AI-DO Complex analysis    :opus:
+;;
+;; Built-in model aliases (no configuration needed):
+;; - :haiku: -> Latest Claude Haiku
+;; - :sonnet: -> Latest Claude Sonnet
+;; - :opus: -> Latest Claude Opus
+;;
+;; You can also define custom profiles for other models:
+;;
+;;    (gptel-org-tasks-define-profile 'gpt4
+;;      :backend "ChatGPT"
+;;      :model 'gpt-4o)
 ;;
 ;; When you call `gptel-send' inside an AI-DO task:
 ;; - The task state changes to AI-DOING
@@ -138,12 +141,30 @@ Example:
 
 (defun gptel-org-tasks-get-profile (name)
   "Get the model profile with NAME.
-Returns the plist of options, or nil if not found."
-  (alist-get name gptel-org-tasks--profiles))
+Returns the plist of options, or nil if not found.
+
+Also recognizes model aliases (symbols with :model-id property)
+as implicit profiles."
+  (or (alist-get name gptel-org-tasks--profiles)
+      ;; Check if NAME is a model alias (has :model-id property)
+      (when-let* ((model-id (get name :model-id)))
+        ;; Find the backend that has this model
+        (cl-loop for (backend-name . backend) in gptel--known-backends
+                 when (memq name (gptel-backend-models backend))
+                 return (list :backend backend-name
+                              :model name
+                              :description (get name :description))))))
 
 (defun gptel-org-tasks-list-profiles ()
-  "List all defined model profiles."
-  (mapcar #'car gptel-org-tasks--profiles))
+  "List all defined model profiles.
+Includes both explicit profiles and model aliases."
+  (append
+   (mapcar #'car gptel-org-tasks--profiles)
+   ;; Include model aliases from all backends
+   (cl-loop for (_name . backend) in gptel--known-backends
+            nconc (cl-loop for model in (gptel-backend-models backend)
+                           when (get model :model-id)
+                           collect model))))
 
 ;;; Profile Application
 
