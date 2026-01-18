@@ -77,6 +77,13 @@ Tasks transition to this state when `gptel-send' is called."
   :type 'string
   :group 'gptel-org-tasks)
 
+(defcustom gptel-org-tasks-canceled-keyword "CANCELED"
+  "TODO keyword for tasks that were aborted.
+When `gptel-abort' is called while processing an AI-DOING task,
+the state will transition to this keyword."
+  :type 'string
+  :group 'gptel-org-tasks)
+
 (defcustom gptel-org-tasks-apply-profile-on-send t
   "Whether to apply model profile from tags when sending.
 When non-nil, `gptel-send' will check for model profile tags
@@ -201,6 +208,10 @@ Returns t if profile was applied, nil otherwise."
 
 ;;; Org Integration
 
+(defvar-local gptel-org-tasks--active-task-marker nil
+  "Marker to the task heading currently being processed.
+Set when a task transitions to AI-DOING, cleared on completion or abort.")
+
 (defun gptel-org-tasks--get-task-info ()
   "Get information about the current AI task heading.
 Returns a plist with:
@@ -254,13 +265,16 @@ Returns t if inside an AI task, nil otherwise."
           ;; Transition AI-DO -> AI-DOING if enabled
           (when (and gptel-org-tasks-change-state-on-send
                      (equal todo-state gptel-org-tasks-todo-keyword))
+            ;; Save marker to the task for abort handling
+            (setq gptel-org-tasks--active-task-marker
+                  (plist-get task-info :marker))
             (gptel-org-tasks--change-todo-state gptel-org-tasks-doing-keyword)
             (message "gptel: Task state changed to %s"
                      gptel-org-tasks-doing-keyword))
           ;; Return t if this was an AI task
           (string-prefix-p "AI-" (or todo-state "")))))))
 
-;;; Advice for gptel-send
+;;; Advice for gptel-send and gptel-abort
 
 (defun gptel-org-tasks--before-send (&optional arg &rest _args)
   "Advice to run before `gptel-send' for AI task handling.
@@ -270,12 +284,36 @@ menu instead of sending, so we skip the state transition."
   (unless (and arg (eq this-command 'gptel-send))
     (gptel-org-tasks--maybe-transition-and-apply)))
 
+(defun gptel-org-tasks--after-abort (buf)
+  "Advice to run after `gptel-abort' to transition task to CANCELED.
+BUF is the buffer where the request was aborted."
+  (when-let* ((marker (buffer-local-value 'gptel-org-tasks--active-task-marker buf))
+              ((marker-buffer marker)))
+    (with-current-buffer (marker-buffer marker)
+      (save-excursion
+        (goto-char marker)
+        (when-let* ((task-info (ignore-errors (gptel-org-tasks--get-task-info)))
+                    (todo-state (plist-get task-info :todo-state))
+                    ((equal todo-state gptel-org-tasks-doing-keyword)))
+          (gptel-org-tasks--change-todo-state gptel-org-tasks-canceled-keyword)
+          (message "gptel: Task state changed to %s"
+                   gptel-org-tasks-canceled-keyword))))
+    ;; Clear the marker
+    (with-current-buffer buf
+      (setq gptel-org-tasks--active-task-marker nil))))
+
+(defun gptel-org-tasks--clear-active-task (_start _end)
+  "Clear the active task marker after response completes.
+Added to `gptel-post-response-functions'."
+  (setq gptel-org-tasks--active-task-marker nil))
+
 ;;;###autoload
 (define-minor-mode gptel-org-tasks-mode
   "Minor mode for AI task workflow in org buffers.
 
 When enabled:
 - Calling `gptel-send' inside an AI-DO task transitions it to AI-DOING
+- Calling `gptel-abort' while an AI-DOING task is active transitions it to CANCELED
 - Model profiles are applied from task tags before sending
 
 Define profiles with `gptel-org-tasks-define-profile', then tag
@@ -289,9 +327,17 @@ your tasks with the profile name:
       (progn
         (advice-add 'gptel-send :before #'gptel-org-tasks--before-send)
         ;; Also advise gptel--suffix-send for transient menu (C-c RET)
-        (advice-add 'gptel--suffix-send :before #'gptel-org-tasks--before-send))
+        (advice-add 'gptel--suffix-send :before #'gptel-org-tasks--before-send)
+        ;; Handle abort to transition to CANCELED
+        (advice-add 'gptel-abort :after #'gptel-org-tasks--after-abort)
+        ;; Clear active task marker on response completion
+        (add-hook 'gptel-post-response-functions
+                  #'gptel-org-tasks--clear-active-task nil t))
     (advice-remove 'gptel-send #'gptel-org-tasks--before-send)
-    (advice-remove 'gptel--suffix-send #'gptel-org-tasks--before-send)))
+    (advice-remove 'gptel--suffix-send #'gptel-org-tasks--before-send)
+    (advice-remove 'gptel-abort #'gptel-org-tasks--after-abort)
+    (remove-hook 'gptel-post-response-functions
+                 #'gptel-org-tasks--clear-active-task t)))
 
 ;;; Convenience Commands
 
