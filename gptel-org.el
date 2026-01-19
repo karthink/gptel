@@ -209,12 +209,13 @@ headings one level deeper than the parent heading.
 
 Example structure:
   *** TODO Some task
-  **** @user
   My question here
-  **** @assistant
+  **** :assistant:
   Response here
   ***** Details
   More details in subheading
+  **** :user: User feedback here
+  This message should be last in the context just before system message
 
 When sending from under a TODO heading with this option enabled,
 the @user and @assistant siblings will be included in context,
