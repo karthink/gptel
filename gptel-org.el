@@ -350,14 +350,23 @@ when `gptel-org-subtree-context' is enabled."
   "Check if HEADING-TEXT (or current heading) is a chat entry.
 
 Returns non-nil if the heading contains any of the markers in
-`gptel-org-chat-heading-markers'."
+`gptel-org-chat-heading-markers', or when `gptel-org-infer-bounds-from-tags'
+is enabled, if the heading has :assistant: or :user: tags."
   (let ((text (or heading-text
                   (and (org-at-heading-p)
                        (org-get-heading t t t t)))))
-    (and text
-         (cl-some (lambda (marker)
-                    (string-match-p (regexp-quote marker) text))
-                  gptel-org-chat-heading-markers))))
+    (or
+     ;; Check heading text markers
+     (and text
+          (cl-some (lambda (marker)
+                     (string-match-p (regexp-quote marker) text))
+                   gptel-org-chat-heading-markers))
+     ;; When tag-based bounds are enabled, also check for tags
+     (and gptel-org-infer-bounds-from-tags
+          (null heading-text)  ; Only check tags when at actual heading
+          (org-at-heading-p)
+          (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
+              (gptel-org--heading-has-tag-p gptel-org-user-tag))))))
 
 (defun gptel-org--get-chat-siblings ()
   "Get bounds of all sibling chat headings under the task heading.
