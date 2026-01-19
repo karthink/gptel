@@ -58,13 +58,15 @@
 (declare-function gptel--file-binary-p "gptel")
 (declare-function org-entry-get "org")
 (declare-function org-entry-put "org")
+(declare-function org-entry-delete "org")
 (declare-function org-with-wide-buffer "org-macs")
 (declare-function org-set-property "org")
 (declare-function org-property-values "org")
 (declare-function org-open-line "org")
 (declare-function org-at-heading-p "org")
 (declare-function org-get-heading "org")
-(declare-function org-at-heading-p "org")
+(declare-function org-get-tags "org")
+(declare-function org-end-of-subtree "org")
 
 ;; Bundle `org-element-lineage-map' if it's not available (for Org 9.67 or older)
 (eval-and-compile
@@ -242,6 +244,42 @@ files with GPTEL_* properties."
   :type 'boolean
   :group 'gptel)
 
+(defcustom gptel-org-infer-bounds-from-tags t
+  "Infer assistant/user message bounds from org heading tags.
+
+When non-nil (the default), gptel will scan headings for :assistant:
+and :user: tags to determine message roles, instead of relying on
+the GPTEL_BOUNDS property.
+
+This allows marking assistant and user parts of a conversation
+using standard org tags on headings:
+
+  ** AI-DOING Do something
+  *** Title for assistant work                    :assistant:
+  - Assistant talking
+  *** User feedback                               :user:
+  - User talking
+
+The tags are case-insensitive.  When this option is enabled and
+tagged headings are found, GPTEL_BOUNDS will not be written on save."
+  :type 'boolean
+  :group 'gptel)
+
+(defcustom gptel-org-assistant-tag "assistant"
+  "Tag name used to mark assistant message headings.
+
+Headings with this tag will be treated as assistant responses.
+The tag comparison is case-insensitive."
+  :type 'string
+  :group 'gptel)
+
+(defcustom gptel-org-user-tag "user"
+  "Tag name used to mark user message headings.
+
+Headings with this tag will be treated as user messages.
+The tag comparison is case-insensitive."
+  :type 'string
+  :group 'gptel)
 
 
 ;;; Subtree context helper functions
@@ -776,6 +814,50 @@ ARGS are the original function call arguments."
                     (format "Tool %s not found, ignoring" tname)))))
     (list system backend model temperature tokens num tools)))
 
+(defun gptel-org--heading-has-tag-p (tag)
+  "Check if current heading has TAG (case-insensitive)."
+  (when (org-at-heading-p)
+    (let ((tags (org-get-tags nil t)))  ; local tags only
+      (cl-some (lambda (tg) (string-equal-ignore-case tg tag)) tags))))
+
+(defun gptel-org--restore-bounds-from-tags ()
+  "Restore gptel response properties based on heading tags.
+
+Scans all headings in the buffer for :assistant: and :user: tags
+\(as configured by `gptel-org-assistant-tag' and `gptel-org-user-tag').
+Headings tagged with the assistant tag get their subtree content
+marked with the gptel response property.
+
+Returns non-nil if any tagged headings were found and processed."
+  (save-excursion
+    (goto-char (point-min))
+    (let ((found-tags nil))
+      (while (outline-next-heading)
+        (cond
+         ;; Assistant tag - mark subtree as response
+         ((gptel-org--heading-has-tag-p gptel-org-assistant-tag)
+          (setq found-tags t)
+          (let ((beg (point))
+                (end (save-excursion
+                       (org-end-of-subtree t t)
+                       (point))))
+            (add-text-properties beg end '(gptel response front-sticky (gptel)))))
+         ;; User tag - ensure no gptel property (remove if present)
+         ((gptel-org--heading-has-tag-p gptel-org-user-tag)
+          (setq found-tags t)
+          (let ((beg (point))
+                (end (save-excursion
+                       (org-end-of-subtree t t)
+                       (point))))
+            (remove-text-properties beg end '(gptel nil))))))
+      found-tags)))
+
+(defvar-local gptel-org--bounds-from-tags nil
+  "Non-nil if bounds were restored from heading tags.
+
+When this is non-nil, `gptel-org--save-state' will skip writing
+GPTEL_BOUNDS since the bounds are determined by heading tags.")
+
 (defun gptel-org--restore-state ()
   "Restore gptel state for Org buffers when turning on `gptel-mode'."
   (save-restriction
@@ -783,8 +865,14 @@ ARGS are the original function call arguments."
       (widen)
       (condition-case status
           (progn
-            (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
-              (gptel--restore-props (read bounds)))
+            ;; Try tag-based bounds first if enabled
+            (if (and gptel-org-infer-bounds-from-tags
+                     (gptel-org--restore-bounds-from-tags))
+                (setq gptel-org--bounds-from-tags t)
+              ;; Fall back to GPTEL_BOUNDS property
+              (setq gptel-org--bounds-from-tags nil)
+              (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
+                (gptel--restore-props (read bounds))))
             (pcase-let ((`(,system ,backend ,model ,temperature ,tokens ,num ,tools)
                          (gptel-org--entry-properties (point-min))))
               (when system (setq-local gptel--system-message system))
@@ -850,19 +938,23 @@ Respects `gptel-org-save-state'; does nothing if that is nil."
      (when (org-at-heading-p)
        (org-open-line 1))
      (gptel-org-set-properties (point-min))
-     ;; Save response boundaries
-     (letrec ((write-bounds
-               (lambda (attempts)
-                 (when-let* ((bounds (gptel--get-buffer-bounds))
-                             ;; first value of ((prop . ((beg end val)...))...)
-                             (offset (caadar bounds))
-                             (offset-marker (set-marker (make-marker) offset)))
-                   (org-entry-put (point-min) "GPTEL_BOUNDS"
-                                  (prin1-to-string (gptel--get-buffer-bounds)))
-                   (when (and (not (= (marker-position offset-marker) offset))
-                              (> attempts 0))
-                     (funcall write-bounds (1- attempts)))))))
-       (funcall write-bounds 6)))))
+     ;; Save response boundaries (skip if using tag-based bounds)
+     (if gptel-org--bounds-from-tags
+         ;; Remove GPTEL_BOUNDS if it exists, since bounds are from tags
+         (org-entry-delete (point-min) "GPTEL_BOUNDS")
+       ;; Save bounds the traditional way
+       (letrec ((write-bounds
+                 (lambda (attempts)
+                   (when-let* ((bounds (gptel--get-buffer-bounds))
+                               ;; first value of ((prop . ((beg end val)...))...)
+                               (offset (caadar bounds))
+                               (offset-marker (set-marker (make-marker) offset)))
+                     (org-entry-put (point-min) "GPTEL_BOUNDS"
+                                    (prin1-to-string (gptel--get-buffer-bounds)))
+                     (when (and (not (= (marker-position offset-marker) offset))
+                                (> attempts 0))
+                       (funcall write-bounds (1- attempts)))))))
+         (funcall write-bounds 6))))))
 
 
 ;;; Transforming responses
