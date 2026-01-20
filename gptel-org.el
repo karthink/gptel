@@ -1238,10 +1238,12 @@ is enabled, adjusts the prefix to use the correct heading level."
 (defun gptel-org--escape-example-blocks (beg end)
   "Prefix lines in example blocks with comma between BEG and END.
 
-Per Org manual, lines starting with `*', `,*', `#+' or `,#+' inside
-example blocks must be prefixed with a comma to prevent them from
-being interpreted as outline nodes or special syntax.  Org strips
-these commas when accessing the block contents.
+Per Org manual, lines starting with `*' or `#+' inside example blocks
+must be prefixed with a comma to prevent them from being interpreted
+as outline nodes or special syntax.  Org strips these commas when
+accessing the block contents.
+
+Lines already escaped (starting with `,*' or `,#+') are left unchanged.
 
 This should be called before `gptel-org--adjust-response-headings'
 so that headings inside examples are not modified."
@@ -1263,9 +1265,8 @@ so that headings inside examples are not modified."
               (narrow-to-region block-start block-end)
               (goto-char (point-min))
               (while (not (eobp))
-                (when (looking-at "^\\(,*\\)\\(\\*\\|#\\+\\)")
-                  ;; Add comma prefix
-                  (goto-char (match-beginning 2))
+                ;; Only escape lines starting with * or #+, NOT already-escaped ,* or ,#+
+                (when (looking-at "^\\(\\*\\|#\\+\\)")
                   (insert ","))
                 (forward-line 1)))))))))
 
