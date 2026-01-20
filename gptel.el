@@ -1271,6 +1271,13 @@ Perform UI updates and run post-response hooks."
         (run-hook-with-args
          'gptel-post-response-functions
          (marker-position start-marker) (marker-position tracking-marker))))
+    ;; Insert prompt prefix AFTER post-response hooks have run
+    ;; This ensures heading adjustments are complete before calculating prefix level
+    (when (and gptel-mode tracking-marker (not (plist-get info :in-place)))
+      (with-current-buffer gptel-buffer
+        (save-excursion (goto-char tracking-marker)
+                        (insert gptel-response-separator
+                                (gptel-prompt-prefix-string)))))
     (with-current-buffer gptel-buffer
       (when gptel-mode (gptel--update-status  " Abort" 'error)))))
 
@@ -1955,7 +1962,22 @@ NAME and ARG-VALUES are the name and arguments for the call."
                   (inhibit-read-only t))
         (delete-region (overlay-start prompt-ov)
                        (overlay-end prompt-ov))))
-    (delete-overlay ov)))
+    (delete-overlay ov))
+  ;; Run post-response hooks and insert prompt prefix, like gptel--handle-abort
+  (when-let* ((info (and gptel--fsm-last (gptel-fsm-info gptel--fsm-last)))
+              (gptel-buffer (plist-get info :buffer))
+              (start-marker (plist-get info :position))
+              (tracking-marker (or (plist-get info :tracking-marker)
+                                   start-marker)))
+    (with-current-buffer gptel-buffer
+      (run-hook-with-args
+       'gptel-post-response-functions
+       (marker-position start-marker) (marker-position tracking-marker))
+      ;; Insert prompt prefix AFTER post-response hooks have run
+      (when (and gptel-mode tracking-marker (not (plist-get info :in-place)))
+        (save-excursion (goto-char tracking-marker)
+                        (insert gptel-response-separator
+                                (gptel-prompt-prefix-string)))))))
 
 (defun gptel--dispatch-tool-calls (choice)
   (interactive
