@@ -212,6 +212,9 @@ Returns t if profile was applied, nil otherwise."
   "Marker to the task heading currently being processed.
 Set when a task transitions to AI-DOING, cleared on completion or abort.")
 
+(defvar gptel-org-tasks--in-advice nil
+  "Non-nil when inside gptel-org-tasks advice functions to prevent recursion.")
+
 (defun gptel-org-tasks--get-task-info ()
   "Get information about the current AI task heading.
 Returns a plist with:
@@ -280,27 +283,33 @@ Returns t if inside an AI task, nil otherwise."
   "Advice to run before `gptel-send' for AI task handling.
 When ARG (prefix arg) is non-nil, `gptel-send' opens the transient
 menu instead of sending, so we skip the state transition."
-  ;; Only transition when actually sending, not when opening menu
-  (unless (and arg (eq this-command 'gptel-send))
-    (gptel-org-tasks--maybe-transition-and-apply)))
+  ;; Recursive guard to prevent re-entry
+  (unless gptel-org-tasks--in-advice
+    (let ((gptel-org-tasks--in-advice t))
+      ;; Only transition when actually sending, not when opening menu
+      (unless (and arg (eq this-command 'gptel-send))
+        (gptel-org-tasks--maybe-transition-and-apply)))))
 
 (defun gptel-org-tasks--after-abort (buf)
   "Advice to run after `gptel-abort' to transition task to CANCELED.
 BUF is the buffer where the request was aborted."
-  (when-let* ((marker (buffer-local-value 'gptel-org-tasks--active-task-marker buf))
-              ((marker-buffer marker)))
-    (with-current-buffer (marker-buffer marker)
-      (save-excursion
-        (goto-char marker)
-        (when-let* ((task-info (ignore-errors (gptel-org-tasks--get-task-info)))
-                    (todo-state (plist-get task-info :todo-state))
-                    ((equal todo-state gptel-org-tasks-doing-keyword)))
-          (gptel-org-tasks--change-todo-state gptel-org-tasks-canceled-keyword)
-          (message "gptel: Task state changed to %s"
-                   gptel-org-tasks-canceled-keyword))))
-    ;; Clear the marker
-    (with-current-buffer buf
-      (setq gptel-org-tasks--active-task-marker nil))))
+  ;; Recursive guard to prevent re-entry
+  (unless gptel-org-tasks--in-advice
+    (let ((gptel-org-tasks--in-advice t))
+      (when-let* ((marker (buffer-local-value 'gptel-org-tasks--active-task-marker buf))
+                  ((marker-buffer marker)))
+        (with-current-buffer (marker-buffer marker)
+          (save-excursion
+            (goto-char marker)
+            (when-let* ((task-info (ignore-errors (gptel-org-tasks--get-task-info)))
+                        (todo-state (plist-get task-info :todo-state))
+                        ((equal todo-state gptel-org-tasks-doing-keyword)))
+              (gptel-org-tasks--change-todo-state gptel-org-tasks-canceled-keyword)
+              (message "gptel: Task state changed to %s"
+                       gptel-org-tasks-canceled-keyword))))
+        ;; Clear the marker
+        (with-current-buffer buf
+          (setq gptel-org-tasks--active-task-marker nil))))))
 
 (defun gptel-org-tasks--clear-active-task (_start _end)
   "Clear the active task marker after response completes.

@@ -40,6 +40,12 @@
 (defvar gptel-max-tokens)
 (defvar gptel--link-type-cache)
 
+;; Recursive guards for advice functions
+(defvar gptel-org--in-send-with-props nil
+  "Non-nil when inside `gptel-org--send-with-props' to prevent recursion.")
+(defvar gptel-org--in-prefix-advice nil
+  "Non-nil when inside prefix advice functions to prevent recursion.")
+
 (defvar org-link-angle-re)
 (defvar org-link-bracket-re)
 (declare-function mailcap-file-name-to-mime-type "mailcap")
@@ -768,17 +774,21 @@ system message, model and provider (backend), among other
 parameters.
 
 ARGS are the original function call arguments."
-  (if (derived-mode-p 'org-mode)
-      (pcase-let ((`(,gptel--system-message ,gptel-backend ,gptel-model
-                     ,gptel-temperature ,gptel-max-tokens
-                     ,gptel--num-messages-to-send ,gptel-tools)
-                   (seq-mapn (lambda (a b) (or a b))
-                             (gptel-org--entry-properties)
-                             (list gptel--system-message gptel-backend gptel-model
-                                   gptel-temperature gptel-max-tokens
-                                   gptel--num-messages-to-send gptel-tools))))
-        (apply send-fun args))
-    (apply send-fun args)))
+  (if gptel-org--in-send-with-props
+      ;; Prevent recursion - just call the original function
+      (apply send-fun args)
+    (let ((gptel-org--in-send-with-props t))
+      (if (derived-mode-p 'org-mode)
+          (pcase-let ((`(,gptel--system-message ,gptel-backend ,gptel-model
+                         ,gptel-temperature ,gptel-max-tokens
+                         ,gptel--num-messages-to-send ,gptel-tools)
+                       (seq-mapn (lambda (a b) (or a b))
+                                 (gptel-org--entry-properties)
+                                 (list gptel--system-message gptel-backend gptel-model
+                                       gptel-temperature gptel-max-tokens
+                                       gptel--num-messages-to-send gptel-tools))))
+            (apply send-fun args))
+        (apply send-fun args)))))
 
 (advice-add 'gptel-send :around #'gptel-org--send-with-props)
 (advice-add 'gptel--suffix-send :around #'gptel-org--send-with-props)
@@ -1171,20 +1181,26 @@ cleaning up after."
 
 ORIG-FUN is the original function.  When `gptel-org-subtree-context'
 is enabled, adjusts the prefix to use the correct heading level."
-  (let ((result (funcall orig-fun)))
-    (if (derived-mode-p 'org-mode)
-        (gptel-org--dynamic-prefix-string result)
-      result)))
+  (if gptel-org--in-prefix-advice
+      (funcall orig-fun)
+    (let ((gptel-org--in-prefix-advice t))
+      (let ((result (funcall orig-fun)))
+        (if (derived-mode-p 'org-mode)
+            (gptel-org--dynamic-prefix-string result)
+          result)))))
 
 (defun gptel-org--advice-response-prefix (orig-fun)
   "Advice for `gptel-response-prefix-string' to support dynamic org heading levels.
 
 ORIG-FUN is the original function.  When `gptel-org-subtree-context'
 is enabled, adjusts the prefix to use the correct heading level."
-  (let ((result (funcall orig-fun)))
-    (if (derived-mode-p 'org-mode)
-        (gptel-org--dynamic-prefix-string result)
-      result)))
+  (if gptel-org--in-prefix-advice
+      (funcall orig-fun)
+    (let ((gptel-org--in-prefix-advice t))
+      (let ((result (funcall orig-fun)))
+        (if (derived-mode-p 'org-mode)
+            (gptel-org--dynamic-prefix-string result)
+          result)))))
 
 (advice-add 'gptel-prompt-prefix-string :around #'gptel-org--advice-prompt-prefix)
 (advice-add 'gptel-response-prefix-string :around #'gptel-org--advice-response-prefix)
