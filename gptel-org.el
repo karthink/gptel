@@ -532,16 +532,38 @@ context."
                        do (insert-buffer-substring org-buf start end)
                        (goto-char (point-min)))
               ;; When gptel-org-subtree-context is enabled, include sibling
-              ;; chat headings (@user/@assistant) in the context
+              ;; chat headings (@user/@assistant) in the context.
+              ;; Insert siblings in chronological order before the current chat entry.
               (when chat-siblings
-                (goto-char (point-max))
-                (cl-loop for (sib-beg . sib-end) in chat-siblings
-                         ;; Skip if this sibling overlaps with already-included content
-                         unless (cl-some (lambda (start-end)
-                                           (and (>= sib-beg (car start-end))
-                                                (<= sib-end (cdr start-end))))
-                                         (cl-mapcar #'cons start-bounds end-bounds))
-                         do (insert-buffer-substring org-buf sib-beg sib-end)))
+                ;; Find the current chat entry's position (the first chat heading
+                ;; in start-bounds that is a chat sibling)
+                (let* ((current-chat-start (car start-bounds))
+                       ;; Filter siblings that come before current entry and don't overlap
+                       (earlier-siblings
+                        (cl-remove-if
+                         (lambda (sib)
+                           (let ((sib-beg (car sib))
+                                 (sib-end (cdr sib)))
+                             ;; Skip if overlaps or comes after current position
+                             (or (>= sib-beg current-chat-start)
+                                 (cl-some (lambda (start-end)
+                                            (and (< sib-beg (cdr start-end))
+                                                 (> sib-end (car start-end))))
+                                          (cl-mapcar #'cons start-bounds end-bounds)))))
+                         chat-siblings)))
+                  ;; Insert earlier siblings right after the task heading (before current chat)
+                  ;; The task heading content ends where the first chat sibling would start
+                  (when earlier-siblings
+                    ;; Find where to insert: after the task heading but before current chat
+                    ;; In the copied buffer, content from start-bounds was inserted at point-min
+                    ;; The task heading content is now at the start
+                    (goto-char (point-min))
+                    ;; Skip to end of task heading content (first outline heading at chat level)
+                    (when (re-search-forward "^\\*\\*" nil t)
+                      (beginning-of-line)
+                      ;; Insert earlier siblings here, in order
+                      (dolist (sib earlier-siblings)
+                        (insert-buffer-substring org-buf (car sib) (cdr sib)))))))
               (goto-char (point-max))
               (gptel-org--unescape-tool-results)
               (gptel-org--strip-block-headers)
@@ -561,8 +583,9 @@ context."
           (when chat-siblings
             (goto-char (point-max))
             (cl-loop for (sib-beg . sib-end) in chat-siblings
-                     ;; Skip siblings already in the range [beg, prompt-end]
-                     unless (and (>= sib-beg beg) (<= sib-end prompt-end))
+                     ;; Skip siblings that overlap with the range [beg, prompt-end]
+                     ;; Overlap: sib-beg < prompt-end AND sib-end > beg
+                     unless (and (< sib-beg prompt-end) (> sib-end beg))
                      do (insert-buffer-substring org-buf sib-beg sib-end)))
           (goto-char (point-max))
           (gptel-org--unescape-tool-results)
