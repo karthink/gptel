@@ -1235,6 +1235,57 @@ is enabled, adjusts the prefix to use the correct heading level."
 
 ;;; Response heading adjustment for subtree context
 
+(defun gptel-org--escape-example-blocks (beg end)
+  "Prefix lines in example blocks with comma between BEG and END.
+
+Per Org manual, lines starting with `*', `,*', `#+' or `,#+' inside
+example blocks must be prefixed with a comma to prevent them from
+being interpreted as outline nodes or special syntax.  Org strips
+these commas when accessing the block contents.
+
+This should be called before `gptel-org--adjust-response-headings'
+so that headings inside examples are not modified."
+  (save-excursion
+    (save-restriction
+      (narrow-to-region beg end)
+      (goto-char (point-min))
+      ;; Find each example/src block and escape special lines within
+      (while (re-search-forward
+              "^[ \t]*#\\+begin_\\(example\\|src\\)\\(?:[ \t]\\|$\\)" nil t)
+        (let ((block-start (line-beginning-position 2)) ; line after #+begin
+              (block-end nil))
+          ;; Find the matching #+end
+          (when (re-search-forward
+                 "^[ \t]*#\\+end_\\(example\\|src\\)[ \t]*$" nil t)
+            (setq block-end (line-beginning-position))
+            ;; Escape lines within the block
+            (save-restriction
+              (narrow-to-region block-start block-end)
+              (goto-char (point-min))
+              (while (not (eobp))
+                (when (looking-at "^\\(,*\\)\\(\\*\\|#\\+\\)")
+                  ;; Add comma prefix
+                  (goto-char (match-beginning 2))
+                  (insert ","))
+                (forward-line 1)))))))))
+
+(defun gptel-org--in-example-block-p ()
+  "Return non-nil if point is inside an example or src block."
+  (save-excursion
+    (let ((pos (point))
+          (in-block nil))
+      (goto-char (point-min))
+      (while (and (not in-block)
+                  (re-search-forward
+                   "^[ \t]*#\\+begin_\\(example\\|src\\)\\(?:[ \t]\\|$\\)" pos t))
+        (let ((block-start (point)))
+          (when (re-search-forward
+                 "^[ \t]*#\\+end_\\(example\\|src\\)[ \t]*$" nil t)
+            (when (and (>= pos block-start)
+                       (<= pos (point)))
+              (setq in-block t)))))
+      in-block)))
+
 (defun gptel-org--adjust-response-headings (beg end)
   "Adjust heading levels in the response region from BEG to END.
 
@@ -1243,10 +1294,16 @@ the AI response should be demoted to be children of the @assistant
 heading.  This prevents response headings from escaping the
 assistant subtree and breaking the conversation structure.
 
+First, lines in example blocks that start with `*' or `#+' are
+prefixed with comma per Org manual requirements.  Then headings
+outside of example blocks are adjusted.
+
 For example, if the @assistant heading is at level 4 (****), any
 headings in the response should be at level 5 or deeper."
   (when (and gptel-org-subtree-context
              (derived-mode-p 'org-mode))
+    ;; First: escape special lines in example blocks
+    (gptel-org--escape-example-blocks beg end)
     (save-excursion
       ;; Find the @assistant heading level BEFORE narrowing
       (let ((assistant-level
@@ -1259,12 +1316,14 @@ headings in the response should be at level 5 or deeper."
         (save-restriction
           (narrow-to-region beg end)
           ;; First pass: find the minimum heading level in the response
+          ;; (only for headings outside example blocks)
           (goto-char (point-min))
           (while (re-search-forward org-outline-regexp-bol nil t)
-            (let ((level (org-outline-level)))
-              (when (or (null min-response-level)
-                        (< level min-response-level))
-                (setq min-response-level level))))
+            (unless (gptel-org--in-example-block-p)
+              (let ((level (org-outline-level)))
+                (when (or (null min-response-level)
+                          (< level min-response-level))
+                  (setq min-response-level level)))))
           ;; Second pass: adjust headings if needed
           (when (and min-response-level
                      (<= min-response-level assistant-level))
@@ -1272,10 +1331,11 @@ headings in the response should be at level 5 or deeper."
             (let ((level-diff (- (1+ assistant-level) min-response-level)))
               (goto-char (point-min))
               (while (re-search-forward "^\\(\\*+\\)\\( \\)" nil t)
-                (let* ((current-stars (match-string 1))
-                       (new-level (+ (length current-stars) level-diff))
-                       (new-stars (make-string new-level ?*)))
-                  (replace-match (concat new-stars "\\2")))))))))))
+                (unless (gptel-org--in-example-block-p)
+                  (let* ((current-stars (match-string 1))
+                         (new-level (+ (length current-stars) level-diff))
+                         (new-stars (make-string new-level ?*)))
+                    (replace-match (concat new-stars "\\2"))))))))))))
 
 (add-hook 'gptel-post-response-functions #'gptel-org--adjust-response-headings)
 
