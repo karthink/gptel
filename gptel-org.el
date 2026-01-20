@@ -423,23 +423,27 @@ When `gptel-org-subtree-context' is enabled and we're in an org
 buffer under a heading, adjust the number of stars in BASE-PREFIX
 to be one level deeper than the parent heading.
 
-If BASE-PREFIX starts with stars followed by space and text (a proper
-org heading format), those stars are replaced with the correct number.
-Other prefix formats are returned unchanged."
+If BASE-PREFIX starts with stars, those stars are replaced with
+the correct number.  If BASE-PREFIX doesn't start with stars
+\(e.g. \"@user\\n\"), stars are prepended to create a proper
+org heading."
   (if (and gptel-org-subtree-context
            (derived-mode-p 'org-mode))
       (let* ((parent-level (gptel-org--get-parent-heading-level))
              (target-level (if (> parent-level 0) (1+ parent-level) 1))
              (stars (make-string target-level ?*)))
         (cond
-         ;; Prefix starts with stars + space + word (proper org heading format) - replace stars
-         ((string-match "^\\(\\*+\\)\\( +[^ \n].*\\)" base-prefix)
+         ;; Prefix starts with stars - replace them
+         ((string-match "^\\(\\*+\\)\\(\\(?:.*\n?\\)?\\)" base-prefix)
           (let ((rest (match-string 2 base-prefix)))
             (concat stars rest)))
-         ;; Not a heading format - return unchanged
-         (t base-prefix)))
+         ;; Prefix doesn't start with stars but is non-empty - prepend stars and space
+         ((not (string-empty-p base-prefix))
+          (concat stars " " base-prefix))
+         ;; Empty prefix - just return stars with space and newline
+         (t (concat stars " \n"))))
     base-prefix))
-
+
 ;;; Setting context and creating queries
 (defun gptel-org--get-topic-start ()
   "If a conversation topic is set, return it."
