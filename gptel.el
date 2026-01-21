@@ -207,6 +207,8 @@
 (declare-function gptel-org--save-state "gptel-org")
 (declare-function gptel-org--restore-state "gptel-org")
 (declare-function gptel-org--annotate-links "gptel-org")
+(declare-function gptel-org--heading-has-tag-p "gptel-org")
+(defvar gptel-org-assistant-tag)
 (declare-function org-at-heading-p "org")
 (declare-function org-get-tags "org")
 (declare-function org-end-of-subtree "org")
@@ -1022,32 +1024,23 @@ BEG and END delimit the region to refresh."
   `(jit-lock-bounds ,beg . ,end))
 
 ;; Org-mode specific highlighting based on heading tags
-(defvar gptel-highlight-org-assistant-tag "assistant"
-  "Tag used to identify assistant headings for highlighting.
-
-Headings with this tag will be highlighted as LLM responses.
-This should match `gptel-org-assistant-tag' when using gptel-org.")
-
-(defun gptel-highlight--org-heading-has-tag-p (tag)
-  "Check if current heading has TAG (case-insensitive)."
-  (when (org-at-heading-p)
-    (let ((tags (org-get-tags nil t)))  ; local tags only
-      (cl-some (lambda (tg) (string-equal-ignore-case tg tag)) tags))))
+;; Uses `gptel-org--heading-has-tag-p' and `gptel-org-assistant-tag' from gptel-org.el
 
 (defun gptel-highlight--org-update-overlays ()
   "Update highlight overlays based on Org heading tags.
 
 Scans all headings for the assistant tag and creates/updates
-overlays spanning the entire subtree."
+overlays spanning the entire subtree.  Uses `gptel-org-assistant-tag'
+for consistency with gptel-org."
   (when (derived-mode-p 'org-mode)
+    (require 'gptel-org)
     ;; Remove existing org-based highlight overlays
     (remove-overlays (point-min) (point-max) 'gptel-highlight-org t)
     ;; Scan for tagged headings and create overlays
     (save-excursion
       (goto-char (point-min))
       (while (outline-next-heading)
-        (when (gptel-highlight--org-heading-has-tag-p
-               gptel-highlight-org-assistant-tag)
+        (when (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
           (let* ((beg (point))
                  (end (save-excursion
                         (org-end-of-subtree t t)
@@ -1122,9 +1115,10 @@ faces.
 This minor mode can be used anywhere in Emacs, and not just gptel chat
 buffers.
 
-In Org mode buffers, highlighting is based on heading tags (e.g.,
-:assistant:) rather than text properties.  This integrates better
-with Org's structure and folding."
+In Org mode buffers, highlighting is based on heading tags rather
+than text properties.  This integrates better with Org's structure
+and folding.  The tag used is configured by `gptel-org-assistant-tag'
+\(default \"assistant\")."
   :lighter nil
   :global nil
   (cond
