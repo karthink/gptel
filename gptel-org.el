@@ -318,6 +318,33 @@ buffer-local model setting."
   :type 'boolean
   :group 'gptel)
 
+(defcustom gptel-org-model-from-todo-tag t
+  "When non-nil, detect model from tags on TODO headings.
+
+When enabled, gptel will check the current heading for TODO keywords
+\(as defined in `gptel-org-todo-keywords') and if found, will search
+the heading's tags for model aliases or model names.
+
+For example, with this heading:
+  ** AI-DO Implement feature :haiku:
+
+The request will use the \\=`haiku\\=' model alias (Claude Haiku).
+
+This allows using model tags on task headings without requiring
+the :user: tag."
+  :type 'boolean
+  :group 'gptel)
+
+(defcustom gptel-org-todo-keywords '("AI-DO" "AI-DOING")
+  "TODO keywords that indicate AI task headings.
+
+Headings with these TODO keywords will have their tags checked for
+model specifications when `gptel-org-model-from-todo-tag' is enabled.
+
+The check is case-sensitive to match org-mode's TODO keyword handling."
+  :type '(repeat string)
+  :group 'gptel)
+
 
 ;;; Subtree context helper functions
 
@@ -874,6 +901,10 @@ When `gptel-org-model-from-user-tag' is enabled, model tags on the
 current user heading (like :haiku:, :sonnet:) take precedence over
 stored properties.
 
+When `gptel-org-model-from-todo-tag' is enabled, model tags on the
+enclosing TODO heading (with keywords like AI-DO, AI-DOING) also
+take precedence.
+
 ARGS are the original function call arguments."
   (if gptel-org--in-send-with-props
       ;; Prevent recursion - just call the original function
@@ -889,14 +920,18 @@ ARGS are the original function call arguments."
                                         gptel-temperature gptel-max-tokens
                                         gptel--num-messages-to-send gptel-tools)))
                        ;; Check for model tag on user heading (takes precedence)
-                       (user-heading-model (gptel-org--get-user-heading-model)))
-            ;; Apply model from user heading tag if found
-            (when user-heading-model
-              (when-let* ((backend (plist-get user-heading-model :backend)))
+                       (user-heading-model (gptel-org--get-user-heading-model))
+                       ;; Check for model tag on TODO heading (also takes precedence)
+                       (todo-heading-model (gptel-org--get-todo-heading-model))
+                       ;; User heading model takes precedence over TODO heading model
+                       (heading-model (or user-heading-model todo-heading-model)))
+            ;; Apply model from heading tag if found
+            (when heading-model
+              (when-let* ((backend (plist-get heading-model :backend)))
                 (setq gptel-backend backend))
-              (when-let* ((model (plist-get user-heading-model :model)))
+              (when-let* ((model (plist-get heading-model :model)))
                 (setq gptel-model model))
-              (gptel-org--debug "Using model from user heading tag: %s"
+              (gptel-org--debug "Using model from heading tag: %s"
                                 (gptel--model-name gptel-model)))
             (apply send-fun args))
         (apply send-fun args)))))
@@ -947,11 +982,17 @@ ARGS are the original function call arguments."
     (let ((tags (org-get-tags nil t)))  ; local tags only
       (cl-some (lambda (tg) (string-equal-ignore-case tg tag)) tags))))
 
-(defun gptel-org--find-model-from-tags ()
-  "Find a model specification from tags on the current user heading.
+(defun gptel-org--heading-has-todo-keyword-p ()
+  "Check if current heading has a TODO keyword from `gptel-org-todo-keywords'."
+  (when (org-at-heading-p)
+    (let ((todo (org-get-todo-state)))
+      (and todo (member todo gptel-org-todo-keywords)))))
 
-Searches the tags on the current heading (if it's a user heading)
-for model aliases or model names.
+(defun gptel-org--find-model-in-tags (tags &optional skip-tag)
+  "Find a model specification in TAGS.
+
+Searches TAGS for model aliases or model names.  If SKIP-TAG is provided,
+that tag is skipped (e.g., the user tag itself).
 
 Returns a plist (:backend BACKEND :model MODEL) if a matching model
 is found, nil otherwise.
@@ -959,29 +1000,53 @@ is found, nil otherwise.
 Model aliases are symbols with a :model-id property (like \\=`haiku\\=',
 \\=`sonnet\\=', \\=`opus\\=' for Anthropic models).  Model names are the actual
 model identifiers in backends."
+  (cl-block gptel-org--find-model-in-tags
+    (cl-loop
+     for tag in tags
+     for tag-sym = (intern (downcase tag))
+     ;; Skip the specified tag (e.g., user tag)
+     unless (and skip-tag (string-equal-ignore-case tag skip-tag))
+     ;; Check if tag is a model alias (has :model-id property)
+     if (get tag-sym :model-id)
+     return (cl-loop for (_name . backend) in gptel--known-backends
+                     when (memq tag-sym (gptel-backend-models backend))
+                     return (list :backend backend :model tag-sym))
+     ;; Check if tag matches a model name in any backend
+     else do
+     (cl-loop for (_name . backend) in gptel--known-backends
+              for models = (gptel-backend-models backend)
+              do (cl-loop for model in models
+                          when (string-equal-ignore-case
+                                tag (gptel--model-name model))
+                          return (cl-return-from gptel-org--find-model-in-tags
+                                   (list :backend backend :model model)))))))
+
+(defun gptel-org--find-model-from-tags ()
+  "Find a model specification from tags on the current user heading.
+
+Searches the tags on the current heading (if it's a user heading)
+for model aliases or model names.
+
+Returns a plist (:backend BACKEND :model MODEL) if a matching model
+is found, nil otherwise."
   (when (and gptel-org-model-from-user-tag
              (org-at-heading-p)
              (gptel-org--heading-has-tag-p gptel-org-user-tag))
-    (let ((tags (org-get-tags nil t)))  ; local tags only
-      (cl-loop
-       for tag in tags
-       for tag-sym = (intern (downcase tag))
-       ;; Skip the user tag itself
-       unless (string-equal-ignore-case tag gptel-org-user-tag)
-       ;; Check if tag is a model alias (has :model-id property)
-       if (get tag-sym :model-id)
-       return (cl-loop for (_name . backend) in gptel--known-backends
-                       when (memq tag-sym (gptel-backend-models backend))
-                       return (list :backend backend :model tag-sym))
-       ;; Check if tag matches a model name in any backend
-       else do
-       (cl-loop for (_name . backend) in gptel--known-backends
-                for models = (gptel-backend-models backend)
-                do (cl-loop for model in models
-                            when (string-equal-ignore-case
-                                  tag (gptel--model-name model))
-                            return (cl-return-from gptel-org--find-model-from-tags
-                                     (list :backend backend :model model))))))))
+    (gptel-org--find-model-in-tags (org-get-tags nil t) gptel-org-user-tag)))
+
+(defun gptel-org--find-model-from-todo-tags ()
+  "Find a model specification from tags on the current TODO heading.
+
+Searches the tags on the current heading (if it's a TODO heading
+with a keyword in `gptel-org-todo-keywords') for model aliases or
+model names.
+
+Returns a plist (:backend BACKEND :model MODEL) if a matching model
+is found, nil otherwise."
+  (when (and gptel-org-model-from-todo-tag
+             (org-at-heading-p)
+             (gptel-org--heading-has-todo-keyword-p))
+    (gptel-org--find-model-in-tags (org-get-tags nil t))))
 
 (defun gptel-org--get-user-heading-model ()
   "Get model from current or nearest user heading tags.
@@ -1003,6 +1068,30 @@ Returns a plist (:backend BACKEND :model MODEL) if found, nil otherwise."
             (when (gptel-org--heading-has-tag-p gptel-org-user-tag)
               (setq found (gptel-org--find-model-from-tags))))
           found)))))
+
+(defun gptel-org--get-todo-heading-model ()
+  "Get model from the enclosing TODO heading tags.
+
+Searches upward from point for a heading with a TODO keyword from
+`gptel-org-todo-keywords' and checks its tags for model specifications.
+
+Returns a plist (:backend BACKEND :model MODEL) if found, nil otherwise."
+  (when gptel-org-model-from-todo-tag
+    (save-excursion
+      ;; Move to enclosing heading if not already at one
+      (unless (org-at-heading-p)
+        (ignore-errors (outline-previous-heading)))
+      ;; Search upward for a TODO heading
+      (let ((found nil))
+        (while (and (not found)
+                    (org-at-heading-p))
+          (when (gptel-org--heading-has-todo-keyword-p)
+            (setq found (gptel-org--find-model-from-todo-tags)))
+          (unless found
+            (unless (ignore-errors (outline-up-heading 1 t))
+              ;; No parent heading, stop the loop
+              (goto-char (point-min)))))
+        found))))
 
 (defun gptel-org--restore-bounds-from-tags ()
   "Restore gptel response properties based on heading tags.
