@@ -485,6 +485,10 @@ depend on the value of `gptel-org-branching-context', which see.
 When `gptel-org-subtree-context' is also enabled, sibling headings
 that match `gptel-org-chat-heading-markers' will be included in the
 context."
+  ;; Refresh bounds from tags before constructing prompt to ensure text
+  ;; properties reflect current buffer state (avoids stale markers)
+  (when gptel-org-infer-bounds-from-tags
+    (gptel-org--restore-bounds-from-tags))
   (when (use-region-p)
     (narrow-to-region (region-beginning) (region-end))
     (setq prompt-end (point-max)))
