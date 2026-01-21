@@ -300,6 +300,24 @@ The tag comparison is case-insensitive."
   :type 'string
   :group 'gptel)
 
+(defcustom gptel-org-model-from-user-tag t
+  "When non-nil, detect model from tags on user headings.
+
+When enabled, gptel will check the current user heading for tags
+that match model aliases (like :haiku:, :sonnet:, :opus:) or model
+names defined in any backend.  If found, the matching model will
+be used for the request.
+
+For example, with this heading:
+  ** :user:haiku: My question here
+
+The request will use the \\=`haiku\\=' model alias (Claude Haiku).
+
+This only affects the current request and does not change the
+buffer-local model setting."
+  :type 'boolean
+  :group 'gptel)
+
 
 ;;; Subtree context helper functions
 
@@ -852,20 +870,34 @@ configuration, use that for requests instead.  This includes the
 system message, model and provider (backend), among other
 parameters.
 
+When `gptel-org-model-from-user-tag' is enabled, model tags on the
+current user heading (like :haiku:, :sonnet:) take precedence over
+stored properties.
+
 ARGS are the original function call arguments."
   (if gptel-org--in-send-with-props
       ;; Prevent recursion - just call the original function
       (apply send-fun args)
     (let ((gptel-org--in-send-with-props t))
       (if (derived-mode-p 'org-mode)
-          (pcase-let ((`(,gptel--system-message ,gptel-backend ,gptel-model
-                         ,gptel-temperature ,gptel-max-tokens
-                         ,gptel--num-messages-to-send ,gptel-tools)
-                       (seq-mapn (lambda (a b) (or a b))
-                                 (gptel-org--entry-properties)
-                                 (list gptel--system-message gptel-backend gptel-model
-                                       gptel-temperature gptel-max-tokens
-                                       gptel--num-messages-to-send gptel-tools))))
+          (pcase-let* ((`(,gptel--system-message ,gptel-backend ,gptel-model
+                          ,gptel-temperature ,gptel-max-tokens
+                          ,gptel--num-messages-to-send ,gptel-tools)
+                        (seq-mapn (lambda (a b) (or a b))
+                                  (gptel-org--entry-properties)
+                                  (list gptel--system-message gptel-backend gptel-model
+                                        gptel-temperature gptel-max-tokens
+                                        gptel--num-messages-to-send gptel-tools)))
+                       ;; Check for model tag on user heading (takes precedence)
+                       (user-heading-model (gptel-org--get-user-heading-model)))
+            ;; Apply model from user heading tag if found
+            (when user-heading-model
+              (when-let* ((backend (plist-get user-heading-model :backend)))
+                (setq gptel-backend backend))
+              (when-let* ((model (plist-get user-heading-model :model)))
+                (setq gptel-model model))
+              (gptel-org--debug "Using model from user heading tag: %s"
+                                (gptel--model-name gptel-model)))
             (apply send-fun args))
         (apply send-fun args)))))
 
@@ -914,6 +946,63 @@ ARGS are the original function call arguments."
   (when (org-at-heading-p)
     (let ((tags (org-get-tags nil t)))  ; local tags only
       (cl-some (lambda (tg) (string-equal-ignore-case tg tag)) tags))))
+
+(defun gptel-org--find-model-from-tags ()
+  "Find a model specification from tags on the current user heading.
+
+Searches the tags on the current heading (if it's a user heading)
+for model aliases or model names.
+
+Returns a plist (:backend BACKEND :model MODEL) if a matching model
+is found, nil otherwise.
+
+Model aliases are symbols with a :model-id property (like \\=`haiku\\=',
+\\=`sonnet\\=', \\=`opus\\=' for Anthropic models).  Model names are the actual
+model identifiers in backends."
+  (when (and gptel-org-model-from-user-tag
+             (org-at-heading-p)
+             (gptel-org--heading-has-tag-p gptel-org-user-tag))
+    (let ((tags (org-get-tags nil t)))  ; local tags only
+      (cl-loop
+       for tag in tags
+       for tag-sym = (intern (downcase tag))
+       ;; Skip the user tag itself
+       unless (string-equal-ignore-case tag gptel-org-user-tag)
+       ;; Check if tag is a model alias (has :model-id property)
+       if (get tag-sym :model-id)
+       return (cl-loop for (_name . backend) in gptel--known-backends
+                       when (memq tag-sym (gptel-backend-models backend))
+                       return (list :backend backend :model tag-sym))
+       ;; Check if tag matches a model name in any backend
+       else do
+       (cl-loop for (_name . backend) in gptel--known-backends
+                for models = (gptel-backend-models backend)
+                do (cl-loop for model in models
+                            when (string-equal-ignore-case
+                                  tag (gptel--model-name model))
+                            return (cl-return-from gptel-org--find-model-from-tags
+                                     (list :backend backend :model model))))))))
+
+(defun gptel-org--get-user-heading-model ()
+  "Get model from current or nearest user heading tags.
+
+Searches for a user heading at or before point and checks its tags
+for model specifications.
+
+Returns a plist (:backend BACKEND :model MODEL) if found, nil otherwise."
+  (when gptel-org-model-from-user-tag
+    (save-excursion
+      ;; If we're at a user heading, check it directly
+      (if (and (org-at-heading-p)
+               (gptel-org--heading-has-tag-p gptel-org-user-tag))
+          (gptel-org--find-model-from-tags)
+        ;; Otherwise, search backwards for the nearest user heading
+        (let ((found nil))
+          (while (and (not found)
+                      (ignore-errors (outline-previous-heading)))
+            (when (gptel-org--heading-has-tag-p gptel-org-user-tag)
+              (setq found (gptel-org--find-model-from-tags))))
+          found)))))
 
 (defun gptel-org--restore-bounds-from-tags ()
   "Restore gptel response properties based on heading tags.
