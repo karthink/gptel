@@ -46,6 +46,18 @@
 (defvar gptel-org--in-prefix-advice nil
   "Non-nil when inside prefix advice functions to prevent recursion.")
 
+;; Debug support
+(defvar gptel-org-debug nil
+  "When non-nil, output debug messages for subtree context operations.
+Set to t to enable debug output to *Messages* buffer.
+Useful for diagnosing heading level issues.")
+
+(defun gptel-org--debug (format-string &rest args)
+  "Output debug message when `gptel-org-debug' is non-nil.
+FORMAT-STRING and ARGS are passed to `message'."
+  (when gptel-org-debug
+    (apply #'message (concat "[gptel-org] " format-string) args)))
+
 (defvar org-link-angle-re)
 (defvar org-link-bracket-re)
 (declare-function mailcap-file-name-to-mime-type "mailcap")
@@ -303,9 +315,15 @@ This is used to determine the correct heading level for chat entries
 when `gptel-org-subtree-context' is enabled."
   (save-excursion
     ;; First, get to the current heading if not already there
-    (let ((started-at-heading (org-at-heading-p)))
+    (let ((started-at-heading (org-at-heading-p))
+          (start-pos (point)))
+      (gptel-org--debug "get-parent-heading-level: start at pos %d, line %d, at-heading=%s"
+                        start-pos (line-number-at-pos) started-at-heading)
       (unless started-at-heading
         (ignore-errors (outline-back-to-heading t)))
+      (gptel-org--debug "get-parent-heading-level: after back-to-heading at line %d: %s"
+                        (line-number-at-pos)
+                        (buffer-substring (line-beginning-position) (line-end-position)))
       ;; Check if we're inside a chat subtree by looking at ancestors
       (let ((inside-chat-subtree
              (save-excursion
@@ -315,6 +333,7 @@ when `gptel-org-subtree-context' is enabled."
                    (when (gptel-org--chat-heading-p)
                      (setq in-chat t)))
                  in-chat))))
+        (gptel-org--debug "get-parent-heading-level: inside-chat-subtree=%s" inside-chat-subtree)
         ;; Walk up to find the task heading
         ;; A heading is the task heading if:
         ;; 1. It's not a chat heading itself, AND
@@ -324,34 +343,41 @@ when `gptel-org-subtree-context' is enabled."
         (let ((found nil)
               (started-from-chat (and started-at-heading
                                       (gptel-org--chat-heading-p))))
+          (gptel-org--debug "get-parent-heading-level: started-from-chat=%s" started-from-chat)
           (while (and (org-at-heading-p) (not found))
-            (if (gptel-org--chat-heading-p)
-                ;; This is a chat heading, keep going up
-                (ignore-errors (outline-up-heading 1 t))
-              ;; Not a chat heading - this is the parent if:
-              ;; - It has chat children, OR
-              ;; - We started from body/heading NOT inside a chat subtree (new conversation), OR
-              ;; - We walked up from a chat heading
-              (let ((current-level (org-outline-level))
-                    (has-chat-child nil))
-                (save-excursion
-                  (outline-next-heading)
-                  (when (and (org-at-heading-p)
-                             (= (org-outline-level) (1+ current-level))
-                             (gptel-org--chat-heading-p))
-                    (setq has-chat-child t)))
-                (if (or has-chat-child
-                        (and (not started-at-heading)      ; Started from body text
-                             (not inside-chat-subtree))    ; and NOT inside chat subtree
-                        started-from-chat)                 ; Walked up from chat heading
-                    (setq found t)
-                  ;; No chat children, continue up
-                  (unless (ignore-errors (outline-up-heading 1 t))
-                    ;; Can't go up anymore, use this level
-                    (setq found t))))))
-          (if (org-at-heading-p)
-              (org-outline-level)
-            0))))))
+            (let ((current-heading (buffer-substring (line-beginning-position) (line-end-position)))
+                  (is-chat (gptel-org--chat-heading-p)))
+              (gptel-org--debug "get-parent-heading-level: checking heading: %s (is-chat=%s)"
+                                current-heading is-chat)
+              (if is-chat
+                  ;; This is a chat heading, keep going up
+                  (ignore-errors (outline-up-heading 1 t))
+                ;; Not a chat heading - this is the parent if:
+                ;; - It has chat children, OR
+                ;; - We started from body/heading NOT inside a chat subtree (new conversation), OR
+                ;; - We walked up from a chat heading
+                (let ((current-level (org-outline-level))
+                      (has-chat-child nil))
+                  (save-excursion
+                    (outline-next-heading)
+                    (when (and (org-at-heading-p)
+                               (= (org-outline-level) (1+ current-level))
+                               (gptel-org--chat-heading-p))
+                      (setq has-chat-child t)))
+                  (gptel-org--debug "get-parent-heading-level: non-chat heading level=%d has-chat-child=%s"
+                                    current-level has-chat-child)
+                  (if (or has-chat-child
+                          (and (not started-at-heading)      ; Started from body text
+                               (not inside-chat-subtree))    ; and NOT inside chat subtree
+                          started-from-chat)                 ; Walked up from chat heading
+                      (setq found t)
+                    ;; No chat children, continue up
+                    (unless (ignore-errors (outline-up-heading 1 t))
+                      ;; Can't go up anymore, use this level
+                      (setq found t)))))))
+          (let ((result (if (org-at-heading-p) (org-outline-level) 0)))
+            (gptel-org--debug "get-parent-heading-level: result=%d" result)
+            result))))))
 
 (defun gptel-org--chat-heading-p (&optional heading-text)
   "Check if HEADING-TEXT (or current heading) is a chat entry.
@@ -359,21 +385,24 @@ when `gptel-org-subtree-context' is enabled."
 Returns non-nil if the heading contains any of the markers in
 `gptel-org-chat-heading-markers', or when `gptel-org-infer-bounds-from-tags'
 is enabled, if the heading has :assistant: or :user: tags."
-  (let ((text (or heading-text
-                  (and (org-at-heading-p)
-                       (org-get-heading t t t t)))))
-    (or
-     ;; Check heading text markers
-     (and text
-          (cl-some (lambda (marker)
-                     (string-match-p (regexp-quote marker) text))
-                   gptel-org-chat-heading-markers))
-     ;; When tag-based bounds are enabled, also check for tags
-     (and gptel-org-infer-bounds-from-tags
-          (null heading-text)  ; Only check tags when at actual heading
-          (org-at-heading-p)
-          (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
-              (gptel-org--heading-has-tag-p gptel-org-user-tag))))))
+  (let* ((text (or heading-text
+                   (and (org-at-heading-p)
+                        (org-get-heading t t t t))))
+         (marker-match
+          (and text
+               (cl-some (lambda (marker)
+                          (string-match-p (regexp-quote marker) text))
+                        gptel-org-chat-heading-markers)))
+         (tag-match
+          (and gptel-org-infer-bounds-from-tags
+               (null heading-text)
+               (org-at-heading-p)
+               (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
+                   (gptel-org--heading-has-tag-p gptel-org-user-tag))))
+         (result (or marker-match tag-match)))
+    (gptel-org--debug "chat-heading-p: text=%S marker-match=%s tag-match=%s result=%s"
+                      text marker-match tag-match result)
+    result))
 
 (defun gptel-org--get-chat-siblings ()
   "Get bounds of all sibling chat headings under the task heading.
@@ -432,16 +461,21 @@ org heading."
       (let* ((parent-level (gptel-org--get-parent-heading-level))
              (target-level (if (> parent-level 0) (1+ parent-level) 1))
              (stars (make-string target-level ?*)))
-        (cond
-         ;; Prefix starts with stars - replace them
-         ((string-match "^\\(\\*+\\)\\(\\(?:.*\n?\\)?\\)" base-prefix)
-          (let ((rest (match-string 2 base-prefix)))
-            (concat stars rest)))
-         ;; Prefix doesn't start with stars but is non-empty - prepend stars and space
-         ((not (string-empty-p base-prefix))
-          (concat stars " " base-prefix))
-         ;; Empty prefix - just return stars with space and newline
-         (t (concat stars " \n"))))
+        (gptel-org--debug "dynamic-prefix-string: base=%S parent-level=%d target-level=%d"
+                          base-prefix parent-level target-level)
+        (let ((result
+               (cond
+                ;; Prefix starts with stars - replace them
+                ((string-match "^\\(\\*+\\)\\(\\(?:.*\n?\\)?\\)" base-prefix)
+                 (let ((rest (match-string 2 base-prefix)))
+                   (concat stars rest)))
+                ;; Prefix doesn't start with stars but is non-empty - prepend stars and space
+                ((not (string-empty-p base-prefix))
+                 (concat stars " " base-prefix))
+                ;; Empty prefix - just return stars with space and newline
+                (t (concat stars " \n")))))
+          (gptel-org--debug "dynamic-prefix-string: result=%S" result)
+          result))
     base-prefix))
 
 ;;; Setting context and creating queries
@@ -1212,6 +1246,8 @@ is enabled, adjusts the prefix to use the correct heading level."
       (funcall orig-fun)
     (let ((gptel-org--in-prefix-advice t))
       (let ((result (funcall orig-fun)))
+        (gptel-org--debug "advice-prompt-prefix: orig=%S org-mode=%s subtree-context=%s"
+                          result (derived-mode-p 'org-mode) gptel-org-subtree-context)
         (if (derived-mode-p 'org-mode)
             (gptel-org--dynamic-prefix-string result)
           result)))))
@@ -1225,6 +1261,8 @@ is enabled, adjusts the prefix to use the correct heading level."
       (funcall orig-fun)
     (let ((gptel-org--in-prefix-advice t))
       (let ((result (funcall orig-fun)))
+        (gptel-org--debug "advice-response-prefix: orig=%S org-mode=%s subtree-context=%s"
+                          result (derived-mode-p 'org-mode) gptel-org-subtree-context)
         (if (derived-mode-p 'org-mode)
             (gptel-org--dynamic-prefix-string result)
           result)))))
