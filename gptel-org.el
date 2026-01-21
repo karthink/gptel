@@ -384,7 +384,8 @@ when `gptel-org-subtree-context' is enabled."
 
 Returns non-nil if the heading contains any of the markers in
 `gptel-org-chat-heading-markers', or when `gptel-org-infer-bounds-from-tags'
-is enabled, if the heading has :assistant: or :user: tags."
+is enabled, if the heading has :assistant: or :user: tags, or if
+the heading starts with a configured prompt/response prefix."
   (let* ((text (or heading-text
                    (and (org-at-heading-p)
                         (org-get-heading t t t t))))
@@ -399,9 +400,19 @@ is enabled, if the heading has :assistant: or :user: tags."
                (org-at-heading-p)
                (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
                    (gptel-org--heading-has-tag-p gptel-org-user-tag))))
-         (result (or marker-match tag-match)))
-    (gptel-org--debug "chat-heading-p: text=%S marker-match=%s tag-match=%s result=%s"
-                      text marker-match tag-match result)
+         ;; Check if heading starts with configured prompt/response prefix
+         ;; Access the alist directly to avoid advice recursion
+         (prefix-match
+          (and text
+               (let ((prompt-prefix (string-trim (or (alist-get 'org-mode gptel-prompt-prefix-alist) "")))
+                     (response-prefix (string-trim (or (alist-get 'org-mode gptel-response-prefix-alist) ""))))
+                 (or (and (not (string-empty-p prompt-prefix))
+                          (string-prefix-p prompt-prefix text))
+                     (and (not (string-empty-p response-prefix))
+                          (string-prefix-p response-prefix text))))))
+         (result (or marker-match tag-match prefix-match)))
+    (gptel-org--debug "chat-heading-p: text=%S marker-match=%s tag-match=%s prefix-match=%s result=%s"
+                      text marker-match tag-match prefix-match result)
     result))
 
 (defun gptel-org--get-chat-siblings ()
