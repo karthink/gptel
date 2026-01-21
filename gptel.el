@@ -207,6 +207,10 @@
 (declare-function gptel-org--save-state "gptel-org")
 (declare-function gptel-org--restore-state "gptel-org")
 (declare-function gptel-org--annotate-links "gptel-org")
+(declare-function org-at-heading-p "org")
+(declare-function org-get-tags "org")
+(declare-function org-end-of-subtree "org")
+(declare-function outline-next-heading "outline")
 (define-obsolete-function-alias
   'gptel-set-topic 'gptel-org-set-topic "0.7.5")
 
@@ -1017,6 +1021,66 @@ BEG and END delimit the region to refresh."
         (setq prev-pt (point)))))
   `(jit-lock-bounds ,beg . ,end))
 
+;; Org-mode specific highlighting based on heading tags
+(defvar gptel-highlight-org-assistant-tag "assistant"
+  "Tag used to identify assistant headings for highlighting.
+
+Headings with this tag will be highlighted as LLM responses.
+This should match `gptel-org-assistant-tag' when using gptel-org.")
+
+(defun gptel-highlight--org-heading-has-tag-p (tag)
+  "Check if current heading has TAG (case-insensitive)."
+  (when (org-at-heading-p)
+    (let ((tags (org-get-tags nil t)))  ; local tags only
+      (cl-some (lambda (tg) (string-equal-ignore-case tg tag)) tags))))
+
+(defun gptel-highlight--org-update-overlays ()
+  "Update highlight overlays based on Org heading tags.
+
+Scans all headings for the assistant tag and creates/updates
+overlays spanning the entire subtree."
+  (when (derived-mode-p 'org-mode)
+    ;; Remove existing org-based highlight overlays
+    (remove-overlays (point-min) (point-max) 'gptel-highlight-org t)
+    ;; Scan for tagged headings and create overlays
+    (save-excursion
+      (goto-char (point-min))
+      (while (outline-next-heading)
+        (when (gptel-highlight--org-heading-has-tag-p
+               gptel-highlight-org-assistant-tag)
+          (let* ((beg (point))
+                 (end (save-excursion
+                        (org-end-of-subtree t t)
+                        (point)))
+                 (ov (make-overlay beg end nil t)))
+            (overlay-put ov 'evaporate t)
+            (overlay-put ov 'gptel-highlight t)
+            (overlay-put ov 'gptel-highlight-org t)
+            (gptel-highlight--decorate ov 'response)))))))
+
+(defun gptel-highlight--org-after-tags-change (&rest _)
+  "Hook function to update highlights after Org tag changes."
+  (when (bound-and-true-p gptel-highlight-mode)
+    (gptel-highlight--org-update-overlays)))
+
+(defvar gptel-highlight--org-hooks-installed nil
+  "Non-nil if Org hooks for highlight updates are installed.")
+
+(defun gptel-highlight--org-setup-hooks ()
+  "Install Org hooks for dynamic highlight updates."
+  (unless gptel-highlight--org-hooks-installed
+    ;; Hook into tag changes
+    (add-hook 'org-after-tags-change-hook #'gptel-highlight--org-after-tags-change)
+    ;; Hook into visibility changes (folding/unfolding)
+    (add-hook 'org-cycle-hook #'gptel-highlight--org-after-tags-change)
+    (setq gptel-highlight--org-hooks-installed t)))
+
+(defun gptel-highlight--org-remove-hooks ()
+  "Remove Org hooks for highlight updates."
+  (remove-hook 'org-after-tags-change-hook #'gptel-highlight--org-after-tags-change)
+  (remove-hook 'org-cycle-hook #'gptel-highlight--org-after-tags-change)
+  (setq gptel-highlight--org-hooks-installed nil))
+
 (define-minor-mode gptel-highlight-mode
   "Visually highlight LLM respones regions.
 
@@ -1026,7 +1090,11 @@ face.  See `gptel-highlight-methods' for highlighting methods, and
 faces.
 
 This minor mode can be used anywhere in Emacs, and not just gptel chat
-buffers."
+buffers.
+
+In Org mode buffers, highlighting is based on heading tags (e.g.,
+:assistant:) rather than text properties.  This integrates better
+with Org's structure and folding."
   :lighter nil
   :global nil
   (cond
@@ -1035,13 +1103,23 @@ buffers."
       (setq left-margin-width (1+ left-margin-width))
       (if-let* ((win (get-buffer-window (current-buffer))))
           (set-window-buffer win (current-buffer))))
-    (jit-lock-register #'gptel-highlight--update)
-    (gptel-highlight--update (point-min) (point-max)))
+    (if (derived-mode-p 'org-mode)
+        ;; Org mode: use tag-based highlighting
+        (progn
+          (gptel-highlight--org-setup-hooks)
+          (gptel-highlight--org-update-overlays))
+      ;; Non-Org: use JIT-lock with text properties
+      (jit-lock-register #'gptel-highlight--update)
+      (gptel-highlight--update (point-min) (point-max))))
    (t (when (memq 'margin gptel-highlight-methods)
         (setq left-margin-width (max (1- left-margin-width) 0))
         (if-let* ((win (get-buffer-window (current-buffer))))
             (set-window-buffer win (current-buffer))))
-      (jit-lock-unregister #'gptel-highlight--update)
+      (if (derived-mode-p 'org-mode)
+          ;; Org mode: just remove overlays (hooks stay for other buffers)
+          (remove-overlays nil nil 'gptel-highlight-org t)
+        ;; Non-Org: unregister JIT-lock
+        (jit-lock-unregister #'gptel-highlight--update))
       (without-restriction
         (remove-overlays nil nil 'gptel-highlight t)))))
 
