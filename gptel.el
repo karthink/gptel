@@ -984,13 +984,16 @@ Supported TYPEs are response, ignore and tool calls."
                    ('response 'gptel-response-highlight)
                    ('ignore 'shadow)
                    (`(tool . ,_) 'shadow))))
-  (when-let* ((prefix
-               (cond ((memq 'margin gptel-highlight-methods)
-                      (gptel-highlight--margin-prefix (or val 'response)))
-                     ((memq 'fringe gptel-highlight-methods)
-                      (gptel-highlight--fringe-prefix (or val 'response))))))
-    (overlay-put ov 'line-prefix prefix)
-    (overlay-put ov 'wrap-prefix prefix)))
+  ;; Skip line-prefix in org-mode: it conflicts with org-indent-mode's
+  ;; line-prefix text properties, causing assistant text to lose indentation.
+  (unless (derived-mode-p 'org-mode)
+    (when-let* ((prefix
+                 (cond ((memq 'margin gptel-highlight-methods)
+                        (gptel-highlight--margin-prefix (or val 'response)))
+                       ((memq 'fringe gptel-highlight-methods)
+                        (gptel-highlight--fringe-prefix (or val 'response))))))
+      (overlay-put ov 'line-prefix prefix)
+      (overlay-put ov 'wrap-prefix prefix))))
 
 (defun gptel-highlight--update (beg end)
   "JIT-lock function: mark gptel response/reasoning regions.
