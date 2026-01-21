@@ -1063,23 +1063,53 @@ overlays spanning the entire subtree."
   (when (bound-and-true-p gptel-highlight-mode)
     (gptel-highlight--org-update-overlays)))
 
-(defvar gptel-highlight--org-hooks-installed nil
-  "Non-nil if Org hooks for highlight updates are installed.")
+(defvar-local gptel-highlight--org-change-idle-timer nil
+  "Idle timer for debouncing highlight updates on buffer changes.")
+
+(defun gptel-highlight--org-after-change (beg _end _len)
+  "Handle buffer changes that might affect tags.
+BEG is the start of the changed region."
+  (when (bound-and-true-p gptel-highlight-mode)
+    ;; Only update if change is on a heading line (where tags are)
+    (save-excursion
+      (goto-char beg)
+      (when (org-at-heading-p)
+        ;; Debounce updates using an idle timer
+        (when gptel-highlight--org-change-idle-timer
+          (cancel-timer gptel-highlight--org-change-idle-timer))
+        (setq gptel-highlight--org-change-idle-timer
+              (run-with-idle-timer
+               0.2 nil
+               (lambda (buf)
+                 (when (buffer-live-p buf)
+                   (with-current-buffer buf
+                     (setq gptel-highlight--org-change-idle-timer nil)
+                     (gptel-highlight--org-update-overlays))))
+               (current-buffer)))))))
 
 (defun gptel-highlight--org-setup-hooks ()
   "Install Org hooks for dynamic highlight updates."
-  (unless gptel-highlight--org-hooks-installed
-    ;; Hook into tag changes
-    (add-hook 'org-after-tags-change-hook #'gptel-highlight--org-after-tags-change)
-    ;; Hook into visibility changes (folding/unfolding)
-    (add-hook 'org-cycle-hook #'gptel-highlight--org-after-tags-change)
-    (setq gptel-highlight--org-hooks-installed t)))
+  ;; Hook into tag changes (via org-set-tags-command)
+  (add-hook 'org-after-tags-change-hook
+            #'gptel-highlight--org-after-tags-change nil t)
+  ;; Hook into visibility changes (folding/unfolding)
+  (add-hook 'org-cycle-hook
+            #'gptel-highlight--org-after-tags-change nil t)
+  ;; Hook into buffer changes for manual tag edits
+  (add-hook 'after-change-functions
+            #'gptel-highlight--org-after-change nil t))
 
 (defun gptel-highlight--org-remove-hooks ()
   "Remove Org hooks for highlight updates."
-  (remove-hook 'org-after-tags-change-hook #'gptel-highlight--org-after-tags-change)
-  (remove-hook 'org-cycle-hook #'gptel-highlight--org-after-tags-change)
-  (setq gptel-highlight--org-hooks-installed nil))
+  (remove-hook 'org-after-tags-change-hook
+               #'gptel-highlight--org-after-tags-change t)
+  (remove-hook 'org-cycle-hook
+               #'gptel-highlight--org-after-tags-change t)
+  (remove-hook 'after-change-functions
+               #'gptel-highlight--org-after-change t)
+  (when gptel-highlight--org-change-idle-timer
+    (cancel-timer gptel-highlight--org-change-idle-timer)
+    (setq gptel-highlight--org-change-idle-timer nil)))
 
 (define-minor-mode gptel-highlight-mode
   "Visually highlight LLM respones regions.
@@ -1116,8 +1146,10 @@ with Org's structure and folding."
         (if-let* ((win (get-buffer-window (current-buffer))))
             (set-window-buffer win (current-buffer))))
       (if (derived-mode-p 'org-mode)
-          ;; Org mode: just remove overlays (hooks stay for other buffers)
-          (remove-overlays nil nil 'gptel-highlight-org t)
+          ;; Org mode: remove hooks and overlays
+          (progn
+            (gptel-highlight--org-remove-hooks)
+            (remove-overlays nil nil 'gptel-highlight-org t))
         ;; Non-Org: unregister JIT-lock
         (jit-lock-unregister #'gptel-highlight--update))
       (without-restriction
