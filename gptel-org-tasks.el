@@ -282,12 +282,18 @@ Returns t if inside an AI task, nil otherwise."
 (defun gptel-org-tasks--before-send (&optional arg &rest _args)
   "Advice to run before `gptel-send' for AI task handling.
 When ARG (prefix arg) is non-nil, `gptel-send' opens the transient
-menu instead of sending, so we skip the state transition."
+menu instead of sending, so we skip the state transition.
+When dry-run is enabled (\"I\" in transient args), also skip the
+state transition since no actual request is sent."
   ;; Recursive guard to prevent re-entry
   (unless gptel-org-tasks--in-advice
     (let ((gptel-org-tasks--in-advice t))
-      ;; Only transition when actually sending, not when opening menu
-      (unless (and arg (eq this-command 'gptel-send))
+      ;; Skip transition when:
+      ;; 1. Opening transient menu (prefix arg with gptel-send)
+      ;; 2. Dry-run from transient ("I" in args list)
+      (unless (or (and arg (eq this-command 'gptel-send))
+                  (and (listp arg)
+                       (member "I" arg)))
         (gptel-org-tasks--maybe-transition-and-apply)))))
 
 (defun gptel-org-tasks--after-abort (buf)
