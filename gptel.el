@@ -978,23 +978,13 @@ Supported TYPEs are response, ignore and tool calls."
                    ('response 'gptel-response-highlight)
                    ('ignore 'shadow)
                    (`(tool . ,_) 'shadow))))
-  ;; When org-indent-mode is active, margin highlighting would override
-  ;; org-indent's line-prefix/wrap-prefix text properties, breaking heading
-  ;; indentation.  Fall back to fringe highlighting in this case.
-  (let* ((use-fringe-fallback (and (derived-mode-p 'org-mode)
-                                   (bound-and-true-p org-indent-mode)
-                                   (memq 'margin gptel-highlight-methods)
-                                   (not (memq 'fringe gptel-highlight-methods))))
-         (prefix
-          (cond ((and (memq 'margin gptel-highlight-methods)
-                      (not use-fringe-fallback))
-                 (gptel-highlight--margin-prefix (or val 'response)))
-                ((or (memq 'fringe gptel-highlight-methods)
-                     use-fringe-fallback)
-                 (gptel-highlight--fringe-prefix (or val 'response))))))
-    (when prefix
-      (overlay-put ov 'line-prefix prefix)
-      (overlay-put ov 'wrap-prefix prefix))))
+  (when-let* ((prefix
+               (cond ((memq 'margin gptel-highlight-methods)
+                      (gptel-highlight--margin-prefix (or val 'response)))
+                     ((memq 'fringe gptel-highlight-methods)
+                      (gptel-highlight--fringe-prefix (or val 'response))))))
+    (overlay-put ov 'line-prefix prefix)
+    (overlay-put ov 'wrap-prefix prefix)))
 
 (defun gptel-highlight--update (beg end)
   "JIT-lock function: mark gptel response/reasoning regions.
