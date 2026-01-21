@@ -384,8 +384,7 @@ when `gptel-org-subtree-context' is enabled."
 
 Returns non-nil if the heading contains any of the markers in
 `gptel-org-chat-heading-markers', or when `gptel-org-infer-bounds-from-tags'
-is enabled, if the heading has :assistant: or :user: tags, or if
-the heading starts with a configured prompt/response prefix."
+is enabled, if the heading has :assistant: or :user: tags."
   (let* ((text (or heading-text
                    (and (org-at-heading-p)
                         (org-get-heading t t t t))))
@@ -400,19 +399,9 @@ the heading starts with a configured prompt/response prefix."
                (org-at-heading-p)
                (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
                    (gptel-org--heading-has-tag-p gptel-org-user-tag))))
-         ;; Check if heading starts with configured prompt/response prefix
-         ;; Access the alist directly to avoid advice recursion
-         (prefix-match
-          (and text
-               (let ((prompt-prefix (string-trim (or (alist-get 'org-mode gptel-prompt-prefix-alist) "")))
-                     (response-prefix (string-trim (or (alist-get 'org-mode gptel-response-prefix-alist) ""))))
-                 (or (and (not (string-empty-p prompt-prefix))
-                          (string-prefix-p prompt-prefix text))
-                     (and (not (string-empty-p response-prefix))
-                          (string-prefix-p response-prefix text))))))
-         (result (or marker-match tag-match prefix-match)))
-    (gptel-org--debug "chat-heading-p: text=%S marker-match=%s tag-match=%s prefix-match=%s result=%s"
-                      text marker-match tag-match prefix-match result)
+         (result (or marker-match tag-match)))
+    (gptel-org--debug "chat-heading-p: text=%S marker-match=%s tag-match=%s result=%s"
+                      text marker-match tag-match result)
     result))
 
 (defun gptel-org--get-chat-siblings ()
@@ -456,12 +445,22 @@ that are chat headings."
                 (outline-next-heading)))))
         (nreverse siblings)))))
 
-(defun gptel-org--dynamic-prefix-string (base-prefix)
+(defun gptel-org--dynamic-prefix-string (base-prefix &optional for-prompt)
   "Return BASE-PREFIX adjusted for current org heading context.
 
 When `gptel-org-subtree-context' is enabled and we're in an org
 buffer under a heading, adjust the number of stars in BASE-PREFIX
 to be one level deeper than the parent heading.
+
+When `gptel-org-infer-bounds-from-tags' is enabled, the prefix will
+use org tags instead of text markers:
+- For response prefix: generates \"** :assistant:\\n\"
+- For prompt prefix (when FOR-PROMPT is non-nil): generates
+  \"**  :user:\\n\" with the tag at the end of heading line
+
+The user types their content BELOW the heading line (in the body),
+not on the heading line itself.  This ensures proper org structure
+with tags at the end of headings.
 
 If BASE-PREFIX starts with stars, those stars are replaced with
 the correct number.  If BASE-PREFIX doesn't start with stars
@@ -472,10 +471,18 @@ org heading."
       (let* ((parent-level (gptel-org--get-parent-heading-level))
              (target-level (if (> parent-level 0) (1+ parent-level) 1))
              (stars (make-string target-level ?*)))
-        (gptel-org--debug "dynamic-prefix-string: base=%S parent-level=%d target-level=%d"
-                          base-prefix parent-level target-level)
+        (gptel-org--debug "dynamic-prefix-string: base=%S parent-level=%d target-level=%d for-prompt=%s"
+                          base-prefix parent-level target-level for-prompt)
         (let ((result
                (cond
+                ;; When using tag-based bounds, generate tag-style headings
+                (gptel-org-infer-bounds-from-tags
+                 (if for-prompt
+                     ;; For user prompt: heading with user tag at end
+                     ;; User types content below this heading
+                     (concat stars " :" gptel-org-user-tag ":\n")
+                   ;; For assistant response: heading with assistant tag
+                   (concat stars " :" gptel-org-assistant-tag ":\n")))
                 ;; Prefix starts with stars - replace them
                 ((string-match "^\\(\\*+\\)\\(\\(?:.*\n?\\)?\\)" base-prefix)
                  (let ((rest (match-string 2 base-prefix)))
@@ -916,21 +923,37 @@ Scans all headings in the buffer for :assistant: and :user: tags
 Headings tagged with the assistant tag get their subtree content
 marked with the gptel response property.
 
+User-tagged headings within an assistant subtree are treated as
+user feedback - their content is NOT marked as assistant response.
+
 Returns non-nil if any tagged headings were found and processed."
   (save-excursion
     (goto-char (point-min))
     (let ((found-tags nil))
       (while (outline-next-heading)
         (cond
-         ;; Assistant tag - mark subtree as response
+         ;; Assistant tag - mark subtree as response, but respect user tags within
          ((gptel-org--heading-has-tag-p gptel-org-assistant-tag)
           (setq found-tags t)
-          (let ((beg (point))
-                (end (save-excursion
-                       (org-end-of-subtree t t)
-                       (point))))
-            (add-text-properties beg end '(gptel response front-sticky (gptel)))))
-         ;; User tag - ensure no gptel property (remove if present)
+          (let ((assistant-beg (point))
+                (assistant-end (save-excursion
+                                 (org-end-of-subtree t t)
+                                 (point))))
+            ;; First, mark the entire assistant subtree as response
+            (add-text-properties assistant-beg assistant-end
+                                 '(gptel response front-sticky (gptel)))
+            ;; Then, scan for user tags within and remove gptel property from those
+            (save-excursion
+              (goto-char assistant-beg)
+              (while (and (outline-next-heading)
+                          (< (point) assistant-end))
+                (when (gptel-org--heading-has-tag-p gptel-org-user-tag)
+                  (let ((user-beg (point))
+                        (user-end (save-excursion
+                                    (org-end-of-subtree t t)
+                                    (min (point) assistant-end))))
+                    (remove-text-properties user-beg user-end '(gptel nil))))))))
+         ;; User tag at top level - ensure no gptel property (remove if present)
          ((gptel-org--heading-has-tag-p gptel-org-user-tag)
           (setq found-tags t)
           (let ((beg (point))
@@ -1260,7 +1283,7 @@ is enabled, adjusts the prefix to use the correct heading level."
         (gptel-org--debug "advice-prompt-prefix: orig=%S org-mode=%s subtree-context=%s"
                           result (derived-mode-p 'org-mode) gptel-org-subtree-context)
         (if (derived-mode-p 'org-mode)
-            (gptel-org--dynamic-prefix-string result)
+            (gptel-org--dynamic-prefix-string result 'for-prompt)
           result)))))
 
 (defun gptel-org--advice-response-prefix (orig-fun)
@@ -1275,7 +1298,7 @@ is enabled, adjusts the prefix to use the correct heading level."
         (gptel-org--debug "advice-response-prefix: orig=%S org-mode=%s subtree-context=%s"
                           result (derived-mode-p 'org-mode) gptel-org-subtree-context)
         (if (derived-mode-p 'org-mode)
-            (gptel-org--dynamic-prefix-string result)
+            (gptel-org--dynamic-prefix-string result nil) ;nil = for response
           result)))))
 
 (advice-add 'gptel-prompt-prefix-string :around #'gptel-org--advice-prompt-prefix)
