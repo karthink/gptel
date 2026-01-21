@@ -505,9 +505,11 @@ For each DONE task, this will:
                  task-info
                  (lambda (summary)
                    (if summary
-                       (progn
+                       (let ((task-beg (plist-get task-info :beg)))
                          (gptel-org-archive--replace-with-summary summary task-info)
                          (when (y-or-n-p "Archive this task? ")
+                           ;; Move point to task heading before archiving
+                           (goto-char task-beg)
                            (org-archive-subtree)))
                      (message "Summary failed for: %s" heading))
                    ;; Continue with next task
