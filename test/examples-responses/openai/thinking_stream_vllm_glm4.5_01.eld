@@ -1,0 +1,3 @@
+(t
+ "The user has greeted me with \"Hi!\". This is a simple greeting, and I should respond politely and warmly to start the conversation. Since they haven't asked any specific question or requested any information yet, I'll just acknowledge their greeting and express that I'm here to help if needed.\n\nI'll respond with:\n\"Hello! How can I assist you today?\"\n\nThis response is friendly, professional, and opens the door for them to let me know what they need help with."
+ "\nHello! How can I assist you today?")
