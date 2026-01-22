@@ -35,9 +35,11 @@ Does NOT bind gptel-org-subtree-context - caller must do that."
 
 (defmacro gptel-org-test-with-buffer (content &rest body)
   "Create a temp org buffer with CONTENT, enable subtree context, and execute BODY.
-Point is placed at the first @ character if present, otherwise at end."
+Point is placed at the first @ character if present, otherwise at end.
+Disables `gptel-org-infer-bounds-from-tags' to test marker-based behavior."
   (declare (indent 1))
-  `(let ((gptel-org-subtree-context t))
+  `(let ((gptel-org-subtree-context t)
+         (gptel-org-infer-bounds-from-tags nil))
      (gptel-org-test-with-temp-buffer ,content ,@body)))
 
 ;;; Tests for gptel-org--chat-heading-p
