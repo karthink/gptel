@@ -300,6 +300,39 @@ The tag comparison is case-insensitive."
   :type 'string
   :group 'gptel)
 
+(defcustom gptel-org-response-title-function nil
+  "Function to generate a title for assistant response headings.
+
+When non-nil, this function is called after the response is complete
+to generate a title for the response heading.  The function receives
+three arguments:
+- BEG: Start position of the response
+- END: End position of the response
+- HEADING-POS: Position of the response heading
+
+The function should return a string to use as the heading title,
+or nil to keep the heading without a title.
+
+The heading is updated in place, preserving any existing tags.
+
+Example to use the first line of the response (truncated):
+
+  (setq gptel-org-response-title-function
+        (lambda (beg end _heading-pos)
+          (save-excursion
+            (goto-char beg)
+            (let ((first-line (buffer-substring-no-properties
+                               (point) (line-end-position))))
+              (truncate-string-to-width
+               (string-trim first-line) 50 nil nil \"...\")))))
+
+Example to generate title via LLM (requires separate request):
+
+  ;; See gptel-org-generate-response-title for an async example"
+  :type '(choice (const :tag "No title" nil)
+                 (function :tag "Title function"))
+  :group 'gptel)
+
 (defcustom gptel-org-model-from-user-tag t
   "When non-nil, detect model from tags on user headings.
 
@@ -1637,6 +1670,65 @@ headings in the response should be at level 5 or deeper."
                     (replace-match (concat new-stars "\\2"))))))))))))
 
 (add-hook 'gptel-post-response-functions #'gptel-org--adjust-response-headings)
+
+
+;;; Response heading title generation
+
+(defun gptel-org--find-response-heading (pos)
+  "Find the assistant response heading containing or just before POS.
+Returns the position of the heading, or nil if not found."
+  (save-excursion
+    (goto-char pos)
+    ;; Go to beginning of line to handle being at end of heading line
+    (beginning-of-line)
+    (if (and (org-at-heading-p)
+             (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
+                 (gptel-org--chat-heading-p
+                  (org-get-heading t t t t))))
+        (point)
+      ;; Search backward for assistant heading
+      (when (re-search-backward org-heading-regexp nil t)
+        (when (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
+                  (gptel-org--chat-heading-p
+                   (org-get-heading t t t t)))
+          (point))))))
+
+(defun gptel-org--set-heading-title (heading-pos title)
+  "Set the title of the heading at HEADING-POS to TITLE.
+Preserves existing tags on the heading."
+  (when (and heading-pos title (not (string-empty-p title)))
+    (save-excursion
+      (goto-char heading-pos)
+      (when (org-at-heading-p)
+        (let* ((tags (org-get-tags nil t))
+               (level (org-outline-level))
+               (stars (make-string level ?*)))
+          ;; Replace the entire heading line
+          (beginning-of-line)
+          (delete-region (point) (line-end-position))
+          (insert stars " " title)
+          ;; Re-apply tags
+          (when tags
+            (org-set-tags tags)))))))
+
+(defun gptel-org--apply-response-title (beg end)
+  "Apply a title to the response heading if configured.
+Called from `gptel-post-response-functions' with BEG and END
+positions of the response."
+  (when (and gptel-org-response-title-function
+             (derived-mode-p 'org-mode))
+    (let ((heading-pos (gptel-org--find-response-heading beg)))
+      (when heading-pos
+        (condition-case err
+            (let ((title (funcall gptel-org-response-title-function
+                                  beg end heading-pos)))
+              (when title
+                (gptel-org--set-heading-title heading-pos title)))
+          (error
+           (message "gptel: Error generating response title: %S" err)))))))
+
+;; Add hook with high priority (run late, after heading adjustments)
+(add-hook 'gptel-post-response-functions #'gptel-org--apply-response-title 80)
 
 (provide 'gptel-org)
 ;;; gptel-org.el ends here
