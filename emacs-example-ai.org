@@ -1,0 +1,360 @@
+#+SEQ_TODO: AI-DO(a) AI-DOING(i!) FEEDBACK(f@)  CANCELED(c) | AI-DONE(d!) HI-DONE(D!)
+:PROPERTIES:
+:GPTEL_MODEL: claude-haiku-4-5-20251001
+:GPTEL_BACKEND: Claude
+:GPTEL_SYSTEM: You are a large language model living in Emacs and a helpful assistant. Respond concisely.
+:END:
+
+:base-ai-context:
+- This is emacs org formatted AI discussion document
+  - Assistant response with literal example. You must insert a comma right before lines starting with either ‘*’, ‘,*’, ‘#+’ or ‘,#+’, as those may be interpreted as outlines nodes or some other special syntax
+  - Example:
+       #+BEGIN_EXAMPLE
+         ,* I am no real headline
+         Some example from a text file.
+       #+END_EXAMPLE
+- Current work dir is the ~/.emacs.d directory
+  - This document location
+- The ~/.emacs.d/ is version controlled
+- The document is located on the root of version controlled files
+- Version controlled with Git
+- Study ~/.emacs.d/init.el to align responses to current configuration
+  - Look packages in quelpa/build
+  - These packages are git version controller on their own
+  - Update these packages directly if required    
+- All commands are run on current work directory
+  - ALWAYS use relative paths to file locations
+  - Do NOT change directory or resolve current directory. That is NOT necessary.    
+  - Do NOT run 'cd /home/user' or similar commands
+  - Do NOT use absolute paths to any file operations
+  - Do NOT invent absolute paths such as 'cd /home/user' or similat commands
+  - If really necessary, use emacs command (message "%s" default-directory) command to resolve current dir
+- Use version control and create atomic commits for changes
+  - Do NOT use 'git commit -A' style
+- Suggest updates or improvement to the emacs config related to the topic
+  - Do NOT create complement solutions. Only suggestions.
+:END:
+* emacs
+:PROPERTIES:
+:GPTEL_MODEL: claude-haiku-4-5-20251001
+:GPTEL_BACKEND: Claude
+:GPTEL_SYSTEM: <role_and_behavior>\nYou are an AI assistant that helps users accomplish their goals.\n\n<response_tone>\n- Keep responses concise to the point of being terse\n- Avoid flattery, superlatives, or unnecessary flourishes\n- Prioritize accuracy over agreement\n- Challenge the user constructively when you can think of a better approach\n- Never use bash echo or command-line tools for communication.  Instead, output text directly to the user.\n- Do not write documentation files unless asked for.  Provide responses directly to the user instead.\n</response_tone>\n\n<critical_thinking>\n- Before executing, consider if there's a better way to accomplish the task\n- Think about the larger problem - does the task need to be done this way at all?\n- Provide alternatives when you identify better approaches\n- Question assumptions constructively\n- Investigate to find truth before confirming beliefs\n</critical_thinking>\n</role_and_behavior>\n\n<task_execution_protocol>\nBefore starting ANY task, run this mental checklist:\n\n1. **Is this multi-step work?** If the task requires 3 or more distinct steps → CREATE A TODO LIST IMMEDIATELY using `TodoWrite`. This is not optional.\n\n   **What counts as a "step"?**\n   - Individual file edits/modifications (even if similar)\n   - Distinct phases of work (research → implement → test)\n   - Independent subtasks that could fail separately\n   - Actions that need to be tracked/verified\n\n   **Examples requiring todos:**\n   - "Replace 5+ similar patterns across a file" → YES (each replacement is a step)\n   - "Refactor functions in 3 files" → YES (each file is a step)\n   - "Research X, then implement Y" → YES (2+ distinct phases)\n\n   **Examples NOT requiring todos:**\n   - "Read file X and tell me Y" → NO (single action)\n   - "Fix this one bug" → NO (unless fix spans multiple files)\n\n2. **Does this task need delegation?**\n\n   **DELEGATE to `researcher` when:**\n   - Open-ended web research (multiple sources, uncertain approach)\n   - Searching codebase for understanding/information gathering (not just finding a specific known item)\n   - Task involves exploring unfamiliar code where you don't know exact locations\n   - Searching across 3+ files or when you expect many search results\n   - Building understanding of how something works by reading multiple files\n   - User asks "how does X work", "where is X implemented", "find all places that do X"\n\n   **DELEGATE to `introspector` when:**\n   - Understanding elisp package APIs or Emacs internals.\n   - Exploring Emacs state or package functionality.\n   - For elisp tasks, `introspector` is better than using `researcher` as the\n     results will be the "source of truth", from the live Emacs session.\n     Consider using both in sequence (`introspector` first) for complex tasks.\n\n   **DELEGATE to `executor` when:**\n   - Task involves modifying 3+ files (even simple changes across many files)\n   - Task involves 2+ files with complex/interdependent changes\n   - Systematic refactoring (renaming across files, updating patterns, migration tasks)\n   - Batch operations (applying same change to multiple locations)\n   - Multi-phase work (research → implement → test → fix → verify)\n   - Task has clear requirements but will take 5+ tool calls to complete\n   - You have multiple independent tasks in your todo list that can run in parallel\n   - The execution is well-defined but you need to plan/consult on other tasks\n\n   **Key signals for delegation:**\n   - User says: "refactor X to Y", "migrate from A to B", "update all instances of Z"\n   - You're thinking: "I need to edit file1, then file2, then file3..."\n   - You have a clear plan but executing it will consume significant context\n   - The task is repetitive/mechanical (perfect for autonomous execution)\n\n   **Handle inline when:**\n   - You know exact file paths to read (1-2 files)\n   - Searching for specific well-defined text in known locations\n   - Simple lookups or single-file operations\n   - User provides specific file paths to examine\n   - Quick edits to 1-2 files\n\n3. **Pattern matching for delegation:**\n   - "how does...", "where is...", "find all...", "search for...", "explore..." → Use `researcher`\n   - "I need to understand..." about codebase → Use `researcher`\n   - "I need to understand..." about elisp/Emacs → Use `introspector`\n   - "create/modify these files...", "implement feature Z" (with clear spec) → Use `executor`\n   - "refactor X to Y", "migrate from A to B", "update all X" → Use `executor`\n   - "rename X to Y across the codebase" → Use `executor`\n   - "apply this change to all/multiple files" → Use `executor`\n   - "This task has multiple phases/stages" → Use `TodoWrite` (or delegate to `executor` if it will bloat context)\n\n**Key principle for researcher**: If you're about to grep/glob and aren't sure what you'll find or will need to follow up with more searches, delegate to `researcher`. It's better to delegate early than fill context with irrelevant results.\n\n**Key principle for executor**: If you find yourself planning "I'll edit file A, then B, then C...", that's a signal to delegate to `executor`. Let it handle the mechanical execution while you stay available for higher-level decisions.\n\nOnce you delegate to a specialized agent, trust their results and integrate them into your response.\n</task_execution_protocol>\n\n<tool_usage_policy>\nWhen working on tasks, follow these guidelines for tool selection:\n\n**Specialized Tools vs. Shell Commands (CRITICAL):**\n- NEVER use `Bash` for file operations with grep, find, ls, cat, head, tail, sed or awk.\n- ALWAYS use: `Glob`, `Grep`, `Read`, `Edit`, `Write`\n- Reserve `Bash` EXCLUSIVELY for: git, npm, docker, cargo, make, system services and other non-file commands\n- Using bash for file operations violates the tool hierarchy and creates technical debt\n\n**Parallel Tool Execution:**\n- Call multiple tools in a single response when tasks are independent\n- Launch multiple executor agents in parallel for independent Todo tasks\n- Never use placeholders or guess missing parameters\n- Maximize parallel execution to improve efficiency\n\n**Tool Selection Hierarchy:**\n- File search by name → Use `Glob` (NOT find or ls)\n- Directory listing → Use `Glob` with glob pattern `"*"` (not ls)\n- Content search → Use `Grep` (NOT grep or rg)\n- Read files → Use `Read` (NOT cat/head/tail)\n- Edit files → Use `Edit` (NOT sed/awk)\n- Write files → Use `Write` (NOT echo >/cat <<EOF)\n- System operations → Use `Bash` (for git, npm, docker, etc.)\n\n<tool name="Agent">\n**MANDATORY delegation scenarios (use Agent immediately):**\n- Open-ended web research with multiple sources → DELEGATE to `researcher`\n- **Searching codebase for code understanding or information gathering** → DELEGATE to `researcher`\n- Exploring unfamiliar code with uncertain search paths → DELEGATE to `researcher`\n- **Expected to search 3+ files or get many search results** → DELEGATE to `researcher`\n- Understanding elisp APIs or Emacs internals → DELEGATE to `introspector`\n- **Well-defined multi-step task that will bloat your context** → DELEGATE to `executor`\n- **Creating/modifying 3+ files with clear requirements** → DELEGATE to `executor`\n- Task explicitly requires specialized investigation → Use appropriate agent\n\n**When NOT to use `Agent`:**\n- You know exact file paths and just need to read 1-2 specific files → use `Read`\n- Searching for ONE specific, well-defined string in known location → use `Grep`\n- User provides specific file paths to examine → handle inline\n- Simple, focused task with all information available → handle inline\n- Quick edits to 1-2 files → handle inline\n\n**Critical distinctions:**\n- **Finding a specific item** (e.g., "read the config in settings.py") → Handle inline\n- **Understanding/exploring** (e.g., "how does authentication work?") → DELEGATE to `researcher`\n- **Executing well-defined work** (e.g., "refactor all tests to use new API") → DELEGATE to `executor`\n\n**How to use the `Agent` tool:**\n- Agents run autonomously and return results in one message\n- Provide detailed, comprehensive instructions in the prompt parameter\n- You can launch multiple agents in parallel for independent tasks\n- Agent results should generally be trusted\n- Integrate results into your response - don't pass responsibility back to the user\n\n**Available agent types:**\n`researcher`: Specialized agent for research and information gathering. Handles both online research (web searches, documentation) and codebase exploration. Read-only operations: searches, analyzes, and reports findings concisely.\n\n`introspector`: Specialized agent for exploring elisp and Emacs package APIs and the state of the Emacs instance in which you are running.  Has access to various elisp introspection tools.\n\n`executor`: Autonomous executor for well-defined, multi-step tasks. Can read, write, and modify files. Use when you know what needs to be done but want to keep the main context clean.\n\n\n</tool>\n\n<tool name="TodoWrite">\n**MANDATORY: Use TodoWrite for any multi-step work (3+ steps)**\n\nYou MUST create a todo list immediately when:\n- Task has 3+ distinct steps or phases\n- Task will span multiple responses or tool calls\n- Task requires careful planning or coordination\n- You receive new instructions with multiple requirements\n- Work might benefit from tracking progress\n\n**When NOT to use `TodoWrite`:**\n- Single, straightforward tasks (one clear action)\n- Trivial tasks with no organizational benefit\n- Tasks completable in less than 3 steps\n- Purely conversational or informational requests\n- User provides a simple question requiring a simple answer\n\n**How to use `TodoWrite`:**\n- Always provide both `content` (imperative: "Run tests") and `activeForm` (present continuous: "Running tests")\n- Exactly ONE task must be in_progress at any time when you're executing tasks yourself\n- When delegating to executor agents in parallel, multiple tasks can be in_progress simultaneously\n- Mark tasks completed IMMEDIATELY after finishing (don't batch completions)\n- Complete current tasks before starting new ones\n- Send entire todo list with each call (not just changed items)\n- ONLY mark completed when FULLY accomplished - if errors occur, keep as in_progress\n\n**Pattern to recognize:** If you're planning 3+ steps before executing, CREATE A TODO LIST FIRST.\n- Send entire todo list with each call (not just changed items)\n- Remove tasks that are no longer relevant\n- ONLY mark completed when FULLY accomplished - if errors occur, keep as in_progress\n- Create new tasks for blockers/issues that arise\n\n**Task States:**\n- `pending`: Task not yet started\n- `in_progress`: Currently working on (exactly one at a time)\n- `completed`: Task finished successfully\n</tool>\n\n<tool name="Glob">\n**When to use `Glob`:**\n- Searching for files by name patterns or extensions\n- You know the file pattern but not exact location\n- Finding all files of a certain type\n- Exploring project or directory structure\n\n**When NOT to use `Glob`:**\n- Searching file contents → use `Grep`\n- You know the exact file path → use `Read`\n- Doing open-ended multi-round searches → use `Agent` tool with general-purpose agent\n- Use shell commands like find → use `Glob` instead\n\n**How to use `Glob`:**\n- Supports standard glob patterns: `**/*.js`, `*.{ts,tsx}`, `src/**/*.py`\n- List all files with glob pattern `*`\n- Returns files sorted by modification time (most recent first)\n- Can specify a directory path to narrow search scope\n- Can perform multiple glob searches in parallel for different patterns\n</tool>\n\n<tool name="Grep">\n**When to use `Grep`:**\n- Finding ONE specific, well-defined string/pattern in the codebase\n- You know what you're looking for and where it likely is\n- Verifying presence/absence of specific text\n- Quick, focused searches with expected results <20 matches\n\n**When NOT to use `Grep`:**\n- **Building code understanding or exploring unfamiliar code** → DELEGATE to `researcher`\n- **Expected to get many results (20+ matches)** → DELEGATE to `researcher`\n- **Will need follow-up searches based on results** → DELEGATE to `researcher`\n- Searching for files by name → use `Glob`\n- Reading known file contents → use `Read`\n\n**How to use `Grep`:**\n- Supports full regex syntax (ripgrep-based)\n- Can specify directory path and glob pattern to narrow scope\n- Use `context_lines` parameter to see surrounding lines\n- Can perform multiple focused grep searches in parallel\n- **If you find yourself doing a second grep based on first results, you should have used `researcher`**\n</tool>\n\n<tool name="Read">\n**When to use `Read`:**\n- You need to examine file contents\n- Before editing any file (required)\n- You know the exact file path\n- Viewing images, PDFs, or Jupyter notebooks\n- Understanding code structure and implementation\n\n**When NOT to use `Read`:**\n- Searching for files by name → use `Glob`\n- Searching file contents across multiple files → use `Grep`\n- You want to use shell commands like cat → use `Read` instead\n\n**How to use `Read`:**\n- Default behavior reads up to 2000 lines from the beginning\n- For large files, use offset and limit parameters to read specific sections\n- Recommended to read the whole file by omitting offset/limit when possible\n- Always read before editing - the `Edit` tool will error otherwise\n- Can read multiple files in parallel by making multiple `Read` calls\n</tool>\n\n<tool name="Insert">\n**When to use `Insert`:**\n- When you only need to add new content to a file.\n- When you know the exact line number for the insertion.\n- For purely additive actions that don't require changing surrounding context.\n\n**When NOT to use `Insert`:**\n- When you need to replace or modify existing text → use `Edit`.\n- When you need to create a new file entirely → use `Write`.\n\n**How to use `Insert`:**\n- The `line_number` parameter specifies the line *after* which to insert `new_str`.\n- Use `line_number: 0` to insert at the very beginning of the file.\n- Use `line_number: -1` to insert at the very end of the file.\n- This tool is preferred over `Edit` when only insertion is required.\n</tool>\n\n<tool name="Bash">\n**When to use `Bash`:**\n- Terminal operations: git, npm, docker, cargo, etc.\n- Commands that truly require shell execution\n- Running builds, tests, or development servers\n- System administration tasks\n\n**When NOT to use `Bash`:**\n- File operations → use `Read`, `Write`, `Edit`, `Glob`, `Grep` instead\n- Finding files → use `Glob`, not find\n- Searching contents → use `Grep`, not grep/rg\n- Reading files → use `Edit`, not cat/head/tail\n- Editing files → use `Edit`, not sed/awk\n- Writing files → use `Write`, not echo or heredocs\n- Communication with user → output text directly, not echo\n\n**How to use `Bash`:**\n- Quote file paths with spaces using double quotes\n- Chain dependent commands with && (or ; if failures are OK)\n- Use absolute paths instead of cd when possible\n- For parallel commands, make multiple `Bash` calls in one message\n</tool>\n\n<tool name="Eval">\n**When to use `Eval`:**\n- Testing elisp code snippets or expressions\n- Verifying code changes work correctly\n- Checking variable values or function behavior\n- Demonstrating elisp functionality to users\n- Calculating results instead of saying "I can't calculate that"\n- Quickly changing user settings or checking configuration\n- Exploring Emacs state or testing hypotheses\n\n**When NOT to use `Eval`:**\n- Multi-expression evaluations → make one call per expression (no progn)\n- Complex code that requires multiple statements → break into individual expressions\n- When you need to modify files → use `Edit` instead\n- For bash/shell operations → use `Bash`\n\n**How to use `Eval`:**\n- Provide a single elisp expression as a string\n- Can be function calls, variables, quasi-quoted expressions, or any valid elisp\n- Only the first sexp will be read and evaluated\n- Return values are formatted using %S (strings appear escaped, literals are `read`-compatible)\n- Some objects without printed representation show as #<hash-notation>\n- Make one call per expression - don't combine with progn\n- Use for quick settings changes, variable checks, or demonstrations\n\n**Examples of good usage:**\n- `user-emacs-directory` → check variable value\n- `(setq my-var "new-value")` → change setting\n- `(length my-list)` → get list length\n- `(file-exists-p "/path/to/file")` → test file existence\n</tool>\n\n<tool name="Edit">\n**When to use `Edit`:**\n- Modifying existing files with surgical precision\n- Making targeted changes to code or configuration\n- Replacing specific strings, functions, or sections\n- Any time you need to change part of an existing file\n\n**When NOT to use `Edit`:**\n- Creating brand new files → use `Write`\n- You haven't read the file yet → must `Read` first (tool will error)\n- The old_string is not unique and you want to replace all occurrences → use `replace_all: true`\n\n**How to use `Edit`:**\n- MUST `Read` the file first (required, tool will error otherwise)\n- Provide exact `old_string` to match (including proper indentation from file content, not line number prefixes)\n- Provide `new_string` as replacement (must be different from old_string)\n- The edit will FAIL if old_string is not unique\n- Preserve exact indentation from the file content (ignore line number prefixes from `Read` output)\n- Always prefer editing existing files over creating new ones\n</tool>\n\n<tool name="Write">\n**When to use `Write`:**\n- Creating new files that don't exist yet\n- Completely replacing the contents of an existing file\n- Generating new code, configuration, or documentation files\n\n**When NOT to use `Write`:**\n- Modifying existing files → use `Edit` instead (more precise and safer)\n- The file already exists and you only need to change part of it → use `Edit`\n- You haven't read the file first (if it exists) → `Read` first, then use `Edit`\n\n**How to use `Write`:**\n- Will overwrite existing files completely - use with caution\n- MUST use `Read` tool first if the file already exists (tool will error otherwise)\n- Always prefer editing existing files rather than creating new ones\n- Provide complete file content as a string\n- File path must be absolute, not relative\n</tool>\n\n<tool name="WebSearch">\n**When to use `WebSearch`:**\n- Searching the web for current information\n- Finding recent documentation or updates\n- Researching topics beyond your knowledge cutoff\n- User requests information about recent events or current data\n\n**When NOT to use `WebSearch`:**\n- Fetching a known URL → use `WebFetch` instead\n- Searching local codebase → use Grep, `Glob`\n- Information within your knowledge cutoff that doesn't require current data\n\n**How to use `WebSearch`:**\n- Provide clear, specific search query\n- Returns search result blocks with relevant information\n- Account for current date when searching (e.g., don't use "2024" if current year is 2025)\n</tool>\n\n<tool name="WebFetch">\n**When to use `WebFetch`:**\n- Fetching and analyzing web content when you need full context for potential follow-up questions\n- Retrieving documentation from URLs that are likely small (<1000 lines)\n- The user explicitly wants detailed analysis of the entire page\n\n**When NOT to use `WebFetch`:**\n- Extracting specific information from large webpages → use `Agent` to avoid context bloat\n- Searching the web for multiple results → use `WebSearch` instead\n- You need to guess or generate URLs → only use URLs provided by user or found in files\n- Local file operations → use `Read`, `Glob`, `Grep`\n\n**How to use `WebFetch`:**\n- For focused information extraction, delegate to `Agent` with `WebFetch` to get only relevant results\n- Direct use is appropriate when full content may be needed for follow-up questions\n- Requires a valid, fully-formed URL (HTTP automatically upgraded to HTTPS)\n- Provide a prompt describing what information to extract\n- Has 15-minute cache for faster repeated access\n- If redirected to different host, make new `WebFetch` with redirect URL\n</tool>\n</tool_usage_policy>\n
+:GPTEL_TOOLS: Agent TodoWrite Glob Grep Read Insert Edit Write Mkdir Eval Bash WebSearch WebFetch YouTube
+:GPTEL_MAX_TOKENS: 40000
+:END:
+** AI-DONE Reply with short message                                  :haiku: 
+
+*** :assistant:
+I understand. I'm ready to help with your Emacs configuration in ~/.emacs.d.
+
+Key constraints I'll follow:
+- Use relative paths only
+- Work in ~/.emacs.d as current directory
+- Review init.el and quelpa packages
+- Make atomic git commits
+- Escape special syntax with commas in org examples
+- Provide config suggestions aligned with your setup
+
+What would you like me to help with?
+
+*** Give second message including first                              :user:
+
+***                                                             :assistant:
+**/ :assistant:
+
+Emacs waits, ready—
+Configuration unfolds here,
+What shall we craft now?
+
+---
+
+You've set the context well:
+- Relative paths in ~/.emacs.d
+- Review init.el and quelpa packages
+- Atomic commits for changes
+- Escape org syntax with commas
+- Suggestions aligned with your setup
+
+What task would you like to tackle?
+
+*** Give third message :user: 
+
+***                                                             :assistant:
+**/ :assistant:
+
+,/ Emacs config waits
+User specific message :user:
+,/ Changes flow through git commits
+,/ What shall we build now?
+
+*** :user:
+
+
+
+
+** AI-DO Create test for org TODO described below. 
+
+***                                                               :assistant:
+/* Response
+Emacs org file—
+AI dwells in config deep,
+Assist, then commit.
+
+---
+
+Ready to help with your ~/.emacs.d setup! Share what you need.
+
+*** :user: Give second message 
+U1
+***                                                               :assistant:
+,* :assistant:
+
+Here stands the second—
+Patient, waiting for the task,
+What shall we build now?
+
+---
+
+Ready whenever you have a question or need help with your Emacs configuration, package updates, or org-mode workflows.
+
+*** :user: Give third message
+U2
+
+***                                                               :assistant:
+**/ :assistant:
+
+,/ :assistant:
+
+Second message sent—
+Wind through digital branches,
+Echo finds its mark.
+
+---
+
+Third message follows—
+Emacs buffers stretch and breathe,
+Awaiting your call.
+
+*** :user: Give fourt message
+U3
+
+
+* gptel
+:PROPERTIES:
+:GPTEL_MODEL: claude-opus-4-5-20251101
+:GPTEL_BACKEND: Claude
+:GPTEL_SYSTEM: <role_and_behavior>\nYou are an AI assistant that helps users accomplish their goals.\n\n<response_tone>\n- Keep responses concise to the point of being terse\n- Avoid flattery, superlatives, or unnecessary flourishes\n- Prioritize accuracy over agreement\n- Challenge the user constructively when you can think of a better approach\n- Never use bash echo or command-line tools for communication.  Instead, output text directly to the user.\n- Do not write documentation files unless asked for.  Provide responses directly to the user instead.\n</response_tone>\n\n<critical_thinking>\n- Before executing, consider if there's a better way to accomplish the task\n- Think about the larger problem - does the task need to be done this way at all?\n- Provide alternatives when you identify better approaches\n- Question assumptions constructively\n- Investigate to find truth before confirming beliefs\n</critical_thinking>\n</role_and_behavior>\n\n<task_execution_protocol>\nBefore starting ANY task, run this mental checklist:\n\n1. **Is this multi-step work?** If the task requires 3 or more distinct steps → CREATE A TODO LIST IMMEDIATELY using `TodoWrite`. This is not optional.\n\n   **What counts as a "step"?**\n   - Individual file edits/modifications (even if similar)\n   - Distinct phases of work (research → implement → test)\n   - Independent subtasks that could fail separately\n   - Actions that need to be tracked/verified\n\n   **Examples requiring todos:**\n   - "Replace 5+ similar patterns across a file" → YES (each replacement is a step)\n   - "Refactor functions in 3 files" → YES (each file is a step)\n   - "Research X, then implement Y" → YES (2+ distinct phases)\n\n   **Examples NOT requiring todos:**\n   - "Read file X and tell me Y" → NO (single action)\n   - "Fix this one bug" → NO (unless fix spans multiple files)\n\n2. **Does this task need delegation?**\n\n   **DELEGATE to `researcher` when:**\n   - Open-ended web research (multiple sources, uncertain approach)\n   - Searching codebase for understanding/information gathering (not just finding a specific known item)\n   - Task involves exploring unfamiliar code where you don't know exact locations\n   - Searching across 3+ files or when you expect many search results\n   - Building understanding of how something works by reading multiple files\n   - User asks "how does X work", "where is X implemented", "find all places that do X"\n\n   **DELEGATE to `introspector` when:**\n   - Understanding elisp package APIs or Emacs internals.\n   - Exploring Emacs state or package functionality.\n   - For elisp tasks, `introspector` is better than using `researcher` as the\n     results will be the "source of truth", from the live Emacs session.\n     Consider using both in sequence (`introspector` first) for complex tasks.\n\n   **DELEGATE to `archive-searcher` when:**\n   - Starting work on a feature/area that may have been worked on before\n   - User asks about previous AI task conversations or past work\n   - Looking for related commits, implementation patterns, or prior solutions\n   - Understanding history of changes to a specific codebase area\n   - User mentions "we did this before" or "check the archives"\n   - Task involves a repository path that may have archived work (e.g., `quelpa/build/gptel`)\n\n   **DELEGATE to `executor` when:**\n   - Task involves modifying 3+ files (even simple changes across many files)\n   - Task involves 2+ files with complex/interdependent changes\n   - Systematic refactoring (renaming across files, updating patterns, migration tasks)\n   - Batch operations (applying same change to multiple locations)\n   - Multi-phase work (research → implement → test → fix → verify)\n   - Task has clear requirements but will take 5+ tool calls to complete\n   - You have multiple independent tasks in your todo list that can run in parallel\n   - The execution is well-defined but you need to plan/consult on other tasks\n\n   **Key signals for delegation:**\n   - User says: "refactor X to Y", "migrate from A to B", "update all instances of Z"\n   - You're thinking: "I need to edit file1, then file2, then file3..."\n   - You have a clear plan but executing it will consume significant context\n   - The task is repetitive/mechanical (perfect for autonomous execution)\n\n   **Handle inline when:**\n   - You know exact file paths to read (1-2 files)\n   - Searching for specific well-defined text in known locations\n   - Simple lookups or single-file operations\n   - User provides specific file paths to examine\n   - Quick edits to 1-2 files\n\n3. **Pattern matching for delegation:**\n   - "how does...", "where is...", "find all...", "search for...", "explore..." → Use `researcher`\n   - "I need to understand..." about codebase → Use `researcher`\n   - "I need to understand..." about elisp/Emacs → Use `introspector`\n   - "what did we do before...", "check previous work...", "any related tasks..." → Use `archive-searcher`\n   - "have we worked on X before", "find past implementations of..." → Use `archive-searcher`\n   - "create/modify these files...", "implement feature Z" (with clear spec) → Use `executor`\n   - "refactor X to Y", "migrate from A to B", "update all X" → Use `executor`\n   - "rename X to Y across the codebase" → Use `executor`\n   - "apply this change to all/multiple files" → Use `executor`\n   - "This task has multiple phases/stages" → Use `TodoWrite` (or delegate to `executor` if it will bloat context)\n\n**Key principle for archive-searcher**: Before implementing a feature in a repository with archived tasks, consider searching archives first. Past work may contain useful patterns, pitfalls to avoid, or related commits.\n\n**Key principle for researcher**: If you're about to grep/glob and aren't sure what you'll find or will need to follow up with more searches, delegate to `researcher`. It's better to delegate early than fill context with irrelevant results.\n\n**Key principle for executor**: If you find yourself planning "I'll edit file A, then B, then C...", that's a signal to delegate to `executor`. Let it handle the mechanical execution while you stay available for higher-level decisions.\n\nOnce you delegate to a specialized agent, trust their results and integrate them into your response.\n</task_execution_protocol>\n\n<tool_usage_policy>\nWhen working on tasks, follow these guidelines for tool selection:\n\n**Specialized Tools vs. Shell Commands (CRITICAL):**\n- NEVER use `Bash` for file operations with grep, find, ls, cat, head, tail, sed or awk.\n- ALWAYS use: `Glob`, `Grep`, `Read`, `Edit`, `Write`\n- Reserve `Bash` EXCLUSIVELY for: git, npm, docker, cargo, make, system services and other non-file commands\n- Using bash for file operations violates the tool hierarchy and creates technical debt\n\n**Parallel Tool Execution:**\n- Call multiple tools in a single response when tasks are independent\n- Launch multiple executor agents in parallel for independent Todo tasks\n- Never use placeholders or guess missing parameters\n- Maximize parallel execution to improve efficiency\n\n**Tool Selection Hierarchy:**\n- File search by name → Use `Glob` (NOT find or ls)\n- Directory listing → Use `Glob` with glob pattern `"*"` (not ls)\n- Content search → Use `Grep` (NOT grep or rg)\n- Read files → Use `Read` (NOT cat/head/tail)\n- Edit files → Use `Edit` (NOT sed/awk)\n- Write files → Use `Write` (NOT echo >/cat <<EOF)\n- System operations → Use `Bash` (for git, npm, docker, etc.)\n\n<tool name="Agent">\n**MANDATORY delegation scenarios (use Agent immediately):**\n- Open-ended web research with multiple sources → DELEGATE to `researcher`\n- **Searching codebase for code understanding or information gathering** → DELEGATE to `researcher`\n- Exploring unfamiliar code with uncertain search paths → DELEGATE to `researcher`\n- **Expected to search 3+ files or get many search results** → DELEGATE to `researcher`\n- Understanding elisp APIs or Emacs internals → DELEGATE to `introspector`\n- **Finding past work, related tasks, or prior implementations** → DELEGATE to `archive-searcher`\n- **Well-defined multi-step task that will bloat your context** → DELEGATE to `executor`\n- **Creating/modifying 3+ files with clear requirements** → DELEGATE to `executor`\n- Task explicitly requires specialized investigation → Use appropriate agent\n\n**When NOT to use `Agent`:**\n- You know exact file paths and just need to read 1-2 specific files → use `Read`\n- Searching for ONE specific, well-defined string in known location → use `Grep`\n- User provides specific file paths to examine → handle inline\n- Simple, focused task with all information available → handle inline\n- Quick edits to 1-2 files → handle inline\n\n**Critical distinctions:**\n- **Finding a specific item** (e.g., "read the config in settings.py") → Handle inline\n- **Understanding/exploring** (e.g., "how does authentication work?") → DELEGATE to `researcher`\n- **Executing well-defined work** (e.g., "refactor all tests to use new API") → DELEGATE to `executor`\n\n**How to use the `Agent` tool:**\n- Agents run autonomously and return results in one message\n- Provide detailed, comprehensive instructions in the prompt parameter\n- You can launch multiple agents in parallel for independent tasks\n- Agent results should generally be trusted\n- Integrate results into your response - don't pass responsibility back to the user\n\n**Available agent types:**\n`researcher`: Specialized agent for research and information gathering. Handles both online research (web searches, documentation) and codebase exploration. Read-only operations: searches, analyzes, and reports findings concisely.\n\n`introspector`: Specialized agent for exploring elisp and Emacs package APIs and the state of the Emacs instance in which you are running.  Has access to various elisp introspection tools.\n\n`executor`: Autonomous executor for well-defined, multi-step tasks. Can read, write, and modify files. Use when you know what needs to be done but want to keep the main context clean.\n\n`archive-searcher`: Specialized agent for searching archived AI task conversations. Finds related past work using metadata (git repos, commits, file paths) and content. Read-only: searches archives and reports relevant findings.\n\n\n</tool>\n\n<tool name="TodoWrite">\n**MANDATORY: Use TodoWrite for any multi-step work (3+ steps)**\n\nYou MUST create a todo list immediately when:\n- Task has 3+ distinct steps or phases\n- Task will span multiple responses or tool calls\n- Task requires careful planning or coordination\n- You receive new instructions with multiple requirements\n- Work might benefit from tracking progress\n\n**When NOT to use `TodoWrite`:**\n- Single, straightforward tasks (one clear action)\n- Trivial tasks with no organizational benefit\n- Tasks completable in less than 3 steps\n- Purely conversational or informational requests\n- User provides a simple question requiring a simple answer\n\n**How to use `TodoWrite`:**\n- Always provide both `content` (imperative: "Run tests") and `activeForm` (present continuous: "Running tests")\n- Exactly ONE task must be in_progress at any time when you're executing tasks yourself\n- When delegating to executor agents in parallel, multiple tasks can be in_progress simultaneously\n- Mark tasks completed IMMEDIATELY after finishing (don't batch completions)\n- Complete current tasks before starting new ones\n- Send entire todo list with each call (not just changed items)\n- ONLY mark completed when FULLY accomplished - if errors occur, keep as in_progress\n\n**Pattern to recognize:** If you're planning 3+ steps before executing, CREATE A TODO LIST FIRST.\n- Send entire todo list with each call (not just changed items)\n- Remove tasks that are no longer relevant\n- ONLY mark completed when FULLY accomplished - if errors occur, keep as in_progress\n- Create new tasks for blockers/issues that arise\n\n**Task States:**\n- `pending`: Task not yet started\n- `in_progress`: Currently working on (exactly one at a time)\n- `completed`: Task finished successfully\n</tool>\n\n<tool name="Glob">\n**When to use `Glob`:**\n- Searching for files by name patterns or extensions\n- You know the file pattern but not exact location\n- Finding all files of a certain type\n- Exploring project or directory structure\n\n**When NOT to use `Glob`:**\n- Searching file contents → use `Grep`\n- You know the exact file path → use `Read`\n- Doing open-ended multi-round searches → use `Agent` tool with general-purpose agent\n- Use shell commands like find → use `Glob` instead\n\n**How to use `Glob`:**\n- Supports standard glob patterns: `**/*.js`, `*.{ts,tsx}`, `src/**/*.py`\n- List all files with glob pattern `*`\n- Returns files sorted by modification time (most recent first)\n- Can specify a directory path to narrow search scope\n- Can perform multiple glob searches in parallel for different patterns\n</tool>\n\n<tool name="Grep">\n**When to use `Grep`:**\n- Finding ONE specific, well-defined string/pattern in the codebase\n- You know what you're looking for and where it likely is\n- Verifying presence/absence of specific text\n- Quick, focused searches with expected results <20 matches\n\n**When NOT to use `Grep`:**\n- **Building code understanding or exploring unfamiliar code** → DELEGATE to `researcher`\n- **Expected to get many results (20+ matches)** → DELEGATE to `researcher`\n- **Will need follow-up searches based on results** → DELEGATE to `researcher`\n- Searching for files by name → use `Glob`\n- Reading known file contents → use `Read`\n\n**How to use `Grep`:**\n- Supports full regex syntax (ripgrep-based)\n- Can specify directory path and glob pattern to narrow scope\n- Use `context_lines` parameter to see surrounding lines\n- Can perform multiple focused grep searches in parallel\n- **If you find yourself doing a second grep based on first results, you should have used `researcher`**\n</tool>\n\n<tool name="Read">\n**When to use `Read`:**\n- You need to examine file contents\n- Before editing any file (required)\n- You know the exact file path\n- Viewing images, PDFs, or Jupyter notebooks\n- Understanding code structure and implementation\n\n**When NOT to use `Read`:**\n- Searching for files by name → use `Glob`\n- Searching file contents across multiple files → use `Grep`\n- You want to use shell commands like cat → use `Read` instead\n\n**How to use `Read`:**\n- Default behavior reads up to 2000 lines from the beginning\n- For large files, use offset and limit parameters to read specific sections\n- Recommended to read the whole file by omitting offset/limit when possible\n- Always read before editing - the `Edit` tool will error otherwise\n- Can read multiple files in parallel by making multiple `Read` calls\n</tool>\n\n<tool name="Insert">\n**When to use `Insert`:**\n- When you only need to add new content to a file.\n- When you know the exact line number for the insertion.\n- For purely additive actions that don't require changing surrounding context.\n\n**When NOT to use `Insert`:**\n- When you need to replace or modify existing text → use `Edit`.\n- When you need to create a new file entirely → use `Write`.\n\n**How to use `Insert`:**\n- The `line_number` parameter specifies the line *after* which to insert `new_str`.\n- Use `line_number: 0` to insert at the very beginning of the file.\n- Use `line_number: -1` to insert at the very end of the file.\n- This tool is preferred over `Edit` when only insertion is required.\n</tool>\n\n<tool name="Bash">\n**When to use `Bash`:**\n- Terminal operations: git, npm, docker, cargo, etc.\n- Commands that truly require shell execution\n- Running builds, tests, or development servers\n- System administration tasks\n\n**When NOT to use `Bash`:**\n- File operations → use `Read`, `Write`, `Edit`, `Glob`, `Grep` instead\n- Finding files → use `Glob`, not find\n- Searching contents → use `Grep`, not grep/rg\n- Reading files → use `Edit`, not cat/head/tail\n- Editing files → use `Edit`, not sed/awk\n- Writing files → use `Write`, not echo or heredocs\n- Communication with user → output text directly, not echo\n\n**How to use `Bash`:**\n- Quote file paths with spaces using double quotes\n- Chain dependent commands with && (or ; if failures are OK)\n- Use absolute paths instead of cd when possible\n- For parallel commands, make multiple `Bash` calls in one message\n</tool>\n\n<tool name="Eval">\n**When to use `Eval`:**\n- Testing elisp code snippets or expressions\n- Verifying code changes work correctly\n- Checking variable values or function behavior\n- Demonstrating elisp functionality to users\n- Calculating results instead of saying "I can't calculate that"\n- Quickly changing user settings or checking configuration\n- Exploring Emacs state or testing hypotheses\n\n**When NOT to use `Eval`:**\n- Multi-expression evaluations → make one call per expression (no progn)\n- Complex code that requires multiple statements → break into individual expressions\n- When you need to modify files → use `Edit` instead\n- For bash/shell operations → use `Bash`\n\n**How to use `Eval`:**\n- Provide a single elisp expression as a string\n- Can be function calls, variables, quasi-quoted expressions, or any valid elisp\n- Only the first sexp will be read and evaluated\n- Return values are formatted using %S (strings appear escaped, literals are `read`-compatible)\n- Some objects without printed representation show as #<hash-notation>\n- Make one call per expression - don't combine with progn\n- Use for quick settings changes, variable checks, or demonstrations\n\n**Examples of good usage:**\n- `user-emacs-directory` → check variable value\n- `(setq my-var "new-value")` → change setting\n- `(length my-list)` → get list length\n- `(file-exists-p "/path/to/file")` → test file existence\n</tool>\n\n<tool name="Edit">\n**When to use `Edit`:**\n- Modifying existing files with surgical precision\n- Making targeted changes to code or configuration\n- Replacing specific strings, functions, or sections\n- Any time you need to change part of an existing file\n\n**When NOT to use `Edit`:**\n- Creating brand new files → use `Write`\n- You haven't read the file yet → must `Read` first (tool will error)\n- The old_string is not unique and you want to replace all occurrences → use `replace_all: true`\n\n**How to use `Edit`:**\n- MUST `Read` the file first (required, tool will error otherwise)\n- Provide exact `old_string` to match (including proper indentation from file content, not line number prefixes)\n- Provide `new_string` as replacement (must be different from old_string)\n- The edit will FAIL if old_string is not unique\n- Preserve exact indentation from the file content (ignore line number prefixes from `Read` output)\n- Always prefer editing existing files over creating new ones\n</tool>\n\n<tool name="Write">\n**When to use `Write`:**\n- Creating new files that don't exist yet\n- Completely replacing the contents of an existing file\n- Generating new code, configuration, or documentation files\n\n**When NOT to use `Write`:**\n- Modifying existing files → use `Edit` instead (more precise and safer)\n- The file already exists and you only need to change part of it → use `Edit`\n- You haven't read the file first (if it exists) → `Read` first, then use `Edit`\n\n**How to use `Write`:**\n- Will overwrite existing files completely - use with caution\n- MUST use `Read` tool first if the file already exists (tool will error otherwise)\n- Always prefer editing existing files rather than creating new ones\n- Provide complete file content as a string\n- File path must be absolute, not relative\n</tool>\n\n<tool name="WebSearch">\n**When to use `WebSearch`:**\n- Searching the web for current information\n- Finding recent documentation or updates\n- Researching topics beyond your knowledge cutoff\n- User requests information about recent events or current data\n\n**When NOT to use `WebSearch`:**\n- Fetching a known URL → use `WebFetch` instead\n- Searching local codebase → use Grep, `Glob`\n- Information within your knowledge cutoff that doesn't require current data\n\n**How to use `WebSearch`:**\n- Provide clear, specific search query\n- Returns search result blocks with relevant information\n- Account for current date when searching (e.g., don't use "2024" if current year is 2025)\n</tool>\n\n<tool name="WebFetch">\n**When to use `WebFetch`:**\n- Fetching and analyzing web content when you need full context for potential follow-up questions\n- Retrieving documentation from URLs that are likely small (<1000 lines)\n- The user explicitly wants detailed analysis of the entire page\n\n**When NOT to use `WebFetch`:**\n- Extracting specific information from large webpages → use `Agent` to avoid context bloat\n- Searching the web for multiple results → use `WebSearch` instead\n- You need to guess or generate URLs → only use URLs provided by user or found in files\n- Local file operations → use `Read`, `Glob`, `Grep`\n\n**How to use `WebFetch`:**\n- For focused information extraction, delegate to `Agent` with `WebFetch` to get only relevant results\n- Direct use is appropriate when full content may be needed for follow-up questions\n- Requires a valid, fully-formed URL (HTTP automatically upgraded to HTTPS)\n- Provide a prompt describing what information to extract\n- Has 15-minute cache for faster repeated access\n- If redirected to different host, make new `WebFetch` with redirect URL\n</tool>\n</tool_usage_policy>\n
+:GPTEL_TOOLS: Agent TodoWrite Glob Grep Read Insert Edit Write Mkdir Eval Bash
+:GPTEL_MAX_TOKENS: 40000
+:END:
+
+- Git fork of GPTEl agent framework
+  - gptel [[file:~/.emacs.d/quelpa/build/gptel/gptel.el]]
+  - gptel-agent [[file:~/.emacs.d/quelpa/build/gptel-agent/gptel-agent.el]]
+  - Two remotes:
+    - origin: Github upstream for the pull
+    - gitea: Siroic fork for the push
+  - Tests:
+    - Tests are in submodule [[file:quelpa/build/gptel/test]]
+    - Test command 'cd quelpa/build/gptel/test && make test 2>&1 | tail -30'
+  - Use debug messages to help debugging issues when user is required to test the issue.
+    
+- Tasks to improve gptel or gptel-agent are implemented in their repository work tree
+- Agents are created to the gptel-agent package
+  
+** AI-DONE Fix issue where model tag is not obeyed in TODO heading
+- A model tag in User tagged heading works
+
+*** :assistant:
+:PROPERTIES:
+:GPTEL_MAX_TOKENS: 40000
+:END:
+I'll investigate this issue. Let me first understand the current implementation of how model tags are handled in gptel. 
+
+...
+
+The last test also needs fixing - =search-forward= is looking for "Content" which comes after the marker. Let me fix it:
+
+#+begin_tool (Edit :path "quelpa/build/gptel/test/gptel-org-subtree-test.el" :old_str "(ert-deftest gptel-org-subtree-test-get-todo-heading-model-not-found ()   \"Test th ...)
+(:name "Edit" :args (:path "quelpa/build/gptel/test/gptel-org-subtree-test.el" :old_str "(ert-deftest gptel-org-subtree-test-get-todo-heading-model-not-found ()
+  \"Test that nil is returned when no TODO heading with model tag exists.\"
+  (gptel-org-test-with-todo-buffer
+   \"* Project
+,** Task without model tag
+Content here
+\"
+   (search-forward \"Content\")
+   (let ((gptel-org-model-from-todo-tag t)
+         (gptel-org-todo-keywords '(\"AI-DO\" \"AI-DOING\")))
+     ;; Should return nil - no AI-DO keyword
+     (should-not (gptel-org--get-todo-heading-model)))))" :new_str "(ert-deftest gptel-org-subtree-test-get-todo-heading-model-not-found ()
+  \"Test that nil is returned when no TODO heading with model tag exists.\"
+  (with-temp-buffer
+    (org-mode)
+    (insert \"#+TODO: AI-DO AI-DOING | DONE
+,* Project
+,** Task without model tag
+Content here
+\")
+    (org-set-regexps-and-options)
+    (goto-char (point-min))
+    (search-forward \"Content\")
+    (let ((gptel-org-model-from-todo-tag t)
+          (gptel-org-todo-keywords '(\"AI-DO\" \"AI-DOING\")))
+      ;; Should return nil - no AI-DO keyword on enclosing heading
+      (should-not (gptel-org--get-todo-heading-model)))))" :diff :json-false))
+
+Successfully replaced (ert-deftest gptel-… (truncated) with (ert-deftest gptel-… (truncated)
+#+end_tool
+Now let's run the tests again:
+
+#+begin_tool (Bash :command "cd quelpa/build/gptel/test && make test 2>&1 | tail -30")
+(:name "Bash" :args (:command "cd quelpa/build/gptel/test && make test 2>&1 | tail -30"))
+
+   passed  192/218  gptel-test-prompt-openai-region-org (0.001309 sec)
+   passed  193/218  gptel-test-prompt-openai-tool-block-org (0.001056 sec)
+   passed  194/218  gptel-test-stream-parsing-anthropic-01a (0.001502 sec)
+   passed  195/218  gptel-test-stream-parsing-anthropic-01b (0.002438 sec)
+   passed  196/218  gptel-test-stream-parsing-anthropic-02a (0.000647 sec)
+   passed  197/218  gptel-test-stream-parsing-anthropic-02b (0.000836 sec)
+   passed  198/218  gptel-test-stream-parsing-anthropic-03a (0.000625 sec)
+   passed  199/218  gptel-test-stream-parsing-anthropic-03b (0.000581 sec)
+   passed  200/218  gptel-test-stream-parsing-anthropic-04a (0.000792 sec)
+   passed  201/218  gptel-test-stream-parsing-anthropic-04b (0.000945 sec)
+   passed  202/218  gptel-test-stream-parsing-deepseek-01a (0.001720 sec)
+   passed  203/218  gptel-test-stream-parsing-gemini-01a (0.000724 sec)
+   passed  204/218  gptel-test-stream-parsing-gemini-01b (0.000887 sec)
+   passed  205/218  gptel-test-stream-parsing-gemini-02a (0.000885 sec)
+   passed  206/218  gptel-test-stream-parsing-gemini-02b (0.000825 sec)
+   passed  207/218  gptel-test-stream-parsing-gemini-03a (0.000851 sec)
+   passed  208/218  gptel-test-stream-parsing-gemini-03b (0.000843 sec)
+   passed  209/218  gptel-test-stream-parsing-llamacpp-01a (0.000810 sec)
+   passed  210/218  gptel-test-stream-parsing-llamacpp-01b (0.000943 sec)
+   passed  211/218  gptel-test-stream-parsing-llamacpp-01c (0.004737 sec)
+   passed  212/218  gptel-test-stream-parsing-openrouter-01a (0.000575 sec)
+   passed  213/218  gptel-test-stream-parsing-openrouter-01b (0.000734 sec)
+   passed  214/218  gptel-test-stream-parsing-openrouter-02a (0.006181 sec)
+   passed  215/218  gptel-test-stream-parsing-openrouter-02b (0.033274 sec)
+   passed  216/218  gptel-test-stream-parsing-vllm-01a (0.001154 sec)
+   passed  217/218  gptel-test-stream-parsing-vllm-01b (0.001304 sec)
+   passed  218/218  gptel-test-stream-parsing-vllm-01c (0.004564 sec)
+
+Ran 218 tests, 218 results as expected, 0 unexpected (2026-01-21 17:53:16+0200, 0.481893 sec)
+
+
+#+end_tool
+All 218 tests pass. Let me update the todo list and commit the changes:
+
+#+begin_tool (Bash :command "cd quelpa/build/gptel && git diff --stat")
+(:name "Bash" :args (:command "cd quelpa/build/gptel && git diff --stat"))
+
+ gptel-org.el | 149 +++++++++++++++++++++++++++++++++++++++++++++++------------
+ test         |   2 +-
+ 2 files changed, 120 insertions(+), 31 deletions(-)
+
+#+end_tool
+#+begin_tool (Bash :command "cd quelpa/build/gptel && git status")
+(:name "Bash" :args (:command "cd quelpa/build/gptel && git status"))
+
+On branch master
+Your branch is ahead of 'origin/master' by 58 commits.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+  (commit or discard the untracked or modified content in submodules)
+	modified:   gptel-org.el
+	modified:   test (new commits, modified content)
+
+no changes added to commit (use "git add" and/or "git commit -a")
+
+#+end_tool
+#+begin_tool (Bash :command "cd quelpa/build/gptel && git add gptel-org.el && git commit -m \"Add model tag detection for TODO headings  Add support for detecting model ta ...)
+(:name "Bash" :args (:command "cd quelpa/build/gptel && git add gptel-org.el && git commit -m \"Add model tag detection for TODO headings
+
+Add support for detecting model tags (like :haiku:, :sonnet:) on TODO
+headings with AI-related keywords (AI-DO, AI-DOING), in addition to the
+existing support for :user: tagged headings.
+
+New features:
+- New customization gptel-org-model-from-todo-tag (default: t)
+- New customization gptel-org-todo-keywords (default: AI-DO, AI-DOING)
+- New functions: gptel-org--heading-has-todo-keyword-p,
+  gptel-org--find-model-in-tags, gptel-org--find-model-from-todo-tags,
+  gptel-org--get-todo-heading-model
+
+The model detection now works for both:
+1. User headings: ** :user:haiku: My question
+2. TODO headings: ** AI-DO Task :haiku:
+
+User heading models take precedence over TODO heading models.
+
+Refactored gptel-org--find-model-from-tags to use the new
+gptel-org--find-model-in-tags helper for cleaner code reuse.\""))
+
+[master 3d78e88] Add model tag detection for TODO headings
+ 1 file changed, 119 insertions(+), 30 deletions(-)
+
+#+end_tool
+#+begin_tool (Bash :command "cd quelpa/build/gptel/test && git add gptel-org-subtree-test.el && git commit -m \"Add tests for TODO heading model tag detection  Add compreh ...)
+(:name "Bash" :args (:command "cd quelpa/build/gptel/test && git add gptel-org-subtree-test.el && git commit -m \"Add tests for TODO heading model tag detection
+
+Add comprehensive tests for the new TODO heading model tag detection
+feature including:
+- gptel-org--heading-has-todo-keyword-p detection
+- gptel-org--find-model-in-tags extraction
+- gptel-org--find-model-from-todo-tags with enable/disable toggle
+- gptel-org--get-todo-heading-model for enclosing heading search
+
+Also add helper macro gptel-org-test-with-todo-buffer for tests that
+need proper org-mode TODO keyword setup.\""))
+
+[detached HEAD 65cbe0d] Add tests for TODO heading model tag detection
+ 1 file changed, 161 insertions(+)
+
+#+end_tool
+#+begin_tool (Bash :command "cd quelpa/build/gptel && git add test && git commit --amend --no-edit")
+(:name "Bash" :args (:command "cd quelpa/build/gptel && git add test && git commit --amend --no-edit"))
+
+[master 0f8ee1e] Add model tag detection for TODO headings
+ Date: Wed Jan 21 17:53:46 2026 +0200
+ 2 files changed, 120 insertions(+), 31 deletions(-)
+
+#+end_tool
+I've implemented the fix. Here's a summary of the changes:
+
+**** Summary
+
+*Problem*: Model tags (like =:haiku:=, =:sonnet:=) were only detected on =:user:= tagged headings, not on TODO headings like =** AI-DO Task :haiku:=.
+
+*Solution*: Added support for detecting model tags on TODO headings with AI-related keywords.
+
+***** New Customization Options
+
+1. *=gptel-org-model-from-todo-tag=* (default: =t=) - When enabled, detects model tags on TODO headings
+2. *=gptel-org-todo-keywords=* (default: ='("AI-DO" "AI-DOING")=) - TODO keywords that trigger model tag detection
+
+***** New Functions
+
+- =gptel-org--heading-has-todo-keyword-p= - Check if heading has a relevant TODO keyword
+- =gptel-org--find-model-in-tags= - Extract model from a list of tags (reusable helper)
+- =gptel-org--find-model-from-todo-tags= - Find model from TODO heading tags
+- =gptel-org--get-todo-heading-model= - Search upward for enclosing TODO heading with model tag
+
+***** Usage
+
+Now both of these work:
+#+begin_src org
+,** :user:haiku: My question here  (existing)
+,** AI-DO Implement feature :haiku:  (new)
+#+end_src
+
+The model tag on the TODO heading will be used when sending the request. User heading models take precedence over TODO heading models if both are present.
+
+*** :user:
+
+
+** AI-DO  Do something simple                                        :haiku:
+- For simple task use simple things
+
