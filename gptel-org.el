@@ -300,7 +300,8 @@ The tag comparison is case-insensitive."
   :type 'string
   :group 'gptel)
 
-(defcustom gptel-org-response-title-function nil
+(defcustom gptel-org-response-title-function
+  #'gptel-org-response-title-from-first-line
   "Function to generate a title for assistant response headings.
 
 When non-nil, this function is called after the response is complete
@@ -315,22 +316,25 @@ or nil to keep the heading without a title.
 
 The heading is updated in place, preserving any existing tags.
 
-Example to use the first line of the response (truncated):
-
-  (setq gptel-org-response-title-function
-        (lambda (beg end _heading-pos)
-          (save-excursion
-            (goto-char beg)
-            (let ((first-line (buffer-substring-no-properties
-                               (point) (line-end-position))))
-              (truncate-string-to-width
-               (string-trim first-line) 50 nil nil \"...\")))))
+Built-in options:
+- `gptel-org-response-title-from-first-line': Use first line (default)
 
 Example to generate title via LLM (requires separate request):
 
-  ;; See gptel-org-generate-response-title for an async example"
+  (setq gptel-org-response-title-function
+        (lambda (beg end heading-pos)
+          (gptel-request
+           (format \"Summarize in 5 words: %s\"
+                   (buffer-substring-no-properties beg (min end (+ beg 500))))
+           :callback (lambda (title _info)
+                       (when title
+                         (gptel-org--set-heading-title
+                          heading-pos (string-trim title)))))
+          nil))"
   :type '(choice (const :tag "No title" nil)
-                 (function :tag "Title function"))
+                 (const :tag "First line of response"
+                        gptel-org-response-title-from-first-line)
+                 (function :tag "Custom function"))
   :group 'gptel)
 
 (defcustom gptel-org-model-from-user-tag t
@@ -1673,6 +1677,24 @@ headings in the response should be at level 5 or deeper."
 
 
 ;;; Response heading title generation
+
+(defun gptel-org-response-title-from-first-line (beg _end _heading-pos)
+  "Generate a response heading title from the first line of response.
+BEG is the start position of the response.  Returns the first
+non-empty line, truncated to 50 characters."
+  (save-excursion
+    (goto-char beg)
+    ;; Skip any blank lines at the start
+    (skip-chars-forward " \t\n")
+    (let ((first-line (buffer-substring-no-properties
+                       (point) (line-end-position))))
+      (setq first-line (string-trim first-line))
+      ;; Skip if it looks like a code block or list marker only
+      (unless (or (string-empty-p first-line)
+                  (string-match-p "^```" first-line)
+                  (string-match-p "^#\\+begin" first-line)
+                  (string-match-p "^[-*+] *$" first-line))
+        (truncate-string-to-width first-line 50 nil nil "...")))))
 
 (defun gptel-org--find-response-heading (pos)
   "Find the assistant response heading containing or just before POS.
