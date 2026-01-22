@@ -6,6 +6,8 @@ This PR introduces comprehensive org-mode integration for AI-assisted task workf
 
 **Stats:** +1,966 lines across 7 files (2 new modules)
 
+**Example:** See [emacs-example-ai.org](./emacs-example-ai.org) for a real-world example of this workflow in action.
+
 ## Summary of Changes
 
 This PR adds three major feature areas:
