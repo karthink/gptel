@@ -352,5 +352,93 @@ Disables `gptel-org-infer-bounds-from-tags' to test marker-based behavior."
    (let ((prefix (gptel-org--dynamic-prefix-string "** @assistant\n")))
      (should (string= "*** @assistant\n" prefix)))))
 
+;;; Tests for tag-based features (gptel-org-infer-bounds-from-tags)
+
+(defmacro gptel-org-test-with-tags-buffer (content &rest body)
+  "Create a temp org buffer with CONTENT, enable tag inference, and execute BODY.
+Point is placed at the first : character (tag marker) if present, otherwise at end."
+  (declare (indent 1))
+  `(let ((gptel-org-subtree-context t)
+         (gptel-org-infer-bounds-from-tags t)
+         (gptel-org-assistant-tag "assistant")
+         (gptel-org-user-tag "user")
+         (gptel-org-chat-heading-markers '("@user" "@assistant"))
+         (org-inhibit-startup t))
+     (with-temp-buffer
+       (delay-mode-hooks (org-mode))
+       (insert ,content)
+       (goto-char (point-min))
+       ,@body)))
+
+(ert-deftest gptel-org-subtree-test-chat-heading-p-tag-assistant ()
+  "Test that heading with :assistant: tag is recognized as chat heading."
+  (gptel-org-test-with-tags-buffer
+   "* Task\n** Response :assistant:\nAnswer"
+   (search-forward "** Response")
+   (beginning-of-line)
+   (should (gptel-org--chat-heading-p))))
+
+(ert-deftest gptel-org-subtree-test-chat-heading-p-tag-user ()
+  "Test that heading with :user: tag is recognized as chat heading."
+  (gptel-org-test-with-tags-buffer
+   "* Task\n** Question :user:\nMy question"
+   (search-forward "** Question")
+   (beginning-of-line)
+   (should (gptel-org--chat-heading-p))))
+
+(ert-deftest gptel-org-subtree-test-chat-heading-p-tag-case-insensitive ()
+  "Test that tag matching is case-insensitive."
+  (gptel-org-test-with-tags-buffer
+   "* Task\n** Response :ASSISTANT:\nAnswer"
+   (search-forward "** Response")
+   (beginning-of-line)
+   (should (gptel-org--chat-heading-p))))
+
+(ert-deftest gptel-org-subtree-test-chat-heading-p-tag-no-tag ()
+  "Test that heading without chat tags is not recognized."
+  (gptel-org-test-with-tags-buffer
+   "* Task\n** Details :notes:\nSome notes"
+   (search-forward "** Details")
+   (beginning-of-line)
+   (should-not (gptel-org--chat-heading-p))))
+
+(ert-deftest gptel-org-subtree-test-dynamic-prefix-tag-mode ()
+  "Test dynamic prefix in tag-based mode."
+  (gptel-org-test-with-tags-buffer
+   "* Task\n** Question :user:\nQuestion text"
+   (search-forward "Question text")
+   (let ((result (gptel-org--dynamic-prefix-string "** @assistant\n")))
+     ;; In tag mode, should generate tag-style heading
+     (should (string= "** :assistant:\n" result)))))
+
+(ert-deftest gptel-org-subtree-test-dynamic-prefix-tag-nested ()
+  "Test dynamic prefix in tag-based mode with nested task."
+  (gptel-org-test-with-tags-buffer
+   "* Project\n** Task\n*** Question :user:\nQuestion text"
+   (search-forward "Question text")
+   (let ((result (gptel-org--dynamic-prefix-string "** @assistant\n")))
+     ;; Parent level is 2, so target level is 3
+     (should (string= "*** :assistant:\n" result)))))
+
+(ert-deftest gptel-org-subtree-test-dynamic-prefix-tag-for-prompt ()
+  "Test dynamic prefix for user prompt in tag mode."
+  (gptel-org-test-with-tags-buffer
+   "* Task\n** Response :assistant:\nAnswer"
+   (search-forward "Answer")
+   (let ((result (gptel-org--dynamic-prefix-string "** @user\n" t)))
+     ;; for-prompt=t should generate user tag
+     (should (string= "** :user:\n" result)))))
+
+(ert-deftest gptel-org-subtree-test-heading-has-tag-p ()
+  "Test gptel-org--heading-has-tag-p function."
+  (gptel-org-test-with-tags-buffer
+   "* Task\n** Response :assistant:work:\nAnswer"
+   (search-forward "** Response")
+   (beginning-of-line)
+   (should (gptel-org--heading-has-tag-p "assistant"))
+   (should (gptel-org--heading-has-tag-p "work"))
+   (should (gptel-org--heading-has-tag-p "ASSISTANT"))  ; case-insensitive
+   (should-not (gptel-org--heading-has-tag-p "user"))))
+
 (provide 'gptel-org-subtree-test)
 ;;; gptel-org-subtree-test.el ends here
