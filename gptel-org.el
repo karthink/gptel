@@ -490,6 +490,38 @@ that are chat headings."
                 (outline-next-heading)))))
         (nreverse siblings)))))
 
+(defvar-local gptel-org--pending-heading-tag nil
+  "Tag to apply to the heading after prefix insertion.
+A cons cell (MARKER . TAG) where MARKER is a marker and TAG is the
+tag name to apply using `org-set-tags'.")
+
+(defun gptel-org--apply-pending-tag-on-change (beg _end _len)
+  "Apply pending heading tag after insertion at BEG.
+This is called from `after-change-functions' to apply tags using
+`org-set-tags' after a heading prefix has been inserted."
+  (when gptel-org--pending-heading-tag
+    (let ((marker (car gptel-org--pending-heading-tag))
+          (tag (cdr gptel-org--pending-heading-tag)))
+      ;; Only apply if the change is near where we expect the heading
+      (when (and (markerp marker)
+                 (marker-buffer marker)
+                 (<= (abs (- beg (marker-position marker))) 50))
+        (gptel-org--debug "apply-pending-tag-on-change: beg=%d marker=%d tag=%S"
+                          beg (marker-position marker) tag)
+        (save-excursion
+          (goto-char beg)
+          ;; Find the heading we just inserted (search backward from insertion point)
+          (when (re-search-backward org-heading-regexp nil t)
+            (gptel-org--debug "apply-pending-tag-on-change: found heading at %d"
+                              (point))
+            ;; Use org-set-tags to properly set the tag with alignment
+            (org-set-tags (list tag))))
+        ;; Clean up the marker and remove this hook
+        (set-marker marker nil)
+        (setq gptel-org--pending-heading-tag nil)
+        (remove-hook 'after-change-functions
+                     #'gptel-org--apply-pending-tag-on-change t)))))
+
 (defun gptel-org--dynamic-prefix-string (base-prefix &optional for-prompt)
   "Return BASE-PREFIX adjusted for current org heading context.
 
@@ -498,10 +530,10 @@ buffer under a heading, adjust the number of stars in BASE-PREFIX
 to be one level deeper than the parent heading.
 
 When `gptel-org-infer-bounds-from-tags' is enabled, the prefix will
-use org tags instead of text markers:
-- For response prefix: generates \"** :assistant:\\n\"
-- For prompt prefix (when FOR-PROMPT is non-nil): generates
-  \"**  :user:\\n\" with the tag at the end of heading line
+include the tag inline for consistency with regex matching.  Additionally,
+a pending tag operation is scheduled so that after the heading is inserted,
+`org-set-tags' will be called to properly align the tag and run
+`org-after-tags-change-hook'.
 
 The user types their content BELOW the heading line (in the body),
 not on the heading line itself.  This ensures proper org structure
@@ -520,14 +552,23 @@ org heading."
                           base-prefix parent-level target-level for-prompt)
         (let ((result
                (cond
-                ;; When using tag-based bounds, generate tag-style headings
+                ;; When using tag-based bounds, generate heading with tag and schedule
+                ;; org-set-tags call for proper alignment
                 (gptel-org-infer-bounds-from-tags
-                 (if for-prompt
-                     ;; For user prompt: heading with user tag at end
-                     ;; User types content below this heading
-                     (concat stars " :" gptel-org-user-tag ":\n")
-                   ;; For assistant response: heading with assistant tag
-                   (concat stars " :" gptel-org-assistant-tag ":\n")))
+                 (let ((tag (if for-prompt
+                                gptel-org-user-tag
+                              gptel-org-assistant-tag))
+                       (marker (make-marker)))
+                   ;; Create a marker at current point to track insertion location
+                   (set-marker marker (point))
+                   ;; Store the pending tag to be applied after insertion
+                   (setq gptel-org--pending-heading-tag (cons marker tag))
+                   ;; Ensure the after-change function is active
+                   (add-hook 'after-change-functions
+                             #'gptel-org--apply-pending-tag-on-change nil t)
+                   ;; Return heading with inline tag (for regex matching compatibility)
+                   ;; The tag will be re-set properly via org-set-tags after insertion
+                   (concat stars " :" tag ":\n")))
                 ;; Prefix starts with stars - replace them
                 ((string-match "^\\(\\*+\\)\\(\\(?:.*\n?\\)?\\)" base-prefix)
                  (let ((rest (match-string 2 base-prefix)))
@@ -537,7 +578,8 @@ org heading."
                  (concat stars " " base-prefix))
                 ;; Empty prefix - just return stars with space and newline
                 (t (concat stars " \n")))))
-          (gptel-org--debug "dynamic-prefix-string: result=%S" result)
+          (gptel-org--debug "dynamic-prefix-string: result=%S pending-tag=%S"
+                            result gptel-org--pending-heading-tag)
           result))
     base-prefix))
 
