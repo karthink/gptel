@@ -440,5 +440,37 @@ Point is placed at the first : character (tag marker) if present, otherwise at e
    (should (gptel-org--heading-has-tag-p "ASSISTANT"))  ; case-insensitive
    (should-not (gptel-org--heading-has-tag-p "user"))))
 
+(ert-deftest gptel-org-subtree-test-apply-pending-tag-correct-heading ()
+  "Test that pending tag is applied to newly inserted heading, not previous one.
+This tests the fix for a bug where `gptel-org--apply-pending-tag-on-change'
+would incorrectly apply the tag to the heading *before* the insertion point
+rather than to the newly inserted heading."
+  (gptel-org-test-with-tags-buffer
+   "* Project\n** AI-DOING Task\nSome content\n"
+   (goto-char (point-max))
+   ;; Simulate what happens when gptel inserts a response:
+   ;; 1. gptel-org--dynamic-prefix-string sets up pending tag
+   ;; 2. Heading is inserted
+   ;; 3. after-change-functions triggers apply-pending-tag-on-change
+   (let ((prefix (gptel-org--dynamic-prefix-string "** @assistant\n")))
+     ;; Verify prefix was generated with tag
+     (should (string-match-p ":assistant:" prefix))
+     ;; Now insert the prefix (this triggers after-change-functions)
+     (let ((insert-pos (point)))
+       (insert prefix)
+       ;; Manually trigger the hook since temp buffers may not have it active
+       (when gptel-org--pending-heading-tag
+         (gptel-org--apply-pending-tag-on-change insert-pos (point) 0))))
+   ;; Now verify the tags are on the correct headings
+   (goto-char (point-min))
+   (search-forward "AI-DOING")
+   (beginning-of-line)
+   ;; AI-DOING should NOT have the assistant tag
+   (should-not (gptel-org--heading-has-tag-p "assistant"))
+   ;; Find the new heading
+   (outline-next-heading)
+   ;; The new heading SHOULD have the assistant tag
+   (should (gptel-org--heading-has-tag-p "assistant"))))
+
 (provide 'gptel-org-subtree-test)
 ;;; gptel-org-subtree-test.el ends here

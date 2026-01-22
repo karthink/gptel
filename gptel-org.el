@@ -510,8 +510,14 @@ This is called from `after-change-functions' to apply tags using
                           beg (marker-position marker) tag)
         (save-excursion
           (goto-char beg)
-          ;; Find the heading we just inserted (search backward from insertion point)
-          (when (re-search-backward org-heading-regexp nil t)
+          ;; The heading starts at beg (the insertion point), so we need to
+          ;; either be at a heading or search forward, not backward.
+          ;; First check if we're at the heading (most common case).
+          (unless (org-at-heading-p)
+            ;; If not directly at heading, search forward within the inserted region
+            (re-search-forward org-heading-regexp nil t)
+            (beginning-of-line))
+          (when (org-at-heading-p)
             (gptel-org--debug "apply-pending-tag-on-change: found heading at %d"
                               (point))
             ;; Use org-set-tags to properly set the tag with alignment
