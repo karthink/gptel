@@ -633,6 +633,41 @@ comparison table:
 
 URL `https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table'")
 
+(defconst gptel--anthropic-model-aliases
+  '((haiku
+     :description "Alias for latest Haiku model"
+     :model-id "claude-haiku-4-5-20251001"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 1
+     :output-cost 5)
+    (sonnet
+     :description "Alias for latest Sonnet model"
+     :model-id "claude-sonnet-4-5-20250929"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 3
+     :output-cost 15)
+    (opus
+     :description "Alias for latest Opus model"
+     :model-id "claude-opus-4-5-20251101"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 5
+     :output-cost 25))
+  "Model aliases that map simple names to the latest model versions.
+
+These aliases provide stable names that always point to the current
+latest version of each model family:
+- `haiku': Fast, efficient model for simple tasks
+- `sonnet': Balanced model for most tasks
+- `opus': Most capable model for complex tasks
+
+The actual model used is specified in the :model-id property.")
+
 ;;;###autoload
 (cl-defun gptel-make-anthropic
     (name &key curl-args stream key request-params
@@ -700,7 +735,8 @@ for."
                   :host host
                   :header header
                   :key key
-                  :models (gptel--process-models models)
+                  :models (gptel--process-models
+                           (append gptel--anthropic-model-aliases models))
                   :protocol protocol
                   :endpoint endpoint
                   :stream stream

@@ -906,14 +906,18 @@ MODE-SYM is typically a major-mode symbol."
       (goto-char url-http-end-of-headers)
       (gptel--json-read))))
 
-(defsubst gptel-prompt-prefix-string ()
-  "Prefix before user prompts in `gptel-mode'."
-  (declare (side-effect-free t))
+(defun gptel-prompt-prefix-string ()
+  "Prefix before user prompts in `gptel-mode'.
+
+This is a regular function (not defsubst) to allow advice to
+modify the prefix dynamically, e.g., for org-mode subtree context."
   (or (alist-get major-mode gptel-prompt-prefix-alist) ""))
 
-(defsubst gptel-response-prefix-string ()
-  "Prefix before LLM responses in `gptel-mode'."
-  (declare (side-effect-free t))
+(defun gptel-response-prefix-string ()
+  "Prefix before LLM responses in `gptel-mode'.
+
+This is a regular function (not defsubst) to allow advice to
+modify the prefix dynamically, e.g., for org-mode subtree context."
   (or (alist-get major-mode gptel-response-prefix-alist) ""))
 
 (defmacro gptel--at-word-end (&rest body)
@@ -1002,8 +1006,10 @@ non-whitespace content on its line."
 ;; another map from these symbols to the actual model structs.
 
 (defsubst gptel--model-name (model)
-  "Get name of gptel MODEL."
-  (gptel--to-string model))
+  "Get name of gptel MODEL.
+If MODEL has a :model-id property, return that instead (for aliases)."
+  (or (get model :model-id)
+      (gptel--to-string model)))
 
 (defsubst gptel--model-capabilities (model)
   "Get MODEL capabilities."

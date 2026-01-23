@@ -1,3 +1,0 @@
-[submodule "gptel-test"]
-	path = test
-	url = https://github.com/karthink/gptel-test.git
