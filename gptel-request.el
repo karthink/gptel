@@ -854,13 +854,17 @@ Later plists in the sequence take precedence over earlier ones."
 
 (defun gptel--file-binary-p (path)
   "Check if file at PATH is readable and binary."
-  (condition-case nil
-      (with-temp-buffer
-        (insert-file-contents path nil 1 512 'replace)
-        (memq buffer-file-coding-system
-              '(no-conversion no-conversion-multibyte)))
-    (file-missing (message "File \"%s\" is not readable." path)
-                  nil)))
+  ;; HACK Image files with ICC color profiles are characterized as ASCII
+  ;; (#1223), so until we find a better solution we just match these files by
+  ;; extension.
+  (or (string-match-p "\\.\\(jpe?g\\|png\\|gif\\|webp\\)\\'" path)
+      (condition-case nil
+          (with-temp-buffer
+            (insert-file-contents path nil 1 512 'replace)
+            (memq buffer-file-coding-system
+                  '(no-conversion no-conversion-multibyte)))
+        (file-missing (message "File \"%s\" is not readable." path)
+                      nil))))
 
 (defun gptel--insert-file-string (path)
   "Insert at point the contents of the file at PATH as context."
