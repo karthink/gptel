@@ -744,9 +744,14 @@ generated from functions."
              :transforms gptel-prompt-transform-functions
              :fsm (gptel-make-fsm :handlers gptel--rewrite-handlers)
              :callback #'gptel--rewrite-callback)
-      ;; Move back so that the cursor is on the overlay when done.
-      (unless (get-char-property (point) 'gptel-rewrite)
-        (when (= (point) (region-end)) (run-at-time 0 nil #'backward-char 1)))
+      ;; Move point of original window back so that it's on the overlay when done.
+      (let* ((window (or (minibuffer-selected-window)
+                         transient--original-window)))
+        (when (window-live-p window)
+          (with-selected-window window
+            (unless (get-char-property (point) 'gptel-rewrite)
+              (when (= (point) (region-end))
+                (backward-char 1))))))
       (setq deactivate-mark t))))
 
 ;; Allow this to be called non-interactively for dry runs
