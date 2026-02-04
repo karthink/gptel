@@ -284,16 +284,17 @@ input history list."
          (start-rewrite-maybe
           (lambda () (interactive)
             (when (minibufferp) (funcall set-rewrite-message))
-            (if transient--prefix    ;Called from transient? Don't start rewrite
-                (run-at-time 0 nil #'transient-setup 'gptel-rewrite)
-              (with-current-buffer cb
+            (with-current-buffer cb
+              (if transient--prefix    ;Called from transient? Don't start rewrite
+                  (transient-setup 'gptel-rewrite)
                 (gptel--suffix-rewrite gptel--rewrite-message)))
             (when (minibufferp) (exit-minibuffer))))
          (start-transient
           (lambda () (interactive)
-            (run-at-time 0 nil #'transient-setup 'gptel-rewrite)
+            (when (minibufferp) (funcall set-rewrite-message))
+            (with-current-buffer cb
+              (transient-setup 'gptel-rewrite))
             (when (minibufferp)
-              (funcall set-rewrite-message)
               (exit-minibuffer))))
          (edit-in-buffer
           (lambda () (interactive)
