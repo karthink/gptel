@@ -542,8 +542,7 @@ which see."
    name (lambda (sym val)
           (gptel--set-with-scope sym val gptel--set-buffer-locally)))
   (message "Applied gptel preset %s"
-           (propertize (symbol-name name) 'face 'transient-value))
-  (when transient--stack (run-at-time 0 nil #'transient-setup)))
+           (propertize (symbol-name name) 'face 'transient-value)))
 
 
 ;; * Transient classes and methods for gptel
@@ -778,6 +777,8 @@ Also format the value of OBJ in the transient menu."
 (transient-define-prefix gptel-menu ()
   "Change parameters of prompt to send to the LLM."
   :incompatible '(("m" "y" "i") ("e" "g" "b" "k"))
+  ;; Ensure redisplay after applying presets
+  :refresh-suffixes t
   ;; :value (list (concat "b" (buffer-name)))
   [:description gptel-system-prompt--format
    [""
@@ -1046,9 +1047,7 @@ together.  See `gptel-make-preset' for details."
             (lambda (sym val) (gptel--set-with-scope
                           sym val gptel--set-buffer-locally)))
            (message "Applied gptel preset %s"
-            (propertize ,name 'face 'transient-value))
-           (when transient--stack
-            (run-at-time 0 nil #'transient-setup))))
+            (propertize ,name 'face 'transient-value))))
        into generated
        finally return
        (nconc (list '(gptel--infix-variable-scope
