@@ -548,6 +548,29 @@ which see."
            (propertize (symbol-name name) 'face 'transient-value))
   (when transient--stack (run-at-time 0 nil #'transient-setup)))
 
+(defun gptel--transient-fix-evil-visual (fn)
+  "Let evil-mode set up the region correctly before displaying a transient.
+
+This is supposed to be used in the `:entry' slot of `transient-define-prefix'.
+
+The transient display code may be called from an entry in `post-command-hook',
+which may happen to run late, i.e., after evil-mode's entry in that hook has
+already teared down the temporary expanding of the region to a possibly existing
+visual selection.  This environment will ensure that the region is always
+expanded before calling the transient display code in FN.
+
+If evil-mode is not in used, this function is a no-op and calls FN directly."
+  (if (and (boundp 'evil-visual-region-expanded)
+           (not evil-visual-region-expanded)
+           (fboundp 'evil-visual-expand-region)
+           (fboundp 'evil-visual-contract-region))
+      (progn
+        (evil-visual-expand-region)
+        (funcall fn)
+        (when evil-visual-region-expanded
+          (evil-visual-contract-region)))
+    (funcall fn)))
+
 
 ;; * Transient classes and methods for gptel
 
@@ -781,6 +804,7 @@ Also format the value of OBJ in the transient menu."
 (transient-define-prefix gptel-menu ()
   "Change parameters of prompt to send to the LLM."
   :incompatible '(("m" "y" "i") ("e" "g" "b" "k"))
+  :environment #'gptel--transient-fix-evil-visual
   ;; :value (list (concat "b" (buffer-name)))
   [:description gptel-system-prompt--format
    [""

@@ -595,6 +595,7 @@ By default, gptel uses the directive associated with the `rewrite'
 ;;;###autoload (autoload 'gptel-rewrite "gptel-rewrite" nil t)
 (transient-define-prefix gptel-rewrite ()
   "Rewrite or refactor text region using an LLM."
+  :environment #'gptel--transient-fix-evil-visual
   [:description
    (lambda ()
      (gptel--describe-directive
