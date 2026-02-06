@@ -135,7 +135,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
 
 ** Installation
 
-Note: gptel requires Transient 0.7.4 or higher.  Transient is a built-in package and Emacs does not update it by default.  Ensure that =package-install-upgrade-built-in= is true, or update Transient manually.
+Note: gptel requires Transient 0.7.8 or higher.  Transient is a built-in package and Emacs does not update it by default.  Ensure that =package-install-upgrade-built-in= is true, or update Transient manually.
 
 - *Release version*: =M-x package-install= ⏎ =gptel= in Emacs.
 - *Development snapshot*: Add MELPA or NonGNU-devel ELPA to your list of package sources, then install with =M-x package-install= ⏎ =gptel=.
@@ -151,7 +151,7 @@ Note: gptel requires Transient 0.7.4 or higher.  Transient is a built-in package
 #+html: <details><summary>
 *** Manual
 #+html: </summary>
-Note: gptel requires Transient 0.7.4 or higher.  Transient is a built-in package and Emacs does not update it by default.  Ensure that =package-install-upgrade-built-in= is true, or update Transient manually.
+Note: gptel requires Transient 0.7.8 or higher.  Transient is a built-in package and Emacs does not update it by default.  Ensure that =package-install-upgrade-built-in= is true, or update Transient manually.
 
 Clone or download this repository and run =M-x package-install-file⏎= on the repository directory.
 #+html: </details>
