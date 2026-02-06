@@ -1669,6 +1669,7 @@ MACHINE is an instance of `gptel-fsm'"
   ;; Reset some flags in info.  This is necessary when reusing fsm's context for
   ;; a second network request: gptel tests for the presence of these flags to
   ;; handle state transitions.  (NOTE: Don't add :token to this.)
+  (run-hooks 'gptel-post-request-hook)
   (let ((info (gptel-fsm-info fsm)))
     (dolist (key '(:tool-success :tool-use :error :http-status :reasoning))
       (when (plist-get info key)
@@ -1677,8 +1678,7 @@ MACHINE is an instance of `gptel-fsm'"
    (if gptel-use-curl
        #'gptel-curl-get-response
      #'gptel--url-get-response)
-   fsm)
-  (run-hooks 'gptel-post-request-hook))
+   fsm))
 
 (defun gptel--handle-tool-use (fsm)
   "Run tool calls captured in FSM, and advance the state machine with the results."
