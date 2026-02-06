@@ -18,8 +18,9 @@
 
 ** New models and backends
 
-- GitHub Copilot backend: Add support for =gpt-5.2=, =gpt-41-copilot=,
-  =claude-opus-4.5=, =gemini-3-pro-preview= and =gemini-3-flash-preview=
+- GitHub Copilot backend: Add support for =gpt-5.2=, =gpt-5.2-codex=,
+  =gpt-41-copilot=, =claude-opus-4.5=, =gemini-3-pro-preview= and
+  =gemini-3-flash-preview=
 
 - Bedrock backend: Add support for =claude-opus-4.5= and =nova-2-lite=
 
