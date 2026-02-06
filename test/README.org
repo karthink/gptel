@@ -1,0 +1,17 @@
+*** Test suite for [[https://github.com/karthink/gptel][gptel]]
+
+To run this suite, load all gptel elisp files, then all the elisp at the root of this repo into Emacs and run =ert=.
+
+I populate this repo as a gptel submodule in the directory =test=, then run =make= from gptel's directory:
+
+#+begin_src makefile
+.PHONY: test
+test:
+	git submodule update --init --recursive
+	cd test && emacs -Q -L .. -L . \
+	$$(find .. -mindepth 1 -maxdepth 1 \( -name '.*.el' -prune -o -name '*.el' -type f -printf ' -l %p' \)) \
+	$$(find .  -mindepth 1 -maxdepth 1 \( -name '.*.el' -prune -o -name '*.el' -type f -printf ' -l %p' \)) \
+	-l ert --batch -f ert-run-tests-batch-and-exit
+#+end_src
+
+Modify as appropriate.

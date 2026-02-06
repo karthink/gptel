@@ -40,6 +40,24 @@
 (defvar gptel-max-tokens)
 (defvar gptel--link-type-cache)
 
+;; Recursive guards for advice functions
+(defvar gptel-org--in-send-with-props nil
+  "Non-nil when inside `gptel-org--send-with-props' to prevent recursion.")
+(defvar gptel-org--in-prefix-advice nil
+  "Non-nil when inside prefix advice functions to prevent recursion.")
+
+;; Debug support
+(defvar gptel-org-debug nil
+  "When non-nil, output debug messages for subtree context operations.
+Set to t to enable debug output to *Messages* buffer.
+Useful for diagnosing heading level issues.")
+
+(defun gptel-org--debug (format-string &rest args)
+  "Output debug message when `gptel-org-debug' is non-nil.
+FORMAT-STRING and ARGS are passed to `message'."
+  (when gptel-org-debug
+    (apply #'message (concat "[gptel-org] " format-string) args)))
+
 (defvar org-link-angle-re)
 (defvar org-link-bracket-re)
 (declare-function mailcap-file-name-to-mime-type "mailcap")
@@ -58,13 +76,15 @@
 (declare-function gptel--file-binary-p "gptel")
 (declare-function org-entry-get "org")
 (declare-function org-entry-put "org")
+(declare-function org-entry-delete "org")
 (declare-function org-with-wide-buffer "org-macs")
 (declare-function org-set-property "org")
 (declare-function org-property-values "org")
 (declare-function org-open-line "org")
 (declare-function org-at-heading-p "org")
 (declare-function org-get-heading "org")
-(declare-function org-at-heading-p "org")
+(declare-function org-get-tags "org")
+(declare-function org-end-of-subtree "org")
 
 ;; Bundle `org-element-lineage-map' if it's not available (for Org 9.67 or older)
 (eval-and-compile
@@ -193,6 +213,418 @@ on a line by themselves, separated from surrounding text."
   (concat "\\(?:" org-link-bracket-re "\\|" org-link-angle-re "\\)")
   "Link regex for `gptel-mode' in Org mode.")
 
+(defcustom gptel-org-subtree-context nil
+  "Include sibling conversation headings in context when enabled.
+
+When non-nil, gptel will include sibling @user and @assistant
+headings under the same parent heading in the context.  This is
+useful for task-oriented workflows where conversations happen
+under TODO headings.
+
+The user prompt prefix (`gptel-prompt-prefix-alist') and response
+prefix (`gptel-response-prefix-alist') will be adjusted to create
+headings one level deeper than the parent heading.
+
+Example structure:
+  *** TODO Some task
+  My question here
+  **** :assistant:
+  Response here
+  ***** Details
+  More details in subheading
+  **** :user: User feedback here
+  This message should be last in the context just before system message
+
+When sending from under a TODO heading with this option enabled,
+the @user and @assistant siblings will be included in context,
+and new responses will be inserted at the correct heading level."
+  :type 'boolean
+  :group 'gptel)
+
+(defcustom gptel-org-chat-heading-markers '("@user" "@assistant")
+  "List of heading text markers that indicate chat entries.
+
+These markers are used to identify conversation turns when
+`gptel-org-subtree-context' is enabled.  Headings containing any
+of these strings will be recognized as part of the conversation."
+  :type '(repeat string)
+  :group 'gptel)
+
+(defcustom gptel-org-save-state t
+  "Whether to save gptel state as Org properties when saving the buffer.
+
+When non-nil (the default), gptel will save model, backend, system
+message, and other state as properties at the top of Org buffers
+when they are saved.
+
+Set to nil to disable automatic property saving for Org files.
+This can be useful when you don't want gptel to modify your Org
+files with GPTEL_* properties."
+  :type 'boolean
+  :group 'gptel)
+
+(defcustom gptel-org-infer-bounds-from-tags t
+  "Infer assistant/user message bounds from org heading tags.
+
+When non-nil (the default), gptel will scan headings for :assistant:
+and :user: tags to determine message roles, instead of relying on
+the GPTEL_BOUNDS property.
+
+This allows marking assistant and user parts of a conversation
+using standard org tags on headings:
+
+  ** AI-DOING Do something
+  *** Title for assistant work                    :assistant:
+  - Assistant talking
+  *** User feedback                               :user:
+  - User talking
+
+The tags are case-insensitive.  When this option is enabled and
+tagged headings are found, GPTEL_BOUNDS will not be written on save."
+  :type 'boolean
+  :group 'gptel)
+
+(defcustom gptel-org-assistant-tag "assistant"
+  "Tag name used to mark assistant message headings.
+
+Headings with this tag will be treated as assistant responses.
+The tag comparison is case-insensitive."
+  :type 'string
+  :group 'gptel)
+
+(defcustom gptel-org-user-tag "user"
+  "Tag name used to mark user message headings.
+
+Headings with this tag will be treated as user messages.
+The tag comparison is case-insensitive."
+  :type 'string
+  :group 'gptel)
+
+(defcustom gptel-org-response-title-function
+  #'gptel-org-response-title-from-first-line
+  "Function to generate a title for assistant response headings.
+
+When non-nil, this function is called after the response is complete
+to generate a title for the response heading.  The function receives
+three arguments:
+- BEG: Start position of the response
+- END: End position of the response
+- HEADING-POS: Position of the response heading
+
+The function should return a string to use as the heading title,
+or nil to keep the heading without a title.
+
+The heading is updated in place, preserving any existing tags.
+
+Built-in options:
+- `gptel-org-response-title-from-first-line': Use first line (default)
+
+Example to generate title via LLM (requires separate request):
+
+  (setq gptel-org-response-title-function
+        (lambda (beg end heading-pos)
+          (gptel-request
+           (format \"Summarize in 5 words: %s\"
+                   (buffer-substring-no-properties beg (min end (+ beg 500))))
+           :callback (lambda (title _info)
+                       (when title
+                         (gptel-org--set-heading-title
+                          heading-pos (string-trim title)))))
+          nil))"
+  :type '(choice (const :tag "No title" nil)
+                 (const :tag "First line of response"
+                        gptel-org-response-title-from-first-line)
+                 (function :tag "Custom function"))
+  :group 'gptel)
+
+(defcustom gptel-org-model-from-user-tag t
+  "When non-nil, detect model from tags on user headings.
+
+When enabled, gptel will check the current user heading for tags
+that match model aliases (like :haiku:, :sonnet:, :opus:) or model
+names defined in any backend.  If found, the matching model will
+be used for the request.
+
+For example, with this heading:
+  ** :user:haiku: My question here
+
+The request will use the \\=`haiku\\=' model alias (Claude Haiku).
+
+This only affects the current request and does not change the
+buffer-local model setting."
+  :type 'boolean
+  :group 'gptel)
+
+(defcustom gptel-org-model-from-todo-tag t
+  "When non-nil, detect model from tags on TODO headings.
+
+When enabled, gptel will check the current heading for TODO keywords
+\(as defined in `gptel-org-todo-keywords') and if found, will search
+the heading's tags for model aliases or model names.
+
+For example, with this heading:
+  ** AI-DO Implement feature :haiku:
+
+The request will use the \\=`haiku\\=' model alias (Claude Haiku).
+
+This allows using model tags on task headings without requiring
+the :user: tag."
+  :type 'boolean
+  :group 'gptel)
+
+(defcustom gptel-org-todo-keywords '("AI-DO" "AI-DOING")
+  "TODO keywords that indicate AI task headings.
+
+Headings with these TODO keywords will have their tags checked for
+model specifications when `gptel-org-model-from-todo-tag' is enabled.
+
+The check is case-sensitive to match org-mode's TODO keyword handling."
+  :type '(repeat string)
+  :group 'gptel)
+
+
+;;; Subtree context helper functions
+
+(defun gptel-org--get-parent-heading-level ()
+  "Return the level of the task/conversation heading.
+
+This finds the heading that should contain the chat entries.  It walks
+up the heading hierarchy looking for the first heading whose direct
+children include chat headings (based on `gptel-org-chat-heading-markers'),
+or a heading that is not inside a chat subtree.
+
+This is used to determine the correct heading level for chat entries
+when `gptel-org-subtree-context' is enabled."
+  (save-excursion
+    ;; First, get to the current heading if not already there
+    (let ((started-at-heading (org-at-heading-p))
+          (start-pos (point)))
+      (gptel-org--debug "get-parent-heading-level: start at pos %d, line %d, at-heading=%s"
+                        start-pos (line-number-at-pos) started-at-heading)
+      (unless started-at-heading
+        (ignore-errors (outline-back-to-heading t)))
+      (gptel-org--debug "get-parent-heading-level: after back-to-heading at line %d: %s"
+                        (line-number-at-pos)
+                        (buffer-substring (line-beginning-position) (line-end-position)))
+      ;; Check if we're inside a chat subtree by looking at ancestors
+      (let ((inside-chat-subtree
+             (save-excursion
+               (let ((in-chat nil))
+                 (while (and (not in-chat)
+                             (ignore-errors (outline-up-heading 1 t)))
+                   (when (gptel-org--chat-heading-p)
+                     (setq in-chat t)))
+                 in-chat))))
+        (gptel-org--debug "get-parent-heading-level: inside-chat-subtree=%s" inside-chat-subtree)
+        ;; Walk up to find the task heading
+        ;; A heading is the task heading if:
+        ;; 1. It's not a chat heading itself, AND
+        ;; 2. It has at least one direct child that is a chat heading,
+        ;;    OR we started from body text NOT inside a chat subtree (new conversation)
+        ;;    OR we've walked out of all chat-related subtrees
+        (let ((found nil)
+              (started-from-chat (and started-at-heading
+                                      (gptel-org--chat-heading-p))))
+          (gptel-org--debug "get-parent-heading-level: started-from-chat=%s" started-from-chat)
+          (while (and (org-at-heading-p) (not found))
+            (let ((current-heading (buffer-substring (line-beginning-position) (line-end-position)))
+                  (is-chat (gptel-org--chat-heading-p)))
+              (gptel-org--debug "get-parent-heading-level: checking heading: %s (is-chat=%s)"
+                                current-heading is-chat)
+              (if is-chat
+                  ;; This is a chat heading, keep going up
+                  (ignore-errors (outline-up-heading 1 t))
+                ;; Not a chat heading - this is the parent if:
+                ;; - It has chat children, OR
+                ;; - We started from body/heading NOT inside a chat subtree (new conversation), OR
+                ;; - We walked up from a chat heading
+                (let ((current-level (org-outline-level))
+                      (has-chat-child nil))
+                  (save-excursion
+                    (outline-next-heading)
+                    (when (and (org-at-heading-p)
+                               (= (org-outline-level) (1+ current-level))
+                               (gptel-org--chat-heading-p))
+                      (setq has-chat-child t)))
+                  (gptel-org--debug "get-parent-heading-level: non-chat heading level=%d has-chat-child=%s"
+                                    current-level has-chat-child)
+                  (if (or has-chat-child
+                          (and (not started-at-heading)      ; Started from body text
+                               (not inside-chat-subtree))    ; and NOT inside chat subtree
+                          started-from-chat)                 ; Walked up from chat heading
+                      (setq found t)
+                    ;; No chat children, continue up
+                    (unless (ignore-errors (outline-up-heading 1 t))
+                      ;; Can't go up anymore, use this level
+                      (setq found t)))))))
+          (let ((result (if (org-at-heading-p) (org-outline-level) 0)))
+            (gptel-org--debug "get-parent-heading-level: result=%d" result)
+            result))))))
+
+(defun gptel-org--chat-heading-p (&optional heading-text)
+  "Check if HEADING-TEXT (or current heading) is a chat entry.
+
+Returns non-nil if the heading contains any of the markers in
+`gptel-org-chat-heading-markers', or when `gptel-org-infer-bounds-from-tags'
+is enabled, if the heading has :assistant: or :user: tags."
+  (let* ((text (or heading-text
+                   (and (org-at-heading-p)
+                        (org-get-heading t t t t))))
+         (marker-match
+          (and text
+               (cl-some (lambda (marker)
+                          (string-match-p (regexp-quote marker) text))
+                        gptel-org-chat-heading-markers)))
+         (tag-match
+          (and gptel-org-infer-bounds-from-tags
+               (null heading-text)
+               (org-at-heading-p)
+               (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
+                   (gptel-org--heading-has-tag-p gptel-org-user-tag))))
+         (result (or marker-match tag-match)))
+    (gptel-org--debug "chat-heading-p: text=%S marker-match=%s tag-match=%s result=%s"
+                      text marker-match tag-match result)
+    result))
+
+(defun gptel-org--get-chat-siblings ()
+  "Get bounds of all sibling chat headings under the task heading.
+
+Returns a list of (BEG . END) cons cells for each sibling heading
+that matches `gptel-org-chat-heading-markers'.  Used when
+`gptel-org-subtree-context' is enabled.
+
+This function finds the task heading (the heading whose direct
+children are chat headings) and collects all its direct children
+that are chat headings."
+  (when gptel-org-subtree-context
+    (save-excursion
+      (let ((siblings nil)
+            (task-level (gptel-org--get-parent-heading-level)))
+        (when (> task-level 0)
+          ;; Navigate to the task heading
+          (unless (org-at-heading-p)
+            (ignore-errors (outline-back-to-heading t)))
+          ;; Walk up to find the task heading
+          (while (and (org-at-heading-p)
+                      (> (org-outline-level) task-level))
+            (ignore-errors (outline-up-heading 1 t)))
+          ;; Now we should be at the task heading
+          (when (and (org-at-heading-p)
+                     (= (org-outline-level) task-level))
+            (let ((chat-level (1+ task-level)))
+              (outline-next-heading)
+              ;; Collect all immediate children that are chat entries
+              (while (and (not (eobp))
+                          (looking-at outline-regexp)
+                          (> (org-outline-level) task-level))
+                (when (and (= (org-outline-level) chat-level)
+                           (gptel-org--chat-heading-p))
+                  (let ((beg (point))
+                        (end (save-excursion
+                               (org-end-of-subtree t t)
+                               (point))))
+                    (push (cons beg end) siblings)))
+                (outline-next-heading)))))
+        (nreverse siblings)))))
+
+(defvar-local gptel-org--pending-heading-tag nil
+  "Tag to apply to the heading after prefix insertion.
+A cons cell (MARKER . TAG) where MARKER is a marker and TAG is the
+tag name to apply using `org-set-tags'.")
+
+(defun gptel-org--apply-pending-tag-on-change (beg _end _len)
+  "Apply pending heading tag after insertion at BEG.
+This is called from `after-change-functions' to apply tags using
+`org-set-tags' after a heading prefix has been inserted."
+  (when gptel-org--pending-heading-tag
+    (let ((marker (car gptel-org--pending-heading-tag))
+          (tag (cdr gptel-org--pending-heading-tag)))
+      ;; Only apply if the change is near where we expect the heading
+      (when (and (markerp marker)
+                 (marker-buffer marker)
+                 (<= (abs (- beg (marker-position marker))) 50))
+        (gptel-org--debug "apply-pending-tag-on-change: beg=%d marker=%d tag=%S"
+                          beg (marker-position marker) tag)
+        (save-excursion
+          (goto-char beg)
+          ;; The heading starts at beg (the insertion point), so we need to
+          ;; either be at a heading or search forward, not backward.
+          ;; First check if we're at the heading (most common case).
+          (unless (org-at-heading-p)
+            ;; If not directly at heading, search forward within the inserted region
+            (re-search-forward org-heading-regexp nil t)
+            (beginning-of-line))
+          (when (org-at-heading-p)
+            (gptel-org--debug "apply-pending-tag-on-change: found heading at %d"
+                              (point))
+            ;; Use org-set-tags to properly set the tag with alignment
+            (org-set-tags (list tag))))
+        ;; Clean up the marker and remove this hook
+        (set-marker marker nil)
+        (setq gptel-org--pending-heading-tag nil)
+        (remove-hook 'after-change-functions
+                     #'gptel-org--apply-pending-tag-on-change t)))))
+
+(defun gptel-org--dynamic-prefix-string (base-prefix &optional for-prompt)
+  "Return BASE-PREFIX adjusted for current org heading context.
+
+When `gptel-org-subtree-context' is enabled and we're in an org
+buffer under a heading, adjust the number of stars in BASE-PREFIX
+to be one level deeper than the parent heading.
+
+When `gptel-org-infer-bounds-from-tags' is enabled, the prefix will
+include the tag inline for consistency with regex matching.  Additionally,
+a pending tag operation is scheduled so that after the heading is inserted,
+`org-set-tags' will be called to properly align the tag and run
+`org-after-tags-change-hook'.
+
+The user types their content BELOW the heading line (in the body),
+not on the heading line itself.  This ensures proper org structure
+with tags at the end of headings.
+
+If BASE-PREFIX starts with stars, those stars are replaced with
+the correct number.  If BASE-PREFIX doesn't start with stars
+\(e.g. \"@user\\n\"), stars are prepended to create a proper
+org heading."
+  (if (and gptel-org-subtree-context
+           (derived-mode-p 'org-mode))
+      (let* ((parent-level (gptel-org--get-parent-heading-level))
+             (target-level (if (> parent-level 0) (1+ parent-level) 1))
+             (stars (make-string target-level ?*)))
+        (gptel-org--debug "dynamic-prefix-string: base=%S parent-level=%d target-level=%d for-prompt=%s"
+                          base-prefix parent-level target-level for-prompt)
+        (let ((result
+               (cond
+                ;; When using tag-based bounds, generate heading with tag and schedule
+                ;; org-set-tags call for proper alignment
+                (gptel-org-infer-bounds-from-tags
+                 (let ((tag (if for-prompt
+                                gptel-org-user-tag
+                              gptel-org-assistant-tag))
+                       (marker (make-marker)))
+                   ;; Create a marker at current point to track insertion location
+                   (set-marker marker (point))
+                   ;; Store the pending tag to be applied after insertion
+                   (setq gptel-org--pending-heading-tag (cons marker tag))
+                   ;; Ensure the after-change function is active
+                   (add-hook 'after-change-functions
+                             #'gptel-org--apply-pending-tag-on-change nil t)
+                   ;; Return heading with inline tag (for regex matching compatibility)
+                   ;; The tag will be re-set properly via org-set-tags after insertion
+                   (concat stars " :" tag ":\n")))
+                ;; Prefix starts with stars - replace them
+                ((string-match "^\\(\\*+\\)\\(\\(?:.*\n?\\)?\\)" base-prefix)
+                 (let ((rest (match-string 2 base-prefix)))
+                   (concat stars rest)))
+                ;; Prefix doesn't start with stars but is non-empty - prepend stars and space
+                ((not (string-empty-p base-prefix))
+                 (concat stars " " base-prefix))
+                ;; Empty prefix - just return stars with space and newline
+                (t (concat stars " \n")))))
+          (gptel-org--debug "dynamic-prefix-string: result=%S pending-tag=%S"
+                            result gptel-org--pending-heading-tag)
+          result))
+    base-prefix))
 
 ;;; Setting context and creating queries
 (defun gptel-org--get-topic-start ()
@@ -230,12 +662,22 @@ heading (i.e. the heading with the topic set) and the cursor position."
 If the region is active limit the prompt text to the region contents.
 Otherwise the prompt text is constructed from the contents of the
 current buffer up to point, or PROMPT-END if provided.  Its contents
-depend on the value of `gptel-org-branching-context', which see."
+depend on the value of `gptel-org-branching-context', which see.
+
+When `gptel-org-subtree-context' is also enabled, sibling headings
+that match `gptel-org-chat-heading-markers' will be included in the
+context."
+  ;; Refresh bounds from tags before constructing prompt to ensure text
+  ;; properties reflect current buffer state (avoids stale markers)
+  (when gptel-org-infer-bounds-from-tags
+    (gptel-org--restore-bounds-from-tags))
   (when (use-region-p)
     (narrow-to-region (region-beginning) (region-end))
     (setq prompt-end (point-max)))
   (goto-char (or prompt-end (setq prompt-end (point))))
-  (let ((topic-start (gptel-org--get-topic-start)))
+  (let ((topic-start (gptel-org--get-topic-start))
+        (chat-siblings (when gptel-org-subtree-context
+                         (gptel-org--get-chat-siblings))))
     (when topic-start
       ;; narrow to GPTEL_TOPIC property scope
       (narrow-to-region topic-start prompt-end))
@@ -275,6 +717,39 @@ depend on the value of `gptel-org-branching-context', which see."
                        for end in end-bounds
                        do (insert-buffer-substring org-buf start end)
                        (goto-char (point-min)))
+              ;; When gptel-org-subtree-context is enabled, include sibling
+              ;; chat headings (@user/@assistant) in the context.
+              ;; Insert siblings in chronological order before the current chat entry.
+              (when chat-siblings
+                ;; Find the current chat entry's position (the first chat heading
+                ;; in start-bounds that is a chat sibling)
+                (let* ((current-chat-start (car start-bounds))
+                       ;; Filter siblings that come before current entry and don't overlap
+                       (earlier-siblings
+                        (cl-remove-if
+                         (lambda (sib)
+                           (let ((sib-beg (car sib))
+                                 (sib-end (cdr sib)))
+                             ;; Skip if overlaps or comes after current position
+                             (or (>= sib-beg current-chat-start)
+                                 (cl-some (lambda (start-end)
+                                            (and (< sib-beg (cdr start-end))
+                                                 (> sib-end (car start-end))))
+                                          (cl-mapcar #'cons start-bounds end-bounds)))))
+                         chat-siblings)))
+                  ;; Insert earlier siblings right after the task heading (before current chat)
+                  ;; The task heading content ends where the first chat sibling would start
+                  (when earlier-siblings
+                    ;; Find where to insert: after the task heading but before current chat
+                    ;; In the copied buffer, content from start-bounds was inserted at point-min
+                    ;; The task heading content is now at the start
+                    (goto-char (point-min))
+                    ;; Skip to end of task heading content (first outline heading at chat level)
+                    (when (re-search-forward "^\\*\\*" nil t)
+                      (beginning-of-line)
+                      ;; Insert earlier siblings here, in order
+                      (dolist (sib earlier-siblings)
+                        (insert-buffer-substring org-buf (car sib) (cdr sib)))))))
               (goto-char (point-max))
               (gptel-org--unescape-tool-results)
               (gptel-org--strip-block-headers)
@@ -285,10 +760,20 @@ depend on the value of `gptel-org-branching-context', which see."
               (setq org-complex-heading-regexp ;For org-element-context to run
                     (buffer-local-value 'org-complex-heading-regexp org-buf))
               (current-buffer))))
-      ;; Create prompt the usual way
+      ;; Create prompt the usual way (non-branching context)
       (let ((org-buf (current-buffer))
             (beg (point-min)))
         (gptel--with-buffer-copy org-buf beg prompt-end
+          ;; When gptel-org-subtree-context is enabled, include sibling
+          ;; chat headings (@user/@assistant) in the context
+          (when chat-siblings
+            (goto-char (point-max))
+            (cl-loop for (sib-beg . sib-end) in chat-siblings
+                     ;; Skip siblings that overlap with the range [beg, prompt-end]
+                     ;; Overlap: sib-beg < prompt-end AND sib-end > beg
+                     unless (and (< sib-beg prompt-end) (> sib-end beg))
+                     do (insert-buffer-substring org-buf sib-beg sib-end)))
+          (goto-char (point-max))
           (gptel-org--unescape-tool-results)
           (gptel-org--strip-block-headers)
           (when-let* ((gptel-org-ignore-elements ;not copied by -with-buffer-copy
@@ -497,18 +982,44 @@ configuration, use that for requests instead.  This includes the
 system message, model and provider (backend), among other
 parameters.
 
+When `gptel-org-model-from-user-tag' is enabled, model tags on the
+current user heading (like :haiku:, :sonnet:) take precedence over
+stored properties.
+
+When `gptel-org-model-from-todo-tag' is enabled, model tags on the
+enclosing TODO heading (with keywords like AI-DO, AI-DOING) also
+take precedence.
+
 ARGS are the original function call arguments."
-  (if (derived-mode-p 'org-mode)
-      (pcase-let ((`(,gptel--system-message ,gptel-backend ,gptel-model
-                     ,gptel-temperature ,gptel-max-tokens
-                     ,gptel--num-messages-to-send ,gptel-tools)
-                   (seq-mapn (lambda (a b) (or a b))
-                             (gptel-org--entry-properties)
-                             (list gptel--system-message gptel-backend gptel-model
-                                   gptel-temperature gptel-max-tokens
-                                   gptel--num-messages-to-send gptel-tools))))
-        (apply send-fun args))
-    (apply send-fun args)))
+  (if gptel-org--in-send-with-props
+      ;; Prevent recursion - just call the original function
+      (apply send-fun args)
+    (let ((gptel-org--in-send-with-props t))
+      (if (derived-mode-p 'org-mode)
+          (pcase-let* ((`(,gptel--system-message ,gptel-backend ,gptel-model
+                          ,gptel-temperature ,gptel-max-tokens
+                          ,gptel--num-messages-to-send ,gptel-tools)
+                        (seq-mapn (lambda (a b) (or a b))
+                                  (gptel-org--entry-properties)
+                                  (list gptel--system-message gptel-backend gptel-model
+                                        gptel-temperature gptel-max-tokens
+                                        gptel--num-messages-to-send gptel-tools)))
+                       ;; Check for model tag on user heading (takes precedence)
+                       (user-heading-model (gptel-org--get-user-heading-model))
+                       ;; Check for model tag on TODO heading (also takes precedence)
+                       (todo-heading-model (gptel-org--get-todo-heading-model))
+                       ;; User heading model takes precedence over TODO heading model
+                       (heading-model (or user-heading-model todo-heading-model)))
+            ;; Apply model from heading tag if found
+            (when heading-model
+              (when-let* ((backend (plist-get heading-model :backend)))
+                (setq gptel-backend backend))
+              (when-let* ((model (plist-get heading-model :model)))
+                (setq gptel-model model))
+              (gptel-org--debug "Using model from heading tag: %s"
+                                (gptel--model-name gptel-model)))
+            (apply send-fun args))
+        (apply send-fun args)))))
 
 (advice-add 'gptel-send :around #'gptel-org--send-with-props)
 (advice-add 'gptel--suffix-send :around #'gptel-org--send-with-props)
@@ -550,6 +1061,177 @@ ARGS are the original function call arguments."
                     (format "Tool %s not found, ignoring" tname)))))
     (list system backend model temperature tokens num tools)))
 
+(defun gptel-org--heading-has-tag-p (tag)
+  "Check if current heading has TAG (case-insensitive)."
+  (when (org-at-heading-p)
+    (let ((tags (org-get-tags nil t)))  ; local tags only
+      (cl-some (lambda (tg) (string-equal-ignore-case tg tag)) tags))))
+
+(defun gptel-org--heading-has-todo-keyword-p ()
+  "Check if current heading has a TODO keyword from `gptel-org-todo-keywords'."
+  (when (org-at-heading-p)
+    (let ((todo (org-get-todo-state)))
+      (and todo (member todo gptel-org-todo-keywords)))))
+
+(defun gptel-org--find-model-in-tags (tags &optional skip-tag)
+  "Find a model specification in TAGS.
+
+Searches TAGS for model aliases or model names.  If SKIP-TAG is provided,
+that tag is skipped (e.g., the user tag itself).
+
+Returns a plist (:backend BACKEND :model MODEL) if a matching model
+is found, nil otherwise.
+
+Model aliases are symbols with a :model-id property (like \\=`haiku\\=',
+\\=`sonnet\\=', \\=`opus\\=' for Anthropic models).  Model names are the actual
+model identifiers in backends."
+  (cl-block gptel-org--find-model-in-tags
+    (cl-loop
+     for tag in tags
+     for tag-sym = (intern (downcase tag))
+     ;; Skip the specified tag (e.g., user tag)
+     unless (and skip-tag (string-equal-ignore-case tag skip-tag))
+     ;; Check if tag is a model alias (has :model-id property)
+     if (get tag-sym :model-id)
+     return (cl-loop for (_name . backend) in gptel--known-backends
+                     when (memq tag-sym (gptel-backend-models backend))
+                     return (list :backend backend :model tag-sym))
+     ;; Check if tag matches a model name in any backend
+     else do
+     (cl-loop for (_name . backend) in gptel--known-backends
+              for models = (gptel-backend-models backend)
+              do (cl-loop for model in models
+                          when (string-equal-ignore-case
+                                tag (gptel--model-name model))
+                          return (cl-return-from gptel-org--find-model-in-tags
+                                   (list :backend backend :model model)))))))
+
+(defun gptel-org--find-model-from-tags ()
+  "Find a model specification from tags on the current user heading.
+
+Searches the tags on the current heading (if it's a user heading)
+for model aliases or model names.
+
+Returns a plist (:backend BACKEND :model MODEL) if a matching model
+is found, nil otherwise."
+  (when (and gptel-org-model-from-user-tag
+             (org-at-heading-p)
+             (gptel-org--heading-has-tag-p gptel-org-user-tag))
+    (gptel-org--find-model-in-tags (org-get-tags nil t) gptel-org-user-tag)))
+
+(defun gptel-org--find-model-from-todo-tags ()
+  "Find a model specification from tags on the current TODO heading.
+
+Searches the tags on the current heading (if it's a TODO heading
+with a keyword in `gptel-org-todo-keywords') for model aliases or
+model names.
+
+Returns a plist (:backend BACKEND :model MODEL) if a matching model
+is found, nil otherwise."
+  (when (and gptel-org-model-from-todo-tag
+             (org-at-heading-p)
+             (gptel-org--heading-has-todo-keyword-p))
+    (gptel-org--find-model-in-tags (org-get-tags nil t))))
+
+(defun gptel-org--get-user-heading-model ()
+  "Get model from current or nearest user heading tags.
+
+Searches for a user heading at or before point and checks its tags
+for model specifications.
+
+Returns a plist (:backend BACKEND :model MODEL) if found, nil otherwise."
+  (when gptel-org-model-from-user-tag
+    (save-excursion
+      ;; If we're at a user heading, check it directly
+      (if (and (org-at-heading-p)
+               (gptel-org--heading-has-tag-p gptel-org-user-tag))
+          (gptel-org--find-model-from-tags)
+        ;; Otherwise, search backwards for the nearest user heading
+        (let ((found nil))
+          (while (and (not found)
+                      (ignore-errors (outline-previous-heading)))
+            (when (gptel-org--heading-has-tag-p gptel-org-user-tag)
+              (setq found (gptel-org--find-model-from-tags))))
+          found)))))
+
+(defun gptel-org--get-todo-heading-model ()
+  "Get model from the enclosing TODO heading tags.
+
+Searches upward from point for a heading with a TODO keyword from
+`gptel-org-todo-keywords' and checks its tags for model specifications.
+
+Returns a plist (:backend BACKEND :model MODEL) if found, nil otherwise."
+  (when gptel-org-model-from-todo-tag
+    (save-excursion
+      ;; Move to enclosing heading if not already at one
+      (unless (org-at-heading-p)
+        (ignore-errors (outline-previous-heading)))
+      ;; Search upward for a TODO heading
+      (let ((found nil))
+        (while (and (not found)
+                    (org-at-heading-p))
+          (when (gptel-org--heading-has-todo-keyword-p)
+            (setq found (gptel-org--find-model-from-todo-tags)))
+          (unless found
+            (unless (ignore-errors (outline-up-heading 1 t))
+              ;; No parent heading, stop the loop
+              (goto-char (point-min)))))
+        found))))
+
+(defun gptel-org--restore-bounds-from-tags ()
+  "Restore gptel response properties based on heading tags.
+
+Scans all headings in the buffer for :assistant: and :user: tags
+\(as configured by `gptel-org-assistant-tag' and `gptel-org-user-tag').
+Headings tagged with the assistant tag get their subtree content
+marked with the gptel response property.
+
+User-tagged headings within an assistant subtree are treated as
+user feedback - their content is NOT marked as assistant response.
+
+Returns non-nil if any tagged headings were found and processed."
+  (save-excursion
+    (goto-char (point-min))
+    (let ((found-tags nil))
+      (while (outline-next-heading)
+        (cond
+         ;; Assistant tag - mark subtree as response, but respect user tags within
+         ((gptel-org--heading-has-tag-p gptel-org-assistant-tag)
+          (setq found-tags t)
+          (let ((assistant-beg (point))
+                (assistant-end (save-excursion
+                                 (org-end-of-subtree t t)
+                                 (point))))
+            ;; First, mark the entire assistant subtree as response
+            (add-text-properties assistant-beg assistant-end
+                                 '(gptel response front-sticky (gptel)))
+            ;; Then, scan for user tags within and remove gptel property from those
+            (save-excursion
+              (goto-char assistant-beg)
+              (while (and (outline-next-heading)
+                          (< (point) assistant-end))
+                (when (gptel-org--heading-has-tag-p gptel-org-user-tag)
+                  (let ((user-beg (point))
+                        (user-end (save-excursion
+                                    (org-end-of-subtree t t)
+                                    (min (point) assistant-end))))
+                    (remove-text-properties user-beg user-end '(gptel nil))))))))
+         ;; User tag at top level - ensure no gptel property (remove if present)
+         ((gptel-org--heading-has-tag-p gptel-org-user-tag)
+          (setq found-tags t)
+          (let ((beg (point))
+                (end (save-excursion
+                       (org-end-of-subtree t t)
+                       (point))))
+            (remove-text-properties beg end '(gptel nil))))))
+      found-tags)))
+
+(defvar-local gptel-org--bounds-from-tags nil
+  "Non-nil if bounds were restored from heading tags.
+
+When this is non-nil, `gptel-org--save-state' will skip writing
+GPTEL_BOUNDS since the bounds are determined by heading tags.")
+
 (defun gptel-org--restore-state ()
   "Restore gptel state for Org buffers when turning on `gptel-mode'."
   (save-restriction
@@ -557,8 +1239,14 @@ ARGS are the original function call arguments."
       (widen)
       (condition-case status
           (progn
-            (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
-              (gptel--restore-props (read bounds)))
+            ;; Try tag-based bounds first if enabled
+            (if (and gptel-org-infer-bounds-from-tags
+                     (gptel-org--restore-bounds-from-tags))
+                (setq gptel-org--bounds-from-tags t)
+              ;; Fall back to GPTEL_BOUNDS property
+              (setq gptel-org--bounds-from-tags nil)
+              (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
+                (gptel--restore-props (read bounds))))
             (pcase-let ((`(,system ,backend ,model ,temperature ,tokens ,num ,tools)
                          (gptel-org--entry-properties (point-min))))
               (when system (setq-local gptel--system-message system))
@@ -616,25 +1304,31 @@ non-nil (default), display a message afterwards."
     (message "Added gptel configuration to current headline.")))
 
 (defun gptel-org--save-state ()
-  "Write the gptel state to the Org buffer as Org properties."
-  (org-with-wide-buffer
-   (goto-char (point-min))
-   (when (org-at-heading-p)
-     (org-open-line 1))
-   (gptel-org-set-properties (point-min))
-   ;; Save response boundaries
-   (letrec ((write-bounds
-             (lambda (attempts)
-               (when-let* ((bounds (gptel--get-buffer-bounds))
-                           ;; first value of ((prop . ((beg end val)...))...)
-                           (offset (caadar bounds))
-                           (offset-marker (set-marker (make-marker) offset)))
-                 (org-entry-put (point-min) "GPTEL_BOUNDS"
-                                (prin1-to-string (gptel--get-buffer-bounds)))
-                 (when (and (not (= (marker-position offset-marker) offset))
-                            (> attempts 0))
-                   (funcall write-bounds (1- attempts)))))))
-     (funcall write-bounds 6))))
+  "Write the gptel state to the Org buffer as Org properties.
+Respects `gptel-org-save-state'; does nothing if that is nil."
+  (when gptel-org-save-state
+    (org-with-wide-buffer
+     (goto-char (point-min))
+     (when (org-at-heading-p)
+       (org-open-line 1))
+     (gptel-org-set-properties (point-min))
+     ;; Save response boundaries (skip if using tag-based bounds)
+     (if gptel-org--bounds-from-tags
+         ;; Remove GPTEL_BOUNDS if it exists, since bounds are from tags
+         (org-entry-delete (point-min) "GPTEL_BOUNDS")
+       ;; Save bounds the traditional way
+       (letrec ((write-bounds
+                 (lambda (attempts)
+                   (when-let* ((bounds (gptel--get-buffer-bounds))
+                               ;; first value of ((prop . ((beg end val)...))...)
+                               (offset (caadar bounds))
+                               (offset-marker (set-marker (make-marker) offset)))
+                     (org-entry-put (point-min) "GPTEL_BOUNDS"
+                                    (prin1-to-string (gptel--get-buffer-bounds)))
+                     (when (and (not (= (marker-position offset-marker) offset))
+                                (> attempts 0))
+                       (funcall write-bounds (1- attempts)))))))
+         (funcall write-bounds 6))))))
 
 
 ;;; Transforming responses
@@ -836,6 +1530,227 @@ cleaning up after."
               (buffer-substring (point) start-pt)
             (prog1 (buffer-substring (point) (point-max))
                    (set-marker start-pt (point-max)))))))))
+
+
+;;; Dynamic prefix support for subtree context
+
+(defun gptel-org--advice-prompt-prefix (orig-fun)
+  "Advice for `gptel-prompt-prefix-string' to support dynamic org heading levels.
+
+ORIG-FUN is the original function.  When `gptel-org-subtree-context'
+is enabled, adjusts the prefix to use the correct heading level."
+  (if gptel-org--in-prefix-advice
+      (funcall orig-fun)
+    (let ((gptel-org--in-prefix-advice t))
+      (let ((result (funcall orig-fun)))
+        (gptel-org--debug "advice-prompt-prefix: orig=%S org-mode=%s subtree-context=%s"
+                          result (derived-mode-p 'org-mode) gptel-org-subtree-context)
+        (if (derived-mode-p 'org-mode)
+            (gptel-org--dynamic-prefix-string result 'for-prompt)
+          result)))))
+
+(defun gptel-org--advice-response-prefix (orig-fun)
+  "Advice for `gptel-response-prefix-string' to support dynamic org heading levels.
+
+ORIG-FUN is the original function.  When `gptel-org-subtree-context'
+is enabled, adjusts the prefix to use the correct heading level."
+  (if gptel-org--in-prefix-advice
+      (funcall orig-fun)
+    (let ((gptel-org--in-prefix-advice t))
+      (let ((result (funcall orig-fun)))
+        (gptel-org--debug "advice-response-prefix: orig=%S org-mode=%s subtree-context=%s"
+                          result (derived-mode-p 'org-mode) gptel-org-subtree-context)
+        (if (derived-mode-p 'org-mode)
+            (gptel-org--dynamic-prefix-string result nil) ;nil = for response
+          result)))))
+
+(advice-add 'gptel-prompt-prefix-string :around #'gptel-org--advice-prompt-prefix)
+(advice-add 'gptel-response-prefix-string :around #'gptel-org--advice-response-prefix)
+
+
+;;; Response heading adjustment for subtree context
+
+(defun gptel-org--escape-example-blocks (beg end)
+  "Prefix lines in example blocks with comma between BEG and END.
+
+Per Org manual, lines starting with `*' or `#+' inside example blocks
+must be prefixed with a comma to prevent them from being interpreted
+as outline nodes or special syntax.  Org strips these commas when
+accessing the block contents.
+
+Lines already escaped (starting with `,*' or `,#+') are left unchanged.
+
+This should be called before `gptel-org--adjust-response-headings'
+so that headings inside examples are not modified."
+  (save-excursion
+    (save-restriction
+      (narrow-to-region beg end)
+      (goto-char (point-min))
+      ;; Find each example/src block and escape special lines within
+      (while (re-search-forward
+              "^[ \t]*#\\+begin_\\(example\\|src\\)\\(?:[ \t]\\|$\\)" nil t)
+        (let ((block-start (line-beginning-position 2)) ; line after #+begin
+              (block-end nil))
+          ;; Find the matching #+end
+          (when (re-search-forward
+                 "^[ \t]*#\\+end_\\(example\\|src\\)[ \t]*$" nil t)
+            (setq block-end (line-beginning-position))
+            ;; Escape lines within the block
+            (save-restriction
+              (narrow-to-region block-start block-end)
+              (goto-char (point-min))
+              (while (not (eobp))
+                ;; Only escape lines starting with * or #+, NOT already-escaped ,* or ,#+
+                (when (looking-at "^\\(\\*\\|#\\+\\)")
+                  (insert ","))
+                (forward-line 1)))))))))
+
+(defun gptel-org--in-example-block-p ()
+  "Return non-nil if point is inside an example or src block."
+  (save-excursion
+    (let ((pos (point))
+          (in-block nil))
+      (goto-char (point-min))
+      (while (and (not in-block)
+                  (re-search-forward
+                   "^[ \t]*#\\+begin_\\(example\\|src\\)\\(?:[ \t]\\|$\\)" pos t))
+        (let ((block-start (point)))
+          (when (re-search-forward
+                 "^[ \t]*#\\+end_\\(example\\|src\\)[ \t]*$" nil t)
+            (when (and (>= pos block-start)
+                       (<= pos (point)))
+              (setq in-block t)))))
+      in-block)))
+
+(defun gptel-org--adjust-response-headings (beg end)
+  "Adjust heading levels in the response region from BEG to END.
+
+When `gptel-org-subtree-context' is enabled, any org headings in
+the AI response should be demoted to be children of the @assistant
+heading.  This prevents response headings from escaping the
+assistant subtree and breaking the conversation structure.
+
+First, lines in example blocks that start with `*' or `#+' are
+prefixed with comma per Org manual requirements.  Then headings
+outside of example blocks are adjusted.
+
+For example, if the @assistant heading is at level 4 (****), any
+headings in the response should be at level 5 or deeper."
+  (when (and gptel-org-subtree-context
+             (derived-mode-p 'org-mode))
+    ;; First: escape special lines in example blocks
+    (gptel-org--escape-example-blocks beg end)
+    (save-excursion
+      ;; Find the @assistant heading level BEFORE narrowing
+      (let ((assistant-level
+             (save-excursion
+               (goto-char beg)
+               (if (re-search-backward org-outline-regexp-bol nil t)
+                   (org-outline-level)
+                 1)))
+            (min-response-level nil))
+        (save-restriction
+          (narrow-to-region beg end)
+          ;; First pass: find the minimum heading level in the response
+          ;; (only for headings outside example blocks)
+          (goto-char (point-min))
+          (while (re-search-forward org-outline-regexp-bol nil t)
+            (unless (gptel-org--in-example-block-p)
+              (let ((level (org-outline-level)))
+                (when (or (null min-response-level)
+                          (< level min-response-level))
+                  (setq min-response-level level)))))
+          ;; Second pass: adjust headings if needed
+          (when (and min-response-level
+                     (<= min-response-level assistant-level))
+            ;; Need to demote all headings by (assistant-level - min-response-level + 1)
+            (let ((level-diff (- (1+ assistant-level) min-response-level)))
+              (goto-char (point-min))
+              (while (re-search-forward "^\\(\\*+\\)\\( \\)" nil t)
+                (unless (gptel-org--in-example-block-p)
+                  (let* ((current-stars (match-string 1))
+                         (new-level (+ (length current-stars) level-diff))
+                         (new-stars (make-string new-level ?*)))
+                    (replace-match (concat new-stars "\\2"))))))))))))
+
+(add-hook 'gptel-post-response-functions #'gptel-org--adjust-response-headings)
+
+
+;;; Response heading title generation
+
+(defun gptel-org-response-title-from-first-line (beg _end _heading-pos)
+  "Generate a response heading title from the first line of response.
+BEG is the start position of the response.  Returns the first
+non-empty line, truncated to 50 characters."
+  (save-excursion
+    (goto-char beg)
+    ;; Skip any blank lines at the start
+    (skip-chars-forward " \t\n")
+    (let ((first-line (buffer-substring-no-properties
+                       (point) (line-end-position))))
+      (setq first-line (string-trim first-line))
+      ;; Skip if it looks like a code block or list marker only
+      (unless (or (string-empty-p first-line)
+                  (string-match-p "^```" first-line)
+                  (string-match-p "^#\\+begin" first-line)
+                  (string-match-p "^[-*+] *$" first-line))
+        (truncate-string-to-width first-line 50 nil nil "...")))))
+
+(defun gptel-org--find-response-heading (pos)
+  "Find the assistant response heading containing or just before POS.
+Returns the position of the heading, or nil if not found."
+  (save-excursion
+    (goto-char pos)
+    ;; Go to beginning of line to handle being at end of heading line
+    (beginning-of-line)
+    (if (and (org-at-heading-p)
+             (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
+                 (gptel-org--chat-heading-p
+                  (org-get-heading t t t t))))
+        (point)
+      ;; Search backward for assistant heading
+      (when (re-search-backward org-heading-regexp nil t)
+        (when (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
+                  (gptel-org--chat-heading-p
+                   (org-get-heading t t t t)))
+          (point))))))
+
+(defun gptel-org--set-heading-title (heading-pos title)
+  "Set the title of the heading at HEADING-POS to TITLE.
+Preserves existing tags on the heading."
+  (when (and heading-pos title (not (string-empty-p title)))
+    (save-excursion
+      (goto-char heading-pos)
+      (when (org-at-heading-p)
+        (let* ((tags (org-get-tags nil t))
+               (level (org-outline-level))
+               (stars (make-string level ?*)))
+          ;; Replace the entire heading line
+          (beginning-of-line)
+          (delete-region (point) (line-end-position))
+          (insert stars " " title)
+          ;; Re-apply tags
+          (when tags
+            (org-set-tags tags)))))))
+
+(defun gptel-org--apply-response-title (beg end)
+  "Apply a title to the response heading if configured.
+Called from `gptel-post-response-functions' with BEG and END
+positions of the response."
+  (when (and gptel-org-response-title-function
+             (derived-mode-p 'org-mode))
+    (let ((heading-pos (gptel-org--find-response-heading beg)))
+      (when heading-pos
+        (condition-case err
+            (let ((title (funcall gptel-org-response-title-function
+                                  beg end heading-pos)))
+              (when title
+                (gptel-org--set-heading-title heading-pos title)))
+          (error
+           (message "gptel: Error generating response title: %S" err)))))))
+
+;; Add hook with high priority (run late, after heading adjustments)
+(add-hook 'gptel-post-response-functions #'gptel-org--apply-response-title 80)
 
 (provide 'gptel-org)
 ;;; gptel-org.el ends here
