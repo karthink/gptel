@@ -421,6 +421,14 @@ the same as t."
      :input-cost 1.25
      :output-cost 10
      :cutoff-date "2024-09")
+    (gpt-5.2
+     :description "The best model for coding and agentic tasks"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1.75
+     :output-cost 14
+     :cutoff-date "2025-08")
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
      :capabilities (media reasoning)
@@ -846,13 +854,17 @@ Later plists in the sequence take precedence over earlier ones."
 
 (defun gptel--file-binary-p (path)
   "Check if file at PATH is readable and binary."
-  (condition-case nil
-      (with-temp-buffer
-        (insert-file-contents path nil 1 512 'replace)
-        (memq buffer-file-coding-system
-              '(no-conversion no-conversion-multibyte)))
-    (file-missing (message "File \"%s\" is not readable." path)
-                  nil)))
+  ;; HACK Image files with ICC color profiles are characterized as ASCII
+  ;; (#1223), so until we find a better solution we just match these files by
+  ;; extension.
+  (or (string-match-p "\\.\\(jpe?g\\|png\\|gif\\|webp\\)\\'" path)
+      (condition-case nil
+          (with-temp-buffer
+            (insert-file-contents path nil 1 512 'replace)
+            (memq buffer-file-coding-system
+                  '(no-conversion no-conversion-multibyte)))
+        (file-missing (message "File \"%s\" is not readable." path)
+                      nil))))
 
 (defun gptel--insert-file-string (path)
   "Insert at point the contents of the file at PATH as context."
@@ -884,8 +896,8 @@ MODE-SYM is typically a major-mode symbol."
 (cl-defun gptel--url-retrieve (url &key method data headers)
   "Retrieve URL synchronously with METHOD, DATA and HEADERS."
   (declare (indent 1))
-  (let ((url-request-method (if (eq method'post) "POST" "GET"))
-        (url-request-data (encode-coding-string (gptel--json-encode data) 'utf-8))
+  (let ((url-request-method (if (eq method 'post) "POST" "GET"))
+        (url-request-data (when (eq method 'post) (encode-coding-string (gptel--json-encode data) 'utf-8)))
         (url-mime-accept-string "application/json")
         (url-request-extra-headers
          `(("content-type" . "application/json")
@@ -2110,7 +2122,7 @@ be used to rerun or continue the request at a later time."
          (prompt-buffer
           (cond                       ;prompt from buffer or explicitly supplied
            ((null prompt)
-            (gptel--create-prompt-buffer (point)))
+            (gptel--create-prompt-buffer start-marker))
            ((stringp prompt)
             (gptel--with-buffer-copy buffer nil nil
               (insert prompt)
@@ -2674,7 +2686,7 @@ INFO contains the request data, TOKEN is a unique identifier."
      (and-let* ((curl-args (gptel-backend-curl-args gptel-backend)))
        (if (functionp curl-args) (funcall curl-args) curl-args))
      (list (format "-w(%s . %%{size_header})" token))
-     (if (length< data-json gptel-curl-file-size-threshold)
+     (if (< (string-bytes data-json) gptel-curl-file-size-threshold)
          (list (format "-d%s" data-json))
        (let* ((write-region-inhibit-fsync t)
               (file-name-handler-alist nil)
