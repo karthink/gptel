@@ -306,6 +306,9 @@ documention.  Return nil if user does not provide a number, for default."
 
 Handle formatting for system messages when the active
 `gptel-model' does not support system messages."
+  ;; Transient >= 0.12 may call description functions with the suffix/group
+  ;; object as an argument. Treat that as "no explicit message supplied".
+  (if (eieio-object-p message) (setq message nil))
   (setq message (or message gptel--system-message))
   (if (gptel--model-capable-p 'nosystem)
       (concat (propertize "[No system message support for model "
