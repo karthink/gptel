@@ -633,6 +633,14 @@ applied before being re-persisted in the new structure."
       (when gptel--bounds
         (gptel--restore-props gptel--bounds)
         (message "gptel chat restored."))
+      (when gptel--preset
+        (if (gptel-get-preset gptel--preset)
+            (gptel--apply-preset
+             gptel--preset (lambda (sym val) (set (make-local-variable sym) val)))
+          (display-warning
+           '(gptel presets)
+           (format "Could not activate gptel preset `%s' in buffer \"%s\""
+                   gptel--preset (buffer-name)))))
       (when gptel--backend-name
         (if-let* ((backend (alist-get
                             gptel--backend-name gptel--known-backends
@@ -661,34 +669,59 @@ applied before being re-persisted in the new structure."
 
 This saves chat metadata when writing the buffer to disk.  To
 restore a chat session, turn on `gptel-mode' after opening the
-file."
+file.
+
+If a gptel preset has been applied in this buffer, a reference to it is
+saved.
+
+Additional metadata is stored only if no preset was applied or if it
+differs from the preset specification.  This is limited to the active
+gptel model and backend names, the system message, active tools, the
+response temperature, max tokens and number of conversation turns to
+send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
   (run-hooks 'gptel-save-state-hook)
   (if (derived-mode-p 'org-mode)
       (progn
         (require 'gptel-org)
         (gptel-org--save-state))
-    (let ((print-escape-newlines t))
+    (let ((print-escape-newlines t)
+          (preset-spec (and gptel--preset
+                            (gptel-get-preset gptel--preset))))
       (save-excursion
         (save-restriction
-          (add-file-local-variable 'gptel-model gptel-model)
-          (add-file-local-variable 'gptel--backend-name
-                                   (gptel-backend-name gptel-backend))
-          (unless (equal (default-value 'gptel--system-message)
-                           gptel--system-message)
-            (add-file-local-variable
-             'gptel--system-message     ;TODO: Handle nil case correctly
-             (car-safe (gptel--parse-directive gptel--system-message))))
-          (if gptel-tools
-              (add-file-local-variable
-               'gptel--tool-names (mapcar #'gptel-tool-name gptel-tools))
-            (delete-file-local-variable 'gptel--tool-names))
-          (if (equal (default-value 'gptel-temperature) gptel-temperature)
-              (delete-file-local-variable 'gptel-temperature)
-            (add-file-local-variable 'gptel-temperature gptel-temperature))
-          (if gptel-max-tokens
+
+          (if preset-spec
+              (add-file-local-variable 'gptel--preset gptel--preset)
+            (delete-file-local-variable 'gptel--preset))
+
+          ;; Model and backend
+          (if (gptel--preset-mismatch-value preset-spec :model gptel-model)
+              (add-file-local-variable 'gptel-model gptel-model))
+          (if (gptel--preset-mismatch-value preset-spec :backend gptel-backend)
+              (add-file-local-variable 'gptel--backend-name
+                                       (gptel-backend-name gptel-backend)))
+          ;; System message
+          (let ((parsed (car-safe (gptel--parse-directive gptel--system-message))))
+            (if (gptel--preset-mismatch-value preset-spec :system parsed)
+                (add-file-local-variable 'gptel--system-message parsed)
+              (delete-file-local-variable 'gptel--system-message)))
+          ;; Tools
+          (let ((tool-names (mapcar #'gptel-tool-name gptel-tools)))
+            (if (gptel--preset-mismatch-value preset-spec :tools tool-names)
+                (add-file-local-variable 'gptel--tool-names tool-names)
+              (delete-file-local-variable 'gptel--tool-names)))
+          ;; Temperature, max tokens and cutoff
+          (if (and (gptel--preset-mismatch-value preset-spec :temperature gptel-temperature)
+                   (not (equal (default-value 'gptel-temperature) gptel-temperature)))
+              (add-file-local-variable 'gptel-temperature gptel-temperature)
+            (delete-file-local-variable 'gptel-temperature))
+          (if (and (gptel--preset-mismatch-value preset-spec :max-tokens gptel-max-tokens)
+                   gptel-max-tokens)
               (add-file-local-variable 'gptel-max-tokens gptel-max-tokens)
             (delete-file-local-variable 'gptel-max-tokens))
-          (if (natnump gptel--num-messages-to-send)
+          (if (and (gptel--preset-mismatch-value
+                    preset-spec :num-messages-to-send gptel--num-messages-to-send)
+                   (natnump gptel--num-messages-to-send))
               (add-file-local-variable 'gptel--num-messages-to-send
                                        gptel--num-messages-to-send)
             (delete-file-local-variable 'gptel--num-messages-to-send))

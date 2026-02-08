@@ -45,6 +45,10 @@
   non-nil the LLM can, for instance, read files to fetch more context
   for the rewrite action.
 
+- If a preset has been applied in a gptel chat buffer, saving the
+  buffer to a file causes the preset to be recorded along with the
+  other metadata (model, backend, tools etc).
+
 ** Notable bug fixes
 
 - Function-valued system messages/directives are now evaluated in the

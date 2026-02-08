@@ -499,13 +499,13 @@ parameters.
 
 ARGS are the original function call arguments."
   (if (derived-mode-p 'org-mode)
-      (pcase-let ((`(,gptel--system-message ,gptel-backend ,gptel-model
-                     ,gptel-temperature ,gptel-max-tokens
-                     ,gptel--num-messages-to-send ,gptel-tools)
+      (pcase-let ((`( ,gptel--preset ,gptel--system-message ,gptel-backend
+                      ,gptel-model ,gptel-temperature ,gptel-max-tokens
+                      ,gptel--num-messages-to-send ,gptel-tools)
                    (seq-mapn (lambda (a b) (or a b))
                              (gptel-org--entry-properties)
-                             (list gptel--system-message gptel-backend gptel-model
-                                   gptel-temperature gptel-max-tokens
+                             (list gptel--preset gptel--system-message gptel-backend
+                                   gptel-model gptel-temperature gptel-max-tokens
                                    gptel--num-messages-to-send gptel-tools))))
         (apply send-fun args))
     (apply send-fun args)))
@@ -523,12 +523,13 @@ ARGS are the original function call arguments."
 (defun gptel-org--entry-properties (&optional pt)
   "Find gptel configuration properties stored at PT."
   (pcase-let
-      ((`(,system ,backend ,model ,temperature ,tokens ,num ,tools)
+      ((`(,preset ,system ,backend ,model ,temperature ,tokens ,num ,tools)
          (mapcar
           (lambda (prop) (org-entry-get (or pt (point)) prop 'selective))
-          '("GPTEL_SYSTEM" "GPTEL_BACKEND" "GPTEL_MODEL"
-            "GPTEL_TEMPERATURE" "GPTEL_MAX_TOKENS"
+          '("GPTEL_PRESET" "GPTEL_SYSTEM" "GPTEL_BACKEND"
+            "GPTEL_MODEL" "GPTEL_TEMPERATURE" "GPTEL_MAX_TOKENS"
             "GPTEL_NUM_MESSAGES_TO_SEND" "GPTEL_TOOLS"))))
+    (when preset (setq preset (gptel--intern preset)))
     (when system
       (setq system (string-replace "\\n" "\n" system)))
     (when backend
@@ -548,7 +549,7 @@ ARGS are the original function call arguments."
                    (display-warning
                     '(gptel org tools)
                     (format "Tool %s not found, ignoring" tname)))))
-    (list system backend model temperature tokens num tools)))
+    (list preset system backend model temperature tokens num tools)))
 
 (defun gptel-org--restore-state ()
   "Restore gptel state for Org buffers when turning on `gptel-mode'."
@@ -559,8 +560,17 @@ ARGS are the original function call arguments."
           (progn
             (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
               (gptel--restore-props (read bounds)))
-            (pcase-let ((`(,system ,backend ,model ,temperature ,tokens ,num ,tools)
+            (pcase-let ((`(,preset ,system ,backend ,model ,temperature ,tokens ,num ,tools)
                          (gptel-org--entry-properties (point-min))))
+              (when preset
+                (if (gptel-get-preset preset)
+                    (progn (gptel--apply-preset
+                            preset (lambda (sym val) (set (make-local-variable sym) val)))
+                           (setq gptel--preset preset))
+                  (display-warning
+                   '(gptel presets)
+                   (format "Could not activate gptel preset `%s' in buffer \"%s\""
+                           preset (buffer-name)))))
               (when system (setq-local gptel--system-message system))
               (if backend (setq-local gptel-backend backend)
                 (message
@@ -582,36 +592,60 @@ ARGS are the original function call arguments."
 (defun gptel-org-set-properties (pt &optional msg)
   "Store the active gptel configuration under the current heading.
 
-The active gptel configuration includes the current system
-message, language model and provider (backend), and additional
-settings when applicable.
+PT is the cursor position by default.  If MSG is non-nil (default),
+display a message afterwards.
 
-PT is the cursor position by default.  If MSG is
-non-nil (default), display a message afterwards."
+If a gptel preset has been applied in this buffer, a reference to it is
+saved.
+
+Additional metadata is stored only if no preset was applied or if it
+differs from the preset specification.  This is limited to the active
+gptel model and backend names, the system message, active tools, the
+response temperature, max tokens and number of conversation turns to
+send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
   (interactive (list (point) t))
-  (org-entry-put pt "GPTEL_MODEL" (gptel--model-name gptel-model))
-  (org-entry-put pt "GPTEL_BACKEND" (gptel-backend-name gptel-backend))
-  (org-entry-put pt "GPTEL_SYSTEM"      ;TODO: Handle nil case correctly
-                 (and-let* ((msg (car-safe
-                                  (gptel--parse-directive
-                                   gptel--system-message))))
-                   (string-replace "\n" "\\n" msg)))
-  (if gptel-tools
-      (org-entry-put
-       pt "GPTEL_TOOLS" (mapconcat #'gptel-tool-name gptel-tools " "))
-    (org-entry-delete pt "GPTEL_TOOLS"))
-  (if (equal (default-value 'gptel-temperature) gptel-temperature)
-      (org-entry-delete pt "GPTEL_TEMPERATURE")
-    (org-entry-put pt "GPTEL_TEMPERATURE"
-                   (number-to-string gptel-temperature)))
-  (if (natnump gptel--num-messages-to-send)
-      (org-entry-put pt "GPTEL_NUM_MESSAGES_TO_SEND"
-                     (number-to-string gptel--num-messages-to-send))
-    (org-entry-delete pt "GPTEL_NUM_MESSAGES_TO_SEND"))
-  (if gptel-max-tokens
-      (org-entry-put
-       pt "GPTEL_MAX_TOKENS" (number-to-string gptel-max-tokens))
-    (org-entry-delete pt "GPTEL_MAX_TOKENS"))
+  (let ((preset-spec (and gptel--preset (gptel-get-preset gptel--preset))))
+    (if preset-spec
+        (org-entry-put pt "GPTEL_PRESET" (gptel--to-string gptel--preset))
+      (org-entry-delete pt "GPTEL_PRESET"))
+
+    ;; FIXME: nil can mean "no value was explicitly set by the user" as well as
+    ;; "this setting has been set to nil".  We are not yet distinguishing
+    ;; between the two when saving Org properties.  This is particularly
+    ;; relevant for the system message, whose explicit nil value will not be
+    ;; captured when saving Org buffers.
+
+    ;; Model and backend
+    (if (gptel--preset-mismatch-value preset-spec :model gptel-model)
+        (org-entry-put pt "GPTEL_MODEL" (gptel--model-name gptel-model)))
+    (if (gptel--preset-mismatch-value preset-spec :backend gptel-backend)
+        (org-entry-put pt "GPTEL_BACKEND" (gptel-backend-name gptel-backend)))
+    ;; System message
+    (let ((parsed (car-safe (gptel--parse-directive gptel--system-message))))
+      (if (gptel--preset-mismatch-value preset-spec :system parsed)
+          (when parsed
+            (org-entry-put pt "GPTEL_SYSTEM" (string-replace "\n" "\\n" parsed)))
+        (org-entry-delete pt "GPTEL_SYSTEM")))
+    ;; Tools
+    (let ((tool-names (mapcar #'gptel-tool-name gptel-tools)))
+      (if (gptel--preset-mismatch-value preset-spec :tools tool-names)
+          (org-entry-put pt "GPTEL_TOOLS" (string-join tool-names " "))
+        (org-entry-delete pt "GPTEL_TOOLS")))
+    ;; Temperature, max tokens and cutoff
+    (if (and (gptel--preset-mismatch-value preset-spec :temperature gptel-temperature)
+             (not (equal (default-value 'gptel-temperature) gptel-temperature)))
+        (org-entry-put pt "GPTEL_TEMPERATURE" (number-to-string gptel-temperature))
+      (org-entry-delete pt "GPTEL_TEMPERATURE"))
+    (if (and (gptel--preset-mismatch-value preset-spec :max-tokens gptel-max-tokens)
+             gptel-max-tokens)
+        (org-entry-put pt "GPTEL_MAX_TOKENS" (number-to-string gptel-max-tokens))
+      (org-entry-delete pt "GPTEL_MAX_TOKENS"))
+    (if (and (gptel--preset-mismatch-value
+              preset-spec :num-messages-to-send gptel--num-messages-to-send)
+             (natnump gptel--num-messages-to-send))
+        (org-entry-put pt "GPTEL_NUM_MESSAGES_TO_SEND"
+                       (number-to-string gptel--num-messages-to-send))
+      (org-entry-delete pt "GPTEL_NUM_MESSAGES_TO_SEND")))
   (when msg
     (message "Added gptel configuration to current headline.")))
 
