@@ -73,13 +73,11 @@ global value."
     (_ (kill-local-variable sym)
        (set sym value))))
 
-(defvar gptel--preset nil
-  "Name of last applied gptel preset.
-
-For internal use only.")
-
 (defun gptel--preset-mismatch-p (name)
-  "Check if gptel preset with NAME is in effect."
+  "Check if gptel preset with NAME is in effect.
+
+This is intended to be fast but imperfect.  See
+`gptel--preset-mismatch-value' for more granular checking."
   (let ((elm (or (gptel-get-preset name)
                  (gptel-get-preset (intern-soft name))))
         key val)
@@ -540,7 +538,6 @@ which see."
                                   ('t "buffer-locally")
                                   (_ "globally")))
                         gptel--known-presets nil t)))))
-  (gptel--set-with-scope 'gptel--preset name gptel--set-buffer-locally)
   (gptel--apply-preset
    name (lambda (sym val)
           (gptel--set-with-scope sym val gptel--set-buffer-locally)))

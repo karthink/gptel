@@ -330,6 +330,12 @@ configuration that might require a UI update.")
 (defvar-local gptel--bounds nil)
 (put 'gptel--bounds 'safe-local-variable #'always)
 
+(defvar gptel--preset nil
+  "Name of last applied gptel preset.
+
+For internal use only.")
+(put 'gptel--preset 'safe-local-variable #'symbolp)
+
 (defvar-local gptel--tool-names nil
   "Store to persist tool names to file across Emacs sessions.
 
@@ -2128,12 +2134,13 @@ SETTER is the function used to set the gptel options.  It must accept
 two arguments, the symbol being set and the value to set it to.  It
 defaults to `set', and can be set to a different function to (for
 example) apply the preset buffer-locally."
+  (unless setter (setq setter #'set))
   (when (memq (type-of preset) '(string symbol))
     (let ((spec (or (gptel-get-preset preset)
                     (user-error "gptel preset \"%s\": Cannot find preset"
                                 preset))))
+      (funcall setter 'gptel--preset preset)
       (setq preset spec)))
-  (unless setter (setq setter #'set))
   (when-let* ((func (plist-get preset :pre))) (funcall func))
   (when-let* ((parents (plist-get preset :parents)))
     (mapc (lambda (parent) (gptel--apply-preset parent setter)) (ensure-list parents)))
@@ -2239,11 +2246,64 @@ NAME is the name of a preset, or a spec (plist) of the form
   (let ((syms (make-symbol "syms"))
         (binds (make-symbol "binds"))
         (bodyfun (make-symbol "body")))
-    `(let* ((,syms (gptel--preset-syms ,name))
+    ;; Let-bind symbols that we want to modify with the presets.  Also include
+    ;; `gptel--preset' in this list as we don't want to change its value outside
+    ;; of this macro's scope.
+    `(let* ((,syms (cons 'gptel--preset (gptel--preset-syms ,name)))
             (,bodyfun (lambda () (gptel--apply-preset ,name) ,@body))
             (,binds nil))
        (while ,syms (push (list (car ,syms) (pop ,syms)) ,binds))
        (eval (list 'let (nreverse ,binds) (list 'funcall (list 'quote ,bodyfun)))))))
+
+(defun gptel--preset-mismatch-value (preset-spec key val)
+  "Determine if the value of KEY in PRESET-SPEC matches VAL.
+
+This is an imperfect check for whether the value corresponding to KEY (a
+keyword) in PRESET-SPEC (a plist) matches VAL.  This is required
+primarily to identify which gptel variable values have changed since
+PRESET-SPEC was applied, which is relevant when writing gptel metadata
+to a chat file.
+
+See also `gptel--preset-mismatch-p'."
+  ;; In all cases, assume a mismatch if the preset's value for KEY is a
+  ;; modify-list spec, such as (:append ...)
+  ;; Mismatches may not even be well-defined/determinable in these cases.
+  (or (not preset-spec)
+      (pcase key
+        ;; special cases
+        ((or :system :system-message)
+         (let ((system (plist-get preset-spec :system)))
+           (or (and (stringp system) (not (equal system val)))
+               (functionp system)
+               (and (consp system) (keywordp (car system)))
+               (and (consp system)
+                    (not (equal (car-safe (gptel--parse-directive system))
+                                val))))))
+        (:backend
+         (let ((backend (plist-get preset-spec :backend)))
+           (or (and (consp backend) (keywordp (car-safe backend)))
+               (not (equal (or (and (gptel-backend-p val) (gptel-backend-name val))
+                               val)
+                           (or (and (gptel-backend-p backend) (gptel-backend-name backend))
+                               backend))))))
+        ;; FIXME: We're assuming that val is a list of tool names, not tools
+        (:tools
+         (and-let* ((preset-tools (plist-get preset-spec :tools)))
+           (or (keywordp (car-safe preset-tools))
+               (cl-loop
+                for tool in preset-tools
+                for tool-name =
+                (or (and (stringp tool) tool)
+                    (ignore-errors (gptel-tool-name tool)))
+                if (not (member tool-name uniq-tool-names))
+                collect tool-name into uniq-tool-names
+                finally return
+                (not (equal (sort uniq-tool-names #'string-lessp)
+                            (sort (copy-sequence (ensure-list val)) #'string-lessp)))))))
+        ;; Generic case
+        (_ (let ((field-val (plist-get preset-spec key)))
+             (or (and (consp field-val) (keywordp (car field-val)))
+                 (not (equal field-val val))))))))
 
 ;;;; Presets in-buffer UI
 (defun gptel--transform-apply-preset (_fsm)
