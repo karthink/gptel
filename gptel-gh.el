@@ -137,6 +137,14 @@
      :input-cost 3
      :output-cost 3
      :cutoff-date "2025-05")
+    (claude-opus-4.6
+     :description "Most capable model for complex reasoning and advanced coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 3
+     :output-cost 3
+     :cutoff-date "2025-08")
     (gemini-2.5-pro
      :description "Next gen, high speed, multimodal for a diverse variety of tasks"
      :capabilities (tool-use json media)
