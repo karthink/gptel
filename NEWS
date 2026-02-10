@@ -47,7 +47,21 @@
 
 - If a preset has been applied in a gptel chat buffer, saving the
   buffer to a file causes the preset to be recorded along with the
-  other metadata (model, backend, tools etc).
+  other metadata (model, backend, tools etc).  This makes it possible
+  to associate any collection of gptel settings/preferences with the
+  chat file, and not just the few properties that gptel writes to the
+  file otherwise.  But resuming this chat with the preset settings
+  applied requires that the preset be defined, so the chat file will
+  be less self-contained.
+
+- =gptel-send= now works in Vterm buffers in a limited way.  Responses
+  will be inserted into Vterm buffers, but without streaming.  The
+  respond-in-place option to overwrite queries with responses in Vterm
+  buffers is supported as well, but might be buggy if your shell
+  prompt is "rich" and has many dynamic elements.
+
+  Support for =gptel-send= in Term/Ansi-Term and Eat buffers is not
+  yet available but planned.
 
 ** Notable bug fixes
 
