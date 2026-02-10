@@ -196,6 +196,7 @@
 (declare-function gptel-menu "gptel-transient")
 (declare-function gptel-system-prompt "gptel-transient")
 (declare-function gptel-tools "gptel-transient")
+(declare-function gptel--vterm-pre-insert "gptel-integrations")
 (declare-function pulse-momentary-highlight-region "pulse")
 
 (declare-function ediff-make-cloned-buffer "ediff-util")
@@ -1191,22 +1192,25 @@ Handle read-only buffers and run pre-response hooks (but only if
 the request succeeded)."
   (let* ((info (gptel-fsm-info fsm))
          (start-marker (plist-get info :position)))
-    (when (and
-           (memq (plist-get info :callback)
-                 '(gptel--insert-response gptel-curl--stream-insert-response))
-           (with-current-buffer (plist-get info :buffer)
-             (or buffer-read-only
-                 (get-char-property start-marker 'read-only))))
-      (message "Buffer is read only, displaying reply in buffer \"*LLM response*\"")
-      (display-buffer
-       (with-current-buffer (get-buffer-create "*LLM response*")
-         (visual-line-mode 1)
-         (goto-char (point-max))
-         (move-marker start-marker (point) (current-buffer))
-         (current-buffer))
-       '((display-buffer-reuse-window
-          display-buffer-pop-up-window)
-         (reusable-frames . visible))))
+    (when (memq (plist-get info :callback)
+                '(gptel--insert-response gptel-curl--stream-insert-response))
+      (with-current-buffer (plist-get info :buffer)
+        (when (or buffer-read-only (get-char-property start-marker 'read-only))
+          (cond
+           ((derived-mode-p 'vterm-mode)
+            (require 'gptel-integrations)
+            (gptel--vterm-pre-insert info))
+           (t
+            (message "Buffer is read only, displaying reply in buffer \"*LLM response*\"")
+            (display-buffer
+             (with-current-buffer (get-buffer-create "*LLM response*")
+               (visual-line-mode 1)
+               (goto-char (point-max))
+               (move-marker start-marker (point) (current-buffer))
+               (current-buffer))
+             '((display-buffer-reuse-window
+                display-buffer-pop-up-window)
+               (reusable-frames . visible))))))))
     (with-current-buffer (marker-buffer start-marker)
       (when (plist-get info :stream)
         (gptel--update-status " Typing..." 'success))

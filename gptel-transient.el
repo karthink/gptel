@@ -32,6 +32,7 @@
 (declare-function ediff-regions-internal "ediff")
 (declare-function ediff-make-cloned-buffer "ediff-utils")
 (declare-function org-escape-code-in-string "org-src")
+(declare-function gptel--vterm-delete "gptel-integrations")
 
 
 ;; * Helper functions and vars
@@ -1767,7 +1768,11 @@ This sets the variable `gptel-include-tool-results', which see."
       ;; text is killed below.
       (when in-place
         (if (or buffer-read-only (get-char-property (point) 'read-only))
-            (message "Not replacing prompt: region is read-only")
+            (cond
+             ((derived-mode-p 'vterm-mode)
+              (require 'gptel-integrations)
+              (gptel--vterm-delete))
+             (t (message "Not replacing prompt: region is read-only")))
           (let ((beg (if (use-region-p)
                          (region-beginning)
                        (max (previous-single-property-change
