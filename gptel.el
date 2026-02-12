@@ -196,6 +196,7 @@
 (declare-function gptel-menu "gptel-transient")
 (declare-function gptel-system-prompt "gptel-transient")
 (declare-function gptel-tools "gptel-transient")
+(declare-function gptel--vterm-pre-insert "gptel-integrations")
 (declare-function pulse-momentary-highlight-region "pulse")
 
 (declare-function ediff-make-cloned-buffer "ediff-util")
@@ -329,6 +330,12 @@ configuration that might require a UI update.")
 
 (defvar-local gptel--bounds nil)
 (put 'gptel--bounds 'safe-local-variable #'always)
+
+(defvar gptel--preset nil
+  "Name of last applied gptel preset.
+
+For internal use only.")
+(put 'gptel--preset 'safe-local-variable #'symbolp)
 
 (defvar-local gptel--tool-names nil
   "Store to persist tool names to file across Emacs sessions.
@@ -627,6 +634,14 @@ applied before being re-persisted in the new structure."
       (when gptel--bounds
         (gptel--restore-props gptel--bounds)
         (message "gptel chat restored."))
+      (when gptel--preset
+        (if (gptel-get-preset gptel--preset)
+            (gptel--apply-preset
+             gptel--preset (lambda (sym val) (set (make-local-variable sym) val)))
+          (display-warning
+           '(gptel presets)
+           (format "Could not activate gptel preset `%s' in buffer \"%s\""
+                   gptel--preset (buffer-name)))))
       (when gptel--backend-name
         (if-let* ((backend (alist-get
                             gptel--backend-name gptel--known-backends
@@ -655,34 +670,59 @@ applied before being re-persisted in the new structure."
 
 This saves chat metadata when writing the buffer to disk.  To
 restore a chat session, turn on `gptel-mode' after opening the
-file."
+file.
+
+If a gptel preset has been applied in this buffer, a reference to it is
+saved.
+
+Additional metadata is stored only if no preset was applied or if it
+differs from the preset specification.  This is limited to the active
+gptel model and backend names, the system message, active tools, the
+response temperature, max tokens and number of conversation turns to
+send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
   (run-hooks 'gptel-save-state-hook)
   (if (derived-mode-p 'org-mode)
       (progn
         (require 'gptel-org)
         (gptel-org--save-state))
-    (let ((print-escape-newlines t))
+    (let ((print-escape-newlines t)
+          (preset-spec (and gptel--preset
+                            (gptel-get-preset gptel--preset))))
       (save-excursion
         (save-restriction
-          (add-file-local-variable 'gptel-model gptel-model)
-          (add-file-local-variable 'gptel--backend-name
-                                   (gptel-backend-name gptel-backend))
-          (unless (equal (default-value 'gptel--system-message)
-                           gptel--system-message)
-            (add-file-local-variable
-             'gptel--system-message     ;TODO: Handle nil case correctly
-             (car-safe (gptel--parse-directive gptel--system-message))))
-          (if gptel-tools
-              (add-file-local-variable
-               'gptel--tool-names (mapcar #'gptel-tool-name gptel-tools))
-            (delete-file-local-variable 'gptel--tool-names))
-          (if (equal (default-value 'gptel-temperature) gptel-temperature)
-              (delete-file-local-variable 'gptel-temperature)
-            (add-file-local-variable 'gptel-temperature gptel-temperature))
-          (if gptel-max-tokens
+
+          (if preset-spec
+              (add-file-local-variable 'gptel--preset gptel--preset)
+            (delete-file-local-variable 'gptel--preset))
+
+          ;; Model and backend
+          (if (gptel--preset-mismatch-value preset-spec :model gptel-model)
+              (add-file-local-variable 'gptel-model gptel-model))
+          (if (gptel--preset-mismatch-value preset-spec :backend gptel-backend)
+              (add-file-local-variable 'gptel--backend-name
+                                       (gptel-backend-name gptel-backend)))
+          ;; System message
+          (let ((parsed (car-safe (gptel--parse-directive gptel--system-message))))
+            (if (gptel--preset-mismatch-value preset-spec :system parsed)
+                (add-file-local-variable 'gptel--system-message parsed)
+              (delete-file-local-variable 'gptel--system-message)))
+          ;; Tools
+          (let ((tool-names (mapcar #'gptel-tool-name gptel-tools)))
+            (if (gptel--preset-mismatch-value preset-spec :tools tool-names)
+                (add-file-local-variable 'gptel--tool-names tool-names)
+              (delete-file-local-variable 'gptel--tool-names)))
+          ;; Temperature, max tokens and cutoff
+          (if (and (gptel--preset-mismatch-value preset-spec :temperature gptel-temperature)
+                   (not (equal (default-value 'gptel-temperature) gptel-temperature)))
+              (add-file-local-variable 'gptel-temperature gptel-temperature)
+            (delete-file-local-variable 'gptel-temperature))
+          (if (and (gptel--preset-mismatch-value preset-spec :max-tokens gptel-max-tokens)
+                   gptel-max-tokens)
               (add-file-local-variable 'gptel-max-tokens gptel-max-tokens)
             (delete-file-local-variable 'gptel-max-tokens))
-          (if (natnump gptel--num-messages-to-send)
+          (if (and (gptel--preset-mismatch-value
+                    preset-spec :num-messages-to-send gptel--num-messages-to-send)
+                   (natnump gptel--num-messages-to-send))
               (add-file-local-variable 'gptel--num-messages-to-send
                                        gptel--num-messages-to-send)
             (delete-file-local-variable 'gptel--num-messages-to-send))
@@ -1152,22 +1192,25 @@ Handle read-only buffers and run pre-response hooks (but only if
 the request succeeded)."
   (let* ((info (gptel-fsm-info fsm))
          (start-marker (plist-get info :position)))
-    (when (and
-           (memq (plist-get info :callback)
-                 '(gptel--insert-response gptel-curl--stream-insert-response))
-           (with-current-buffer (plist-get info :buffer)
-             (or buffer-read-only
-                 (get-char-property start-marker 'read-only))))
-      (message "Buffer is read only, displaying reply in buffer \"*LLM response*\"")
-      (display-buffer
-       (with-current-buffer (get-buffer-create "*LLM response*")
-         (visual-line-mode 1)
-         (goto-char (point-max))
-         (move-marker start-marker (point) (current-buffer))
-         (current-buffer))
-       '((display-buffer-reuse-window
-          display-buffer-pop-up-window)
-         (reusable-frames . visible))))
+    (when (memq (plist-get info :callback)
+                '(gptel--insert-response gptel-curl--stream-insert-response))
+      (with-current-buffer (plist-get info :buffer)
+        (when (or buffer-read-only (get-char-property start-marker 'read-only))
+          (cond
+           ((derived-mode-p 'vterm-mode)
+            (require 'gptel-integrations)
+            (gptel--vterm-pre-insert info))
+           (t
+            (message "Buffer is read only, displaying reply in buffer \"*LLM response*\"")
+            (display-buffer
+             (with-current-buffer (get-buffer-create "*LLM response*")
+               (visual-line-mode 1)
+               (goto-char (point-max))
+               (move-marker start-marker (point) (current-buffer))
+               (current-buffer))
+             '((display-buffer-reuse-window
+                display-buffer-pop-up-window)
+               (reusable-frames . visible))))))))
     (with-current-buffer (marker-buffer start-marker)
       (when (plist-get info :stream)
         (gptel--update-status " Typing..." 'success))
@@ -2128,12 +2171,13 @@ SETTER is the function used to set the gptel options.  It must accept
 two arguments, the symbol being set and the value to set it to.  It
 defaults to `set', and can be set to a different function to (for
 example) apply the preset buffer-locally."
+  (unless setter (setq setter #'set))
   (when (memq (type-of preset) '(string symbol))
     (let ((spec (or (gptel-get-preset preset)
                     (user-error "gptel preset \"%s\": Cannot find preset"
                                 preset))))
+      (funcall setter 'gptel--preset preset)
       (setq preset spec)))
-  (unless setter (setq setter #'set))
   (when-let* ((func (plist-get preset :pre))) (funcall func))
   (when-let* ((parents (plist-get preset :parents)))
     (mapc (lambda (parent) (gptel--apply-preset parent setter)) (ensure-list parents)))
@@ -2228,11 +2272,64 @@ NAME is the name of a preset, or a spec (plist) of the form
   (let ((syms (make-symbol "syms"))
         (binds (make-symbol "binds"))
         (bodyfun (make-symbol "body")))
-    `(let* ((,syms (gptel--preset-syms ,name))
+    ;; Let-bind symbols that we want to modify with the presets.  Also include
+    ;; `gptel--preset' in this list as we don't want to change its value outside
+    ;; of this macro's scope.
+    `(let* ((,syms (cons 'gptel--preset (gptel--preset-syms ,name)))
             (,bodyfun (lambda () (gptel--apply-preset ,name) ,@body))
             (,binds nil))
        (while ,syms (push (list (car ,syms) (pop ,syms)) ,binds))
        (eval (list 'let (nreverse ,binds) (list 'funcall (list 'quote ,bodyfun)))))))
+
+(defun gptel--preset-mismatch-value (preset-spec key val)
+  "Determine if the value of KEY in PRESET-SPEC matches VAL.
+
+This is an imperfect check for whether the value corresponding to KEY (a
+keyword) in PRESET-SPEC (a plist) matches VAL.  This is required
+primarily to identify which gptel variable values have changed since
+PRESET-SPEC was applied, which is relevant when writing gptel metadata
+to a chat file.
+
+See also `gptel--preset-mismatch-p'."
+  ;; In all cases, assume a mismatch if the preset's value for KEY is a
+  ;; modify-list spec, such as (:append ...)
+  ;; Mismatches may not even be well-defined/determinable in these cases.
+  (or (not preset-spec)
+      (pcase key
+        ;; special cases
+        ((or :system :system-message)
+         (let ((system (plist-get preset-spec :system)))
+           (or (and (stringp system) (not (equal system val)))
+               (functionp system)
+               (and (consp system) (keywordp (car system)))
+               (and (consp system)
+                    (not (equal (car-safe (gptel--parse-directive system))
+                                val))))))
+        (:backend
+         (let ((backend (plist-get preset-spec :backend)))
+           (or (and (consp backend) (keywordp (car-safe backend)))
+               (not (equal (or (and (gptel-backend-p val) (gptel-backend-name val))
+                               val)
+                           (or (and (gptel-backend-p backend) (gptel-backend-name backend))
+                               backend))))))
+        ;; FIXME: We're assuming that val is a list of tool names, not tools
+        (:tools
+         (and-let* ((preset-tools (plist-get preset-spec :tools)))
+           (or (keywordp (car-safe preset-tools))
+               (cl-loop
+                for tool in preset-tools
+                for tool-name =
+                (or (and (stringp tool) tool)
+                    (ignore-errors (gptel-tool-name tool)))
+                if (not (member tool-name uniq-tool-names))
+                collect tool-name into uniq-tool-names
+                finally return
+                (not (equal (sort uniq-tool-names #'string-lessp)
+                            (sort (copy-sequence (ensure-list val)) #'string-lessp)))))))
+        ;; Generic case
+        (_ (let ((field-val (plist-get preset-spec key)))
+             (or (and (consp field-val) (keywordp (car field-val)))
+                 (not (equal field-val val))))))))
 
 ;;;; Presets in-buffer UI
 (defun gptel--transform-apply-preset (_fsm)
