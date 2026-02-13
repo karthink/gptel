@@ -59,7 +59,7 @@
      :cutoff-date "2024-09")
     (gpt-5.1-codex-max
      :description "Flagship model for coding, reasoning, and agentic tasks across domains"
-     :capabilities (media tool-use json url)
+     :capabilities (media tool-use json url responses-api)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 1
@@ -375,6 +375,8 @@ Then we need a session token."
           (host "api.githubcopilot.com")
           (protocol "https")
           (endpoint "/chat/completions")
+          responses-endpoint
+          builtin-tools
           (stream t)
           (models gptel--gh-models))
   "Register a Github Copilot chat backend for gptel with NAME.
@@ -416,6 +418,16 @@ PROTOCOL (optional) specifies the protocol, https by default.
 ENDPOINT (optional) is the API endpoint for completions, defaults to
 \"/chat/completions\".
 
+RESPONSES-ENDPOINT (optional) is the API endpoint for the OpenAI
+Responses API, e.g. \"/responses\".  If provided, models with
+the `responses-api' capability will use this endpoint instead of
+the chat completions endpoint.
+
+BUILTIN-TOOLS (optional) is a list of server-side tool specs for
+the Responses API.  Each element is a plist like
+ (:type \"web_search\") or (:type \"code_interpreter\").
+These tools are executed by OpenAI's servers.
+
 HEADER (optional) is for additional headers to send with each
 request.  It should be an alist or a function that returns an
 alist, like:
@@ -435,10 +447,18 @@ for."
                   :models (gptel--process-models models)
                   :protocol protocol
                   :endpoint endpoint
+                  :responses-endpoint responses-endpoint
+                  :builtin-tools builtin-tools
                   :stream stream
                   :request-params request-params
                   :curl-args curl-args
-                  :url (concat protocol "://" host endpoint)
+                  :url (lambda ()
+                         (pcase-let (((cl-struct gptel-backend protocol host endpoint)
+                                      gptel-backend))
+                           (if (and responses-endpoint
+                                    (gptel--model-capable-p 'responses-api))
+                               (concat protocol "://" host responses-endpoint)
+                             (concat protocol "://" host endpoint))))
                   :machineid (gptel--gh-machine-id))))
     (setf (alist-get name gptel--known-backends nil nil #'equal) backend)
     backend))
