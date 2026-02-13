@@ -365,7 +365,10 @@ SWITCHES are diff arguments."
               ((buffer-live-p ov-buf)))
     (require 'diff)
     (let* ((newbuf (gptel--rewrite-prepare-buffer ovs))
-           (diff-buf (diff-no-select ov-buf newbuf switches)))
+           (diff-buf (diff-no-select
+                      (if-let* ((buf-file (buffer-file-name ov-buf)))
+                          (expand-file-name buf-file) ov-buf)
+                      newbuf switches)))
       (with-current-buffer diff-buf
         (setq-local diff-jump-to-old-file t))
       (display-buffer diff-buf))))
