@@ -399,16 +399,19 @@ form it is returned as is.
       current)))
 
 (defun gptel-auto-scroll ()
-  "Scroll window if LLM response continues below viewport.
-
-Note: This will move the cursor."
+  "Follow streaming output by moving point when stream continues off-screen.
+Runs from `gptel-post-stream-hook'. Moves point to the streaming
+insertion position (which is point while this hook runs) and recenters
+the window so that the streaming position appears near the bottom."
   (when-let* ((win (get-buffer-window (current-buffer) 'visible))
-              ((not (pos-visible-in-window-p (point) win)))
-              (scroll-error-top-bottom t))
-    (condition-case nil
-        (with-selected-window win
-          (scroll-up-command))
-      (error nil))))
+              (pos (point)))
+    (unless (pos-visible-in-window-p pos win)
+      (run-at-time 0 nil
+                   (lambda (w p)
+                     (with-selected-window w
+                       (goto-char p)
+                       (recenter -1)))
+                   win pos))))
 
 (defun gptel-beginning-of-response (&optional beg _end arg)
   "Move point to BEG, or to the beginning of the LLM response ARG times."
