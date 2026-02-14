@@ -600,7 +600,8 @@ the gptel property is set to just PROP.
 
 The legacy structure, a list of (BEG . END) is also supported and will be
 applied before being re-persisted in the new structure."
-  (let ((modified (buffer-modified-p)))
+  (let ((modified (buffer-modified-p))
+        (inhibit-modification-hooks t))
     (if (symbolp (caar bounds-alist))
         (mapc
          (lambda (bounds)
