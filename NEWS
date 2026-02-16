@@ -56,6 +56,9 @@
   results, block the tool call but continue the request, or stop the
   request entirely.
 
+- New variable ~gptel-bedrock-aws-cli-command~ to set the path to the
+  AWS CLI command for the Bedrock backend.  Defaults to "ews".
+
 ** Notable bug fixes
 
 - ~gptel-backend~ can now be set from customize buffers.  These are
