@@ -1538,6 +1538,13 @@ Here's an example of using these tools:
 https://github.com/user-attachments/assets/b48a6a24-a130-4da7-a2ee-6ea568e10c85
 #+html: </p>
 
+With =gptel-mcp-connect= you can register pragmatically MCP servers and selectively activate MCP tools. It also auto-starts the MCP servers is those are not already started.
+
+#+begin_src emacs-lisp
+  (gptel-mcp-connect '(("fetch") ("youtube-opt") ("filesystem" "list_directory" "get_file_info")))
+#+end_src
+
+
 #+html: </details>
 
 

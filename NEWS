@@ -65,6 +65,9 @@
   Support for =gptel-send= in Term/Ansi-Term and Eat buffers is not
   yet available but planned.
 
+- =gptel-mcp-connect= now supports selective activation of tools for
+  each MCP server.
+
 ** Notable bug fixes
 
 - Function-valued system messages/directives are now evaluated in the
