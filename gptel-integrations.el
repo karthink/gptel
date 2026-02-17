@@ -111,9 +111,13 @@ INFO is the query information for the active request."
 (defun gptel-mcp-connect (&optional servers server-callback interactive)
   "Add gptel tools from MCP servers using the mcp package.
 
-MCP servers are started if required.  SERVERS is a list of server
-names (strings) to connect to.  If nil, all known servers are
-considered.
+MCP servers are started if required.  SERVERS is a list of server specs
+to connect to.  If nil, all known servers are considered. Each server
+spec in the list can be one of the following forms:
+  - server name (a string). In this case all tools of the server are activated.
+  - cons of the form (\"server-name\" . t). Same as above.
+  - list of the form (\"server-name\" \"tool1\" \"tool2\" ...). In this
+    case only the listed tools are activated.
 
 If INTERACTIVE is non-nil (or called interactively), guide the user
 through setting up mcp, and query for servers to retrieve tools from.
@@ -128,18 +132,21 @@ not a function and non-nil, start SERVERS synchronously."
     (user-error "Could not find mcp!  Please install or configure the mcp package"))
   (if (null mcp-hub-servers)
       (user-error "No MCP servers available!  Please configure `mcp-hub-servers'")
-    (setq servers
-          (if servers
-              (mapcar (lambda (s) (assoc s mcp-hub-servers)) servers)
-            mcp-hub-servers))
-    (let ((unregistered-servers ;Available servers minus servers already registered with gptel
-           (cl-loop for server in servers
-                    with registered-names =
-                    (cl-loop for (cat . _tools) in gptel--known-tools
-                             if (string-prefix-p "mcp-" cat)
-                             collect (substring cat 4))
-                    unless (member (car server) registered-names)
-                    collect server)))
+    (let* ((tool-filter-spec (mapcar (lambda (s) (if (consp s) s (cons s t))) servers))
+           (servers (if servers
+                        (mapcar (lambda (s)
+                                  (let ((sname (if (consp s) (car s) s)))
+                                    (assoc sname mcp-hub-servers)))
+                                servers)
+                      mcp-hub-servers))
+           (unregistered-servers        ;Available servers minus servers already registered with gptel
+            (cl-loop for server in servers
+                     with registered-names =
+                     (cl-loop for (cat . _tools) in gptel--known-tools
+                              if (string-prefix-p "mcp-" cat)
+                              collect (substring cat 4))
+                     unless (member (car server) registered-names)
+                     collect server)))
       (if unregistered-servers
           (let* ((servers
                   (if interactive
@@ -163,7 +170,7 @@ not a function and non-nil, start SERVERS synchronously."
                                   (or server-names (mapcar #'car servers))))
                           (now-active (cl-remove-if-not server-active-p mcp-hub-servers)))
                       (mapc (lambda (tool) (apply #'gptel-make-tool tool)) tools)
-                      (when tools (gptel-mcp--activate-tools tools))
+                      (gptel-mcp--activate-tools tools tool-filter-spec)
                       (if-let* ((failed (cl-set-difference inactive-servers now-active
                                                            :test #'equal)))
                           (progn
@@ -261,13 +268,29 @@ from all connected servers if it is nil."
                    tool-names))))
      server-names servers)))
 
-(defun gptel-mcp--activate-tools (&optional tools)
-  "Activate TOOLS or all MCP tools in current gptel session."
-  (unless tools (setq tools (gptel-mcp--get-tools)))
-  (dolist (tool tools)
-    (cl-pushnew (gptel-get-tool (list (plist-get tool :category)
-                                      (plist-get tool :name)))
-                gptel-tools)))
+(defun gptel-mcp--activate-tools (tools &optional filter-spec)
+  "Activate TOOLS or all MCP tools in current gptel session.
+If FILTER-SPEC is present, activate only those tools in the FILTER-SPEC.
+Each spec in the FILTER-SPEC list can be one of the following forms:
+  - server name (string). In this case all tools of the server are activated.
+  - cons of the form (\"server-name\" . t). Same as above for programmatic consistency.
+  - list of the form (\"server-name\" \"tool1\" \"tool2\" ...). In this
+    case only the listed tools are activated.
+If FILTER-SPEC is nil, return TOOLS unchanged."
+  (let ((tools (if filter-spec
+                   (cl-remove-if-not
+                    (lambda (tool)
+                      (let* ((tool-name (plist-get tool :name))
+                             (serv-name (substring (plist-get tool :category) 4))
+                             (act-tools (alist-get serv-name filter-spec nil nil #'equal)))
+                        (or (eq act-tools t)
+                            (member tool-name act-tools))))
+                    tools)
+                 tools)))
+    (dolist (tool tools)
+      (cl-pushnew (gptel-get-tool (list (plist-get tool :category)
+                                        (plist-get tool :name)))
+                  gptel-tools))))
 
 (with-eval-after-load 'gptel-transient
   (transient-define-suffix gptel--suffix-mcp-connect ()
