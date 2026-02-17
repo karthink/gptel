@@ -37,50 +37,7 @@
 
 ;; * Helper functions and vars
 
-(defgroup gptel-transient-ui nil
-  "UI options for gptel's transient menus."
-  :group 'gptel)
 
-(defcustom gptel-transient-disambiguate-tools 'off
-  "Highlight duplicated tool names in `gptel-tools'.
-
-Values:
-  on  Highlight tools and categories involved in duplicate tool names.
-  off Do not highlight duplicates.
-
-When highlighting is on: - Category entries that contain one or more
-duplicated tool names display a warning symbol plus the count (⚠N) after
-the category name, where N is the number of duplicated tool names in
-that category.  - Each duplicated tool name within a category also
-displays a warning symbol (⚠) after the tool name.
-
-No other disambiguation text (tags, provider lists) is shown.
-
-Changing this requires reopening the transient to take effect."
-  :group 'gptel-transient-ui
-  :type '(choice (const :tag "Highlight duplicates" on)
-                 (const :tag "No highlighting" off)))
-
-(defun gptel-transient--providers-for (tool-name &optional exclude-category)
-  "Return list of categories providing TOOL-NAME.
-Exclude EXCLUDE-CATEGORY if non-nil."
-  (cl-loop for (category . tools) in gptel--known-tools
-           when (and (not (equal category exclude-category))
-                     (assoc tool-name tools))
-           collect category))
-
-(defun gptel-transient--ambiguous-p (tool-name)
-  "Return non-nil if TOOL-NAME appears in more than one category."
-  (> (length (gptel-transient--providers-for tool-name)) 1))
-
-(defun gptel-transient--category-conflict-count (category)
-  "Return count of duplicated tool names in CATEGORY.
-A duplicated tool name is one that appears in more than one category."
-  (let ((count 0))
-    (when-let* ((tools-alist (cdr (assoc category gptel--known-tools))))
-      (dolist (tool-pair tools-alist count)
-        (when (gptel-transient--ambiguous-p (car tool-pair))
-          (setq count (1+ count)))))))
 
 (defvar-local gptel--rewrite-overlays nil
   "List of active rewrite overlays in the buffer.")
@@ -1138,6 +1095,21 @@ together.  See `gptel-make-preset' for details."
 
 ;; ** Prefix for selecting tools
 
+;; gptel-tools offers a two-level menu for selecting tools, its design is a
+;; little convoluted so here's an explanation:
+;;
+;; Normally a transient prefix exports its value via transient-args, to be
+;; consumed by suffixes, where these args are determined by the state of the
+;; menu at the time of export.  The gptel-tools menu is dynamic and needs to
+;; store tool selections that may not be visible in the meny any more, so we
+;; cannot use the transient-args.
+;;
+;; We can not (should not?) control the value of the prefix directly, so we
+;; instead use the scope (a secondary value) of the prefix to maintain the
+;; history of selections.  When running a suffix, we gather tool selections from
+;; the scope.  The scope is also used as a message channel for connecting the
+;; category menu and the tool list menu for that category.
+
 ;;;###autoload (autoload 'gptel-tools "gptel-transient" nil t)
 (transient-define-prefix gptel-tools ()
   "Select tools to include with gptel requests.
@@ -1186,14 +1158,8 @@ only (\"oneshot\")."
                                      (seq-first unused-keys))
         do (setq unused-keys (delete category-key unused-keys))
         collect (list (key-description (list category-key))
-                      (let* ((base (concat (propertize category 'face 'transient-heading)
-                                            (make-string (max (- 14 (length category)) 0) ? )))
-                             (count (and (eq gptel-transient-disambiguate-tools 'on)
-                                         (gptel-transient--category-conflict-count category)))
-                             (display (if (and count (> count 0))
-                                          (concat base (propertize (format " ⚠%d" count) 'face 'warning))
-                                        base)))
-                        display)
+                      (concat (propertize category 'face 'transient-heading)
+                              (make-string (max (- 14 (length category)) 0) ? ))
                       (char-to-string category-key)
                       :format " %k %d %v"
                       :class 'gptel--switch-category
@@ -1215,14 +1181,12 @@ only (\"oneshot\")."
           do (setq tool-keys (delete tool-key tool-keys))
           collect          ;Each list is a transient infix of type gptel--switch
           (list (key-description (list tool-key))
-                (let* ((amb (> (length (gptel-transient--providers-for name)) 1))
-                       (show (and amb (eq gptel-transient-disambiguate-tools 'on)))
-                       (pad-len (max 0 (- 20 (length name) (if show 2 0))))
-                       (desc (gptel--describe-directive (gptel-tool-description tool)
-                                                        (- (window-width) 60))))
-                  (concat (when show (propertize " ⚠" 'face 'warning))
-                          (make-string pad-len ? )
-                          (propertize (concat "(" desc ")") 'face 'shadow)))
+                (concat (make-string (max (- 20 (length name)) 0) ? )
+                        (propertize
+                         (concat "(" (gptel--describe-directive
+                                      (gptel-tool-description tool) (- (window-width) 60))
+                                 ")")
+                         'face 'shadow))
                 (gptel-tool-name tool)
                 :format " %k %v %d"
                 :init-value #'gptel--tools-init-value
