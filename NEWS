@@ -141,6 +141,10 @@
   outputs simultaenously in a request.  Previously the two were
   incompatible.
 
+- You can now specify (programmatically) which MCP tools to add when
+  starting MCP servers.  Previously all tools provided by an MCP server
+  would be added automatically.  See ~gptel-mcp-connect~ for details.
+
 ** Notable bug fixes
 
 - Improved error messages: Curl request failures now include more
@@ -421,6 +425,9 @@
 
   Support for =gptel-send= in Term/Ansi-Term and Eat buffers is not
   yet available but planned.
+
+- =gptel-mcp-connect= now supports selective activation of tools for
+  each MCP server.
 
 ** Notable bug fixes
 
