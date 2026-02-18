@@ -600,7 +600,9 @@ the gptel property is set to just PROP.
 
 The legacy structure, a list of (BEG . END) is also supported and will be
 applied before being re-persisted in the new structure."
-  (let ((modified (buffer-modified-p)))
+  ;; Run silently to avoid `gptel--inherit-stickiness' and other hooks that
+  ;; might modify the gptel text property.
+  (with-silent-modifications
     (if (symbolp (caar bounds-alist))
         (mapc
          (lambda (bounds)
@@ -621,8 +623,7 @@ applied before being re-persisted in the new structure."
       (mapc (lambda (bound)
               (add-text-properties
                (car bound) (cdr bound) '(gptel response front-sticky (gptel))))
-            bounds-alist))
-    (set-buffer-modified-p modified)))
+            bounds-alist))))
 
 (defun gptel--restore-state ()
   "Restore gptel state when turning on `gptel-mode'."

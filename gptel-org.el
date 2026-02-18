@@ -554,40 +554,38 @@ ARGS are the original function call arguments."
 (defun gptel-org--restore-state ()
   "Restore gptel state for Org buffers when turning on `gptel-mode'."
   (save-restriction
-    (let ((modified (buffer-modified-p)))
-      (widen)
-      (condition-case status
-          (progn
-            (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
-              (gptel--restore-props (read bounds)))
-            (pcase-let ((`(,preset ,system ,backend ,model ,temperature ,tokens ,num ,tools)
-                         (gptel-org--entry-properties (point-min))))
-              (when preset
-                (if (gptel-get-preset preset)
-                    (progn (gptel--apply-preset
-                            preset (lambda (sym val) (set (make-local-variable sym) val)))
-                           (setq gptel--preset preset))
-                  (display-warning
-                   '(gptel presets)
-                   (format "Could not activate gptel preset `%s' in buffer \"%s\""
-                           preset (buffer-name)))))
-              (when system (setq-local gptel--system-message system))
-              (if backend (setq-local gptel-backend backend)
-                (message
-                 (substitute-command-keys
-                  (concat
-                   "Could not activate gptel backend \"%s\"!  "
-                   "Switch backends with \\[universal-argument] \\[gptel-send]"
-                   " before using gptel."))
-                 backend))
-              (when model (setq-local gptel-model model))
-              (when temperature (setq-local gptel-temperature temperature))
-              (when tokens (setq-local gptel-max-tokens tokens))
-              (when num (setq-local gptel--num-messages-to-send num))
-              (when tools (setq-local gptel-tools tools))))
-        (:success (message "gptel chat restored."))
-        (error (message "Could not restore gptel state, sorry! Error: %s" status)))
-      (set-buffer-modified-p modified))))
+    (widen)
+    (condition-case status
+        (progn
+          (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
+            (gptel--restore-props (read bounds)))
+          (pcase-let ((`(,preset ,system ,backend ,model ,temperature ,tokens ,num ,tools)
+                       (gptel-org--entry-properties (point-min))))
+            (when preset
+              (if (gptel-get-preset preset)
+                  (progn (gptel--apply-preset
+                          preset (lambda (sym val) (set (make-local-variable sym) val)))
+                         (setq gptel--preset preset))
+                (display-warning
+                 '(gptel presets)
+                 (format "Could not activate gptel preset `%s' in buffer \"%s\""
+                         preset (buffer-name)))))
+            (when system (setq-local gptel--system-message system))
+            (if backend (setq-local gptel-backend backend)
+              (message
+               (substitute-command-keys
+                (concat
+                 "Could not activate gptel backend \"%s\"!  "
+                 "Switch backends with \\[universal-argument] \\[gptel-send]"
+                 " before using gptel."))
+               backend))
+            (when model (setq-local gptel-model model))
+            (when temperature (setq-local gptel-temperature temperature))
+            (when tokens (setq-local gptel-max-tokens tokens))
+            (when num (setq-local gptel--num-messages-to-send num))
+            (when tools (setq-local gptel-tools tools))))
+      (:success (message "gptel chat restored."))
+      (error (message "Could not restore gptel state, sorry! Error: %s" status)))))
 
 (defun gptel-org-set-properties (pt &optional msg)
   "Store the active gptel configuration under the current heading.
