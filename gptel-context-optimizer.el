@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2026  Red Hat Inc.
 
-;; Keywords: context, LRU
+;; Keywords: context, LRU, compilation
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -30,6 +30,11 @@
 ;; file at the top of gptel-context. It registers in the
 ;; after-save-hook/after-revert-hook to do so.
 
+;; *compilation* buffer added to gptel-context only for the next
+;; gptel-request can be optionally enabled with:
+;;
+;;    (setq-default gptel-context-enable-compilation-auto-add t)
+
 ;;; Code:
 
 (require 'gptel-context)
@@ -49,6 +54,36 @@ change again in a subsequent edit."
             (push entry gptel-context)))))))
 (add-hook 'after-save-hook #'gptel-context--move-to-bottom)
 (add-hook 'after-revert-hook #'gptel-context--move-to-bottom)
+
+
+(defcustom gptel-context-enable-compilation-auto-add nil
+  "Whether to automatically add the compilation buffer to gptel context.
+
+When non-nil, the compilation buffer is added to the bottom of the
+gptel's context whenever the compilation filter runs. This allows the
+last compilation output to be always in context of the next gptel
+requests."
+  :group 'gptel
+  :type 'boolean)
+
+(defun gptel-context--compilation-filter ()
+  "Add gptel context when compilation filter runs."
+  (when (and gptel-context-enable-compilation-auto-add
+             (equal (buffer-name) "*compilation*"))
+    (let ((curbuf (current-buffer)))
+      (unless (equal curbuf (car gptel-context))
+        (setq gptel-context (cl-delete curbuf gptel-context :test 'equal))
+        (push curbuf gptel-context)))))
+(add-hook 'compilation-filter-hook #'gptel-context--compilation-filter)
+
+(defun gptel-context--compilation-remove ()
+  "Remove gptel context after the first gptel-request."
+  (when gptel-context-enable-compilation-auto-add
+    (let ((buffer (get-buffer "*compilation*")))
+      (when buffer
+        (setq gptel-context
+              (cl-delete buffer gptel-context :test 'equal))))))
+(add-hook 'gptel-post-request-hook #'gptel-context--compilation-remove)
 
 (provide 'gptel-context-optimizer)
 ;;; gptel-context-optimizer.el ends here.
