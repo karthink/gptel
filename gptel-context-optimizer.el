@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2026  Red Hat Inc.
 
-;; Keywords: context, LRU, compilation
+;; Keywords: context, LRU, compilation, preload
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -34,6 +34,22 @@
 ;; gptel-request can be optionally enabled with:
 ;;
 ;;    (setq-default gptel-context-enable-compilation-auto-add t)
+
+;; kvcache context preload will increase energy/cost of inference, but
+;; it may decrease the wait time before generation, so it's disabled
+;; by default.
+;;
+;; It can be toggled with:
+;;
+;;    (gptel-context-preload-mode):
+;;
+;; or enabled with:
+;;
+;;    (gptel-context-preload-mode 1)
+;;
+;; or disabled with:
+;;
+;;    (gptel-context-preload-mode 0)
 
 ;;; Code:
 
@@ -84,6 +100,75 @@ requests."
         (setq gptel-context
               (cl-delete buffer gptel-context :test 'equal))))))
 (add-hook 'gptel-post-request-hook #'gptel-context--compilation-remove)
+
+(defun gptel-context-preload--set-timer ()
+  "Set the preload timer."
+  (setq gptel-context-preload--timer
+        (run-at-time gptel-context-preload-delay nil 'gptel-context-preload--send-message)))
+
+(defun gptel-context-preload ()
+  "Preload gptel context by sending a test message after a delay.
+This function is designed to be added to save and revert hooks.
+It cancels any pending timer, sets up a new timer,
+and when the timer fires, sends a test message to gptel."
+  ;; Cancel any existing timer
+  (let ((curbuf (buffer-file-name)))
+    (when curbuf
+      (let ((entry (gptel-context--get-path curbuf)))
+        (when entry
+          ;; (message "gptel-context-preload pending: %s" current-buffer-truename)
+          (gptel-context-preload--cancel)
+          ;; Set up new timer with configurable delay
+          (gptel-context-preload--set-timer))))))
+
+(defun gptel-context-preload--send-message ()
+  "Send a test message to gptel in a dedicated buffer."
+  ;; Create or clear the buffer
+  (unless gptel--request-alist
+    (with-current-buffer (get-buffer-create "*gptel-context-preload*")
+      (setq-local gptel-use-context 'system)
+      ;; (message "gptel-context-preload")
+      (read-only-mode -1)
+      ;; Clear buffer contents
+      (erase-buffer)
+      ;; Insert the test message
+      (insert "write the word yes")
+      ;; Send the message
+      (gptel-send)
+      ;; cancel the preload if another gptel-request is sent
+      (add-hook 'gptel-prompt-transform-functions #'gptel-context-preload--cancel))))
+
+(defun gptel-context-preload-mode (&optional arg)
+  (interactive)
+  (gptel-context-preload--cancel)
+  (setq gptel-context-preload--enabled (not gptel-context-preload--enabled))
+  (when arg
+    (setq gptel-context-preload--enabled (eq arg 1)))
+  (message "gptel-context-preload-mode %s" (if (eq gptel-context-preload--enabled t)
+                                              "enabled" "disabled"))
+  (when gptel-context-preload--enabled
+    (gptel-context-preload--set-timer)))
+
+(defun gptel-context-preload--cancel ()
+  (remove-hook 'gptel-prompt-transform-functions #'gptel-context-preload--cancel)
+  (when gptel-context-preload--timer
+    (cancel-timer gptel-context-preload--timer)
+    (setq gptel-context-preload--timer nil))
+  (gptel-abort (get-buffer "*gptel-context-preload*")))
+
+;; Global variable to hold the timer
+(defvar gptel-context-preload--timer nil
+  "Timer for gptel context preloading.")
+
+(defvar gptel-context-preload--enabled nil
+  "gptel context preload enabled.")
+
+(defvar gptel-context-preload-delay 2
+  "Delay in seconds before sending the preload message.")
+
+;; Add to save and revert hooks
+(add-hook 'after-save-hook #'gptel-context-preload)
+(add-hook 'after-revert-hook #'gptel-context-preload)
 
 (provide 'gptel-context-optimizer)
 ;;; gptel-context-optimizer.el ends here.
