@@ -106,7 +106,7 @@
 ;;   prompt/response.
 ;;
 ;; To use this in a dedicated buffer:
-;; 
+;;
 ;; - M-x gptel: Start a chat session.
 ;;
 ;; - In the chat session: Press `C-c RET' (`gptel-send') to send your prompt.
@@ -123,7 +123,7 @@
 ;;   (described next), or include them as links in Org or Markdown mode chat
 ;;   buffers.  Sending media is disabled by default, you can turn it on globally
 ;;   via `gptel-track-media', or locally in a chat buffer via the header line.
-;; 
+;;
 ;; Include more context with requests:
 ;;
 ;; If you want to provide the LLM with more context, you can add arbitrary
@@ -172,11 +172,11 @@
 ;;
 ;; - You can limit the conversation context to an Org heading with
 ;;   `gptel-org-set-topic'.
-;;   
+;;
 ;; - You can have branching conversations in Org mode, where each hierarchical
 ;;   outline path through the document is a separate conversation branch.
 ;;   See the variable `gptel-org-branching-context'.
-;;   
+;;
 ;; - You can declare the gptel model, backend, temperature, system message and
 ;;   other parameters as Org properties with the command
 ;;   `gptel-org-set-properties'.  gptel queries under the corresponding heading
@@ -2210,18 +2210,7 @@ example) apply the preset buffer-locally."
         (funcall setter 'gptel-backend val))
        (:tools                          ;TEMP Confirm this `:append' convention
         (setq val (gptel--modify-value gptel-tools val))
-        (let* ((tools
-                (flatten-list
-                 (cl-loop for tool-name in (ensure-list val)
-                          for tool = (cl-etypecase tool-name
-                                       (gptel-tool tool-name)
-                                       (string (ignore-errors
-                                                 (gptel-get-tool tool-name))))
-                          do (unless tool
-                               (user-error "gptel preset: Cannot find tool %S"
-                                           tool-name))
-                          collect tool))))
-          (funcall setter 'gptel-tools (cl-delete-duplicates tools :test #'eq))))
+        (funcall setter 'gptel-tools (gptel--validate-and-prepare-tools val)))
        ((and (let sym (or (intern-soft
                            (concat "gptel-" (substring (symbol-name key) 1)))
                           (intern-soft

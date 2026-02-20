@@ -37,6 +37,8 @@
 
 ;; * Helper functions and vars
 
+
+
 (defvar-local gptel--rewrite-overlays nil
   "List of active rewrite overlays in the buffer.")
 
@@ -50,6 +52,27 @@
   "Set model parameters from `gptel-menu' buffer-locally.
 
 Affects the system message too.")
+
+(defun gptel--tools-scope-normalize (&optional scope)
+  "Normalize the :tools in SCOPE (or current transient scope).
+- Keep only (CATEGORY NAME) pairs that exist in `gptel--known-tools'.
+- Ensure elements are 2-element lists of strings.
+- Remove duplicates with `equal'.
+Return the normalized list."
+  (let* ((sc (or scope (transient-scope)))
+         (cells (plist-get sc :tools))
+         (ok (cl-loop for cell in cells
+                      for cat = (car-safe cell)
+                      ;; Emacs does not provide `cadr-safe'; use a guarded access.
+                      for name = (and (consp cell) (cadr cell))
+                      when (and (stringp cat)
+                                (stringp name)
+                                (assoc cat gptel--known-tools)
+                                (assoc name (cdr (assoc cat gptel--known-tools))))
+                      collect (list cat name)))
+         (dedup (cl-delete-duplicates ok :test #'equal)))
+    (plist-put sc :tools dedup)
+    dedup))
 
 (defun gptel--set-with-scope (sym value &optional scope)
   "Set SYM's symbol value to VALUE with SCOPE.
@@ -314,17 +337,18 @@ Handle formatting for system messages when the active
               (propertize "]" 'face 'transient-heading))
     (if message
         (gptel--describe-directive
-         message (max (- (window-width) 12) 14) "⮐ ")
+         message (max (- (window-width) 12) 14) "\u2b90 ")
       "[No system message set]")))
 
 (defun gptel--tools-init-value (obj)
   "Set the initial state of a tool OBJ in variable `gptel-tools'.
 
 OBJ is a tool-infix of type `gptel--switch'."
-  (when-let* ((name (car (member (oref obj argument)
-                                 (mapcar #'cadr
-                                         (plist-get (transient-scope) :tools))))))
-    (oset obj value (list (oref obj category) name))))
+  (let ((category (oref obj category))
+        (name (oref obj argument)))
+    (when (member (list category name)
+                  (plist-get (transient-scope) :tools))
+      (oset obj value (list category name)))))
 
 (defvar gptel--crowdsourced-prompts-url
   "https://raw.githubusercontent.com/f/awesome-chatgpt-prompts/main/prompts.csv"
@@ -341,14 +365,14 @@ Supports both quoted and non-quoted columns (RFC 4180)."
   (let ((start (point)))
     (unless (eolp)
       (let ((column
-	     (if (eq (char-after) ?\")
+	     (if (eq (char-after) ?")
 		 (when (re-search-forward "\",\\|\"$" nil t)
 		   (let ((end (match-beginning 0)))
 		     (buffer-substring-no-properties (+ start 1) (if (eolp) (- end 1) end))))
 	       (when (search-forward "," (line-end-position) t)
 		 (let ((end (match-beginning 0)))
 		   (buffer-substring-no-properties start end))))))
-	(string-replace "\"\"" "\"" column)))))
+	(string-replace """" """" column)))))
 
 (defun gptel--crowdsourced-prompts ()
   "Acquire and read crowdsourced LLM system prompts.
@@ -469,7 +493,7 @@ which see."
                                        (len (length val)))
                                  (ptv (concat
                                        "\"" (string-replace
-                                             "\n" "⮐"
+                                             "\n" "\u2b90"
                                              (truncate-string-to-width
                                               val 20 nil nil t))
                                        "\"" (when (> len 20)
@@ -529,7 +553,7 @@ which see."
                             (plist-get (gptel-get-preset (intern-soft comp))
                                        :description)))
                   (concat (propertize " " 'display '(space :align-to 32))
-                          (if (string-match "\\(\n\\)" desc)
+                          (if (string-match "\(\n\)" desc)
                               (substring desc 0 (match-beginning 1))
                             desc)))))))
       (intern
@@ -581,18 +605,21 @@ which see."
 (cl-defmethod transient-infix-set ((obj gptel--switch) value)
   "Set VALUE of a `gptel--switch' OBJ.
 
-It is a list of the category and argument, e.g.
- (\"filesystem\" \"read_file\")."
-  (let ((state (transient-scope))
-        (category (oref obj category)))
+VALUE may be t/nil (when toggled directly) or a tool name string.
+Always store canonical (CATEGORY TOOL-NAME) pairs in scope."
+  (let* ((state (transient-scope))
+         (category (oref obj category))
+         (arg (oref obj argument))
+         (name (if (stringp value) value arg))
+         (cell (list category name)))
     (if value
         (progn
-          (cl-pushnew (list category value)
-                      (plist-get state :tools) :test #'equal)
-          (oset obj value (list category value)))
-      (plist-put state :tools
-                 (delete (list category (oref obj argument))
-                         (plist-get state :tools)))
+          (unless (and (stringp category) (stringp name))
+            (user-error "Malformed tool identifier: %S" cell))
+          (cl-pushnew cell (plist-get state :tools) :test #'equal)
+          (oset obj value cell))
+      (plist-put state :tools (delete (list category arg)
+                                      (plist-get state :tools)))
       (oset obj value nil))
     (oset transient--prefix scope state)))
 
@@ -606,10 +633,13 @@ Their own value is ignored")
 
 (cl-defmethod transient-format-value ((obj gptel--switch-category))
   (let* ((category (oref obj category))
-         (active-count
-          (cl-count-if (lambda (tl) (equal (car tl) category))
-                       (plist-get (transient-scope) :tools)))
-         (total-count (length (cdr (assoc category gptel--known-tools)))))
+         (tools-alist (cdr (assoc category gptel--known-tools)))
+         (scope (transient-scope))
+         (selected (plist-get scope :tools))
+         (active-count (cl-count-if (lambda (pair)
+                                      (member (list category (car pair)) selected))
+                                    tools-alist))
+         (total-count (length tools-alist)))
     (if (> active-count 0)
         (propertize (format "(%d/%d)" active-count total-count) 'face 'transient-value)
       (propertize (format "(0/%d)" total-count) 'face 'transient-inactive-value))))
@@ -634,20 +664,23 @@ Their own value is ignored")
 
 (cl-defmethod transient-infix-set ((obj gptel--switch-category) value)
   "When setting VALUE, set all options in the category of OBJ."
-  (dolist (suffix-obj transient--suffixes)
-    ;; Find all suffixes that have this category
-    (when-let* (((cl-typep suffix-obj 'gptel--switch))
-                ((equal (oref suffix-obj category)
-                        (oref obj category)))
-                (arg (if (slot-boundp suffix-obj 'argument)
-                         (oref suffix-obj argument)
-                       (oref obj argument-format))))
-      (if value                         ; Turn on/off all members in category
-          (transient-infix-set suffix-obj arg)
-        (transient-infix-set suffix-obj nil))))
+  (let ((category (oref obj category)))
+    (dolist (suffix-obj transient--suffixes)
+      ;; Find all suffixes that have this category
+      (when-let* (((cl-typep suffix-obj 'gptel--switch))
+                  ((equal (oref suffix-obj category) category))
+                  (arg (if (slot-boundp suffix-obj 'argument)
+                           (oref suffix-obj argument)
+                         (oref obj argument-format))))
+        (if value                         ; Turn on/off all members in category
+            (unless (member (list category arg) (plist-get (transient-scope) :tools))
+              (transient-infix-set suffix-obj arg))
+          (transient-infix-set suffix-obj nil)))))
   ;; Update the active menu category and key in the prefix scope
   (plist-put (transient-scope) :category (oref obj category))
   (plist-put (transient-scope) :key (oref obj key))
+  ;; Normalize after bulk change
+  (gptel--tools-scope-normalize)
   ;; Finally set the "value" of the category itself
   (oset obj value value))
 
@@ -955,7 +988,7 @@ If EXTERNAL is non-nil, include external sources of directives."
                           (concat "(" (gptel--describe-directive prompt (- width 30)) ")")
                           'face 'shadow))
                  `(lambda () (interactive)
-                    (message "%s: %s" ,msg ,(gptel--describe-directive prompt 100 "⮐ "))
+                    (message "%s: %s" ,msg ,(gptel--describe-directive prompt 100 "\u2b90 "))
                     (gptel--set-with-scope ',sym ',prompt gptel--set-buffer-locally))
 	         :transient 'transient--do-return)
            into prompt-suffixes
@@ -1102,12 +1135,12 @@ only (\"oneshot\")."
        ;; We don't care about the transient args of this prefix at all, since
        ;; the state is managed entirely through its transient-scope:
        (interactive (list (plist-get (transient-scope 'gptel-tools) :tools)))
-       (gptel--set-with-scope
-        'gptel-tools
-        (mapcar (lambda (category-and-name)
-                  (map-nested-elt gptel--known-tools category-and-name))
-                (cl-delete-if-not #'consp tools))
-        gptel--set-buffer-locally))
+       (let* ((objs (mapcar (lambda (category-and-name)
+                              (map-nested-elt gptel--known-tools category-and-name))
+                            (cl-delete-if-not #'consp tools)))
+              (objs (cl-remove-if-not #'identity objs))
+              (objs (cl-delete-duplicates objs :test #'eq)))
+         (gptel--set-with-scope 'gptel-tools objs gptel--set-buffer-locally)))
      :transient transient--do-return)
     ("q" "Cancel" transient-quit-one)]]
   [[:class transient-column             ;Display known categories
@@ -1169,11 +1202,14 @@ only (\"oneshot\")."
                       :format " %d")
                 infixes-for-category)))))]]
   (interactive)
-  (transient-setup
-   'gptel-tools nil nil
-   :scope (list :tools (mapcar (lambda (tool) (list (or (gptel-tool-category tool) "misc")
-                                               (gptel-tool-name tool)))
-                               gptel-tools))))
+  (let* ((raw (mapcar (lambda (tool)
+                         (list (gptel-tool-category tool)
+                               (gptel-tool-name tool)))
+                       gptel-tools))
+         (scope (list :tools raw)))
+    ;; Normalize before rendering so counts are correct
+    (gptel--tools-scope-normalize scope)
+    (transient-setup 'gptel-tools nil nil :scope scope)))
 
 
 ;; * Transient Infixes
