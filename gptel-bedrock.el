@@ -478,6 +478,10 @@ conversation."
 (defvar gptel-bedrock--aws-profile-cache nil
   "Cache for AWS profile credentials in the form of (PROFILE . CREDS).")
 
+(defvar gptel-bedrock-aws-cli-command "aws"
+  "Path to the AWS CLI command.
+Can be customized to use a specific AWS CLI installation, e.g. \"/usr/local/bin/aws\".")
+
 (defun gptel-bedrock--fetch-aws-profile-credentials (profile &optional clear-cache)
   "Fetch & cache AWS credentials for PROFILE using aws-cli.
 
@@ -491,7 +495,7 @@ Non-nil CLEAR-CACHE will refresh credentials."
              (or (and (not clear-cache) (cdr cell))
                  (setf (cdr cell)
                        (with-temp-buffer
-		           (unless (zerop (apply #'call-process "aws" nil t nil "configure" "export-credentials"
+		           (unless (zerop (apply #'call-process gptel-bedrock-aws-cli-command nil t nil "configure" "export-credentials"
                                                  (unless (eql profile :static) (list (format "--profile=%s" profile)))))
 		             (user-error "Failed to get AWS credentials from profile"))
 		         (json-parse-string (buffer-string)))))))
