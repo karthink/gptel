@@ -28,7 +28,8 @@
 - Bedrock backend: Add support for =claude-opus-4-5=,
   =claude-opus-4-6=, =claude-sonnet-4-6= and =nova-2-lite=.
 
-- Add support for =gemini-3-pro-preview=, =gemini-3-flash-preview=.
+- Add support for =gemini-3.1-pro-preview=, =gemini-3-pro-preview= and
+  =gemini-3-flash-preview=.
 
 - Add support for =gpt-5.1=.
 
