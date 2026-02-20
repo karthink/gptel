@@ -22,9 +22,11 @@
   =gpt-41-copilot=, =claude-opus-4.5=, =claude-opus-4.6=,
   =gemini-3-pro-preview= and =gemini-3-flash-preview=.
 
-- Anthropic backend: Add support for =claude-opus-4-6=.
+- Anthropic backend: Add support for =claude-opus-4-6= and
+  =claude-sonnet-4-6=.
 
-- Bedrock backend: Add support for =claude-opus-4-5=, =claude-opus-4-6= and =nova-2-lite=.
+- Bedrock backend: Add support for =claude-opus-4-5=,
+  =claude-opus-4-6=, =claude-sonnet-4-6= and =nova-2-lite=.
 
 - Add support for =gemini-3-pro-preview=, =gemini-3-flash-preview=.
 
