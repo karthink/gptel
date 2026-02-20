@@ -390,12 +390,12 @@
   ~claude-opus-4-20250514~.
 
 - Add support for AWS Bedrock models.  You can create an AWS Bedrock
-  gptel backend with ~gptel-make-bedrock~, which see.  Please note:
-  AWS Bedrock support requires Curl 8.9.0 or higher.
+  gptel backend with ~gptel-make-bedrock~.  Please note: AWS Bedrock
+  support requires Curl 8.9.0 or higher.
 
-- You can now create an xAI backend with ~gptel-make-xai~, which see.
-  (xAI was supported before but the model configuration is now handled
-  for you by this function.)
+- You can now create an xAI backend with ~gptel-make-xai~.  (xAI was
+  supported before but the model configuration is now handled for you
+  by this function.)
 
 - Add support for GitHub Copilot Chat.  See the README and
   ~gptel-make-gh-copilot~.  Please note: this is only the chat

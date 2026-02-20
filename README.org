@@ -1657,7 +1657,7 @@ Anywhere in Emacs: Turn on =gptel-highlight-mode=.  See its documentation for cu
 
 In dedicated chat buffers: you can additionally customize =gptel-prompt-prefix-alist= and =gptel-response-prefix-alist=, which are prefixes inserted before the prompt and response.  You can set a different pair for each major-mode.
 
-For more custom formatting: Use =gptel-pre-response-hook= and =gptel-post-response-functions=, which see.
+For more custom formatting, use =gptel-pre-response-hook= and =gptel-post-response-functions=.
 
 #+html: </details>
 #+html: <details><summary>
@@ -1943,7 +1943,7 @@ Other LLM clients for Emacs include
 
 *Libraries*:
 
-- [[https://github.com/ahyatt/llm][llm]]: llm provides a uniform API across language model providers for building LLM clients in Emacs, and is intended as a library for use by package authors.  For similar scripting purposes, gptel provides the command =gptel-request=, which see.
+- [[https://github.com/ahyatt/llm][llm]]: llm provides a uniform API across language model providers for building LLM clients in Emacs, and is intended as a library for use by package authors.  For similar scripting purposes, gptel provides the command =gptel-request=.
 
 *Chat clients*:
 
@@ -2019,7 +2019,7 @@ These differ from full "agentic" use in that the interactions are "one-shot", no
 
 - Possible breakage, see #120: If streaming responses stop working for you after upgrading to v0.5, try reinstalling gptel and deleting its native comp eln cache in =native-comp-eln-load-path=.
 
-- The user option =gptel-host= is deprecated.  If the defaults don't work for you, use =gptel-make-openai= (which see) to customize server settings.
+- The user option =gptel-host= is deprecated.  If the defaults don't work for you, use =gptel-make-openai= to customize server settings.
 
 - =gptel-api-key-from-auth-source= now searches for the API key using the host address for the active LLM backend, /i.e./ "api.openai.com" when using ChatGPT.  You may need to update your =~/.authinfo=.
 

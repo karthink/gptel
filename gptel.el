@@ -68,22 +68,20 @@
 ;;
 ;; ChatGPT is configured out of the box.  For the other sources:
 ;;
-;; - For Azure: define a gptel-backend with `gptel-make-azure', which see.
-;; - For Gemini: define a gptel-backend with `gptel-make-gemini', which see.
-;; - For Anthropic (Claude): define a gptel-backend with `gptel-make-anthropic',
-;;   which see.
-;; - For AI/ML API, Together.ai, Anyscale, Groq, OpenRouter, DeepSeek, Cerebras or
-;;   Github Models: define a gptel-backend with `gptel-make-openai', which see.
-;; - For PrivateGPT: define a backend with `gptel-make-privategpt', which see.
-;; - For Perplexity: define a backend with `gptel-make-perplexity', which see.
-;; - For Deepseek: define a backend with `gptel-make-deepseek', which see.
-;; - For Kagi: define a gptel-backend with `gptel-make-kagi', which see.
+;; - For Azure: define a gptel-backend with `gptel-make-azure'.
+;; - For Gemini: define a gptel-backend with `gptel-make-gemini'.
+;; - For Anthropic (Claude): define a gptel-backend with `gptel-make-anthropic'.
+;; - For AI/ML API, Together.ai, Anyscale, Groq, OpenRouter, DeepSeek, Cerebras
+;;   or Github Models: define a gptel-backend with `gptel-make-openai'.
+;; - For PrivateGPT: define a backend with `gptel-make-privategpt'.
+;; - For Perplexity: define a backend with `gptel-make-perplexity'.
+;; - For Deepseek: define a backend with `gptel-make-deepseek'.
+;; - For Kagi: define a gptel-backend with `gptel-make-kagi'.
 ;;
 ;; For local models using Ollama, Llama.cpp or GPT4All:
 ;;
 ;; - The model has to be running on an accessible address (or localhost)
-;; - Define a gptel-backend with `gptel-make-ollama' or `gptel-make-gpt4all',
-;;   which see.
+;; - Define a gptel-backend with `gptel-make-ollama' or `gptel-make-gpt4all'.
 ;; - Llama.cpp or Llamafiles: Define a gptel-backend with `gptel-make-openai'.
 ;;
 ;; Consult the package README for examples and more help with configuring
