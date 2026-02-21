@@ -966,7 +966,10 @@ To enable this face for responses, `gptel-highlight-methods' must be set."
   :group 'gptel)
 
 (defface gptel-response-fringe-highlight
-  '((t :inherit outline-1 :height reset))
+  ;; NOTE: Remove conditional after we drop Emacs 28.1 (#1254)
+  (if (< emacs-major-version 29)
+      '((t :inherit outline-1 :height 1.0))
+    '((t :inherit outline-1 :height reset)))
   "LLM response fringe/margin face when using `gptel-highlight-mode'.
 
 To enable response highlights in the fringe, `gptel-highlight-methods'

@@ -922,6 +922,7 @@ MODE-SYM is typically a major-mode symbol."
      (skip-syntax-forward "w.")
      ,(macroexp-progn body)))
 
+;; NOTE: Remove after we drop Emacs 27.1 (#724)
 (defmacro gptel--temp-buffer (buf)
   "Generate a temp buffer BUF.
 
