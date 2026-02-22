@@ -238,6 +238,34 @@ Optional: Set =gptel-api-key= to the key. Alternatively, you may choose a more s
 - Setting it to a custom function that returns the key.
 - Leaving it set to the default =gptel-api-key-from-auth-source= function which reads keys from =~/.authinfo=. (See [[#optional-securing-api-keys-with-authinfo][authinfo details]])
 
+**** (Optional) Using the OpenAI Responses API
+
+gptel supports OpenAI's [[https://platform.openai.com/docs/api-reference/responses][Responses API]] as an alternative to the Chat Completions API.  The Responses API provides access to server-side built-in tools like web search, code interpreter, and file search.
+
+To use the Responses API, create a custom OpenAI backend with the =:responses-endpoint= parameter and add the =responses-api= capability to models:
+
+#+begin_src emacs-lisp
+(gptel-make-openai "OpenAI-Responses"
+  :key #'gptel-api-key
+  :stream t
+  :responses-endpoint "/v1/responses"
+  :builtin-tools '((:type "web_search")       ;; Enable web search
+                   (:type "code_interpreter")) ;; Enable code interpreter
+  :models '((gpt-4o
+             :capabilities (media tool-use json url responses-api)
+             :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))
+            (gpt-4o-mini
+             :capabilities (media tool-use json url responses-api)
+             :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp"))))
+#+end_src
+
+Available built-in tools:
+- =web_search=: Search the web for current information
+- =code_interpreter=: Execute Python code in a sandboxed environment
+- =file_search=: Search through uploaded files (requires =:vector_store_ids=)
+
+Models without the =responses-api= capability will automatically fall back to the Chat Completions API.
+
 *** Other LLM backends
 
 ChatGPT is configured out of the box.  If you want to use other LLM backends (like Ollama, Claude/Anthropic or Gemini) you need to register and configure them first.
