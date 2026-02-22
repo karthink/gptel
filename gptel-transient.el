@@ -300,21 +300,20 @@ documention.  Return nil if user does not provide a number, for default."
 	 (num (read-number prompt -1 history)))
     (if (= num -1) nil num)))
 
-(defun gptel-system-prompt--format (&optional message)
-  "Format the system MESSAGE for display in gptel's transient menus.
+(defun gptel-system-prompt--format ()
+  "Format the system prompt for display in gptel's transient menus.
 
-Handle formatting for system messages when the active
-`gptel-model' does not support system messages."
-  (setq message (or message gptel--system-message))
+Handle formatting for system messages when the active `gptel-model' does
+not support system messages."
   (if (gptel--model-capable-p 'nosystem)
       (concat (propertize "[No system message support for model "
                           'face 'transient-heading)
               (propertize (gptel--model-name gptel-model)
                           'face 'warning)
               (propertize "]" 'face 'transient-heading))
-    (if message
+    (if gptel--system-message
         (gptel--describe-directive
-         message (max (- (window-width) 12) 14) "⮐ ")
+         gptel--system-message (max (- (window-width) 12) 14) "⮐ ")
       "[No system message set]")))
 
 (defun gptel--tools-init-value (obj)
