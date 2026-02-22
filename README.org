@@ -1135,8 +1135,18 @@ However private endpoints can be configure like so -
     :host "api.business.githubcopilot.com")
 #+end_src
 
-You will be informed to login into =GitHub= as required.
-You can pick this backend from the menu when using gptel (see [[#usage][Usage]]).
+You will be informed to login into =GitHub= as required. You can pick this backend from the menu when using gptel (see [[#usage][Usage]]).
+
+The GitHub OAuth token is stored by default in a cleartext file based on the path stored in =gptel-gh-github-token-file=. It is possible to customize the variables =gptel-gh-github-token-load-function= and =gptel-gh-github-token-save-function= to change this behavior. If the token is e.g. stored in a password manager, then the following example can be used to so that the token is read as a password:
+
+#+begin_src emacs-lisp
+  (setq
+   ;; Prompt user to provide the token as a password
+   gptel-gh-github-token-load-function (lambda (github-username) (read-passwd (format "Copilot token for '%s': " github-username)))
+
+   ;; Display a message when a new token has been stored, so that it can be copied from the message history
+   gptel-gh-github-token-save-function (lambda (github-username token) (message "New token for '%s' saved: %s" github-username token))
+#+end_src
 
 ***** (Optional) Set as the default gptel backend
 
