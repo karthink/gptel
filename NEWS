@@ -1,20 +1,19 @@
 # -*- mode: org; -*-
 
-* 0.9.9.5-pre
+* 0.9.9.4
 
 ** Breaking changes
 
-- The models =gpt-5-codex=, =o3=, =o3-mini=, =o4-mini=, =claude-3.5-sonnet=,
-  =claude-3.7-sonnet=, =claude-3.7-sonnet-thought=, =claude-opus-4= and
-  =gemini-2.0-flash-001= have been removed from the default list of GitHub
-  Copilot models.  These models are no longer available in the GitHub Copilot
-  API.
+- The models =gpt-5-codex=, =o3=, =o3-mini=, =o4-mini=,
+  =claude-3.5-sonnet=, =claude-3.7-sonnet=, =claude-3.7-sonnet-thought=,
+  =claude-opus-4= and =gemini-2.0-flash-001= have been removed from the
+  default list of GitHub Copilot models.  These models are no longer
+  available in the GitHub Copilot API.
 
 - =gptel-track-media= now controls whether links to media files are
-  tracked /only/ in chat buffers.  Previously it also controlled
-  whether media files added to the context explicitly via
-  =gptel-add-file= were sent.  This is considered a bug and has now
-  been fixed.
+  tracked /only/ in chat buffers.  Previously it also controlled whether
+  media files added to the context explicitly via =gptel-add-file= were
+  sent.  This is considered a bug and has now been fixed.
 
 ** New models and backends
 

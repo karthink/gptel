@@ -3,7 +3,7 @@
 ;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
-;; Version: 0.9.9.3
+;; Version: 0.9.9.4
 ;; Package-Requires: ((emacs "27.1") (transient "0.7.4") (compat "30.1.0.0"))
 ;; Keywords: convenience, tools
 ;; URL: https://github.com/karthink/gptel
@@ -188,7 +188,7 @@
 ;; usage.
 
 ;;; Code:
-(defconst gptel-version "0.9.9.3")
+(defconst gptel-version "0.9.9.4")
 
 (declare-function markdown-mode "markdown-mode")
 (declare-function gptel-menu "gptel-transient")
