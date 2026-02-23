@@ -1631,7 +1631,37 @@ OpenAI-compatible and Ollama message formats."
   (when (keywordp (car-safe new-prompt)) ;Is new-prompt one or many?
     (setq new-prompt (list new-prompt)))
   (let ((prompts (plist-get data :messages)))
-    (plist-put data :messages (vconcat prompts new-prompt))))
+    (pcase position
+      ('nil (plist-put data :messages (vconcat prompts new-prompt)))
+      ((pred integerp)
+       (when (< position 0) (setq position (+ (length prompts) position)))
+       (plist-put data :messages (vconcat (substring prompts 0 position)
+                                          new-prompt
+                                          (substring prompts position)))))))
+
+(cl-defgeneric gptel--inject-tool-call (backend _data _tool-call new-call)
+  "Replace TOOL-CALL in query DATA with NEW-CALL.
+
+DATA is the request payload containing the array of user and assistant
+messages, typically available as (plist-get INFO :data).  TOOL-CALL is
+the call plist as recorded by gptel's response parser(s).  NEW-CALL is
+the replacement plist containing the new tool name and arguments, in the
+form
+
+  (:name \"newName\" :args (:arg1 \"newArg\" :arg2 ...))
+
+:name and :args are both optional.
+
+If NEW-CALL is nil, the tool call is removed from DATA and thus the turn
+history.
+
+BACKEND is the `gptel-backend'."
+  (display-warning
+   '(gptel tool-call)
+   (format "Editing tool call arguments is not implemented for %s.\
+  Ignoring new arguments %s"
+           (type-of backend)
+           (truncate-string-to-width (prin1-to-string new-call) 50 nil nil t))))
 
 
 ;;; State machine for driving requests

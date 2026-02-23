@@ -230,6 +230,43 @@ Mutate state INFO with response metadata."
 ;; NOTE: No `gptel--parse-tools' method required for gptel-openai, since this is
 ;; handled by its defgeneric implementation
 
+(cl-defmethod gptel--inject-tool-call ((_backend gptel-openai) data tool-call new-call)
+  "Replace TOOL-CALL in query DATA with NEW-CALL.
+
+BACKEND is the `gptel-backend'.  See the generic function documentation
+for details.  This implementation handles the OpenAI-compatible
+Completions API."
+  ;; FIXME: We currently assume that the tool call being modified is in the last
+  ;; position in the messages array.
+  (if-let* ((messages (plist-get data :messages))
+            (entry (aref messages (1- (length messages))))
+            (calls (plist-get entry :tool_calls))
+            (id (plist-get tool-call :id))
+            (indexed-call
+             (cl-loop for chunk across calls
+                      for i upfrom 0
+                      if (equal (plist-get chunk :id) id)
+                      return (cons i (plist-get chunk :function))
+                      finally return nil))
+            (index (car indexed-call))
+            (call (cdr indexed-call)))
+      (if (null new-call)               ;delete tool call if new-call is nil
+          (if (= (length calls) 1)      ;only tool call, delete message entirely
+              (plist-put data :messages (substring messages nil -1))
+            ;; delete new-call selectively from parallel tool calls
+            (plist-put entry :tool_calls
+                       (vconcat (substring calls 0 index)
+                                (substring calls (1+ index)))))
+        (when-let* ((args (plist-get new-call :args)))
+          (plist-put call :arguments (gptel--json-encode args)))
+        (when-let* ((name (plist-get new-call :name)))
+          (plist-put call :name name)))
+    (display-warning
+     '(gptel tool-call)
+     (format "Could not inject updated tool-call arguments for tool call %s, %s"
+             (plist-get tool-call :name)
+             (truncate-string-to-width (prin1-to-string new-args) 50 nil nil t)))))
+
 (cl-defmethod gptel--parse-tool-results ((_backend gptel-openai) tool-use)
   "Return a prompt containing tool call results in TOOL-USE."
   ;; (declare (side-effect-free t))

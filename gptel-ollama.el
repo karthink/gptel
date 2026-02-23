@@ -161,6 +161,44 @@ Store response metadata in state INFO."
 ;; NOTE: No `gptel--inject-prompt' method required for gptel-ollama, since this is
 ;; handled by its defgeneric implementation
 
+(cl-defmethod gptel--inject-tool-call ((_backend gptel-ollama) data tool-call new-call)
+  "Replace TOOL-CALL in query DATA with NEW-CALL.
+
+BACKEND is the `gptel-backend'.  See the generic function documentation
+for details.  This implementation handles the Ollama API."
+  ;; FIXME: We currently assume that the tool call being modified is in the last
+  ;; position in the messages array.
+  (if-let* ((messages (plist-get data :messages))
+            (entry (aref messages (1- (length messages))))
+            (calls (plist-get entry :tool_calls))
+            (indexed-call
+             (cl-loop with name = (plist-get tool-call :name)
+                      with old-args = (plist-get tool-call :args)
+                      for chunk across calls
+                      for i upfrom 0
+                      for function = (plist-get chunk :function)
+                      if (and (equal (plist-get function :name) name)
+                              (equal (plist-get function :arguments) old-args))
+                      return (cons i function) end
+                      finally return nil))
+            (index (car indexed-call))
+            (call (cdr indexed-call)))
+      (if (null new-call)
+          (if (= (length calls) 1)
+              (plist-put data :messages (substring messages nil -1))
+            (plist-put entry :tool_calls
+                       (vconcat (substring calls 0 index)
+                                (substring calls (1+ index)))))
+        (when-let* ((args (plist-get new-call :args)))
+          (plist-put call :arguments args))
+        (when-let* ((name (plist-get new-call :name)))
+          (plist-put call :name name)))
+    (display-warning
+     '(gptel tool-call)
+     (format "Could not inject updated tool-call arguments for tool call %s, %s"
+             (plist-get tool-call :name)
+             (truncate-string-to-width (prin1-to-string new-call) 50 nil nil t)))))
+
 (cl-defmethod gptel--parse-list ((backend gptel-ollama) prompt-list)
   (if (consp (car prompt-list))
       (let ((full-prompt))              ; Advanced format, list of lists
