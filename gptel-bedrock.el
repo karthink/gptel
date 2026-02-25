@@ -352,16 +352,19 @@ received."
                   (start (car block-events))
                   (deltas (cdr block-events)))
              (when-let ((tool-use (map-nested-elt start '(:payload :start :toolUse))))
-               (let ((id (plist-get tool-use :toolUseId))
-                     (name (plist-get tool-use :name))
-                     (input (gptel--json-read-string
-                             (mapconcat
-                              (lambda (delta) (map-nested-elt delta '(:payload :delta :toolUse :input)))
-                              deltas))))
+               (let* ((id (plist-get tool-use :toolUseId))
+                      (name (plist-get tool-use :name))
+                      (input-str
+                       (mapconcat (lambda (delta) (map-nested-elt
+                                              delta '(:payload :delta :toolUse :input)))
+                                  deltas))
+                      (input (unless (string-blank-p input-str)
+                               (gptel--json-read-string input-str))))
                  (push
                   (list :toolUse (list :input input :name name :toolUseId id))
                   contents)))
-             (when-let ((texts (delq nil (mapcar (lambda (d) (map-nested-elt d '(:payload :delta :text))) deltas))))
+             (when-let ((texts (delq nil (mapcar (lambda (d) (map-nested-elt d '(:payload :delta :text)))
+                                                 deltas))))
                (push (list :text (apply #'concat texts)) contents))
              ;; Currently we discard any reasoning content but this would be the spot to handle it
              ))
