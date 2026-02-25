@@ -1982,15 +1982,18 @@ SYNC is non-nil, the response string is returned instead."
                           ((eq resp 'abort)
                            (setq sync-error "Request aborted."))
                           ;; Handle errors
-                          ((and (null resp) (plist-get info :error))
+                          ((and (null resp)
+                                (or (plist-get info :error)
+                                    (plist-get info :status)))
                            (let ((err (plist-get info :error)))
                              (setq sync-error
                                    (cond
                                     ((stringp err) err)
                                     ((plist-get err :message)
                                      (plist-get err :message))
-                                    (t (or (plist-get info :status)
-                                           "Unknown error"))))))))
+                                    ((stringp (plist-get info :status))
+                                     (plist-get info :status))
+                                    (t "Unknown error")))))))
                      callback))
          ;; For sync mode, disable streaming
          (stream (if sync nil stream))
@@ -2024,14 +2027,14 @@ SYNC is non-nil, the response string is returned instead."
                      :position start-marker)))
     (when transforms (plist-put info :transforms transforms))
     (with-current-buffer prompt-buffer
-    (setq gptel--system-message       ;guaranteed to be buffer-local
-      ;; Retain single-part system messages as strings to avoid surprises
-      ;; when applying presets
-      (if (cdr system-list) system-list (car system-list))))
-    ;; For sync mode, disable tool use (requires user interaction)
-    (when sync
-      (setq-local gptel-use-tools nil)
-      (setq-local gptel-tools nil)))
+      (setq gptel--system-message       ;guaranteed to be buffer-local
+            ;; Retain single-part system messages as strings to avoid surprises
+            ;; when applying presets
+            (if (cdr system-list) system-list (car system-list)))
+      ;; Synchronous requests cannot pause for tool confirmation or tool execution.
+      (when sync
+        (setq-local gptel-use-tools nil)
+        (setq-local gptel-tools nil)))
     (when stream (plist-put info :stream stream))
     ;; This context should not be confused with the context aggregation context!
     (when callback (plist-put info :callback callback))
@@ -2099,10 +2102,15 @@ SYNC is non-nil, the response string is returned instead."
               (cl-return-from gptel-request nil))
             ;; Process pending I/O with reasonable wait time
             (accept-process-output nil 0.1))
+          (when (and (null sync-response)
+                     (null sync-error)
+                     (memq (gptel-fsm-state fsm) '(ERRS ABRT)))
+            (setq sync-error (or (plist-get (gptel-fsm-info fsm) :status)
+                                 "Unknown error")))
           (when sync-error
             (message "gptel-request: %s" sync-error))
           sync-response)
-      fsm))
+      fsm)))
 
 (defun gptel--realize-query (fsm)
   "Realize the query payload for FSM from its prompt buffer.
