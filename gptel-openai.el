@@ -529,6 +529,24 @@ Media files, if present, are placed in `gptel-context'."
                    (t current))))
         (plist-get (car prompts) :content))))
 
+(defconst gptel--openai-model-aliases
+  '((gpt5.2
+     :description "Alias for latest GPT-5.2 model"
+     :model-id "gpt-5.2"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1.75
+     :output-cost 14
+     :cutoff-date "2025-08"))
+  "Model aliases that map simple names to the latest model versions.
+
+These aliases provide stable names that always point to the current
+latest version of each model family:
+- `gpt5.2': Alias for gpt-5.2, the latest flagship model
+
+The actual model used is specified in the :model-id property.")
+
 ;;;###autoload
 (cl-defun gptel-make-openai
     (name &key curl-args models stream key request-params
@@ -594,7 +612,8 @@ for."
                   :host host
                   :header header
                   :key key
-                  :models (gptel--process-models models)
+                  :models (gptel--process-models
+                           (append gptel--openai-model-aliases models))
                   :protocol protocol
                   :endpoint endpoint
                   :stream stream

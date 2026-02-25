@@ -1,0 +1,185 @@
+#+TITLE: gptel Remote Server Access Feature
+#+AUTHOR: gptel-agent
+#+DATE: 2025-07-15
+
+* Feature Overview
+
+The remote server access feature extends gptel-agent with the ability to
+manage remote servers via SSH. It provides a complete set of tools for
+file operations, command execution, and systemd service management on
+remote hosts, all powered by Emacs TRAMP under the hood.
+
+** Purpose
+
+Allow AI agents to autonomously perform server administration tasks —
+deploying applications, configuring services, debugging issues, reading
+logs — on remote machines without requiring the user to manually SSH in
+and relay information back and forth.
+
+** Architecture
+
+The feature consists of two components:
+
+1. *Tool implementations* (~gptel-agent-tools-remote.el~ in gptel-agent)
+   - Elisp functions that perform remote operations via TRAMP
+   - Registered as gptel tools available to the LLM
+
+2. *Agent definition* (~agents/remote-server.md~ in gptel-agent)
+   - System prompt with workflows, sudo policy, and safety guidelines
+   - Declares which tools the remote-server agent can use
+   - Loaded on demand via ~:pre~ hook (~(require 'gptel-agent-tools-remote)~)
+
+The main gptel-agent delegates to the ~remote-server~ sub-agent when it
+detects the user is asking about remote server operations.
+
+* Tools
+
+All tools share a common connection model: ~host~, ~user~, and optional
+~sudo~ parameters. TRAMP handles SSH connection pooling and reuse.
+
+** RemoteBash
+- Execute arbitrary shell commands on a remote host
+- Uses ~/bin/sh -c~ via ~process-file~ over TRAMP
+- Async with callback
+- With ~sudo~, commands run as root via TRAMP's sudo chaining
+  (~/ssh:user@host|sudo::/~)
+- Confirm-before-execute (preview shows syntax-highlighted command)
+
+** RemoteRead
+- Read file contents from a remote host
+- Supports optional ~start_line~ / ~end_line~ range
+- 512 KB size limit for full reads (must specify range for larger files)
+- Validates readability and rejects directories
+
+** RemoteWrite
+- Write content to a file on a remote host
+- Creates missing parent directories automatically
+- With ~sudo~, can write to system locations (~/etc/~, ~/var/~)
+- Confirm-before-execute (preview shows file path and content)
+
+** RemoteEdit
+- Find-and-replace a unique string in a remote file
+- ~old_str~ must match exactly once (ambiguity is rejected)
+- Confirm-before-execute (preview shows diff-style +/- view)
+- Uses ~search-forward~ / ~replace-match~ in a temp buffer
+
+** RemoteGlob
+- Find files by name pattern on a remote host using ~find~
+- Results sorted by modification time (newest first)
+- Supports ~depth~ limit and ~path~ restriction
+- Excludes ~.git~ directories
+- Uses ~find~ (not ~tree~) since remote hosts may not have ~tree~
+
+** RemoteGrep
+- Search file contents using ~grep~ on a remote host
+- Supports regex, glob filtering, and context lines
+- Uses ~grep~ (not ~ripgrep~) for portability
+- Max 1000 matches per search
+- Recursive by default for directory paths
+
+** ServiceStatus
+- Check systemd service status via ~systemctl status~
+- Returns full status output (active state, logs, PID, memory)
+- Detects "not found" services (exit code 4)
+- Optional ~sudo~ for more detailed output
+
+** ServiceControl
+- Control systemd services: start, stop, restart, reload, enable, disable
+- Always uses sudo (service control requires root)
+- Validates action against allowed set before executing
+- Confirm-before-execute (preview shows the systemctl command)
+
+* Implementation Details
+
+** TRAMP Path Construction
+
+All remote paths are constructed by ~gptel-agent--remote-path~:
+
+- Without sudo: ~/ssh:user@host:path~
+- With sudo: ~/ssh:user@host|sudo::/path~ (multi-hop)
+
+The sudo flag is normalized: ~nil~ and ~:json-false~ both mean "no sudo".
+
+** Synchronous vs Asynchronous
+
+- *Async*: ~RemoteBash~ (uses callback pattern like local Bash tool)
+- *Synchronous*: All other tools (they block but are typically fast for
+  single-file operations over SSH)
+
+Note: Synchronous tools use ~process-file~ which TRAMP executes
+remotely. For long-running operations, ~RemoteBash~ is preferred.
+
+** Preview System
+
+Tools with side effects (~RemoteBash~, ~RemoteWrite~, ~RemoteEdit~,
+~ServiceControl~) register preview functions via
+~gptel--tool-preview-alist~. These show:
+
+- Connection info (~user@host~, ~[sudo]~ indicator)
+- Syntax-highlighted command/content
+- Diff-style view for edits
+- Collapsible overlays with keyboard navigation
+
+** Tool Registration
+
+Tools are registered with ~gptel-make-tool~ using:
+- ~:category "remote"~ — groups them for filtering
+- ~:confirm t~ — requires user confirmation for destructive operations
+- ~:include t~ — tool results are included in context
+- ~:async t~ — only for ~RemoteBash~ (callback-based)
+
+** Lazy Loading
+
+The remote tools package is loaded on demand. The ~remote-server~ agent
+definition includes ~:pre (lambda () (require 'gptel-agent-tools-remote))~
+which loads the tools only when the agent is first invoked.
+
+* Agent Behavior
+
+The ~remote-server~ agent follows these principles:
+
+1. *Safety first*: Check current state before making changes
+2. *Least privilege*: Only use sudo when required
+3. *Transparency*: Preview actions before execution
+4. *Atomic changes*: One change at a time, verify each step
+5. *Backup awareness*: Suggest backups for critical files
+
+Standard workflows:
+- *Investigating*: status → logs → config → system resources
+- *Configuring*: read config → show changes → edit → validate → restart → verify
+- *Deploying*: check state → backup → change → verify → restart → confirm
+
+* Dependencies
+
+- ~gptel~ — core LLM interaction framework
+- ~tramp~ — Emacs remote file access (built-in)
+- ~gptel-agent~ — agent framework (for tool registration and sub-agent dispatch)
+- SSH access configured on the local machine (keys, config, etc.)
+
+* Limitations and Known Considerations
+
+- *No interactive commands*: ~RemoteBash~ runs ~/bin/sh -c~, no PTY
+  allocation. Interactive programs (vim, top) won't work.
+- *TRAMP connection overhead*: First connection to a host has SSH
+  handshake latency. Subsequent operations reuse the connection.
+- *No file transfer*: No dedicated tool to copy files between local and
+  remote. Can be worked around with ~RemoteBash~ + ~scp~ or by reading
+  locally and writing remotely.
+- *grep only*: Remote search uses ~grep~, not ~ripgrep~. Pattern syntax
+  differs slightly from local ~Grep~ tool.
+- *No multi-host orchestration*: Each tool call targets a single host.
+  Orchestrating across multiple servers requires multiple sequential
+  tool calls.
+- *Synchronous file ops*: Large file reads/writes over slow connections
+  may block Emacs briefly.
+
+* Potential Improvements
+
+- Add ~RemoteInsert~ tool (line-based insertion, matching local ~Insert~)
+- Add file transfer tool (local ↔ remote)
+- Connection profile system (named hosts with saved user/sudo settings)
+- Async versions of file read/write for large files
+- Multi-host batch operations
+- Docker/Podman container tools (exec into containers on remote hosts)
+- Log streaming/tailing with async output
+- Remote directory listing tool (complement to RemoteGlob)

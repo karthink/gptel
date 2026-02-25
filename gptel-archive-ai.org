@@ -1,0 +1,199 @@
+#+TITLE: gptel Archive Feature — AI Development Context
+#+DESCRIPTION: Reference document for AI-assisted development of gptel-org-archive.el
+
+* Overview
+
+The gptel archive feature provides automated summarization and archival of
+completed AI task conversations in Org mode. Instead of archiving verbose
+conversations (with tool calls, intermediate steps, back-and-forth), it uses
+an LLM to generate concise summaries of what was accomplished.
+
+** Core Module
+
+- File: =gptel-org-archive.el= (586 lines)
+- Tests: =test/gptel-org-archive-test.el=
+- Test command: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
+- Provides: =gptel-org-archive=
+- Depends on: =org=, =org-archive=, =gptel= (via declare-function)
+
+** Related Components
+
+- Archive searcher agent: =quelpa/build/gptel-agent/agents/archive-searcher.md=
+  - Specialized read-only agent for searching =*-archive.org= files
+  - Uses Glob, Grep, Read, Eval tools
+- Real archive example: =emacs-ai-archive.org= (root of ~/.emacs.d)
+
+* Architecture
+
+** Two-Phase Workflow
+
+1. *Prepare*: =gptel-org-prepare-archive= summarizes a DONE task in-place
+   - Extracts subtree content, sends to LLM for summarization
+   - Replaces conversation with formatted summary + metadata properties
+   - Original content saved in buffer-local variable for undo
+2. *Archive*: Standard =org-archive-subtree= (=C-c C-x C-s=) moves to archive file
+
+** File Naming Convention
+
+- Source: =*-ai.org= → Archive: =*-ai-archive.org=
+- Source: =*.org= → Archive: =*_archive.org=
+- Controlled by =gptel-org-archive-location-function=
+- Archive target heading: =* Archived Tasks=
+
+** Loading Mechanism
+
+- Three autoloaded commands registered in =gptel-autoloads.el=
+- Keybinding =C-c g a= → =gptel-org-archive-done-tasks= (set in init.el use-package)
+- Two hooks installed at load time (only active after first autoload trigger):
+  - =org-mode-hook= → =gptel-org-archive--setup-location= (sets buffer-local =org-archive-location=)
+  - =org-mode-hook= → =gptel-org-archive--setup-auto-archive= (optional auto-on-DONE)
+
+* Data Flow
+
+** Summary Generation Pipeline
+
+#+begin_example
+Subtree at point
+  → gptel-org-archive--get-subtree-content (extract heading, level, todo-state, content, properties)
+  → gptel-org-archive--extract-conversation (strip property drawers, normalize whitespace)
+  → gptel-org-archive--generate-summary (send to LLM with system prompt)
+  → LLM returns summary text (may include "Git Changes:" section)
+  → gptel-org-archive--parse-git-changes (separate summary from git metadata)
+  → gptel-org-archive--format-summary (build final org subtree with properties)
+  → gptel-org-archive--replace-with-summary (replace original subtree in buffer)
+#+end_example
+
+** Git Metadata Collection
+
+Two sources of git metadata:
+
+1. *Automatic* — working directory state captured at archive time:
+   - =gptel-org-archive--collect-repo-metadata= → =gptel-org-archive--get-git-info=
+   - Produces: =:GIT_REPO:=, =:GIT_COMMIT:=, =:GIT_BRANCH:=
+
+2. *AI-reported* — commits mentioned in LLM summary:
+   - System prompt instructs LLM to include "Git Changes:" section
+   - Parsed by =gptel-org-archive--parse-git-changes=
+   - Produces: =:GIT_PATH:=, =:GIT_COMMITS:= (with =_N= suffixes for multiple repos)
+
+** Archived Task Properties
+
+Full set of properties stored per archived task:
+
+| Property             | Source    | Description                           |
+|----------------------+-----------+---------------------------------------|
+| =:ARCHIVE_DATE:=     | auto      | Timestamp when summary was generated  |
+| =:ORIGINAL_BACKEND:= | subtree   | Backend used for the original task    |
+| =:ORIGINAL_MODEL:=   | subtree   | Model used for the original task      |
+| =:SUMMARY_BACKEND:=  | auto      | Backend used to generate summary      |
+| =:SUMMARY_MODEL:=    | auto      | Model used to generate summary        |
+| =:GIT_REPO:=         | auto      | Remote URL of working directory repo  |
+| =:GIT_COMMIT:=       | auto      | HEAD commit at archive time           |
+| =:GIT_BRANCH:=       | auto      | Current branch at archive time        |
+| =:GIT_PATH:=         | AI-parsed | Repo path where commits were made     |
+| =:GIT_COMMITS:=      | AI-parsed | Comma-separated commit hashes         |
+| =:GIT_PATH_N:=       | AI-parsed | Additional repo paths (N=1,2,...)     |
+| =:GIT_COMMITS_N:=    | AI-parsed | Additional commits (N=1,2,...)        |
+| =:ARCHIVE_TIME:=     | org       | Standard org archive timestamp        |
+| =:ARCHIVE_FILE:=     | org       | Source file (added by org-archive)    |
+| =:ARCHIVE_OLPATH:=   | org       | Original outline path in source       |
+| =:ARCHIVE_CATEGORY:= | org       | Org category (added by org-archive)   |
+| =:ARCHIVE_TODO:=     | org       | TODO keyword (added by org-archive)   |
+
+* Interactive Commands
+
+| Command                          | Binding     | Description                                    |
+|----------------------------------+-------------+------------------------------------------------|
+| =gptel-org-prepare-archive=      | (M-x)       | Summarize single DONE task at point             |
+| =gptel-org-restore-original=     | (M-x)       | Undo summarization, restore original content    |
+| =gptel-org-archive-done-tasks=   | =C-c g a=   | Batch process all DONE tasks interactively      |
+
+** Batch Processing (=gptel-org-archive-done-tasks=)
+
+1. Finds all tasks matching =org-done-keywords= using =TODO={regexp}= matcher
+2. For each task, prompts: "Prepare archive for: <heading>?"
+3. Generates summary asynchronously
+4. Prompts: "Archive this task?" → calls =org-archive-subtree=
+5. Continues to next task
+
+* Customization Options
+
+| Variable                                    | Default | Description                           |
+|---------------------------------------------+---------+---------------------------------------|
+| =gptel-org-archive-summary-system-prompt=    | (long)  | System prompt for LLM summarization   |
+| =gptel-org-archive-include-metadata=         | =t=     | Include git/model metadata properties |
+| =gptel-org-archive-location-function=        | default | Function to compute archive file path |
+| =gptel-org-archive-summary-max-tokens=       | =500=   | Max tokens for summary generation     |
+| =gptel-org-archive-auto-on-done=             | =nil=   | Auto-prepare when task marked DONE    |
+
+** Auto-archive on DONE
+
+When =gptel-org-archive-auto-on-done= is non-nil:
+- Triggers on =org-after-todo-state-change-hook=
+- Only for buffers with =gptel-mode= active and filenames matching =-ai\.org$=
+- Only when transitioning to a state in =org-done-keywords=
+- Generates summary automatically; user must still manually archive with =C-c C-x C-s=
+
+* Internal Functions Reference
+
+** Content Extraction
+- =gptel-org-archive--get-subtree-content= → plist with =:heading=, =:level=, =:todo-state=, =:content=, =:beg=, =:end=, =:backend=, =:model=
+- =gptel-org-archive--extract-conversation= → cleaned content string (no property drawers, normalized whitespace)
+
+** Git Operations
+- =gptel-org-archive--git-run= (directory &rest args) → trimmed output or nil
+- =gptel-org-archive--get-git-info= (directory) → plist with =:repo-url=, =:commit=, =:branch=, =:root=
+- =gptel-org-archive--collect-repo-metadata= → list of repo plists
+- =gptel-org-archive--format-repo-metadata= (repos) → org properties string
+
+** Git Changes Parsing (from LLM summary)
+- =gptel-org-archive--parse-git-changes= (summary) → (CLEAN-SUMMARY . GIT-CHANGES-LIST)
+- =gptel-org-archive--format-git-changes= (git-changes) → org properties string
+
+** Summary Formatting
+- =gptel-org-archive--generate-summary= (task-info callback) → async, calls callback with summary string
+- =gptel-org-archive--format-summary= (summary task-info) → formatted org subtree string
+
+** Archive Location
+- =gptel-org-archive--default-location= (source-file) → archive file path
+- =gptel-org-archive--get-location= → archive path for current buffer
+
+* Known Issues and Design Decisions
+
+** Hook Activation Timing
+The =org-mode-hook= functions (=gptel-org-archive--setup-location= and
+=gptel-org-archive--setup-auto-archive=) are only installed when
+=gptel-org-archive= is loaded. Since loading is via autoload, these hooks
+are dormant until the user first invokes =C-c g a= or =M-x gptel-org-prepare-archive=.
+This means =org-archive-location= is not automatically set for =*-ai.org= files
+until the module has been loaded at least once in the session.
+
+** Custom TODO Keywords
+The batch archiver uses =TODO={regexp}= syntax (via =regexp-opt=) to match
+custom done keywords like =AI-DONE= and =HI-DONE=. This was a bug fix — the
+original =/KEYWORD= syntax did not work with custom keywords.
+
+** Heading Level Preservation
+Summaries preserve the original heading level (=:level= from subtree content).
+This was a bug fix — originally all summaries were generated at level 1, breaking
+document structure for nested tasks.
+
+** Module Independence
+=gptel-org-archive= is fully standalone. Neither =gptel.el= nor =gptel-agent.el=
+reference it. It depends on gptel (calls =gptel-request=) but gptel doesn't know
+about it.
+
+* Archive Search (archive-searcher agent)
+
+The =archive-searcher= agent enables AI to search archived tasks for context.
+
+** Search Strategies
+1. By repository path: grep for =:GIT_PATH:= matching a repo path
+2. By commit hash: grep for =:GIT_COMMITS:= containing a hash
+3. By topic/content: grep keywords in task titles and summaries
+4. By outline path: search =:ARCHIVE_OLPATH:= for tasks from related areas
+
+** Archive File Discovery
+- Glob for =*-archive.org= files
+- Or use the naming convention: source =-ai.org= → =-ai-archive.org=
+- Eval: =(gptel-org-archive--get-location)= returns current buffer's archive path

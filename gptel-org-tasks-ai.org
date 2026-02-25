@@ -1,0 +1,185 @@
+#+TITLE: gptel Org Tasks Feature — AI Development Context
+#+DESCRIPTION: Reference document for AI-assisted development of gptel-org-tasks.el
+
+* Overview
+
+The gptel org tasks feature provides an AI task workflow in Org mode,
+integrating gptel with TODO keywords, state transitions, and model
+profiles via tags.
+
+** Core Module
+
+- File: =gptel-org-tasks.el= (~390 lines)
+- Provides: =gptel-org-tasks=
+- Depends on: =org=, =gptel=
+
+** Related Code in gptel-org.el
+
+Model tag detection functions live in =gptel-org.el= (not in =gptel-org-tasks.el=):
+- =gptel-org--find-model-in-tags= — extract model from a tag list
+- =gptel-org--find-model-from-tags= — find model from =:user:= heading tags
+- =gptel-org--find-model-from-todo-tags= — find model from TODO heading tags
+- =gptel-org--get-todo-heading-model= — search upward for enclosing TODO heading model
+- =gptel-org--heading-has-todo-keyword-p= — check if heading has AI TODO keyword
+
+Customization for the above (also in =gptel-org.el=):
+- =gptel-org-model-from-todo-tag= (default: =t=) — enable TODO heading model detection
+- =gptel-org-todo-keywords= (default: =("AI-DO" "AI-DOING")=) — keywords that indicate AI headings
+
+* TODO State Machine
+
+#+begin_example
+AI-DO  ──gptel-send──→  AI-DOING  ──response complete──→  (user marks AI-DONE/HI-DONE)
+  │                        │
+  │                        └──gptel-abort──→  CANCELED
+  │
+  └──(manual)──→  HI-FEEDBACK  (user review, with note)
+#+end_example
+
+** Typical SEQ_TODO Setup
+
+#+begin_example
+#+SEQ_TODO: AI-DO(a) AI-DOING(i!) HI-FEEDBACK(h@) | AI-DONE(d!) HI-DONE(D!) CANCELED(c)
+#+end_example
+
+- =AI-DO= — task ready for AI processing
+- =AI-DOING= — task being processed (auto-transition on =gptel-send=)
+- =HI-FEEDBACK= — user review needed (requires note on transition)
+- =AI-DONE= — completed by AI (with timestamp)
+- =HI-DONE= — completed by human (with timestamp)
+- =CANCELED= — aborted (auto-transition on =gptel-abort=)
+
+** State Transition Triggers
+
+| Transition | Trigger | Condition |
+|------------+---------+-----------|
+| AI-DO → AI-DOING | =gptel-send= | =gptel-org-tasks-change-state-on-send= is non-nil |
+| AI-DOING → CANCELED | =gptel-abort= | Active task marker exists |
+| AI-DOING → (cleared) | Response complete | =gptel-post-response-functions= hook |
+| Any → HI-FEEDBACK | Manual | User changes state |
+
+* Model Profiles via Tags
+
+** How It Works
+
+Tag a task heading with a profile name:
+
+#+begin_example
+** AI-DO Implement feature X :haiku:
+** AI-DO Complex analysis    :opus:
+** AI-DO Use GPT-4           :gpt4:
+#+end_example
+
+When =gptel-send= is called:
+1. =gptel-org-tasks--get-task-info= reads heading tags
+2. First tag matching a defined profile is found
+3. =gptel-org-tasks--apply-profile= sets buffer-local variables
+4. Request uses the profiled backend/model
+
+** Built-in Model Aliases
+
+Anthropic models have aliases registered as symbol properties (=:model-id=).
+These work as implicit profiles without explicit definition:
+- =:haiku:= → latest Claude Haiku
+- =:sonnet:= → latest Claude Sonnet
+- =:opus:= → latest Claude Opus
+
+The resolution path: tag → =gptel-org-tasks-get-profile= → check explicit
+profiles first → fall back to model alias (symbol with =:model-id= property)
+→ find backend that has this model.
+
+** Custom Profile Definition
+
+#+begin_src elisp
+(gptel-org-tasks-define-profile 'gpt4
+  :backend "ChatGPT"
+  :model 'gpt-4o
+  :description "OpenAI GPT-4o")
+
+(gptel-org-tasks-define-profile 'fast
+  :backend "Claude"
+  :model 'claude-3-5-haiku-latest
+  :temperature 0.3
+  :max-tokens 4096
+  :description "Fast, low-temperature Haiku")
+#+end_src
+
+Profile plist supports: =:backend=, =:model= (required), =:description=,
+=:temperature=, =:max-tokens=, =:tools=.
+
+** Model Detection Precedence
+
+Two systems detect models from tags (both active, independent):
+
+1. *User heading tags* (=gptel-org.el=): =** :user:haiku: My question=
+   - Detected by =gptel-org--find-model-from-tags=
+   - Applied per-message during prompt construction
+
+2. *TODO heading tags* (=gptel-org-tasks.el=): =** AI-DO Task :haiku:=
+   - Detected by =gptel-org-tasks--maybe-transition-and-apply=
+   - Applied buffer-locally before sending
+
+User heading models take precedence over TODO heading models when both
+are present, because user heading detection happens later (during prompt
+construction) and is per-message.
+
+* Minor Mode: gptel-org-tasks-mode
+
+Enabled per-buffer. Installs:
+
+- =advice: gptel-send :before= → =gptel-org-tasks--before-send=
+- =advice: gptel--suffix-send :before= → =gptel-org-tasks--before-send=
+- =advice: gptel-abort :after= → =gptel-org-tasks--after-abort=
+- =hook: gptel-post-response-functions= → =gptel-org-tasks--clear-active-task=
+
+Skips state transition when:
+- =gptel-send= called with prefix arg (opens transient menu)
+- Dry-run mode ("I" in transient args)
+
+* Interactive Commands
+
+| Command | Purpose |
+|---------+---------|
+| =gptel-org-tasks-mode= | Toggle minor mode |
+| =gptel-org-tasks-set-profile= | Interactively apply a profile to buffer |
+| =gptel-org-tasks-show-profiles= | Display all defined profiles |
+
+* Customization Variables
+
+| Variable | Default | Purpose |
+|----------+---------+---------|
+| =gptel-org-tasks-todo-keyword= | ="AI-DO"= | TODO keyword for ready tasks |
+| =gptel-org-tasks-doing-keyword= | ="AI-DOING"= | TODO keyword for in-progress tasks |
+| =gptel-org-tasks-canceled-keyword= | ="CANCELED"= | TODO keyword for aborted tasks |
+| =gptel-org-tasks-apply-profile-on-send= | =t= | Apply model profile from tags on send |
+| =gptel-org-tasks-change-state-on-send= | =t= | Auto-transition AI-DO→AI-DOING on send |
+
+* Internal Data
+
+| Variable | Scope | Purpose |
+|----------+-------+---------|
+| =gptel-org-tasks--profiles= | global | Alist: =(name . plist)= of defined profiles |
+| =gptel-org-tasks--active-task-marker= | buffer-local | Marker to heading being processed |
+| =gptel-org-tasks--in-advice= | dynamic | Recursion guard for advice functions |
+
+* Key Functions
+
+** Profile Management
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-tasks-define-profile= | Register a named profile |
+| =gptel-org-tasks-get-profile= | Look up profile (explicit or alias) |
+| =gptel-org-tasks-list-profiles= | List all profile names |
+| =gptel-org-tasks--apply-profile= | Apply profile to current buffer |
+
+** Task Workflow
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-tasks--get-task-info= | Read heading: todo-state, tags, profile-tag, marker |
+| =gptel-org-tasks--change-todo-state= | Change heading TODO keyword |
+| =gptel-org-tasks--maybe-transition-and-apply= | Main entry: check task, apply profile, transition state |
+| =gptel-org-tasks--before-send= | Advice for =gptel-send= (guards against transient/dry-run) |
+| =gptel-org-tasks--after-abort= | Advice for =gptel-abort= (transition to CANCELED) |
+| =gptel-org-tasks--clear-active-task= | Post-response hook: clear active marker |

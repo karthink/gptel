@@ -206,6 +206,12 @@
 (declare-function gptel-org--save-state "gptel-org")
 (declare-function gptel-org--restore-state "gptel-org")
 (declare-function gptel-org--annotate-links "gptel-org")
+(declare-function gptel-org--heading-has-tag-p "gptel-org")
+(defvar gptel-org-assistant-tag)
+(declare-function org-at-heading-p "org")
+(declare-function org-get-tags "org")
+(declare-function org-end-of-subtree "org")
+(declare-function outline-next-heading "outline")
 (define-obsolete-function-alias
   'gptel-set-topic 'gptel-org-set-topic "0.7.5")
 
@@ -260,6 +266,15 @@ at the time of the request."
 
 This hook is called in the buffer from which the prompt was sent
 to the LLM, and after a text insertion."
+  :type 'hook
+  :group 'gptel)
+
+(defcustom gptel-abort-hook nil
+  "Hook run in the gptel buffer after a request is aborted.
+
+This hook is called in the buffer where the request was active,
+after all other abort cleanup has completed.  Use this to perform
+additional cleanup of UI elements or state."
   :type 'hook
   :group 'gptel)
 
@@ -1020,13 +1035,16 @@ Supported TYPEs are response, ignore and tool calls."
                    ('response 'gptel-response-highlight)
                    ('ignore 'shadow)
                    (`(tool . ,_) 'shadow))))
-  (when-let* ((prefix
-               (cond ((memq 'margin gptel-highlight-methods)
-                      (gptel-highlight--margin-prefix (or val 'response)))
-                     ((memq 'fringe gptel-highlight-methods)
-                      (gptel-highlight--fringe-prefix (or val 'response))))))
-    (overlay-put ov 'line-prefix prefix)
-    (overlay-put ov 'wrap-prefix prefix)))
+  ;; Skip line-prefix in org-mode: it conflicts with org-indent-mode's
+  ;; line-prefix text properties, causing assistant text to lose indentation.
+  (unless (derived-mode-p 'org-mode)
+    (when-let* ((prefix
+                 (cond ((memq 'margin gptel-highlight-methods)
+                        (gptel-highlight--margin-prefix (or val 'response)))
+                       ((memq 'fringe gptel-highlight-methods)
+                        (gptel-highlight--fringe-prefix (or val 'response))))))
+      (overlay-put ov 'line-prefix prefix)
+      (overlay-put ov 'wrap-prefix prefix))))
 
 (defun gptel-highlight--update (beg end)
   "JIT-lock function: mark gptel response/reasoning regions.
@@ -1059,6 +1077,87 @@ BEG and END delimit the region to refresh."
         (setq prev-pt (point)))))
   `(jit-lock-bounds ,beg . ,end))
 
+;; Org-mode specific highlighting based on heading tags
+;; Uses `gptel-org--heading-has-tag-p' and `gptel-org-assistant-tag' from gptel-org.el
+
+(defun gptel-highlight--org-update-overlays ()
+  "Update highlight overlays based on Org heading tags.
+
+Scans all headings for the assistant tag and creates/updates
+overlays spanning the entire subtree.  Uses `gptel-org-assistant-tag'
+for consistency with gptel-org."
+  (when (derived-mode-p 'org-mode)
+    (require 'gptel-org)
+    ;; Remove existing org-based highlight overlays
+    (remove-overlays (point-min) (point-max) 'gptel-highlight-org t)
+    ;; Scan for tagged headings and create overlays
+    (save-excursion
+      (goto-char (point-min))
+      (while (outline-next-heading)
+        (when (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
+          (let* ((beg (point))
+                 (end (save-excursion
+                        (org-end-of-subtree t t)
+                        (point)))
+                 (ov (make-overlay beg end nil t)))
+            (overlay-put ov 'evaporate t)
+            (overlay-put ov 'gptel-highlight t)
+            (overlay-put ov 'gptel-highlight-org t)
+            (gptel-highlight--decorate ov 'response)))))))
+
+(defun gptel-highlight--org-after-tags-change (&rest _)
+  "Hook function to update highlights after Org tag changes."
+  (when (bound-and-true-p gptel-highlight-mode)
+    (gptel-highlight--org-update-overlays)))
+
+(defvar-local gptel-highlight--org-change-idle-timer nil
+  "Idle timer for debouncing highlight updates on buffer changes.")
+
+(defun gptel-highlight--org-after-change (beg _end _len)
+  "Handle buffer changes that might affect tags.
+BEG is the start of the changed region."
+  (when (bound-and-true-p gptel-highlight-mode)
+    ;; Only update if change is on a heading line (where tags are)
+    (save-excursion
+      (goto-char beg)
+      (when (org-at-heading-p)
+        ;; Debounce updates using an idle timer
+        (when gptel-highlight--org-change-idle-timer
+          (cancel-timer gptel-highlight--org-change-idle-timer))
+        (setq gptel-highlight--org-change-idle-timer
+              (run-with-idle-timer
+               0.2 nil
+               (lambda (buf)
+                 (when (buffer-live-p buf)
+                   (with-current-buffer buf
+                     (setq gptel-highlight--org-change-idle-timer nil)
+                     (gptel-highlight--org-update-overlays))))
+               (current-buffer)))))))
+
+(defun gptel-highlight--org-setup-hooks ()
+  "Install Org hooks for dynamic highlight updates."
+  ;; Hook into tag changes (via org-set-tags-command)
+  (add-hook 'org-after-tags-change-hook
+            #'gptel-highlight--org-after-tags-change nil t)
+  ;; Hook into visibility changes (folding/unfolding)
+  (add-hook 'org-cycle-hook
+            #'gptel-highlight--org-after-tags-change nil t)
+  ;; Hook into buffer changes for manual tag edits
+  (add-hook 'after-change-functions
+            #'gptel-highlight--org-after-change nil t))
+
+(defun gptel-highlight--org-remove-hooks ()
+  "Remove Org hooks for highlight updates."
+  (remove-hook 'org-after-tags-change-hook
+               #'gptel-highlight--org-after-tags-change t)
+  (remove-hook 'org-cycle-hook
+               #'gptel-highlight--org-after-tags-change t)
+  (remove-hook 'after-change-functions
+               #'gptel-highlight--org-after-change t)
+  (when gptel-highlight--org-change-idle-timer
+    (cancel-timer gptel-highlight--org-change-idle-timer)
+    (setq gptel-highlight--org-change-idle-timer nil)))
+
 (define-minor-mode gptel-highlight-mode
   "Visually highlight LLM respones regions.
 
@@ -1068,7 +1167,12 @@ face.  See `gptel-highlight-methods' for highlighting methods, and
 faces.
 
 This minor mode can be used anywhere in Emacs, and not just gptel chat
-buffers."
+buffers.
+
+In Org mode buffers, highlighting is based on heading tags rather
+than text properties.  This integrates better with Org's structure
+and folding.  The tag used is configured by `gptel-org-assistant-tag'
+\(default \"assistant\")."
   :lighter nil
   :global nil
   (cond
@@ -1077,13 +1181,25 @@ buffers."
       (setq left-margin-width (1+ left-margin-width))
       (if-let* ((win (get-buffer-window (current-buffer))))
           (set-window-buffer win (current-buffer))))
-    (jit-lock-register #'gptel-highlight--update)
-    (gptel-highlight--update (point-min) (point-max)))
+    (if (derived-mode-p 'org-mode)
+        ;; Org mode: use tag-based highlighting
+        (progn
+          (gptel-highlight--org-setup-hooks)
+          (gptel-highlight--org-update-overlays))
+      ;; Non-Org: use JIT-lock with text properties
+      (jit-lock-register #'gptel-highlight--update)
+      (gptel-highlight--update (point-min) (point-max))))
    (t (when (memq 'margin gptel-highlight-methods)
         (setq left-margin-width (max (1- left-margin-width) 0))
         (if-let* ((win (get-buffer-window (current-buffer))))
             (set-window-buffer win (current-buffer))))
-      (jit-lock-unregister #'gptel-highlight--update)
+      (if (derived-mode-p 'org-mode)
+          ;; Org mode: remove hooks and overlays
+          (progn
+            (gptel-highlight--org-remove-hooks)
+            (remove-overlays nil nil 'gptel-highlight-org t))
+        ;; Non-Org: unregister JIT-lock
+        (jit-lock-unregister #'gptel-highlight--update))
       (without-restriction
         (remove-overlays nil nil 'gptel-highlight t)))))
 
@@ -1239,10 +1355,6 @@ No state transition here since that's handled by the process sentinels."
           (when gptel-mode (gptel--update-status " Empty response" 'success))
         (set-marker-insertion-type tracking-marker nil) ;Lock tracking-marker
         (when gptel-mode
-          (unless (plist-get info :in-place)
-            (save-excursion (goto-char tracking-marker)
-                            (insert gptel-response-separator
-                                    (gptel-prompt-prefix-string))))
           (gptel--update-status  " Ready" 'success))))
     ;; Run hook in visible window to set window-point, BUG #269
     (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
@@ -1255,7 +1367,14 @@ No state transition here since that's handled by the process sentinels."
         (mapc (lambda (f) (funcall f info)) (plist-get info :post))
         (run-hook-with-args
          'gptel-post-response-functions
-         (marker-position start-marker) (marker-position tracking-marker))))))
+         (marker-position start-marker) (marker-position tracking-marker))))
+    ;; Insert prompt prefix AFTER post-response hooks have run
+    ;; This ensures heading adjustments are complete before calculating prefix level
+    (when (and gptel-mode tracking-marker (not (plist-get info :in-place)))
+      (with-current-buffer gptel-buffer
+        (save-excursion (goto-char tracking-marker)
+                        (insert gptel-response-separator
+                                (gptel-prompt-prefix-string)))))))
 
 (defun gptel--handle-error (fsm)
   "Check for errors in request state FSM.
@@ -1302,6 +1421,8 @@ Perform UI updates and run post-response hooks."
               (start-marker (plist-get info :position))
               (tracking-marker (or (plist-get info :tracking-marker)
                                    start-marker)))
+    ;; Clean up any tool call confirmation overlays in the buffer
+    (gptel--clean-tool-overlays-in-buffer gptel-buffer)
     (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
         (with-selected-window gptel-window
           (mapc (lambda (f) (funcall f info)) (plist-get info :post))
@@ -1313,8 +1434,16 @@ Perform UI updates and run post-response hooks."
         (run-hook-with-args
          'gptel-post-response-functions
          (marker-position start-marker) (marker-position tracking-marker))))
+    ;; Insert prompt prefix AFTER post-response hooks have run
+    ;; This ensures heading adjustments are complete before calculating prefix level
+    (when (and gptel-mode tracking-marker (not (plist-get info :in-place)))
+      (with-current-buffer gptel-buffer
+        (save-excursion (goto-char tracking-marker)
+                        (insert gptel-response-separator
+                                (gptel-prompt-prefix-string)))))
     (with-current-buffer gptel-buffer
-      (when gptel-mode (gptel--update-status  " Abort" 'error)))))
+      (when gptel-mode (gptel--update-status  " Abort" 'error))
+      (run-hooks 'gptel-abort-hook))))
 
 (defun gptel--update-wait (fsm)
   "Update gptel's status after sending a request."
@@ -1724,6 +1853,7 @@ Note: This tool call preview API is currently experimental.")
   "<mouse-1>" #'gptel--dispatch-tool-calls
   "C-c C-c" #'gptel--accept-tool-calls
   "C-c C-k" #'gptel--reject-tool-calls
+  "C-c C-d" #'gptel--deny-tool-calls
   "C-c C-i" #'gptel--inspect-tool-calls)
 
 (defun gptel--display-tool-calls (tool-calls info &optional use-minibuffer)
@@ -1776,8 +1906,10 @@ USE-MINIBUFFER is non-nil)."
                (actions-string
                 (concat (propertize "Run tools: " 'face 'font-lock-string-face)
                         (propertize "C-c C-c" 'face 'help-key-binding)
-                        (propertize ", Cancel request: " 'face 'font-lock-string-face)
+                        (propertize ", Cancel: " 'face 'font-lock-string-face)
                         (propertize "C-c C-k" 'face 'help-key-binding)
+                        (propertize ", Deny: " 'face 'font-lock-string-face)
+                        (propertize "C-c C-d" 'face 'help-key-binding)
                         (propertize ", Inspect: " 'face 'font-lock-string-face)
                         (propertize "C-c C-i" 'face 'help-key-binding)))
                (confirm-strings)
@@ -1888,12 +2020,12 @@ for tool call results.  INFO contains the state of the request."
                (if (derived-mode-p 'org-mode)
                    (concat
                     separator
-                    "#+begin_tool "
+                    "#+begin_src gptel-tool\n"
                     truncated-call
                     (propertize
                      (org-escape-code-in-string (concat "\n" call "\n\n" result))
                      'gptel `(tool . ,id))
-                    "\n#+end_tool\n")
+                    "\n#+end_src\n")
                  ;; TODO(tool) else branch is handling all front-ends as markdown.
                  ;; At least escape markdown.
                  (concat
@@ -1922,7 +2054,7 @@ for tool call results.  INFO contains the state of the request."
              (goto-char tracking-marker)
              (forward-line -1)
              (if (derived-mode-p 'org-mode)
-                 (when (looking-at-p "^#\\+end_tool") (org-cycle))
+                 (when (looking-at-p "^#\\+end_src") (org-cycle))
                (when (looking-at-p "^```") (gptel-markdown-cycle-block))))))))))
 
 (defun gptel--format-tool-call (name arg-values)
@@ -1952,6 +2084,33 @@ NAME and ARG-VALUES are the name and arguments for the call."
       (forward-line 0)
       (hl-line-highlight))))
 
+(defun gptel--clean-tool-overlay (ov)
+  "Clean up tool call overlay OV and its associated previews.
+
+Tears down any preview handlers, deletes the prompt region, and
+removes the overlay."
+  (when (and (overlayp ov) (overlay-buffer ov))
+    (with-current-buffer (overlay-buffer ov)
+      (when-let* ((preview-handles (overlay-get ov 'previews)))
+        (dolist (func-to-handle preview-handles)
+          (when (car func-to-handle) (apply func-to-handle))))
+      (when-let* ((prompt-ov (overlay-get ov 'prompt))
+                  ((overlay-buffer prompt-ov))
+                  (inhibit-read-only t))
+        (delete-region (overlay-start prompt-ov)
+                       (overlay-end prompt-ov))))
+    (delete-overlay ov)))
+
+(defun gptel--clean-tool-overlays-in-buffer (&optional buf)
+  "Clean up all tool call overlays in BUF (defaults to current buffer).
+
+This finds and removes all overlays with the `gptel-tool' property,
+tearing down their previews and prompt regions."
+  (with-current-buffer (or buf (current-buffer))
+    (dolist (ov (overlays-in (point-min) (point-max)))
+      (when (overlay-get ov 'gptel-tool)
+        (gptel--clean-tool-overlay ov)))))
+
 (defun gptel--accept-tool-calls (&optional response ov)
   (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
                                            (point) 'gptel-tool)))
@@ -1968,17 +2127,7 @@ NAME and ARG-VALUES are the name and arguments for the call."
                         (apply (gptel-tool-function tool-spec) arg-values)
                       (error (mapconcat #'gptel--to-string errdata " ")))))
                (funcall process-tool-result result))))
-  (when (and (overlayp ov) (overlay-buffer ov))
-    (with-current-buffer (overlay-buffer ov)
-      (when-let* ((preview-handles (overlay-get ov 'previews)))
-        (dolist (func-to-handle preview-handles)
-          (when (car func-to-handle) (apply func-to-handle))))
-      (when-let* ((prompt-ov (overlay-get ov 'prompt))
-                  ((overlay-buffer prompt-ov))
-                  (inhibit-read-only t))
-        (delete-region (overlay-start prompt-ov)
-                       (overlay-end prompt-ov))))
-    (delete-overlay ov)))
+  (gptel--clean-tool-overlay ov))
 
 (defun gptel--reject-tool-calls (&optional _response ov)
   (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
@@ -1987,27 +2136,58 @@ NAME and ARG-VALUES are the name and arguments for the call."
   (gptel--update-status " Tools cancelled" 'error)
   (message (substitute-command-keys
             "Tool calls canceled.  \\[gptel-menu] to continue them!"))
-  (when (and (overlayp ov) (overlay-buffer ov))
-    (with-current-buffer (overlay-buffer ov)
-      (when-let* ((preview-handles (overlay-get ov 'previews)))
-        (dolist (func-to-handle preview-handles)
-          (when (car func-to-handle) (apply func-to-handle))))
-      (when-let* ((prompt-ov (overlay-get ov 'prompt))
-                  ((overlay-buffer prompt-ov))
-                  (inhibit-read-only t))
-        (delete-region (overlay-start prompt-ov)
-                       (overlay-end prompt-ov))))
-    (delete-overlay ov)))
+  (gptel--clean-tool-overlay ov)
+  ;; Run post-response hooks and insert prompt prefix, like gptel--handle-abort
+  (when-let* ((info (and gptel--fsm-last (gptel-fsm-info gptel--fsm-last)))
+              (gptel-buffer (plist-get info :buffer))
+              (start-marker (plist-get info :position))
+              (tracking-marker (or (plist-get info :tracking-marker)
+                                   start-marker)))
+    (with-current-buffer gptel-buffer
+      (run-hook-with-args
+       'gptel-post-response-functions
+       (marker-position start-marker) (marker-position tracking-marker))
+      ;; Insert prompt prefix AFTER post-response hooks have run
+      (when (and gptel-mode tracking-marker (not (plist-get info :in-place)))
+        (save-excursion (goto-char tracking-marker)
+                        (insert gptel-response-separator
+                                (gptel-prompt-prefix-string)))))))
+
+(defun gptel--deny-tool-calls (&optional response ov)
+  "Deny tool calls and inform the LLM about the denial.
+
+Unlike `gptel--reject-tool-calls' which freezes the FSM, this
+sends a denial result back to the LLM for each tool call so it
+can adjust its approach.  The user is prompted for a reason.
+RESPONSE is the list of pending tool calls and OV is the tool
+call overlay."
+  (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
+                                           (point) 'gptel-tool)))
+                 (list resp o)))
+  (let* ((reason (read-string "Reason for denying (empty for none): "))
+         (denial-msg
+          (if (string-empty-p reason)
+              "Error: The user denied execution of this tool call.  \
+Adjust your approach or ask the user for guidance."
+            (format "Error: The user denied execution of this tool call.  \
+Reason: %s" reason))))
+    (gptel--update-status " Tools denied, informing LLM..." 'warning)
+    (message "Denying tool calls and informing the LLM...")
+    (cl-loop for (_tool-spec _arg-values process-tool-result) in response
+             do (funcall process-tool-result denial-msg))
+    (gptel--clean-tool-overlay ov)))
 
 (defun gptel--dispatch-tool-calls (choice)
   (interactive
    (list
     (let ((choices '((?y "yes") (?n "do nothing")
-                     (?k "cancel request") (?i "inspect call(s)"))))
+                     (?k "cancel request") (?d "deny and inform LLM")
+                     (?i "inspect call(s)"))))
       (read-multiple-choice "Run tool calls? " choices))))
   (pcase (car choice)
     (?y (call-interactively #'gptel--accept-tool-calls))
     (?k (call-interactively #'gptel--reject-tool-calls))
+    (?d (call-interactively #'gptel--deny-tool-calls))
     (?i (gptel--inspect-fsm gptel--fsm-last))))
 
 

@@ -1,0 +1,298 @@
+#+TITLE: gptel — AI Development Context
+#+DESCRIPTION: Reference document for AI-assisted development of gptel
+
+* Overview
+
+gptel is an asynchronous LLM request library and chat UI for Emacs. It supports
+10+ backends (OpenAI, Anthropic, Gemini, Ollama, Bedrock, GitHub Copilot, Kagi,
+etc.), streaming and non-streaming responses, tool/function calling, and deep
+Org mode integration.
+
+** Repository
+
+- Location: =quelpa/build/gptel/=
+- Three remotes:
+  - =origin=: GitHub Siroic fork (pull and push)
+  - =gitea=: Siroic fork (pull and push)
+  - =karthink=: GitHub base repo (pull only)
+- Tests: submodule at =test/=
+- Test command: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
+
+** Relationship to gptel-agent
+
+gptel is the core library. gptel-agent extends it with:
+- Agentic tools (filesystem, web, remote, introspection)
+- Sub-agent delegation framework
+- Agent definition files (Markdown/Org)
+
+gptel-agent is a separate package at =quelpa/build/gptel-agent/=.
+See [[file:../../gptel-agent/gptel-agent-ai.org]] for its context document.
+
+* Architecture
+
+** Request Pipeline
+
+#+begin_example
+gptel-send (or gptel-request)
+  → Create FSM (state machine) with state INIT
+  → INIT→WAIT: create prompt buffer, apply transforms, realize query
+    ├─ gptel-prompt-transform-functions (add context, apply preset)
+    ├─ gptel--realize-query (parse directive, buffer→prompt list, inject media)
+    └─ Convert to backend-specific JSON via cl-defmethod
+  → HTTP request (Curl or url.el) — async
+  → WAIT→TYPE: response received, parsed
+  → TYPE→TOOL: tool calls detected → run elisp → inject results → WAIT (loop)
+  → TYPE→DONE: insert response, run post-response hooks, cleanup
+  → ERRS/ABRT: error handling or user abort
+#+end_example
+
+** FSM States
+
+| State | Handler | Purpose |
+|-------+---------+---------|
+| INIT  | setup   | Create prompt buffer, apply transforms |
+| WAIT  | request | Fire HTTP, wait for response |
+| TYPE  | route   | Decide: tool call or final response |
+| TOOL  | execute | Run tool functions, re-request |
+| DONE  | insert  | Insert response, fire hooks |
+| ERRS  | error   | Handle errors |
+| ABRT  | abort   | User abort cleanup |
+
+Transition table: =gptel-request--transitions= (predicate-based).
+Handlers: =gptel-request--handlers= (state→function alist).
+
+** Key Design Patterns
+
+- *Generic methods* (=cl-defmethod=) for backend extensibility
+- *Buffer-local variables* for per-session state
+- *Overlays* for response bounds and visual feedback
+- *Plist-based context passing* (FSM info plist)
+- *Hooks + transform functions* for customization pipeline
+
+* Source Files
+
+** Core
+
+| File | Lines | Purpose |
+|------+-------+---------|
+| =gptel.el= | ~2700 | Main entry point: chat buffers, UI, keybindings, presets, highlighting |
+| =gptel-request.el= | ~2900 | Request library: FSM, prompt construction, generic backend interface |
+| =gptel-transient.el= | ~2000 | Transient menu UI for model/backend/context/tools configuration |
+| =gptel-context.el= | ~850 | Context aggregation: add/remove buffers/files/regions |
+
+** Backends
+
+| File | Lines | Backend | Notes |
+|------+-------+---------+-------|
+| =gptel-openai.el= | ~740 | OpenAI/ChatGPT | 20+ models, reasoning (o1/o3) |
+| =gptel-anthropic.el= | ~770 | Anthropic/Claude | Thinking blocks, prompt caching |
+| =gptel-gemini.el= | ~650 | Google Gemini | Tool calling integration |
+| =gptel-ollama.el= | ~360 | Ollama (local) | Token counting |
+| =gptel-bedrock.el= | ~660 | AWS Bedrock | Multi-modal, document handling |
+| =gptel-gh.el= | ~450 | GitHub Copilot | Citation handling |
+| =gptel-kagi.el= | ~180 | Kagi FastGPT | Summarizer, references |
+| =gptel-openai-extras.el= | ~430 | PrivateGPT, Perplexity | Source citations |
+
+** Org Integration
+
+| File | Lines | Purpose |
+|------+-------+---------|
+| =gptel-org.el= | ~1800 | Org mode support: subtree context, properties, branching, links, Markdown→Org |
+| =gptel-org-cache.el= | ~870 | Context caching: hash-based invalidation, tag-based auto-caching |
+| =gptel-org-tasks.el= | ~390 | AI task workflow: TODO transitions, model profiles via tags |
+| =gptel-org-archive.el= | ~590 | Archive with AI summaries: git tracking, two-phase workflow |
+
+** Other
+
+| File | Lines | Purpose |
+|------+-------+---------|
+| =gptel-rewrite.el= | ~800 | In-place text rewriting: refactor, merge/diff/accept |
+| =gptel-integrations.el= | ~330 | Vterm support, MCP integration |
+
+* Key Data Structures
+
+** gptel-backend (cl-defstruct)
+
+Base struct for all backends. Subtypes: =gptel-openai=, =gptel-anthropic=,
+=gptel-gemini=, =gptel-ollama=, =gptel-kagi=, etc.
+
+| Slot | Purpose |
+|------+---------|
+| =name= | Backend identifier string |
+| =host= | API host URL |
+| =protocol= | https or http |
+| =endpoint= | API path (e.g., =/v1/chat/completions=) |
+| =key= | API key (string or function) |
+| =models= | List of model symbols |
+| =stream= | Default streaming setting |
+| =header= | Auth/extra headers (alist or function) |
+| =request-params= | Additional plist params |
+| =curl-args= | Extra curl arguments |
+
+** gptel-fsm (cl-defstruct)
+
+State machine for request lifecycle.
+
+| Slot | Purpose |
+|------+---------|
+| =state= | Current state symbol (INIT, WAIT, TYPE, TOOL, DONE, ERRS, ABRT) |
+| =table= | Transition table alist |
+| =handlers= | Handler functions alist |
+| =info= | Plist context: =:data=, =:buffer=, =:position=, =:callback=, etc. |
+
+** gptel-tool (cl-defstruct)
+
+Tool/function-call specification.
+
+| Slot | Purpose |
+|------+---------|
+| =function= | Elisp function to call |
+| =name= | Tool name (snake_case) |
+| =description= | Description for LLM |
+| =args= | List of plist arg specs |
+| =async= | Boolean: async execution |
+| =category= | Tool grouping category |
+| =confirm= | Ask confirmation before running |
+| =include= | Include tool output in response |
+
+** Major Global Variables
+
+| Variable | Purpose |
+|----------+---------|
+| =gptel--known-backends= | Alist: name→backend struct registry |
+| =gptel--known-tools= | Two-level alist: category→(tool-name→gptel-tool) |
+| =gptel-context= | Alist of (buffer\vert{}file . overlays) context entries |
+| =gptel--fsm-last= | Last FSM for dry-run inspection |
+
+* Public API
+
+** Primary Commands
+
+| Command | Binding | Purpose |
+|---------+---------+---------|
+| =gptel-send= | =C-c RET= | Submit prompt to LLM; prefix arg opens transient menu |
+| =gptel= | | Create/switch to named chat buffer |
+| =gptel-mode= | | Minor mode for chat buffers |
+| =gptel-menu= | | Transient menu: full configuration UI |
+| =gptel-system-prompt= | | Change system directive |
+| =gptel-tools= | | Tool management transient |
+| =gptel-rewrite= | | Region-based text rewriting |
+| =gptel-add= | | Add buffer/region to context |
+| =gptel-add-file= | | Add file/directory to context |
+| =gptel-abort= | | Stop active request |
+
+** Backend Constructors
+
+=gptel-make-openai=, =gptel-make-anthropic=, =gptel-make-gemini=,
+=gptel-make-ollama=, =gptel-make-kagi=, =gptel-make-azure=, =gptel-make-gpt4all=
+
+** Request API
+
+- =gptel-request= — Core async request function (returns FSM)
+- =gptel--request-data= — Generic: convert prompts to backend JSON
+- =gptel-curl--parse-stream= — Generic: parse streaming responses
+- =gptel--parse-response= — Generic: parse non-streaming responses
+- =gptel--inject-prompt= — Generic: append message to conversation
+
+** Key Customization Variables
+
+| Variable | Default | Purpose |
+|----------+---------+---------|
+| =gptel-api-key= | nil | API key (string or function) |
+| =gptel-backend= | ChatGPT | Active LLM backend |
+| =gptel-model= | gpt-4o-mini | Active model symbol |
+| =gptel-stream= | t | Enable streaming responses |
+| =gptel-use-curl= | t | Prefer Curl over url.el |
+| =gptel-temperature= | 1.0 | Response randomness (0.0–2.0) |
+| =gptel-max-tokens= | nil | Max response length |
+| =gptel-directives= | (alist) | System prompt templates |
+| =gptel-prompt-transform-functions= | (list) | Pre-send prompt hooks |
+| =gptel-post-response-functions= | (list) | Post-response insertion hooks |
+| =gptel-cache= | nil | Context caching strategy |
+| =gptel-org-convert-response= | nil | Auto-convert Markdown→Org |
+
+* Preset System
+
+Presets bundle configuration into named, reusable profiles.
+
+- =gptel-make-preset= — Create preset with: backend, model, system prompt, tools, max-tokens, temperature, pre/post hooks
+- =gptel-get-preset= — Retrieve preset by name
+- =gptel--apply-preset= — Apply preset to current buffer (sets buffer-local vars)
+- Presets are the foundation of the agent system (agents ARE presets)
+
+* Tool System
+
+** Defining Tools
+
+#+begin_src elisp
+(gptel-make-tool
+ :name "tool_name"
+ :description "What this tool does"
+ :function #'my-function
+ :args '((:name "arg1" :type string :description "First argument")
+         (:name "arg2" :type integer :optional t :description "Optional arg"))
+ :category "my-category"
+ :confirm t
+ :async nil)
+#+end_src
+
+** Execution Lifecycle
+
+1. LLM returns =tool_calls= in response
+2. Parser extracts tool name + arguments JSON
+3. =gptel--handle-tool-use= matches tool spec
+4. Confirmation if =:confirm t= (via =gptel-confirm-tool-calls=)
+5. Call function with args
+6. Inject tool_call + result back into messages (via =gptel--inject-prompt=)
+7. Re-request LLM with function results
+8. Loop: WAIT→TYPE→TOOL→WAIT until no more tool calls
+
+** Backend Tool Format
+
+Each backend implements tool result injection differently:
+- OpenAI: =tool_calls= array + =tool= role messages
+- Anthropic: =tool_use= + =tool_result= content blocks
+- Gemini: =functionCall= + =functionResponse= parts
+
+* Backend System
+
+** Adding a New Backend
+
+1. Define struct with =(:include gptel-backend)=
+2. Implement =gptel--request-data= — prompt list → JSON
+3. Implement =gptel-curl--parse-stream= — parse SSE/JSONL chunks
+4. Implement =gptel--parse-response= — parse full JSON response
+5. Implement =gptel--inject-prompt= — append message to conversation
+6. Register with constructor (e.g., =gptel-make-mybackend=)
+
+** Streaming
+
+- Curl with =--no-buffer= for immediate chunk delivery
+- SSE (Server-Sent Events) or JSONL format depending on backend
+- Per-chunk callback: =gptel-curl--stream-insert-response=
+- Markdown→Org stream conversion: =gptel--stream-convert-markdown->org=
+
+* Org Mode Integration
+
+See feature-specific documents for details:
+
+- [[file:gptel-org-tasks-ai.org]] — AI task workflow (TODO transitions, model profiles)
+- [[file:gptel-archive-ai.org]] — Archive with AI summaries
+
+** Key Org Features (brief)
+
+- *Subtree context*: limit conversation to current heading
+- *Branching context*: separate conversation per outline path
+- *Property-based config*: =:gptel_backend:=, =:gptel_model:=, etc. (inherited)
+- *Link validation*: auto-detect file/attachment links, validate MIME support
+- *Context caching*: hash-based invalidation, tags =:cache_files:=, =:cache_summary:=
+- *Markdown→Org conversion*: streaming and non-streaming
+
+* Feature-Specific Documents
+
+| Document | Feature | Status |
+|----------+---------+--------|
+| [[file:gptel-archive-ai.org]] | Archive with AI summaries | exists |
+| [[file:gptel-remote-ai.org]] | Remote server tools (gptel-agent) | exists |
+| [[file:gptel-org-tasks-ai.org]] | Org tasks workflow | exists |
+| [[file:emacs-example-ai.org]] | Example AI task workflow | exists |
