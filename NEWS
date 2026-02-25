@@ -1,27 +1,34 @@
 # -*- mode: org; -*-
 
-* 0.9.9.5-pre
+* 0.9.9.4
 
 ** Breaking changes
 
-- The models =o3=, =o3-mini=, =o4-mini=, =claude-3.5-sonnet=,
-  =claude-3.7-sonnet=, =claude-3.7-sonnet-thought=, =claude-opus-4= and
-  =gemini-2.0-flash-001= have been removed from the default list of GitHub
-  Copilot models.  These models are no longer available in the GitHub Copilot
-  API.
+- The models =gpt-5-codex=, =o3=, =o3-mini=, =o4-mini=,
+  =claude-3.5-sonnet=, =claude-3.7-sonnet=, =claude-3.7-sonnet-thought=,
+  =claude-opus-4= and =gemini-2.0-flash-001= have been removed from the
+  default list of GitHub Copilot models.  These models are no longer
+  available in the GitHub Copilot API.
 
 - =gptel-track-media= now controls whether links to media files are
-  tracked /only/ in chat buffers.  Previously it also controlled
-  whether media files added to the context explicitly via
-  =gptel-add-file= were sent.  This is considered a bug and has now
-  been fixed.
+  tracked /only/ in chat buffers.  Previously it also controlled whether
+  media files added to the context explicitly via =gptel-add-file= were
+  sent.  This is considered a bug and has now been fixed.
 
 ** New models and backends
 
-- GitHub Copilot backend: Add support for =gpt-41-copilot= and
-  =gemini-3-pro-preview=
+- GitHub Copilot backend: Add support for =gpt-5.2=, =gpt-5.2-codex=,
+  =gpt-41-copilot=, =claude-opus-4.5=, =claude-opus-4.6=,
+  =gemini-3-pro-preview= and =gemini-3-flash-preview=.
 
-- Add support for =gemini-3-pro-preview=.
+- Anthropic backend: Add support for =claude-opus-4-6= and
+  =claude-sonnet-4-6=.
+
+- Bedrock backend: Add support for =claude-opus-4-5=,
+  =claude-opus-4-6=, =claude-sonnet-4-6= and =nova-2-lite=.
+
+- Add support for =gemini-3.1-pro-preview=, =gemini-3-pro-preview= and
+  =gemini-3-flash-preview=.
 
 - Add support for =gpt-5.1=.
 
@@ -38,6 +45,28 @@
   ring redirection now correctly captures the full response from the
   LLM, including pre- and post-tool-call text.
 
+- =gptel-rewrite= now supports tool calling.  If =gptel-tools= is
+  non-nil the LLM can, for instance, read files to fetch more context
+  for the rewrite action.
+
+- If a preset has been applied in a gptel chat buffer, saving the
+  buffer to a file causes the preset to be recorded along with the
+  other metadata (model, backend, tools etc).  This makes it possible
+  to associate any collection of gptel settings/preferences with the
+  chat file, and not just the few properties that gptel writes to the
+  file otherwise.  But resuming this chat with the preset settings
+  applied requires that the preset be defined, so the chat file will
+  be less self-contained.
+
+- =gptel-send= now works in Vterm buffers in a limited way.  Responses
+  will be inserted into Vterm buffers, but without streaming.  The
+  respond-in-place option to overwrite queries with responses in Vterm
+  buffers is supported as well, but might be buggy if your shell
+  prompt is "rich" and has many dynamic elements.
+
+  Support for =gptel-send= in Term/Ansi-Term and Eat buffers is not
+  yet available but planned.
+
 ** Notable bug fixes
 
 - Function-valued system messages/directives are now evaluated in the
@@ -45,6 +74,10 @@
   context of the current buffer correctly.  (Previously they were
   evaluated in a temporary buffer used to construct the query, leading
   to unexpected behavior.)
+
+- When using OpenAI-compatible APIs (such as Deepseek), models that
+  call tools within their "reasoning" phase are now correctly handled
+  by gptel.
 
 * 0.9.9.3
 
@@ -359,12 +392,12 @@
   ~claude-opus-4-20250514~.
 
 - Add support for AWS Bedrock models.  You can create an AWS Bedrock
-  gptel backend with ~gptel-make-bedrock~, which see.  Please note:
-  AWS Bedrock support requires Curl 8.9.0 or higher.
+  gptel backend with ~gptel-make-bedrock~.  Please note: AWS Bedrock
+  support requires Curl 8.9.0 or higher.
 
-- You can now create an xAI backend with ~gptel-make-xai~, which see.
-  (xAI was supported before but the model configuration is now handled
-  for you by this function.)
+- You can now create an xAI backend with ~gptel-make-xai~.  (xAI was
+  supported before but the model configuration is now handled for you
+  by this function.)
 
 - Add support for GitHub Copilot Chat.  See the README and
   ~gptel-make-gh-copilot~.  Please note: this is only the chat

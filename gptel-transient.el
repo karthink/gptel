@@ -31,6 +31,8 @@
 
 (declare-function ediff-regions-internal "ediff")
 (declare-function ediff-make-cloned-buffer "ediff-utils")
+(declare-function org-escape-code-in-string "org-src")
+(declare-function gptel--vterm-delete "gptel-integrations")
 
 
 ;; * Helper functions and vars
@@ -72,13 +74,11 @@ global value."
     (_ (kill-local-variable sym)
        (set sym value))))
 
-(defvar gptel--preset nil
-  "Name of last applied gptel preset.
-
-For internal use only.")
-
 (defun gptel--preset-mismatch-p (name)
-  "Check if gptel preset with NAME is in effect."
+  "Check if gptel preset with NAME is in effect.
+
+This is intended to be fast but imperfect.  See
+`gptel--preset-mismatch-value' for more granular checking."
   (let ((elm (or (gptel-get-preset name)
                  (gptel-get-preset (intern-soft name))))
         key val)
@@ -300,21 +300,20 @@ documention.  Return nil if user does not provide a number, for default."
 	 (num (read-number prompt -1 history)))
     (if (= num -1) nil num)))
 
-(defun gptel-system-prompt--format (&optional message)
-  "Format the system MESSAGE for display in gptel's transient menus.
+(defun gptel-system-prompt--format ()
+  "Format the system prompt for display in gptel's transient menus.
 
-Handle formatting for system messages when the active
-`gptel-model' does not support system messages."
-  (setq message (or message gptel--system-message))
+Handle formatting for system messages when the active `gptel-model' does
+not support system messages."
   (if (gptel--model-capable-p 'nosystem)
       (concat (propertize "[No system message support for model "
                           'face 'transient-heading)
               (propertize (gptel--model-name gptel-model)
                           'face 'warning)
               (propertize "]" 'face 'transient-heading))
-    (if message
+    (if gptel--system-message
         (gptel--describe-directive
-         message (max (- (window-width) 12) 14) "⮐ ")
+         gptel--system-message (max (- (window-width) 12) 14) "⮐ ")
       "[No system message set]")))
 
 (defun gptel--tools-init-value (obj)
@@ -539,7 +538,6 @@ which see."
                                   ('t "buffer-locally")
                                   (_ "globally")))
                         gptel--known-presets nil t)))))
-  (gptel--set-with-scope 'gptel--preset name gptel--set-buffer-locally)
   (gptel--apply-preset
    name (lambda (sym val)
           (gptel--set-with-scope sym val gptel--set-buffer-locally)))
@@ -1365,6 +1363,7 @@ supports.  See `gptel-track-media' for more information."
   :description
   "Yank to context"
   (interactive "P")
+  (require 'gptel-context)
   (gptel-context-add-current-kill arg)
   (transient-setup))
 
@@ -1687,10 +1686,13 @@ This sets the variable `gptel-include-tool-results', which see."
                      (if (consp reduced-prompt);either (region . prompt) or prompt
                          (concat (and (car reduced-prompt)
                                       (concat "#+begin_src " (gptel--strip-mode-suffix major-mode)
-                                              "\n" (car reduced-prompt) "\n#+end_src\n\n"))
+                                              "\n" (org-escape-code-in-string (car reduced-prompt))
+                                              "\n#+end_src\n\n"))
                                  (cdr reduced-prompt))
                        (concat "#+begin_src " (gptel--strip-mode-suffix major-mode)
-                               "\n" (or (cdr-safe reduced-prompt) reduced-prompt) "\n#+end_src"))))
+                               "\n" (org-escape-code-in-string
+                                     (or (cdr-safe reduced-prompt) reduced-prompt))
+                               "\n#+end_src"))))
               (t (setq reduced-prompt
                        (if (consp reduced-prompt);either (region . prompt) or prompt
                            (concat (and (car reduced-prompt)
@@ -1765,7 +1767,11 @@ This sets the variable `gptel-include-tool-results', which see."
       ;; text is killed below.
       (when in-place
         (if (or buffer-read-only (get-char-property (point) 'read-only))
-            (message "Not replacing prompt: region is read-only")
+            (cond
+             ((derived-mode-p 'vterm-mode)
+              (require 'gptel-integrations)
+              (gptel--vterm-delete))
+             (t (message "Not replacing prompt: region is read-only")))
           (let ((beg (if (use-region-p)
                          (region-beginning)
                        (max (previous-single-property-change
@@ -1863,7 +1869,7 @@ This uses the prompts in the variable
           (gptel--set-with-scope
            'gptel--system-message prompt gptel--set-buffer-locally)
           (gptel--edit-directive 'gptel--system-message
-            :callback (lambda () (call-interactively #'gptel-menu)))))
+            :callback (lambda (_) (call-interactively #'gptel-menu)))))
     (message "No prompts available.")))
 
 (transient-define-suffix gptel--suffix-system-message (&optional cancel)

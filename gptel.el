@@ -3,7 +3,7 @@
 ;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
-;; Version: 0.9.9.3
+;; Version: 0.9.9.4
 ;; Package-Requires: ((emacs "27.1") (transient "0.7.4") (compat "30.1.0.0"))
 ;; Keywords: convenience, tools
 ;; URL: https://github.com/karthink/gptel
@@ -68,22 +68,20 @@
 ;;
 ;; ChatGPT is configured out of the box.  For the other sources:
 ;;
-;; - For Azure: define a gptel-backend with `gptel-make-azure', which see.
-;; - For Gemini: define a gptel-backend with `gptel-make-gemini', which see.
-;; - For Anthropic (Claude): define a gptel-backend with `gptel-make-anthropic',
-;;   which see.
-;; - For AI/ML API, Together.ai, Anyscale, Groq, OpenRouter, DeepSeek, Cerebras or
-;;   Github Models: define a gptel-backend with `gptel-make-openai', which see.
-;; - For PrivateGPT: define a backend with `gptel-make-privategpt', which see.
-;; - For Perplexity: define a backend with `gptel-make-perplexity', which see.
-;; - For Deepseek: define a backend with `gptel-make-deepseek', which see.
-;; - For Kagi: define a gptel-backend with `gptel-make-kagi', which see.
+;; - For Azure: define a gptel-backend with `gptel-make-azure'.
+;; - For Gemini: define a gptel-backend with `gptel-make-gemini'.
+;; - For Anthropic (Claude): define a gptel-backend with `gptel-make-anthropic'.
+;; - For AI/ML API, Together.ai, Anyscale, Groq, OpenRouter, DeepSeek, Cerebras
+;;   or Github Models: define a gptel-backend with `gptel-make-openai'.
+;; - For PrivateGPT: define a backend with `gptel-make-privategpt'.
+;; - For Perplexity: define a backend with `gptel-make-perplexity'.
+;; - For Deepseek: define a backend with `gptel-make-deepseek'.
+;; - For Kagi: define a gptel-backend with `gptel-make-kagi'.
 ;;
 ;; For local models using Ollama, Llama.cpp or GPT4All:
 ;;
 ;; - The model has to be running on an accessible address (or localhost)
-;; - Define a gptel-backend with `gptel-make-ollama' or `gptel-make-gpt4all',
-;;   which see.
+;; - Define a gptel-backend with `gptel-make-ollama' or `gptel-make-gpt4all'.
 ;; - Llama.cpp or Llamafiles: Define a gptel-backend with `gptel-make-openai'.
 ;;
 ;; Consult the package README for examples and more help with configuring
@@ -190,12 +188,13 @@
 ;; usage.
 
 ;;; Code:
-(defconst gptel-version "0.9.9.3")
+(defconst gptel-version "0.9.9.4")
 
 (declare-function markdown-mode "markdown-mode")
 (declare-function gptel-menu "gptel-transient")
 (declare-function gptel-system-prompt "gptel-transient")
 (declare-function gptel-tools "gptel-transient")
+(declare-function gptel--vterm-pre-insert "gptel-integrations")
 (declare-function pulse-momentary-highlight-region "pulse")
 
 (declare-function ediff-make-cloned-buffer "ediff-util")
@@ -224,6 +223,46 @@
 
 
 ;;; User options
+(defcustom gptel-pre-response-hook nil
+  "Hook run before inserting the LLM response into the current buffer.
+
+This hook is called in the buffer where the LLM response will be
+inserted.
+
+Note: this hook only runs if the request succeeds."
+  :type 'hook
+  :group 'gptel)
+
+(define-obsolete-variable-alias
+  'gptel-post-response-hook 'gptel-post-response-functions
+  "0.6.0"
+  "Post-response functions are now called with two arguments: the
+start and end buffer positions of the response.")
+
+(defcustom gptel-post-response-functions nil
+  "Abnormal hook run after inserting the LLM response into the current buffer.
+
+This hook is called in the buffer to which the LLM response is
+sent, and after the full response has been inserted.  Each
+function is called with two arguments: the response beginning and
+end positions.
+
+Note: this hook runs even if the request fails.  In this case the
+response beginning and end positions are both the cursor position
+at the time of the request."
+  :type 'hook
+  :group 'gptel)
+
+(add-hook 'gptel-post-response-functions 'pulse-momentary-highlight-region 70)
+
+(defcustom gptel-post-stream-hook nil
+  "Hook run after each insertion of the LLM's streaming response.
+
+This hook is called in the buffer from which the prompt was sent
+to the LLM, and after a text insertion."
+  :type 'hook
+  :group 'gptel)
+
 (defcustom gptel-save-state-hook nil
   "Hook run before gptel saves model parameters to a file.
 
@@ -289,6 +328,12 @@ configuration that might require a UI update.")
 
 (defvar-local gptel--bounds nil)
 (put 'gptel--bounds 'safe-local-variable #'always)
+
+(defvar gptel--preset nil
+  "Name of last applied gptel preset.
+
+For internal use only.")
+(put 'gptel--preset 'safe-local-variable #'symbolp)
 
 (defvar-local gptel--tool-names nil
   "Store to persist tool names to file across Emacs sessions.
@@ -363,33 +408,44 @@ Note: This will move the cursor."
           (scroll-up-command))
       (error nil))))
 
-(defun gptel-beginning-of-response (&optional _ _ arg)
-  "Move point to the beginning of the LLM response ARG times."
+(defun gptel-beginning-of-response (&optional beg _end arg)
+  "Move point to BEG, or to the beginning of the LLM response ARG times."
   (interactive (list nil nil
                      (prefix-numeric-value current-prefix-arg)))
-  (gptel-end-of-response nil nil (- (or arg 1))))
+  (gptel-end-of-response beg nil (- (or arg 1))))
 
-(defun gptel-end-of-response (&optional _ _ arg)
-  "Move point to the end of the LLM response ARG times."
+(defun gptel-end-of-response (&optional beg end arg)
+  "Move point to end of LLM response.
+
+With BEG, start search from BEG when ARG is negative.
+With END, start search from END when ARG is positive.
+Otherwise move ARG times, defaulting to 1."
   (interactive (list nil nil
                      (prefix-numeric-value current-prefix-arg)))
   (unless arg (setq arg 1))
-  (let ((search (if (> arg 0)
-                    #'text-property-search-forward
-                  #'text-property-search-backward)))
+  (let* ((search (if (> arg 0)
+                     #'text-property-search-forward
+                   #'text-property-search-backward))
+         (goto-prefix-end
+          (lambda () (when-let* ((prefix (gptel-prompt-prefix-string))
+                            ((not (string-empty-p prefix)))
+                            ((looking-at (concat "\n\\{1,2\\}"
+                                                 (regexp-quote prefix) "?"))))
+                  (goto-char (match-end 0)))))
+         (goto-prefix-beg
+          (lambda () (when-let* ((prefix (gptel-response-prefix-string))
+                            ((not (string-empty-p prefix)))
+                            ((looking-back (concat (regexp-quote prefix) "?")
+                                           (point-min))))
+                  (goto-char (match-beginning 0))))))
+    (cond
+     ((and end (> arg 0)) (goto-char end) (cl-decf arg) (funcall goto-prefix-end))
+     ((and beg (< arg 0)) (goto-char beg) (cl-incf arg) (funcall goto-prefix-beg)))
     (dotimes (_ (abs arg))
       (funcall search 'gptel 'response t)
       (if (> arg 0)
-          (when-let* ((prefix (gptel-prompt-prefix-string))
-                      ((not (string-empty-p prefix)))
-                      ((looking-at (concat "\n\\{1,2\\}"
-                                           (regexp-quote prefix) "?"))))
-            (goto-char (match-end 0)))
-        (when-let* ((prefix (gptel-response-prefix-string))
-                    ((not (string-empty-p prefix)))
-                    ((looking-back (concat (regexp-quote prefix) "?")
-                                   (point-min))))
-          (goto-char (match-beginning 0)))))))
+          (funcall goto-prefix-end)
+        (funcall goto-prefix-beg)))))
 
 (defun gptel-markdown-cycle-block ()
   "Cycle code blocks in Markdown."
@@ -542,7 +598,9 @@ the gptel property is set to just PROP.
 
 The legacy structure, a list of (BEG . END) is also supported and will be
 applied before being re-persisted in the new structure."
-  (let ((modified (buffer-modified-p)))
+  ;; Run silently to avoid `gptel--inherit-stickiness' and other hooks that
+  ;; might modify the gptel text property.
+  (with-silent-modifications
     (if (symbolp (caar bounds-alist))
         (mapc
          (lambda (bounds)
@@ -563,8 +621,7 @@ applied before being re-persisted in the new structure."
       (mapc (lambda (bound)
               (add-text-properties
                (car bound) (cdr bound) '(gptel response front-sticky (gptel))))
-            bounds-alist))
-    (set-buffer-modified-p modified)))
+            bounds-alist))))
 
 (defun gptel--restore-state ()
   "Restore gptel state when turning on `gptel-mode'."
@@ -576,6 +633,14 @@ applied before being re-persisted in the new structure."
       (when gptel--bounds
         (gptel--restore-props gptel--bounds)
         (message "gptel chat restored."))
+      (when gptel--preset
+        (if (gptel-get-preset gptel--preset)
+            (gptel--apply-preset
+             gptel--preset (lambda (sym val) (set (make-local-variable sym) val)))
+          (display-warning
+           '(gptel presets)
+           (format "Could not activate gptel preset `%s' in buffer \"%s\""
+                   gptel--preset (buffer-name)))))
       (when gptel--backend-name
         (if-let* ((backend (alist-get
                             gptel--backend-name gptel--known-backends
@@ -604,34 +669,59 @@ applied before being re-persisted in the new structure."
 
 This saves chat metadata when writing the buffer to disk.  To
 restore a chat session, turn on `gptel-mode' after opening the
-file."
+file.
+
+If a gptel preset has been applied in this buffer, a reference to it is
+saved.
+
+Additional metadata is stored only if no preset was applied or if it
+differs from the preset specification.  This is limited to the active
+gptel model and backend names, the system message, active tools, the
+response temperature, max tokens and number of conversation turns to
+send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
   (run-hooks 'gptel-save-state-hook)
   (if (derived-mode-p 'org-mode)
       (progn
         (require 'gptel-org)
         (gptel-org--save-state))
-    (let ((print-escape-newlines t))
+    (let ((print-escape-newlines t)
+          (preset-spec (and gptel--preset
+                            (gptel-get-preset gptel--preset))))
       (save-excursion
         (save-restriction
-          (add-file-local-variable 'gptel-model gptel-model)
-          (add-file-local-variable 'gptel--backend-name
-                                   (gptel-backend-name gptel-backend))
-          (unless (equal (default-value 'gptel--system-message)
-                           gptel--system-message)
-            (add-file-local-variable
-             'gptel--system-message     ;TODO: Handle nil case correctly
-             (car-safe (gptel--parse-directive gptel--system-message))))
-          (if gptel-tools
-              (add-file-local-variable
-               'gptel--tool-names (mapcar #'gptel-tool-name gptel-tools))
-            (delete-file-local-variable 'gptel--tool-names))
-          (if (equal (default-value 'gptel-temperature) gptel-temperature)
-              (delete-file-local-variable 'gptel-temperature)
-            (add-file-local-variable 'gptel-temperature gptel-temperature))
-          (if gptel-max-tokens
+
+          (if preset-spec
+              (add-file-local-variable 'gptel--preset gptel--preset)
+            (delete-file-local-variable 'gptel--preset))
+
+          ;; Model and backend
+          (if (gptel--preset-mismatch-value preset-spec :model gptel-model)
+              (add-file-local-variable 'gptel-model gptel-model))
+          (if (gptel--preset-mismatch-value preset-spec :backend gptel-backend)
+              (add-file-local-variable 'gptel--backend-name
+                                       (gptel-backend-name gptel-backend)))
+          ;; System message
+          (let ((parsed (car-safe (gptel--parse-directive gptel--system-message))))
+            (if (gptel--preset-mismatch-value preset-spec :system parsed)
+                (add-file-local-variable 'gptel--system-message parsed)
+              (delete-file-local-variable 'gptel--system-message)))
+          ;; Tools
+          (let ((tool-names (mapcar #'gptel-tool-name gptel-tools)))
+            (if (gptel--preset-mismatch-value preset-spec :tools tool-names)
+                (add-file-local-variable 'gptel--tool-names tool-names)
+              (delete-file-local-variable 'gptel--tool-names)))
+          ;; Temperature, max tokens and cutoff
+          (if (and (gptel--preset-mismatch-value preset-spec :temperature gptel-temperature)
+                   (not (equal (default-value 'gptel-temperature) gptel-temperature)))
+              (add-file-local-variable 'gptel-temperature gptel-temperature)
+            (delete-file-local-variable 'gptel-temperature))
+          (if (and (gptel--preset-mismatch-value preset-spec :max-tokens gptel-max-tokens)
+                   gptel-max-tokens)
               (add-file-local-variable 'gptel-max-tokens gptel-max-tokens)
             (delete-file-local-variable 'gptel-max-tokens))
-          (if (natnump gptel--num-messages-to-send)
+          (if (and (gptel--preset-mismatch-value
+                    preset-spec :num-messages-to-send gptel--num-messages-to-send)
+                   (natnump gptel--num-messages-to-send))
               (add-file-local-variable 'gptel--num-messages-to-send
                                        gptel--num-messages-to-send)
             (delete-file-local-variable 'gptel--num-messages-to-send))
@@ -876,7 +966,10 @@ To enable this face for responses, `gptel-highlight-methods' must be set."
   :group 'gptel)
 
 (defface gptel-response-fringe-highlight
-  '((t :inherit outline-1 :height reset))
+  ;; NOTE: Remove conditional after we drop Emacs 28.1 (#1254)
+  (if (< emacs-major-version 29)
+      '((t :inherit outline-1 :height 1.0))
+    '((t :inherit outline-1 :height reset)))
   "LLM response fringe/margin face when using `gptel-highlight-mode'.
 
 To enable response highlights in the fringe, `gptel-highlight-methods'
@@ -982,12 +1075,14 @@ buffers."
    (gptel-highlight-mode
     (when (memq 'margin gptel-highlight-methods)
       (setq left-margin-width (1+ left-margin-width))
-      (set-window-buffer (selected-window) (current-buffer)))
+      (if-let* ((win (get-buffer-window (current-buffer))))
+          (set-window-buffer win (current-buffer))))
     (jit-lock-register #'gptel-highlight--update)
     (gptel-highlight--update (point-min) (point-max)))
    (t (when (memq 'margin gptel-highlight-methods)
         (setq left-margin-width (max (1- left-margin-width) 0))
-        (set-window-buffer (selected-window) (current-buffer)))
+        (if-let* ((win (get-buffer-window (current-buffer))))
+            (set-window-buffer win (current-buffer))))
       (jit-lock-unregister #'gptel-highlight--update)
       (without-restriction
         (remove-overlays nil nil 'gptel-highlight t)))))
@@ -1099,22 +1194,25 @@ Handle read-only buffers and run pre-response hooks (but only if
 the request succeeded)."
   (let* ((info (gptel-fsm-info fsm))
          (start-marker (plist-get info :position)))
-    (when (and
-           (memq (plist-get info :callback)
-                 '(gptel--insert-response gptel-curl--stream-insert-response))
-           (with-current-buffer (plist-get info :buffer)
-             (or buffer-read-only
-                 (get-char-property start-marker 'read-only))))
-      (message "Buffer is read only, displaying reply in buffer \"*LLM response*\"")
-      (display-buffer
-       (with-current-buffer (get-buffer-create "*LLM response*")
-         (visual-line-mode 1)
-         (goto-char (point-max))
-         (move-marker start-marker (point) (current-buffer))
-         (current-buffer))
-       '((display-buffer-reuse-window
-          display-buffer-pop-up-window)
-         (reusable-frames . visible))))
+    (when (memq (plist-get info :callback)
+                '(gptel--insert-response gptel-curl--stream-insert-response))
+      (with-current-buffer (plist-get info :buffer)
+        (when (or buffer-read-only (get-char-property start-marker 'read-only))
+          (cond
+           ((derived-mode-p 'vterm-mode)
+            (require 'gptel-integrations)
+            (gptel--vterm-pre-insert info))
+           (t
+            (message "Buffer is read only, displaying reply in buffer \"*LLM response*\"")
+            (display-buffer
+             (with-current-buffer (get-buffer-create "*LLM response*")
+               (visual-line-mode 1)
+               (goto-char (point-max))
+               (move-marker start-marker (point) (current-buffer))
+               (current-buffer))
+             '((display-buffer-reuse-window
+                display-buffer-pop-up-window)
+               (reusable-frames . visible))))))))
     (with-current-buffer (marker-buffer start-marker)
       (when (plist-get info :stream)
         (gptel--update-status " Typing..." 'success))
@@ -1136,32 +1234,28 @@ No state transition here since that's handled by the process sentinels."
                               start-marker))
          ;; start-marker may have been moved if :buffer was read-only
          (gptel-buffer (marker-buffer start-marker)))
-    ;; Run hook in visible window to set window-point, BUG #269
-    (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
-        (with-selected-window gptel-window
-          (mapc (lambda (f) (funcall f (marker-position start-marker)
-                                (marker-position tracking-marker)))
-                (plist-get info :post))
-          (run-hook-with-args
-           'gptel-post-response-functions
-           (marker-position start-marker) (marker-position tracking-marker)))
-      (with-current-buffer gptel-buffer
-        (mapc (lambda (f) (funcall f (marker-position start-marker)
-                              (marker-position tracking-marker)))
-              (plist-get info :post))
-        (run-hook-with-args
-         'gptel-post-response-functions
-         (marker-position start-marker) (marker-position tracking-marker))))
     (with-current-buffer gptel-buffer
       (if (not tracking-marker)         ;Empty response
           (when gptel-mode (gptel--update-status " Empty response" 'success))
-        (pulse-momentary-highlight-region start-marker tracking-marker)
+        (set-marker-insertion-type tracking-marker nil) ;Lock tracking-marker
         (when gptel-mode
           (unless (plist-get info :in-place)
             (save-excursion (goto-char tracking-marker)
                             (insert gptel-response-separator
                                     (gptel-prompt-prefix-string))))
-          (gptel--update-status  " Ready" 'success))))))
+          (gptel--update-status  " Ready" 'success))))
+    ;; Run hook in visible window to set window-point, BUG #269
+    (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
+        (with-selected-window gptel-window
+          (mapc (lambda (f) (funcall f info)) (plist-get info :post))
+          (run-hook-with-args
+           'gptel-post-response-functions
+           (marker-position start-marker) (marker-position tracking-marker)))
+      (with-current-buffer gptel-buffer
+        (mapc (lambda (f) (funcall f info)) (plist-get info :post))
+        (run-hook-with-args
+         'gptel-post-response-functions
+         (marker-position start-marker) (marker-position tracking-marker))))))
 
 (defun gptel--handle-error (fsm)
   "Check for errors in request state FSM.
@@ -1187,16 +1281,12 @@ Perform UI updates and run post-response hooks."
                  (string-trim (gptel--to-string error-msg)))))
     (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
         (with-selected-window gptel-window
-          (mapc (lambda (f) (funcall f (marker-position start-marker)
-                                (marker-position tracking-marker)))
-                (plist-get info :post))
+          (mapc (lambda (f) (funcall f info)) (plist-get info :post))
           (run-hook-with-args
            'gptel-post-response-functions
            (marker-position start-marker) (marker-position tracking-marker)))
       (with-current-buffer gptel-buffer
-        (mapc (lambda (f) (funcall f (marker-position start-marker)
-                              (marker-position tracking-marker)))
-              (plist-get info :post))
+        (mapc (lambda (f) (funcall f info)) (plist-get info :post))
         (run-hook-with-args
          'gptel-post-response-functions
          (marker-position start-marker) (marker-position tracking-marker))))
@@ -1214,16 +1304,12 @@ Perform UI updates and run post-response hooks."
                                    start-marker)))
     (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
         (with-selected-window gptel-window
-          (mapc (lambda (f) (funcall f (marker-position start-marker)
-                                (marker-position tracking-marker)))
-                (plist-get info :post))
+          (mapc (lambda (f) (funcall f info)) (plist-get info :post))
           (run-hook-with-args
            'gptel-post-response-functions
            (marker-position start-marker) (marker-position tracking-marker)))
       (with-current-buffer gptel-buffer
-        (mapc (lambda (f) (funcall f (marker-position start-marker)
-                              (marker-position tracking-marker)))
-              (plist-get info :post))
+        (mapc (lambda (f) (funcall f info)) (plist-get info :post))
         (run-hook-with-args
          'gptel-post-response-functions
          (marker-position start-marker) (marker-position tracking-marker))))
@@ -1763,8 +1849,8 @@ for tool call results.  INFO contains the state of the request."
          (tool-marker (plist-get info :tool-marker))
          (tracking-marker (plist-get info :tracking-marker)))
     ;; Insert tool results
-    (when gptel-include-tool-results
-      (with-current-buffer (marker-buffer start-marker)
+    (with-current-buffer (marker-buffer start-marker)
+      (when gptel-include-tool-results
         (cl-loop
          for (tool args result) in tool-results
          with include-names =
@@ -1805,7 +1891,7 @@ for tool call results.  INFO contains the state of the request."
                     "#+begin_tool "
                     truncated-call
                     (propertize
-                     (concat "\n" call "\n\n" (org-escape-code-in-string result))
+                     (org-escape-code-in-string (concat "\n" call "\n\n" result))
                      'gptel `(tool . ,id))
                     "\n#+end_tool\n")
                  ;; TODO(tool) else branch is handling all front-ends as markdown.
@@ -1828,9 +1914,9 @@ for tool call results.  INFO contains the state of the request."
          (unless tracking-marker
            (setq tracking-marker (plist-get info :tracking-marker)))
          (if tool-marker
-               (move-marker tool-marker tracking-marker)
-             (setq tool-marker (copy-marker tracking-marker nil))
-             (plist-put info :tool-marker tool-marker))
+             (move-marker tool-marker tracking-marker)
+           (setq tool-marker (copy-marker tracking-marker nil))
+           (plist-put info :tool-marker tool-marker))
          (ignore-errors                 ;fold drawer
            (save-excursion
              (goto-char tracking-marker)
@@ -2087,15 +2173,16 @@ SETTER is the function used to set the gptel options.  It must accept
 two arguments, the symbol being set and the value to set it to.  It
 defaults to `set', and can be set to a different function to (for
 example) apply the preset buffer-locally."
+  (unless setter (setq setter #'set))
   (when (memq (type-of preset) '(string symbol))
     (let ((spec (or (gptel-get-preset preset)
                     (user-error "gptel preset \"%s\": Cannot find preset"
                                 preset))))
+      (funcall setter 'gptel--preset preset)
       (setq preset spec)))
-  (unless setter (setq setter #'set))
   (when-let* ((func (plist-get preset :pre))) (funcall func))
   (when-let* ((parents (plist-get preset :parents)))
-    (mapc #'gptel--apply-preset (ensure-list parents)))
+    (mapc (lambda (parent) (gptel--apply-preset parent setter)) (ensure-list parents)))
   (map-do
    (lambda (key val)
      (pcase key
@@ -2170,8 +2257,7 @@ PRESET is the name of a preset, or a spec (plist) of the form
         ((or :description :pre :post))
         (:parents
          (mapc (lambda (parent-preset)
-                 (nconc syms (gptel--preset-syms
-                              (gptel-get-preset parent-preset))))
+                 (nconc syms (gptel--preset-syms parent-preset)))
                (ensure-list val)))
         (:system (push 'gptel--system-message syms))
         (_ (if-let* ((var (or (intern-soft
@@ -2199,11 +2285,64 @@ NAME is the name of a preset, or a spec (plist) of the form
   (let ((syms (make-symbol "syms"))
         (binds (make-symbol "binds"))
         (bodyfun (make-symbol "body")))
-    `(let* ((,syms (gptel--preset-syms ,name))
+    ;; Let-bind symbols that we want to modify with the presets.  Also include
+    ;; `gptel--preset' in this list as we don't want to change its value outside
+    ;; of this macro's scope.
+    `(let* ((,syms (cons 'gptel--preset (gptel--preset-syms ,name)))
             (,bodyfun (lambda () (gptel--apply-preset ,name) ,@body))
             (,binds nil))
        (while ,syms (push (list (car ,syms) (pop ,syms)) ,binds))
        (eval (list 'let (nreverse ,binds) (list 'funcall (list 'quote ,bodyfun)))))))
+
+(defun gptel--preset-mismatch-value (preset-spec key val)
+  "Determine if the value of KEY in PRESET-SPEC matches VAL.
+
+This is an imperfect check for whether the value corresponding to KEY (a
+keyword) in PRESET-SPEC (a plist) matches VAL.  This is required
+primarily to identify which gptel variable values have changed since
+PRESET-SPEC was applied, which is relevant when writing gptel metadata
+to a chat file.
+
+See also `gptel--preset-mismatch-p'."
+  ;; In all cases, assume a mismatch if the preset's value for KEY is a
+  ;; modify-list spec, such as (:append ...)
+  ;; Mismatches may not even be well-defined/determinable in these cases.
+  (or (not preset-spec)
+      (pcase key
+        ;; special cases
+        ((or :system :system-message)
+         (let ((system (plist-get preset-spec :system)))
+           (or (and (stringp system) (not (equal system val)))
+               (functionp system)
+               (and (consp system) (keywordp (car system)))
+               (and (consp system)
+                    (not (equal (car-safe (gptel--parse-directive system))
+                                val))))))
+        (:backend
+         (let ((backend (plist-get preset-spec :backend)))
+           (or (and (consp backend) (keywordp (car-safe backend)))
+               (not (equal (or (and (gptel-backend-p val) (gptel-backend-name val))
+                               val)
+                           (or (and (gptel-backend-p backend) (gptel-backend-name backend))
+                               backend))))))
+        ;; FIXME: We're assuming that val is a list of tool names, not tools
+        (:tools
+         (and-let* ((preset-tools (plist-get preset-spec :tools)))
+           (or (keywordp (car-safe preset-tools))
+               (cl-loop
+                for tool in preset-tools
+                for tool-name =
+                (or (and (stringp tool) tool)
+                    (ignore-errors (gptel-tool-name tool)))
+                if (not (member tool-name uniq-tool-names))
+                collect tool-name into uniq-tool-names
+                finally return
+                (not (equal (sort uniq-tool-names #'string-lessp)
+                            (sort (copy-sequence (ensure-list val)) #'string-lessp)))))))
+        ;; Generic case
+        (_ (let ((field-val (plist-get preset-spec key)))
+             (or (and (consp field-val) (keywordp (car field-val)))
+                 (not (equal field-val val))))))))
 
 ;;;; Presets in-buffer UI
 (defun gptel--transform-apply-preset (_fsm)
@@ -2214,7 +2353,7 @@ Before applying the preset, \"@foo\" is removed from the prompt and
 point is placed at its position."
   (when gptel--known-presets
     (text-property-search-backward 'gptel nil t)
-    (while (re-search-forward "@\\([^[:blank:]]+\\)\\_>" nil t)
+    (while (re-search-forward "@\\([^[:space:]]+\\)\\_>" nil t)
       ;; The following convoluted check is because re-search is much faster if
       ;; the search pattern begins with a non-whitespace char.
       (when (or (= (match-beginning 0) (point-min))
@@ -2239,7 +2378,7 @@ point is placed at its position."
   "Font-lock function for preset indicators in chat buffers.
 
 Return preset fontification info for text up to END."
-  (and (re-search-forward "@\\([^[:blank:]]+\\)\\_>" end t)
+  (and (re-search-forward "@\\([^[:space:]]+\\)\\_>" end t)
        (or (= (match-beginning 0) (point-min))
            (memq (char-syntax (char-before (match-beginning 0))) '(32 62)))
        (not (plist-get (text-properties-at (match-beginning 1)) 'gptel))))

@@ -36,6 +36,66 @@
 (require 'cl-lib)
 (eval-when-compile (require 'transient))
 
+;;;;; Vterm integration
+;; Insertion and deletion is tricky in Vterm buffers.  Try to ensure that
+;; gptel-send still works there.  TODO: Insertion works, but insertion-in-place
+;; is flaky and fails depending on how well Vterm's prompt tracking works, as
+;; well as on the presence of "virtual text" in the prompt.
+(declare-function vterm-copy-mode "vterm")
+(declare-function vterm-delete-region "vterm")
+(declare-function vterm-goto-char "vterm")
+(declare-function vterm-reset-cursor-point "vterm")
+(declare-function vterm-cursor-in-command-buffer-p "vterm")
+(declare-function vterm-send-key "vterm")
+(declare-function vterm-insert "vterm")
+(defvar vterm-copy-mode)
+
+(defun gptel--vterm-delete ()
+  "Try to delete the region or Vterm prompt text.
+
+Intended for use in Vterm buffers with the \"respond-in-place\" option
+of `gptel-send'."
+  (if (use-region-p)
+      (let ((beg (region-beginning))    ; Clear region
+            (end (region-end)))
+        (vterm-copy-mode -1)
+        (condition-case nil
+            ;; Preferred solution, fails if the prompt is part of region
+            (vterm-delete-region beg end)
+          (buffer-read-only
+           (when (vterm-goto-char end)  ;HACK Try to clear characters one by one
+             (let ((prev-pt (1- end)))
+               (while (and (>= (vterm-reset-cursor-point) beg)
+                           (/= (point) prev-pt)
+                           (vterm-cursor-in-command-buffer-p))
+                 (setq prev-pt (point))
+                 (vterm-send-key "<backspace>" nil t nil t)))))))
+    (let ((prev-pt 0))                  ; Clear to prompt
+      (while (and (/= (vterm-reset-cursor-point) prev-pt)
+                  (vterm-cursor-in-command-buffer-p))
+        (setq prev-pt (point))
+        (vterm-send-key "<backspace>" nil t nil t)))))
+
+(defun gptel--vterm-pre-insert (info)
+  "Set up insertion into Vterm buffers for `gptel-send'.
+
+INFO is the query information for the active request."
+  (let ((start-marker (plist-get info :position))
+        (hold-buffer (gptel--temp-buffer " *gptel-vterm-redirect*")))
+    (plist-put info :vterm-marker (copy-marker start-marker t))
+    (with-current-buffer hold-buffer
+      (move-marker start-marker (point-min) hold-buffer)
+      ;; We collect text elsewhere and copy it into the Vterm buffer at the end
+      (add-hook 'gptel-post-response-functions
+                (lambda (beg end)
+                  (let ((response (buffer-substring-no-properties beg end)))
+                    (with-current-buffer (plist-get info :buffer)
+                      (goto-char (plist-get info :vterm-marker))
+                      (when vterm-copy-mode (vterm-copy-mode -1))
+                      (vterm-insert response)))
+                  (kill-buffer (current-buffer)))
+                90 t))))
+
 ;;;; MCP integration - requires the mcp package
 (declare-function mcp-hub-get-all-tool "mcp-hub")
 (declare-function mcp-hub-get-servers "mcp-hub")

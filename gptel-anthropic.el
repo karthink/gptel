@@ -514,7 +514,15 @@ Media files, if present, are placed in `gptel-context'."
 ;;         (plist-get (car (last prompts)) :content)))
 
 (defconst gptel--anthropic-models
-  '((claude-sonnet-4-5-20250929
+  '((claude-sonnet-4-6
+     :description "The best combination of speed and intelligence"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 3
+     :output-cost 15
+     :cutoff-date "2025-08")
+    (claude-sonnet-4-5-20250929
      :description "High-performance model with exceptional reasoning and efficiency"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
@@ -538,6 +546,14 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 3
      :output-cost 15
      :cutoff-date "2025-03")
+    (claude-opus-4-6
+     :description "Most capable model for complex reasoning and advanced coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 5
+     :output-cost 25
+     :cutoff-date "2025-08")
     (claude-opus-4-5-20251101
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)

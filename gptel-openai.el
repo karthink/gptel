@@ -181,8 +181,15 @@ Throw an error if there is no match."
 ;; chunks.  We collect them in INFO -> :partial_json.  The end of a tool call
 ;; chunk is marked by the beginning of another, or by the end of the stream.  In
 ;; either case we flaten the :partial_json we have thus far, add it to the tool
-;; call spec in :tool-use and reset it.  Finally we append the tool calls to the
-;; (INFO -> :data -> :messages) list of prompts.
+;; call spec in :tool-use and reset it.
+;;
+;; If we find reasoning text, collect it in INFO -> :reasoning, to be consumed
+;; by the stream filter (and eventually the callback).  We also collect it in
+;; INFO -> :reasoning-chunks, in case we need to send it back along with tool
+;; call results.
+;;
+;; Finally we append any tool calls and accumulated reasoning text (from
+;; :reasoning-chunks) to the (INFO -> :data -> :messages) list of prompts.
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai) info)
   "Parse an OpenAI API data stream.
@@ -198,22 +205,29 @@ information if the stream contains it."
                 ;; The stream has ended, so we do the following thing (if we found tool calls)
                 ;; - pack tool calls into the messages prompts list to send (INFO -> :data -> :messages)
                 ;; - collect tool calls (formatted differently) into (INFO -> :tool-use)
-                (when-let* ((tool-use (plist-get info :tool-use))
-                            (args (apply #'concat (nreverse (plist-get info :partial_json))))
-                            (func (plist-get (car tool-use) :function)))
-                  (plist-put func :arguments args) ;Update arguments for last recorded tool
-                  (gptel--inject-prompt
-                   (plist-get info :backend) (plist-get info :data)
-                   `(:role "assistant" :content :null :tool_calls ,(vconcat tool-use))) ; :refusal :null
-                  (cl-loop
-                   for tool-call in tool-use ; Construct the call specs for running the function calls
-                   for spec = (plist-get tool-call :function)
-                   collect (list :id (plist-get tool-call :id)
-                                 :name (plist-get spec :name)
-                                 :args (ignore-errors (gptel--json-read-string
-                                                       (plist-get spec :arguments))))
-                   into call-specs
-                   finally (plist-put info :tool-use call-specs)))
+                ;; - Clear any reasoning content chunks we've captured
+                (progn
+                  (when-let* ((tool-use (plist-get info :tool-use))
+                              (args (apply #'concat (nreverse (plist-get info :partial_json))))
+                              (func (plist-get (car tool-use) :function)))
+                    (plist-put func :arguments args) ;Update arguments for last recorded tool
+                    (gptel--inject-prompt
+                     (plist-get info :backend) (plist-get info :data)
+                     `( :role "assistant" :content :null :tool_calls ,(vconcat tool-use) ; :refusal :null
+                        ;; Return reasoning if available
+                        ,@(and-let* ((chunks (nreverse (plist-get info :reasoning-chunks)))
+                                     (reasoning-field (pop chunks))) ;chunks is (:reasoning.* "chunk1" "chunk2" ...)
+                            (list reasoning-field (apply #'concat chunks)))))
+                    (cl-loop
+                     for tool-call in tool-use ; Construct the call specs for running the function calls
+                     for spec = (plist-get tool-call :function)
+                     collect (list :id (plist-get tool-call :id)
+                                   :name (plist-get spec :name)
+                                   :args (ignore-errors (gptel--json-read-string
+                                                         (plist-get spec :arguments))))
+                     into call-specs
+                     finally (plist-put info :tool-use call-specs)))
+                  (when (plist-member info :reasoning-chunks) (plist-put info :reasoning-chunks nil)))
               (when-let* ((response (gptel--json-read))
                           (delta (map-nested-elt response '(:choices 0 :delta))))
                 (if-let* ((content (plist-get delta :content))
@@ -222,9 +236,9 @@ information if the stream contains it."
                   ;; No text content, so look for tool calls
                   (when-let* ((tool-call (map-nested-elt delta '(:tool_calls 0)))
                               (func (plist-get tool-call :function)))
-                    (if (and (plist-get func :name)
-                             ;; TEMP: This check is for litellm compatibility, should be removed
-                             (not (equal (plist-get func :name) "null"))) ; new tool block begins
+                    (if (and-let* ((func-name (plist-get func :name)) ((not (eq func-name :null))))
+                          ;; TEMP: This check is for litellm compatibility, should be removed
+                          (not (equal func-name "null"))) ; new tool block begins
                         (progn
                           (when-let* ((partial (plist-get info :partial_json)))
                             (let* ((prev-tool-call (car (plist-get info :tool-use)))
@@ -240,11 +254,16 @@ information if the stream contains it."
                       (push (plist-get func :arguments) (plist-get info :partial_json)))))
                 ;; Check for reasoning blocks, currently only used by Openrouter
                 (unless (eq (plist-get info :reasoning-block) 'done)
-                  (if-let* ((reasoning-chunk (or (plist-get delta :reasoning) ;for Openrouter and co
-                                                 (plist-get delta :reasoning_content))) ;for Deepseek, Llama.cpp
+                  (if-let* ((reasoning-plist ;reasoning-plist is (:reasoning.* "chunk" ...) or nil
+                             (or (plist-member delta :reasoning) ;for Openrouter and co
+                                 (plist-member delta :reasoning_content))) ;for Deepseek, Llama.cpp
+                            (reasoning-chunk (cadr reasoning-plist))
                             ((not (or (eq reasoning-chunk :null) (string-empty-p reasoning-chunk)))))
-                      (plist-put info :reasoning
-                                 (concat (plist-get info :reasoning) reasoning-chunk))
+                      (progn (plist-put info :reasoning ;For stream filter consumption
+                                        (concat (plist-get info :reasoning) reasoning-chunk))
+                             (plist-put info :reasoning-chunks ;To include with tool call results, if any
+                                        (cons reasoning-chunk (or (plist-get info :reasoning-chunks)
+                                                                  (list (car reasoning-plist))))))
                     ;; Done with reasoning if we get non-empty content
                     (if-let* (((plist-member info :reasoning)) ;Is this a reasoning model?
                               (c (plist-get delta :content)) ;Started receiving text content?
@@ -281,11 +300,11 @@ Mutate state INFO with response metadata."
        (plist-put call-spec :id (plist-get tool-call :id))
        collect call-spec into tool-use
        finally (plist-put info :tool-use tool-use)))
+    (when-let* ((reasoning (or (plist-get message :reasoning) ;for Openrouter and co
+                               (plist-get message :reasoning_content))) ;for Deepseek, Llama.cpp
+                ((and (stringp reasoning) (not (string-empty-p reasoning)))))
+      (plist-put info :reasoning reasoning))
     (when (and content (not (or (eq content :null) (string-empty-p content))))
-      (when-let* ((reasoning (or (plist-get message :reasoning) ;for Openrouter and co
-                                 (plist-get message :reasoning_content))) ;for Deepseek, Llama.cpp
-                  ((and (stringp reasoning) (not (string-empty-p reasoning)))))
-        (plist-put info :reasoning reasoning))
       content)))
 
 (cl-defmethod gptel--request-data ((backend gptel-openai) prompts)
@@ -300,7 +319,7 @@ Mutate state INFO with response metadata."
            :stream ,(or gptel-stream :json-false)))
         (reasoning-model-p ; TODO: Embed this capability in the model's properties
          (memq gptel-model '(o1 o1-preview o1-mini o3-mini o3 o4-mini
-                                gpt-5 gpt-5-mini gpt-5-nano))))
+                                gpt-5 gpt-5-mini gpt-5-nano gpt-5.1 gpt-5.2))))
     (when (and gptel-temperature (not reasoning-model-p))
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-use-tools
