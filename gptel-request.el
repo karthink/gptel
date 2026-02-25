@@ -2102,7 +2102,7 @@ SYNC is non-nil, the response string is returned instead."
           (when sync-error
             (message "gptel-request: %s" sync-error))
           sync-response)
-      fsm)))
+      fsm))
 
 (defun gptel--realize-query (fsm)
   "Realize the query payload for FSM from its prompt buffer.
