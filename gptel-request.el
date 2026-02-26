@@ -784,8 +784,7 @@ binary-encoded.")
 ;; Since we want this known at compile time, when markdown-mode is not
 ;; guaranteed to be available, we have to hardcode it.
 (defconst gptel-markdown--link-regex
-  "\\(?:\\(?1:!\\)?\\(?2:\\[\\)\\(?3:\\^?\\(?:\\\\\\]\\|[^]]\\)*\\|\\)\\(?4:\\]\\)\\(?5:(\\)\\s-*\\(?6:[^)]*?\\)\\(?:\\s-+\\(?7:\"[^\"]*\"\\)\\)?\\s-*\\(?8:)\\)\\|\\(<\\)\\([a-z][a-z0-9.+-]\\{1,31\\}:[^]	\n
-<>,;()]+\\)\\(>\\)\\)"
+  "\\(?:\\(?1:!\\)?\\(?2:\\[\\)\\(?3:\\^?\\(?:\\\\\\]\\|[^]]\\)*\\|\\)\\(?4:\\]\\)\\(?5:(\\)\\s-*\\(?6:[^)]*?\\)\\(?:\\s-+\\(?7:\"[^\"]*\"\\)\\)?\\s-*\\(?8:)\\)\\|\\(<\\)\\([a-z][a-z0-9.+-]\\{1,31\\}:[^]	\n<>,;()]+\\)\\(>\\)\\)"
   "Link regex for `gptel-mode' in Markdown mode.")
 
 
@@ -2709,9 +2708,7 @@ PROC-INFO is the plist containing process metadata."
   (with-current-buffer proc-buf
     (save-excursion
       (goto-char (point-min))
-      (when (re-search-forward "
-?\n
-?\n" nil t)
+      (when (re-search-forward "?\n?\n" nil t)
         (when (eq gptel-log-level 'debug)
           (gptel--log (gptel--json-encode
                        (buffer-substring-no-properties
