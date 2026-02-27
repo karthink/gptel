@@ -348,14 +348,14 @@ For the meanings of the keyword arguments, see `gptel-make-openai'."
            '((grok-4-1-fast-reasoning
               :description "Fast tool-calling model"
               :capabilities (tool-use json reasoning)
-              :context-window 256
+              :context-window 2000
               :input-cost 0.2
               :output-cost 0.5)
 
              (grok-4-1-fast-non-reasoning
               :description "Fast tool-calling model (non-reasoning)"
               :capabilities (tool-use json)
-              :context-window 256
+              :context-window 2000
               :input-cost 0.2
               :output-cost 0.5)
 
@@ -369,14 +369,14 @@ For the meanings of the keyword arguments, see `gptel-make-openai'."
              (grok-4-fast-reasoning
               :description "Fast tool-calling model"
               :capabilities (tool-use json reasoning)
-              :context-window 256
+              :context-window 2000
               :input-cost 0.2
               :output-cost 0.5)
 
              (grok-4-fast-non-reasoning
               :description "Fast tool-calling model (non-reasoning)"
               :capabilities (tool-use json)
-              :context-window 256
+              :context-window 2000
               :input-cost 0.2
               :output-cost 0.5)
 
@@ -405,7 +405,7 @@ For the meanings of the keyword arguments, see `gptel-make-openai'."
               :description "Grok 2 Vision"
               :capabilities (tool-use json media)
               :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-              :context-window 32768
+              :context-window 32
               :input-cost 2
               :output-cost 10))))
   "Register an xAI backend for gptel with NAME.
