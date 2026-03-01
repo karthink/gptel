@@ -241,12 +241,20 @@ TOOLS is a list of `gptel-tool' structs, which see."
             (:name ,name :content ,result)))))
      tool-use))))
 
-(cl-defmethod gptel--inject-prompt ((_backend gptel-gemini) data new-prompt &optional _position)
-  "Append NEW-PROMPT to existing prompts in query DATA.
+(cl-defmethod gptel--inject-prompt ((_backend gptel-gemini) data new-prompt &optional position)
+  "Inject NEW-PROMPT into existing prompts in query DATA.
 
 See generic implementation for full documentation."
+  (when (keywordp (car-safe new-prompt)) ;Is new-prompt one or many?
+    (setq new-prompt (list new-prompt)))
   (let ((prompts (plist-get data :contents)))
-    (plist-put data :contents (vconcat prompts (list new-prompt)))))
+    (pcase position
+      ('nil (plist-put data :contents (vconcat prompts new-prompt)))
+      ((pred integerp)
+       (when (< position 0) (setq position (+ (length prompts) position)))
+       (plist-put data :contents (vconcat (substring prompts 0 position)
+                                          new-prompt
+                                          (substring prompts position)))))))
 
 (cl-defmethod gptel--inject-tool-call ((_backend gptel-gemini) data tool-call new-call)
   "Replace TOOL-CALL in query DATA with NEW-CALL.

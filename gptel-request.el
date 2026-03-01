@@ -1616,18 +1616,20 @@ send to the LLM.")
 
 ;; FIXME(fsm) unify this with `gptel--inject-media', which is a mess
 (cl-defgeneric gptel--inject-prompt
-    (_backend data new-prompt &optional _position)
-  "Append NEW-PROMPT to existing prompts in query DATA.
+    (_backend data new-prompt &optional position)
+  "Inject NEW-PROMPT into existing prompts in query DATA.
 
 NEW-PROMPT can be a single message or a list of messages.
 
-Not implemented: if POSITION is
-- a non-negative number, insert it at that position in PROMPTS.
-- a negative number, insert it there counting from the end.
+If POSITION is
+- nil, append NEW-PROMPT at the end of DATA
+- a non-negative integer, insert it at that position in DATA.
+- a negative integer, insert it there counting from the end.
+
+- Not implemented: a list of accessors, inject it at that position.
 
 This generic implementation handles the Anthropic,
 OpenAI-compatible and Ollama message formats."
-  ;; ;TODO(fsm): implement _POSITION
   (when (keywordp (car-safe new-prompt)) ;Is new-prompt one or many?
     (setq new-prompt (list new-prompt)))
   (let ((prompts (plist-get data :messages)))
