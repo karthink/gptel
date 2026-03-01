@@ -263,6 +263,49 @@ to the LLM, and after a text insertion."
   :type 'hook
   :group 'gptel)
 
+(defcustom gptel-pre-tool-call-functions nil
+  "Abnormal hook called before each tool call.
+
+Each hook function is called a plist with the following keys:
+
+:name - the name of the tool being called, a string
+:args - a plist of the tool call arguments, as specified in the tool
+        definition.  For a hypothetical edit_file tool that takes three
+        arguments, a FILENAME, an ORIGINAL and REPLACEMENT strings, this
+        plist is structured as
+
+  (:filename \"/path/to/file.md\"
+   :original \"...\"
+   :replacement \"...\")
+
+:buffer  - The name of the buffer from which the request was sent.
+:backend - The name of the gptel backend used for the request.
+:model   - The name of the gptel model used for the request.
+
+The function can work by side effects and return nil, or return a plist
+with one or more of the following keys.
+
+:stop        - If non-nil, stop the request entirely.
+:stop-reason - If :stop is non-nil, the reason for stopping.  Intended
+               for the user, not the LLM.
+
+:block -   If non-nil, continue the request but block this tool call and
+           mark it as having erred.  Can be a string to send as the
+           result instead, typically an explanation for why the tool was
+           not run.  Intended for the LLM, not the user.
+
+:confirm - Whether the tool call should seek confirmation from the user.
+           t and nil are both meaningful, signifying that the tool call
+           should and should not seek user confirmation, respectively.
+           When present, this key overrides all other confirmation
+           options (such as `gptel-confirm-tool-calls' and the tool's
+           CONFIRM slot).
+:args    - The updated argument plist for the tool call.
+:result  - The result of this tool call, used instead of the tool call
+           output.  Not marked as an error."
+  :type 'hook
+  :group 'gptel)
+
 (defcustom gptel-save-state-hook nil
   "Hook run before gptel saves model parameters to a file.
 
@@ -1084,7 +1127,8 @@ buffers."
   `((WAIT ,#'gptel--handle-wait ,#'gptel--update-wait)
     (TYPE ,#'gptel--handle-pre-insert)
     (ERRS ,#'gptel--handle-error ,#'gptel--fsm-last)
-    (TOOL ,#'gptel--update-tool-call ,#'gptel--handle-tool-use ,#'gptel--update-tool-ask)
+    (TOOL ,#'gptel--handle-pre-tool ,#'gptel--update-tool-call
+          ,#'gptel--handle-tool-use ,#'gptel--update-tool-ask)
     (DONE ,#'gptel--handle-post-insert ,#'gptel--fsm-last)
     (ABRT ,#'gptel--handle-abort))
   "Alist specifying handlers for `gptel-send' state transitions.
@@ -1305,6 +1349,63 @@ Perform UI updates and run post-response hooks."
          (marker-position start-marker) (marker-position tracking-marker))))
     (with-current-buffer gptel-buffer
       (when gptel-mode (gptel--update-status  " Abort" 'error)))))
+
+(defun gptel--handle-pre-tool (fsm)
+  "Run `gptel-pre-tool-call-functions' for FSM."
+  (let* ((info (gptel-fsm-info fsm))
+         (buffer (plist-get info :buffer)))
+    (when (buffer-local-value 'gptel-pre-tool-call-functions buffer)
+      ;; This function might run many times, so only act on the remaining tool calls.
+      (let ((tool-use (cl-remove-if (lambda (tc) (plist-get tc :result))
+                                    (plist-get info :tool-use)))
+            (hook-func-args (list :buffer (buffer-name buffer)
+                                  :backend (plist-get info :backend)
+                                  :model (plist-get info :model))))
+        (with-current-buffer buffer
+          (run-hook-wrapped             ; Run pre tool call functions
+           'gptel-pre-tool-call-functions
+           (lambda (hook-func)
+             (prog1 nil
+               (dolist (tool-call tool-use)
+                 (let* ((name (plist-get tool-call :name))
+                        (args (plist-get tool-call :args))
+                        (hook-func-result
+                         (with-demoted-errors "gptel-pre-tool-call hook error: %S"
+                           (funcall hook-func (nconc (list :name name :args args)
+                                                     hook-func-args)))))
+                   (if (plist-get hook-func-result :stop)
+                       (progn           ; Stop the request immediately
+                         (and-let* ((reason (plist-get hook-func-result :stop-reason)))
+                           (plist-put info :stop-reason reason)
+                           (gptel--update-status reason 'error))
+                         (gptel--fsm-transition fsm 'ERRS))
+                     ;; if hook-func returns :confirm, add the check
+                     (when (plist-get hook-func-result :confirm)
+                       (plist-put tool-call :confirm t))
+                     ;; if hook-func returns :args or :name, replace in the call
+                     (when (or (plist-get hook-func-result :args)
+                               (plist-get hook-func-result :name))
+                       ;; Merge with args in the messages array sent to the LLM
+                       (gptel--inject-tool-call
+                        (plist-get info :backend) (plist-get info :data)
+                        tool-call hook-func-result)
+                       ;; Merge with the tool-call in tool-use that actually runs
+                       (gptel--merge-plists tool-call hook-func-result))
+                     ;; TODO(tool-hooks): :block behavior not final!
+                     (let ((blockp (plist-get hook-func-result :block))
+                           (result (plist-get hook-func-result :result)))
+                       (when blockp
+                         (plist-put tool-call :error t)
+                         (setq result
+                               (concat "<tool_call_error>\n"
+                                       (if (stringp blockp) blockp
+                                         (format "Tool %s blocked by user" name))
+                                       "\n</tool_call_error>")))
+                       (when result
+                         (gptel--process-tool-call
+                          fsm (cl-find-if (lambda (ts) (equal (gptel-tool-name ts) name))
+                                          (plist-get info :tools))
+                          tool-call result))))))))))))))
 
 (defun gptel--update-wait (fsm)
   "Update gptel's status after sending a request."
