@@ -53,11 +53,11 @@ Plist with keys:
       0
     (with-temp-buffer
       (insert str)
-      (/ (count-words (point-min) (point-max)) 2.5))))
+      (* (count-words (point-min) (point-max)) 2.5))))
 
 (defun gptel--estimate-tokens-from-words (num)
   "Estimate token count from NUM words."
-  (or (and (numberp num) (/ num 2.5)) 0))
+  (or (and (numberp num) (* num 2.5)) 0))
 
 (defun gptel--sha1 (obj)
   "Compute SHA1 hash of OBJ for caching.
