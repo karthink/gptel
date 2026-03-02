@@ -1129,6 +1129,7 @@ buffers."
     (ERRS ,#'gptel--handle-error ,#'gptel--fsm-last)
     (TOOL ,#'gptel--handle-pre-tool ,#'gptel--update-tool-call
           ,#'gptel--handle-tool-use ,#'gptel--update-tool-ask)
+    (TRET ,#'gptel--handle-tool-result)
     (DONE ,#'gptel--handle-post-insert ,#'gptel--fsm-last)
     (ABRT ,#'gptel--handle-abort))
   "Alist specifying handlers for `gptel-send' state transitions.

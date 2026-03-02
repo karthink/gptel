@@ -1674,7 +1674,8 @@ BACKEND is the `gptel-backend'."
              (,#'gptel--tool-use-p    . TOOL)
              (t                       . DONE)))
     (TOOL . ((,#'gptel--error-p       . ERRS)
-             (,#'gptel--tool-result-p . WAIT)
+             (t                       . TRET)))
+    (TRET . ((,#'gptel--tool-result-p . WAIT)
              (t                       . DONE))))
   "Alist specifying gptel's default state transition table for requests.
 
@@ -1689,6 +1690,7 @@ considered a success and acts as a default.")
 (defvar gptel-request--handlers
   `((WAIT ,#'gptel--handle-wait)
     (TOOL ,#'gptel--handle-tool-use)
+    (TRET ,#'gptel--handle-tool-result)
     (DONE ,#'gptel--handle-post)
     (ERRS ,#'gptel--handle-post)
     (ABRT ,#'gptel--handle-post))
@@ -1804,14 +1806,8 @@ injects the results into the prompt data and transitions the FSM."
       ;; is modified by side effect.
       ;; FIXME: Make the implicit addition to :tool-use explicit
       (plist-put tool-call :result result)) ;for the LLM
-    (when (<= (cl-decf remaining) 0)        ; All tools have run
-      (gptel--inject-prompt
-       (plist-get info :backend) (plist-get info :data)
-       (gptel--parse-tool-results (plist-get info :backend)
-                                  (plist-get info :tool-use)))
-      (funcall (plist-get info :callback)
-               (cons 'tool-result tool-result-alist) info)
-      (gptel--fsm-transition fsm))))
+    ;; All tools have run
+    (when (<= (cl-decf remaining) 0) (gptel--fsm-transition fsm))))
 
 (defun gptel--handle-tool-use (fsm)
   "Run tool calls captured in FSM, and advance the state machine with the results."
@@ -1867,6 +1863,20 @@ injects the results into the prompt data and transitions the FSM."
           (plist-put info :tool-pending t)
           (funcall (plist-get info :callback)
                    (cons 'tool-call pending-calls) info))))))
+
+(defun gptel--handle-tool-result (fsm)
+  "Handle the results of tool execution in FSM.
+
+Inject tool results into into the prompt data (for the LLM), run the
+callback (for the user), and transition the request state."
+  (let ((info (gptel-fsm-info fsm)))
+    (gptel--inject-prompt
+     (plist-get info :backend) (plist-get info :data)
+     (gptel--parse-tool-results (plist-get info :backend)
+                                (plist-get info :tool-use)))
+    (funcall (plist-get info :callback)
+             (cons 'tool-result (plist-get info :tool-result)) info))
+  (gptel--fsm-transition fsm))
 
 (defun gptel--handle-post (fsm)
   "Run cleanup for `gptel-request' with FSM."
