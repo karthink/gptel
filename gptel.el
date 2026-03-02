@@ -306,6 +306,43 @@ with one or more of the following keys.
   :type 'hook
   :group 'gptel)
 
+(defcustom gptel-post-tool-call-functions nil
+  "Abnormal hook called after each tool call.
+
+Each hook function is called a plist with the following keys:
+
+:name - the name of the tool being called, a string
+:args - a plist of the tool call arguments, as specified in the tool
+        definition.  For a hypothetical edit_file tool that takes three
+        arguments, a FILENAME, an ORIGINAL and REPLACEMENT strings, this
+        plist is structured as
+
+  (:filename \"/path/to/file.md\"
+   :original \"...\"
+   :replacement \"...\")
+
+:result  - The tool call result, serialized to a string.
+:buffer  - The name of the buffer from which the request was sent.
+:backend - The name of the gptel backend used for the request.
+:model   - The name of the gptel model used for the request.
+
+The function can work by side effects and return nil, or return a plist
+with one or more of the following keys.
+
+:stop        - If non-nil, stop the request entirely.
+:stop-reason - If :stop is non-nil, the reason for stopping.  Intended
+               for the user, not the LLM.
+
+:block -   If non-nil, continue the request but block this tool call and
+           mark it as having erred.  Can be a string to send as the
+           result instead, typically an explanation for why the tool was
+           not run.  Intended for the LLM, not the user.
+
+:result  - The updated result of this tool call, used instead of the
+           tool call output.  Not marked as an error."
+  :type 'hook
+  :group 'gptel)
+
 (defcustom gptel-save-state-hook nil
   "Hook run before gptel saves model parameters to a file.
 
@@ -1129,7 +1166,7 @@ buffers."
     (ERRS ,#'gptel--handle-error ,#'gptel--fsm-last)
     (TOOL ,#'gptel--handle-pre-tool ,#'gptel--update-tool-call
           ,#'gptel--handle-tool-use ,#'gptel--update-tool-ask)
-    (TRET ,#'gptel--handle-tool-result)
+    (TRET ,#'gptel--handle-post-tool ,#'gptel--handle-tool-result)
     (DONE ,#'gptel--handle-post-insert ,#'gptel--fsm-last)
     (ABRT ,#'gptel--handle-abort))
   "Alist specifying handlers for `gptel-send' state transitions.
@@ -1407,6 +1444,59 @@ Perform UI updates and run post-response hooks."
                           fsm (cl-find-if (lambda (ts) (equal (gptel-tool-name ts) name))
                                           (plist-get info :tools))
                           tool-call result))))))))))))))
+
+(defun gptel--handle-post-tool (fsm)
+  "Run `gptel-post-tool-call-functions for FSM."
+  (let* ((info (gptel-fsm-info fsm))
+         (buffer (plist-get info :buffer)))
+    (when (buffer-local-value 'gptel-post-tool-call-functions buffer)
+      (let ((hook-func-args (list :buffer (buffer-name buffer)
+                                  :backend (plist-get info :backend)
+                                  :model (plist-get info :model))))
+        (with-current-buffer buffer
+          (run-hook-wrapped             ; Run pre tool call functions
+           'gptel-post-tool-call-functions
+           (lambda (hook-func)
+             (prog1 nil
+               (dolist (tool-call (plist-get info :tool-use))
+                 (let* ((name (plist-get tool-call :name))
+                        (args (plist-get tool-call :args))
+                        (hook-func-result
+                         (with-demoted-errors "gptel-post-tool-call hook error: %S"
+                           (funcall hook-func
+                                    (nconc (list :name name :args args
+                                                 :result (plist-get tool-call :result))
+                                           hook-func-args)))))
+                   (if (plist-get hook-func-result :stop)
+                       (progn           ; Stop the request immediately
+                         (and-let* ((reason (plist-get hook-func-result :stop-reason)))
+                           (plist-put info :stop-reason reason)
+                           (gptel--update-status reason 'error))
+                         (gptel--fsm-transition fsm 'ERRS))
+                     ;; TODO(tool-hooks): :block behavior not final!
+                     (let ((blockp (plist-get hook-func-result :block))
+                           (result (plist-get hook-func-result :result)))
+                       (when blockp
+                         (plist-put tool-call :error t)
+                         (setq result
+                               (concat "<tool_call_error>\n"
+                                       (if (stringp blockp) blockp
+                                         (format "Tool %s blocked by user" name))
+                                       "\n</tool_call_error>")))
+                       (when result
+                         (cl-loop       ; Update results sent to callback
+                          for call in (plist-get info :tool-result)
+                          for (spec stored-args _) = call
+                          when (and (equal (gptel-tool-name spec) name)
+                                    (null (cl-set-difference
+                                           stored-args args :test #'equal)))
+                          do (setf (caddr call) result) and return nil
+                          finally
+                          (display-warning
+                           '(gptel tools)
+                           (format "Tool %s: Could not replace tool results" name)))
+                         ;; Update results sent to LLM
+                         (plist-put tool-call :result result))))))))))))))
 
 (defun gptel--update-wait (fsm)
   "Update gptel's status after sending a request."

@@ -32,6 +32,22 @@
   now be specified as a list instead of an opaque object.  See its
   documentation for details.
 
+- New hooks ~gptel-pre-tool-call-functions~ and
+  ~gptel-post-tool-call-functions~ run before and after each tool call,
+  respectively.  These hooks receive details of the (planned or
+  finished) tool call and provide fine-grained control over them.  These
+  hooks work with ~gptel-send~, including when invoked from gptel's
+  Transient menu or from Elisp.
+
+  ~gptel-pre-tool-call-functions~ can be used to modify tool call
+  arguments, short-circuit the call and provide the results, block the
+  tool call but continue the request with a message for the LLM, or stop
+  the request entirely.
+
+  ~gptel-post-tool-call-functions~ can be used to modify tool call
+  results, block the tool call but continue the request, or stop the
+  request entirely.
+
 ** Notable bug fixes
 
 - ~gptel-backend~ can now be set from customize buffers.  These are
