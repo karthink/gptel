@@ -101,6 +101,14 @@
      :input-cost 1
      :output-cost 1
      :cutoff-date "2025-08")
+    (gpt-5.3-codex
+     :description "The best model for coding and agentic tasks"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 272
+     :input-cost 1
+     :output-cost 1
+     :cutoff-date "2025-08")
     (claude-haiku-4.5
      :description "Near-frontier intelligence at blazing speeds with extended thinking"
      :capabilities (media tool-use cache)
