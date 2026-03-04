@@ -416,8 +416,19 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 2.0                    ; 4.0 for >200k tokens
      :output-cost 12.00                 ; 18.0 for >200k tokens
      :cutoff-date "2025-01")
+    (gemini-3.1-flash-lite-preview
+     :description "Nost cost-efficient multimodal Gemini model, offering the fastest performance for high-frequency, lightweight tasks"
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"
+                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 1048
+     :input-cost 0.25
+     :output-cost 1.50
+     :cutoff-date "2025-01")
     (gemini-3-pro-preview
-     :description "Most intelligent Gemini model with SOTA reasoning and multimodal understanding"
+     :description "DEPRECATED: The model will be shut down on March 9, 2026. Please use gemini-3.1-pro-preview instead"
      :capabilities (tool-use json media audio video)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html"
