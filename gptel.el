@@ -1816,12 +1816,15 @@ USE-MINIBUFFER is non-nil)."
              (concat (propertize "\n" 'face
                                  '(:inherit font-lock-string-face :underline t :extend t))))
             (overlay-put prompt-ov 'evaporate t)
-            (overlay-put ov 'prompt prompt-ov)
+            (overlay-put ov 'prompt (cons prompt-ov (overlay-get ov 'prompt)))
             (move-overlay ov ov-start (point)))
           ;; Add confirmation prompt to the overlay
-          (when preview-handlers (overlay-put ov 'previews preview-handlers))
+          (when preview-handlers
+            (overlay-put ov 'previews
+                         (nconc (overlay-get ov 'previews) preview-handlers)))
           (overlay-put ov 'mouse-face 'highlight)
-          (overlay-put ov 'gptel-tool tool-calls)
+          (overlay-put ov 'gptel-tool
+                       (nconc (overlay-get ov 'gptel-tool) tool-calls))
           (overlay-put ov 'help-echo
                        (concat "Tool call(s) requested: " actions-string))
           (overlay-put ov 'keymap gptel-tool-call-actions-map)
@@ -1963,11 +1966,11 @@ NAME and ARG-VALUES are the name and arguments for the call."
       (when-let* ((preview-handles (overlay-get ov 'previews)))
         (dolist (func-to-handle preview-handles)
           (when (car func-to-handle) (apply func-to-handle))))
-      (when-let* ((prompt-ov (overlay-get ov 'prompt))
-                  ((overlay-buffer prompt-ov))
-                  (inhibit-read-only t))
-        (delete-region (overlay-start prompt-ov)
-                       (overlay-end prompt-ov))))
+      (dolist (prompt-ov (overlay-get ov 'prompt))
+        (when-let* (((overlay-buffer prompt-ov))
+                    (inhibit-read-only t))
+          (delete-region (overlay-start prompt-ov)
+                         (overlay-end prompt-ov)))))
     (delete-overlay ov)))
 
 (defun gptel--reject-tool-calls (&optional _response ov)
@@ -1982,11 +1985,11 @@ NAME and ARG-VALUES are the name and arguments for the call."
       (when-let* ((preview-handles (overlay-get ov 'previews)))
         (dolist (func-to-handle preview-handles)
           (when (car func-to-handle) (apply func-to-handle))))
-      (when-let* ((prompt-ov (overlay-get ov 'prompt))
-                  ((overlay-buffer prompt-ov))
-                  (inhibit-read-only t))
-        (delete-region (overlay-start prompt-ov)
-                       (overlay-end prompt-ov))))
+      (dolist (prompt-ov (overlay-get ov 'prompt))
+        (when-let* (((overlay-buffer prompt-ov))
+                    (inhibit-read-only t))
+          (delete-region (overlay-start prompt-ov)
+                         (overlay-end prompt-ov)))))
     (delete-overlay ov)))
 
 (defun gptel--dispatch-tool-calls (choice)
