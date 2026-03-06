@@ -1887,7 +1887,7 @@ for streaming responses only."
 Each key is a tool name (string) and value is a list of one or two
 functions, for preview-setup and (optional) preview-teardown.
 
-The preview-setup function is called with two arguments: a list of the
+The preview-setup function is called with two arguments: a plist of the
 corresponding tool call arguments and the request INFO plist.  It must
 set up the preview for the tool call and return a handle to the preview,
 which can be any object, but typically an overlay or a buffer.
@@ -1977,14 +1977,16 @@ USE-MINIBUFFER is non-nil)."
                                   start-marker 'gptel-tool))
                        (make-overlay ov-start (or tracking-marker start-marker)
                                      nil nil nil)))
+               (arg-values)
                (prompt-ov))
           ;; If the cursor is at the overlay-end, it ends up outside, so move it back
           (unless tracking-marker
             (when (= (point) start-marker) (ignore-errors (backward-char))))
           (save-excursion
             (goto-char (overlay-end ov))
-            (pcase-dolist (`(,tool-spec ,arg-values _) tool-calls)
+            (pcase-dolist (`(,tool-spec ,arg-plist _) tool-calls)
               ;; Call tool-specific confirmation prompt
+              (setq arg-values (gptel--map-tool-args tool-spec arg-plist))
               (if-let* ((funcs (cdr (assoc (gptel-tool-name tool-spec)
                                            gptel--tool-preview-alist)))
                         ((functionp (car-safe funcs))))
@@ -2146,7 +2148,8 @@ NAME and ARG-VALUES are the name and arguments for the call."
                  (list resp o)))
   (gptel--update-status " Calling tool..." 'mode-line-emphasis)
   (message "Continuing query...")
-  (cl-loop for (tool-spec arg-values process-tool-result) in response
+  (cl-loop for (tool-spec arg-plist process-tool-result) in response
+           for arg-values = (gptel--map-tool-args tool-spec arg-plist)
            do
            (if (gptel-tool-async tool-spec)
                (apply (gptel-tool-function tool-spec)

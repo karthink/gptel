@@ -55,6 +55,29 @@
   ~gptel-backend~ was displayed in a read-only way, and could even break
   the display of the customize buffer depending on its value.
 
+- Breaking change to the ~gptel-request~ API: Tool call arguments are
+  passed to ~gptel-request~ callbacks as a plist, not a list.  The plist
+  keys are the function argument names as specified in the tool
+  definition.  /This does not affect ~gptel-send~ or (to my best
+  knowledge) any of the packages using gptel./
+
+  Example: The previous behavior was
+
+  : (funcall callback `(tool-call ,web-search ("emacs" 10) ,tool-cb))
+
+  where =web-search= is a ~gptel-tool~, and =callback= and =tool-cb= are
+  the ~gptel-request~ and tool callback respectively.  The new behavior
+  is:
+
+  : (funcall callback
+  :          `(tool-call ,web-search (:query "emacs" :count 10) ,tool,cb))
+
+  where =:query= and =:count= correspond to arguments =query= and
+  =count= in the definition of =web-search=.
+
+  Note that this is a bug fix. It's how the API has been documented and
+  was supposed to work in the first place.
+
 * 0.9.9.4
 
 ** Breaking changes

@@ -1822,7 +1822,6 @@ injects the results into the prompt data and transitions the FSM."
          (lambda (tool-call)
            (letrec ((args (plist-get tool-call :args))
                     (name (plist-get tool-call :name))
-                    (arg-values nil)
                     (tool-spec (cl-find-if (lambda (ts) (equal (gptel-tool-name ts) name))
                                            (plist-get info :tools)))
                     (process-tool-result (apply-partially #'gptel--process-tool-call
@@ -1834,12 +1833,6 @@ injects the results into the prompt data and transitions the FSM."
                               (gptel--json-encode (plist-get tool-call :args))
                               info)
                    (message "Unknown tool called by model: %s" name))
-               (setq arg-values
-                     (mapcar
-                      (lambda (arg)
-                        (let ((key (intern (concat ":" (plist-get arg :name)))))
-                          (plist-get args key)))
-                      (gptel-tool-args tool-spec)))
                (let ((confirm))         ;Check if tool requires confirmation
                  (cond      ;:confirm in tool-call (from hooks) takes precedence
                   ((and-let* ((call-confirm (plist-member tool-call :confirm)))
@@ -1847,22 +1840,35 @@ injects the results into the prompt data and transitions the FSM."
                   ((and gptel-confirm-tool-calls ;global and tool-specific setting
                         (or (eq gptel-confirm-tool-calls t) ;always confirm, or
                             (and-let* ((confirm (gptel-tool-confirm tool-spec)))
-                              (or (not (functionp confirm)) (apply confirm arg-values)))))
+                              (or (not (functionp confirm))
+                                  (apply confirm (gptel--map-tool-args tool-spec args))))))
                    (setq confirm t)))
-                 (if confirm            ;To send to callback for confirmation
-                     (push (list tool-spec arg-values process-tool-result) pending-calls)
-                   (if (gptel-tool-async tool-spec) ;If not, run the tool
-                       (apply (gptel-tool-function tool-spec)
-                              process-tool-result arg-values)
-                     (let ((result (condition-case errdata
-                                       (apply (gptel-tool-function tool-spec) arg-values)
-                                     (error (mapconcat #'gptel--to-string errdata " ")))))
-                       (funcall process-tool-result result))))))))
+                 (if confirm  ;To send to callback for confirmation
+                     (push (list tool-spec args process-tool-result) pending-calls)
+                   (let ((arg-values (gptel--map-tool-args tool-spec args)))
+                     (if (gptel-tool-async tool-spec) ;If not, run the tool
+                         (apply (gptel-tool-function tool-spec)
+                                process-tool-result arg-values)
+                       (let ((result (condition-case errdata
+                                         (apply (gptel-tool-function tool-spec) arg-values)
+                                       (error (mapconcat #'gptel--to-string errdata " ")))))
+                         (funcall process-tool-result result)))))))))
          tool-use)
         (when pending-calls
           (plist-put info :tool-pending t)
           (funcall (plist-get info :callback)
                    (cons 'tool-call pending-calls) info))))))
+
+(defun gptel--map-tool-args (tool-spec args)
+  "Create a tool call argument list from TOOL-SPEC and ARGS.
+
+TOOL-SPEC is a `gptel-tool' and ARGS is a plist of arguments for a tool
+call.  The argument list is suitable for supplying to the tool function."
+  (mapcar
+   (lambda (arg)
+     (let ((key (intern (concat ":" (plist-get arg :name)))))
+       (plist-get args key)))
+   (gptel-tool-args tool-spec)))
 
 (defun gptel--handle-tool-result (fsm)
   "Handle the results of tool execution in FSM.
