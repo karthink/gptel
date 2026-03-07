@@ -32,6 +32,14 @@
   now be specified as a list instead of an opaque object.  See its
   documentation for details.
 
+- When using ~gptel-send~, tool calls that require confirmation can now
+  be examined in full in a dedicated inspection buffer, where they are
+  displayed as Elisp forms.
+
+  The tool name and tool call arguments can also be modified in-place
+  now.  These modifications /must/ be in-place; deleting tool calls or
+  adding new ones to the inspection buffer is not supported.
+
 - New hooks ~gptel-pre-tool-call-functions~ and
   ~gptel-post-tool-call-functions~ run before and after each tool call,
   respectively.  These hooks receive details of the (planned or

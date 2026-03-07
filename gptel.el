@@ -2133,15 +2133,6 @@ NAME and ARG-VALUES are the name and arguments for the call."
                       arg-values " ")
            'font-lock-face 'font-lock-constant-face)))
 
-(defun gptel--inspect-tool-calls ()
-  (interactive)
-  (with-selected-window
-      (gptel--inspect-fsm gptel--fsm-last)
-    (goto-char (point-min))
-    (when (search-forward-regexp "^:tool-use" nil t)
-      (forward-line 0)
-      (hl-line-highlight))))
-
 (defun gptel--accept-tool-calls (&optional response ov)
   (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
                                            (point) 'gptel-tool)))
@@ -2199,7 +2190,165 @@ NAME and ARG-VALUES are the name and arguments for the call."
   (pcase (car choice)
     (?y (call-interactively #'gptel--accept-tool-calls))
     (?k (call-interactively #'gptel--reject-tool-calls))
-    (?i (gptel--inspect-fsm gptel--fsm-last))))
+    (?i (call-interactively #'gptel--inspect-tool-calls))))
+
+;;;; Tool call inspection UI
+(defvar-keymap gptel-tool-call-inspection-map
+  :doc "Actions in the gptel tool inspection buffer."
+  "C-c C-c" #'gptel--inspect-accept-tool-calls
+  "C-c C-k" #'gptel--inspect-reject-tool-calls
+  "C-c C-i" #'gptel--inspect-quit-tool-calls)
+
+(defun gptel--inspect-accept-tool-calls (&optional _)
+  "Run possibly edited tool-calls read from the tool call inspection buffer."
+  (interactive)
+  (let ((call) (index)
+        (read-error
+         (lambda () (user-error
+                "Cannot read modified arguments, please check modifications")))
+        (apply-error
+         (lambda () (message "Cannot apply argument modifications.  \
+This is a bug, please report it!"))))
+    (unless (gptel-fsm-p gptel--fsm-last) (funcall apply-error))
+    (cond
+     ((buffer-modified-p)
+      (let* ((info (gptel-fsm-info gptel--fsm-last))
+             (backend (plist-get info :backend))
+             (tool-use (plist-get info :tool-use))
+             (tool-spec-args-cb) (name)
+             (tool-calls))
+        (dolist (o (cl-remove-if-not (lambda (ov) (overlay-get ov 'gptel-overlay))
+                                     (overlays-in (point-min) (point-max))))
+          (goto-char (overlay-start o))
+          (condition-case nil
+              (save-restriction
+                (narrow-to-region (point) (overlay-end o))
+                (skip-chars-forward "\n\r\ ")
+                (unless (eobp)
+                  (setq call (read (current-buffer))
+                        name (plist-get call :name))))
+            (error (funcall read-error)))
+          (unless (integerp (setq index (overlay-get o 'gptel-overlay)))
+            (funcall read-error))
+          ;; Merge with or remove from messages array...
+          (gptel--inject-tool-call
+           backend (plist-get info :data) (nth index tool-use) call)
+          (if (not call)
+              ;; Remove from tool-use
+              (plist-put info :tool-use
+                         (append (cl-subseq tool-use 0 index)
+                                 (cl-subseq tool-use (1+ index))))
+            ;; ...before modifying the tool use block
+            (gptel--merge-plists (nth index tool-use) call)
+            (setq tool-spec-args-cb (overlay-get o 'gptel-tool))
+            ;; and modifying the arguments sent to the callback
+            (setf (nth 0 tool-spec-args-cb)
+                  (or (cl-find name (plist-get info :tools)
+                               :key #'gptel-tool-name :test #'string=)
+                      (gptel-get-tool name)))
+            (setf (nth 1 tool-spec-args-cb) (plist-get call :args))
+            (push tool-spec-args-cb tool-calls)))
+        (gptel--accept-tool-calls   ;include overlay to clean up if there is one
+         tool-calls (cadr (plist-get info :tool-display)))))
+     (t (let* ((tool-display (plist-get (gptel-fsm-info gptel--fsm-last)
+                                        :tool-display)))
+          (apply #'gptel--accept-tool-calls tool-display)))))
+  (quit-window t))
+
+(defun gptel--inspect-reject-tool-calls (&optional _)
+  "Cancel tool-calls and return to query buffer."
+  (interactive)
+  (quit-window t)
+  (apply #'gptel--reject-tool-calls
+   (thread-first (gptel-fsm-info gptel--fsm-last)
+                 (plist-get :tool-display))))
+
+(defun gptel--inspect-quit-tool-calls (&optional _)
+  "Quit inspection window and return to query buffer."
+  (interactive)
+  (quit-window t))
+
+(defalias 'gptel--inspect-tool-post-command
+  (let ((highlight-ov))
+    (lambda ()
+      (unless (memq highlight-ov (overlays-at (point)))
+        (let ((context-ov
+               (cl-loop for ov in (overlays-at (point))
+                        thereis (and (overlay-get ov 'gptel-overlay) ov))))
+          (when highlight-ov (overlay-put highlight-ov 'face nil))
+          (when context-ov (overlay-put context-ov 'face 'gptel-response-highlight))
+          (setq highlight-ov context-ov)))))
+  "Highlight tool call under cursor in gptel tool call inspection buffers.")
+
+(defun gptel--inspect-tool-calls (&optional tool-calls loc)
+  "Set up and switch to a buffer to inspect pending tool-calls.
+
+TOOL-CALLS is the alist of tool calls.  LOC is the source of the query;
+either the query buffer or the tool call dispatch overlay in the query
+buffer.  If it is an overlay, it will be cleaned up when dispatching on
+TOOL-CALLS."
+  (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
+                                           (point) 'gptel-tool)))
+                 (list resp o)))
+  (with-current-buffer (get-buffer-create "*gptel-tool-calls*")
+    (let ((inhibit-read-only t) tool-use
+          (tool-overlay (and (overlayp loc) loc)))
+      (erase-buffer)
+      (unless (derived-mode-p 'lisp-data-mode)
+        (lisp-data-mode)
+        (add-hook 'post-command-hook #'gptel--inspect-tool-post-command nil t))
+      ;; NOTE: This needs to be called after setting the major mode, as
+      ;; buffer-local variables are wiped out.
+      (setq gptel--fsm-last
+            (buffer-local-value 'gptel--fsm-last
+                                (if tool-overlay (overlay-buffer loc) loc))
+            tool-use (plist-get (gptel-fsm-info gptel--fsm-last) :tool-use))
+      ;; For access from the dispatch functions, add tool-calls and the location
+      ;; (if it's an overlay) to INFO.  Overlays will be cleaned up.
+      (plist-put (gptel-fsm-info gptel--fsm-last)
+                 :tool-display (list tool-calls tool-overlay))
+      (insert ";; Inspect or edit tool calls.
+;; Adding or deleting tool calls is not supported.\n\n")
+      (cl-loop for tool-spec-args-cb in tool-calls
+               for (tool-spec arg-plist _process-tool-result) = tool-spec-args-cb
+               with o
+               for name = (gptel-tool-name tool-spec)
+               for pt = (point)
+               for index =
+               (cl-position-if
+                (lambda (call) (and (not (plist-get call :result))
+                               (string= (plist-get call :name) name)
+                               (null (cl-set-difference
+                                      (plist-get call :args) arg-plist
+                                      :test #'equal))))
+                tool-use)
+               do (prin1 (list :name name :args arg-plist)
+                         (current-buffer) '((length . nil) (level . nil)))
+               (setq o (make-overlay pt (point) nil nil t))
+               (overlay-put o 'gptel-tool tool-spec-args-cb)
+               (overlay-put o 'gptel-overlay index)
+               (insert "\n\n"))
+      (goto-char (point-min)) (forward-line 3))
+    (use-local-map
+     (make-composed-keymap
+      gptel-tool-call-inspection-map (current-local-map)))
+    (unless header-line-format
+      (setq header-line-format
+            (substitute-command-keys
+             (concat
+              (propertize "Tool calls" 'face 'font-lock-string-face) ": "
+              (buttonize "Confirm" #'gptel--inspect-accept-tool-calls)
+              " \\[gptel--inspect-accept-tool-calls], "
+              (buttonize "Cancel" #'gptel--inspect-reject-tool-calls)
+              " \\[gptel--inspect-reject-tool-calls], "
+              (buttonize "Return" #'gptel--inspect-quit-tool-calls)
+              " \\[gptel--inspect-quit-tool-calls], "
+              (buttonize "Edit" (lambda (_) (read-only-mode 'toggle)))
+              " \\[read-only-mode]"))))
+    (set-buffer-modified-p nil)
+    (read-only-mode)
+    (gptel--inspect-tool-post-command)
+    (display-buffer (current-buffer) gptel-display-buffer-action)))
 
 
 ;;; Presets
