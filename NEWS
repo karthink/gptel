@@ -23,6 +23,9 @@
 - - GitHub Copilot backend: Add support for =gpt-5.1-codex-,
   =gpt-5.1-codex-mini, =claude-sonnet-4.6= and =gemini-3.1-pro-preview=.
 
+- Gemini backend: add support for =gemini-3.1-flash-lite-preview=;
+  add deprecation notice for =gemini-3-pro-preview=.
+
 ** New features and UI changes
 
 - When using ~setopt~ or the customize interface, ~gptel-backend~ can
