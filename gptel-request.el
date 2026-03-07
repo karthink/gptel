@@ -2404,8 +2404,9 @@ PROMPTS is the plist of previous user queries and LLM responses.")
 
 If SHOOSH is true, don't issue a warning."
   (unless backend
-    (display-warning
-     'gptel "No gptel-backend defined: defaulting to ChatGPT")
+    (unless shoosh
+      (display-warning
+       'gptel "No gptel-backend defined: defaulting to ChatGPT"))
     (setq gptel-backend
           (gptel-make-openai "ChatGPT" :key 'gptel-api-key :stream t)
           backend gptel-backend))

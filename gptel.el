@@ -1583,7 +1583,8 @@ buffer created or switched to.
 INTERACTIVEP is t when gptel is called interactively."
   (interactive
    (progn
-     (gptel--sanitize-model :backend (default-value 'gptel-backend))
+     (gptel--sanitize-model :backend (default-value 'gptel-backend)
+                            :shoosh t)
      (let* ((backend (default-value 'gptel-backend))
             (backend-name
              (format "*%s*" (gptel-backend-name backend))))
