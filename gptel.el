@@ -1499,20 +1499,20 @@ Perform UI updates and run post-response hooks."
                          (plist-put tool-call :result result))))))))))))))
 
 (defun gptel--update-wait (fsm)
-  "Update gptel's status after sending a request."
+  "Update gptel's status in FSM after sending a request."
   (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
     (when gptel-mode
       (gptel--update-status " Waiting..." 'warning))))
 
 (defun gptel--update-tool-call (fsm)
-  "Update gptel's status when calling a tool."
+  "Update gptel's status in FSM when calling a tool."
   (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
     (setq gptel--fsm-last fsm)
     (when gptel-mode
       (gptel--update-status " Calling tool..." 'mode-line-emphasis))))
 
 (defun gptel--update-tool-ask (fsm)
-  "Update gptel's status when there are pending tool calls."
+  "Update gptel's status in FSM when there are pending tool-calls."
   (when (plist-get (gptel-fsm-info fsm) :tool-pending)
     (plist-put (gptel-fsm-info fsm) :tool-pending nil)
     (when gptel-mode
@@ -1927,35 +1927,28 @@ USE-MINIBUFFER is non-nil)."
          (tracking-marker (plist-get info :tracking-marker)))
     ;; pending tool calls look like ((tool callback args) ...)
     (with-current-buffer (plist-get info :buffer)
-      (if (or use-minibuffer        ;prompt for confirmation from the minibuffer
+      (if (or use-minibuffer   ;prompt for confirmation from the minibuffer
               buffer-read-only ;TEMP(tool-preview) Handle read-only buffers better
               (get-char-property
                (max (point-min) (1- (or tracking-marker start-marker)))
                'read-only))
           (let* ((minibuffer-allow-text-properties t)
                  (backend-name (gptel-backend-name (plist-get info :backend)))
-                 (prompt (format "%s wants to run " backend-name)))
-            (map-y-or-n-p
-             (lambda (tool-call-spec)
-               (concat prompt (propertize (gptel-tool-name (car tool-call-spec))
-                                          'face 'font-lock-keyword-face)
-                       ": "))
-             (lambda (tcs) (gptel--accept-tool-calls (list tcs) nil))
-             tool-calls '("tool call" "tool calls" "run")
-             `((?i ,(lambda (_) (save-window-excursion
-                             (with-selected-window
-                                 (gptel--inspect-fsm gptel--fsm-last)
-                               (goto-char (point-min))
-                               (when (search-forward-regexp "^:tool-use" nil t)
-                                 (forward-line 0) (hl-line-highlight))
-                               (use-local-map
-                                (make-composed-keymap
-                                 (define-keymap "q" (lambda () (interactive)
-                                                      (quit-window)
-                                                      (exit-recursive-edit)))
-                                 (current-local-map)))
-                               (recursive-edit) nil)))
-                   "inspect call(s)"))))
+                 (tool-call-names
+                  (mapconcat (lambda (c) (propertize (gptel-tool-name (car c))
+                                                'face 'font-lock-keyword-face))
+                             tool-calls ", "))
+                 (len (length tool-calls))
+                 (prompt (format "%s wants to run %s tool %s (%s). "
+                                 backend-name len (if (> len 1) "calls" "call")
+                                 tool-call-names))
+                 (choices '((?y "Run tools") (?n "Cancel (resumable)")
+                            (?i "Inspect or edit")))
+                 (choice (read-multiple-choice prompt choices)))
+            (pcase (car choice)
+              (?y (gptel--accept-tool-calls tool-calls))
+              (?n (gptel--reject-tool-calls))
+              (?i (gptel--inspect-tool-calls tool-calls (plist-get info :buffer)))))
         ;; Prompt for confirmation from the chat buffer
         (let* ((backend-name (gptel-backend-name (plist-get info :backend)))
                (actions-string
@@ -1963,7 +1956,7 @@ USE-MINIBUFFER is non-nil)."
                         (propertize "C-c C-c" 'face 'help-key-binding)
                         (propertize ", Cancel request: " 'face 'font-lock-string-face)
                         (propertize "C-c C-k" 'face 'help-key-binding)
-                        (propertize ", Inspect: " 'face 'font-lock-string-face)
+                        (propertize ", Inspect or Edit: " 'face 'font-lock-string-face)
                         (propertize "C-c C-i" 'face 'help-key-binding)))
                (confirm-strings)
                ;; FIXME(tool) use a wrapper instead of a manual text-property search,
@@ -2133,13 +2126,19 @@ NAME and ARG-VALUES are the name and arguments for the call."
                       arg-values " ")
            'font-lock-face 'font-lock-constant-face)))
 
-(defun gptel--accept-tool-calls (&optional response ov)
+(defun gptel--accept-tool-calls (&optional tool-calls ov)
+  "Run pending tool-calls.
+
+TOOL-CALLS is the edited tool call list, OV is the tool call dispatch
+overlay in the query buffer."
   (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
                                            (point) 'gptel-tool)))
                  (list resp o)))
-  (gptel--update-status " Calling tool..." 'mode-line-emphasis)
+  (when (overlayp ov)
+    (with-current-buffer (overlay-buffer ov)
+      (gptel--update-status " Calling tool..." 'mode-line-emphasis)))
   (message "Continuing query...")
-  (cl-loop for (tool-spec arg-plist process-tool-result) in response
+  (cl-loop for (tool-spec arg-plist process-tool-result) in tool-calls
            for arg-values = (gptel--map-tool-args tool-spec arg-plist)
            do
            (if (gptel-tool-async tool-spec)
@@ -2162,7 +2161,10 @@ NAME and ARG-VALUES are the name and arguments for the call."
                          (overlay-end prompt-ov)))))
     (delete-overlay ov)))
 
-(defun gptel--reject-tool-calls (&optional _response ov)
+(defun gptel--reject-tool-calls (&optional _tool-calls ov)
+  "Cancel pending tool-calls.
+
+OV is the tool call dispatch overlay."
   (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
                                            (point) 'gptel-tool)))
                  (list resp o)))
@@ -2182,6 +2184,7 @@ NAME and ARG-VALUES are the name and arguments for the call."
     (delete-overlay ov)))
 
 (defun gptel--dispatch-tool-calls (choice)
+  "Dispatch on tool-calls with CHOICE."
   (interactive
    (list
     (let ((choices '((?y "yes") (?n "do nothing")
