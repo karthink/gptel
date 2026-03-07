@@ -1582,27 +1582,29 @@ buffer created or switched to.
 
 INTERACTIVEP is t when gptel is called interactively."
   (interactive
-   (let* ((backend (default-value 'gptel-backend))
-          (backend-name
-           (format "*%s*" (gptel-backend-name backend))))
-     (list (read-buffer
-            "Create or choose gptel buffer: "
-            backend-name nil                         ; DEFAULT and REQUIRE-MATCH
-            (lambda (b)                                   ; PREDICATE
-              ;; NOTE: buffer check is required (#450)
-              (and-let* ((buf (get-buffer (or (car-safe b) b))))
-                (buffer-local-value 'gptel-mode buf))))
-           (condition-case nil
-               (gptel--get-api-key
-                (gptel-backend-key backend))
-             ((error user-error)
-              (setq gptel-api-key
-                    (read-passwd
-                     (format "%s API key: " backend-name)))))
-           (and (use-region-p)
-                (buffer-substring (region-beginning)
-                                  (region-end)))
-           t)))
+   (progn
+     (gptel--sanitize-model :backend (default-value 'gptel-backend))
+     (let* ((backend (default-value 'gptel-backend))
+            (backend-name
+             (format "*%s*" (gptel-backend-name backend))))
+       (list (read-buffer
+              "Create or choose gptel buffer: "
+              backend-name nil          ; DEFAULT and REQUIRE-MATCH
+              (lambda (b)                    ; PREDICATE
+                ;; NOTE: buffer check is required (#450)
+                (and-let* ((buf (get-buffer (or (car-safe b) b))))
+                  (buffer-local-value 'gptel-mode buf))))
+             (condition-case nil
+                 (gptel--get-api-key
+                  (gptel-backend-key backend))
+               ((error user-error)
+                (setq gptel-api-key
+                      (read-passwd
+                       (format "%s API key: " backend-name)))))
+             (and (use-region-p)
+                  (buffer-substring (region-beginning)
+                                    (region-end)))
+             t))))
   (with-current-buffer (get-buffer-create name)
     (cond                               ;Set major mode
      ((eq major-mode gptel-default-mode))
