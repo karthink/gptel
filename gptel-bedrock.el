@@ -354,10 +354,12 @@ received."
              (when-let ((tool-use (map-nested-elt start '(:payload :start :toolUse))))
                (let ((id (plist-get tool-use :toolUseId))
                      (name (plist-get tool-use :name))
-                     (input (gptel--json-read-string
-                             (mapconcat
-                              (lambda (delta) (map-nested-elt delta '(:payload :delta :toolUse :input)))
-                              deltas))))
+                     (input (let ((json-str (mapconcat
+                                 (lambda (delta) (map-nested-elt delta '(:payload :delta :toolUse :input)))
+                                 deltas)))
+                              (if (string-empty-p json-str)
+                                  nil
+                                (gptel--json-read-string json-str)))))
                  (push
                   (list :toolUse (list :input input :name name :toolUseId id))
                   contents)))
