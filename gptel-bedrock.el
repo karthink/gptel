@@ -458,6 +458,44 @@ The output is a vector of entries in Bedrock API format."
 
 ;; gptel--inject-prompt not needed since the default implementation works here
 
+(cl-defmethod gptel--inject-tool-call ((_backend gptel-bedrock) data tool-call new-call)
+  "Replace TOOL-CALL in query DATA with NEW-CALL.
+
+BACKEND is the `gptel-backend'.  See the generic function documentation
+for details.  This implementation handles the AWS Bedrock API."
+  ;; FIXME: We currently assume that the tool call being modified is in the last
+  ;; position in the messages array.
+  (if-let* ((messages (plist-get data :messages))
+            (entry (aref messages (1- (length messages))))
+            (contents (plist-get entry :content))
+            (id (plist-get tool-call :id))
+            (indexed-call
+             (cl-loop for chunk across contents
+                      for i upfrom 0
+                      for tool-use = (plist-get chunk :toolUse)
+                      if (and tool-use (equal (plist-get tool-use :toolUseId) id))
+                      return (list i chunk tool-use)
+                      finally return nil))
+            (index (nth 0 indexed-call))
+            (chunk (nth 1 indexed-call))
+            (call (nth 2 indexed-call)))
+      (if (null new-call)
+          (if (= (length contents) 1)
+              (plist-put data :messages (substring messages nil -1))
+            (plist-put entry :content
+                       (vconcat (substring contents 0 index)
+                                (substring contents (1+ index)))))
+        (when-let* ((args (plist-get new-call :args)))
+          (setq call (plist-put call :input args)))
+        (when-let* ((name (plist-get new-call :name)))
+          (setq call (plist-put call :name name)))
+        (plist-put chunk :toolUse call))
+    (display-warning
+     '(gptel tool-call)
+     (format "Could not inject updated tool-call arguments for tool call %s, %s"
+             (plist-get tool-call :name)
+             (truncate-string-to-width (prin1-to-string new-call) 50 nil nil t)))))
+
 (cl-defmethod gptel--parse-tool-results ((_backend gptel-bedrock) tool-use-requests)
   "Return a backend-appropriate prompt containing tool call results.
 
