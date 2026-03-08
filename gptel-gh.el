@@ -265,8 +265,7 @@
   ;; Update the token for all connected backends
   (dolist (b (gptel--gh-get-backends-by-username github-username))
     (setf (gptel--gh-github-token b) token))
-  (funcall gptel-gh-github-token-save-function github-username
-           (setf (gptel--gh-github-token gptel-backend) token)))
+  (funcall gptel-gh-github-token-save-function github-username token))
 
 ;; https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 (defun gptel--gh-uuid ()
