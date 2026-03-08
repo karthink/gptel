@@ -265,7 +265,7 @@ Completions API."
      '(gptel tool-call)
      (format "Could not inject updated tool-call arguments for tool call %s, %s"
              (plist-get tool-call :name)
-             (truncate-string-to-width (prin1-to-string new-args) 50 nil nil t)))))
+             (truncate-string-to-width (prin1-to-string new-call) 50 nil nil t)))))
 
 (cl-defmethod gptel--parse-tool-results ((_backend gptel-openai) tool-use)
   "Return a prompt containing tool call results in TOOL-USE."

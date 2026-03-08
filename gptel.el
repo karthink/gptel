@@ -2277,9 +2277,17 @@ This is a bug, please report it!"))))
       (unless (memq highlight-ov (overlays-at (point)))
         (let ((context-ov
                (cl-loop for ov in (overlays-at (point))
-                        thereis (and (overlay-get ov 'gptel-overlay) ov))))
-          (when highlight-ov (overlay-put highlight-ov 'face nil))
-          (when context-ov (overlay-put context-ov 'face 'gptel-response-highlight))
+                        thereis (and (overlay-get ov 'gptel-overlay) ov)))
+              (line (propertize "\n" 'font-lock-face
+                                '(:inherit separator-line :extend t))))
+          (when highlight-ov
+            (overlay-put highlight-ov 'face nil)
+            (overlay-put highlight-ov 'before-string nil)
+            (overlay-put highlight-ov 'after-string nil))
+          (when context-ov
+            (overlay-put context-ov 'face 'gptel-response-highlight)
+            (overlay-put context-ov 'before-string line)
+            (overlay-put context-ov 'after-string line))
           (setq highlight-ov context-ov)))))
   "Highlight tool call under cursor in gptel tool call inspection buffers.")
 
