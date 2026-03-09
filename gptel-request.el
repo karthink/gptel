@@ -1771,7 +1771,7 @@ MACHINE is an instance of `gptel-fsm'"
   "Fire the request contained in state machine FSM's info."
   ;; Reset some flags in info.  This is necessary when reusing fsm's context for
   ;; a second network request: gptel tests for the presence of these flags to
-  ;; handle state transitions.  (NOTE: Don't add :token to this.)
+  ;; handle state transitions.  (NOTE: Don't add :uuid to this.)
   (let ((info (gptel-fsm-info fsm)))
     (dolist (key '(:tool-result :tool-use :error :http-status :reasoning))
       (when (plist-get info key)
@@ -2638,10 +2638,10 @@ See `gptel-curl--get-response' for its contents.")
 
 ;;; Curl request response handling
 
-(defun gptel-curl--get-args (info token)
+(defun gptel-curl--get-args (info uuid)
   "Produce list of arguments for calling Curl.
 
-INFO contains the request data, TOKEN is a unique identifier."
+INFO contains the request data, UUID is a unique identifier."
   (let* ((data (plist-get info :data))
          ;; We have to let-bind the following three since their dynamic
          ;; values are used for key lookup and url resolution
@@ -2669,7 +2669,7 @@ INFO contains the request data, TOKEN is a unique identifier."
      gptel-curl-extra-args
      (and-let* ((curl-args (gptel-backend-curl-args gptel-backend)))
        (if (functionp curl-args) (funcall curl-args) curl-args))
-     (list (format "-w(%s . %%{size_header})" token))
+     (list (format "-w(%s . %%{size_header})" uuid))
      (if (< (string-bytes data-json) gptel-curl-file-size-threshold)
          (list (format "-d%s" data-json))
        (let* ((write-region-inhibit-fsync t)
@@ -2704,12 +2704,12 @@ plist with the following keys, among others:
 
 Call CALLBACK with the response and INFO afterwards.  If omitted
 the response is inserted into the current buffer after point."
-  (let* ((token (md5 (format "%s%s%s%s"
-                             (random) (emacs-pid) (user-full-name)
-                             (recent-keys))))
+  (let* ((uuid (md5 (format "%s%s%s%s"
+                            (random) (emacs-pid) (user-full-name)
+                            (recent-keys))))
          (info (gptel-fsm-info fsm))
          (backend (plist-get info :backend))
-         (args (gptel-curl--get-args info token))
+         (args (gptel-curl--get-args info uuid))
          (stream (plist-get info :stream))
          (process (apply #'start-process "gptel-curl"
                          (gptel--temp-buffer " *gptel-curl*") (gptel--curl-path) args)))
@@ -2728,10 +2728,10 @@ the response is inserted into the current buffer after point."
 	;; for cases when buffer coding system is not set to utf-8.
 	(set-process-coding-system process 'utf-8-unix 'utf-8-unix)))
       (set-process-query-on-exit-flag process nil)
-      (if (plist-get info :token)       ;not the first run, set only the token
-          (plist-put info :token token)
+      (if (plist-get info :uuid)        ;not the first run, set only the uuid
+          (plist-put info :uuid uuid)
         (setf (gptel-fsm-info fsm)      ;fist run, set all process parameters
-              (nconc (list :token token
+              (nconc (list :uuid uuid
                            :transformer
                            (when (with-current-buffer (plist-get info :buffer)
                                    (and (derived-mode-p 'org-mode)
@@ -2788,7 +2788,7 @@ PROC-INFO is the plist containing process metadata."
                         (point-min) (1- (point))))
                       "response headers"))
         (let ((p (point)))
-          (when (search-forward (plist-get proc-info :token) nil t)
+          (when (search-forward (plist-get proc-info :uuid) nil t)
             (goto-char (1- (match-beginning 0)))
             (gptel--log (buffer-substring-no-properties p (point))
                         "response body")))))))
@@ -2809,7 +2809,7 @@ PROCESS and _STATUS are process parameters."
             (funcall (plist-get info :callback) t info))
         (with-current-buffer proc-buf   ; Or Capture error message
           (goto-char (point-max))
-          (search-backward (plist-get info :token))
+          (search-backward (plist-get info :uuid))
           (backward-char)
           (pcase-let* ((`(,_ . ,header-size) (read (current-buffer)))
                        (response (progn (goto-char header-size)
@@ -2973,9 +2973,9 @@ PROCESS and _STATUS are process parameters."
   "Parse the buffer BUF with curl's response.
 
 PROC-INFO is a plist with contextual information."
-  (let ((token (plist-get proc-info :token)))
+  (let ((uuid (plist-get proc-info :uuid)))
     (goto-char (point-max))
-    (search-backward token)
+    (search-backward uuid)
     (backward-char)
     (pcase-let* ((`(,_ . ,header-size) (read (current-buffer))))
       (goto-char (point-min))

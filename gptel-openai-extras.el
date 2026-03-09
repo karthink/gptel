@@ -204,7 +204,7 @@ the response."
     (unless (plist-get info :citations)
       (save-excursion
         (goto-char (point-max))
-        (when (search-backward (plist-get info :token)
+        (when (search-backward (plist-get info :uuid)
                                (line-beginning-position) t)
           (forward-line 0)
           (when (re-search-backward "^data: " nil t)
