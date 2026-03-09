@@ -2335,10 +2335,10 @@ TOOL-CALLS."
                 tool-use)
                do (prin1 (list :name name :args arg-plist)
                          (current-buffer) '((length . nil) (level . nil)))
-               (setq o (make-overlay pt (point) nil nil t))
+               (insert "\n\n")          ;Avoid extending the overlay
+               (setq o (make-overlay pt (- (point) 2) nil nil t))
                (overlay-put o 'gptel-tool tool-spec-args-cb)
-               (overlay-put o 'gptel-overlay index)
-               (insert "\n\n"))
+               (overlay-put o 'gptel-overlay index))
       (goto-char (point-min)) (forward-line 3))
     (use-local-map
      (make-composed-keymap
