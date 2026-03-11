@@ -94,7 +94,8 @@ information if the stream contains it.  Not my best work, I know."
                 ("text" (push (plist-get cblock :text) content-strs))
                 ("tool_use" (plist-put info :tool-use
                                        (cons (list :id (plist-get cblock :id)
-                                                   :name (plist-get cblock :name))
+                                                   :name (plist-get cblock :name)
+                                                   :input nil) ;ensure :input key is always present
                                              (plist-get info :tool-use))))
                 ("thinking" (plist-put info :reasoning (plist-get cblock :thinking))
                  (plist-put info :reasoning-block 'in)))))
