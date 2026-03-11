@@ -149,13 +149,31 @@ information if the stream contains it."
   "Parse an OpenAI (non-streaming) RESPONSE and return response text.
 
 Mutate state INFO with response metadata."
-  (let* ((choice0 (map-nested-elt response '(:choices 0)))
+  (let* ((choices (plist-get response :choices))
+         (choice0 (and (> (length choices) 0) (aref choices 0)))
          (message (plist-get choice0 :message))
          (content (plist-get message :content)))
     (plist-put info :stop-reason
                (plist-get choice0 :finish_reason))
     (plist-put info :output-tokens
                (map-nested-elt response '(:usage :completion_tokens)))
+    ;; Some OpenAI-compatible APIs (e.g. GitHub Copilot proxying Claude) return
+    ;; tool calls in separate `choices' entries rather than combining them in
+    ;; choices[0].message.tool_calls.  Merge them here.
+    (when (> (length choices) 1)
+      (cl-loop for i from 0 below (length choices)
+               for choice = (aref choices i)
+               for msg = (plist-get choice :message)
+               for tc = (plist-get msg :tool_calls)
+               when (and tc (not (eq tc :null)))
+               vconcat tc into all-tool-calls
+               when (and (not content) ;pick up content if choice0 had none
+                         (let ((c (plist-get msg :content)))
+                           (and c (not (eq c :null)) (not (string-empty-p c)))))
+               do (setq content (plist-get msg :content))
+               finally (when (> (length all-tool-calls) 0)
+                         (plist-put message :tool_calls all-tool-calls)
+                         (plist-put message :content (or content :null)))))
     ;; OpenAI returns either non-blank text content or a tool call, not both.
     ;; However OpenAI-compatible APIs like llama.cpp can include both (#819), so
     ;; we check for both tool calls and responses independently.
