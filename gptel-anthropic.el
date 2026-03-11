@@ -40,6 +40,22 @@
                                (:copier nil)
                                (:include gptel-backend)))
 
+(defun gptel--anthropic-update-tokens (usage info)
+  "Update token usage information from USAGE.
+USAGE is part of the response, INFO is the request plist."
+  (when usage
+    (let* ((tokens (plist-get info :tokens))
+           (input (+ (plist-get usage :input_tokens)
+                     (or (plist-get tokens :input) 0)))
+           (output (+ (plist-get usage :output_tokens)
+                      (or (plist-get tokens :output) 0)))
+           (cached (+ (plist-get usage :cache_read_input_tokens)
+                      (or (plist-get tokens :cached) 0)))
+           (cache (+ (plist-get usage :cache_creation_input_tokens)
+                     (or (plist-get tokens :cache) 0))))
+      (list :input input :output output
+            :cache cache :cached cached))))
+
 ;; NOTE the crucial difference between
 ;; - (push val (plist-get info :key)) and
 ;;   (plist-put (plist-get info :key) (cons val ...))
@@ -147,8 +163,9 @@ information if the stream contains it.  Not my best work, I know."
                         (plist-put tool-call :input nil)
                         (plist-put tool-call :id (plist-get tool-call :id)))
                       tool-use))
-              (plist-put info :output-tokens
-                         (map-nested-elt response '(:usage :output_tokens)))
+              ;; Capture token usage
+              (plist-put info :tokens (gptel--anthropic-update-tokens
+                                       (plist-get response :usage) info))
               (plist-put info :stop-reason
                          (map-nested-elt response '(:delta :stop_reason)))))))
       (error (goto-char pt)))
@@ -167,8 +184,8 @@ information if the stream contains it.  Not my best work, I know."
 
 Mutate state INFO with response metadata."
   (plist-put info :stop-reason (plist-get response :stop_reason))
-  (plist-put info :output-tokens
-             (map-nested-elt response '(:usage :output_tokens)))
+  (plist-put info :tokens (gptel--anthropic-update-tokens
+                           (plist-get response :usage) info))
   (cl-loop
    with content = (plist-get response :content)
    for cblock across content
