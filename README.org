@@ -1128,7 +1128,16 @@ Register a backend with
 #+end_src
 
 Github copilot is configured to use public end-point `api.githubcopilot.com`.
-However private endpoints can be configure like so -
+
+Users who pay for below plans can use relative end-points. 
+
+See the annoucement [[https://github.blog/changelog/2026-02-13-network-configuration-changes-for-copilot-coding-agent/#whats-changing][Copilot plan changes]]
+
+	- Copilot Business: =api.business.githubcopilot.com=
+	- Copilot Enterprise: =api.enterprise.githubcopilot.com=
+	- Copilot Pro and Pro+: =api.individual.githubcopilot.com=
+
+Custom endpoints can be configure like so -
 
 #+begin_src emacs-lisp
 (gptel-make-gh-copilot "Copilot"
