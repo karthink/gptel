@@ -41,6 +41,18 @@
                   (:copier nil)
                   (:include gptel-backend)))
 
+(defun gptel--gemini-update-tokens (usage info)
+  "Update token usage information from USAGE.
+USAGE is part of the response, INFO is the request plist."
+  (when usage
+    (let* ((tokens (plist-get info :tokens))
+           (input (+ (plist-get usage :promptTokenCount)
+                     (or (plist-get tokens :input) 0)))
+           (output (+ (- (plist-get usage :totalTokenCount)
+                         (plist-get usage :promptTokenCount))
+                      (or (plist-get tokens :output) 0))))
+      (list :input input :output output))))
+
 ;; TODO: Using alt=sse in the query url generates an OpenAI style streaming
 ;; response, with more immediate updates.  Maybe we should switch to that and
 ;; rewrite the stream parser?
@@ -73,11 +85,13 @@ Mutate state INFO with response metadata.
 If INCLUDE-TEXT is non-nil, include response text in the prompts
 list."
   (let* ((cand0 (map-nested-elt response '(:candidates 0)))
-         (parts (map-nested-elt cand0 '(:content :parts))))
-    (plist-put info :stop-reason (plist-get cand0 :finishReason))
-    (plist-put info :output-tokens
-               (map-nested-elt
-                response '(:usageMetadata :candidatesTokenCount)))
+         (parts (map-nested-elt cand0 '(:content :parts)))
+         (stop-reason (plist-get cand0 :finishReason)))
+    (when stop-reason
+      (plist-put info :stop-reason stop-reason)
+      (when (string= stop-reason "STOP")
+        (plist-put info :tokens (gptel--gemini-update-tokens
+                                 (plist-get response :usageMetadata) info))))
     (cl-loop
      for part across parts
      for tx = (plist-get part :text)
