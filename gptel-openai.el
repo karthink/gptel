@@ -192,7 +192,8 @@ Mutate state INFO with response metadata."
            :stream ,(or gptel-stream :json-false)))
         (reasoning-model-p ; TODO: Embed this capability in the model's properties
          (memq gptel-model '(o1 o1-preview o1-mini o3-mini o3 o4-mini
-                                gpt-5 gpt-5-mini gpt-5-nano gpt-5.1 gpt-5.2))))
+                                gpt-5 gpt-5-mini gpt-5-nano gpt-5.1 gpt-5.2
+                                gpt-5.3-chat-latest gpt-5.4))))
     (when (and gptel-temperature (not reasoning-model-p))
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-use-tools
@@ -536,6 +537,22 @@ Media files, if present, are placed in `gptel-context'."
      :output-cost 10
      :cutoff-date "2024-09")
     (gpt-5.2
+     :description "The best model for coding and agentic tasks"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1.75
+     :output-cost 14
+     :cutoff-date "2025-08")
+    (gpt-5.3-chat-latest
+     :description "Answers right away"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1.75
+     :output-cost 14
+     :cutoff-date "2025-08")
+    (gpt-5.4
      :description "The best model for coding and agentic tasks"
      :capabilities (media tool-use json url)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
