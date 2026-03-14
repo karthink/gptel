@@ -723,7 +723,7 @@ Register a backend with
   :endpoint "/openai/v1/chat/completions"
   :stream t
   :key "your-api-key"                   ;can be a function that returns the key
-  :models '(llama-3.1-70b-versatile
+  :models '(llama-3.3-70b-versatile
             llama-3.1-8b-instant
             llama3-70b-8192
             llama3-8b-8192
