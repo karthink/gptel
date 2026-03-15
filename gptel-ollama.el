@@ -37,14 +37,20 @@
                             (:copier nil)
                             (:include gptel-backend)))
 
-;; FIXME(fsm) Remove this variable
-(defvar-local gptel--ollama-token-count 0
-  "Token count for ollama conversations.
+(defun gptel--ollama-update-tokens (usage info)
+  "Update token usage information from USAGE.
+USAGE is part of the response, INFO is the request plist.
 
-This variable holds the total token count for conversations with
-Ollama models.
-
-Intended for internal use only.")
+This function accumulates token counts across multiple turns in a
+multi-turn request (e.g., during tool use where results are fed
+back to the LLM)."
+  (when usage
+    (let* ((tokens (plist-get info :tokens))
+           (input (+ (or (plist-get usage :prompt_eval_count) 0)
+                     (or (plist-get tokens :input) 0)))
+           (output (+ (or (plist-get usage :eval_count) 0)
+                      (or (plist-get tokens :output) 0))))
+      (list :input input :output output))))
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-ollama) info)
   "Parse response stream for the Ollama API."
@@ -79,10 +85,7 @@ Intended for internal use only.")
                   (plist-put info :reasoning-block t)
                 (plist-put info :reasoning-block nil)))
             (unless (eq done :json-false)
-              (with-current-buffer (plist-get info :buffer)
-                (cl-incf gptel--ollama-token-count
-                         (+ (or (map-elt content :prompt_eval_count) 0)
-                            (or (map-elt content :eval_count) 0))))
+              (plist-put info :tokens (gptel--ollama-update-tokens content info))
               (goto-char (point-max)))))
       (error (goto-char pt)))
     (apply #'concat (nreverse content-strs))))
@@ -92,7 +95,7 @@ Intended for internal use only.")
 
 Store response metadata in state INFO."
   (plist-put info :stop-reason (plist-get response :done_reason))
-  (plist-put info :output-tokens (plist-get response :eval_count))
+  (plist-put info :tokens (gptel--ollama-update-tokens response info))
   (let* ((message (plist-get response :message))
          (reasoning (plist-get message :thinking))
          (content (plist-get message :content)))
