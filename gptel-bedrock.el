@@ -38,6 +38,26 @@
                              (:include gptel-backend))
   model-region)
 
+(defun gptel--bedrock-update-tokens (usage info)
+  "Update token usage information from USAGE.
+USAGE is part of the response, INFO is the request plist.
+
+This function accumulates token counts across multiple turns in a
+multi-turn request (e.g., during tool use where results are fed
+back to the LLM)."
+  (when usage
+    (let* ((tokens (plist-get info :tokens))
+           (input (+ (or (plist-get usage :inputTokens) 0)
+                     (or (plist-get tokens :input) 0)))
+           (output (+ (or (plist-get usage :outputTokens) 0)
+                      (or (plist-get tokens :output) 0)))
+           (cached (+ (or (plist-get usage :cacheReadInputTokens) 0)
+                      (or (plist-get tokens :cached) 0)))
+           (cache (+ (or (plist-get usage :cacheWriteInputTokens) 0)
+                     (or (plist-get tokens :cache) 0))))
+      (list :input input :output output
+            :cache cache :cached cached))))
+
 (defconst gptel-bedrock--prompt-type
   ;; For documentation purposes only -- this describes the type of prompt objects that get passed
   ;; around. https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Message.html
@@ -96,10 +116,8 @@ TOOLS is a list of `gptel-tool' structs, which see."
 
 Mutate state INFO with response metadata."
   (plist-put info :stop-reason (plist-get response :stopReason))
-  (plist-put info :input-tokens
-             (map-nested-elt response '(:usage :inputTokens)))
-  (plist-put info :output-tokens
-             (map-nested-elt response '(:usage :outputTokens)))
+  (plist-put info :tokens (gptel--bedrock-update-tokens
+                           (plist-get response :usage) info))
 
   (let* ((message (map-nested-elt response '(:output :message)))
          (content-strs (thread-last (plist-get message :content)
@@ -180,8 +198,8 @@ INFO is a plist containing the request context."
               (push event (car acc-cell)))
             (pcase event-type
               ("metadata"
-               (plist-put info :input-tokens (map-nested-elt event '(:payload :usage :inputTokens)))
-               (plist-put info :output-tokens (map-nested-elt event '(:payload :usage :outputTokens))))
+               (plist-put info :tokens (gptel--bedrock-update-tokens
+                                        (map-nested-elt event '(:payload :usage)) info)))
               ("contentBlockDelta"
                (when-let ((delta-text (map-nested-elt event '(:payload :delta :text))))
                  (push delta-text strings)))
