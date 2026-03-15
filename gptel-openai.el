@@ -38,6 +38,28 @@
                             (:copier nil)
                             (:include gptel-backend)))
 
+(defun gptel--openai-update-tokens (usage info)
+  "Update token usage information from USAGE.
+USAGE is part of the response, INFO is the request plist.
+
+This function accumulates token counts across multiple turns in a
+multi-turn request (e.g., during tool use where results are fed
+back to the LLM)."
+  (when usage
+    (let* ((tokens (plist-get info :tokens))
+           (input (+ (or (plist-get usage :prompt_tokens) 0)
+                     (or (plist-get tokens :input) 0)))
+           (output (+ (or (plist-get usage :completion_tokens) 0)
+                      (or (plist-get tokens :output) 0)))
+           (cached (+ (or (map-nested-elt
+                           usage '(:prompt_tokens_details :cached_tokens))
+                          0)
+                      (or (plist-get tokens :cached) 0)))
+           (cache (+ (or (plist-get usage :prompt_cache_hit_tokens) 0)
+                    (or (plist-get tokens :cache) 0))))
+      (list :input input :output output
+            :cache cache :cached cached))))
+
 ;; How the following function works:
 ;;
 ;; The OpenAI API returns a stream of data chunks.  Each data chunk has a
@@ -100,6 +122,14 @@ information if the stream contains it."
                                                          (plist-get spec :arguments))))
                      into call-specs
                      finally (plist-put info :tool-use call-specs)))
+                  ;; Update token usage if present
+                  (when-let* ((last-resp (save-excursion
+                                           (forward-line -1)
+                                           (and (re-search-backward "^data:" nil t)
+                                                (goto-char (match-end 0))
+                                                (ignore-errors (gptel--json-read)))))
+                              (usage (plist-get last-resp :usage)))
+                    (plist-put info :tokens (gptel--openai-update-tokens usage info)))
                   (when (plist-member info :reasoning-chunks) (plist-put info :reasoning-chunks nil)))
               (when-let* ((response (gptel--json-read))
                           (delta (map-nested-elt response '(:choices 0 :delta))))
@@ -154,8 +184,8 @@ Mutate state INFO with response metadata."
          (content (plist-get message :content)))
     (plist-put info :stop-reason
                (plist-get choice0 :finish_reason))
-    (plist-put info :output-tokens
-               (map-nested-elt response '(:usage :completion_tokens)))
+    (plist-put info :tokens (gptel--openai-update-tokens
+                             (map-nested-elt response '(:usage)) info))
     ;; OpenAI returns either non-blank text content or a tool call, not both.
     ;; However OpenAI-compatible APIs like llama.cpp can include both (#819), so
     ;; we check for both tool calls and responses independently.
@@ -187,9 +217,10 @@ Mutate state INFO with response metadata."
                 :content gptel--system-message)
           prompts))
   (let ((prompts-plist
-         `(:model ,(gptel--model-name gptel-model)
-           :messages [,@prompts]
-           :stream ,(or gptel-stream :json-false)))
+         `( :model ,(gptel--model-name gptel-model)
+            :messages [,@prompts]
+            :stream ,(or gptel-stream :json-false)
+            ,@(when gptel-stream '(:stream_options (:include_usage t)))))
         (reasoning-model-p ; TODO: Embed this capability in the model's properties
          (memq gptel-model '(o1 o1-preview o1-mini o3-mini o3 o4-mini
                                 gpt-5 gpt-5-mini gpt-5-nano gpt-5.1 gpt-5.2
