@@ -1686,7 +1686,7 @@ Optional RAW disables text properties and transformation."
                          (not (string-suffix-p "\n" (gptel-response-prefix-string)))
                          "\n"))
                    (blocks (if (derived-mode-p 'org-mode)
-                               `("#+begin_reasoning\n" . ,(concat "\n#+end_reasoning"
+                               `("#+begin_reasoning \n" . ,(concat "\n#+end_reasoning"
                                                            gptel-response-separator))
                              ;; TODO(reasoning) remove properties and strip instead
                              (cons (propertize "``` reasoning\n" 'gptel 'ignore
@@ -1864,7 +1864,7 @@ for streaming responses only."
                 (gptel-curl--stream-insert-response
                  (concat separator
                          (if (derived-mode-p 'org-mode)
-                             "#+begin_reasoning\n"
+                             "#+begin_reasoning \n"
                            ;; TODO(reasoning) remove properties and strip instead
                            (propertize "``` reasoning\n" 'gptel 'ignore
                                        'keymap gptel--markdown-block-map)))
