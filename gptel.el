@@ -2287,7 +2287,7 @@ This is a bug, please report it!"))))
           (when context-ov
             (overlay-put context-ov 'face 'gptel-response-highlight)
             (overlay-put context-ov 'before-string line)
-            (overlay-put context-ov 'after-string line))
+            (overlay-put context-ov 'after-string (concat "\n" line)))
           (setq highlight-ov context-ov)))))
   "Highlight tool call under cursor in gptel tool call inspection buffers.")
 
