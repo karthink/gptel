@@ -22,16 +22,17 @@
 ;; This file adds support for the Gemini API to gptel
 
 ;;; Code:
-(require 'gptel)
 (require 'cl-generic)
 (require 'map)
-(eval-when-compile (require 'cl-lib))
+(require 'cl-lib)
+(eval-and-compile (require 'gptel-request))
 
 (declare-function prop-match-value "text-property-search")
 (declare-function text-property-search-backward "text-property-search")
 (declare-function json-read "json")
 (declare-function gptel-context--wrap "gptel-context")
 (declare-function gptel-context--collect-media "gptel-context")
+
 (defvar json-object-type)
 
 ;;; Gemini
@@ -39,6 +40,18 @@
     (gptel-gemini (:constructor gptel--make-gemini)
                   (:copier nil)
                   (:include gptel-backend)))
+
+(defun gptel--gemini-update-tokens (usage info)
+  "Update token usage information from USAGE.
+USAGE is part of the response, INFO is the request plist."
+  (when usage
+    (let* ((tokens (plist-get info :tokens))
+           (input (+ (plist-get usage :promptTokenCount)
+                     (or (plist-get tokens :input) 0)))
+           (output (+ (- (plist-get usage :totalTokenCount)
+                         (plist-get usage :promptTokenCount))
+                      (or (plist-get tokens :output) 0))))
+      (list :input input :output output))))
 
 ;; TODO: Using alt=sse in the query url generates an OpenAI style streaming
 ;; response, with more immediate updates.  Maybe we should switch to that and
@@ -72,11 +85,13 @@ Mutate state INFO with response metadata.
 If INCLUDE-TEXT is non-nil, include response text in the prompts
 list."
   (let* ((cand0 (map-nested-elt response '(:candidates 0)))
-         (parts (map-nested-elt cand0 '(:content :parts))))
-    (plist-put info :stop-reason (plist-get cand0 :finishReason))
-    (plist-put info :output-tokens
-               (map-nested-elt
-                response '(:usageMetadata :candidatesTokenCount)))
+         (parts (map-nested-elt cand0 '(:content :parts)))
+         (stop-reason (plist-get cand0 :finishReason)))
+    (when stop-reason
+      (plist-put info :stop-reason stop-reason)
+      (when (string= stop-reason "STOP")
+        (plist-put info :tokens (gptel--gemini-update-tokens
+                                 (plist-get response :usageMetadata) info))))
     (cl-loop
      for part across parts
      for tx = (plist-get part :text)
@@ -240,12 +255,58 @@ TOOLS is a list of `gptel-tool' structs, which see."
             (:name ,name :content ,result)))))
      tool-use))))
 
-(cl-defmethod gptel--inject-prompt ((_backend gptel-gemini) data new-prompt &optional _position)
-  "Append NEW-PROMPT to existing prompts in query DATA.
+(cl-defmethod gptel--inject-prompt ((_backend gptel-gemini) data new-prompt &optional position)
+  "Inject NEW-PROMPT into existing prompts in query DATA.
 
 See generic implementation for full documentation."
+  (when (keywordp (car-safe new-prompt)) ;Is new-prompt one or many?
+    (setq new-prompt (list new-prompt)))
   (let ((prompts (plist-get data :contents)))
-    (plist-put data :contents (vconcat prompts (list new-prompt)))))
+    (pcase position
+      ('nil (plist-put data :contents (vconcat prompts new-prompt)))
+      ((pred integerp)
+       (when (< position 0) (setq position (+ (length prompts) position)))
+       (plist-put data :contents (vconcat (substring prompts 0 position)
+                                          new-prompt
+                                          (substring prompts position)))))))
+
+(cl-defmethod gptel--inject-tool-call ((_backend gptel-gemini) data tool-call new-call)
+  "Replace TOOL-CALL in query DATA with NEW-CALL.
+
+BACKEND is the `gptel-backend'.  See the generic function documentation
+for details.  This implementation handles the Gemini API."
+  ;; FIXME: We currently assume that the tool call being modified is in the last
+  ;; position in the messages array.
+  (if-let* ((messages (plist-get data :contents))
+            (entry (aref messages (1- (length messages))))
+            (parts (plist-get entry :parts))
+            (indexed-call
+             (cl-loop with name = (plist-get tool-call :name)
+                      with old-args = (plist-get tool-call :args)
+                      for chunk across parts
+                      for i upfrom 0
+                      if (plist-get chunk :functionCall)
+                      if (and (equal (plist-get it :name) name)
+                              (equal (plist-get it :args) old-args))
+                      return (cons i (plist-get chunk :functionCall)) end
+                      finally return nil))
+            (index (car indexed-call))
+            (call (cdr indexed-call)))
+      (if (null new-call)
+          (if (= (length parts) 1)
+              (plist-put data :contents (substring messages nil -1))
+            (plist-put entry :parts
+                       (vconcat (substring parts 0 index)
+                                (substring parts (1+ index)))))
+        (when-let* ((args (plist-get new-call :args)))
+          (plist-put call :args args))
+        (when-let* ((name (plist-get new-call :name)))
+          (plist-put call :name name)))
+    (display-warning
+     '(gptel tool-call)
+     (format "Could not inject updated tool-call arguments for tool call %s, %s"
+             (plist-get tool-call :name)
+             (truncate-string-to-width (prin1-to-string new-call) 50 nil nil t)))))
 
 (cl-defmethod gptel--parse-list ((backend gptel-gemini) prompt-list)
   (if (consp (car prompt-list))
@@ -415,8 +476,19 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 2.0                    ; 4.0 for >200k tokens
      :output-cost 12.00                 ; 18.0 for >200k tokens
      :cutoff-date "2025-01")
+    (gemini-3.1-flash-lite-preview
+     :description "Nost cost-efficient multimodal Gemini model, offering the fastest performance for high-frequency, lightweight tasks"
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"
+                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 1048
+     :input-cost 0.25
+     :output-cost 1.50
+     :cutoff-date "2025-01")
     (gemini-3-pro-preview
-     :description "Most intelligent Gemini model with SOTA reasoning and multimodal understanding"
+     :description "DEPRECATED: The model will be shut down on March 9, 2026. Please use gemini-3.1-pro-preview instead"
      :capabilities (tool-use json media audio video)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html"

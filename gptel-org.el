@@ -23,12 +23,12 @@
 ;;
 
 ;;; Code:
-(eval-when-compile (require 'gptel))
 (require 'cl-lib)
 (require 'org-element)
 (require 'outline)
 (require 'mailcap)                    ;FIXME Avoid this somehow
 (require 'org-src)
+(eval-when-compile (require 'gptel-request))
 
 ;; Register gptel-tool as a source block language with org-src to prevent
 ;; org-lint warnings about unknown source block language. Tool output blocks
@@ -53,6 +53,7 @@
 (defvar gptel-temperature)
 (defvar gptel-max-tokens)
 (defvar gptel--link-type-cache)
+(defvar gptel--preset)
 
 ;; Recursive guards for advice functions
 (defvar gptel-org--in-send-with-props nil
@@ -75,19 +76,19 @@ FORMAT-STRING and ARGS are passed to `message'."
 (defvar org-link-angle-re)
 (defvar org-link-bracket-re)
 (declare-function mailcap-file-name-to-mime-type "mailcap")
-(declare-function gptel--model-capable-p "gptel")
-(declare-function gptel--model-mime-capable-p "gptel")
-(declare-function gptel--model-name "gptel")
-(declare-function gptel--to-string "gptel")
-(declare-function gptel--to-number "gptel")
-(declare-function gptel--intern "gptel")
+(declare-function gptel--model-capable-p "gptel-request")
+(declare-function gptel--model-mime-capable-p "gptel-request")
+(declare-function gptel--model-name "gptel-request")
+(declare-function gptel--to-string "gptel-request")
+(declare-function gptel--to-number "gptel-request")
+(declare-function gptel--intern "gptel-request")
+(declare-function gptel-backend-name "gptel-request")
+(declare-function gptel--parse-buffer "gptel-request")
+(declare-function gptel--parse-directive "gptel-request")
+(declare-function gptel--with-buffer-copy "gptel-request")
+(declare-function gptel--file-binary-p "gptel-request")
 (declare-function gptel--get-buffer-bounds "gptel")
-(declare-function gptel-backend-name "gptel")
-(declare-function gptel--parse-buffer "gptel")
-(declare-function gptel--parse-directive "gptel")
 (declare-function gptel--restore-props "gptel")
-(declare-function gptel--with-buffer-copy "gptel")
-(declare-function gptel--file-binary-p "gptel")
 (declare-function org-entry-get "org")
 (declare-function org-entry-put "org")
 (declare-function org-entry-delete "org")

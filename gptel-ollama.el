@@ -23,12 +23,13 @@
 ;; This file adds support for the Ollama LLM API to gptel
 
 ;;; Code:
-(require 'gptel)
 (require 'cl-generic)
+(eval-and-compile (require 'gptel-request))
 
 (declare-function json-read "json" ())
 (declare-function gptel-context--wrap "gptel-context")
 (declare-function gptel-context--collect-media "gptel-context")
+
 (defvar json-object-type)
 
 ;;; Ollama
@@ -36,14 +37,20 @@
                             (:copier nil)
                             (:include gptel-backend)))
 
-;; FIXME(fsm) Remove this variable
-(defvar-local gptel--ollama-token-count 0
-  "Token count for ollama conversations.
+(defun gptel--ollama-update-tokens (usage info)
+  "Update token usage information from USAGE.
+USAGE is part of the response, INFO is the request plist.
 
-This variable holds the total token count for conversations with
-Ollama models.
-
-Intended for internal use only.")
+This function accumulates token counts across multiple turns in a
+multi-turn request (e.g., during tool use where results are fed
+back to the LLM)."
+  (when usage
+    (let* ((tokens (plist-get info :tokens))
+           (input (+ (or (plist-get usage :prompt_eval_count) 0)
+                     (or (plist-get tokens :input) 0)))
+           (output (+ (or (plist-get usage :eval_count) 0)
+                      (or (plist-get tokens :output) 0))))
+      (list :input input :output output))))
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-ollama) info)
   "Parse response stream for the Ollama API."
@@ -78,10 +85,7 @@ Intended for internal use only.")
                   (plist-put info :reasoning-block t)
                 (plist-put info :reasoning-block nil)))
             (unless (eq done :json-false)
-              (with-current-buffer (plist-get info :buffer)
-                (cl-incf gptel--ollama-token-count
-                         (+ (or (map-elt content :prompt_eval_count) 0)
-                            (or (map-elt content :eval_count) 0))))
+              (plist-put info :tokens (gptel--ollama-update-tokens content info))
               (goto-char (point-max)))))
       (error (goto-char pt)))
     (apply #'concat (nreverse content-strs))))
@@ -91,7 +95,7 @@ Intended for internal use only.")
 
 Store response metadata in state INFO."
   (plist-put info :stop-reason (plist-get response :done_reason))
-  (plist-put info :output-tokens (plist-get response :eval_count))
+  (plist-put info :tokens (gptel--ollama-update-tokens response info))
   (let* ((message (plist-get response :message))
          (reasoning (plist-get message :thinking))
          (content (plist-get message :content)))
@@ -159,6 +163,44 @@ Store response metadata in state INFO."
 
 ;; NOTE: No `gptel--inject-prompt' method required for gptel-ollama, since this is
 ;; handled by its defgeneric implementation
+
+(cl-defmethod gptel--inject-tool-call ((_backend gptel-ollama) data tool-call new-call)
+  "Replace TOOL-CALL in query DATA with NEW-CALL.
+
+BACKEND is the `gptel-backend'.  See the generic function documentation
+for details.  This implementation handles the Ollama API."
+  ;; FIXME: We currently assume that the tool call being modified is in the last
+  ;; position in the messages array.
+  (if-let* ((messages (plist-get data :messages))
+            (entry (aref messages (1- (length messages))))
+            (calls (plist-get entry :tool_calls))
+            (indexed-call
+             (cl-loop with name = (plist-get tool-call :name)
+                      with old-args = (plist-get tool-call :args)
+                      for chunk across calls
+                      for i upfrom 0
+                      for function = (plist-get chunk :function)
+                      if (and (equal (plist-get function :name) name)
+                              (equal (plist-get function :arguments) old-args))
+                      return (cons i function) end
+                      finally return nil))
+            (index (car indexed-call))
+            (call (cdr indexed-call)))
+      (if (null new-call)
+          (if (= (length calls) 1)
+              (plist-put data :messages (substring messages nil -1))
+            (plist-put entry :tool_calls
+                       (vconcat (substring calls 0 index)
+                                (substring calls (1+ index)))))
+        (when-let* ((args (plist-get new-call :args)))
+          (plist-put call :arguments args))
+        (when-let* ((name (plist-get new-call :name)))
+          (plist-put call :name name)))
+    (display-warning
+     '(gptel tool-call)
+     (format "Could not inject updated tool-call arguments for tool call %s, %s"
+             (plist-get tool-call :name)
+             (truncate-string-to-width (prin1-to-string new-call) 50 nil nil t)))))
 
 (cl-defmethod gptel--parse-list ((backend gptel-ollama) prompt-list)
   (if (consp (car prompt-list))

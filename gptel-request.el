@@ -42,9 +42,7 @@
 
 ;;; Code:
 
-(require 'gptel-openai)
-(eval-when-compile
-  (require 'subr-x))
+(eval-when-compile (require 'subr-x))
 (require 'compat nil t)
 (require 'cl-lib)
 (require 'url)
@@ -63,6 +61,7 @@
 (declare-function gptel--transform-apply-preset "gptel")
 (declare-function gptel--insert-response "gptel")
 (declare-function gptel-curl--stream-insert-response "gptel")
+(declare-function gptel-make-openai "gptel-openai")
 
 
 ;;; User options
@@ -323,193 +322,184 @@ the same as t."
           (repeat symbol))
   :group 'gptel)
 
-(defvar gptel--known-backends)
+(defvar gptel--known-backends nil
+  "Alist of LLM backends known to gptel.
 
-(defconst gptel--openai-models
-  '((gpt-4o
-     :description "Advanced model for complex tasks; cheaper & faster than GPT-Turbo"
-     :capabilities (media tool-use json url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 2.50
-     :output-cost 10
-     :cutoff-date "2023-10")
-    (gpt-4o-mini
-     :description "Cheap model for fast tasks; cheaper & more capable than GPT-3.5 Turbo"
-     :capabilities (media tool-use json url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 0.15
-     :output-cost 0.60
-     :cutoff-date "2023-10")
-    (gpt-4.1
-     :description "Flagship model for complex tasks"
-     :capabilities (media tool-use json url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1024
-     :input-cost 2.0
-     :output-cost 8.0
-     :cutoff-date "2024-05")
-    (gpt-4.5-preview
-     :description "DEPRECATED: Use gpt-4.1 instead"
-     :capabilities (media tool-use url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 75
-     :output-cost 150
-     :cutoff-date "2023-10")
-    (gpt-4.1-mini
-     :description "Balance between intelligence, speed and cost"
-     :capabilities (media tool-use json url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1024
-     :input-cost 0.4
-     :output-cost 1.6)
-    (gpt-4.1-nano
-     :description "Fastest, most cost-effective GPT-4.1 model"
-     :capabilities (media tool-use json url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1024
-     :input-cost 0.10
-     :output-cost 0.40
-     :cutoff-date "2024-05")
-    (gpt-4-turbo
-     :description "Previous high-intelligence model"
-     :capabilities (media tool-use url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 10
-     :output-cost 30
-     :cutoff-date "2023-11")
-    (gpt-4
-     :description "GPT-4 snapshot from June 2023 with improved function calling support"
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :capabilities (media url)
-     :context-window 8.192
-     :input-cost 30
-     :output-cost 60
-     :cutoff-date "2023-11")
-    (gpt-5
-     :description "Flagship model for coding, reasoning, and agentic tasks across domains"
-     :capabilities (media tool-use json url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 1.25
-     :output-cost 10
-     :cutoff-date "2024-09")
-    (gpt-5-mini
-     :description "Faster, more cost-efficient version of GPT-5"
-     :capabilities (media tool-use json url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 0.25
-     :output-cost 2.0
-     :cutoff-date "2024-09")
-    (gpt-5-nano
-     :description "Fastest, cheapest version of GPT-5"
-     :capabilities (media tool-use json url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 0.05
-     :output-cost 0.40
-     :cutoff-date "2024-09")
-    (gpt-5.1
-     :description "The best model for coding and agentic tasks"
-     :capabilities (media tool-use json url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 1.25
-     :output-cost 10
-     :cutoff-date "2024-09")
-    (gpt-5.2
-     :description "The best model for coding and agentic tasks"
-     :capabilities (media tool-use json url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 1.75
-     :output-cost 14
-     :cutoff-date "2025-08")
-    (o1
-     :description "Reasoning model designed to solve hard problems across domains"
-     :capabilities (media reasoning)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 200
-     :input-cost 15
-     :output-cost 60
-     :cutoff-date "2023-10")
-    (o1-mini
-     :description "Faster and cheaper reasoning model good at coding, math, and science"
-     :context-window 128
-     :input-cost 3
-     :output-cost 12
-     :cutoff-date "2023-10"
-     :capabilities (nosystem reasoning))
-    (o3
-     :description "Well-rounded and powerful model across domains"
-     :capabilities (reasoning media tool-use json url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 200
-     :input-cost 2
-     :output-cost 8
-     :cutoff-date "2024-05")
-    (o3-mini
-     :description "High intelligence at the same cost and latency targets of o1-mini"
-     :context-window 200
-     :input-cost 1.10
-     :output-cost 4.40
-     :cutoff-date "2023-10"
-     :capabilities (reasoning tool-use json))
-    (o4-mini
-     :description "Fast, effective reasoning with efficient performance in coding and visual tasks"
-     :capabilities (reasoning media tool-use json url)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 200
-     :input-cost 1.10
-     :output-cost 4.40
-     :cutoff-date "2024-05")
-    (gpt-3.5-turbo
-     :description "More expensive & less capable than GPT-4o-mini; use that instead"
-     :capabilities (tool-use)
-     :context-window 16.358
-     :input-cost 0.50
-     :output-cost 1.50
-     :cutoff-date "2021-09")
-    (gpt-3.5-turbo-16k
-     :description "More expensive & less capable than GPT-4o-mini; use that instead"
-     :capabilities (tool-use)
-     :context-window 16.385
-     :input-cost 3
-     :output-cost 4
-     :cutoff-date "2021-09"))
-  "List of available OpenAI models and associated properties.
-Keys:
+This is an alist mapping user-provided names to backend structs,
+see `gptel-backend'.
 
-- `:description': a brief description of the model.
+You can have more than one backend pointing to the same resource
+with differing settings.")
 
-- `:capabilities': a list of capabilities supported by the model.
+(defvar gptel--openai nil)
+(make-obsolete-variable 'gptel--openai "No longer used" "v0.9.9.5")
 
-- `:mime-types': a list of supported MIME types for media files.
+(defcustom gptel-backend nil
+  "LLM backend to use.
 
-- `:context-window': the context window size, in thousands of tokens.
+This is the default \"backend\" used by gptel, an object specifying
+connection, authentication and model information required to send LLM
+requests.
 
-- `:input-cost': the input cost, in US dollars per million tokens.
+There are two ways to set `gptel-backend':
 
-- `:output-cost': the output cost, in US dollars per million tokens.
+1. with `setopt' or the Customize interface,
+2. and via constructors (such as `gptel-make-openai') in Elisp code.
 
-- `:cutoff-date': the knowledge cutoff date.
+When using `setopt' or the customize interface, a backend may be
+specified in a list such as
 
-- `:request-params': a plist of additional request parameters to
-  include when using this model.
+  (BACKEND-TYPE NAME . PLIST)
 
-Information about the OpenAI models was obtained from the following
-sources:
+where:
 
-- <https://platform.openai.com/docs/pricing>
-- <https://platform.openai.com/docs/models>")
+BACKEND-TYPE is one of `gptel-openai' (all OpenAI-compatible
+services), `gptel-anthropic', `gptel-gemini', `gptel-ollama',
+`gptel-kagi', `gptel--gh' (GitHub Copilot), `gptel-bedrock' (AWS
+Bedrock), `gptel-perplexity', `gptel-deepseek' or `gptel-privategpt'.
 
-(defcustom gptel-model 'gpt-4o-mini
+NAME is a string, any backend name of your choosing.
+
+PLIST is an optional plist specifying connection and authentication
+information, with keys
+
+:protocol       - \"http\" or \"https\"
+:host           - Host, such as \"api.openai.com\" or \"localhost:1616\"
+:endpoint       - connection endpoint, such as \"/v1/chat/completions\"
+:header         - HTTP header to inclue with the request, a string
+                  or function
+:key            - API key, if required for authentication
+                  String, symbol or function, see `gptel-api-key'
+:models         - List of supported models (symbols, see
+                  `gptel--openai-models' for an example)
+:stream         - Whether to stream responses, boolean
+:request-params - Additional parameters to send with backend queries, as
+                  a plist.  This plist is converted to JSON when sending.
+                  This is meant for request parameters that gptel does not
+                  provide user options for.
+:curl-args      - list of strings representing additional Curl arguments (if
+                  `gptel-use-curl' is set)
+
+When using the OpenAI, Anthropic, Gemini, Kagi, Github Copilot,
+Perplexity or Deepseek backends, all plist keys are optional.  For other
+services, specifying some fields may be required.  Examples:
+
+  (setopt gptel-backend \\='(gptel-openai \"OpenAI\"
+                          :key gptel-api-key-from-auth-source
+                          :stream t))
+
+  (setopt gptel-backend \\='(gptel-anthropic \"Claude\" :key \"sk-...\"))
+
+  (setopt gptel-backend \\='(gptel-ollama \"Ollama\"
+                          :host \"localhost:11434\"
+                          :models (qwen3:4b llama3.1:8b)
+                          :stream t))
+
+This list of keys is non-exhaustive.  Some backends (such as
+`gptel-bedrock') recognize or require additional keys.  To see what
+other keys are available, check the corresponding constructor (such as
+`gptel-make-bedrock').
+
+When not using `setopt', backends for LLM providers (local or remote)
+may be constructed and registered using one of the available backend
+constructor functions:
+
+- `gptel-make-openai'
+- `gptel-make-anthropic'
+- `gptel-make-gemini'
+- `gptel-make-ollama'
+- `gptel-make-azure'
+- `gptel-make-gpt4all'
+- `gptel-make-kagi'
+- `gptel-make-privategpt'
+- `gptel-make-perplexity'
+- `gptel-make-deepseek'
+- `gptel-make-xai'
+- `gptel-make-gh-copilot'
+- `gptel-make-bedrock'
+
+In addition, `gptel-backend' can be assigned to them.  Examples:
+
+  (setq gptel-backend (gptel-make-openai \"llamacpp\"
+                        :host \"localhost:8080\"
+                        :protocol \"http\"
+                        :models \\='(gpt-oss-120b glm-4.7-flash)))
+
+  (setq gptel-backend (gptel-make-gemini \"Gemini\"
+                        :key gptel-api-key :stream t))
+
+  (setq gptel-backend (gptel-make-anthropic \"Claude-think\"
+                        :key gptel-api-key
+                        :request-params
+                        \\='(:thinking (:type \"enabled\" :budget_tokens 1024)
+                          :max_tokens 2048)))
+
+See their documentation for more information and the package README for
+examples.  Once registered, backends may be retrieved using
+`gptel-get-backend' or switched to interactively from gptel's menu (see
+`gptel-menu')."
+  :safe #'always
+  :type
+  (let ((types '( choice :tag "Type"
+                  (const :tag "OpenAI compatible" gptel-openai)
+                  (const gptel-anthropic)
+                  (const gptel-gemini)
+                  (const gptel-ollama)
+                  (const gptel-kagi)
+                  (const :tag "GitHub Copilot" gptel-gh)
+                  (const gptel-bedrock)
+                  (const gptel-perplexity)
+                  (const gptel-deepseek)
+                  (const gptel-privategpt))))
+    `(choice
+      (restricted-sexp :match-alternatives (gptel-backend-p 'nil)
+                       :tag "No backend")
+      (cons :tag "(BACKEND-TYPE NAME . PLIST)" ;accommodate (gptel-openai "chatgpt" . plist)
+            ,types (cons string
+                         (plist :value-type (choice string symbol function
+                                                    (repeat symbol)))))
+      (cons :tag "(BACKEND-TYPE . PLIST)" ;accommodate (gptel-openai :name "chatgpt" . plist)
+            ,types (plist :value-type (choice string symbol function
+                                              (repeat symbol))))))
+  :get
+  (lambda (sym)
+    (when-let* ((backend (default-toplevel-value sym))
+                (type (type-of backend))
+                (plist (list :protocol (gptel-backend-protocol backend)
+                             :host (gptel-backend-host backend)
+                             :endpoint (gptel-backend-endpoint backend)
+                             :header (gptel-backend-header backend)
+                             :key (gptel-backend-key backend)
+                             :models (gptel-backend-models backend)
+                             :stream (gptel-backend-stream backend)
+                             :curl-args (gptel-backend-curl-args backend)
+                             :request-params (gptel-backend-request-params backend))))
+      (apply #'list type (gptel-backend-name backend)
+             (cl-loop for (k v) on plist by #'cddr
+                      if (and (readablep v) (not (null v)))
+                      collect k and collect v))))
+  :set
+  (lambda (sym val)
+    (cond
+     ((null val) (set-default-toplevel-value sym val))
+     ((listp val)
+      (let* ((name (if (stringp (cadr val)) ;explicit and implicit :name specification
+                       (cadr val) (plist-get (cdr val) :name)))
+             (args (if name (cddr val) (cdr val)))
+             type)
+        (cl-remf args :name)
+        (if (memq (car val) '(gptel-gh gptel--gh))
+            (setq type 'gptel-gh-copilot)
+          (setq type (car val)))
+        (set-default-toplevel-value
+         sym (apply (intern (concat "gptel-make-"
+                                    (substring (symbol-name type) 6)))
+                    name args))))
+     ((gptel-backend-p val) (set-default-toplevel-value sym val)))))
+
+(defcustom gptel-model nil
   (concat
-   "Model for chat.
+   "Model for gptel queries.
 
 The name of the model, as a symbol.  This is the name as expected
 by the LLM provider's API.
@@ -519,40 +509,12 @@ To set the model for a chat session interactively call
   :safe #'always
   :type `(choice
 	  (symbol :tag "Specify model name")
-	  ,@(mapcar (lambda (model)
-		      (list 'const :tag (symbol-name (car model))
-			    (car model)))
-		    gptel--openai-models)))
-
-(defvar gptel--openai
-  (gptel-make-openai
-      "ChatGPT"
-    :key 'gptel-api-key
-    :stream t
-    :models gptel--openai-models))
-
-(defcustom gptel-backend gptel--openai
-  "LLM backend to use.
-
-This is the default \"backend\", an object of type
-`gptel-backend' containing connection, authentication and model
-information.
-
-A backend for ChatGPT is pre-defined by gptel.  Backends for
-other LLM providers (local or remote) may be constructed using
-one of the available backend creation functions:
-- `gptel-make-openai'
-- `gptel-make-azure'
-- `gptel-make-ollama'
-- `gptel-make-gpt4all'
-- `gptel-make-gemini'
-See their documentation for more information and the package
-README for examples."
-  :safe #'always
-  :type `(choice
-          (const :tag "ChatGPT" ,gptel--openai)
-          (restricted-sexp :match-alternatives (gptel-backend-p 'nil)
-			   :tag "Other backend")))
+	  ,@(cl-loop
+             for (_name . backend) in gptel--known-backends
+             append (mapcar
+                     (lambda (model) (list 'const :tag (symbol-name model)
+			              model))
+                     (gptel-backend-models backend)))))
 
 (defvar gptel-expert-commands nil
   "Whether experimental gptel options should be enabled.
@@ -787,9 +749,115 @@ binary-encoded.")
   "\\(?:\\(?1:!\\)?\\(?2:\\[\\)\\(?3:\\^?\\(?:\\\\\\]\\|[^]]\\)*\\|\\)\\(?4:\\]\\)\\(?5:(\\)\\s-*\\(?6:[^)]*?\\)\\(?:\\s-+\\(?7:\"[^\"]*\"\\)\\)?\\s-*\\(?8:)\\)\\|\\(<\\)\\([a-z][a-z0-9.+-]\\{1,31\\}:[^]	\n<>,;()]+\\)\\(>\\)\\)"
   "Link regex for `gptel-mode' in Markdown mode.")
 
+(defvar gptel--mode-description-alist
+  '((js2-mode      . "Javascript")
+    (sh-mode       . "Shell")
+    (enh-ruby-mode . "Ruby")
+    (yaml-mode     . "Yaml")
+    (yaml-ts-mode  . "Yaml")
+    (rustic-mode   . "Rust")
+    (tuareg-mode   . "OCaml"))
+  "Mapping from unconventionally named major modes to languages.
+
+This is used when generating system prompts for rewriting and
+when including context from these major modes.")
+
 
 ;;; Utility functions
 
+;;;; JSON parsing helpers
+;; JSON conversion semantics used by gptel
+;; empty object "{}" => empty list '() == nil
+;; null              => :null
+;; false             => :json-false
+
+;; TODO(tool) Except when reading JSON from a string, where null => nil
+
+(defmacro gptel--json-read ()
+  "Parse JSON at point in buffer."
+  (if (fboundp 'json-parse-buffer)
+      `(json-parse-buffer
+        :object-type 'plist
+        :null-object :null
+        :false-object :json-false)
+    (require 'json)
+    (defvar json-object-type)
+    (defvar json-null)
+    (declare-function json-read "json" ())
+    `(let ((json-object-type 'plist)
+           (json-null :null))
+       (json-read))))
+
+(defmacro gptel--json-read-string (str)
+  "Pasre JSON string STR."
+  (if (fboundp 'json-parse-string)
+      `(json-parse-string ,str
+        :object-type 'plist
+        :null-object nil
+        :false-object :json-false)
+    (require 'json)
+    (defvar json-object-type)
+    (declare-function json-read-from-string "json" ())
+    `(let ((json-object-type 'plist))
+      (json-read-from-string ,str))))
+
+(defmacro gptel--json-encode (object)
+  "Serialize OBJECT as JSON."
+  (if (fboundp 'json-serialize)
+      `(json-serialize ,object
+        :null-object :null
+        :false-object :json-false)
+    (require 'json)
+    (defvar json-false)
+    (defvar json-null)
+    (declare-function json-encode "json" (object))
+    `(let ((json-false :json-false)
+           (json-null  :null))
+      (json-encode ,object))))
+
+(defun gptel--process-models (models)
+  "Convert items in MODELS to symbols with appropriate properties."
+  (let ((models-processed))
+    (dolist (model models)
+      (cl-etypecase model
+        (string (push (intern model) models-processed))
+        (symbol (push model models-processed))
+        (cons
+         (cl-destructuring-bind (name . props) model
+           (setf (symbol-plist name)
+                 ;; MAYBE: Merging existing symbol plists is safer, but makes it
+                 ;; difficult to reset a symbol plist, since removing keys from
+                 ;; it (as opposed to setting them to nil) is more work.
+                 ;;
+                 ;; (map-merge 'plist (symbol-plist name) props)
+                 props)
+           (push name models-processed)))))
+    (nreverse models-processed)))
+
+;;;; Backend interface
+(defun gptel-get-backend (name)
+  "Return gptel backend with NAME.
+
+Throw an error if there is no match."
+  (or (alist-get name gptel--known-backends nil nil #'equal)
+      (user-error "Backend %s is not known to be defined"
+                  name)))
+
+(gv-define-setter gptel-get-backend (val name)
+  `(setf (alist-get ,name gptel--known-backends
+          nil t #'equal)
+    ,val))
+
+(cl-defstruct
+    (gptel-backend (:constructor gptel--make-backend)
+                   (:copier gptel--copy-backend))
+  name host header protocol stream
+  endpoint key models url request-params
+  curl-args
+  (coding-system
+   nil :documentation "Can be set to `binary' if the backend expects non UTF-8 output."))
+
+;;;; Misc utilities
 (defun gptel-api-key-from-auth-source (&optional host user)
   "Lookup api key in the auth source.
 By default, the LLM host for the active backend is used as HOST,
@@ -1554,22 +1622,54 @@ send to the LLM.")
 
 ;; FIXME(fsm) unify this with `gptel--inject-media', which is a mess
 (cl-defgeneric gptel--inject-prompt
-    (_backend data new-prompt &optional _position)
-  "Append NEW-PROMPT to existing prompts in query DATA.
+    (_backend data new-prompt &optional position)
+  "Inject NEW-PROMPT into existing prompts in query DATA.
 
 NEW-PROMPT can be a single message or a list of messages.
 
-Not implemented: if POSITION is
-- a non-negative number, insert it at that position in PROMPTS.
-- a negative number, insert it there counting from the end.
+If POSITION is
+- nil, append NEW-PROMPT at the end of DATA
+- a non-negative integer, insert it at that position in DATA.
+- a negative integer, insert it there counting from the end.
+
+- Not implemented: a list of accessors, inject it at that position.
 
 This generic implementation handles the Anthropic,
 OpenAI-compatible and Ollama message formats."
-  ;; ;TODO(fsm): implement _POSITION
   (when (keywordp (car-safe new-prompt)) ;Is new-prompt one or many?
     (setq new-prompt (list new-prompt)))
   (let ((prompts (plist-get data :messages)))
-    (plist-put data :messages (vconcat prompts new-prompt))))
+    (pcase position
+      ('nil (plist-put data :messages (vconcat prompts new-prompt)))
+      ((pred integerp)
+       (when (< position 0) (setq position (+ (length prompts) position)))
+       (plist-put data :messages (vconcat (substring prompts 0 position)
+                                          new-prompt
+                                          (substring prompts position)))))))
+
+(cl-defgeneric gptel--inject-tool-call (backend _data _tool-call new-call)
+  "Replace TOOL-CALL in query DATA with NEW-CALL.
+
+DATA is the request payload containing the array of user and assistant
+messages, typically available as (plist-get INFO :data).  TOOL-CALL is
+the call plist as recorded by gptel's response parser(s).  NEW-CALL is
+the replacement plist containing the new tool name and arguments, in the
+form
+
+  (:name \"newName\" :args (:arg1 \"newArg\" :arg2 ...))
+
+:name and :args are both optional.
+
+If NEW-CALL is nil, the tool call is removed from DATA and thus the turn
+history.
+
+BACKEND is the `gptel-backend'."
+  (display-warning
+   '(gptel tool-call)
+   (format "Editing tool call arguments is not implemented for %s.\
+  Ignoring new arguments %s"
+           (type-of backend)
+           (truncate-string-to-width (prin1-to-string new-call) 50 nil nil t))))
 
 
 ;;; State machine for driving requests
@@ -1580,7 +1680,8 @@ OpenAI-compatible and Ollama message formats."
              (,#'gptel--tool-use-p    . TOOL)
              (t                       . DONE)))
     (TOOL . ((,#'gptel--error-p       . ERRS)
-             (,#'gptel--tool-result-p . WAIT)
+             (t                       . TRET)))
+    (TRET . ((,#'gptel--tool-result-p . WAIT)
              (t                       . DONE))))
   "Alist specifying gptel's default state transition table for requests.
 
@@ -1595,6 +1696,7 @@ considered a success and acts as a default.")
 (defvar gptel-request--handlers
   `((WAIT ,#'gptel--handle-wait)
     (TOOL ,#'gptel--handle-tool-use)
+    (TRET ,#'gptel--handle-tool-result)
     (DONE ,#'gptel--handle-post)
     (ERRS ,#'gptel--handle-post)
     (ABRT ,#'gptel--handle-post))
@@ -1675,9 +1777,9 @@ MACHINE is an instance of `gptel-fsm'"
   "Fire the request contained in state machine FSM's info."
   ;; Reset some flags in info.  This is necessary when reusing fsm's context for
   ;; a second network request: gptel tests for the presence of these flags to
-  ;; handle state transitions.  (NOTE: Don't add :token to this.)
+  ;; handle state transitions.  (NOTE: Don't add :uuid to this.)
   (let ((info (gptel-fsm-info fsm)))
-    (dolist (key '(:tool-success :tool-use :error :http-status :reasoning))
+    (dolist (key '(:tool-result :tool-use :error :http-status :reasoning))
       (when (plist-get info key)
         (plist-put info key nil))))
   (funcall
@@ -1687,41 +1789,49 @@ MACHINE is an instance of `gptel-fsm'"
    fsm)
   (run-hooks 'gptel-post-request-hook))
 
+(defun gptel--process-tool-call (fsm tool-spec tool-call result)
+  "Add tool RESULT to a TOOL-CALL and transition FSM if required.
+
+TOOL-CALL is a plist with the tool :name, :args and other metadata.
+TOOL-SPEC is the `gptel-tool' object, and FSM is the request state.
+
+If all pending tool calls in the current request have finished, it
+injects the results into the prompt data and transitions the FSM."
+  (let* ((info (gptel-fsm-info fsm))
+         (tool-result-alist (plist-get info :tool-result))
+         ;; MAYBE(tool-hooks): Use plist-member for valid nil :result?
+         (remaining (cl-loop for call in (plist-get info :tool-use)
+                             count (not (plist-get call :result)))))
+    (let ((result (gptel--to-string result)))
+      ;; FIXME(tool-hooks): If a hook has changed the tool that was called
+      ;; tool-spec needs to be updated.
+      (push (list tool-spec (plist-get tool-call :args) result)
+            tool-result-alist)
+      (plist-put info :tool-result tool-result-alist) ;for the callback
+      ;; NOTE: tool-call is a member of (plist-get info :tool-use), so :tool-use
+      ;; is modified by side effect.
+      ;; FIXME: Make the implicit addition to :tool-use explicit
+      (plist-put tool-call :result result)) ;for the LLM
+    ;; All tools have run
+    (when (<= (cl-decf remaining) 0) (gptel--fsm-transition fsm))))
+
 (defun gptel--handle-tool-use (fsm)
   "Run tool calls captured in FSM, and advance the state machine with the results."
   (when-let* ((info (gptel-fsm-info fsm))
               (backend (plist-get info :backend))
               ;; This function might run many times, so only act on the remaining tool calls.
               (tool-use (cl-remove-if (lambda (tc) (plist-get tc :result))
-                                      (plist-get info :tool-use)))
-              (ntools (length tool-use))
-              (tool-idx 0))
+                                      (plist-get info :tool-use))))
     (with-current-buffer (plist-get info :buffer)
-      (let ((result-alist) (pending-calls))
+      (let ((pending-calls))
         (mapc                           ; Construct function calls
          (lambda (tool-call)
            (letrec ((args (plist-get tool-call :args))
                     (name (plist-get tool-call :name))
-                    (arg-values nil)
-                    (tool-spec
-                     (cl-find-if
-                      (lambda (ts) (equal (gptel-tool-name ts) name))
-                      (plist-get info :tools)))
-                    (process-tool-result
-                     (lambda (result)
-                       (plist-put info :tool-success t)
-                       (let ((result (gptel--to-string result)))
-                         (plist-put tool-call :result result)
-                         (push (list tool-spec args result) result-alist))
-                       (cl-incf tool-idx)
-                       (when (>= tool-idx ntools) ; All tools have run
-                         (gptel--inject-prompt
-                          backend (plist-get info :data)
-                          (gptel--parse-tool-results
-                           backend (plist-get info :tool-use)))
-                         (funcall (plist-get info :callback)
-                                  (cons 'tool-result result-alist) info)
-                         (gptel--fsm-transition fsm)))))
+                    (tool-spec (cl-find-if (lambda (ts) (equal (gptel-tool-name ts) name))
+                                           (plist-get info :tools)))
+                    (process-tool-result (apply-partially #'gptel--process-tool-call
+                                                          fsm tool-spec tool-call)))
              (if (null tool-spec)
                  (if (equal name gptel--ersatz-json-tool) ;Could be a JSON response
                      ;; Handle structured JSON output supplied as tool call
@@ -1729,33 +1839,56 @@ MACHINE is an instance of `gptel-fsm'"
                               (gptel--json-encode (plist-get tool-call :args))
                               info)
                    (message "Unknown tool called by model: %s" name))
-               (setq arg-values
-                     (mapcar
-                      (lambda (arg)
-                        (let ((key (intern (concat ":" (plist-get arg :name)))))
-                          (plist-get args key)))
-                      (gptel-tool-args tool-spec)))
-               ;; Check if tool requires confirmation
-               (if (and gptel-confirm-tool-calls
+               (let ((confirm))         ;Check if tool requires confirmation
+                 (cond      ;:confirm in tool-call (from hooks) takes precedence
+                  ((and-let* ((call-confirm (plist-member tool-call :confirm)))
+                     (setq confirm (cadr call-confirm))))
+                  ((and gptel-confirm-tool-calls ;global and tool-specific setting
                         (or (eq gptel-confirm-tool-calls t) ;always confirm, or
                             (and-let* ((confirm (gptel-tool-confirm tool-spec)))
-                              (or (not (functionp confirm)) (apply confirm arg-values)))))
-                   (push (list tool-spec arg-values process-tool-result)
-                         pending-calls)
-                 ;; If not, run the tool
-                 (if (gptel-tool-async tool-spec)
-                     (apply (gptel-tool-function tool-spec)
-                            process-tool-result arg-values)
-                   (let ((result
-                          (condition-case errdata
-                              (apply (gptel-tool-function tool-spec) arg-values)
-                            (error (mapconcat #'gptel--to-string errdata " ")))))
-                     (funcall process-tool-result result)))))))
+                              (or (not (functionp confirm))
+                                  (apply confirm (gptel--map-tool-args tool-spec args))))))
+                   (setq confirm t)))
+                 (if confirm  ;To send to callback for confirmation
+                     (push (list tool-spec args process-tool-result) pending-calls)
+                   (let ((arg-values (gptel--map-tool-args tool-spec args)))
+                     (if (gptel-tool-async tool-spec) ;If not, run the tool
+                         (apply (gptel-tool-function tool-spec)
+                                process-tool-result arg-values)
+                       (let ((result (condition-case errdata
+                                         (apply (gptel-tool-function tool-spec) arg-values)
+                                       (error (mapconcat #'gptel--to-string errdata " ")))))
+                         (funcall process-tool-result result)))))))))
          tool-use)
         (when pending-calls
           (plist-put info :tool-pending t)
           (funcall (plist-get info :callback)
                    (cons 'tool-call pending-calls) info))))))
+
+(defun gptel--map-tool-args (tool-spec args)
+  "Create a tool call argument list from TOOL-SPEC and ARGS.
+
+TOOL-SPEC is a `gptel-tool' and ARGS is a plist of arguments for a tool
+call.  The argument list is suitable for supplying to the tool function."
+  (mapcar
+   (lambda (arg)
+     (let ((key (intern (concat ":" (plist-get arg :name)))))
+       (plist-get args key)))
+   (gptel-tool-args tool-spec)))
+
+(defun gptel--handle-tool-result (fsm)
+  "Handle the results of tool execution in FSM.
+
+Inject tool results into into the prompt data (for the LLM), run the
+callback (for the user), and transition the request state."
+  (let ((info (gptel-fsm-info fsm)))
+    (gptel--inject-prompt
+     (plist-get info :backend) (plist-get info :data)
+     (gptel--parse-tool-results (plist-get info :backend)
+                                (plist-get info :tool-use)))
+    (funcall (plist-get info :callback)
+             (cons 'tool-result (plist-get info :tool-result)) info))
+  (gptel--fsm-transition fsm))
 
 (defun gptel--handle-post (fsm)
   "Run cleanup for `gptel-request' with FSM."
@@ -1771,7 +1904,7 @@ MACHINE is an instance of `gptel-fsm'"
 
 (defun gptel--tool-use-p (info) (plist-get info :tool-use))
 
-(defun gptel--tool-result-p (info) (plist-get info :tool-success))
+(defun gptel--tool-result-p (info) (plist-get info :tool-result))
 
 
 ;;; Send gptel requests
@@ -2344,6 +2477,13 @@ PROMPTS is the plist of previous user queries and LLM responses.")
   "Check if MODEL is available in BACKEND, adjust accordingly.
 
 If SHOOSH is true, don't issue a warning."
+  (unless backend
+    (unless shoosh
+      (display-warning
+       'gptel "No gptel-backend defined: defaulting to ChatGPT"))
+    (setq gptel-backend
+          (gptel-make-openai "ChatGPT" :key 'gptel-api-key :stream t)
+          backend gptel-backend))
   (let ((available (gptel-backend-models backend)))
     (when (stringp model)
       (unless shoosh
@@ -2507,10 +2647,10 @@ See `gptel-curl--get-response' for its contents.")
 
 ;;; Curl request response handling
 
-(defun gptel-curl--get-args (info token)
+(defun gptel-curl--get-args (info uuid)
   "Produce list of arguments for calling Curl.
 
-INFO contains the request data, TOKEN is a unique identifier."
+INFO contains the request data, UUID is a unique identifier."
   (let* ((data (plist-get info :data))
          ;; We have to let-bind the following three since their dynamic
          ;; values are used for key lookup and url resolution
@@ -2538,7 +2678,7 @@ INFO contains the request data, TOKEN is a unique identifier."
      gptel-curl-extra-args
      (and-let* ((curl-args (gptel-backend-curl-args gptel-backend)))
        (if (functionp curl-args) (funcall curl-args) curl-args))
-     (list (format "-w(%s . %%{size_header})" token))
+     (list (format "-w(%s . %%{size_header})" uuid))
      (if (< (string-bytes data-json) gptel-curl-file-size-threshold)
          (list (format "-d%s" data-json))
        (let* ((write-region-inhibit-fsync t)
@@ -2573,12 +2713,12 @@ plist with the following keys, among others:
 
 Call CALLBACK with the response and INFO afterwards.  If omitted
 the response is inserted into the current buffer after point."
-  (let* ((token (md5 (format "%s%s%s%s"
-                             (random) (emacs-pid) (user-full-name)
-                             (recent-keys))))
+  (let* ((uuid (md5 (format "%s%s%s%s"
+                            (random) (emacs-pid) (user-full-name)
+                            (recent-keys))))
          (info (gptel-fsm-info fsm))
          (backend (plist-get info :backend))
-         (args (gptel-curl--get-args info token))
+         (args (gptel-curl--get-args info uuid))
          (stream (plist-get info :stream))
          (process (apply #'start-process "gptel-curl"
                          (gptel--temp-buffer " *gptel-curl*") (gptel--curl-path) args)))
@@ -2597,10 +2737,10 @@ the response is inserted into the current buffer after point."
 	;; for cases when buffer coding system is not set to utf-8.
 	(set-process-coding-system process 'utf-8-unix 'utf-8-unix)))
       (set-process-query-on-exit-flag process nil)
-      (if (plist-get info :token)       ;not the first run, set only the token
-          (plist-put info :token token)
+      (if (plist-get info :uuid)        ;not the first run, set only the uuid
+          (plist-put info :uuid uuid)
         (setf (gptel-fsm-info fsm)      ;fist run, set all process parameters
-              (nconc (list :token token
+              (nconc (list :uuid uuid
                            :transformer
                            (when (with-current-buffer (plist-get info :buffer)
                                    (and (derived-mode-p 'org-mode)
@@ -2657,7 +2797,7 @@ PROC-INFO is the plist containing process metadata."
                         (point-min) (1- (point))))
                       "response headers"))
         (let ((p (point)))
-          (when (search-forward (plist-get proc-info :token) nil t)
+          (when (search-forward (plist-get proc-info :uuid) nil t)
             (goto-char (1- (match-beginning 0)))
             (gptel--log (buffer-substring-no-properties p (point))
                         "response body")))))))
@@ -2678,7 +2818,7 @@ PROCESS and _STATUS are process parameters."
             (funcall (plist-get info :callback) t info))
         (with-current-buffer proc-buf   ; Or Capture error message
           (goto-char (point-max))
-          (search-backward (plist-get info :token))
+          (search-backward (plist-get info :uuid))
           (backward-char)
           (pcase-let* ((`(,_ . ,header-size) (read (current-buffer)))
                        (response (progn (goto-char header-size)
@@ -2842,9 +2982,9 @@ PROCESS and _STATUS are process parameters."
   "Parse the buffer BUF with curl's response.
 
 PROC-INFO is a plist with contextual information."
-  (let ((token (plist-get proc-info :token)))
+  (let ((uuid (plist-get proc-info :uuid)))
     (goto-char (point-max))
-    (search-backward token)
+    (search-backward uuid)
     (backward-char)
     (pcase-let* ((`(,_ . ,header-size) (read (current-buffer))))
       (goto-char (point-min))

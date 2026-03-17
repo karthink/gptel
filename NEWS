@@ -1,5 +1,96 @@
 # -*- mode: org; -*-
 
+* 0.9.9.5-pre
+
+** Breaking changes
+
+- gptel's default ChatGPT backend has been removed. ~gptel-backend~ and
+  ~gptel-model~ now default to =nil=, and there are no registered
+  backends out of the box.  However gptel remains usable without
+  configuration: if ~gptel-send~ is called without a backend set, the
+  ChatGPT backend is created on the fly and used.
+
+- The models =gpt-41-copilot=, =gpt-5= and =claude-opus-41= have been
+  removed from the default list of GitHub Copilot models.  These models
+  are no longer available in the GitHub Copilot API.
+
+** New models and backends
+
+- xAI backend: Add support for =grok-4-1-fast-reasoning=,
+  =grok-4-1-fast-non-reasoning=, =grok-4-fast-reasoning=, and
+  =grok-4-fast-non-reasoning=.
+
+- - GitHub Copilot backend: Add support for =gpt-5.1-codex-,
+  =gpt-5.1-codex-mini, =claude-sonnet-4.6= and =gemini-3.1-pro-preview=.
+
+- Gemini backend: add support for =gemini-3.1-flash-lite-preview=;
+  add deprecation notice for =gemini-3-pro-preview=.
+
+- OpenAI backend: add support for =gpt-5.3-chat-latest= and =gpt-5.4=.
+
+** New features and UI changes
+
+- When using ~setopt~ or the customize interface, ~gptel-backend~ can
+  now be specified as a list instead of an opaque object.  See its
+  documentation for details.
+
+- When using ~gptel-send~, tool calls that require confirmation can now
+  be examined in full in a dedicated inspection buffer, where they are
+  displayed as Elisp forms.
+
+  The tool name and tool call arguments can also be modified in-place
+  now.  These modifications /must/ be in-place; deleting tool calls or
+  adding new ones to the inspection buffer is not supported.
+
+- New hooks ~gptel-pre-tool-call-functions~ and
+  ~gptel-post-tool-call-functions~ run before and after each tool call,
+  respectively.  These hooks receive details of the (planned or
+  finished) tool call and provide fine-grained control over them.  These
+  hooks work with ~gptel-send~, including when invoked from gptel's
+  Transient menu or from Elisp.
+
+  ~gptel-pre-tool-call-functions~ can be used to modify tool call
+  arguments, short-circuit the call and provide the results, block the
+  tool call but continue the request with a message for the LLM, or stop
+  the request entirely.
+
+  ~gptel-post-tool-call-functions~ can be used to modify tool call
+  results, block the tool call but continue the request, or stop the
+  request entirely.
+
+- New variable ~gptel-bedrock-aws-cli-command~ to set the path to the
+  AWS CLI command for the Bedrock backend.  Defaults to "ews".
+
+** Notable bug fixes
+
+- ~gptel-backend~ can now be set from customize buffers.  These are
+  produced by, for example, =M-x customize-group ⮐ gptel=.  Previously
+  ~gptel-backend~ was displayed in a read-only way, and could even break
+  the display of the customize buffer depending on its value.
+
+- Breaking change to the ~gptel-request~ API: Tool call arguments are
+  passed to ~gptel-request~ callbacks as a plist, not a list.  The plist
+  keys are the function argument names as specified in the tool
+  definition.  /This does not affect ~gptel-send~ or (to my best
+  knowledge) any of the packages using gptel./
+
+  Example: The previous behavior was
+
+  : (funcall callback `(tool-call ,web-search ("emacs" 10) ,tool-cb))
+
+  where =web-search= is a ~gptel-tool~, and =callback= and =tool-cb= are
+  the ~gptel-request~ and tool callback respectively.  The new behavior
+  is:
+
+  : (funcall callback
+  :          `(tool-call ,web-search (:query "emacs" :count 10) ,tool,cb))
+
+  where =:query= and =:count= correspond to arguments =query= and
+  =count= in the definition of =web-search=.
+
+  Note that this is a bug fix. It's how the API has been documented and
+  was supposed to work in the first place.
+
 * 0.9.9.4
 
 ** Breaking changes
@@ -435,7 +526,7 @@
   ~gptel-mcp-disconnect~.  You can use these to start MCP servers
   selectively and add tools to gptel.  These commands are also
   available from gptel's tools menu.
-  
+
   These commands are currently not autoloaded by gptel.  To access
   them, require the ~gptel-integrations~ feature.
 
@@ -477,7 +568,7 @@
   path.
 
 - The current kill can be added to gptel's context.  To enable this,
-  turn on ~gptel-expert-commands~ and use gptel's transient menu. 
+  turn on ~gptel-expert-commands~ and use gptel's transient menu.
 
 - The tools menu (~gptel-tools~) has been redesigned.  It now displays
   tool categories and associated tools in two columns, and it should
@@ -696,3 +787,7 @@ model/backend configuration.
   pops up the file correctly.
 - API keys are stripped of whitespace before sending.
 - Multiple UI, backend and prompt construction bugs have been fixed.
+
+# Local Variables:
+# fill-column: 72
+# End:

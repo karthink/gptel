@@ -25,7 +25,7 @@
 (require 'cl-generic)
 (require 'cl-lib)
 (require 'map)
-(require 'gptel)
+(eval-and-compile (require 'gptel-request))
 
 (defvar json-object-type)
 
@@ -39,6 +39,22 @@
 (cl-defstruct (gptel-anthropic (:constructor gptel--make-anthropic)
                                (:copier nil)
                                (:include gptel-backend)))
+
+(defun gptel--anthropic-update-tokens (usage info)
+  "Update token usage information from USAGE.
+USAGE is part of the response, INFO is the request plist."
+  (when usage
+    (let* ((tokens (plist-get info :tokens))
+           (input (+ (plist-get usage :input_tokens)
+                     (or (plist-get tokens :input) 0)))
+           (output (+ (plist-get usage :output_tokens)
+                      (or (plist-get tokens :output) 0)))
+           (cached (+ (plist-get usage :cache_read_input_tokens)
+                      (or (plist-get tokens :cached) 0)))
+           (cache (+ (plist-get usage :cache_creation_input_tokens)
+                     (or (plist-get tokens :cache) 0))))
+      (list :input input :output output
+            :cache cache :cached cached))))
 
 ;; NOTE the crucial difference between
 ;; - (push val (plist-get info :key)) and
@@ -94,7 +110,8 @@ information if the stream contains it.  Not my best work, I know."
                 ("text" (push (plist-get cblock :text) content-strs))
                 ("tool_use" (plist-put info :tool-use
                                        (cons (list :id (plist-get cblock :id)
-                                                   :name (plist-get cblock :name))
+                                                   :name (plist-get cblock :name)
+                                                   :input nil) ;ensure :input key is always present
                                              (plist-get info :tool-use))))
                 ("thinking" (plist-put info :reasoning (plist-get cblock :thinking))
                  (plist-put info :reasoning-block 'in)))))
@@ -146,8 +163,9 @@ information if the stream contains it.  Not my best work, I know."
                         (plist-put tool-call :input nil)
                         (plist-put tool-call :id (plist-get tool-call :id)))
                       tool-use))
-              (plist-put info :output-tokens
-                         (map-nested-elt response '(:usage :output_tokens)))
+              ;; Capture token usage
+              (plist-put info :tokens (gptel--anthropic-update-tokens
+                                       (plist-get response :usage) info))
               (plist-put info :stop-reason
                          (map-nested-elt response '(:delta :stop_reason)))))))
       (error (goto-char pt)))
@@ -166,8 +184,8 @@ information if the stream contains it.  Not my best work, I know."
 
 Mutate state INFO with response metadata."
   (plist-put info :stop-reason (plist-get response :stop_reason))
-  (plist-put info :output-tokens
-             (map-nested-elt response '(:usage :output_tokens)))
+  (plist-put info :tokens (gptel--anthropic-update-tokens
+                           (plist-get response :usage) info))
   (cl-loop
    with content = (plist-get response :content)
    for cblock across content
@@ -321,6 +339,41 @@ TOOL-USE is a list of plists containing tool names, arguments and call results."
 
 ;; NOTE: No `gptel--inject-prompt' method required for gptel-anthropic, since
 ;; this is handled by its defgeneric implementation
+
+(cl-defmethod gptel--inject-tool-call ((_backend gptel-anthropic) data tool-call new-call)
+  "Replace TOOL-CALL in query DATA with NEW-CALL.
+
+BACKEND is the `gptel-backend'.  See the generic function documentation
+for details.  This implementation handles the Anthropic API."
+  ;; FIXME: We currently assume that the tool call being modified is in the last
+  ;; position in the messages array.
+  (if-let* ((messages (plist-get data :messages))
+            (entry (aref messages (1- (length messages))))
+            (contents (plist-get entry :content))
+            (id (plist-get tool-call :id))
+            (indexed-call
+             (cl-loop for chunk across contents
+                      for i upfrom 0
+                      if (equal (plist-get chunk :id) id)
+                      return (cons i chunk)
+                      finally return nil))
+            (index (car indexed-call))
+            (call (cdr indexed-call)))
+      (if (null new-call)
+          (if (= (length contents) 1)
+              (plist-put data :messages (substring messages nil -1))
+            (plist-put entry :content
+                       (vconcat (substring contents 0 index)
+                                (substring contents (1+ index)))))
+        (when-let* ((args (plist-get new-call :args)))
+          (plist-put call :input args))
+        (when-let* ((name (plist-get new-call :name)))
+          (plist-put call :name name)))
+    (display-warning
+     '(gptel tool-call)
+     (format "Could not inject updated tool-call arguments for tool call %s, %s"
+             (plist-get tool-call :name)
+             (truncate-string-to-width (prin1-to-string new-call) 50 nil nil t)))))
 
 ;; TODO: Remove these functions (#792)
 (defun gptel--anthropic-format-tool-id (tool-id)
