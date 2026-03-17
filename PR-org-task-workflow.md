@@ -4,9 +4,74 @@
 
 This PR introduces comprehensive org-mode integration for AI-assisted task workflows. All changes were developed using AI assistant collaboration within gptel itself, serving as both a feature implementation and a real-world test of the workflow.
 
-**Stats:** +1,966 lines across 7 files (2 new modules)
+**Stats:** +14,233 / -151 lines across 94 files (includes tests, docs, and subrepo)
 
 **Example:** See [emacs-example-ai.org](./emacs-example-ai.org) for a real-world example of this workflow in action.
+
+---
+
+## Fork Status (2026-03-17)
+
+### gptel (siroic/gptel)
+
+| | Detail |
+|---|---|
+| **Current branch** | `master` |
+| **Remotes** | `origin` (siroic/gptel), `gitea` (intranet), `karthink` (upstream) |
+| **Sync status** | ✅ Fully merged with karthink/master (59cfad8) |
+| **Fork-only commits** | ~56 commits ahead of upstream |
+
+**Last merge from upstream** (`50ed4eb`, 2026-03-17): Integrated 44 commits including:
+- Tool call inspection and editing UI (`gptel--inspect-tool-calls`)
+- Pre/post tool call hooks (`gptel-pre-tool-call-functions`, `gptel-post-tool-call-functions`)
+- Token usage tracking plumbing for all backends (anthropic, gemini, openai, ollama, bedrock, kagi)
+- New models: gpt-5.3-chat-latest, gpt-5.4, gemini-3.1-flash-lite-preview
+- Tool call injection for bedrock backend
+- FSM refactoring: tool result handler (TRET state), tool-use/pre-tool/post-tool handlers
+- Non-streaming response tests
+- Backend decoupling from gptel-openai
+
+**Merge conflict resolutions:**
+- `gptel-openai.el`: Kept upstream model list, preserved fork's `gptel--openai-model-aliases`
+- `gptel-org.el`: Kept fork's org-src gptel-tool registration + upstream's eval-when-compile require
+- `gptel.el`: Kept fork's gptel-abort-hook, tool denial, overlay cleanup alongside upstream's tool inspection UI, pre/post hooks, nconc tool-calls accumulation
+- `test`: Kept fork's subrepo setup, removed karthink's submodule ref
+
+**Fork-only features (not in upstream):**
+- **Org task workflow** (`gptel-org-tasks.el`): TODO state management, model profile switching, tag-based model selection
+- **Org archive** (`gptel-org-archive.el`): Conversation summarization, git metadata extraction, auto-archive
+- **Org cache** (`gptel-org-cache.el`): Context caching for org file links, dual caching strategies, parent heading inheritance
+- **Tag-based message detection**: `:assistant:`/`:user:` tags, highlight mode integration
+- **Subtree context mode**: Scoped conversations under TODO headings
+- **Response titles**: `gptel-org-response-title-function` with first-line extraction
+- **@category GPTEL_TOOLS syntax**: `@category` shorthand in GPTEL_TOOLS property
+- **Tool denial with LLM notification**: Prompt for reason, notify model of denial
+- **Abort improvements**: Stop all processes for buffer, clean ghost tool overlays
+- **AI context docs**: `gptel-ai.org`, `gptel-org-tasks-ai.org`, `gptel-archive-ai.org`, `gptel-remote-ai.org`
+- **Tests**: Comprehensive test suite via subrepo (context, prompts, archive, cache, tasks, streaming, tools)
+
+### gptel-agent (siroic/gptel-agent)
+
+| | Detail |
+|---|---|
+| **Current branch** | `master` |
+| **Remotes** | `origin` (siroic/gptel-agent), `karthink` (upstream) |
+| **Sync status** | ✅ Fully merged with karthink/master (c3612ae) |
+| **Fork-only commits** | 16 commits ahead of upstream |
+
+**Last merge from upstream** (`441e662`, 2026-03-17): Integrated 3 commits:
+- `gptel-agent-tools`: Add agent tool pre/post handlers
+- `gptel-agent-tools`: Add handler for tool result state (TRET)
+- `gptel-agent-tools`: Fix previewer for Edit tool
+
+**Fork-only features (not in upstream):**
+- **Remote server agent** (`gptel-agent-tools-remote.el`): TRAMP-based tools for SSH server management (RemoteBash, RemoteRead, RemoteWrite, RemoteEdit, RemoteGlob, RemoteGrep, ServiceManager)
+- **Archive searcher agent**: Search archived AI task conversations for past work
+- **Agent overlay cleanup**: Clean overlays on abort and session completion
+- **`:include-original-prompt` property**: Include original prompt in agent results
+- **Model cost optimization**: Cheaper models for archive-searcher, executor, researcher
+- **Sudo prevention**: Block sudo in RemoteBash command strings
+- **AI context doc**: `gptel-agent-ai.org`
 
 ## Summary of Changes
 
