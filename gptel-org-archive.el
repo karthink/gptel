@@ -124,6 +124,20 @@ Use `gptel-org-restore-original' to undo the summary if needed."
   :type 'boolean
   :group 'gptel)
 
+(defcustom gptel-org-archive-persistent-tag "persistent"
+  "Tag name that marks a task as persistent.
+
+When a task heading has this tag, `gptel-org-prepare-archive' will:
+- Preserve the heading and its description text
+- Remove conversation sub-headings (user/assistant entries)
+- Add an LLM-generated summary sub-heading to improve future execution
+- Also archive the full summary to the archive file for historical reference
+
+State log entries (e.g. \"- State \\\"AI-DOING\\\" from \\\"AI-DO\\\" [date]\")
+are stripped from the preserved description."
+  :type 'string
+  :group 'gptel)
+
 
 ;;; Internal variables
 
@@ -133,6 +147,140 @@ Use `gptel-org-restore-original' to undo the summary if needed."
 (defvar-local gptel-org-archive--task-metadata nil
   "Stores metadata about the task being archived.")
 
+
+
+;;; Persistent task support
+
+(defun gptel-org-archive--persistent-task-p ()
+  "Return non-nil if current heading has the persistent tag."
+  (when (org-at-heading-p)
+    (let ((tags (org-get-tags nil t)))  ; local tags only
+      (cl-some (lambda (tag)
+                 (string-equal-ignore-case tag gptel-org-archive-persistent-tag))
+               tags))))
+
+(defun gptel-org-archive--find-conversation-start ()
+  "Find the start of conversation sub-headings in the current subtree.
+
+Returns the position of the first child heading with :user: or :assistant:
+tag, or nil if no such heading exists."
+  (save-excursion
+    (org-back-to-heading t)
+    (let ((subtree-end (save-excursion (org-end-of-subtree t t) (point)))
+          (task-level (org-current-level))
+          (result nil))
+      (while (and (not result)
+                  (outline-next-heading)
+                  (< (point) subtree-end))
+        (when (and (<= (org-current-level) (1+ task-level))
+                   (let ((tags (org-get-tags nil t)))
+                     (cl-some (lambda (tag)
+                                (or (string-equal-ignore-case tag "assistant")
+                                    (string-equal-ignore-case tag "user")))
+                              tags)))
+          (setq result (point))))
+      result)))
+
+(defun gptel-org-archive--strip-state-log (text)
+  "Remove org state log entries from TEXT.
+
+Strips lines matching `- State \"...\" from \"...\" [timestamp]' pattern."
+  (with-temp-buffer
+    (insert text)
+    (goto-char (point-min))
+    (while (re-search-forward
+            "^[ \t]*- State \"[^\"]*\"[ \t]+from[ \t]+\"?[^\"]*\"?[ \t]+\\[.*\\][ \t]*\n"
+            nil t)
+      (replace-match ""))
+    ;; Clean up excessive blank lines left after removal
+    (goto-char (point-min))
+    (while (re-search-forward "\n\\{3,\\}" nil t)
+      (replace-match "\n\n"))
+    (buffer-string)))
+
+(defun gptel-org-archive--format-persistent-summary (summary task-info)
+  "Format SUMMARY as a sub-heading to keep under a persistent task.
+
+Returns a string with a Summary sub-heading at the appropriate level."
+  (let* ((parsed (gptel-org-archive--parse-git-changes summary))
+         (clean-summary (car parsed))
+         (level (or (plist-get task-info :level) 1))
+         (stars (make-string (1+ level) ?*)))
+    (concat
+     (format "\n%s Summary\n" stars)
+     clean-summary
+     "\n")))
+
+(defun gptel-org-archive--replace-persistent (summary task-info)
+  "Handle archive for a persistent task.
+
+Preserves the heading and description, removes conversation,
+and adds summary sub-heading.  Also archives the full summary
+to the archive file."
+  (let* ((beg (plist-get task-info :beg))
+         (end (plist-get task-info :end))
+         (conv-start (plist-get task-info :conversation-start))
+         (persistent-summary
+          (gptel-org-archive--format-persistent-summary summary task-info)))
+    (save-excursion
+      (if conv-start
+          ;; Has conversation: remove from conversation start to end, add summary
+          (progn
+            (goto-char conv-start)
+            (delete-region conv-start end)
+            ;; Strip state log from the remaining description
+            (let ((desc-start (save-excursion
+                                (goto-char beg)
+                                (forward-line 1)
+                                ;; Skip property drawer if present
+                                (when (looking-at org-property-drawer-re)
+                                  (goto-char (match-end 0)))
+                                (point))))
+              ;; Work on the region between heading (after properties) and where conversation was
+              (when (< desc-start (point))
+                (let ((desc-text (buffer-substring-no-properties desc-start (point))))
+                  (delete-region desc-start (point))
+                  (goto-char desc-start)
+                  (insert (gptel-org-archive--strip-state-log desc-text)))))
+            ;; Now insert summary at the end of the remaining content
+            (goto-char (save-excursion
+                         (goto-char beg)
+                         (org-end-of-subtree t t)
+                         (point)))
+            (insert persistent-summary))
+        ;; No conversation found: just strip state log and add summary at end
+        (goto-char (save-excursion
+                     (goto-char beg)
+                     (org-end-of-subtree t t)
+                     (point)))
+        (insert persistent-summary)))
+    ;; Also archive the full summary to the archive file
+    (gptel-org-archive--write-to-archive summary task-info)
+    (message "Persistent task: conversation archived, summary added.
+Use `gptel-org-restore-original' to undo.")))
+
+(defun gptel-org-archive--write-to-archive (summary task-info)
+  "Write SUMMARY with TASK-INFO to the archive file.
+
+Creates or updates the archive file with a formatted summary entry
+under the \"Archived Tasks\" heading."
+  (when-let* ((archive-loc (gptel-org-archive--get-location)))
+    (let ((formatted (gptel-org-archive--format-summary summary task-info))
+          (archive-file archive-loc))
+      (with-current-buffer (find-file-noselect archive-file)
+        (goto-char (point-max))
+        ;; Find or create "Archived Tasks" heading
+        (goto-char (point-min))
+        (if (re-search-forward "^\\* Archived Tasks" nil t)
+            (progn
+              (org-end-of-subtree t t)
+              (unless (bolp) (insert "\n")))
+          ;; Create the heading
+          (goto-char (point-max))
+          (unless (bolp) (insert "\n"))
+          (insert "* Archived Tasks\n"))
+        (insert formatted)
+        (save-buffer)))))
 
 ;;; Archive location
 
@@ -158,15 +306,19 @@ Falls back to filename_archive.org for non -ai.org files."
 (defun gptel-org-archive--get-subtree-content ()
   "Get the content of the current subtree for summarization.
 
-Returns a plist with :heading, :level, :content, :todo-state, and :properties."
+Returns a plist with :heading, :level, :content, :todo-state,
+:conversation-start, :persistent, and :properties."
   (save-excursion
     (org-back-to-heading t)
     (let* ((heading (org-get-heading t t t t))
            (level (org-current-level))
            (todo-state (org-get-todo-state))
+           (persistent (gptel-org-archive--persistent-task-p))
            (beg (point))
            (end (save-excursion (org-end-of-subtree t t) (point)))
            (content (buffer-substring-no-properties beg end))
+           ;; Find conversation start (first :user: or :assistant: sub-heading)
+           (conv-start (gptel-org-archive--find-conversation-start))
            ;; Extract relevant properties
            (props (org-entry-properties nil 'standard))
            (gptel-backend-prop (cdr (assoc "GPTEL_BACKEND" props)))
@@ -177,6 +329,8 @@ Returns a plist with :heading, :level, :content, :todo-state, and :properties."
             :content content
             :beg beg
             :end end
+            :persistent persistent
+            :conversation-start conv-start
             :backend gptel-backend-prop
             :model gptel-model-prop))))
 
@@ -322,9 +476,13 @@ TASK-INFO is a plist from `gptel-org-archive--get-subtree-content'.
 CALLBACK receives the summary string on success, or nil on failure."
   (let* ((heading (plist-get task-info :heading))
          (content (plist-get task-info :content))
+         (persistent (plist-get task-info :persistent))
          (conversation (gptel-org-archive--extract-conversation content))
-         (prompt (format "Summarize the following completed task conversation.\n\nTask: %s\n\nConversation:\n%s"
-                         heading conversation))
+         (prompt (if persistent
+                     (format "Summarize the following AI task conversation. This is a PERSISTENT task that will continue — the summary will be kept as context for future work on this same task.\n\nFocus on:\n- Key findings, decisions, and outcomes so far\n- Current state and any remaining work\n- Important context that would help continue the task\n\nTask: %s\n\nConversation:\n%s"
+                             heading conversation)
+                   (format "Summarize the following completed task conversation.\n\nTask: %s\n\nConversation:\n%s"
+                           heading conversation)))
          ;; Temporarily bind max-tokens for the summary request
          (gptel-max-tokens gptel-org-archive-summary-max-tokens))
     (require 'gptel)
@@ -392,14 +550,18 @@ system prompt), it will be parsed and included in the properties."
 
 ;;;###autoload
 (defun gptel-org-prepare-archive ()
-  "Prepare the current DONE task for archival by generating a summary.
+  "Prepare the current task for archival by generating a summary.
 
-This replaces the verbose conversation with a concise summary of what
-was accomplished.  The original content is saved and can be restored
-with `gptel-org-restore-original'.
+For regular tasks (must be DONE), this replaces the verbose conversation
+with a concise summary.
 
-After reviewing the summary, use `org-archive-subtree' (C-c C-x C-s)
-to archive the task.
+For persistent tasks (tagged with `gptel-org-archive-persistent-tag'),
+this preserves the heading and description, removes the conversation,
+and adds a summary sub-heading.  Persistent tasks do not need to be in
+a DONE state.
+
+The original content is saved and can be restored with
+`gptel-org-restore-original'.
 
 The archive location is determined by `gptel-org-archive-location-function',
 which by default transforms *-ai.org files to *-ai-archive.org."
@@ -408,10 +570,13 @@ which by default transforms *-ai.org files to *-ai-archive.org."
     (user-error "This command only works in Org mode"))
   (unless (org-at-heading-p)
     (org-back-to-heading t))
-  (let ((todo-state (org-get-todo-state)))
-    (unless (member todo-state org-done-keywords)
-      (user-error "Task is not marked as DONE (current state: %s)"
-                  (or todo-state "none"))))
+  (let ((persistent (gptel-org-archive--persistent-task-p)))
+    ;; Only require DONE state for non-persistent tasks
+    (unless persistent
+      (let ((todo-state (org-get-todo-state)))
+        (unless (member todo-state org-done-keywords)
+          (user-error "Task is not marked as DONE (current state: %s)"
+                      (or todo-state "none"))))))
   ;; Set archive location for this buffer
   (when-let* ((archive-loc (gptel-org-archive--get-location)))
     (setq-local org-archive-location (concat archive-loc "::* Archived Tasks")))
@@ -426,7 +591,9 @@ which by default transforms *-ai.org files to *-ai-archive.org."
      task-info
      (lambda (summary)
        (if summary
-           (gptel-org-archive--replace-with-summary summary task-info)
+           (if (plist-get task-info :persistent)
+               (gptel-org-archive--replace-persistent summary task-info)
+             (gptel-org-archive--replace-with-summary summary task-info))
          (message "Summary generation failed. Original content preserved."))))))
 
 (defun gptel-org-archive--replace-with-summary (summary task-info)
@@ -481,10 +648,19 @@ For each DONE task, this will:
        (push (point-marker) done-tasks))
      (format "TODO={%s}" (regexp-opt org-done-keywords))
      'file)
+    ;; Also collect persistent tasks (any state) that have conversation
+    (org-map-entries
+     (lambda ()
+       (when (and (gptel-org-archive--persistent-task-p)
+                  (gptel-org-archive--find-conversation-start)
+                  ;; Don't duplicate if already in done-tasks
+                  (not (member (org-get-todo-state) org-done-keywords)))
+         (push (point-marker) done-tasks)))
+     nil 'file)
     (setq done-tasks (nreverse done-tasks))
     (if (null done-tasks)
-        (message "No DONE tasks found.")
-      (message "Found %d DONE task(s). Processing..." (length done-tasks))
+        (message "No archivable tasks found (DONE or persistent with conversation).")
+      (message "Found %d archivable task(s). Processing..." (length done-tasks))
       ;; Process tasks one at a time
       (gptel-org-archive--process-next-task done-tasks))))
 
@@ -506,11 +682,13 @@ For each DONE task, this will:
                  (lambda (summary)
                    (if summary
                        (let ((task-beg (plist-get task-info :beg)))
-                         (gptel-org-archive--replace-with-summary summary task-info)
-                         (when (y-or-n-p "Archive this task? ")
-                           ;; Move point to task heading before archiving
-                           (goto-char task-beg)
-                           (org-archive-subtree)))
+                         (if (plist-get task-info :persistent)
+                             (gptel-org-archive--replace-persistent summary task-info)
+                           (gptel-org-archive--replace-with-summary summary task-info)
+                           (when (y-or-n-p "Archive this task? ")
+                             ;; Move point to task heading before archiving
+                             (goto-char task-beg)
+                             (org-archive-subtree))))
                      (message "Summary failed for: %s" heading))
                    ;; Continue with next task
                    (gptel-org-archive--process-next-task remaining)))))))))))
