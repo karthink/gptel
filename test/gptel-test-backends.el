@@ -11,6 +11,7 @@
 (require 'gptel-gemini)
 (require 'gptel-ollama)
 (require 'gptel-openai-extras)
+(require 'gptel-bedrock)
 (require 'gptel-kagi)
 
 (defvar gptel-test-backends
@@ -24,7 +25,8 @@
                    :name "Ollama" :models '(testmodel)))
     (deepseek  . ,(gptel--make-deepseek
                    :name "Deepseek" :models '(deepseek-reasoner)))
-    (kagi      . ,(gptel--make-kagi :name "Kagi" :models '(fastgpt summarize:agnes))))
+    (kagi      . ,(gptel--make-kagi :name "Kagi" :models '(fastgpt summarize:agnes)))
+    (bedrock   . ,(gptel--make-bedrock :name "Bedrock" :models '(claude-sonnet-4-6))))
   "Dummy models for testing gptel.")
 
 (provide 'gptel-test-backends)

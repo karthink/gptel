@@ -1,8 +1,108 @@
 ;; -*- lexical-binding: t; -*-
+;; Commentary
+;;
+;; Tests for parsing LLM responses (streaming and batched) with reasoning
+;; integrated.  These tests do not cover responses with tool calls.
+
 (require 'ert)
 (require 'gptel)
 (require 'gptel-request)
 (require 'gptel-test-backends)
+
+;;; Reasoning non-stream tests
+(defun gptel-test-sentinel (backend-name output-file)
+  "Parse a stream output for BACKEND-NAME.
+
+The keys of `gptel-test-backends' are possible values of BACKEND-NAME.
+
+OUTPUT-FILE is the output (txt) file containing the response JSON."
+  (declare (indent 1))
+  (let* ((fsm (gptel-make-fsm
+               :table '((INIT . ((t . DONE))))
+               :handlers '((DONE))))
+         (backend (alist-get backend-name gptel-test-backends))
+         info reasoning response
+         (callback (lambda (resp info)
+                     (pcase resp
+                       (`(reasoning . ,text) (setq reasoning text))
+                       ((pred stringp)       (setq response resp)))))
+         (proc-buf (generate-new-buffer "*gptel-test-sentinel*"))
+         (proc (make-process :name "gptel-test" :command nil
+                             :buffer proc-buf))
+         (insert-output
+          (lambda ()
+            (with-current-buffer proc-buf
+              (erase-buffer)
+              (insert "HTTP/2 200
+date: Sun, 15 Mar 2026 16:15:46 GMT
+content-type: application/json
+server: cloudflare
+x-ratelimit-limit-requests: 5000
+x-ratelimit-limit-tokens: 2000000
+x-ratelimit-remaining-requests: 4999
+x-ratelimit-remaining-tokens: 1999841
+x-ratelimit-reset-requests: 12ms
+x-ratelimit-reset-tokens: 4ms
+x-request-id: req_fab8a9ebcf21467788a686760360906d
+openai-processing-ms: 9098
+cf-cache-status: DYNAMIC
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+x-content-type-options: nosniff
+content-encoding: br
+cf-ray: 9dccd15e4d31232c-SJC
+alt-svc: h3=\":443\"; ma=86400
+
+")
+              (insert-file-contents output-file)
+              (goto-char (point-max))
+              (skip-chars-backward "\n\r")
+              (insert "(uuid . 589)")   ;dummy for gptel-curl--parse-response
+              (goto-char (point-min))))))
+    (setq info (list :uuid "uuid"       ;dummy for gptel-curl--parse-response
+                     :backend backend
+                     :data (list :contents [(:role "user" :parts [(:text "Test")])])
+                     :include-reasoning t
+                     :http-status "200"
+                     :status "HTTP/2 200"
+                     :callback callback))
+    (setf (gptel-fsm-info fsm) info
+          (alist-get proc gptel--request-alist) (list fsm))
+    (unwind-protect
+        (progn
+          (funcall insert-output)
+          (cl-letf* (((symbol-function 'process-status) (lambda (_) 'exit)))
+            ;; (set-process-sentinel proc 'gptel-curl--sentinel)
+            ;; (accept-process-output proc)
+            (gptel-curl--sentinel proc nil)))
+      (setf (alist-get proc gptel--request-alist nil t) nil)
+      (delete-process proc)
+      (when (buffer-live-p proc-buf) (kill-buffer proc-buf)))
+    (list reasoning response)))
+
+(defmacro gptel-test-response-parsing
+    (name backend-name output-file result-file)
+  "Create test for response parsing that covers reasoning and response.
+
+Tool use parsing is not covered in this test.
+
+NAME is the name of the test, any string.
+BACKEND-NAME is a key from `gptel-test-backends'.
+STREAM-OUTPUT-FILE is the output (txt) file containing the streaming.
+INCREMENT is the size of chunks to feed the process filter, defaults to 800.
+
+RESULT-FILE is the corresponding (eld) file containing the parsed
+output.  It should contain a list of three items:
+ (<t or nil>           ; depending on whether a reasoning stream was found
+  \"reasoning text\"
+  \"response text\")"
+  (declare (indent 2))
+  `(ert-deftest ,(intern (concat "gptel-test-response-parsing-" name)) ()
+     (should
+      (equal
+       (with-temp-buffer
+         (save-excursion (insert-file-contents ,result-file))
+         (read (current-buffer)))
+       (gptel-test-sentinel ,backend-name ,output-file)))))
 
 ;;; Reasoning stream tests
 (defun gptel-test-stream-filter (backend-name stream-output-file &optional increment)
@@ -75,6 +175,12 @@ output.  It should contain a list of three items:
 ;;;; OpenAI-compatible
 
 ;;;;; llama.cpp
+;;;;;; non-streaming
+(gptel-test-response-parsing "llamacpp-nostream-01" 'openai
+  "examples-responses/openai/thinking_nostream_llamacpp_glm4.5_01.txt"
+  "examples-responses/openai/thinking_nostream_llamacpp_glm4.5_01.eld")
+
+;;;;;; streaming
 (gptel-test-stream-parsing "llamacpp-01a" 'openai
   "examples-responses/openai/thinking_stream_llamacpp_glm4.5_01.txt"
   "examples-responses/openai/thinking_stream_llamacpp_glm4.5_01.eld"
@@ -129,6 +235,12 @@ output.  It should contain a list of three items:
   400)
 
 ;;;;; Deepseek
+;;;;;; non-streaming
+(gptel-test-response-parsing "deepseek-nostream-01" 'deepseek
+  "examples-responses/openai/thinking_nostream_deepseek_01.txt"
+  "examples-responses/openai/thinking_nostream_deepseek_01.eld")
+
+;;;;;; streaming
 (gptel-test-stream-parsing "deepseek-01a" 'deepseek
   "examples-responses/openai/thinking_stream_deepseek_01.txt"
   "examples-responses/openai/thinking_stream_deepseek_01.eld"
@@ -153,6 +265,16 @@ output.  It should contain a list of three items:
 ;;   400)
 
 ;;;; Anthropic
+;;;;; non-streaming
+(gptel-test-response-parsing "anthropic-nostream-01" 'anthropic
+  "examples-responses/anthropic/thinking_nostream_01.txt"
+  "examples-responses/anthropic/thinking_nostream_01.eld")
+
+(gptel-test-response-parsing "anthropic-nostream-02" 'anthropic
+  "examples-responses/anthropic/thinking_nostream_02.txt"
+  "examples-responses/anthropic/thinking_nostream_02.eld")
+
+;;;;; streaming
 (gptel-test-stream-parsing "anthropic-01a" 'anthropic
   "examples-responses/anthropic/thinking_stream_01.txt"
   "examples-responses/anthropic/thinking_stream_01.eld"

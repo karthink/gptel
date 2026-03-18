@@ -1,59 +1,46 @@
 ;;; gptel-unit-tests.el --- Gptel Unit Tests  -*- lexical-binding: t; -*-
 (require 'ert)
 (require 'gptel)
-
-(defmacro setup (&rest body)
-  `(let ((gptel-prompt-prefix-alist
-          '((fundamental-mode . "*Prompt*: ")))
-         (gptel-response-prefix-alist
-          '((fundamental-mode . "*Response*: ")))
-         (gptel-response-separator "\n\n"))
-     ,(macroexp-progn body)))
-
-(defvar gptel-test-openai
-  (gptel-make-openai "openai-test"
-   :models '((testmodel
-              :capabilities (media)
-              :mime-types ("image/png"))))
-  "Dummy OpenAI backend for testing gptel.")
-(setf (alist-get "openai-test" gptel--known-backends
-                 nil t #'equal)
-      nil)
+(require 'gptel-test-backends)
 
 (ert-deftest gptel-test-prefix-trimming ()
-  (setup
-   ;; Empty string is nil
-   (should (equal nil (gptel--trim-prefixes "")))
+  (let ((gptel-prompt-prefix-alist
+         '((fundamental-mode . "*Prompt*: ")))
+        (gptel-response-prefix-alist
+         '((fundamental-mode . "*Response*: ")))
+        (gptel-response-separator "\n\n"))
+    ;; Empty string is nil
+    (should (equal nil (gptel--trim-prefixes "")))
 
-   ;; Prefixes trim to nil
-   (should (equal nil (gptel--trim-prefixes (gptel-prompt-prefix-string))))
-   (should (equal nil (gptel--trim-prefixes (gptel-response-prefix-string))))
+    ;; Prefixes trim to nil
+    (should (equal nil (gptel--trim-prefixes (gptel-prompt-prefix-string))))
+    (should (equal nil (gptel--trim-prefixes (gptel-response-prefix-string))))
 
-   ;; Trimp both prefixes to nil
-   (should (equal nil (gptel--trim-prefixes
-                       (format " %s  %s "
-                               (gptel-prompt-prefix-string)
-                               (gptel-response-prefix-string)))))
-   ;; Trim extra whitespace
-   (should (equal nil (gptel--trim-prefixes
-                       (format "\n\t %s \n\t  %s \n\t"
-                               (gptel-prompt-prefix-string)
-                               (gptel-response-prefix-string)))))
-   ;; Trim it all down to FOO
-   (should (equal "FOO" (gptel--trim-prefixes
-                         (format "\n\t %s \n\tFOO  %s \n\t"
-                                 (gptel-prompt-prefix-string)
-                                 (gptel-response-prefix-string)))))
+    ;; Trimp both prefixes to nil
+    (should (equal nil (gptel--trim-prefixes
+                        (format " %s  %s "
+                                (gptel-prompt-prefix-string)
+                                (gptel-response-prefix-string)))))
+    ;; Trim extra whitespace
+    (should (equal nil (gptel--trim-prefixes
+                        (format "\n\t %s \n\t  %s \n\t"
+                                (gptel-prompt-prefix-string)
+                                (gptel-response-prefix-string)))))
+    ;; Trim it all down to FOO
+    (should (equal "FOO" (gptel--trim-prefixes
+                          (format "\n\t %s \n\tFOO  %s \n\t"
+                                  (gptel-prompt-prefix-string)
+                                  (gptel-response-prefix-string)))))
 
-   ;; Trim the final response prefix and whitespace
-   (should (equal "DERP\n\t *Prompt*:  \n\tFOO"
-                  (gptel--trim-prefixes
-                   (concat "DERP"
-                           "\n\t "
-                           (gptel-prompt-prefix-string)
-                           " \n\tFOO  "
-                           (gptel-response-prefix-string)
-                           " \n\t"))))))
+    ;; Trim the final response prefix and whitespace
+    (should (equal "DERP\n\t *Prompt*:  \n\tFOO"
+                   (gptel--trim-prefixes
+                    (concat "DERP"
+                            "\n\t "
+                            (gptel-prompt-prefix-string)
+                            " \n\tFOO  "
+                            (gptel-response-prefix-string)
+                            " \n\t"))))))
 
 ;;; Tests for media parsing in buffers: `gptel--parse-media-links'
 (ert-deftest gptel-test-media-link-parsing-org-1 ()
@@ -72,8 +59,8 @@ then some more text to end."))
           (with-temp-file "/tmp/medialinks.yaml" (insert mediatext))
           (with-temp-file "/tmp/medialinks.txt" (insert mediatext))
           (let ((org-inhibit-startup t)
-                (gptel-backend gptel-test-openai)
-                (gptel-model 'testmodel))
+                (gptel-backend (alist-get 'openai gptel-test-backends))
+                (gptel-model 'gpt-4o-mini)) ;any model will do (no media)
             (with-temp-buffer
               (insert buftext)
               (delay-mode-hooks (org-mode))
@@ -102,8 +89,8 @@ then some more text to end."))
         (progn
           (with-temp-file "/tmp/medialinks.txt" (insert mediatext))
           (let ((org-inhibit-startup t)
-                (gptel-backend gptel-test-openai)
-                (gptel-model 'testmodel))
+                (gptel-backend (alist-get 'openai gptel-test-backends))
+                (gptel-model 'gpt-4o-mini)) ;media-capable model
             (with-temp-buffer
               (insert buftext)
               (delay-mode-hooks (org-mode))
@@ -195,65 +182,65 @@ then some more text to end."))
                             "One-line biography for cat")))))
              :required ["items"] :additionalProperties :json-false))))
 
-;; ;; Markdown mode is not installed in emacs -q
+(ert-deftest gptel-test-media-link-parsing-md-1 ()
+  (skip-unless (fboundp 'markdown-mode))
+  (let ((mediatext "Some text here, just checking.")
+        (buftext "Some text followed by a link:
 
-;; (ert-deftest gptel-test-media-link-parsing-md-1 ()
-;;   (let ((mediatext "Some text here, just checking.")
-;;         (buftext "Some text followed by a link:
+[medialinks](/tmp/medialinks.txt)
 
-;; [medialinks](/tmp/medialinks.txt)
+then more text, then another link
 
-;; then more text, then another link
+[some text](/tmp/medialinks.yaml)
 
-;; [some text](/tmp/medialinks.yaml)
+then some more text to end."))
+    (unwind-protect
+        (progn
+          (with-temp-file "/tmp/medialinks.yaml" (insert mediatext))
+          (with-temp-file "/tmp/medialinks.txt" (insert mediatext))
+          (let ((gptel-backend (alist-get 'openai gptel-test-backends))
+                (gptel-model 'gpt-4o-mini)) ;any model will do (no media)
+            (with-temp-buffer
+              (insert buftext)
+              (delay-mode-hooks (markdown-mode))
+              (should (equal (gptel--parse-media-links
+                              major-mode (point-min) (point-max))
+                             '((:text "Some text followed by a link:\n\n")
+                               (:textfile "/tmp/medialinks.txt")
+                               (:text "\n\nthen more text, then another link\n\n")
+                               (:textfile "/tmp/medialinks.yaml")
+                               (:text "\n\nthen some more text to end.")))))))
+      (delete-file "/tmp/medialinks.yaml")
+      (delete-file "/tmp/medialinks.txt"))))
 
-;; then some more text to end."))
-;;     (unwind-protect
-;;         (progn
-;;           (with-temp-file "/tmp/medialinks.yaml" (insert mediatext))
-;;           (with-temp-file "/tmp/medialinks.txt" (insert mediatext))
-;;           (let ((gptel-backend gptel-test-openai)
-;;                 (gptel-model 'testmodel))
-;;             (with-temp-buffer
-;;               (insert buftext)
-;;               (delay-mode-hooks (markdown-mode))
-;;               (should (equal (gptel--parse-media-links
-;;                               major-mode (point-min) (point-max))
-;;                              '((:text "Some text followed by a link:\n\n")
-;;                                (:textfile "/tmp/medialinks.txt")
-;;                                (:text "\n\nthen more text, then another link\n\n")
-;;                                (:textfile "/tmp/medialinks.yaml")
-;;                                (:text "\n\nthen some more text to end.")))))))
-;;       (delete-file "/tmp/medialinks.yaml")
-;;       (delete-file "/tmp/medialinks.txt"))))
+(ert-deftest gptel-test-media-link-parsing-md-2 ()
+  (skip-unless (fboundp 'markdown-mode))
+  (let ((mediatext "Some text here, just checking.")
+        (buftext "Some text followed by a link:
 
-;; (ert-deftest gptel-test-media-link-parsing-md-2 ()
-;;   (let ((mediatext "Some text here, just checking.")
-;;         (buftext "Some text followed by a link:
+[medialinks](/tmp/medialinks.txt)
 
-;; [medialinks](/tmp/medialinks.txt)
+then more text, then an image
 
-;; then more text, then an image
+![an image](./examples/hundred.png)
 
-;; ![an image](./examples/hundred.png)
-
-;; then some more text to end."))
-;;     (unwind-protect
-;;         (progn
-;;           (with-temp-file "/tmp/medialinks.txt" (insert mediatext))
-;;           (let ((gptel-backend gptel-test-openai)
-;;                 (gptel-model 'testmodel))
-;;             (with-temp-buffer
-;;               (insert buftext)
-;;               (delay-mode-hooks (markdown-mode))
-;;               (should (equal (gptel--parse-media-links
-;;                               major-mode (point-min) (point-max))
-;;                              '((:text "Some text followed by a link:\n\n")
-;;                                (:textfile "/tmp/medialinks.txt")
-;;                                (:text "\n\nthen more text, then an image\n\n")
-;;                                (:media "./examples/hundred.png" :mime "image/png")
-;;                                (:text "\n\nthen some more text to end.")))))))
-;;       (delete-file "/tmp/medialinks.txt"))))
+then some more text to end."))
+    (unwind-protect
+        (progn
+          (with-temp-file "/tmp/medialinks.txt" (insert mediatext))
+          (let ((gptel-backend (alist-get 'openai gptel-test-backends))
+                (gptel-model 'gpt-4o-mini)) ;media-capable model
+            (with-temp-buffer
+              (insert buftext)
+              (delay-mode-hooks (markdown-mode))
+              (should (equal (gptel--parse-media-links
+                              major-mode (point-min) (point-max))
+                             '((:text "Some text followed by a link:\n\n")
+                               (:textfile "/tmp/medialinks.txt")
+                               (:text "\n\nthen more text, then an image\n\n")
+                               (:media "./examples/hundred.png" :mime "image/png")
+                               (:text "\n\nthen some more text to end.")))))))
+      (delete-file "/tmp/medialinks.txt"))))
 
 ;;; Test for declarative list modification DSL
 (ert-deftest gptel-test--modify-value ()
@@ -291,6 +278,31 @@ then some more text to end."))
   (should (equal (gptel--modify-value '() '(:append (a b))) '(a b)))
   (should (equal (gptel--modify-value "text" '(:prepend "")) "text"))
   (should (equal (gptel--modify-value '(a b) '(:prepend ())) '(a b))))
+
+;;; Tests for header-line alignment
+
+(ert-deftest gptel-test-header-line-pixel-alignment ()
+  "Header-line uses pixel-based alignment when `string-pixel-width' is available."
+  (skip-unless (fboundp 'string-pixel-width))
+  (let* ((rhs "[test-model]")
+         (spec `(space :align-to (- right (,(string-pixel-width rhs)))))
+         (align-to (plist-get (cdr spec) :align-to))
+         (offset (caddr align-to)))
+    ;; Pixel path wraps the value in a list: (PIXELS)
+    (should (listp offset))
+    (should (numberp (car offset)))
+    (should (> (car offset) 0))))
+
+(ert-deftest gptel-test-header-line-char-fallback-offset ()
+  "Header-line char fallback includes the +5 padding offset."
+  (let* ((rhs "[test-model]")
+         (spec `(space :align-to (- right ,(+ 5 (string-width rhs)))))
+         (align-to (plist-get (cdr spec) :align-to))
+         (offset (caddr align-to)))
+    ;; Char path: offset is a plain number, not a list
+    (should (numberp offset))
+    ;; Should be string-width + 5
+    (should (= offset (+ 5 (string-width rhs))))))
 
 (provide 'gptel-unit-tests)
 ;;; gptel-unit-tests.el ends here

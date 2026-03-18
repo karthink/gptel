@@ -1,0 +1,32 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "\n<think>The user has simply greeted me with \"Hi!\". This is a friendly opening, so I should respond in a warm and welcoming manner. I'll introduce myself briefly and let them know I'm here to help with whatever they need.</think>Hello! I'm here to help you with any questions or tasks you might have. How can I assist you today?"
+      }
+    }
+  ],
+  "created": 1700000000,
+  "model": "glm-4.5-air",
+  "system_fingerprint": "b6251-4ce8f45cf",
+  "object": "chat.completion",
+  "usage": {
+    "completion_tokens": 74,
+    "prompt_tokens": 15,
+    "total_tokens": 89
+  },
+  "id": "chatcmpl-0000",
+  "timings": {
+    "prompt_n": 1,
+    "prompt_ms": 85.125,
+    "prompt_per_token_ms": 85.125,
+    "prompt_per_second": 11.747430249632894,
+    "predicted_n": 74,
+    "predicted_ms": 4649.071,
+    "predicted_per_token_ms": 62.82528378378378,
+    "predicted_per_second": 15.917000000009474
+  }
+}
