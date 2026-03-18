@@ -576,8 +576,11 @@ This is called from `after-change-functions' to apply tags using
           ;; either be at a heading or search forward, not backward.
           ;; First check if we're at the heading (most common case).
           (unless (org-at-heading-p)
-            ;; If not directly at heading, search forward within the inserted region
-            (re-search-forward org-heading-regexp nil t)
+            ;; If not directly at heading, search forward within a small
+            ;; bounded region.  Without this limit, re-search-forward can
+            ;; match an unrelated heading further down in the buffer.
+            (re-search-forward org-heading-regexp
+                               (min (+ beg 200) (point-max)) t)
             (beginning-of-line))
           (when (org-at-heading-p)
             (gptel-org--debug "apply-pending-tag-on-change: found heading at %d"
@@ -625,18 +628,30 @@ org heading."
                 (gptel-org-infer-bounds-from-tags
                  (let ((tag (if for-prompt
                                 gptel-org-user-tag
-                              gptel-org-assistant-tag))
-                       (marker (make-marker)))
-                   ;; Create a marker at current point to track insertion location
-                   (set-marker marker (point))
-                   ;; Store the pending tag to be applied after insertion
-                   (setq gptel-org--pending-heading-tag (cons marker tag))
-                   ;; Ensure the after-change function is active
-                   (add-hook 'after-change-functions
-                             #'gptel-org--apply-pending-tag-on-change nil t)
-                   ;; Return heading with inline tag (for regex matching compatibility)
-                   ;; The tag will be re-set properly via org-set-tags after insertion
-                   (concat stars " :" tag ":\n")))
+                              gptel-org-assistant-tag)))
+                   ;; Check if a heading with this tag already exists right
+                   ;; after the current position (skipping whitespace).  This
+                   ;; prevents creating duplicate user/assistant headings.
+                   (if (save-excursion
+                         (skip-chars-forward " \t\n")
+                         (and (org-at-heading-p)
+                              (gptel-org--heading-has-tag-p tag)))
+                       (progn
+                         (gptel-org--debug
+                          "dynamic-prefix-string: heading with tag %S already exists at %d, skipping"
+                          tag (point))
+                         "")
+                     (let ((marker (make-marker)))
+                       ;; Create a marker at current point to track insertion location
+                       (set-marker marker (point))
+                       ;; Store the pending tag to be applied after insertion
+                       (setq gptel-org--pending-heading-tag (cons marker tag))
+                       ;; Ensure the after-change function is active
+                       (add-hook 'after-change-functions
+                                 #'gptel-org--apply-pending-tag-on-change nil t)
+                       ;; Return heading with inline tag (for regex matching compatibility)
+                       ;; The tag will be re-set properly via org-set-tags after insertion
+                       (concat stars " :" tag ":\n")))))
                 ;; Prefix starts with stars - replace them
                 ((string-match "^\\(\\*+\\)\\(\\(?:.*\n?\\)?\\)" base-prefix)
                  (let ((rest (match-string 2 base-prefix)))
