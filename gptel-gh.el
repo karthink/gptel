@@ -102,6 +102,30 @@
      :input-cost 1
      :output-cost 1
      :cutoff-date "2025-08")
+    (gpt-5.3-codex
+     :description "The most capable agentic coding model to date"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1
+     :output-cost 1
+     :cutoff-date "2025-08")
+    (gpt-5.4
+     :description "Best intelligence at scale for agentic, coding, and professional workflows"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1
+     :output-cost 1
+     :cutoff-date "2025-08")
+    (gpt-5.4-mini
+     :description "Strongest mini model yet for coding, computer use, and subagent"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 0.33
+     :output-cost 0.33
+     :cutoff-date "2025-08")
     (claude-haiku-4.5
      :description "Near-frontier intelligence at blazing speeds with extended thinking"
      :capabilities (media tool-use cache)
