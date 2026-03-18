@@ -472,5 +472,43 @@ rather than to the newly inserted heading."
    ;; The new heading SHOULD have the assistant tag
    (should (gptel-org--heading-has-tag-p "assistant"))))
 
+(ert-deftest gptel-org-subtree-test-pending-tag-no-leak-to-sibling ()
+  "Test that pending tag does not leak to a nearby sibling heading.
+This reproduces the real scenario: gptel-response-separator (\\n\\n) is
+inserted together with the prompt prefix in a single `insert' call.
+The `after-change-functions' hook fires with beg at the separator (not
+the heading), so `org-at-heading-p' fails and `re-search-forward' must
+find the correct heading rather than a nearby sibling."
+  (gptel-org-test-with-tags-buffer
+   ;; Buffer: two sibling tasks, cursor between them.
+   ;; The second heading is within 200 chars of the first.
+   (concat "* Project\n"
+           "** AI-DOING Print hello world\n"
+           "*** Response content :assistant:\n"
+           "Done.\n"
+           "** AI-DOING Run remote command\n")
+   ;; Go to end of "Done." line — where a user prompt would be inserted
+   (goto-char (point-min))
+   (search-forward "Done.\n")
+   ;; Simulate the real insertion: gptel-prompt-prefix-string is evaluated
+   ;; first (setting up the pending tag), then insert is called with both
+   ;; the separator and prefix together.
+   (let ((prefix (gptel-org--dynamic-prefix-string "*** @user\n" 'for-prompt))
+         (separator "\n\n"))
+     (should (string-match-p ":user:" prefix))
+     ;; This mirrors: (insert gptel-response-separator (gptel-prompt-prefix-string))
+     ;; The after-change-functions hook fires with beg at the separator position.
+     (let ((insert-pos (point)))
+       (insert separator prefix)
+       ;; Manually trigger since temp buffers may not have the hook active
+       (when gptel-org--pending-heading-tag
+         (gptel-org--apply-pending-tag-on-change insert-pos (point) 0))))
+   ;; The user tag should be on the newly inserted heading only
+   (goto-char (point-min))
+   (search-forward "Run remote command")
+   (beginning-of-line)
+   ;; The sibling heading MUST NOT have the :user: tag
+   (should-not (gptel-org--heading-has-tag-p "user"))))
+
 (provide 'gptel-org-subtree-test)
 ;;; gptel-org-subtree-test.el ends here

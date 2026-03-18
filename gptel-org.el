@@ -557,41 +557,48 @@ that are chat headings."
 A cons cell (MARKER . TAG) where MARKER is a marker and TAG is the
 tag name to apply using `org-set-tags'.")
 
-(defun gptel-org--apply-pending-tag-on-change (beg _end _len)
-  "Apply pending heading tag after insertion at BEG.
+(defun gptel-org--apply-pending-tag-on-change (beg end _len)
+  "Apply pending heading tag after insertion between BEG and END.
 This is called from `after-change-functions' to apply tags using
-`org-set-tags' after a heading prefix has been inserted."
+`org-set-tags' after a heading prefix has been inserted.
+
+When `insert' is called with multiple arguments (e.g., a separator
+and a heading prefix), Emacs fires `after-change-functions' separately
+for each argument.  We must only apply the tag when the heading is
+actually present in the changed region [BEG, END), not when an
+unrelated change (like a separator) triggers the hook."
   (when gptel-org--pending-heading-tag
     (let ((marker (car gptel-org--pending-heading-tag))
           (tag (cdr gptel-org--pending-heading-tag)))
-      ;; Only apply if the change is near where we expect the heading
+      ;; Only consider changes near where we expect the heading
       (when (and (markerp marker)
                  (marker-buffer marker)
                  (<= (abs (- beg (marker-position marker))) 50))
-        (gptel-org--debug "apply-pending-tag-on-change: beg=%d marker=%d tag=%S"
-                          beg (marker-position marker) tag)
         (save-excursion
           (goto-char beg)
-          ;; The heading starts at beg (the insertion point), so we need to
-          ;; either be at a heading or search forward, not backward.
-          ;; First check if we're at the heading (most common case).
-          (unless (org-at-heading-p)
-            ;; If not directly at heading, search forward within a small
-            ;; bounded region.  Without this limit, re-search-forward can
-            ;; match an unrelated heading further down in the buffer.
-            (re-search-forward org-heading-regexp
-                               (min (+ beg 200) (point-max)) t)
-            (beginning-of-line))
-          (when (org-at-heading-p)
-            (gptel-org--debug "apply-pending-tag-on-change: found heading at %d"
-                              (point))
-            ;; Use org-set-tags to properly set the tag with alignment
-            (org-set-tags (list tag))))
-        ;; Clean up the marker and remove this hook
-        (set-marker marker nil)
-        (setq gptel-org--pending-heading-tag nil)
-        (remove-hook 'after-change-functions
-                     #'gptel-org--apply-pending-tag-on-change t)))))
+          (let ((found-heading
+                 (if (org-at-heading-p)
+                     t
+                   ;; Search only within the changed region.  This prevents
+                   ;; matching a pre-existing sibling heading when the change
+                   ;; is just a separator (e.g., "\n\n") inserted before the
+                   ;; heading prefix.
+                   (and (re-search-forward org-heading-regexp end t)
+                        (progn (beginning-of-line) t)))))
+            (when (and found-heading (org-at-heading-p))
+              (gptel-org--debug
+               "apply-pending-tag-on-change: beg=%d end=%d marker=%d tag=%S heading=%d"
+               beg end (marker-position marker) tag (point))
+              ;; Clean up BEFORE calling org-set-tags to prevent re-entrancy.
+              ;; org-set-tags modifies the buffer, which triggers
+              ;; after-change-functions again.  If we don't clear the pending
+              ;; state first, the re-entrant call finds the tag still pending
+              ;; and may apply it to the wrong heading.
+              (set-marker marker nil)
+              (setq gptel-org--pending-heading-tag nil)
+              (remove-hook 'after-change-functions
+                           #'gptel-org--apply-pending-tag-on-change t)
+              (org-set-tags (list tag)))))))))
 
 (defun gptel-org--dynamic-prefix-string (base-prefix &optional for-prompt)
   "Return BASE-PREFIX adjusted for current org heading context.
