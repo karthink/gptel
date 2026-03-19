@@ -56,6 +56,15 @@
 (defcustom gptel-org-archive-summary-system-prompt
   "You are a technical documentation assistant. Your task is to create a concise summary of a completed AI-assisted task conversation.
 
+Output Format:
+- Write your response in Emacs Org mode syntax, NOT Markdown
+- Use - for bullet points (not * which is for headings in Org)
+- Use =code= for inline code (not `backticks`)
+- Use ~key-binding~ for key sequences
+- Use *bold* and /italic/ for emphasis (Org syntax)
+- Use #+begin_src/#+end_src for code blocks (not triple backticks)
+- Do NOT use Markdown headings (#), bold (**text**), or fenced code blocks (```)
+
 Instructions:
 - Summarize WHAT was accomplished, not HOW the conversation went
 - Focus on concrete outcomes: files created/modified, problems solved, decisions made
