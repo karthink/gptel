@@ -75,13 +75,11 @@ Instructions:
 - Preserve any important decisions or rationale that would be useful for future reference
 
 Git Repository Tracking:
-If the conversation includes git commits, include a \"Git Changes\" section at the END of your summary with this exact format:
+If the conversation includes git commits, include a \"Git Changes\" section at the END of your summary with this exact format (plain text, no code block wrapping):
 
-#+begin_src
 Git Changes:
 - REPO_PATH: path/to/repo
   COMMITS: abc1234, def5678
-#+end_src
 
 Where:
 - REPO_PATH is the relative path to the repository root (use \".\" for the working directory)
@@ -449,11 +447,12 @@ Returns a cons cell (CLEAN-SUMMARY . GIT-CHANGES) where:
            "\\(?:\n\\|^\\)Git Changes:[ \t]*\n\\(\\(?:- REPO_PATH:.*\n\\(?:  COMMITS:.*\n?\\)?\\)+\\)"
            summary)
       (let ((changes-text (match-string 1 summary)))
-        ;; Remove the Git Changes section from summary
+        ;; Remove the Git Changes section from summary, including any
+        ;; surrounding #+begin_src/#+end_src wrapper the LLM may add
         (setq clean-summary
               (string-trim
                (replace-regexp-in-string
-                "\\(?:\n\\|^\\)Git Changes:[ \t]*\n\\(?:- REPO_PATH:.*\n\\(?:  COMMITS:.*\n?\\)?\\)+"
+                "\\(?:#\\+begin_src[^\n]*\n\\)?\\(?:\n\\|^\\)Git Changes:[ \t]*\n\\(?:- REPO_PATH:.*\n\\(?:  COMMITS:.*\n?\\)?\\)+\\(?:#\\+end_src[ \t]*\n?\\)?"
                 "" summary)))
         ;; Parse each repo entry
         (with-temp-buffer
