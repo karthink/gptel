@@ -2304,6 +2304,7 @@ TOOL-CALLS."
   (with-current-buffer (get-buffer-create "*gptel-tool-calls*")
     (let ((inhibit-read-only t) tool-use
           (tool-overlay (and (overlayp loc) loc)))
+      (remove-overlays)
       (erase-buffer)
       (unless (derived-mode-p 'lisp-data-mode)
         (lisp-data-mode)
