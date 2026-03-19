@@ -609,6 +609,11 @@ which by default transforms *-ai.org files to *-ai-archive.org."
   (unless (org-at-heading-p)
     (org-back-to-heading t))
   (let ((persistent (gptel-org-archive--persistent-task-p)))
+    ;; Reject tasks already in the archive-done state (already archived)
+    (when (and gptel-org-archive-done-state
+               (equal (org-get-todo-state) gptel-org-archive-done-state))
+      (user-error "Task is already archived (state: %s)"
+                  gptel-org-archive-done-state))
     ;; Only require DONE state for non-persistent tasks
     (unless persistent
       (let ((todo-state (org-get-todo-state)))
@@ -684,7 +689,10 @@ For each DONE task, this will:
     ;; The "/" syntax doesn't work with custom done keywords like AI-DONE
     (org-map-entries
      (lambda ()
-       (push (point-marker) done-tasks))
+       ;; Skip tasks already in the archive-done state (e.g. ARCHIVED)
+       (unless (and gptel-org-archive-done-state
+                    (equal (org-get-todo-state) gptel-org-archive-done-state))
+         (push (point-marker) done-tasks)))
      (format "TODO={%s}" (regexp-opt org-done-keywords))
      'file)
     ;; Also collect persistent tasks (any state) that have conversation
@@ -693,7 +701,11 @@ For each DONE task, this will:
        (when (and (gptel-org-archive--persistent-task-p)
                   (gptel-org-archive--find-conversation-start)
                   ;; Don't duplicate if already in done-tasks
-                  (not (member (org-get-todo-state) org-done-keywords)))
+                  (not (member (org-get-todo-state) org-done-keywords))
+                  ;; Skip tasks already in the archive-done state
+                  (not (and gptel-org-archive-done-state
+                            (equal (org-get-todo-state)
+                                   gptel-org-archive-done-state))))
          (push (point-marker) done-tasks)))
      nil 'file)
     (setq done-tasks (nreverse done-tasks))
