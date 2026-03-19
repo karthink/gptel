@@ -168,6 +168,18 @@ Full set of properties stored per archived task:
 | =gptel-org-archive-summary-max-tokens=       | =500=   | Max tokens for summary generation     |
 | =gptel-org-archive-auto-on-done=             | =nil=   | Auto-prepare when task marked DONE    |
 | =gptel-org-archive-persistent-tag=           | ="persistent"= | Tag that marks a task as persistent |
+| =gptel-org-archive-done-state=               | =nil=   | TODO state to set after summary (e.g. "ARCHIVED") |
+
+** Auto State Transition After Summary
+
+When =gptel-org-archive-done-state= is non-nil (e.g. ="ARCHIVED"=):
+- After =gptel-org-prepare-archive= successfully generates a summary,
+  the task's TODO state is automatically transitioned to this value
+- Applies to both regular DONE tasks and persistent tasks
+- The state must be defined in the buffer's =#+SEQ_TODO= keywords
+- Example: =AI-DONE= → (summary generated) → =ARCHIVED=
+- Implemented via =gptel-org-archive--maybe-set-done-state=
+- When nil (default), no state transition occurs (backward compatible)
 
 ** Auto-archive on DONE
 
@@ -190,6 +202,9 @@ When =gptel-org-archive-auto-on-done= is non-nil:
 - =gptel-org-archive--format-persistent-summary= (summary task-info) → formatted Summary sub-heading string
 - =gptel-org-archive--replace-persistent= (summary task-info) → preserves heading/description, removes conversation, adds summary
 - =gptel-org-archive--write-to-archive= (summary task-info) → writes formatted summary to archive file
+
+** State Transition
+- =gptel-org-archive--maybe-set-done-state= (pos) → transitions task at POS to =gptel-org-archive-done-state= if configured; no-op when nil
 
 ** Git Operations
 - =gptel-org-archive--git-run= (directory &rest args) → trimmed output or nil

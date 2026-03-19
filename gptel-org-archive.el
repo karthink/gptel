@@ -147,6 +147,24 @@ are stripped from the preserved description."
   :type 'string
   :group 'gptel)
 
+(defcustom gptel-org-archive-done-state nil
+  "TODO state to set after successfully preparing an archive summary.
+
+When non-nil, `gptel-org-prepare-archive' will transition the task
+to this TODO state after replacing the conversation with a summary.
+This applies to both regular and persistent tasks.
+
+For example, set to \"ARCHIVED\" to visually distinguish summarized
+tasks from tasks that are done but not yet summarized.
+
+The state must be defined in the buffer's `org-todo-keywords' or
+file-local #+SEQ_TODO to work correctly.
+
+When nil, no state transition occurs (default, backward compatible)."
+  :type '(choice (const :tag "No state change" nil)
+                 (string :tag "TODO state name"))
+  :group 'gptel)
+
 
 ;;; Internal variables
 
@@ -155,6 +173,17 @@ are stripped from the preserved description."
 
 (defvar-local gptel-org-archive--task-metadata nil
   "Stores metadata about the task being archived.")
+
+;;; Internal functions
+
+(defun gptel-org-archive--maybe-set-done-state (pos)
+  "Transition the task at POS to `gptel-org-archive-done-state' if configured.
+Does nothing when `gptel-org-archive-done-state' is nil."
+  (when gptel-org-archive-done-state
+    (save-excursion
+      (goto-char pos)
+      (org-back-to-heading t)
+      (org-todo gptel-org-archive-done-state))))
 
 
 
@@ -265,6 +294,7 @@ to the archive file."
         (insert persistent-summary)))
     ;; Also archive the full summary to the archive file
     (gptel-org-archive--write-to-archive summary task-info)
+    (gptel-org-archive--maybe-set-done-state beg)
     (message "Persistent task: conversation archived, summary added.
 Use `gptel-org-restore-original' to undo.")))
 
@@ -614,6 +644,7 @@ which by default transforms *-ai.org files to *-ai-archive.org."
       (goto-char beg)
       (delete-region beg end)
       (insert formatted))
+    (gptel-org-archive--maybe-set-done-state beg)
     (message "Summary generated. Review and use `org-archive-subtree' (C-c C-x C-s) to archive.
 Use `gptel-org-restore-original' to undo.")))
 
