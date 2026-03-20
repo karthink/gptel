@@ -104,7 +104,7 @@
      :cutoff-date "2025-08")
     (gpt-5.3-codex
      :description "The most capable agentic coding model to date"
-     :capabilities (media tool-use json url)
+     :capabilities (media tool-use json url response-api)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 1
@@ -112,7 +112,7 @@
      :cutoff-date "2025-08")
     (gpt-5.4
      :description "Best intelligence at scale for agentic, coding, and professional workflows"
-     :capabilities (media tool-use json url)
+     :capabilities (media tool-use json url response-api)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 1
@@ -120,7 +120,7 @@
      :cutoff-date "2025-08")
     (gpt-5.4-mini
      :description "Strongest mini model yet for coding, computer use, and subagent"
-     :capabilities (media tool-use json url)
+     :capabilities (media tool-use json url response-api)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 0.33
