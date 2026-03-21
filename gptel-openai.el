@@ -217,14 +217,15 @@ Mutate state INFO with response metadata."
                 :content gptel--system-message)
           prompts))
   (let ((prompts-plist
-         `( :model ,(gptel--model-name gptel-model)
-            :messages [,@prompts]
-            :stream ,(or gptel-stream :json-false)
-            ,@(when gptel-stream '(:stream_options (:include_usage t)))))
+         (list :model (gptel--model-name gptel-model)
+               :messages (vconcat prompts)
+               :stream (or gptel-stream :json-false)))
         (reasoning-model-p ; TODO: Embed this capability in the model's properties
          (memq gptel-model '(o1 o1-preview o1-mini o3-mini o3 o4-mini
                                 gpt-5 gpt-5-mini gpt-5-nano gpt-5.1 gpt-5.2
                                 gpt-5.3-chat-latest gpt-5.4))))
+    (when gptel-stream
+      (plist-put prompts-plist :stream_options '(:include_usage t)))
     (when (and gptel-temperature (not reasoning-model-p))
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-use-tools
