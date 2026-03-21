@@ -1334,38 +1334,38 @@ No state transition here since that's handled by the process sentinels."
 
 Perform UI updates and run post-response hooks."
   (when-let* ((info (gptel-fsm-info fsm))
-              (error-data (plist-get info :error))
-              (http-msg   (plist-get info :status))
-              (gptel-buffer (plist-get info :buffer))
-              (start-marker (plist-get info :position))
-              (tracking-marker (or (plist-get info :tracking-marker)
-                                   start-marker))
-              (backend-name
-               (gptel-backend-name
-                (buffer-local-value 'gptel-backend gptel-buffer))))
-    (if (stringp error-data)
-        (message "%s error: (%s) %s" backend-name http-msg (string-trim error-data))
-      (when-let* ((error-type (plist-get error-data :type)))
-        (setq http-msg (concat "("  http-msg ") "
-                               (string-trim (gptel--to-string error-type)))))
-      (when-let* ((error-msg (plist-get error-data :message)))
-        (message "%s error: (%s) %s" backend-name http-msg
-                 (string-trim (gptel--to-string error-msg)))))
-    (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
-        (with-selected-window gptel-window
+              (error-data (plist-get info :error)))
+    (let* ((http-msg  (or (plist-get info :status) "Curl failed"))
+           (gptel-buffer (plist-get info :buffer))
+           (start-marker (plist-get info :position))
+           (tracking-marker (or (plist-get info :tracking-marker)
+                                start-marker))
+           (backend-name
+            (gptel-backend-name
+             (buffer-local-value 'gptel-backend gptel-buffer))))
+      (if (stringp error-data)
+          (message "%s error: (%s) %s" backend-name http-msg (string-trim error-data))
+        (when-let* ((error-type (plist-get error-data :type)))
+          (setq http-msg (concat "("  http-msg ") "
+                                 (string-trim (gptel--to-string error-type)))))
+        (when-let* ((error-msg (plist-get error-data :message)))
+          (message "%s error: (%s) %s" backend-name http-msg
+                   (string-trim (gptel--to-string error-msg)))))
+      (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
+          (with-selected-window gptel-window
+            (mapc (lambda (f) (funcall f info)) (plist-get info :post))
+            (run-hook-with-args
+             'gptel-post-response-functions
+             (marker-position start-marker) (marker-position tracking-marker)))
+        (with-current-buffer gptel-buffer
           (mapc (lambda (f) (funcall f info)) (plist-get info :post))
           (run-hook-with-args
            'gptel-post-response-functions
-           (marker-position start-marker) (marker-position tracking-marker)))
+           (marker-position start-marker) (marker-position tracking-marker))))
       (with-current-buffer gptel-buffer
-        (mapc (lambda (f) (funcall f info)) (plist-get info :post))
-        (run-hook-with-args
-         'gptel-post-response-functions
-         (marker-position start-marker) (marker-position tracking-marker))))
-    (with-current-buffer gptel-buffer
-      (when gptel-mode
-        (gptel--update-status
-         (format " Error: %s" http-msg) 'error)))))
+        (when gptel-mode
+          (gptel--update-status
+           (format " Error: %s" http-msg) 'error))))))
 
 (defun gptel--handle-abort (fsm)
   "Perform UI update on `gptel-abort' for FSM."
