@@ -2144,8 +2144,9 @@ be used to rerun or continue the request at a later time."
              (if (memq t gptel-prompt-transform-functions)
                  (length
                   (setq gptel-prompt-transform-functions
-                        (nconc (remq t gptel-prompt-transform-functions)
-                               (default-value 'gptel-prompt-transform-functions))))
+                        (remq 'gptel--transform-apply-preset
+                              (nconc (remq t gptel-prompt-transform-functions)
+                                     (default-value 'gptel-prompt-transform-functions)))))
                (length gptel-prompt-transform-functions)))
             (augment-idx 0))
         (if (null gptel-prompt-transform-functions)
