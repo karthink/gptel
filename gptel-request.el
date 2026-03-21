@@ -2136,18 +2136,22 @@ be used to rerun or continue the request at a later time."
     (with-current-buffer (plist-get info :data)
       (setq-local gptel-prompt-transform-functions (plist-get info :transforms))
       ;; Preset has highest priority because it can change prompt-transform-functions
-      (when (memq 'gptel--transform-apply-preset gptel-prompt-transform-functions)
-        (gptel--transform-apply-preset fsm)
-        (setq gptel-prompt-transform-functions ;avoid mutation, copy transforms
-              (remq 'gptel--transform-apply-preset gptel-prompt-transform-functions)))
-      (let ((augment-total              ;act like a hook, count total
-             (if (memq t gptel-prompt-transform-functions)
-                 (length
-                  (setq gptel-prompt-transform-functions
-                        (remq 'gptel--transform-apply-preset
-                              (nconc (remq t gptel-prompt-transform-functions)
-                                     (default-value 'gptel-prompt-transform-functions)))))
-               (length gptel-prompt-transform-functions)))
+      (let (preset-called)
+        (when (memq 'gptel--transform-apply-preset gptel-prompt-transform-functions)
+          (setq preset-called t)
+          (gptel--transform-apply-preset fsm)
+          (setq gptel-prompt-transform-functions ;avoid mutation, copy transforms
+                (remq 'gptel--transform-apply-preset gptel-prompt-transform-functions)))
+        (let ((augment-total              ;act like a hook, count total
+               (if (memq t gptel-prompt-transform-functions)
+                   (length
+                    (setq gptel-prompt-transform-functions
+                          (let ((merged (nconc (remq t gptel-prompt-transform-functions)
+                                               (default-value 'gptel-prompt-transform-functions))))
+                            (if preset-called
+                                (remq 'gptel--transform-apply-preset merged)
+                              merged))))
+                 (length gptel-prompt-transform-functions)))
             (augment-idx 0))
         (if (null gptel-prompt-transform-functions)
             (gptel--realize-query fsm)
@@ -2175,7 +2179,7 @@ be used to rerun or continue the request at a later time."
                  (when (>= augment-idx augment-total) ;All augmentors have run
                    (gptel--realize-query fsm-arg))))
              nil)           ;always return nil so run-hook-wrapped doesn't abort
-           fsm)))))
+           fsm))))))
   fsm)
 
 (defun gptel--realize-query (fsm)
