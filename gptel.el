@@ -1160,12 +1160,29 @@ buffers."
 
 ;;; State machine additions for `gptel-send'.
 
+(defvar gptel-send--transitions
+  `((INIT . ((t                       . WAIT)))
+    (WAIT . ((t                       . TYPE)))
+    (TYPE . ((,#'gptel--error-p       . ERRS)
+             (,#'gptel--tool-use-p    . TPRE)
+             (t                       . DONE)))
+    (TPRE . ((,#'gptel--error-p       . ERRS)
+             (t                       . TOOL)))
+    (TOOL . ((t                       . TRET)))
+    (TRET . ((,#'gptel--error-p       . ERRS)
+             (,#'gptel--tool-result-p . WAIT)
+             (t                       . DONE))))
+  "Alist specifying state transitions for `gptel-send'.
+
+See `gptel-request--transitions' for details.")
+
 (defvar gptel-send--handlers
   `((WAIT ,#'gptel--handle-wait ,#'gptel--update-wait)
     (TYPE ,#'gptel--handle-pre-insert)
     (ERRS ,#'gptel--handle-error ,#'gptel--fsm-last)
-    (TOOL ,#'gptel--handle-pre-tool ,#'gptel--update-tool-call
-          ,#'gptel--handle-tool-use ,#'gptel--update-tool-ask)
+    (TPRE ,#'gptel--handle-pre-tool)
+    (TOOL ,#'gptel--update-tool-call ,#'gptel--handle-tool-use
+          ,#'gptel--update-tool-ask)
     (TRET ,#'gptel--handle-post-tool ,#'gptel--handle-tool-result)
     (DONE ,#'gptel--handle-post-insert ,#'gptel--fsm-last)
     (ABRT ,#'gptel--handle-abort))
@@ -1446,7 +1463,8 @@ Perform UI updates and run post-response hooks."
                          (gptel--process-tool-call
                           fsm (cl-find-if (lambda (ts) (equal (gptel-tool-name ts) name))
                                           (plist-get info :tools))
-                          tool-call result))))))))))))))
+                          tool-call result)))))))))))))
+  (gptel--fsm-transition fsm))
 
 (defun gptel--handle-post-tool (fsm)
   "Run `gptel-post-tool-call-functions for FSM."
@@ -1545,7 +1563,8 @@ waiting for the response."
   (if (and arg (require 'gptel-transient nil t))
       (call-interactively #'gptel-menu)
     (gptel--sanitize-model)
-    (let ((fsm (gptel-make-fsm :handlers gptel-send--handlers)))
+    (let ((fsm (gptel-make-fsm :table gptel-send--transitions
+                               :handlers gptel-send--handlers)))
       (gptel-request nil
         :stream gptel-stream
         :transforms gptel-prompt-transform-functions
