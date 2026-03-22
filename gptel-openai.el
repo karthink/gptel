@@ -139,22 +139,30 @@ information if the stream contains it."
                   ;; No text content, so look for tool calls
                   (when-let* ((tool-call (map-nested-elt delta '(:tool_calls 0)))
                               (func (plist-get tool-call :function)))
-                    (if (and-let* ((func-name (plist-get func :name)) ((not (eq func-name :null))))
-                          ;; TEMP: This check is for litellm compatibility, should be removed
-                          (not (equal func-name "null"))) ; new tool block begins
-                        (progn
-                          (when-let* ((partial (plist-get info :partial_json)))
-                            (let* ((prev-tool-call (car (plist-get info :tool-use)))
-                                   (prev-func (plist-get prev-tool-call :function)))
-                              (plist-put prev-func :arguments ;update args for old tool block
-                                         (apply #'concat (nreverse (plist-get info :partial_json)))))
-                            (plist-put info :partial_json nil)) ;clear out finished chain of partial args
-                          ;; Start new chain of partial argument strings
-                          (plist-put info :partial_json (list (plist-get func :arguments)))
-                          ;; NOTE: Do NOT use `push' for this, it prepends and we lose the reference
-                          (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
-                      ;; old tool block continues, so continue collecting arguments in :partial_json 
-                      (push (plist-get func :arguments) (plist-get info :partial_json)))))
+                    (let ((func-name (plist-get func :name)))
+                      (cond
+                       ;; New tool block with valid name
+                       ((and func-name (not (eq func-name :null)) (not (equal func-name "null")))
+                        (when-let* ((partial (plist-get info :partial_json)))
+                          (let* ((prev-tool-call (car (plist-get info :tool-use)))
+                                 (prev-func (plist-get prev-tool-call :function)))
+                            (plist-put prev-func :arguments
+                                       (apply #'concat (nreverse (plist-get info :partial_json))))))
+                        (plist-put info :partial_json nil)
+                        (plist-put info :partial_json (list (plist-get func :arguments)))
+                        (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
+                       ;; New tool block with NIL/NULL name - create invalid tool entry
+                       ((and (or (null func-name) (eq func-name :null) (equal func-name "null"))
+                             (not (plist-get info :partial_json)))
+                        (message "gptel: received tool call with nil/null name, creating invalid entry")
+                        (plist-put info :tool-use
+                                   (cons `(:function (:name "invalid" :arguments "")
+                                           :id ,(format "invalid-%d" (float-time))
+                                           :result "Error: model returned tool call with nil/null name")
+                                         (plist-get info :tool-use))))
+                       ;; Old tool block continues
+                       ((plist-get info :partial_json)
+                        (push (plist-get func :arguments) (plist-get info :partial_json)))))))
                 ;; Check for reasoning blocks, currently only used by Openrouter
                 (unless (eq (plist-get info :reasoning-block) 'done)
                   (if-let* ((reasoning-plist ;reasoning-plist is (:reasoning.* "chunk" ...) or nil
