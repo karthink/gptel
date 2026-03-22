@@ -1335,7 +1335,7 @@ No state transition here since that's handled by the process sentinels."
 Perform UI updates and run post-response hooks."
   (when-let* ((info (gptel-fsm-info fsm))
               (error-data (plist-get info :error)))
-    (let* ((http-msg  (or (plist-get info :status) "Curl failed"))
+    (let* ((status (plist-get info :status))
            (gptel-buffer (plist-get info :buffer))
            (start-marker (plist-get info :position))
            (tracking-marker (or (plist-get info :tracking-marker)
@@ -1344,12 +1344,12 @@ Perform UI updates and run post-response hooks."
             (gptel-backend-name
              (buffer-local-value 'gptel-backend gptel-buffer))))
       (if (stringp error-data)
-          (message "%s error: (%s) %s" backend-name http-msg (string-trim error-data))
+          (message "%s error: (%s) %s" backend-name status (string-trim error-data))
         (when-let* ((error-type (plist-get error-data :type)))
-          (setq http-msg (concat "("  http-msg ") "
-                                 (string-trim (gptel--to-string error-type)))))
+          (setq status (concat "("  status ") "
+                               (string-trim (gptel--to-string error-type)))))
         (when-let* ((error-msg (plist-get error-data :message)))
-          (message "%s error: (%s) %s" backend-name http-msg
+          (message "%s error: (%s) %s" backend-name status
                    (string-trim (gptel--to-string error-msg)))))
       (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
           (with-selected-window gptel-window
@@ -1365,7 +1365,7 @@ Perform UI updates and run post-response hooks."
       (with-current-buffer gptel-buffer
         (when gptel-mode
           (gptel--update-status
-           (format " Error: %s" http-msg) 'error))))))
+           (format " Error: %s" status) 'error))))))
 
 (defun gptel--handle-abort (fsm)
   "Perform UI update on `gptel-abort' for FSM."

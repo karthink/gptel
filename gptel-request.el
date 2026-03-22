@@ -2813,6 +2813,7 @@ PROCESS and _STATUS are process parameters."
         (plist-put info :error
                    (format "Curl failed with exit code %d. See Curl manpage for details."
                            exit-status))
+        (plist-put info :status "Curl failure")
         (with-demoted-errors "gptel callback error: %S"
           (funcall (plist-get info :callback) nil info)))
        ;; Finish handling a successful streaming response
@@ -2986,6 +2987,7 @@ PROCESS and _STATUS are process parameters."
           (plist-put proc-info :error
                      (format "Curl failed with exit code %d. See Curl manpage for details."
                              exit-status))
+          (plist-put info :status "Curl failure")
           (gptel--fsm-transition fsm)   ;WAIT -> TYPE
           (with-demoted-errors "gptel callback error: %S"
             (funcall proc-callback nil proc-info))))
