@@ -1211,15 +1211,15 @@ See `gptel-request--handlers' for details.")
 FSM defaults to the state of the last request in the current
 buffer."
   (unless fsm
-    (setq fsm (or (cdr-safe (cl-find-if
-                             (lambda (proc-list)
-                               (eq (thread-first (cadr proc-list)
-                                                 (gptel-fsm-info)
-                                                 (plist-get :buffer))
-                                   (current-buffer)))
-                             gptel--request-alist))
-                  gptel--fsm-last)))
-  (unless (cl-typep gptel--fsm-last 'gptel-fsm)
+    (setq fsm (or gptel--fsm-last
+                  (cadr (cl-find-if
+                         (lambda (proc-list)
+                           (eq (thread-first (cadr proc-list)
+                                             (gptel-fsm-info)
+                                             (plist-get :buffer))
+                               (current-buffer)))
+                         gptel--request-alist)))))
+  (unless (cl-typep fsm 'gptel-fsm)
     (user-error "No gptel request log in this buffer yet!"))
   (require 'tabulated-list)
   (with-current-buffer (get-buffer-create "*gptel-diagnostic*")
