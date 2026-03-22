@@ -1411,12 +1411,15 @@ Perform UI updates and run post-response hooks."
                          (with-demoted-errors "gptel-pre-tool-call hook error: %S"
                            (funcall hook-func (nconc (list :name name :args args)
                                                      hook-func-args)))))
-                   (if (plist-get hook-func-result :stop)
-                       (progn           ; Stop the request immediately
-                         (and-let* ((reason (plist-get hook-func-result :stop-reason)))
-                           (plist-put info :stop-reason reason)
-                           (gptel--update-status reason 'error))
-                         (gptel--fsm-transition fsm 'ERRS))
+                   (if (plist-get hook-func-result :stop) ; Stop the request immediately
+                       (let ((reason (or (plist-get hook-func-result :stop-reason)
+                                         (concat "Request stopped by pre-tool-call hook "
+                                                 (and (symbolp hook-func)
+                                                      (symbol-name hook-func))
+                                                 " (tool \"" name "\")"))))
+                         (plist-put info :stop-reason reason)
+                         (plist-put info :status "Stopped by hook")
+                         (plist-put info :error reason))
                      ;; if hook-func returns :confirm, add the check
                      (when (plist-get hook-func-result :confirm)
                        (plist-put tool-call :confirm t))
@@ -1468,11 +1471,14 @@ Perform UI updates and run post-response hooks."
                                                  :result (plist-get tool-call :result))
                                            hook-func-args)))))
                    (if (plist-get hook-func-result :stop)
-                       (progn           ; Stop the request immediately
-                         (and-let* ((reason (plist-get hook-func-result :stop-reason)))
-                           (plist-put info :stop-reason reason)
-                           (gptel--update-status reason 'error))
-                         (gptel--fsm-transition fsm 'ERRS))
+                       (let ((reason (or (plist-get hook-func-result :stop-reason)
+                                         (concat "Request stopped by post-tool-call hook "
+                                                 (and (symbolp hook-func)
+                                                      (symbol-name hook-func))
+                                                 " (tool \"" name "\")"))))
+                         (plist-put info :stop-reason reason)
+                         (plist-put info :status "Stopped by hook")
+                         (plist-put info :error reason))
                      ;; TODO(tool-hooks): :block behavior not final!
                      (let ((blockp (plist-get hook-func-result :block))
                            (result (plist-get hook-func-result :result)))

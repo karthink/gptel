@@ -1673,9 +1673,9 @@ BACKEND is the `gptel-backend'."
     (TYPE . ((,#'gptel--error-p       . ERRS)
              (,#'gptel--tool-use-p    . TOOL)
              (t                       . DONE)))
-    (TOOL . ((,#'gptel--error-p       . ERRS)
-             (t                       . TRET)))
-    (TRET . ((,#'gptel--tool-result-p . WAIT)
+    (TOOL . ((t                       . TRET)))
+    (TRET . ((,#'gptel--error-p       . ERRS)
+             (,#'gptel--tool-result-p . WAIT)
              (t                       . DONE))))
   "Alist specifying gptel's default state transition table for requests.
 
