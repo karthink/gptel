@@ -326,7 +326,7 @@ OBJ is a tool-infix of type `gptel--switch'."
     (oset obj value (list (oref obj category) name))))
 
 (defvar gptel--crowdsourced-prompts-url
-  "https://raw.githubusercontent.com/f/awesome-chatgpt-prompts/main/prompts.csv"
+  "https://raw.githubusercontent.com/f/prompts.chat/main/prompts.csv"
   "URL for crowdsourced LLM system prompts.")
 
 (defvar gptel--crowdsourced-prompts
@@ -334,20 +334,44 @@ OBJ is a tool-infix of type `gptel--switch'."
   "Crowdsourced LLM system prompts.")
 
 (defun gptel--read-csv-column ()
-  "Read next CSV column in the current buffer.
+  "Read the next CSV column in the current buffer.
 
-Supports both quoted and non-quoted columns (RFC 4180)."
-  (let ((start (point)))
-    (unless (eolp)
-      (let ((column
-	     (if (eq (char-after) ?\")
-		 (when (re-search-forward "\",\\|\"$" nil t)
-		   (let ((end (match-beginning 0)))
-		     (buffer-substring-no-properties (+ start 1) (if (eolp) (- end 1) end))))
-	       (when (search-forward "," (line-end-position) t)
-		 (let ((end (match-beginning 0)))
-		   (buffer-substring-no-properties start end))))))
-	(string-replace "\"\"" "\"" column)))))
+Supports RFC 4180 quoted and unquoted fields, including embedded
+newlines and escaped quotes in quoted fields."
+  (cond
+   ((eobp) nil)
+   ((eq (char-after) ?,)
+    (forward-char 1)
+    "")
+   ((eq (char-after) ?\")
+    (forward-char 1)
+    (let ((parts nil)
+          (start (point))
+          done)
+      (while (not done)
+        (if (search-forward "\"" nil t)
+            (if (eq (char-after) ?\")
+                (progn
+                  (push (buffer-substring-no-properties start (1- (point))) parts)
+                  (push "\"" parts)
+                  (forward-char 1)
+                  (setq start (point)))
+              (push (buffer-substring-no-properties start (1- (point))) parts)
+              (setq done t))
+          (push (buffer-substring-no-properties start (point-max)) parts)
+          (goto-char (point-max))
+          (setq done t)))
+      (when (eq (char-after) ?,)
+        (forward-char 1))
+      (apply #'concat (nreverse parts))))
+   (t
+    (let ((start (point)))
+      (while (and (not (eobp))
+                  (not (memq (char-after) '(?, ?\n ?\r))))
+        (forward-char 1))
+      (prog1 (buffer-substring-no-properties start (point))
+        (when (eq (char-after) ?,)
+          (forward-char 1)))))))
 
 (defun gptel--crowdsourced-prompts ()
   "Acquire and read crowdsourced LLM system prompts.
@@ -367,7 +391,7 @@ which see."
         (when (y-or-n-p
                (concat
                 "Fetch crowdsourced system prompts from "
-                (propertize "https://github.com/f/awesome-chatgpt-prompts" 'face 'link)
+                (propertize gptel--crowdsourced-prompts-url 'face 'link)
                 "?"))
           ;; Fetch file
           (message "Fetching prompts...")
@@ -1854,15 +1878,19 @@ This uses the prompts in the variable
               (lambda (str pred action)
                 (if (eq action 'metadata)
                     `(metadata
-                      (affixation-function .
-                       (lambda (cands)
-                         (mapcar
-                          (lambda (c)
-                            (list c ""
-                             (concat (propertize " " 'display '(space :align-to 22))
-                              " " (propertize (gethash c gptel--crowdsourced-prompts)
-                               'face 'completions-annotations))))
-                          cands))))
+                      ( affixation-function .
+                        (lambda (cands)
+                          (mapcar
+                           (lambda (c)
+                             ( list c ""
+                               (concat
+                                (propertize " " 'display '(space :align-to 22))
+                                " " (propertize
+                                     (gptel--describe-directive
+                                      (gethash c gptel--crowdsourced-prompts)
+                                      54 " ")
+                                     'face 'completions-annotations))))
+                           cands))))
                   (complete-with-action action gptel--crowdsourced-prompts str pred)))
               nil t)))
         (when-let* ((prompt (gethash choice gptel--crowdsourced-prompts)))
