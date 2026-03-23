@@ -407,7 +407,7 @@ This hook runs in gptel chat buffers after making a change to gptel's
 configuration that might require a UI update.")
 
 (defvar-local gptel--bounds nil)
-(put 'gptel--bounds 'safe-local-variable #'always)
+(put 'gptel--bounds 'safe-local-variable #'listp)
 
 (defvar gptel--preset nil
   "Name of last applied gptel preset.
@@ -420,14 +420,14 @@ For internal use only.")
 
 Note: Changing this variable does not affect gptel\\='s behavior
 in any way.")
-(put 'gptel--tool-names 'safe-local-variable #'always)
+(put 'gptel--tool-names 'safe-local-variable #'listp)
 
 (defvar-local gptel--backend-name nil
   "Store to persist backend name across Emacs sessions.
 
 Note: Changing this variable does not affect gptel\\='s behavior
 in any way.")
-(put 'gptel--backend-name 'safe-local-variable #'always)
+(put 'gptel--backend-name 'safe-local-variable #'stringp)
 
 (defvar-local gptel--old-header-line nil)
 

@@ -522,7 +522,7 @@ To set the model for a chat session interactively call
 This opens up advanced options in `gptel-menu'.")
 
 (defvar gptel--num-messages-to-send nil)
-(put 'gptel--num-messages-to-send 'safe-local-variable #'always)
+(put 'gptel--num-messages-to-send 'safe-local-variable #'integer-or-null-p)
 
 (defcustom gptel-log-level nil
   "Logging level for gptel.
@@ -1114,7 +1114,10 @@ FILE is assumed to exist and be a regular file."
   (or (alist-get 'default gptel-directives)
       "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
   "The system message used by gptel.")
-(put 'gptel--system-message 'safe-local-variable #'always)
+(put 'gptel--system-message 'safe-local-variable
+     #'(lambda (v) (or (string-or-null-p v)
+                       (and (listp v)
+                            (cl-every #'string-or-null-p v)))))
 
 (defun gptel--describe-directive (directive width &optional replacement)
   "Find description for DIRECTIVE, truncated  to WIDTH.
