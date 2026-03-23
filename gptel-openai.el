@@ -146,7 +146,7 @@ information if the stream contains it."
                              (not (eq func-name :null))
                              ;; TEMP: litellm compatibility
                              (not (equal func-name "null")))
-                        (when-let* ((partial (plist-get info :partial_json)))
+                        (when (plist-get info :partial_json)
                           (let* ((prev-tool-call (car (plist-get info :tool-use)))
                                  (prev-func (plist-get prev-tool-call :function)))
                             (plist-put prev-func :arguments
@@ -157,7 +157,7 @@ information if the stream contains it."
                        ;; Malformed tool call: nil/null name at start of new block
                        ((and (or (null func-name) (eq func-name :null) (equal func-name "null"))
                              (not (plist-get info :partial_json)))
-                        (message "gptel-openai: skipping tool call with nil/null name"))
+                        (display-warning 'gptel-openai "Skipping tool call with nil/null name"))
                        ;; Old tool block continues
                        ((plist-get info :partial_json)
                         (push (plist-get func :arguments) (plist-get info :partial_json)))))))
