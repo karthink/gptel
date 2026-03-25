@@ -293,8 +293,9 @@ PROMPT, _INITIAL-INPUT and HISTORY are as in the transient reader
 documention.  Return nil if user does not provide a number, for default."
   ;; Workaround for buggy transient behaviour when dealing with
   ;; non-string values.  See: https://github.com/magit/transient/issues/172
-  (when-let* ((val (symbol-value history)))
-    (when (not (stringp (car val)))
+  (when-let* ((history-symbol (or (car-safe history) history))
+              (val (and (symbolp history-symbol) (symbol-value history-symbol))))
+    (unless (stringp (car val))
       (setcar val (number-to-string (car val)))))
   (let* ((minibuffer-default-prompt-format "")
 	 (num (read-number prompt -1 history)))
