@@ -15,8 +15,44 @@ Org mode integration.
   - =origin=: GitHub Siroic fork (pull and push)
   - =gitea=: Siroic fork (pull and push)
   - =karthink=: GitHub base repo (pull only)
-- Tests: submodule at =test/=
-- Test command: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
+- Tests: git subrepo at =test/=
+  - Managed via =git subrepo= (not a submodule)
+  - Subrepo remote: =git@github.com:siroic/gptel-test= (branch =main=)
+  - Upstream test repo: =git@github.com:karthink/gptel-test= (remote =test=)
+  - Test command: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
+
+*** Test Subrepo Workflow
+
+The =test/= directory is a [[https://github.com/ingydotnet/git-subrepo][git-subrepo]].  When merging karthink/master,
+the test subrepo may need updating separately if upstream changed its test
+subproject pointer.
+
+**** Updating tests after merging karthink/master
+
+1. Create the subrepo branch and worktree:
+   : git subrepo branch test
+
+2. In the worktree, fetch and merge karthink's test changes:
+   : cd .git/tmp/subrepo/test
+   : git fetch test main
+   : git merge FETCH_HEAD --no-edit
+
+3. Resolve any conflicts (typically accept =--theirs= for upstream test
+   changes, but verify local-only changes are preserved):
+   : git log --oneline FETCH_HEAD..HEAD -- <conflicting-file>
+
+4. Push the updated subrepo branch to siroic/gptel-test *before* committing:
+   : git push subrepo-test subrepo/test:main
+   (remote =subrepo-test= points to =git@github.com:siroic/gptel-test.git=)
+
+5. Back in the main repo, commit the subrepo and clean up:
+   : cd <repo-root>
+   : git subrepo commit test
+   : git subrepo clean test
+
+*Important:* Always push the subrepo worktree branch (step 4) before running
+=git subrepo commit= or =git subrepo clean=, otherwise the remote will be out
+of sync with the =.gitrepo= metadata.
 
 ** Relationship to gptel-agent
 
