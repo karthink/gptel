@@ -36,7 +36,8 @@
 - Gemini backend: add support for =gemini-3.1-flash-lite-preview=;
   add deprecation notice for =gemini-3-pro-preview=.
 
-- OpenAI backend: add support for =gpt-5.3-chat-latest= and =gpt-5.4=.
+- OpenAI backend: add support for =gpt-5.3-chat-latest=, =gpt-5.4=,
+  =gpt-5.4-mini= and =gpt-5.4-nano=.
 
 ** New features and UI changes
 
