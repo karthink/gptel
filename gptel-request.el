@@ -1679,9 +1679,9 @@ BACKEND is the `gptel-backend'."
     (TYPE . ((,#'gptel--error-p       . ERRS)
              (,#'gptel--tool-use-p    . TOOL)
              (t                       . DONE)))
-    (TOOL . ((,#'gptel--error-p       . ERRS)
-             (t                       . TRET)))
-    (TRET . ((,#'gptel--tool-result-p . WAIT)
+    (TOOL . ((t                       . TRET)))
+    (TRET . ((,#'gptel--error-p       . ERRS)
+             (,#'gptel--tool-result-p . WAIT)
              (t                       . DONE))))
   "Alist specifying gptel's default state transition table for requests.
 
@@ -2816,9 +2816,13 @@ PROCESS and _STATUS are process parameters."
       (cond
        ;; Curl exited with a non-zero status: connection-level failure
        ((not (zerop exit-status))
+        ;; MAYBE: This transition should happen in the process filter, but it's
+        ;; not clear how to reliably detect Curl failure there.
+        (gptel--fsm-transition fsm)     ;Curl failed, WAIT -> TYPE
         (plist-put info :error
                    (format "Curl failed with exit code %d. See Curl manpage for details."
                            exit-status))
+        (plist-put info :status "Curl failure")
         (with-demoted-errors "gptel callback error: %S"
           (funcall (plist-get info :callback) nil info)))
        ;; Finish handling a successful streaming response
@@ -2863,7 +2867,7 @@ PROCESS and _STATUS are process parameters."
         (goto-char (process-mark process))
         (insert output)
         (set-marker (process-mark process) (point)))
-      
+
       ;; Find HTTP status
       (unless (plist-get proc-info :http-status)
         (save-excursion
@@ -2877,8 +2881,8 @@ PROCESS and _STATUS are process parameters."
                               (match-string 1 http-msg)))))
             (plist-put proc-info :http-status http-status)
             (plist-put proc-info :status (string-trim http-msg))
-            (gptel--fsm-transition fsm))))
-      
+            (gptel--fsm-transition fsm)))) ;Response started, WAIT -> TYPE
+
       (when-let* ((http-msg (plist-get proc-info :status))
                   (http-status (plist-get proc-info :http-status)))
         ;; Find data chunk(s) and run callback
@@ -2992,6 +2996,7 @@ PROCESS and _STATUS are process parameters."
           (plist-put proc-info :error
                      (format "Curl failed with exit code %d. See Curl manpage for details."
                              exit-status))
+          (plist-put proc-info :status "Curl failure")
           (gptel--fsm-transition fsm)   ;WAIT -> TYPE
           (with-demoted-errors "gptel callback error: %S"
             (funcall proc-callback nil proc-info))))

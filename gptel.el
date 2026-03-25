@@ -1276,12 +1276,29 @@ and folding.  The tag used is configured by `gptel-org-assistant-tag'
 
 ;;; State machine additions for `gptel-send'.
 
+(defvar gptel-send--transitions
+  `((INIT . ((t                       . WAIT)))
+    (WAIT . ((t                       . TYPE)))
+    (TYPE . ((,#'gptel--error-p       . ERRS)
+             (,#'gptel--tool-use-p    . TPRE)
+             (t                       . DONE)))
+    (TPRE . ((,#'gptel--error-p       . ERRS)
+             (t                       . TOOL)))
+    (TOOL . ((t                       . TRET)))
+    (TRET . ((,#'gptel--error-p       . ERRS)
+             (,#'gptel--tool-result-p . WAIT)
+             (t                       . DONE))))
+  "Alist specifying state transitions for `gptel-send'.
+
+See `gptel-request--transitions' for details.")
+
 (defvar gptel-send--handlers
   `((WAIT ,#'gptel--handle-wait ,#'gptel--update-wait)
     (TYPE ,#'gptel--handle-pre-insert)
     (ERRS ,#'gptel--handle-error ,#'gptel--fsm-last)
-    (TOOL ,#'gptel--handle-pre-tool ,#'gptel--update-tool-call
-          ,#'gptel--handle-tool-use ,#'gptel--update-tool-ask)
+    (TPRE ,#'gptel--handle-pre-tool ,#'gptel--fsm-transition)
+    (TOOL ,#'gptel--update-tool-call ,#'gptel--handle-tool-use
+          ,#'gptel--update-tool-ask)
     (TRET ,#'gptel--handle-post-tool ,#'gptel--handle-tool-result)
     (DONE ,#'gptel--handle-post-insert ,#'gptel--fsm-last)
     (ABRT ,#'gptel--handle-abort))
@@ -1310,15 +1327,15 @@ See `gptel-request--handlers' for details.")
 FSM defaults to the state of the last request in the current
 buffer."
   (unless fsm
-    (setq fsm (or (cdr-safe (cl-find-if
-                             (lambda (proc-list)
-                               (eq (thread-first (cadr proc-list)
-                                                 (gptel-fsm-info)
-                                                 (plist-get :buffer))
-                                   (current-buffer)))
-                             gptel--request-alist))
-                  gptel--fsm-last)))
-  (unless (cl-typep gptel--fsm-last 'gptel-fsm)
+    (setq fsm (or gptel--fsm-last
+                  (cadr (cl-find-if
+                         (lambda (proc-list)
+                           (eq (thread-first (cadr proc-list)
+                                             (gptel-fsm-info)
+                                             (plist-get :buffer))
+                               (current-buffer)))
+                         gptel--request-alist)))))
+  (unless (cl-typep fsm 'gptel-fsm)
     (user-error "No gptel request log in this buffer yet!"))
   (require 'tabulated-list)
   (with-current-buffer (get-buffer-create "*gptel-diagnostic*")
@@ -1453,38 +1470,38 @@ No state transition here since that's handled by the process sentinels."
 
 Perform UI updates and run post-response hooks."
   (when-let* ((info (gptel-fsm-info fsm))
-              (error-data (plist-get info :error))
-              (http-msg   (plist-get info :status))
-              (gptel-buffer (plist-get info :buffer))
-              (start-marker (plist-get info :position))
-              (tracking-marker (or (plist-get info :tracking-marker)
-                                   start-marker))
-              (backend-name
-               (gptel-backend-name
-                (buffer-local-value 'gptel-backend gptel-buffer))))
-    (if (stringp error-data)
-        (message "%s error: (%s) %s" backend-name http-msg (string-trim error-data))
-      (when-let* ((error-type (plist-get error-data :type)))
-        (setq http-msg (concat "("  http-msg ") "
+              (error-data (plist-get info :error)))
+    (let* ((status (plist-get info :status))
+           (gptel-buffer (plist-get info :buffer))
+           (start-marker (plist-get info :position))
+           (tracking-marker (or (plist-get info :tracking-marker)
+                                start-marker))
+           (backend-name
+            (gptel-backend-name
+             (buffer-local-value 'gptel-backend gptel-buffer))))
+      (if (stringp error-data)
+          (message "%s error: (%s) %s" backend-name status (string-trim error-data))
+        (when-let* ((error-type (plist-get error-data :type)))
+          (setq status (concat "("  status ") "
                                (string-trim (gptel--to-string error-type)))))
-      (when-let* ((error-msg (plist-get error-data :message)))
-        (message "%s error: (%s) %s" backend-name http-msg
-                 (string-trim (gptel--to-string error-msg)))))
-    (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
-        (with-selected-window gptel-window
+        (when-let* ((error-msg (plist-get error-data :message)))
+          (message "%s error: (%s) %s" backend-name status
+                   (string-trim (gptel--to-string error-msg)))))
+      (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
+          (with-selected-window gptel-window
+            (mapc (lambda (f) (funcall f info)) (plist-get info :post))
+            (run-hook-with-args
+             'gptel-post-response-functions
+             (marker-position start-marker) (marker-position tracking-marker)))
+        (with-current-buffer gptel-buffer
           (mapc (lambda (f) (funcall f info)) (plist-get info :post))
           (run-hook-with-args
            'gptel-post-response-functions
-           (marker-position start-marker) (marker-position tracking-marker)))
+           (marker-position start-marker) (marker-position tracking-marker))))
       (with-current-buffer gptel-buffer
-        (mapc (lambda (f) (funcall f info)) (plist-get info :post))
-        (run-hook-with-args
-         'gptel-post-response-functions
-         (marker-position start-marker) (marker-position tracking-marker))))
-    (with-current-buffer gptel-buffer
-      (when gptel-mode
-        (gptel--update-status
-         (format " Error: %s" http-msg) 'error)))))
+        (when gptel-mode
+          (gptel--update-status
+           (format " Error: %s" status) 'error))))))
 
 (defun gptel--handle-abort (fsm)
   "Perform UI update on `gptel-abort' for FSM."
@@ -1540,12 +1557,15 @@ Perform UI updates and run post-response hooks."
                          (with-demoted-errors "gptel-pre-tool-call hook error: %S"
                            (funcall hook-func (nconc (list :name name :args args)
                                                      hook-func-args)))))
-                   (if (plist-get hook-func-result :stop)
-                       (progn           ; Stop the request immediately
-                         (and-let* ((reason (plist-get hook-func-result :stop-reason)))
-                           (plist-put info :stop-reason reason)
-                           (gptel--update-status reason 'error))
-                         (gptel--fsm-transition fsm 'ERRS))
+                   (if (plist-get hook-func-result :stop) ; Stop the request immediately
+                       (let ((reason (or (plist-get hook-func-result :stop-reason)
+                                         (concat "Request stopped by pre-tool-call hook "
+                                                 (and (symbolp hook-func)
+                                                      (symbol-name hook-func))
+                                                 " (tool \"" name "\")"))))
+                         (plist-put info :stop-reason reason)
+                         (plist-put info :status "Stopped by hook")
+                         (plist-put info :error reason))
                      ;; if hook-func returns :confirm, add the check
                      (when (plist-get hook-func-result :confirm)
                        (plist-put tool-call :confirm t))
@@ -1597,11 +1617,14 @@ Perform UI updates and run post-response hooks."
                                                  :result (plist-get tool-call :result))
                                            hook-func-args)))))
                    (if (plist-get hook-func-result :stop)
-                       (progn           ; Stop the request immediately
-                         (and-let* ((reason (plist-get hook-func-result :stop-reason)))
-                           (plist-put info :stop-reason reason)
-                           (gptel--update-status reason 'error))
-                         (gptel--fsm-transition fsm 'ERRS))
+                       (let ((reason (or (plist-get hook-func-result :stop-reason)
+                                         (concat "Request stopped by post-tool-call hook "
+                                                 (and (symbolp hook-func)
+                                                      (symbol-name hook-func))
+                                                 " (tool \"" name "\")"))))
+                         (plist-put info :stop-reason reason)
+                         (plist-put info :status "Stopped by hook")
+                         (plist-put info :error reason))
                      ;; TODO(tool-hooks): :block behavior not final!
                      (let ((blockp (plist-get hook-func-result :block))
                            (result (plist-get hook-func-result :result)))
@@ -1668,7 +1691,8 @@ waiting for the response."
   (if (and arg (require 'gptel-transient nil t))
       (call-interactively #'gptel-menu)
     (gptel--sanitize-model)
-    (let ((fsm (gptel-make-fsm :handlers gptel-send--handlers)))
+    (let ((fsm (gptel-make-fsm :table gptel-send--transitions
+                               :handlers gptel-send--handlers)))
       (gptel-request nil
         :stream gptel-stream
         :transforms gptel-prompt-transform-functions
