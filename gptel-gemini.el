@@ -152,7 +152,7 @@ list."
     (when gptel-temperature
       (setq params
             (plist-put params
-                       :temperature (max gptel-temperature 1.0))))
+                       :temperature (max 0.0 gptel-temperature))))
     (when gptel-max-tokens
       (setq params
             (plist-put params
