@@ -6,7 +6,7 @@
 ;; Version: 0.9.9.4
 ;; Package-Requires: ((emacs "27.1") (transient "0.7.4") (compat "30.1.0.0"))
 ;; Keywords: convenience, tools
-;; URL: https://github.com/karthink/gptel
+;; URL: https://gptel.org
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
