@@ -713,7 +713,7 @@ URL `https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-tab
      :output-cost 5)
     (sonnet
      :description "Alias for latest Sonnet model"
-     :model-id "claude-sonnet-4-5-20250929"
+     :model-id "claude-sonnet-4-6"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
@@ -721,7 +721,7 @@ URL `https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-tab
      :output-cost 15)
     (opus
      :description "Alias for latest Opus model"
-     :model-id "claude-opus-4-5-20251101"
+     :model-id "claude-opus-4-6"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
