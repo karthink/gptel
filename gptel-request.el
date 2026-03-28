@@ -1863,7 +1863,7 @@ injects the results into the prompt data and transitions the FSM."
         (when pending-calls
           (plist-put info :tool-pending t)
           (funcall (plist-get info :callback)
-                   (cons 'tool-call pending-calls) info))))))
+                   (cons 'tool-call (nreverse pending-calls)) info))))))
 
 (defun gptel--map-tool-args (tool-spec args)
   "Create a tool call argument list from TOOL-SPEC and ARGS.

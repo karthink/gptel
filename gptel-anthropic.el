@@ -128,7 +128,7 @@ information if the stream contains it.  Not my best work, I know."
                     (plist-put (car (plist-get info :tool-use)) :input args-decoded))
                 ;; If there was an error in reading that tool, we ignore it:
                 ;; TODO(tool) handle this error better
-                (error (pop (plist-get info :tool-use)))) ;TODO: nreverse :tool-use list
+                (error (pop (plist-get info :tool-use))))
               (plist-put info :partial_json nil))
 
              ((eq (plist-get info :reasoning-block) 'in) ;End of reasoning block
@@ -137,6 +137,8 @@ information if the stream contains it.  Not my best work, I know."
            ((looking-at "message_delta")
             ;; collect stop_reason, usage_tokens and prepare tools
             (forward-line 1) (forward-char 5)
+            ;; Reverse tool-use list: it was built with cons in content_block_start
+            (plist-put info :tool-use (nreverse (plist-get info :tool-use)))
             (when-let* ((tool-use (plist-get info :tool-use))
                         (response (gptel--json-read)))
               (let* ((data (plist-get info :data))

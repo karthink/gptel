@@ -106,6 +106,7 @@ information if the stream contains it."
                               (args (apply #'concat (nreverse (plist-get info :partial_json))))
                               (func (plist-get (car tool-use) :function)))
                     (plist-put func :arguments args) ;Update arguments for last recorded tool
+                    (setq tool-use (nreverse tool-use)) ;Restore original order (was reversed by cons)
                     (gptel--inject-prompt
                      (plist-get info :backend) (plist-get info :data)
                      `( :role "assistant" :content :null :tool_calls ,(vconcat tool-use) ; :refusal :null
