@@ -1283,6 +1283,9 @@ marked with the gptel response property.
 User-tagged headings within an assistant subtree are treated as
 user feedback - their content is NOT marked as assistant response.
 
+Headings with no role tag have any stale gptel properties removed,
+preventing removed tags from persisting as text properties.
+
 Returns non-nil if any tagged headings were found and processed."
   (save-excursion
     (goto-char (point-min))
@@ -1317,7 +1320,17 @@ Returns non-nil if any tagged headings were found and processed."
                 (end (save-excursion
                        (org-end-of-subtree t t)
                        (point))))
-            (remove-text-properties beg end '(gptel nil))))))
+            (remove-text-properties beg end '(gptel nil))))
+         ;; No role tag - clear any stale gptel properties from this subtree.
+         ;; This handles the case where an :assistant: tag was removed: without
+         ;; cleanup the gptel response text property would persist indefinitely.
+         (t
+          (when (get-text-property (point) 'gptel)
+            (let ((beg (point))
+                  (end (save-excursion
+                         (org-end-of-subtree t t)
+                         (point))))
+              (remove-text-properties beg end '(gptel nil)))))))
       found-tags)))
 
 (defvar-local gptel-org--bounds-from-tags nil
