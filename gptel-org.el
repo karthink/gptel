@@ -580,14 +580,21 @@ unrelated change (like a separator) triggers the hook."
         (save-excursion
           (goto-char beg)
           (let ((found-heading
-                 (if (org-at-heading-p)
-                     t
-                   ;; Search only within the changed region.  This prevents
-                   ;; matching a pre-existing sibling heading when the change
-                   ;; is just a separator (e.g., "\n\n") inserted before the
-                   ;; heading prefix.
-                   (and (re-search-forward org-heading-regexp end t)
-                        (progn (beginning-of-line) t)))))
+                 (cond
+                  ;; If beg is on a heading line AND beg is at the start
+                  ;; of the line, this heading was just inserted (the
+                  ;; insert placed us at the beginning of a new heading).
+                  ;; If beg is NOT at the start of a heading line, we're
+                  ;; on a pre-existing heading (e.g., the task heading)
+                  ;; and should not apply the tag to it.
+                  ((org-at-heading-p)
+                   (= beg (line-beginning-position)))
+                  ;; Search only within the changed region.  This prevents
+                  ;; matching a pre-existing sibling heading when the change
+                  ;; is just a separator (e.g., "\n\n") inserted before the
+                  ;; heading prefix.
+                  (t (and (re-search-forward org-heading-regexp end t)
+                          (progn (beginning-of-line) t))))))
             (when (and found-heading (org-at-heading-p))
               (gptel-org--debug
                "apply-pending-tag-on-change: beg=%d end=%d marker=%d tag=%S heading=%d"

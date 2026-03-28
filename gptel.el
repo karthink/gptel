@@ -208,6 +208,7 @@
 (declare-function gptel-org--annotate-links "gptel-org")
 (declare-function gptel-org--heading-has-tag-p "gptel-org")
 (defvar gptel-org-assistant-tag)
+(defvar gptel-org--in-prefix-advice)
 (declare-function org-at-heading-p "org")
 (declare-function org-get-tags "org")
 (declare-function org-end-of-subtree "org")
@@ -1836,7 +1837,11 @@ Optional RAW disables text properties and transformation."
            (with-current-buffer (marker-buffer start-marker)
              (let ((separator         ;Separate from response prefix if required
                     (and (not tracking-marker) gptel-mode
-                         (not (string-suffix-p "\n" (gptel-response-prefix-string)))
+                         ;; Check the base prefix without triggering
+                         ;; org-mode side effects (pending tag hook).
+                         (not (string-suffix-p
+                               "\n" (let ((gptel-org--in-prefix-advice t))
+                                      (gptel-response-prefix-string))))
                          "\n"))
                    (blocks (if (derived-mode-p 'org-mode)
                                `("#+begin_src gptel-reasoning\n" . ,(concat "\n#+end_src"
@@ -2011,8 +2016,13 @@ for streaming responses only."
                          (= reasoning-marker tracking-marker))
               (let ((separator        ;Separate from response prefix if required
                      (and (not tracking-marker) gptel-mode
+                          ;; Check the base prefix without triggering
+                          ;; org-mode side effects (pending tag hook).
+                          ;; The full dynamic prefix will be computed
+                          ;; inside gptel-curl--stream-insert-response.
                           (not (string-suffix-p
-                                "\n" (gptel-response-prefix-string)))
+                                "\n" (let ((gptel-org--in-prefix-advice t))
+                                       (gptel-response-prefix-string))))
                           "\n")))
                 (gptel-curl--stream-insert-response
                  (concat separator
