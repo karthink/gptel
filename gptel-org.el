@@ -30,18 +30,21 @@
 (require 'org-src)
 (eval-when-compile (require 'gptel-request))
 
-;; Register gptel-tool as a source block language with org-src to prevent
-;; org-lint warnings about unknown source block language. Tool output blocks
-;; use #+begin_src gptel-tool but don't require a Babel backend.
+;; Register gptel-tool and gptel-reasoning as source block languages with
+;; org-src to prevent org-lint warnings about unknown source block languages.
+;; These blocks don't require a Babel backend.
 (eval-when-compile
   ;; Only run at compile time to avoid modifying org-src-lang-modes at load time
   (when (boundp 'org-src-lang-modes)
-    (add-to-list 'org-src-lang-modes '("gptel-tool" . fundamental))))
+    (add-to-list 'org-src-lang-modes '("gptel-tool" . fundamental))
+    (add-to-list 'org-src-lang-modes '("gptel-reasoning" . fundamental))))
 
-;; Ensure the language is registered at runtime for org-lint
+;; Ensure the languages are registered at runtime for org-lint
 (with-eval-after-load 'org-src
   (unless (assoc "gptel-tool" org-src-lang-modes)
-    (add-to-list 'org-src-lang-modes '("gptel-tool" . fundamental))))
+    (add-to-list 'org-src-lang-modes '("gptel-tool" . fundamental)))
+  (unless (assoc "gptel-reasoning" org-src-lang-modes)
+    (add-to-list 'org-src-lang-modes '("gptel-reasoning" . fundamental))))
 
 ;; Functions used for saving/restoring gptel state in Org buffers
 (defvar gptel--num-messages-to-send)
@@ -866,9 +869,11 @@ This removal is necessary to avoid auto-mimicry by LLMs."
   (save-excursion
     (goto-char (point-min))
     (while (re-search-forward
-            (rx line-start (literal "#+")
-                (or (literal "begin") (literal "end"))
-                (or (literal "_tool") (literal "_reasoning")))
+            (rx line-start
+                (literal "#+")
+                (or (seq (or (literal "begin") (literal "end"))
+                         (or (literal "_tool") (literal "_reasoning")))
+                    (literal "begin_src gptel-reasoning")))
             nil t)
       (delete-region (match-beginning 0)
                      (min (point-max) (1+ (line-end-position)))))))

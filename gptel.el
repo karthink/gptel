@@ -1839,7 +1839,7 @@ Optional RAW disables text properties and transformation."
                          (not (string-suffix-p "\n" (gptel-response-prefix-string)))
                          "\n"))
                    (blocks (if (derived-mode-p 'org-mode)
-                               `("#+begin_reasoning\n" . ,(concat "\n#+end_reasoning"
+                               `("#+begin_src gptel-reasoning\n" . ,(concat "\n#+end_src"
                                                            gptel-response-separator))
                              ;; TODO(reasoning) remove properties and strip instead
                              (cons (propertize "``` reasoning\n" 'gptel 'ignore
@@ -1859,8 +1859,8 @@ Optional RAW disables text properties and transformation."
                (save-excursion
                  (goto-char (plist-get info :tracking-marker))
                  (if (derived-mode-p 'org-mode) ;fold block
-                     (progn (search-backward "#+end_reasoning" start-marker t)
-                            (when (looking-at "^#\\+end_reasoning")
+                     (progn (search-backward "#+end_src" start-marker t)
+                            (when (looking-at "^#\\+end_src")
                               (org-cycle)))
                    (when (re-search-backward "^```" start-marker t)
                      (gptel-markdown-cycle-block)))))))))
@@ -1992,7 +1992,7 @@ for streaming responses only."
               (progn
                 (gptel-curl--stream-insert-response
                  (concat (if (derived-mode-p 'org-mode)
-                             "\n#+end_reasoning"
+                             "\n#+end_src"
                            ;; TODO(reasoning) remove properties and strip instead
                            (propertize "\n```" 'gptel 'ignore
                                        'keymap gptel--markdown-block-map))
@@ -2002,8 +2002,8 @@ for streaming responses only."
                   (save-excursion
                     (goto-char tracking-marker)
                     (if (derived-mode-p 'org-mode)
-                        (progn (search-backward "#+end_reasoning" start-marker t)
-                               (when (looking-at "^#\\+end_reasoning")
+                        (progn (search-backward "#+end_src" start-marker t)
+                               (when (looking-at "^#\\+end_src")
                                  (org-cycle)))
                       (when (re-search-backward "^```" start-marker t)
                         (gptel-markdown-cycle-block))))))
@@ -2017,7 +2017,7 @@ for streaming responses only."
                 (gptel-curl--stream-insert-response
                  (concat separator
                          (if (derived-mode-p 'org-mode)
-                             "#+begin_reasoning\n"
+                             "#+begin_src gptel-reasoning\n"
                            ;; TODO(reasoning) remove properties and strip instead
                            (propertize "``` reasoning\n" 'gptel 'ignore
                                        'keymap gptel--markdown-block-map)))
