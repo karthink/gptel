@@ -13,6 +13,7 @@
 (require 'ert)
 (require 'gptel)
 (require 'gptel-org)
+(require 'gptel-org-agent)
 
 ;;; Helper macro for org buffer tests
 
@@ -607,6 +608,79 @@ TODO heading."
                 ;; Last message should be just the current user message
                 (should (string= (plist-get (nth 4 messages) :role) "user"))
                 (should (string-match-p "Looks good"
+                                        (plist-get (nth 4 messages) :content)))
+                ;; TODO heading should NOT appear in last message
+                (should-not (string-match-p "AI-DOING"
+                                            (plist-get (nth 4 messages) :content)))))
+          (when (buffer-live-p prompt-buf)
+            (kill-buffer prompt-buf)))))))
+
+(ert-deftest gptel-org-subtree-test-branching-sibling-order-agent-subtrees ()
+  "Test branching context with agent subtrees preserves sibling order.
+When `gptel-org-agent-subtrees' is enabled, the prompt buffer
+includes a `:main@agent:' heading whose children are the chat
+entries.  `gptel-org-agent--strip-agent-subtrees' must not delete
+the chat content that lives under the @agent heading in the
+prompt copy."
+  (let ((gptel-org-branching-context t)
+        (gptel-org-subtree-context t)
+        (gptel-org-infer-bounds-from-tags t)
+        (gptel-org-assistant-tag "assistant")
+        (gptel-org-user-tag "user")
+        (gptel-org-chat-heading-markers '("@user" "@assistant"))
+        (gptel-org-ignore-elements nil)
+        (gptel-org-agent-subtrees t)
+        (gptel-prompt-filter-hook nil)
+        (gptel--num-messages-to-send nil)
+        (gptel-track-response t)
+        (gptel-track-media nil)
+        (org-inhibit-startup t))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* AI-DOING Only print simple message\n"
+              "**                                              :main@agent:\n"
+              "*** First response                              :assistant:\n"
+              "Test message received.\n"
+              "*** Give second message                         :user:\n"
+              "Second message here.\n"
+              "*** Second response                             :assistant:\n"
+              "AI response confirmed.\n"
+              "*** Give third message                          :user:\n"
+              "Third message here.\n")
+      (goto-char (point-max))
+      (let* ((backend (gptel-make-openai "test" :key "fake" :models '("gpt-4")))
+             (prompt-buf (gptel-org--create-prompt-buffer)))
+        (unwind-protect
+            (with-current-buffer prompt-buf
+              (setq gptel-mode t)
+              (goto-char (point-max))
+              (let ((messages (gptel--parse-buffer backend nil)))
+                ;; Should have 5 messages:
+                ;; 1. user: context (TODO heading)
+                ;; 2. assistant: First response
+                ;; 3. user: Give second message
+                ;; 4. assistant: Second response
+                ;; 5. user: Give third message (current)
+                (should (= (length messages) 5))
+                ;; First message should be user with TODO heading content
+                (should (string= (plist-get (nth 0 messages) :role) "user"))
+                (should (string-match-p "simple message"
+                                        (plist-get (nth 0 messages) :content)))
+                ;; Second should be assistant
+                (should (string= (plist-get (nth 1 messages) :role) "assistant"))
+                (should (string-match-p "Test message"
+                                        (plist-get (nth 1 messages) :content)))
+                ;; Third should be user
+                (should (string= (plist-get (nth 2 messages) :role) "user"))
+                (should (string-match-p "Second message"
+                                        (plist-get (nth 2 messages) :content)))
+                ;; Fourth should be assistant
+                (should (string= (plist-get (nth 3 messages) :role) "assistant"))
+                (should (string-match-p "AI response"
+                                        (plist-get (nth 3 messages) :content)))
+                ;; Last message should be the current user message
+                (should (string= (plist-get (nth 4 messages) :role) "user"))
+                (should (string-match-p "Third message"
                                         (plist-get (nth 4 messages) :content)))
                 ;; TODO heading should NOT appear in last message
                 (should-not (string-match-p "AI-DOING"
