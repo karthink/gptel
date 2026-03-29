@@ -84,6 +84,10 @@
 
 ** Notable bug fixes
 
+- Authentication keys are now supplied to Curl (when ~gptel-use-curl~ is
+  set) via STDIN instead of the command line.  This is more secure as
+  the command line is usually readable system-wide.
+
 - ~gptel-backend~ can now be set from customize buffers.  These are
   produced by, for example, =M-x customize-group ⮐ gptel=.  Previously
   ~gptel-backend~ was displayed in a read-only way, and could even break

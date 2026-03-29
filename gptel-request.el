@@ -2642,10 +2642,12 @@ See `gptel-curl--get-response' for its contents.")
 
 ;;; Curl request response handling
 
-(defun gptel-curl--get-args (info uuid)
+(defun gptel-curl--get-args (info uuid include-headers)
   "Produce list of arguments for calling Curl.
 
-INFO contains the request data, UUID is a unique identifier."
+INFO contains the request data, UUID is a unique identifier.
+
+If INCLUDE-HEADERS is non-nil, include headers with the -H option."
   (let* ((data (plist-get info :data))
          ;; We have to let-bind the following three since their dynamic
          ;; values are used for key lookup and url resolution
@@ -2655,22 +2657,20 @@ INFO contains the request data, UUID is a unique identifier."
          (url (let ((backend-url (gptel-backend-url gptel-backend)))
                 (if (functionp backend-url)
                     (funcall backend-url) backend-url)))
-         (data-json (decode-coding-string (gptel--json-encode data) 'utf-8 t))
-         (headers
-          (append '(("Content-Type" . "application/json"))
-                  (when-let* ((header (gptel-backend-header gptel-backend)))
-                    (if (functionp header)
-                        (funcall header) header)))))
-    (when gptel-log-level
-      (when (eq gptel-log-level 'debug)
-        (gptel--log (gptel--json-encode
-                     (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
-                             headers))
-                    "request headers"))
-      (gptel--log data-json "request body"))
+         (data-json (decode-coding-string (gptel--json-encode data) 'utf-8 t)))
+    (when gptel-log-level (gptel--log data-json "request body"))
     (append
      gptel-curl--common-args
      gptel-curl-extra-args
+     (if include-headers
+         (cl-loop
+          for (key . val) in
+          (append '(("Content-Type" . "application/json"))
+                  (when-let* ((header (gptel-backend-header gptel-backend)))
+                    (if (functionp header)
+                        (funcall header) header)))
+          collect (format "-H%s: %s" key val))
+       (list "-H@-"))
      (and-let* ((curl-args (gptel-backend-curl-args gptel-backend)))
        (if (functionp curl-args) (funcall curl-args) curl-args))
      (list (format "-w(%s . %%{size_header})" uuid))
@@ -2688,8 +2688,6 @@ INFO contains the request data, UUID is a unique identifier."
        (list "--proxy" gptel-proxy
              "--proxy-negotiate"
              "--proxy-user" ":"))
-     (cl-loop for (key . val) in headers
-              collect (format "-H%s: %s" key val))
      (list url))))
 
 ;;;###autoload
@@ -2713,13 +2711,13 @@ the response is inserted into the current buffer after point."
                             (recent-keys))))
          (info (gptel-fsm-info fsm))
          (backend (plist-get info :backend))
-         (args (gptel-curl--get-args info uuid))
+         (args (gptel-curl--get-args info uuid nil))
          (stream (plist-get info :stream))
-         (process (apply #'start-process "gptel-curl"
-                         (gptel--temp-buffer " *gptel-curl*") (gptel--curl-path) args)))
-    (when (eq gptel-log-level 'debug)
-      (gptel--log (mapconcat #'shell-quote-argument (cons (gptel--curl-path) args) " \\\n")
-                  "request Curl command" 'no-json))
+         (process (make-process
+                   :name "gptel-curl"
+                   :buffer (gptel--temp-buffer " *gptel-curl*")
+                   :command (cons (gptel--curl-path) args)
+                   :connection-type 'pipe)))
     (with-current-buffer (process-buffer process)
       (cond
        ((eq (gptel-backend-coding-system backend) 'binary)
@@ -2732,6 +2730,24 @@ the response is inserted into the current buffer after point."
 	;; for cases when buffer coding system is not set to utf-8.
 	(set-process-coding-system process 'utf-8-unix 'utf-8-unix)))
       (set-process-query-on-exit-flag process nil)
+      (let* ((gptel-backend backend) ;Required for header function's environment
+             (gptel-model (plist-get info :model))
+             (headers
+              (append '(("Content-Type" . "application/json"))
+                      (when-let* ((header (gptel-backend-header backend)))
+                        (if (functionp header)
+                            (funcall header) header)))))
+        (when (eq gptel-log-level 'debug)
+          (gptel--log (gptel--json-encode
+                       (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
+                               headers))
+                      "request headers")
+          (gptel--log (mapconcat #'shell-quote-argument
+                                 (cons (gptel--curl-path) args) " \\\n")
+                      "request Curl command" 'no-json))
+        (dolist (header headers)
+          (process-send-string process (concat (car header) ": " (cdr header) "\n"))))
+      (process-send-eof process)
       (if (plist-get info :uuid)        ;not the first run, set only the uuid
           (plist-put info :uuid uuid)
         (setf (gptel-fsm-info fsm)      ;fist run, set all process parameters
