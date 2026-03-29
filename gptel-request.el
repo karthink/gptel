@@ -2107,12 +2107,14 @@ be used to rerun or continue the request at a later time."
            ((stringp prompt)
             (gptel--with-buffer-copy buffer nil nil
               (insert prompt)
+              (setq major-mode 'fundamental-mode) ;Avoid mode-specific behavior
               (current-buffer)))
            ((consp prompt)
             ;; (gptel--parse-list gptel-backend prompt)
             (gptel--with-buffer-copy buffer nil nil
               ;; TEMP Decide on the annoated prompt-list format
               (gptel--parse-list-and-insert prompt)
+              (setq major-mode 'fundamental-mode) ;Avoid mode-specific behavior
               (current-buffer)))))
          (system-list (gptel--parse-directive system 'raw)) ;eval function-valued system prompts
          (info (list :data prompt-buffer
