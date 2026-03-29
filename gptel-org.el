@@ -1833,14 +1833,29 @@ headings in the response should be at level 5 or deeper."
     ;; First: escape special lines in example blocks
     (gptel-org--escape-example-blocks beg end)
     (save-excursion
-      ;; Find the @assistant heading level BEFORE narrowing
+      ;; Find the @assistant heading level.
+      ;; Search backward from beg for the nearest heading — this should
+      ;; be the @assistant heading that precedes the response content.
+      ;; In indirect buffers (agent subtrees), search respects narrowing
+      ;; so the @assistant heading must be within the narrowed region.
       (let ((assistant-level
              (save-excursion
                (goto-char beg)
                (if (re-search-backward org-outline-regexp-bol nil t)
-                   (org-outline-level)
+                   (let ((level (org-outline-level)))
+                     (gptel-org--debug
+                      "adjust-headings: found heading at level %d, line %d"
+                      level (line-number-at-pos))
+                     level)
+                 (gptel-org--debug
+                  "adjust-headings: no heading found before beg=%d, using level 1"
+                  beg)
                  1)))
             (min-response-level nil))
+        (gptel-org--debug
+         "adjust-headings: beg=%d end=%d assistant-level=%d buffer=%S narrowed=%s"
+         beg end assistant-level (buffer-name)
+         (if (buffer-narrowed-p) "yes" "no"))
         (save-restriction
           (narrow-to-region beg end)
           ;; First pass: find the minimum heading level in the response
@@ -1852,11 +1867,16 @@ headings in the response should be at level 5 or deeper."
                 (when (or (null min-response-level)
                           (< level min-response-level))
                   (setq min-response-level level)))))
+          (gptel-org--debug
+           "adjust-headings: min-response-level=%S"
+           min-response-level)
           ;; Second pass: adjust headings if needed
           (when (and min-response-level
                      (<= min-response-level assistant-level))
             ;; Need to demote all headings by (assistant-level - min-response-level + 1)
             (let ((level-diff (- (1+ assistant-level) min-response-level)))
+              (gptel-org--debug
+               "adjust-headings: demoting by %d levels" level-diff)
               (goto-char (point-min))
               (while (re-search-forward "^\\(\\*+\\)\\( \\)" nil t)
                 (unless (gptel-org--in-example-block-p)
@@ -1870,22 +1890,42 @@ headings in the response should be at level 5 or deeper."
 
 ;;; Response heading title generation
 
-(defun gptel-org-response-title-from-first-line (beg _end _heading-pos)
+(defun gptel-org-response-title-from-first-line (beg end _heading-pos)
   "Generate a response heading title from the first line of response.
-BEG is the start position of the response.  Returns the first
-non-empty line, truncated to 50 characters."
+BEG and END delimit the response region.  Returns the first
+non-empty, non-block line, truncated to 50 characters.
+
+Skips over `gptel-reasoning' and `gptel-tool' source blocks at the
+start of the response so that the title reflects the actual content."
   (save-excursion
     (goto-char beg)
-    ;; Skip any blank lines at the start
-    (skip-chars-forward " \t\n")
-    (let ((first-line (buffer-substring-no-properties
-                       (point) (line-end-position))))
-      (setq first-line (string-trim first-line))
-      ;; Skip if it looks like a code block or list marker only
-      (unless (or (string-empty-p first-line)
-                  (string-match-p "^```" first-line)
-                  (string-match-p "^#\\+begin" first-line)
-                  (string-match-p "^[-*+] *$" first-line))
+    (let ((first-line nil))
+      (while (and (not first-line) (< (point) end))
+        ;; Skip blank lines
+        (skip-chars-forward " \t\n")
+        (when (>= (point) end) (cl-return nil))
+        (let ((line (string-trim
+                     (buffer-substring-no-properties
+                      (point) (min end (line-end-position))))))
+          (cond
+           ;; Skip org src blocks (reasoning, tool, etc.)
+           ((string-match-p "^#\\+begin_src" line)
+            (if (re-search-forward "^#\\+end_src" end t)
+                (forward-line 1)        ;continue past the block
+              (goto-char end)))         ;unterminated block, give up
+           ;; Skip markdown code fences
+           ((string-match-p "^```" line)
+            (forward-line 1)
+            (unless (re-search-forward "^```" end t)
+              (goto-char end))
+            (forward-line 1))
+           ;; Skip empty lines and bare list markers
+           ((or (string-empty-p line)
+                (string-match-p "^[-*+] *$" line))
+            (forward-line 1))
+           ;; Found usable text
+           (t (setq first-line line)))))
+      (when first-line
         (truncate-string-to-width first-line 50 nil nil "...")))))
 
 (defun gptel-org--find-response-heading (pos)
@@ -1943,6 +1983,38 @@ positions of the response."
 
 ;; Add hook with high priority (run late, after heading adjustments)
 (add-hook 'gptel-post-response-functions #'gptel-org--apply-response-title 80)
+
+
+;;; Post-response block folding
+
+(defun gptel-org--fold-special-blocks (beg end)
+  "Fold gptel-tool and gptel-reasoning source blocks between BEG and END.
+
+Runs as a `gptel-post-response-functions' hook to ensure all special
+blocks are folded after the response is complete.  This supplements
+the inline folding done during streaming (which can be unreliable in
+indirect buffers or when subsequent text insertion disrupts overlays)."
+  (when (derived-mode-p 'org-mode)
+    (save-excursion
+      (goto-char beg)
+      (while (re-search-forward
+              "^[ \t]*#\\+begin_src gptel-\\(?:tool\\|reasoning\\)" end t)
+        (beginning-of-line)
+        (condition-case nil
+            (let ((elem (org-element-at-point)))
+              (when (and elem
+                         (eq (org-element-type elem) 'src-block)
+                         ;; Only fold if not already folded
+                         (not (org-fold-folded-p (point) 'block)))
+                (org-fold-hide-block-toggle 'hide nil elem)))
+          (error nil))
+        ;; Move past the block to avoid re-matching
+        (if (re-search-forward "^[ \t]*#\\+end_src" end t)
+            (forward-line 1)
+          (goto-char end))))))
+
+;; Run at priority 90 (after heading adjustment at 0 and title at 80)
+(add-hook 'gptel-post-response-functions #'gptel-org--fold-special-blocks 90)
 
 (provide 'gptel-org)
 ;;; gptel-org.el ends here
