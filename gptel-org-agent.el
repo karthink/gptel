@@ -451,7 +451,9 @@ org-mode, or we can't find a heading context to create the subtree."
         ;; but find the heading to create a child under.
         (goto-char (point-min))
         (unless (org-at-heading-p)
-          (org-back-to-heading t))
+          (condition-case nil
+              (org-back-to-heading t)
+            (error nil)))
         (when (org-at-heading-p)
           ;; Check if there's already a subtree with this tag
           (let* ((existing (gptel-org-agent--find-agent-subtree tag))
