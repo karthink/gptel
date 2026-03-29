@@ -803,13 +803,14 @@ context."
                   ;; Insert earlier siblings right after the task heading (before current chat)
                   ;; The task heading content ends where the first chat sibling would start
                   (when earlier-siblings
-                    ;; Find where to insert: after the task heading but before current chat
-                    ;; In the copied buffer, content from start-bounds was inserted at point-min
-                    ;; The task heading content is now at the start
+                    ;; Find where to insert: after all lineage headings but before current chat.
+                    ;; The copied buffer contains (length (cdr start-bounds)) lineage headings
+                    ;; followed by the current element content.  Skip past every lineage heading
+                    ;; to reach the insertion point.
                     (goto-char (point-min))
-                    ;; Skip to end of task heading content (first outline heading at chat level)
-                    (when (re-search-forward "^\\*\\*" nil t)
-                      (beginning-of-line)
+                    (let ((lineage-count (length (cdr start-bounds))))
+                      (dotimes (_ lineage-count)
+                        (outline-next-heading))
                       ;; Insert earlier siblings here, in order
                       (dolist (sib earlier-siblings)
                         (insert-buffer-substring org-buf (car sib) (cdr sib)))))))

@@ -554,5 +554,64 @@ would re-visit untagged children and clear their properties."
    (search-forward "*** Sub-agent") (beginning-of-line)
    (should-not (get-text-property (point) 'gptel))))
 
+
+(ert-deftest gptel-org-subtree-test-branching-sibling-order ()
+  "Test that branching context with chat siblings preserves message order.
+When `gptel-org-branching-context' and `gptel-org-subtree-context' are
+both enabled, chat siblings must be inserted AFTER all lineage headings
+in the prompt buffer.  Previously, the siblings were inserted before
+intermediate lineage headings, causing the TODO heading to appear as
+the last user message instead of being part of the first (context)
+message.  This also caused the current user message to merge with the
+TODO heading."
+  (let ((gptel-org-branching-context t)
+        (gptel-org-subtree-context t)
+        (gptel-org-infer-bounds-from-tags t)
+        (gptel-org-assistant-tag "assistant")
+        (gptel-org-user-tag "user")
+        (gptel-org-chat-heading-markers '("@user" "@assistant"))
+        (gptel-org-ignore-elements nil)
+        (gptel-org-agent-subtrees nil)
+        (gptel-prompt-filter-hook nil)
+        (gptel--num-messages-to-send nil)
+        (gptel-track-response t)
+        (gptel-track-media nil)
+        (org-inhibit-startup t))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* Project\n"
+              "** AI-DOING Fix the widget\n"
+              "*** First response                              :assistant:\n"
+              "Done fixing.\n"
+              "*** Follow-up question                          :user:\n"
+              "What about tests?\n"
+              "*** Second response                             :assistant:\n"
+              "Tests added.\n"
+              "*** Another question                            :user:\n"
+              "Looks good, commit it.\n")
+      (goto-char (point-max))
+      (let* ((backend (gptel-make-openai "test" :key "fake" :models '("gpt-4")))
+             (prompt-buf (gptel-org--create-prompt-buffer)))
+        (unwind-protect
+            (with-current-buffer prompt-buf
+              (setq gptel-mode t)
+              (goto-char (point-max))
+              (let ((messages (gptel--parse-buffer backend nil)))
+                ;; Should have 5 messages: context, asst, user, asst, user
+                (should (= (length messages) 5))
+                ;; First message should be user with BOTH parent AND TODO heading
+                (should (string= (plist-get (nth 0 messages) :role) "user"))
+                (should (string-match-p "Project" (plist-get (nth 0 messages) :content)))
+                (should (string-match-p "Fix the widget"
+                                        (plist-get (nth 0 messages) :content)))
+                ;; Last message should be just the current user message
+                (should (string= (plist-get (nth 4 messages) :role) "user"))
+                (should (string-match-p "Looks good"
+                                        (plist-get (nth 4 messages) :content)))
+                ;; TODO heading should NOT appear in last message
+                (should-not (string-match-p "AI-DOING"
+                                            (plist-get (nth 4 messages) :content)))))
+          (when (buffer-live-p prompt-buf)
+            (kill-buffer prompt-buf)))))))
 (provide 'gptel-org-subtree-test)
 ;;; gptel-org-subtree-test.el ends here
