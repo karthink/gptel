@@ -30,6 +30,10 @@
 (require 'org-src)
 (eval-when-compile (require 'gptel-request))
 
+;; Load gptel-org-agent when agent subtrees are enabled
+(when (bound-and-true-p gptel-org-agent-subtrees)
+  (require 'gptel-org-agent))
+
 ;; Register gptel-tool and gptel-reasoning as source block languages with
 ;; org-src to prevent org-lint warnings about unknown source block languages.
 ;; These blocks don't require a Babel backend.
