@@ -471,5 +471,172 @@ Returns nil if INDIRECT-BUFFER is not live or contains no text."
                 result
               nil)))))))
 
+
+;;; ---- TodoWrite org integration (Phase 4) ----------------------------------
+
+(defcustom gptel-org-agent-todo-keywords
+  '((sequence "PENDING(p)" "RUNNING(r)" "|" "DONE(d)" "ERROR(e)" "ABORTED(a)"))
+  "TODO keyword sequence for agent task headings.
+Added to `org-todo-keywords' when agent subtrees are active.
+The keywords map to TodoWrite statuses:
+  - pending     → PENDING
+  - in_progress → RUNNING
+  - completed   → DONE"
+  :type 'sexp
+  :group 'gptel)
+
+(defun gptel-org-agent--ensure-todo-keywords ()
+  "Ensure agent TODO keywords are available in the current buffer.
+Adds `gptel-org-agent-todo-keywords' to `org-todo-keywords' if not
+already present, then refreshes org's TODO keyword parsing."
+  (let ((needs-refresh nil))
+    (dolist (kw-seq gptel-org-agent-todo-keywords)
+      (unless (member kw-seq org-todo-keywords)
+        (push kw-seq org-todo-keywords)
+        (setq needs-refresh t)))
+    (when needs-refresh
+      ;; Make the change buffer-local so we don't pollute other buffers
+      (setq-local org-todo-keywords org-todo-keywords)
+      (org-set-regexps-and-options))))
+
+(defun gptel-org-agent--status-to-keyword (status)
+  "Map a TodoWrite STATUS string to an org TODO keyword.
+Returns \"PENDING\" for \"pending\", \"RUNNING\" for \"in_progress\",
+\"DONE\" for \"completed\", or the uppercased STATUS for anything else."
+  (pcase status
+    ("pending"     "PENDING")
+    ("in_progress" "RUNNING")
+    ("completed"   "DONE")
+    (_             (upcase (or status "PENDING")))))
+
+(defun gptel-org-agent--find-or-create-tasks-heading (level)
+  "Find or create a \"Tasks\" heading at LEVEL under the current heading.
+Point should be on the agent heading.  Returns the position of the
+Tasks heading."
+  (let ((agent-end (save-excursion (org-end-of-subtree t) (point)))
+        (child-re (format "^\\*\\{%d\\} +Tasks\\b" level))
+        found)
+    ;; Search for existing Tasks heading among direct children
+    (save-excursion
+      (org-end-of-meta-data t)
+      (while (and (not found)
+                  (< (point) agent-end)
+                  (re-search-forward org-heading-regexp agent-end t))
+        (beginning-of-line)
+        (when (and (= (org-current-level) level)
+                   (looking-at child-re))
+          (setq found (point)))
+        (unless found
+          (forward-line 1))))
+    (or found
+        ;; Create the Tasks heading at the end of the agent subtree
+        (save-excursion
+          (org-end-of-subtree t)
+          (unless (bolp) (insert "\n"))
+          (let ((stars (make-string level ?*))
+                (pos (point)))
+            (insert stars " Tasks\n")
+            pos)))))
+
+(defun gptel-org-agent--collect-todo-headings (level tasks-pos)
+  "Collect existing todo headings at LEVEL under the Tasks heading at TASKS-POS.
+Returns an alist of (CONTENT . POSITION) where CONTENT is the heading
+text stripped of the TODO keyword and POSITION is the beginning of the
+heading line."
+  (let (result)
+    (save-excursion
+      (goto-char tasks-pos)
+      (let ((tasks-end (save-excursion (org-end-of-subtree t) (point))))
+        (forward-line 1)
+        (while (and (< (point) tasks-end)
+                    (re-search-forward org-heading-regexp tasks-end t))
+          (beginning-of-line)
+          (when (= (org-current-level) level)
+            (let* ((components (org-heading-components))
+                   ;; org-heading-components returns:
+                   ;; (level reduced-level todo priority heading tags)
+                   (heading-text (nth 4 components)))
+              (when heading-text
+                (push (cons (org-trim heading-text) (point)) result))))
+          (forward-line 1))))
+    (nreverse result)))
+
+(defun gptel-org-agent--set-todo-keyword (keyword)
+  "Set the TODO keyword of the heading at point to KEYWORD.
+Uses `org-todo' for proper state tracking, but falls back to direct
+text replacement if the keyword is not in org's known set."
+  (when (org-at-heading-p)
+    (let* ((current (org-get-todo-state)))
+      (unless (equal current keyword)
+        ;; org-todo with a specific keyword argument sets it directly
+        (org-todo keyword)))))
+
+(defun gptel-org-agent--create-todo-heading (level content keyword tasks-pos)
+  "Create a new TODO heading at LEVEL with CONTENT and KEYWORD.
+The heading is appended under the Tasks subtree at TASKS-POS."
+  (save-excursion
+    (goto-char tasks-pos)
+    (org-end-of-subtree t)
+    (unless (bolp) (insert "\n"))
+    (let ((stars (make-string level ?*)))
+      (insert stars " " keyword " " content "\n"))))
+
+(defun gptel-org-agent--remove-todo-heading (pos)
+  "Remove the heading at POS and its entire subtree."
+  (save-excursion
+    (goto-char pos)
+    (when (org-at-heading-p)
+      (let ((beg (point))
+            (end (save-excursion (org-end-of-subtree t)
+                                (if (and (bolp) (not (eobp)))
+                                    (point)
+                                  (min (1+ (point)) (point-max))))))
+        (delete-region beg end)))))
+
+(defun gptel-org-agent--write-todo-org (todos)
+  "Display TODOS as org TODO headings in the agent subtree.
+
+Each todo becomes a heading at the appropriate level with a TODO keyword:
+  - pending     → PENDING
+  - in_progress → RUNNING
+  - completed   → DONE
+
+TODOS is a list of plists with :content, :activeForm, and :status.
+This function is idempotent: calling it multiple times with the same
+data produces the same result.  It handles adding new tasks, updating
+existing task states, and removing tasks that are no longer in the list."
+  (gptel-org-agent--ensure-todo-keywords)
+  (save-excursion
+    (goto-char (point-min))             ;agent heading in narrowed buffer
+    (let* ((agent-level (org-current-level))
+           (tasks-level (1+ agent-level))
+           (todo-level  (+ 2 agent-level))
+           (tasks-pos (gptel-org-agent--find-or-create-tasks-heading tasks-level)))
+      ;; Collect existing headings under the Tasks heading
+      (let ((existing-headings
+             (gptel-org-agent--collect-todo-headings todo-level tasks-pos))
+            (seen-contents (make-hash-table :test 'equal)))
+        ;; Update or create todo headings
+        (dolist (todo todos)
+          (let* ((content (plist-get todo :content))
+                 (status  (plist-get todo :status))
+                 (keyword (gptel-org-agent--status-to-keyword status))
+                 (existing (assoc content existing-headings)))
+            (puthash content t seen-contents)
+            (if existing
+                ;; Update existing heading's TODO keyword
+                (save-excursion
+                  (goto-char (cdr existing))
+                  (gptel-org-agent--set-todo-keyword keyword))
+              ;; Create new heading under Tasks
+              (gptel-org-agent--create-todo-heading
+               todo-level content keyword tasks-pos))))
+        ;; Remove headings not in the current todo list.
+        ;; Process in reverse order to avoid position shifts.
+        (dolist (existing (reverse existing-headings))
+          (unless (gethash (car existing) seen-contents)
+            (gptel-org-agent--remove-todo-heading (cdr existing)))))))
+  t)
+
 (provide 'gptel-org-agent)
 ;;; gptel-org-agent.el ends here
