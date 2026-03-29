@@ -629,6 +629,9 @@ source:
 (cl-defun gptel-make-gemini
     (name &key curl-args header key request-params
           (stream nil)
+          (header
+           (lambda () (when-let* ((key (gptel--get-api-key)))
+                   `(("X-goog-api-key" . ,key)))))
           (host "generativelanguage.googleapis.com")
           (protocol "https")
           (models gptel--gemini-models)
@@ -702,13 +705,12 @@ for."
                                 (if (and stream gptel-use-curl gptel-stream)
                                     "streamGenerateContent"
                                   "generateContent")))
-                           (format "%s://%s%s/%s:%s?key=%s"
+                           (format "%s://%s%s/%s:%s"
                                    protocol
                                    host
                                    endpoint
                                    gptel-model
-                                   method
-                                   (gptel--get-api-key)))))))
+                                   method))))))
     (prog1 backend
       (setf (alist-get name gptel--known-backends
                        nil nil #'equal)
