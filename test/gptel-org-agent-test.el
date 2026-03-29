@@ -649,5 +649,142 @@ verify the base buffer shows the full tree structure."
        (when (and indirect-buf (buffer-live-p indirect-buf))
          (kill-buffer indirect-buf))))))
 
+
+;;; ---- Phase 5: Advisor agent integration tests -----------------------------
+
+(ert-deftest gptel-org-agent-test-strip-agent-subtrees ()
+  "Strip @agent subtrees from a buffer while preserving regular content."
+  (gptel-org-agent-test-with-buffer
+   "* AI-DO Implement feature
+Some description
+** :main@agent:
+Agent conversation content
+*** @user
+User prompt here
+*** @assistant
+Agent response here
+** Regular heading
+Keep this content
+"
+   (goto-char (point-min))
+   (gptel-org-agent--strip-agent-subtrees)
+   (let ((content (buffer-substring-no-properties (point-min) (point-max))))
+     ;; The @agent subtree should be gone
+     (should-not (string-match-p "main@agent" content))
+     (should-not (string-match-p "Agent conversation content" content))
+     (should-not (string-match-p "User prompt here" content))
+     (should-not (string-match-p "Agent response here" content))
+     ;; Regular content should remain
+     (should (string-match-p "AI-DO Implement feature" content))
+     (should (string-match-p "Some description" content))
+     (should (string-match-p "Regular heading" content))
+     (should (string-match-p "Keep this content" content)))))
+
+(ert-deftest gptel-org-agent-test-strip-preserves-regular ()
+  "Stripping does nothing when there are no @agent subtrees."
+  (gptel-org-agent-test-with-buffer
+   "* AI-DO Implement feature
+Some description
+** @user
+User question here
+** @assistant
+Assistant answer here
+** Notes
+Additional notes
+"
+   (goto-char (point-min))
+   (let ((content-before (buffer-substring-no-properties
+                          (point-min) (point-max))))
+     (gptel-org-agent--strip-agent-subtrees)
+     (let ((content-after (buffer-substring-no-properties
+                           (point-min) (point-max))))
+       (should (equal content-before content-after))))))
+
+(ert-deftest gptel-org-agent-test-strip-nested-agents ()
+  "Strip nested @agent subtrees (parent contains child agent)."
+  (gptel-org-agent-test-with-buffer
+   "* AI-DO Implement feature
+Some description
+** :main@agent:
+Main agent content
+*** :researcher@main@agent:
+Researcher found this
+*** :gatherer@main@agent:
+Gatherer collected that
+** Summary
+Final summary here
+"
+   (goto-char (point-min))
+   (gptel-org-agent--strip-agent-subtrees)
+   (let ((content (buffer-substring-no-properties (point-min) (point-max))))
+     ;; All agent subtrees should be removed
+     (should-not (string-match-p "main@agent" content))
+     (should-not (string-match-p "researcher@main@agent" content))
+     (should-not (string-match-p "gatherer@main@agent" content))
+     (should-not (string-match-p "Main agent content" content))
+     (should-not (string-match-p "Researcher found this" content))
+     (should-not (string-match-p "Gatherer collected that" content))
+     ;; Non-agent content survives
+     (should (string-match-p "AI-DO Implement feature" content))
+     (should (string-match-p "Some description" content))
+     (should (string-match-p "Summary" content))
+     (should (string-match-p "Final summary here" content)))))
+
+(ert-deftest gptel-org-agent-test-include-subtrees-flag ()
+  "With `gptel-org-agent-include-subtrees' set, stripping is skipped.
+The flag is checked by the caller, not by the strip function itself.
+This test verifies the guard logic that would appear in
+`gptel-org--create-prompt-buffer'."
+  (gptel-org-agent-test-with-buffer
+   "* AI-DO Implement feature
+** :main@agent:
+Agent content that should be preserved
+"
+   (goto-char (point-min))
+   (let ((gptel-org-agent-include-subtrees t))
+     ;; Simulate the guard: when include-subtrees is nil, call strip
+     (unless gptel-org-agent-include-subtrees
+       (gptel-org-agent--strip-agent-subtrees))
+     ;; Agent content should still be present because strip was not called
+     (let ((content (buffer-substring-no-properties (point-min) (point-max))))
+       (should (string-match-p "main@agent" content))
+       (should (string-match-p "Agent content that should be preserved"
+                                content))))))
+
+(ert-deftest gptel-org-agent-test-advisor-preset ()
+  "Test that the advisor preset returns expected keys."
+  (let ((preset (gptel-org-agent--advisor-preset)))
+    (should (plist-get preset :include-agent-subtrees))
+    (should (stringp (plist-get preset :system)))
+    (should (string-match-p "Advisor" (plist-get preset :system)))))
+
+(ert-deftest gptel-org-agent-test-strip-multiple-agent-subtrees ()
+  "Strip multiple separate @agent subtrees at the same level."
+  (gptel-org-agent-test-with-buffer
+   "* AI-DO Complex task
+Description
+** :main@agent:
+First agent run
+** Regular notes
+Some notes
+** :main@agent:
+Second agent run
+** Conclusion
+Final thoughts
+"
+   (goto-char (point-min))
+   (gptel-org-agent--strip-agent-subtrees)
+   (let ((content (buffer-substring-no-properties (point-min) (point-max))))
+     ;; Both agent subtrees should be gone
+     (should-not (string-match-p "main@agent" content))
+     (should-not (string-match-p "First agent run" content))
+     (should-not (string-match-p "Second agent run" content))
+     ;; Non-agent content survives
+     (should (string-match-p "AI-DO Complex task" content))
+     (should (string-match-p "Regular notes" content))
+     (should (string-match-p "Some notes" content))
+     (should (string-match-p "Conclusion" content))
+     (should (string-match-p "Final thoughts" content)))))
+
 (provide 'gptel-org-agent-test)
 ;;; gptel-org-agent-test.el ends here

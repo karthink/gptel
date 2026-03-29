@@ -638,5 +638,70 @@ existing task states, and removing tasks that are no longer in the list."
             (gptel-org-agent--remove-todo-heading (cdr existing)))))))
   t)
 
+
+;;; ---- Advisor agent integration (Phase 5) ----------------------------------
+
+(defvar-local gptel-org-agent-include-subtrees nil
+  "When non-nil, include @agent subtrees in context collection.
+Set by the Advisor agent preset.  When nil (the default), @agent
+subtrees are stripped from the prompt to keep context focused.")
+
+(defun gptel-org-agent--strip-agent-subtrees ()
+  "Remove @agent subtrees from the current buffer.
+Scans all headings and deletes entire subtrees whose heading has
+a tag matching `gptel-org-agent--agent-tag-p'.
+
+This is called during prompt construction to exclude internal
+agent conversation trees from the context sent to the LLM.
+
+Subtrees are deleted in reverse buffer order (bottom to top) to
+avoid position shifts affecting subsequent deletions."
+  (save-excursion
+    (let (regions)
+      ;; First pass: collect regions of all @agent subtrees.
+      ;; We collect outermost subtrees only — if a parent is an @agent
+      ;; subtree, its children are included in the parent's region.
+      (goto-char (point-min))
+      (while (re-search-forward org-heading-regexp nil t)
+        (let ((match-end (point)))      ;save end-of-match for forward progress
+          (beginning-of-line)
+          (if (and (org-at-heading-p)
+                   (cl-some #'gptel-org-agent--agent-tag-p
+                            (org-get-tags nil t)))
+              ;; Agent heading: collect region and skip past subtree
+              (let ((beg (point))
+                    (end (save-excursion
+                           (org-end-of-subtree t)
+                           ;; Include trailing newline if present
+                           (when (and (not (eobp)) (looking-at-p "\n"))
+                             (forward-char 1))
+                           (point))))
+                (unless (cl-some (lambda (r) (and (<= (car r) beg) (>= (cdr r) end)))
+                                regions)
+                  (push (cons beg end) regions))
+                (goto-char end))
+            ;; Non-agent heading: restore point past the match to ensure
+            ;; forward progress (beginning-of-line moved us backwards)
+            (goto-char match-end))))
+      ;; Second pass: delete in reverse order (bottom to top)
+      ;; regions were pushed, so they're already in reverse buffer order
+      (dolist (region regions)
+        (delete-region (car region) (cdr region))))))
+
+(defun gptel-org-agent--advisor-preset ()
+  "Return the Advisor agent preset plist.
+The Advisor agent has read access to all agent subtrees, allowing
+it to analyze what each sub-agent did, what tools they used, and
+what they found."
+  (list :include-agent-subtrees t
+        :system "You are an Advisor agent with full visibility into all sub-agent conversations. Analyze what each agent did, what tools they used, and what they found. Provide insights, identify issues, and suggest improvements."))
+
+(defun gptel-org-agent-register-advisor ()
+  "Register the Advisor agent preset with gptel-agent.
+Call this after gptel-agent is loaded."
+  (when (boundp 'gptel-agent--agents)
+    (setf (alist-get "advisor" gptel-agent--agents nil nil #'equal)
+          (gptel-org-agent--advisor-preset))))
+
 (provide 'gptel-org-agent)
 ;;; gptel-org-agent.el ends here

@@ -810,6 +810,12 @@ context."
               (goto-char (point-max))
               (gptel-org--unescape-tool-results)
               (gptel-org--strip-block-headers)
+              ;; Strip @agent subtrees unless include-agent-subtrees is set
+              (when (and (bound-and-true-p gptel-org-agent-subtrees)
+                         (not (buffer-local-value
+                               'gptel-org-agent-include-subtrees org-buf))
+                         (fboundp 'gptel-org-agent--strip-agent-subtrees))
+                (gptel-org-agent--strip-agent-subtrees))
               (when-let* ((gptel-org-ignore-elements ;not copied by -with-buffer-copy
                            (buffer-local-value 'gptel-org-ignore-elements
                                                org-buf)))
@@ -833,6 +839,12 @@ context."
           (goto-char (point-max))
           (gptel-org--unescape-tool-results)
           (gptel-org--strip-block-headers)
+          ;; Strip @agent subtrees unless include-agent-subtrees is set
+          (when (and (bound-and-true-p gptel-org-agent-subtrees)
+                     (not (buffer-local-value
+                           'gptel-org-agent-include-subtrees org-buf))
+                     (fboundp 'gptel-org-agent--strip-agent-subtrees))
+            (gptel-org-agent--strip-agent-subtrees))
           (when-let* ((gptel-org-ignore-elements ;not copied by -with-buffer-copy
                        (buffer-local-value 'gptel-org-ignore-elements
                                            org-buf)))
