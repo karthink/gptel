@@ -192,6 +192,26 @@ Return a marker to the newly created heading."
                         (line-number-at-pos marker) (marker-position marker))
       marker)))
 
+(defun gptel-org-agent--indirect-buffer-name (base-buffer heading-pos tag)
+  "Compute a unique indirect buffer name for an agent subtree.
+
+Uses TAG for the agent type and a short hash derived from the
+outline path (parent headings) at HEADING-POS in BASE-BUFFER.
+This ensures each agent subtree gets a distinct buffer name even
+when multiple TODO headings spawn agents with the same tag.
+
+The format is *gptel:TAG-HASH* where HASH is a 6-character hex
+string."
+  (let* ((path-str
+          (with-current-buffer base-buffer
+            (save-excursion
+              (goto-char heading-pos)
+              (let ((path (org-get-outline-path t)))
+                (mapconcat #'identity path "/")))))
+         (hash (substring (md5 (concat (buffer-name base-buffer) ":" path-str))
+                          0 6)))
+    (format "*gptel:%s-%s*" tag hash)))
+
 (defun gptel-org-agent--open-indirect-buffer (base-buffer heading-marker)
   "Open an indirect buffer narrowed to the agent subtree.
 
@@ -206,6 +226,10 @@ The narrowing end uses a marker with insertion-type t, so that as
 the LLM streams text at the end of the subtree the narrow region
 expands automatically.
 
+Each indirect buffer gets a unique name based on the agent tag and
+a short hash of the outline path, so multiple agent conversations
+can coexist without killing each other's buffers.
+
 Return the indirect buffer."
   (let* ((heading-pos (marker-position heading-marker))
          ;; Determine the agent tag for the buffer name
@@ -215,7 +239,8 @@ Return the indirect buffer."
                   (let ((tags (org-get-tags nil t)))
                     (or (cl-find-if #'gptel-org-agent--agent-tag-p tags)
                         "agent")))))
-         (buf-name (format "*gptel:%s*" tag))
+         (buf-name (gptel-org-agent--indirect-buffer-name
+                    base-buffer heading-pos tag))
          ;; Compute the subtree region in the base buffer
          (region (with-current-buffer base-buffer
                    (save-excursion
@@ -235,7 +260,9 @@ Return the indirect buffer."
          indirect-buf)
     (gptel-org--debug "org-agent open-indirect-buffer: tag=%S region=[%d,%d]"
                       tag beg end)
-    ;; If a buffer with this name already exists, kill it to get a fresh one
+    ;; If a buffer with this name already exists (same heading re-sent),
+    ;; kill it to get a fresh one.  Different headings produce different
+    ;; hashes so their buffers coexist.
     (when-let ((existing (get-buffer buf-name)))
       (kill-buffer existing))
     ;; Create the indirect buffer (clone=t to inherit major mode, local vars, etc.)
