@@ -388,8 +388,12 @@ TODO headings are automatically routed to agent indirect buffers."
         (remq #'gptel-org-agent--transform-redirect
               gptel-prompt-transform-functions)))
 
-;; Auto-enable when this module is loaded and the feature is on
-(when gptel-org-agent-subtrees
+;; Always register the transform when this module is loaded.
+;; The transform function itself checks gptel-org-agent-subtrees
+;; at runtime and is a no-op when disabled, so unconditional
+;; registration is safe and avoids load-order races with
+;; gptel-request's defcustom.
+(with-eval-after-load 'gptel-request
   (gptel-org-agent--enable))
 
 
