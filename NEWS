@@ -45,6 +45,12 @@
   mode-line indicator display (see ~gptel-use-header-line~) has been
   improved.
 
+- ~gptel-rewrite~ now displays status updates above the region being
+  rewritten, indicating the request state (=Waiting=, =Typing= etc) and
+  any tool calls in progress.  This provides visual feedback for
+  rewrites in progress, which was previously completely absent until the
+  response was complete.
+
 - When using ~setopt~ or the customize interface, ~gptel-backend~ can
   now be specified as a list instead of an opaque object.  See its
   documentation for details.
