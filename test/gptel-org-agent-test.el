@@ -786,5 +786,202 @@ Final thoughts
      (should (string-match-p "Conclusion" content))
      (should (string-match-p "Final thoughts" content)))))
 
+;;; ---- Transform redirect tests (Phase 1 integration) -----------------------
+
+(ert-deftest gptel-org-agent-test-transform-redirect-on-todo ()
+  "Transform redirects FSM to agent indirect buffer on TODO heading."
+  (gptel-org-agent-test-with-buffer
+   "* AI-DO Implement feature\nDescription\n"
+   (goto-char (point-min))
+   (org-back-to-heading t)
+   (let* ((gptel-org-agent-subtrees t)
+          (base-buf (current-buffer))
+          (fsm (gptel-make-fsm))
+          (info (list :buffer base-buf
+                      :position (point-marker))))
+     (setf (gptel-fsm-info fsm) info)
+     (unwind-protect
+         (progn
+           (gptel-org-agent--transform-redirect fsm)
+           (let ((new-buf (plist-get info :buffer))
+                 (new-pos (plist-get info :position)))
+             ;; Should have been redirected to an indirect buffer
+             (should-not (eq new-buf base-buf))
+             (should (buffer-live-p new-buf))
+             (should (eq (buffer-base-buffer new-buf) base-buf))
+             ;; Position marker should be in the indirect buffer
+             (should (markerp new-pos))
+             (should (eq (marker-buffer new-pos) new-buf))
+             ;; Indirect buffer should contain main@agent
+             (with-current-buffer new-buf
+               (let ((content (buffer-substring-no-properties
+                               (point-min) (point-max))))
+                 (should (string-match-p "main@agent" content))))))
+       ;; Cleanup
+       (when-let* ((indirect (plist-get info :agent-indirect-buffer)))
+         (when (buffer-live-p indirect)
+           (kill-buffer indirect)))))))
+
+(ert-deftest gptel-org-agent-test-transform-redirect-disabled ()
+  "Transform does nothing when gptel-org-agent-subtrees is nil."
+  (gptel-org-agent-test-with-buffer
+   "* AI-DO Implement feature\nDescription\n"
+   (goto-char (point-min))
+   (org-back-to-heading t)
+   (let* ((gptel-org-agent-subtrees nil)
+          (base-buf (current-buffer))
+          (fsm (gptel-make-fsm))
+          (info (list :buffer base-buf
+                      :position (point-marker))))
+     (setf (gptel-fsm-info fsm) info)
+     (gptel-org-agent--transform-redirect fsm)
+     ;; Buffer should be unchanged
+     (should (eq (plist-get info :buffer) base-buf)))))
+
+(ert-deftest gptel-org-agent-test-transform-redirect-non-todo ()
+  "Transform does nothing on a regular (non-TODO) heading."
+  (gptel-org-agent-test-with-buffer
+   "* Regular heading\nDescription\n"
+   (goto-char (point-min))
+   (org-back-to-heading t)
+   (let* ((gptel-org-agent-subtrees t)
+          (base-buf (current-buffer))
+          (fsm (gptel-make-fsm))
+          (info (list :buffer base-buf
+                      :position (point-marker))))
+     (setf (gptel-fsm-info fsm) info)
+     (gptel-org-agent--transform-redirect fsm)
+     ;; Buffer should be unchanged
+     (should (eq (plist-get info :buffer) base-buf)))))
+
+(ert-deftest gptel-org-agent-test-transform-redirect-skips-indirect ()
+  "Transform does nothing when request already comes from an indirect buffer."
+  (gptel-org-agent-test-with-buffer
+   "* AI-DO Implement feature\nDescription\n"
+   (goto-char (point-min))
+   (org-back-to-heading t)
+   (let* ((gptel-org-agent-subtrees t)
+          (base-buf (current-buffer))
+          ;; First create an indirect buffer to simulate being in one
+          (marker (gptel-org-agent--create-subtree "main"))
+          (indirect-buf (gptel-org-agent--open-indirect-buffer
+                         base-buf marker))
+          (fsm (gptel-make-fsm))
+          (info (list :buffer indirect-buf
+                      :position (with-current-buffer indirect-buf
+                                  (goto-char (point-max))
+                                  (point-marker)))))
+     (setf (gptel-fsm-info fsm) info)
+     (unwind-protect
+         (progn
+           (gptel-org-agent--transform-redirect fsm)
+           ;; Buffer should still be the indirect buffer (not double-redirected)
+           (should (eq (plist-get info :buffer) indirect-buf)))
+       ;; Cleanup
+       (when (buffer-live-p indirect-buf)
+         (kill-buffer indirect-buf))))))
+
+(ert-deftest gptel-org-agent-test-transform-redirect-reuses-subtree ()
+  "Transform reuses existing main@agent subtree on repeated calls."
+  (gptel-org-agent-test-with-buffer
+   "* AI-DO Implement feature\nDescription\n"
+   (goto-char (point-min))
+   (org-back-to-heading t)
+   (let* ((gptel-org-agent-subtrees t)
+          (base-buf (current-buffer))
+          (fsm1 (gptel-make-fsm))
+          (info1 (list :buffer base-buf
+                       :position (point-marker)))
+          (fsm2 (gptel-make-fsm))
+          (info2 (list :buffer base-buf
+                       :position (point-marker))))
+     (setf (gptel-fsm-info fsm1) info1)
+     (setf (gptel-fsm-info fsm2) info2)
+     (unwind-protect
+         (progn
+           ;; First redirect
+           (gptel-org-agent--transform-redirect fsm1)
+           (let ((indirect-1 (plist-get info1 :agent-indirect-buffer)))
+             (should (buffer-live-p indirect-1))
+             ;; Kill the indirect buffer (simulating it being closed after
+             ;; first request completes)
+             (kill-buffer indirect-1))
+           ;; Second redirect - should reuse the same subtree heading
+           (gptel-org-agent--transform-redirect fsm2)
+           (let ((indirect-2 (plist-get info2 :agent-indirect-buffer)))
+             (should (buffer-live-p indirect-2))
+             ;; Verify only one main@agent heading exists in the base buffer
+             (with-current-buffer base-buf
+               (let ((count 0))
+                 (save-excursion
+                   (goto-char (point-min))
+                   (while (re-search-forward
+                           "^\\*+ .+:main@agent:" nil t)
+                     (setq count (1+ count))))
+                 (should (= 1 count))))))
+       ;; Cleanup
+       (when-let* ((indirect (plist-get info2 :agent-indirect-buffer)))
+         (when (buffer-live-p indirect)
+           (kill-buffer indirect)))))))
+
+(ert-deftest gptel-org-agent-test-enable-disable ()
+  "Test that enable/disable add/remove the transform from the hook."
+  (let ((gptel-prompt-transform-functions '()))
+    ;; Enable should add the transform
+    (gptel-org-agent--enable)
+    (should (memq #'gptel-org-agent--transform-redirect
+                  gptel-prompt-transform-functions))
+    ;; Disable should remove it
+    (gptel-org-agent--disable)
+    (should-not (memq #'gptel-org-agent--transform-redirect
+                      gptel-prompt-transform-functions))))
+
+(ert-deftest gptel-org-agent-test-response-insertion-in-indirect ()
+  "Simulate response insertion into the redirected indirect buffer.
+Verifies that text inserted at the FSM's :position marker
+appears in both the indirect and base buffers."
+  (gptel-org-agent-test-with-buffer
+   "* AI-DO Implement feature\nDescription\n"
+   (goto-char (point-min))
+   (org-back-to-heading t)
+   (let* ((gptel-org-agent-subtrees t)
+          (base-buf (current-buffer))
+          (fsm (gptel-make-fsm))
+          (info (list :buffer base-buf
+                      :position (point-marker))))
+     (setf (gptel-fsm-info fsm) info)
+     (unwind-protect
+         (progn
+           (gptel-org-agent--transform-redirect fsm)
+           (let ((indirect-buf (plist-get info :buffer))
+                 (pos-marker (plist-get info :position)))
+             ;; Simulate what gptel--insert-response does:
+             ;; insert text at the position marker in the buffer
+             (with-current-buffer (marker-buffer pos-marker)
+               (goto-char pos-marker)
+               (let ((response "Here is the AI response.\n"))
+                 (insert response)))
+             ;; Response should be visible in the indirect buffer
+             (with-current-buffer indirect-buf
+               (let ((content (buffer-substring-no-properties
+                               (point-min) (point-max))))
+                 (should (string-match-p "Here is the AI response"
+                                         content))))
+             ;; Response should also be visible in the base buffer
+             ;; (since indirect buffers share text)
+             (with-current-buffer base-buf
+               (let ((content (buffer-substring-no-properties
+                               (point-min) (point-max))))
+                 (should (string-match-p "Here is the AI response"
+                                         content))
+                 ;; Base buffer should have the full structure
+                 (should (string-match-p "AI-DO Implement feature"
+                                         content))
+                 (should (string-match-p "main@agent" content))))))
+       ;; Cleanup
+       (when-let* ((indirect (plist-get info :agent-indirect-buffer)))
+         (when (buffer-live-p indirect)
+           (kill-buffer indirect)))))))
+
 (provide 'gptel-org-agent-test)
 ;;; gptel-org-agent-test.el ends here

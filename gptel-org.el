@@ -30,9 +30,11 @@
 (require 'org-src)
 (eval-when-compile (require 'gptel-request))
 
-;; Load gptel-org-agent when agent subtrees are enabled
-(when (bound-and-true-p gptel-org-agent-subtrees)
-  (require 'gptel-org-agent))
+;; Load gptel-org-agent when agent subtrees are enabled.
+;; Use eval-after-load to handle the case where gptel-org-agent-subtrees
+;; is set after gptel-org.el is loaded (the defcustom lives in
+;; gptel-org-agent.el itself).
+(require 'gptel-org-agent nil t)
 
 ;; Register gptel-tool and gptel-reasoning as source block languages with
 ;; org-src to prevent org-lint warnings about unknown source block languages.

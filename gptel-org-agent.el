@@ -51,6 +51,9 @@
 (defvar gptel-org-todo-keywords)
 (defvar gptel-org-infer-bounds-from-tags)
 
+;; Forward declarations for functions defined in gptel-request.el
+(declare-function gptel-fsm-info "gptel-request")
+
 ;; Forward declarations for variables defined in gptel.el
 (defvar gptel-mode)
 
@@ -324,6 +327,70 @@ with its normal behavior."
             (gptel-org--debug "org-agent maybe-setup-subtree: reusing existing %S subtree"
                               main-tag))
           (gptel-org-agent--open-indirect-buffer base-buffer heading-marker))))))
+
+(defvar gptel-prompt-transform-functions)
+
+(defun gptel-org-agent--transform-redirect (fsm)
+  "Prompt transform: redirect response to an agent indirect buffer.
+
+When the request originates from an org-mode buffer on a TODO heading
+with `gptel-org-agent-subtrees' enabled, create (or reuse) a
+`:main@agent:' child subtree and redirect the FSM's response buffer
+and position to the indirect buffer.
+
+This function is registered in `gptel-prompt-transform-functions' so
+it runs during the prompt transform phase of `gptel-request'.  At this
+point the prompt has already been built from the original buffer, so
+this only affects where the response is inserted.
+
+Skips redirection when the request already originates from an agent
+indirect buffer (identified by `buffer-base-buffer' returning non-nil)."
+  (let* ((info (gptel-fsm-info fsm))
+         (orig-buffer (plist-get info :buffer)))
+    (when (and gptel-org-agent-subtrees
+               (buffer-live-p orig-buffer)
+               ;; Only redirect from a base org buffer, not from an
+               ;; indirect buffer (which is already an agent subtree)
+               (not (buffer-base-buffer orig-buffer))
+               (with-current-buffer orig-buffer
+                 (derived-mode-p 'org-mode)))
+      (when-let* ((indirect-buf
+                   (with-current-buffer orig-buffer
+                     (gptel-org-agent--maybe-setup-subtree))))
+        (with-current-buffer indirect-buf
+          (goto-char (point-max))
+          (let ((pos-marker (point-marker)))
+            (set-marker-insertion-type pos-marker t)
+            ;; Ensure gptel-mode is active for proper response formatting
+            (unless (bound-and-true-p gptel-mode)
+              (setq-local gptel-mode t))
+            ;; Redirect the FSM's response target
+            (plist-put info :buffer indirect-buf)
+            (plist-put info :position pos-marker)
+            ;; Store reference for potential cleanup
+            (plist-put info :agent-indirect-buffer indirect-buf)
+            (gptel-org--debug
+             "org-agent transform-redirect: redirected to %S at pos %d"
+             (buffer-name indirect-buf) (marker-position pos-marker))))))))
+
+(defun gptel-org-agent--enable ()
+  "Enable agent subtree integration for `gptel-send'.
+
+Adds `gptel-org-agent--transform-redirect' to
+`gptel-prompt-transform-functions' so that requests from org-mode
+TODO headings are automatically routed to agent indirect buffers."
+  (add-to-list 'gptel-prompt-transform-functions
+               #'gptel-org-agent--transform-redirect))
+
+(defun gptel-org-agent--disable ()
+  "Disable agent subtree integration for `gptel-send'."
+  (setq gptel-prompt-transform-functions
+        (remq #'gptel-org-agent--transform-redirect
+              gptel-prompt-transform-functions)))
+
+;; Auto-enable when this module is loaded and the feature is on
+(when gptel-org-agent-subtrees
+  (gptel-org-agent--enable))
 
 
 ;;; ---- Sub-agent subtree integration (Phase 2) ------------------------------
