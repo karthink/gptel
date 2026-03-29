@@ -411,13 +411,19 @@ Adds `gptel-org-agent--transform-redirect' to
 `gptel-prompt-transform-functions' so that requests from org-mode
 TODO headings are automatically routed to agent indirect buffers."
   (add-to-list 'gptel-prompt-transform-functions
-               #'gptel-org-agent--transform-redirect))
+               #'gptel-org-agent--transform-redirect)
+  ;; Add keybinding to gptel-mode-map for jumping to/from indirect buffers
+  (when (boundp 'gptel-mode-map)
+    (define-key gptel-mode-map (kbd "C-c g j")
+                #'gptel-org-agent-jump-to-indirect-buffer)))
 
 (defun gptel-org-agent--disable ()
   "Disable agent subtree integration for `gptel-send'."
   (setq gptel-prompt-transform-functions
         (remq #'gptel-org-agent--transform-redirect
-              gptel-prompt-transform-functions)))
+              gptel-prompt-transform-functions))
+  (when (boundp 'gptel-mode-map)
+    (define-key gptel-mode-map (kbd "C-c g j") nil)))
 
 ;; Always register the transform when this module is loaded.
 ;; The transform function itself checks gptel-org-agent-subtrees
@@ -806,6 +812,110 @@ Call this after gptel-agent is loaded."
   (when (boundp 'gptel-agent--agents)
     (setf (alist-get "advisor" gptel-agent--agents nil nil #'equal)
           (gptel-org-agent--advisor-preset))))
+
+
+
+;;; ---- Navigation between base and indirect buffers -------------------------
+
+(defun gptel-org-agent--find-indirect-buffer-at-point ()
+  "Find the agent indirect buffer corresponding to the subtree at point.
+
+Search upward from point through headings looking for one tagged
+with an agent tag that has a live indirect buffer.  Return the
+buffer, or nil if none found."
+  (save-excursion
+    (when (or (org-at-heading-p)
+              (ignore-errors (org-back-to-heading t)))
+      (let ((base-buffer (or (buffer-base-buffer (current-buffer))
+                             (current-buffer)))
+            result)
+        (while (and (not result) (org-at-heading-p))
+          (let ((tag (cl-find-if #'gptel-org-agent--agent-tag-p
+                                 (org-get-tags nil t))))
+            (when tag
+              (let* ((buf-name (gptel-org-agent--indirect-buffer-name
+                                base-buffer (point) tag))
+                     (buf (get-buffer buf-name)))
+                (when (and buf (buffer-live-p buf))
+                  (setq result buf)))))
+          (unless result
+            (condition-case nil
+                (org-up-heading-all 1)
+              (error (goto-char (point-min))))))
+        result))))
+
+(defun gptel-org-agent--find-parent-indirect-buffer ()
+  "Find the parent indirect buffer for the current agent indirect buffer.
+
+If the current buffer is an indirect buffer narrowed to a nested
+agent subtree (e.g., researcher@main@agent), find the indirect
+buffer for the parent agent (e.g., main@agent).  Returns nil if
+no parent indirect buffer exists or we're already at the top
+level."
+  (when-let* ((base (buffer-base-buffer (current-buffer)))
+              (tag (gptel-org-agent--current-agent-tag)))
+    ;; Strip the first component to get parent tag:
+    ;; "researcher@main@agent" -> "main@agent"
+    (let ((parent-tag (when (string-match "^[^@]+@\\(.+\\)" tag)
+                        (match-string 1 tag))))
+      (when (and parent-tag
+                 (gptel-org-agent--agent-tag-p parent-tag))
+        ;; Find the heading with the parent tag in the base buffer
+        (with-current-buffer base
+          (save-excursion
+            (goto-char (point-min))
+            (let (result)
+              (while (and (not result)
+                          (re-search-forward org-heading-regexp nil t))
+                (beginning-of-line)
+                (when (member parent-tag (org-get-tags nil t))
+                  (let* ((buf-name (gptel-org-agent--indirect-buffer-name
+                                    base (point) parent-tag))
+                         (buf (get-buffer buf-name)))
+                    (when (and buf (buffer-live-p buf))
+                      (setq result buf))))
+                (end-of-line))
+              result)))))))
+
+;;;###autoload
+(defun gptel-org-agent-jump-to-indirect-buffer ()
+  "Jump between base org buffer and agent indirect buffers.
+
+When in a base org buffer (or parent indirect buffer), find the
+agent indirect buffer for the subtree at point and switch to it.
+
+When in an agent indirect buffer, jump to the parent indirect
+buffer if one exists, otherwise jump to the base buffer at the
+position of the agent subtree.
+
+\\[gptel-org-agent-jump-to-indirect-buffer] is bound to \\`C-c g j' in
+`gptel-mode'."
+  (interactive)
+  (cond
+   ;; In an indirect buffer: jump to parent or base
+   ((buffer-base-buffer (current-buffer))
+    (let ((parent (gptel-org-agent--find-parent-indirect-buffer))
+          (base (buffer-base-buffer (current-buffer)))
+          (pos (+ (point-min)
+                  (- (point) (point-min)))))
+      (if parent
+          (progn
+            (pop-to-buffer parent)
+            (gptel-org--debug "org-agent jump: indirect -> parent %S"
+                              (buffer-name parent)))
+        ;; Jump to base buffer at same position
+        (pop-to-buffer base)
+        (goto-char pos)
+        (gptel-org--debug "org-agent jump: indirect -> base %S"
+                          (buffer-name base)))))
+   ;; In a base buffer: find and jump to indirect buffer at point
+   (t
+    (if-let ((indirect (gptel-org-agent--find-indirect-buffer-at-point)))
+        (progn
+          (pop-to-buffer indirect)
+          (gptel-org--debug "org-agent jump: base -> indirect %S"
+                            (buffer-name indirect)))
+      (user-error "No agent indirect buffer found for subtree at point")))))
 
 (provide 'gptel-org-agent)
 ;;; gptel-org-agent.el ends here
