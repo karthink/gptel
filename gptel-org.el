@@ -817,13 +817,23 @@ context."
               (goto-char (point-max))
               (gptel-org--unescape-tool-results)
               (gptel-org--strip-block-headers)
-              ;; Strip @agent subtrees unless include-agent-subtrees is set
+              ;; Strip @agent subtrees unless include-agent-subtrees is set.
+              ;; In branching context, protect lineage headings — they are
+              ;; structural ancestors of the current conversation and their
+              ;; subtrees contain the chat messages being sent.
               (when (and (bound-and-true-p gptel-org-agent-subtrees)
                          (not (and (boundp 'gptel-org-agent-include-subtrees)
                                    (buffer-local-value
                                     'gptel-org-agent-include-subtrees org-buf)))
                          (fboundp 'gptel-org-agent--strip-agent-subtrees))
-                (gptel-org-agent--strip-agent-subtrees))
+                (let (lineage-positions)
+                  (save-excursion
+                    (goto-char (point-min))
+                    (dotimes (_ (length start-bounds))
+                      (when (org-at-heading-p)
+                        (push (point) lineage-positions))
+                      (unless (eobp) (outline-next-heading))))
+                  (gptel-org-agent--strip-agent-subtrees lineage-positions)))
               (when-let* ((gptel-org-ignore-elements ;not copied by -with-buffer-copy
                            (buffer-local-value 'gptel-org-ignore-elements
                                                org-buf)))

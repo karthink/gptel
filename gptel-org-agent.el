@@ -756,13 +756,20 @@ existing task states, and removing tasks that are no longer in the list."
 Set by the Advisor agent preset.  When nil (the default), @agent
 subtrees are stripped from the prompt to keep context focused.")
 
-(defun gptel-org-agent--strip-agent-subtrees ()
+(defun gptel-org-agent--strip-agent-subtrees (&optional protected-positions)
   "Remove @agent subtrees from the current buffer.
 Scans all headings and deletes entire subtrees whose heading has
 a tag matching `gptel-org-agent--agent-tag-p'.
 
 This is called during prompt construction to exclude internal
 agent conversation trees from the context sent to the LLM.
+
+When PROTECTED-POSITIONS is non-nil, it should be a list of
+buffer positions (beginning-of-line positions of headings).
+Agent headings at these positions are skipped, preserving them
+and their children.  This is used in branching context mode to
+protect lineage headings that are structural ancestors of the
+current conversation.
 
 Subtrees are deleted in reverse buffer order (bottom to top) to
 avoid position shifts affecting subsequent deletions."
@@ -777,7 +784,9 @@ avoid position shifts affecting subsequent deletions."
           (beginning-of-line)
           (if (and (org-at-heading-p)
                    (cl-some #'gptel-org-agent--agent-tag-p
-                            (org-get-tags nil t)))
+                            (org-get-tags nil t))
+                   ;; Skip lineage headings that must be preserved
+                   (not (memq (point) protected-positions)))
               ;; Agent heading: collect region and skip past subtree
               (let ((beg (point))
                     (end (save-excursion
