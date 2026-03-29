@@ -560,19 +560,18 @@ always handled separately."
   :type 'boolean)
 
 (defcustom gptel-track-media nil
-  "Whether supported media in chat buffers should be sent.
+  "Whether links to supported media types should be followed.
 
 When this is non-nil, gptel will send text, images or other media from
-links in chat buffers to the LLM.
+links in Org and Markdown buffers to the LLM.
 
 Sending images or other binary media from links requires the
 active `gptel-model' to support it.  See `gptel-make-openai',
 `gptel-make-anthropic', `gptel-make-ollama' or `gptel-make-gemini' for
 details on how to specify media support for models.
 
-This option has no effect in non-chat buffers.  To include
-media (including images) more generally, use `gptel-add' or
-`gptel-add-file'."
+To include media (including binary formats like images) more generally,
+you can also use `gptel-add' or `gptel-add-file' instead."
   :type 'boolean)
 
 (defcustom gptel-use-context 'system

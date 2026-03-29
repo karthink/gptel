@@ -4,6 +4,16 @@
 
 ** Breaking changes
 
+- ~gptel-track-media~ affects gptel's link handling in all Org and
+  Markdown buffers, not just chat buffers that have ~gptel-mode~ turned
+  on.  When calling ~gptel-send~ with ~gptel-track-media~ turned on, and
+  the buffer is in Org or Markdown mode, links to supported file types
+  will be followed by gptel and included with the request.  Previously
+  this behavior applied only in dedicated chat buffers.
+
+  (This is actually how gptel has worked since v0.9.9.3, but this change
+  in behavior was undocumented.)
+
 - gptel's default ChatGPT backend has been removed. ~gptel-backend~ and
   ~gptel-model~ now default to =nil=, and there are no registered
   backends out of the box.  However gptel remains usable without
