@@ -192,6 +192,8 @@ CALLBACK is supplied by Eldoc, see
                (format (substitute-command-keys "%s rewrite available: accept \\[gptel--rewrite-accept], iterate \\[gptel--rewrite-iterate], clear \\[gptel--rewrite-reject], merge \\[gptel--rewrite-merge], diff \\[gptel--rewrite-diff] or ediff \\[gptel--rewrite-ediff]")
                        (propertize (gptel--model-name gptel-model) 'face 'mode-line-emphasis)))))
 
+;; ** Navigation across rewrite regions
+
 (defun gptel--rewrite-move (search-func)
   "Move directionally to a gptel rewrite location using SEARCH-FUNC."
   (let* ((ov (cdr (get-char-property-and-overlay (point) 'gptel-rewrite)))
@@ -216,6 +218,8 @@ CALLBACK is supplied by Eldoc, see
   "Go to previous pending LLM rewrite in buffer, if one exists."
   (interactive)
   (gptel--rewrite-move #'previous-single-char-property-change))
+
+;; ** Rewrite actions helpers
 
 (defun gptel--rewrite-overlay-at (&optional pt)
   "Check for a gptel rewrite overlay at PT and return it.
@@ -508,7 +512,7 @@ INFO is the async communication channel for the rewrite request."
           (insert response)
           (unless (eobp) (ignore-errors (delete-char (length response))))
           (font-lock-ensure)
-          (overlay-put ov 'display (buffer-string))))
+          (overlay-put ov 'display (propertize (buffer-string) 'face 'default))))
       (unless (plist-get info :stream) (gptel--rewrite-callback t info)))
 
      ((eq response 'abort)              ;request aborted
@@ -517,8 +521,10 @@ INFO is the async communication channel for the rewrite request."
       (delete-overlay ov))
 
      ((eq (car-safe response) 'tool-call) ;tool call confirmation
-      (gptel--display-tool-calls          ;use minibuffer if buffer is read-only
-       (cdr response) info (buffer-local-value 'buffer-read-only buf)))
+      (gptel--rewrite-update-status ov " Run tools?" '(mode-line-emphasis default))
+      (gptel--display-tool-calls   ;use minibuffer
+       (cdr response) info         ;; (buffer-local-value 'buffer-read-only buf)
+       t))
 
      ((null response)                   ;finished with error
       (message (concat "LLM response error: %s. Rewrite in buffer %s canceled.")
@@ -737,7 +743,6 @@ generated from functions."
              :context
              (let ((ov (or (cdr-safe (get-char-property-and-overlay (point) 'gptel-rewrite))
                            (make-overlay (region-beginning) (region-end) nil t))))
-               (overlay-put ov 'category 'gptel)
                (overlay-put ov 'evaporate t)
                ;; NOTE: Switch to `generate-new-buffer' after we drop Emacs 27.1 (#724)
                (cons ov (gptel--temp-buffer " *gptel-rewrite*")))
