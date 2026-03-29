@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/ingydotnet/git-subrepo#readme
+;
+[subrepo]
+	remote = git@github.com:siroic/gptel-test
+	branch = main
+	commit = fa6bcf1b83da86a7d6ddb1cfb5c34c7ffbb53240
+	parent = b65bad166b510d06127cab4a4d6be9790353d2fb
+	method = merge
+	cmdver = 0.4.9

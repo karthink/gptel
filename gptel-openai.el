@@ -106,6 +106,7 @@ information if the stream contains it."
                               (args (apply #'concat (nreverse (plist-get info :partial_json))))
                               (func (plist-get (car tool-use) :function)))
                     (plist-put func :arguments args) ;Update arguments for last recorded tool
+                    (setq tool-use (nreverse tool-use)) ;Restore original order (was reversed by cons)
                     (gptel--inject-prompt
                      (plist-get info :backend) (plist-get info :data)
                      `( :role "assistant" :content :null :tool_calls ,(vconcat tool-use) ; :refusal :null
@@ -670,6 +671,24 @@ sources:
 - <https://platform.openai.com/docs/pricing>
 - <https://platform.openai.com/docs/models>")
 
+(defconst gptel--openai-model-aliases
+  '((gpt5.2
+     :description "Alias for latest GPT-5.2 model"
+     :model-id "gpt-5.2"
+     :capabilities (media tool-use json url)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1.75
+     :output-cost 14
+     :cutoff-date "2025-08"))
+  "Model aliases that map simple names to the latest model versions.
+
+These aliases provide stable names that always point to the current
+latest version of each model family:
+- `gpt5.2': Alias for gpt-5.2, the latest flagship model
+
+The actual model used is specified in the :model-id property.")
+
 ;;;###autoload
 (cl-defun gptel-make-openai
     (name &key curl-args (models gptel--openai-models)
@@ -736,7 +755,8 @@ for."
                   :host host
                   :header header
                   :key key
-                  :models (gptel--process-models models)
+                  :models (gptel--process-models
+                           (append gptel--openai-model-aliases models))
                   :protocol protocol
                   :endpoint endpoint
                   :stream stream

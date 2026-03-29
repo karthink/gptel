@@ -128,7 +128,7 @@ information if the stream contains it.  Not my best work, I know."
                     (plist-put (car (plist-get info :tool-use)) :input args-decoded))
                 ;; If there was an error in reading that tool, we ignore it:
                 ;; TODO(tool) handle this error better
-                (error (pop (plist-get info :tool-use)))) ;TODO: nreverse :tool-use list
+                (error (pop (plist-get info :tool-use))))
               (plist-put info :partial_json nil))
 
              ((eq (plist-get info :reasoning-block) 'in) ;End of reasoning block
@@ -137,6 +137,8 @@ information if the stream contains it.  Not my best work, I know."
            ((looking-at "message_delta")
             ;; collect stop_reason, usage_tokens and prepare tools
             (forward-line 1) (forward-char 5)
+            ;; Reverse tool-use list: it was built with cons in content_block_start
+            (plist-put info :tool-use (nreverse (plist-get info :tool-use)))
             (when-let* ((tool-use (plist-get info :tool-use))
                         (response (gptel--json-read)))
               (let* ((data (plist-get info :data))
@@ -702,6 +704,41 @@ comparison table:
 
 URL `https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table'")
 
+(defconst gptel--anthropic-model-aliases
+  '((haiku
+     :description "Alias for latest Haiku model"
+     :model-id "claude-haiku-4-5-20251001"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 1
+     :output-cost 5)
+    (sonnet
+     :description "Alias for latest Sonnet model"
+     :model-id "claude-sonnet-4-6"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 3
+     :output-cost 15)
+    (opus
+     :description "Alias for latest Opus model"
+     :model-id "claude-opus-4-6"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 200
+     :input-cost 5
+     :output-cost 25))
+  "Model aliases that map simple names to the latest model versions.
+
+These aliases provide stable names that always point to the current
+latest version of each model family:
+- `haiku': Fast, efficient model for simple tasks
+- `sonnet': Balanced model for most tasks
+- `opus': Most capable model for complex tasks
+
+The actual model used is specified in the :model-id property.")
+
 ;;;###autoload
 (cl-defun gptel-make-anthropic
     (name &key curl-args stream key request-params
@@ -769,7 +806,8 @@ for."
                   :host host
                   :header header
                   :key key
-                  :models (gptel--process-models models)
+                  :models (gptel--process-models
+                           (append gptel--anthropic-model-aliases models))
                   :protocol protocol
                   :endpoint endpoint
                   :stream stream
