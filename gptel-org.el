@@ -812,8 +812,9 @@ context."
               (gptel-org--strip-block-headers)
               ;; Strip @agent subtrees unless include-agent-subtrees is set
               (when (and (bound-and-true-p gptel-org-agent-subtrees)
-                         (not (buffer-local-value
-                               'gptel-org-agent-include-subtrees org-buf))
+                         (not (and (boundp 'gptel-org-agent-include-subtrees)
+                                   (buffer-local-value
+                                    'gptel-org-agent-include-subtrees org-buf)))
                          (fboundp 'gptel-org-agent--strip-agent-subtrees))
                 (gptel-org-agent--strip-agent-subtrees))
               (when-let* ((gptel-org-ignore-elements ;not copied by -with-buffer-copy
@@ -841,8 +842,9 @@ context."
           (gptel-org--strip-block-headers)
           ;; Strip @agent subtrees unless include-agent-subtrees is set
           (when (and (bound-and-true-p gptel-org-agent-subtrees)
-                     (not (buffer-local-value
-                           'gptel-org-agent-include-subtrees org-buf))
+                     (not (and (boundp 'gptel-org-agent-include-subtrees)
+                               (buffer-local-value
+                                'gptel-org-agent-include-subtrees org-buf)))
                      (fboundp 'gptel-org-agent--strip-agent-subtrees))
             (gptel-org-agent--strip-agent-subtrees))
           (when-let* ((gptel-org-ignore-elements ;not copied by -with-buffer-copy
