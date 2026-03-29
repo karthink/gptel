@@ -159,7 +159,11 @@ Return a marker to the newly created heading."
   (save-excursion
     (unless (org-at-heading-p)
       (error "gptel-org-agent--create-subtree: point is not on a heading"))
-    (let* ((parent-level (org-current-level))
+    ;; Tool call confirmation text in the buffer may be marked read-only
+    ;; (by `gptel--display-tool-calls').  The overlay cleanup happens
+    ;; after tool functions run, so we must bypass read-only here.
+    (let* ((inhibit-read-only t)
+           (parent-level (org-current-level))
            (child-level (1+ parent-level))
            (tag (gptel-org-agent--construct-tag agent-type parent-tag))
            (stars (make-string child-level ?*))
