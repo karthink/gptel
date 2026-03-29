@@ -510,5 +510,49 @@ find the correct heading rather than a nearby sibling."
    ;; The sibling heading MUST NOT have the :user: tag
    (should-not (gptel-org--heading-has-tag-p "user"))))
 
+(ert-deftest gptel-org-subtree-test-restore-bounds-assistant-children ()
+  "Test that assistant subtree children retain gptel response property.
+When an :assistant: tagged heading has child headings (without tags),
+`gptel-org--restore-bounds-from-tags' must mark the entire subtree as
+response, including the children.  Previously the outer scan loop
+would re-visit untagged children and clear their properties."
+  (gptel-org-test-with-tags-buffer
+   (concat "* Debug\n"
+           "** AI-DOING Task 1\n"
+           "*** Feasibility study              :assistant:\n"
+           "**** Report section\n"
+           "Report content\n"
+           "***** Requirement 3\n"
+           "Requirement 3 content\n"
+           "***** Requirement 4\n"
+           "Requirement 4 content\n"
+           "*** User message                   :user:\n"
+           "User message content\n"
+           "*** Clean recursive pattern        :assistant:\n"
+           "Assistant reply\n"
+           "*** Sub-agent returns              :user:\n"
+           "Final user message\n")
+   (gptel-org--restore-bounds-from-tags)
+   ;; Assistant heading should be marked as response
+   (goto-char (point-min))
+   (search-forward "*** Feasibility") (beginning-of-line)
+   (should (eq (get-text-property (point) 'gptel) 'response))
+   ;; Child headings inside assistant subtree should ALSO be response
+   (search-forward "**** Report") (beginning-of-line)
+   (should (eq (get-text-property (point) 'gptel) 'response))
+   (search-forward "***** Requirement 3") (beginning-of-line)
+   (should (eq (get-text-property (point) 'gptel) 'response))
+   (search-forward "***** Requirement 4") (beginning-of-line)
+   (should (eq (get-text-property (point) 'gptel) 'response))
+   ;; User heading should NOT be response
+   (search-forward "*** User message") (beginning-of-line)
+   (should-not (get-text-property (point) 'gptel))
+   ;; Second assistant heading should be response
+   (search-forward "*** Clean recursive") (beginning-of-line)
+   (should (eq (get-text-property (point) 'gptel) 'response))
+   ;; Second user heading should NOT be response
+   (search-forward "*** Sub-agent") (beginning-of-line)
+   (should-not (get-text-property (point) 'gptel))))
+
 (provide 'gptel-org-subtree-test)
 ;;; gptel-org-subtree-test.el ends here

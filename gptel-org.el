@@ -1319,7 +1319,11 @@ Returns non-nil if any tagged headings were found and processed."
                         (user-end (save-excursion
                                     (org-end-of-subtree t t)
                                     (min (point) assistant-end))))
-                    (remove-text-properties user-beg user-end '(gptel nil))))))))
+                    (remove-text-properties user-beg user-end '(gptel nil))))))
+            ;; Skip past the assistant subtree so the outer loop doesn't
+            ;; re-visit its children (which have no tag and would get their
+            ;; gptel property cleared by the catch-all branch below).
+            (goto-char (1- assistant-end))))
          ;; User tag at top level - ensure no gptel property (remove if present)
          ((gptel-org--heading-has-tag-p gptel-org-user-tag)
           (setq found-tags t)
@@ -1327,7 +1331,9 @@ Returns non-nil if any tagged headings were found and processed."
                 (end (save-excursion
                        (org-end-of-subtree t t)
                        (point))))
-            (remove-text-properties beg end '(gptel nil))))
+            (remove-text-properties beg end '(gptel nil))
+            ;; Skip past user subtree so children aren't re-processed
+            (goto-char (1- end))))
          ;; No role tag - clear any stale gptel properties from this subtree.
          ;; This handles the case where an :assistant: tag was removed: without
          ;; cleanup the gptel response text property would persist indefinitely.
@@ -1337,7 +1343,9 @@ Returns non-nil if any tagged headings were found and processed."
                   (end (save-excursion
                          (org-end-of-subtree t t)
                          (point))))
-              (remove-text-properties beg end '(gptel nil)))))))
+              (remove-text-properties beg end '(gptel nil))
+              ;; Skip past the subtree
+              (goto-char (1- end)))))))
       found-tags)))
 
 (defvar-local gptel-org--bounds-from-tags nil
