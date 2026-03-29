@@ -30,6 +30,11 @@
 
 ** New features and UI changes
 
+- The UI indicators in chat buffers that report status changes (such as
+  =Waiting=, =Ready= etc) now show the names of tools being called.  The
+  mode-line indicator display (see ~gptel-use-header-line~) has been
+  improved.
+
 - When using ~setopt~ or the customize interface, ~gptel-backend~ can
   now be specified as a list instead of an opaque object.  See its
   documentation for details.

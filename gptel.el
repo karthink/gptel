@@ -969,9 +969,7 @@ context, tools, system prompt, model and more."
         (if gptel-use-header-line
             (progn (setq gptel--old-header-line header-line-format)
                    (gptel-use-header-line))
-          (setq mode-line-process
-                '(:eval (concat " " (buttonize (gptel--model-name gptel-model)
-                                               (lambda (&rest _) (gptel-menu))))))))
+          (gptel--update-status " Ready" 'success)))
     (remove-hook 'before-save-hook #'gptel--save-state t)
     (remove-hook 'after-change-functions 'gptel--inherit-stickiness t)
     (cond
@@ -989,23 +987,21 @@ context, tools, system prompt, model and more."
 
 ;; ;TODO(request-lib): Declaration no longer needed
 (defvar gptel--fsm-last)                ;Defined further below
-(defun gptel--update-status (&optional msg face)
-  "Update status MSG in FACE."
+(defun gptel--update-status (msg &optional face)
+  "Update status MSG with FACE."
   (when gptel-mode
-    (if gptel-use-header-line
-        (and (consp header-line-format)
-             (setf (nth 1 header-line-format)
-                   (thread-first
-                     msg
-                     (buttonize (lambda (_) (gptel--inspect-fsm)))
-                     (propertize 'face face 'mouse-face 'highlight))))
-      (if (member msg '(" Typing..." " Waiting..."))
-          (setq mode-line-process (propertize msg 'face face))
-        (setq mode-line-process
-              '(:eval (concat " "
-                       (buttonize (gptel--model-name gptel-model)
-                            (lambda (&rest _) (gptel-menu))))))
-        (message (propertize msg 'face face))))
+    (let* ((inspect (lambda (&rest _) (gptel--inspect-fsm)))
+           (button (propertize (buttonize msg inspect)
+                              'mouse-face 'highlight)))
+      (when face (setq button (propertize button 'face face)))
+      (if gptel-use-header-line
+          (and (consp header-line-format) (setf (nth 1 header-line-format) button))
+        (if (equal msg " Ready")
+            (setq mode-line-process
+                  `(:eval (concat " " (buttonize (gptel--model-name gptel-model)
+                                                 ,inspect))))
+          (setq mode-line-process button)
+          (message msg))))
     (force-mode-line-update)))
 
 
@@ -1532,7 +1528,19 @@ Perform UI updates and run post-response hooks."
   (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
     (setq gptel--fsm-last fsm)
     (when gptel-mode
-      (gptel--update-status " Calling tool..." 'mode-line-emphasis))))
+      (if-let* ((info (gptel-fsm-info fsm))
+                (names (cl-loop for call in (plist-get info :tool-use)
+                                collect (plist-get call :name))))
+          (gptel--update-status
+           (concat
+            (propertize
+             (if (length> names 1) " Calling tools (" " Calling tool (")
+             'face 'mode-line-emphasis)
+            (mapconcat (lambda (name) (propertize name 'face 'font-lock-keyword-face))
+                       names (propertize ", " 'face 'mode-line-emphasis))
+            (propertize ")" 'face 'mode-line-emphasis)))
+        ;; FIXME: Is this branch reachable?
+        (gptel--update-status " Calling tool..." 'mode-line-emphasis)))))
 
 (defun gptel--update-tool-ask (fsm)
   "Update gptel's status in FSM when there are pending tool-calls."
@@ -2158,9 +2166,19 @@ overlay in the query buffer."
   (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
                                            (point) 'gptel-tool)))
                  (list resp o)))
-  (when (overlayp ov)
+  (when (overlayp ov)                   ;Update UI indicator
     (with-current-buffer (overlay-buffer ov)
-      (gptel--update-status " Calling tool..." 'mode-line-emphasis)))
+      (when gptel-mode
+        (let ((names (cl-loop for call in tool-calls
+                              collect (gptel-tool-name (car call)))))
+          (gptel--update-status
+           (concat
+            (propertize
+             (if (length> names 1) " Calling tools (" " Calling tool (")
+             'face 'mode-line-emphasis)
+            (mapconcat (lambda (name) (propertize name 'face 'font-lock-keyword-face))
+                       names (propertize ", " 'face 'mode-line-emphasis))
+            (propertize ")" 'face 'mode-line-emphasis)))))))
   (message "Continuing query...")
   (cl-loop for (tool-spec arg-plist process-tool-result) in tool-calls
            for arg-values = (gptel--map-tool-args tool-spec arg-plist)
