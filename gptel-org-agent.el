@@ -341,12 +341,10 @@ org-mode, or has no agent tag on its first heading."
   (when (and (buffer-base-buffer (current-buffer))
              (derived-mode-p 'org-mode))
     (save-excursion
-      (save-restriction
-        (widen)
-        (goto-char (point-min))
-        (when (org-at-heading-p)
-          (cl-find-if #'gptel-org-agent--agent-tag-p
-                      (org-get-tags nil t)))))))
+      (goto-char (point-min))
+      (when (org-at-heading-p)
+        (cl-find-if #'gptel-org-agent--agent-tag-p
+                    (org-get-tags nil t))))))
 
 (defun gptel-org-agent--setup-task-subtree (agent-type description)
   "Set up a subtree and indirect buffer for a sub-agent task.
