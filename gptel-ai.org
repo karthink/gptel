@@ -137,6 +137,7 @@ Handlers: =gptel-request--handlers= (state→function alist).
 | =gptel-org-cache.el= | ~870 | Context caching: hash-based invalidation, tag-based auto-caching |
 | =gptel-org-tasks.el= | ~390 | AI task workflow: TODO transitions, model profiles via tags |
 | =gptel-org-archive.el= | ~590 | Archive with AI summaries: git tracking, two-phase workflow |
+| =gptel-org-agent.el= | ~620 | Agent subtrees: indirect buffers, sub-agent delegation, TodoWrite org integration |
 
 ** Other
 
@@ -314,6 +315,7 @@ See feature-specific documents for details:
 
 - [[file:gptel-org-tasks-ai.org]] — AI task workflow (TODO transitions, model profiles)
 - [[file:gptel-archive-ai.org]] — Archive with AI summaries
+- [[file:gptel-org-agent-ai.org]] — Agent subtrees (indirect buffers, sub-agent delegation)
 
 ** Key Org Features (brief)
 
@@ -323,6 +325,7 @@ See feature-specific documents for details:
 - *Link validation*: auto-detect file/attachment links, validate MIME support
 - *Context caching*: hash-based invalidation, tags =:cache_files:=, =:cache_summary:=
 - *Markdown→Org conversion*: streaming and non-streaming
+- *Agent subtrees*: per-agent indirect buffers, recursive delegation, context stripping
 
 * Feature-Specific Documents
 
@@ -331,4 +334,26 @@ See feature-specific documents for details:
 | [[file:gptel-archive-ai.org]] | Archive with AI summaries | exists |
 | [[file:gptel-remote-ai.org]] | Remote server tools (gptel-agent) | exists |
 | [[file:gptel-org-tasks-ai.org]] | Org tasks workflow | exists |
+| [[file:gptel-org-agent-ai.org]] | Agent subtrees (org indirect buffers) | exists |
 | [[file:emacs-example-ai.org]] | Example AI task workflow | exists |
+
+* TODOs
+** AI-DONE Implement how main and delegated agent discussion context is organized in the org mode
+
+All 5 phases implemented in =gptel-org-agent.el=.  See [[file:gptel-org-agent-ai.org]] for
+the feature-specific reference document.
+
+*** Implementation Summary
+
+| Phase | Feature | Status |
+|-------+---------+--------|
+| 1 | Recursive indirect buffer pattern | Done |
+| 2 | Sub-agent subtree writing | Done |
+| 3 | Control buffer for tool requests (prompt transform redirect) | Done |
+| 4 | TodoWrite → native org TODO cycling | Done |
+| 5 | Advisor agent integration | Done |
+
+Key commits: =825073a=, =6d3a663=, =3f87fd5=, =cd78a2c=, =50e31ba=, =2dfd1c0=,
+=441a0b0=, =ff0257f=, =ad8cd43=, =1b89c1d=, =a41b57f=, =2788660=, =582c987=
+
+
