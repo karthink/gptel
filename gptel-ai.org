@@ -356,4 +356,28 @@ the feature-specific reference document.
 Key commits: =825073a=, =6d3a663=, =3f87fd5=, =cd78a2c=, =50e31ba=, =2dfd1c0=,
 =441a0b0=, =ff0257f=, =ad8cd43=, =1b89c1d=, =a41b57f=, =2788660=, =582c987=
 
+** TODO Delegated sub-agents don't inherit heading-specific GPTEL_PRESET subagent-models
+
+When a heading overrides =GPTEL_PRESET= (e.g. to =gptel-coordinator=), the main
+request correctly uses that preset's model.  However, delegated sub-agents
+(gatherer, executor, etc.) still resolve their models from the file-level default
+preset's =subagent-models= instead of the heading-specific preset's.
+
+The root cause is that =gptel--preset= reverts to the buffer-local (file-level)
+value by the time async tool execution reaches =gptel-agent--get-parent-subagent-model=,
+despite previous fixes to store/restore it via FSM info (commits =bc87c80=,
+=252a46e=, =bee0621=).
+
+*** Workaround
+
+Define =GPTEL_PRESET= only at the top-level file property block, not per-heading.
+All headings in the file will then use the same preset and its =subagent-models=
+mapping.
+
+*** Related commits (attempted fixes)
+- =bc87c80= :: propagate gptel--preset through FSM info for tool execution
+- =252a46e= :: restore gptel-backend and gptel-model in tool execution paths
+- =bee0621= :: always let-bind gptel-backend and gptel-model in sub-agent preset
+- =11cc395= :: parent-level subagent-models and gptel-coordinator agent
+
 
