@@ -627,7 +627,7 @@ source:
 
 ;;;###autoload
 (cl-defun gptel-make-gemini
-    (name &key curl-args header key request-params
+    (name &key curl-args key request-params
           (stream nil)
           (header
            (lambda () (when-let* ((key (gptel--get-api-key)))
@@ -718,3 +718,7 @@ for."
 
 (provide 'gptel-gemini)
 ;;; gptel-gemini.el ends here
+
+;; Local Variables:
+;; byte-compile-warnings: (not docstrings)
+;; End:
