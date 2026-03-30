@@ -2332,17 +2332,28 @@ overlay in the query buffer."
     (with-current-buffer (overlay-buffer ov)
       (gptel--update-status " Calling tool..." 'mode-line-emphasis)))
   (message "Continuing query...")
-  (cl-loop for (tool-spec arg-plist process-tool-result) in tool-calls
-           for arg-values = (gptel--map-tool-args tool-spec arg-plist)
-           do
-           (if (gptel-tool-async tool-spec)
-               (apply (gptel-tool-function tool-spec)
-                      process-tool-result arg-values)
-             (let ((result
-                    (condition-case errdata
-                        (apply (gptel-tool-function tool-spec) arg-values)
-                      (error (mapconcat #'gptel--to-string errdata " ")))))
-               (funcall process-tool-result result))))
+  ;; Restore heading-specific dynamic bindings from FSM info.  When called
+  ;; interactively (user confirms via C-c C-c), the dynamic bindings from
+  ;; gptel-org--send-with-props are long gone.  Without restoration, tools
+  ;; see only the buffer-local values (file-level defaults).
+  (let* ((info (or (and (overlayp ov) (overlay-buffer ov)
+                        (overlay-get ov 'gptel-info))
+                   (and (boundp 'gptel--fsm-last) gptel--fsm-last
+                        (gptel-fsm-info gptel--fsm-last))))
+         (gptel--preset (or (and info (plist-get info :preset)) gptel--preset))
+         (gptel-backend (or (and info (plist-get info :backend)) gptel-backend))
+         (gptel-model (or (and info (plist-get info :model)) gptel-model)))
+    (cl-loop for (tool-spec arg-plist process-tool-result) in tool-calls
+             for arg-values = (gptel--map-tool-args tool-spec arg-plist)
+             do
+             (if (gptel-tool-async tool-spec)
+                 (apply (gptel-tool-function tool-spec)
+                        process-tool-result arg-values)
+               (let ((result
+                      (condition-case errdata
+                          (apply (gptel-tool-function tool-spec) arg-values)
+                        (error (mapconcat #'gptel--to-string errdata " ")))))
+                 (funcall process-tool-result result)))))
   (gptel--clean-tool-overlay ov))
 
 (defun gptel--reject-tool-calls (&optional _tool-calls ov)

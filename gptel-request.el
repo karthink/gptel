@@ -1823,13 +1823,17 @@ injects the results into the prompt data and transitions the FSM."
               (tool-use (cl-remove-if (lambda (tc) (plist-get tc :result))
                                       (plist-get info :tool-use))))
     (with-current-buffer (plist-get info :buffer)
-      ;; Restore gptel--preset from FSM info so tool functions (including
-      ;; sub-agent delegation) see the correct preset.  This is necessary
-      ;; because gptel-org--send-with-props dynamically binds gptel--preset
+      ;; Restore gptel--preset, gptel-backend and gptel-model from FSM
+      ;; info so tool functions (including sub-agent delegation) see the
+      ;; correct heading-specific values.  This is necessary because
+      ;; gptel-org--send-with-props dynamically binds these variables
       ;; only for the synchronous send call; by the time async tool
-      ;; execution runs, that binding is gone and the buffer-local value
-      ;; may be stale (set at file-load time).
+      ;; execution runs, those bindings are gone and the buffer-local
+      ;; values may be stale (set at file-load time from the top-level
+      ;; property block).
       (let ((gptel--preset (or (plist-get info :preset) gptel--preset))
+            (gptel-backend (or (plist-get info :backend) gptel-backend))
+            (gptel-model (or (plist-get info :model) gptel-model))
             (pending-calls))
         (mapc                           ; Construct function calls
          (lambda (tool-call)

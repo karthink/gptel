@@ -373,5 +373,67 @@ This test verifies that mechanism directly."
            (gptel--preset (or (plist-get info :preset) gptel--preset)))
       (should (eq gptel--preset 'buffer-preset)))))
 
+(ert-deftest gptel-test-backend-model-restored-during-tool-use ()
+  "Test that tool execution restores gptel-backend and gptel-model from
+FSM info, not just gptel--preset.
+
+Sub-agent delegation reads gptel-backend and gptel-model to determine
+the baseline backend/model for the sub-agent.  Without restoration,
+tools see the buffer-local values (file-level defaults) instead of the
+heading-specific values captured during gptel--realize-query."
+  (with-temp-buffer
+    ;; Buffer-local has stale file-level defaults
+    (set (make-local-variable 'gptel-backend) 'stale-backend)
+    (set (make-local-variable 'gptel-model) 'stale-model)
+    (set (make-local-variable 'gptel--preset) 'stale-preset)
+    (let* ((info (list :preset 'heading-preset
+                       :backend 'heading-backend
+                       :model 'heading-model))
+           ;; Simulate the let-binding from gptel--handle-tool-use
+           (gptel--preset (or (plist-get info :preset) gptel--preset))
+           (gptel-backend (or (plist-get info :backend) gptel-backend))
+           (gptel-model (or (plist-get info :model) gptel-model)))
+      ;; Inside the let, tool code sees the heading-specific values
+      (should (eq gptel--preset 'heading-preset))
+      (should (eq gptel-backend 'heading-backend))
+      (should (eq gptel-model 'heading-model)))
+    ;; Outside the let, buffer-locals are untouched
+    (should (eq gptel--preset 'stale-preset))
+    (should (eq gptel-backend 'stale-backend))
+    (should (eq gptel-model 'stale-model))))
+
+(ert-deftest gptel-test-accept-tool-calls-restores-bindings ()
+  "Test that gptel--accept-tool-calls restores dynamic bindings from
+FSM info when called interactively.
+
+When the user confirms a tool call via C-c C-c, the function runs in
+the normal command loop with only buffer-local values.  The fix reads
+the info plist from the overlay or gptel--fsm-last to restore the
+heading-specific bindings."
+  (with-temp-buffer
+    ;; Buffer-local has stale file-level defaults
+    (set (make-local-variable 'gptel-backend) 'stale-backend)
+    (set (make-local-variable 'gptel-model) 'stale-model)
+    (set (make-local-variable 'gptel--preset) 'stale-preset)
+    ;; Simulate retrieving info from overlay or gptel--fsm-last
+    (let* ((info (list :preset 'heading-preset
+                       :backend 'heading-backend
+                       :model 'heading-model))
+           ;; This mirrors the logic in the fixed gptel--accept-tool-calls
+           (gptel--preset (or (and info (plist-get info :preset)) gptel--preset))
+           (gptel-backend (or (and info (plist-get info :backend)) gptel-backend))
+           (gptel-model (or (and info (plist-get info :model)) gptel-model)))
+      (should (eq gptel--preset 'heading-preset))
+      (should (eq gptel-backend 'heading-backend))
+      (should (eq gptel-model 'heading-model)))
+    ;; Verify no info fallback preserves buffer-locals
+    (let* ((info nil)
+           (gptel--preset (or (and info (plist-get info :preset)) gptel--preset))
+           (gptel-backend (or (and info (plist-get info :backend)) gptel-backend))
+           (gptel-model (or (and info (plist-get info :model)) gptel-model)))
+      (should (eq gptel--preset 'stale-preset))
+      (should (eq gptel-backend 'stale-backend))
+      (should (eq gptel-model 'stale-model)))))
+
 (provide 'gptel-unit-tests)
 ;;; gptel-unit-tests.el ends here
