@@ -30,8 +30,9 @@
   =grok-4-1-fast-non-reasoning=, =grok-4-fast-reasoning=, and
   =grok-4-fast-non-reasoning=.
 
-- - GitHub Copilot backend: Add support for =gpt-5.1-codex-,
-  =gpt-5.1-codex-mini, =claude-sonnet-4.6= and =gemini-3.1-pro-preview=.
+- GitHub Copilot backend: Add support for =gpt-5.1-codex-,
+  =gpt-5.1-codex-mini, =claude-sonnet-4.6= and =gemini-3.1-pro-preview=,
+  =gpt-5.3-codex=, =gpt-5.4=, and =gpt-5.4-mini=.
 
 - Gemini backend: add support for =gemini-3.1-flash-lite-preview=;
   add deprecation notice for =gemini-3-pro-preview=.
