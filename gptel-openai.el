@@ -746,9 +746,10 @@ for."
          ;; TODO: Find a more reliable way to dispatch.  Checking the host isn't
          ;; reliable.  For example, it won't work when using the Responses API
          ;; via a proxy.
-         (constructor (if responses-api
-                          #'gptel--make-openai-responses
-                        #'gptel--make-openai))
+         (constructor (if (not responses-api)
+                          #'gptel--make-openai
+                        (require 'gptel-openai-responses)
+                        #'gptel--make-openai-responses))
          (endpoint (or endpoint
                        (if responses-api "/v1/responses"  "/v1/chat/completions")))
          (backend (funcall constructor
