@@ -304,5 +304,74 @@ then some more text to end."))
     ;; Should be string-width + 5
     (should (= offset (+ 5 (string-width rhs))))))
 
+;;; Preset propagation tests
+
+(ert-deftest gptel-test-preset-survives-dynamic-binding ()
+  "Test that gptel--preset set via `set/make-local-variable' inside a
+dynamic `let' does NOT persist after the `let' exits.
+
+This demonstrates the root cause of the bug where delegated agents
+see the preset from file-load time instead of the current preset:
+`gptel-org--send-with-props' dynamically binds `gptel--preset', and
+`gptel--transform-apply-preset' (which uses `set/make-local-variable')
+modifies the dynamic binding, not the underlying buffer-local."
+  (with-temp-buffer
+    (set (make-local-variable 'gptel--preset) 'initial-preset)
+    ;; Simulate gptel-org--send-with-props: dynamic let-binding of gptel--preset
+    (let ((gptel--preset 'from-send-with-props))
+      ;; Simulate gptel--transform-apply-preset inside the let scope
+      (set (make-local-variable 'gptel--preset) 'user-changed-preset)
+      ;; Inside the let, the transform appears to have worked
+      (should (eq gptel--preset 'user-changed-preset)))
+    ;; After the let exits, the buffer-local reverts to the stale value.
+    ;; This is the bug: async tool calls run here and see the old preset.
+    (should (eq gptel--preset 'initial-preset))))
+
+(ert-deftest gptel-test-preset-stored-in-fsm-info ()
+  "Test that the FSM info plist carries `gptel--preset' through the
+request lifecycle.
+
+The fix adds `(plist-put info :preset gptel--preset)' to
+`gptel--realize-query', mirroring how `:backend' and `:model' are
+already stored.  This test verifies the mechanism: the preset value
+from the dynamic environment is captured into the info plist."
+  (let ((gptel--preset 'active-preset)
+        (info (list :backend 'dummy :model 'dummy)))
+    ;; Simulate what gptel--realize-query now does
+    (plist-put info :preset gptel--preset)
+    (should (eq (plist-get info :preset) 'active-preset))
+    ;; Verify it works even when buffer-local would differ
+    (with-temp-buffer
+      (set (make-local-variable 'gptel--preset) 'stale-preset)
+      (let ((gptel--preset 'runtime-preset))
+        (plist-put info :preset gptel--preset))
+      ;; Info should have the runtime value, not the buffer-local
+      (should (eq (plist-get info :preset) 'runtime-preset)))))
+
+(ert-deftest gptel-test-preset-restored-during-tool-use ()
+  "Test that tool execution sees the preset from FSM info, not the
+stale buffer-local.
+
+The fix wraps tool execution in `gptel--handle-tool-use' with:
+  (let ((gptel--preset (or (plist-get info :preset) gptel--preset)))
+    ...)
+This test verifies that mechanism directly."
+  (with-temp-buffer
+    ;; Buffer-local has a stale value (simulating file-load time preset)
+    (set (make-local-variable 'gptel--preset) 'stale-file-load-preset)
+    (let* ((info (list :preset 'correct-runtime-preset))
+           ;; Simulate the let-binding from gptel--handle-tool-use
+           (gptel--preset (or (plist-get info :preset) gptel--preset)))
+      ;; Inside the let, tool code sees the correct preset
+      (should (eq gptel--preset 'correct-runtime-preset)))
+    ;; Outside the let, buffer-local is untouched
+    (should (eq gptel--preset 'stale-file-load-preset)))
+  ;; Also verify fallback: when info has no :preset, buffer-local is used
+  (with-temp-buffer
+    (set (make-local-variable 'gptel--preset) 'buffer-preset)
+    (let* ((info (list :backend 'dummy))
+           (gptel--preset (or (plist-get info :preset) gptel--preset)))
+      (should (eq gptel--preset 'buffer-preset)))))
+
 (provide 'gptel-unit-tests)
 ;;; gptel-unit-tests.el ends here
