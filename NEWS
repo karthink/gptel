@@ -42,8 +42,8 @@
   add deprecation notice for =gemini-3-pro-preview=.
 
 - OpenAI backend: add support for =gpt-5.3-chat-latest=, =gpt-5.4=,
-  =gpt-5.4-mini=, =gpt-5.4-nano=. =gpt-5.2=, =gpt-5-mini= and
-  =gpt-5-nano=.
+  =gpt-5.4-pro=, =gpt-5.4-mini=, =gpt-5.4-nano=. =gpt-5.2=,
+  =gpt-5-mini=, =gpt-5-nano= and =o3-pro=.
 
 ** New features and UI changes
 

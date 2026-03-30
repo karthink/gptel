@@ -505,6 +505,14 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 2.50
      :output-cost 15
      :cutoff-date "2025-08")
+    (gpt-5.4-pro
+     :description "Maximum performance model for reasoning tasks"
+     :capabilities (media tool-use json url responses-api)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 30
+     :output-cost 180
+     :cutoff-date "2025-08")
     (gpt-5.3-chat-latest
      :description "Answers right away"
      :capabilities (media tool-use json url responses-api)
@@ -638,6 +646,14 @@ Media files, if present, are placed in `gptel-context'."
      :context-window 200
      :input-cost 2
      :output-cost 8
+     :cutoff-date "2024-05")
+    (o3-pro
+     :description "Maximum performance model for reasoning tasks"
+     :capabilities (reasoning media tool-use json url responses-api)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 200
+     :input-cost 20
+     :output-cost 80
      :cutoff-date "2024-05")
     (o1-mini
      :description "Faster and cheaper reasoning model good at coding, math, and science"
