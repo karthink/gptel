@@ -2756,7 +2756,7 @@ example) apply the preset buffer-locally."
   (map-do
    (lambda (key val)
      (pcase key
-       ((or :parents :description :pre :post) nil)
+       ((or :parents :description :pre :post :subagent-models) nil)
        ((or :system :system-message :rewrite-directive)
         (let ((sym (if (eq key :rewrite-directive)
                        'gptel--rewrite-directive 'gptel--system-message)))
