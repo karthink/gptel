@@ -24,6 +24,10 @@
   removed from the default list of GitHub Copilot models.  These models
   are no longer available in the GitHub Copilot API.
 
+- The models =gpt-3.5-turbo= and =gpt-3.5-turbo-16k= have been removed
+  from the default list of OpenAI models.  These models are either
+  deprecated or no longer available.
+
 ** New models and backends
 
 - xAI backend: Add support for =grok-4-1-fast-reasoning=,
@@ -38,7 +42,8 @@
   add deprecation notice for =gemini-3-pro-preview=.
 
 - OpenAI backend: add support for =gpt-5.3-chat-latest=, =gpt-5.4=,
-  =gpt-5.4-mini= and =gpt-5.4-nano=.
+  =gpt-5.4-mini=, =gpt-5.4-nano=. =gpt-5.2=, =gpt-5-mini= and
+  =gpt-5-nano=.
 
 ** New features and UI changes
 
@@ -83,6 +88,13 @@
 
 - New variable ~gptel-bedrock-aws-cli-command~ to set the path to the
   AWS CLI command for the Bedrock backend.  Defaults to "ews".
+
+- gptel now supports the OpenAI Responses API.  Practically speaking,
+  you should notice no change in behavior, except that the newest OpenAI
+  models should now be supported and available in OpenAI backends.
+
+  Thinking/Reasoning in responses is also supported for OpenAI models
+  now, but this is *not yet configurable* via ~gptel-include-reasoning~.
 
 ** Notable bug fixes
 

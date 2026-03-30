@@ -32,12 +32,7 @@
 (defvar gptel-mode)
 (declare-function gptel-context--collect-media "gptel-context")
 
-;;; OpenAI (ChatGPT)
-(cl-defstruct (gptel-openai-responses (:constructor gptel--make-openai-responses)
-                                      (:copier nil)
-                                      (:include gptel-backend)))
-
-
+;;; OpenAI Responses
 (defun gptel--openai-responses-update-tokens (usage info)
   "Update token usage information from USAGE.
 USAGE is part of the response, INFO is the request plist."
