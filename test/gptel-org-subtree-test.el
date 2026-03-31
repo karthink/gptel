@@ -687,5 +687,251 @@ prompt copy."
                                             (plist-get (nth 4 messages) :content)))))
           (when (buffer-live-p prompt-buf)
             (kill-buffer prompt-buf)))))))
+(ert-deftest gptel-org-subtree-test-hybrid-context-includes-siblings ()
+  "Test that hybrid context includes sibling sub-headings of TODO heading.
+When `gptel-org-branching-context' and `gptel-org-agent-subtrees' are
+both enabled, content within a TODO heading's subtree should use
+non-branching context (include all siblings up to cursor), while
+ancestors above the TODO use branching context (heading lines only)."
+  (let ((gptel-org-branching-context t)
+        (gptel-org-subtree-context nil)
+        (gptel-org-infer-bounds-from-tags nil)
+        (gptel-org-ignore-elements nil)
+        (gptel-org-agent-subtrees t)
+        (gptel-org-todo-keywords '("TODO" "AI-DO" "AI-DOING"))
+        (gptel-prompt-filter-hook nil)
+        (gptel--num-messages-to-send nil)
+        (gptel-track-response t)
+        (gptel-track-media nil)
+        (org-inhibit-startup t))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* Heading 1\n"
+              "** Heading 2\n"
+              "Some text under heading 2.\n"
+              "*** TODO Task 1\n"
+              "**** Task 1 sub-topic 1\n"
+              "***** Task 1 subsub-topic\n"
+              "Sub-sub detail here.\n"
+              "**** Task 1 sub-topic 2\n"
+              "- Plaa plaa\n")
+      (goto-char (point-max))
+      (let ((prompt-buf (gptel-org--create-prompt-buffer)))
+        (unwind-protect
+            (with-current-buffer prompt-buf
+              (let ((content (buffer-string)))
+                ;; Should contain parent headings (as heading lines)
+                (should (string-match-p "Heading 1" content))
+                (should (string-match-p "Heading 2" content))
+                ;; Parent heading body text should NOT be included
+                ;; (branching context above TODO = heading lines only)
+                (should-not (string-match-p "Some text under heading 2" content))
+                ;; Should contain TODO heading
+                (should (string-match-p "TODO Task 1" content))
+                ;; CRITICAL: Should contain sibling sub-topic 1 and its children
+                (should (string-match-p "Task 1 sub-topic 1" content))
+                (should (string-match-p "Task 1 subsub-topic" content))
+                (should (string-match-p "Sub-sub detail here" content))
+                ;; Should contain sub-topic 2 and cursor text
+                (should (string-match-p "Task 1 sub-topic 2" content))
+                (should (string-match-p "Plaa plaa" content))))
+          (when (buffer-live-p prompt-buf)
+            (kill-buffer prompt-buf)))))))
+
+(ert-deftest gptel-org-subtree-test-hybrid-context-excludes-after-cursor ()
+  "Test that hybrid context excludes content after cursor position."
+  (let ((gptel-org-branching-context t)
+        (gptel-org-subtree-context nil)
+        (gptel-org-infer-bounds-from-tags nil)
+        (gptel-org-ignore-elements nil)
+        (gptel-org-agent-subtrees t)
+        (gptel-org-todo-keywords '("TODO"))
+        (gptel-prompt-filter-hook nil)
+        (gptel--num-messages-to-send nil)
+        (gptel-track-response t)
+        (gptel-track-media nil)
+        (org-inhibit-startup t))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* H1\n"
+              "** TODO Task\n"
+              "*** Sub1\nSub1 content.\n"
+              "*** Sub2\n- cursor here\n"
+              "*** Sub3\nAfter cursor content.\n")
+      ;; Place cursor at "cursor here"
+      (goto-char (point-min))
+      (search-forward "cursor here")
+      (let ((prompt-buf (gptel-org--create-prompt-buffer)))
+        (unwind-protect
+            (with-current-buffer prompt-buf
+              (let ((content (buffer-string)))
+                ;; Should include Sub1 and Sub2 (before cursor)
+                (should (string-match-p "Sub1" content))
+                (should (string-match-p "Sub1 content" content))
+                (should (string-match-p "Sub2" content))
+                ;; Should NOT include Sub3 (after cursor)
+                (should-not (string-match-p "Sub3" content))
+                (should-not (string-match-p "After cursor content" content))))
+          (when (buffer-live-p prompt-buf)
+            (kill-buffer prompt-buf)))))))
+
+(ert-deftest gptel-org-subtree-test-hybrid-context-pure-branching-without-agent ()
+  "Without gptel-org-agent-subtrees, pure branching context is used."
+  (let ((gptel-org-branching-context t)
+        (gptel-org-subtree-context nil)
+        (gptel-org-infer-bounds-from-tags nil)
+        (gptel-org-ignore-elements nil)
+        (gptel-org-agent-subtrees nil)
+        (gptel-org-todo-keywords '("TODO"))
+        (gptel-prompt-filter-hook nil)
+        (gptel--num-messages-to-send nil)
+        (gptel-track-response t)
+        (gptel-track-media nil)
+        (org-inhibit-startup t))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* H1\n"
+              "** TODO Task\n"
+              "*** Sub1\nSub1 content.\n"
+              "*** Sub2\n- cursor here\n")
+      (goto-char (point-min))
+      (search-forward "cursor here")
+      (let ((prompt-buf (gptel-org--create-prompt-buffer)))
+        (unwind-protect
+            (with-current-buffer prompt-buf
+              (let ((content (buffer-string)))
+                ;; Pure branching: Sub1 should NOT be included (sibling, not lineage)
+                (should-not (string-match-p "Sub1" content))
+                ;; Sub2 and cursor text should be included (in lineage)
+                (should (string-match-p "Sub2" content))
+                (should (string-match-p "cursor here" content))))
+          (when (buffer-live-p prompt-buf)
+            (kill-buffer prompt-buf)))))))
+
+(ert-deftest gptel-org-subtree-test-hybrid-context-cursor-on-todo ()
+  "Hybrid context works when cursor is on the TODO heading itself."
+  (let ((gptel-org-branching-context t)
+        (gptel-org-subtree-context nil)
+        (gptel-org-infer-bounds-from-tags nil)
+        (gptel-org-ignore-elements nil)
+        (gptel-org-agent-subtrees t)
+        (gptel-org-todo-keywords '("TODO"))
+        (gptel-prompt-filter-hook nil)
+        (gptel--num-messages-to-send nil)
+        (gptel-track-response t)
+        (gptel-track-media nil)
+        (org-inhibit-startup t))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* H1\n"
+              "** TODO Task heading text\n"
+              "*** Sub1\nSub1 content.\n")
+      ;; Place cursor at end of TODO heading line
+      (goto-char (point-min))
+      (search-forward "Task heading text")
+      (let ((prompt-buf (gptel-org--create-prompt-buffer)))
+        (unwind-protect
+            (with-current-buffer prompt-buf
+              (let ((content (buffer-string)))
+                ;; Should contain parent and TODO heading
+                (should (string-match-p "H1" content))
+                (should (string-match-p "TODO Task heading text" content))
+                ;; Sub1 is AFTER cursor, should not be included
+                (should-not (string-match-p "Sub1" content))))
+          (when (buffer-live-p prompt-buf)
+            (kill-buffer prompt-buf)))))))
+
+(ert-deftest gptel-org-subtree-test-hybrid-context-with-assistant-tags ()
+  "Hybrid context correctly handles :assistant: and :user: tagged headings."
+  (let ((gptel-org-branching-context t)
+        (gptel-org-subtree-context nil)
+        (gptel-org-infer-bounds-from-tags t)
+        (gptel-org-assistant-tag "assistant")
+        (gptel-org-user-tag "user")
+        (gptel-org-ignore-elements nil)
+        (gptel-org-agent-subtrees t)
+        (gptel-org-todo-keywords '("TODO" "AI-DO" "AI-DOING"))
+        (gptel-org-chat-heading-markers '("@user" "@assistant"))
+        (gptel-prompt-filter-hook nil)
+        (gptel--num-messages-to-send nil)
+        (gptel-track-response t)
+        (gptel-track-media nil)
+        (org-inhibit-startup t))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* Heading 1\n"
+              "** Heading 2\n"
+              "*** TODO Task 1\n"
+              "**** Task 1 sub-topic 1\n"
+              "Topic 1 details.\n"
+              "**** Task 1 sub-topic 2\n"
+              "- Plaa plaa\n"
+              "**** AI response                                :assistant:\n"
+              "Here is my analysis.\n"
+              "**** User reply                                 :user:\n"
+              "Thanks, continue.\n")
+      (goto-char (point-max))
+      (let* ((backend (gptel-make-openai "test" :key "fake" :models '("gpt-4")))
+             (prompt-buf (gptel-org--create-prompt-buffer)))
+        (unwind-protect
+            (with-current-buffer prompt-buf
+              (setq gptel-mode t)
+              (goto-char (point-max))
+              (let ((messages (gptel--parse-buffer backend nil)))
+                ;; Should have messages: user context, assistant, user reply
+                (should (>= (length messages) 3))
+                ;; First message should be user with TODO + siblings
+                (should (string= (plist-get (nth 0 messages) :role) "user"))
+                (should (string-match-p "Task 1 sub-topic 1"
+                                        (plist-get (nth 0 messages) :content)))
+                (should (string-match-p "Topic 1 details"
+                                        (plist-get (nth 0 messages) :content)))
+                (should (string-match-p "Plaa plaa"
+                                        (plist-get (nth 0 messages) :content)))
+                ;; Should have assistant message
+                (let ((asst-msg (cl-find "assistant" messages
+                                         :key (lambda (m) (plist-get m :role))
+                                         :test #'string=)))
+                  (should asst-msg)
+                  (should (string-match-p "my analysis"
+                                          (plist-get asst-msg :content))))
+                ;; Last message should be user
+                (should (string= (plist-get (car (last messages)) :role) "user"))
+                (should (string-match-p "continue"
+                                        (plist-get (car (last messages)) :content)))))
+          (when (buffer-live-p prompt-buf)
+            (kill-buffer prompt-buf)))))))
+
+(ert-deftest gptel-org-subtree-test-hybrid-no-todo-in-lineage ()
+  "When no TODO heading in lineage, pure branching context is used."
+  (let ((gptel-org-branching-context t)
+        (gptel-org-subtree-context nil)
+        (gptel-org-infer-bounds-from-tags nil)
+        (gptel-org-ignore-elements nil)
+        (gptel-org-agent-subtrees t)
+        (gptel-org-todo-keywords '("TODO"))
+        (gptel-prompt-filter-hook nil)
+        (gptel--num-messages-to-send nil)
+        (gptel-track-response t)
+        (gptel-track-media nil)
+        (org-inhibit-startup t))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* H1\n"
+              "** Task\n"
+              "*** Sub1\nSub1 content.\n"
+              "*** Sub2\n- cursor here\n")
+      (goto-char (point-min))
+      (search-forward "cursor here")
+      (let ((prompt-buf (gptel-org--create-prompt-buffer)))
+        (unwind-protect
+            (with-current-buffer prompt-buf
+              (let ((content (buffer-string)))
+                ;; No TODO heading, so pure branching = Sub1 excluded
+                (should-not (string-match-p "Sub1" content))
+                (should (string-match-p "Sub2" content))))
+          (when (buffer-live-p prompt-buf)
+            (kill-buffer prompt-buf)))))))
+
 (provide 'gptel-org-subtree-test)
 ;;; gptel-org-subtree-test.el ends here

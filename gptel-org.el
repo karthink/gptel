@@ -775,6 +775,25 @@ context."
                    do (goto-char pos) (outline-next-heading)
                    collect (point) into ends
                    finally return (cons prompt-end ends))))
+            ;; Hybrid context: when gptel-org-agent-subtrees is enabled
+            ;; and a TODO heading exists in the lineage, include the full
+            ;; TODO subtree content (non-branching) up to prompt-end,
+            ;; while keeping branching context for ancestors above it.
+            ;; This ensures sibling sub-headings within the TODO task
+            ;; are included in the context.
+            (when (bound-and-true-p gptel-org-agent-subtrees)
+              (gptel-org--debug "hybrid-context: start-bounds=%S end-bounds=%S prompt-end=%d"
+                                start-bounds end-bounds prompt-end)
+              (when-let* ((todo-idx
+                           (gptel-org--find-todo-in-lineage start-bounds)))
+                (gptel-org--debug "hybrid-context: found TODO at index %d, pos %d"
+                                  todo-idx (nth todo-idx start-bounds))
+                (when (> todo-idx 0)
+                  (setq start-bounds (nthcdr todo-idx start-bounds))
+                  (setq end-bounds (nthcdr todo-idx end-bounds))
+                  (setcar end-bounds prompt-end)
+                  (gptel-org--debug "hybrid-context: after truncation start-bounds=%S end-bounds=%S"
+                                    start-bounds end-bounds))))
             (gptel--with-buffer-copy org-buf nil nil
               (cl-loop for start in start-bounds
                        for end in end-bounds
@@ -1212,6 +1231,22 @@ ARGS are the original function call arguments."
   (when (org-at-heading-p)
     (let ((todo (org-get-todo-state)))
       (and todo (member todo gptel-org-todo-keywords)))))
+
+(defun gptel-org--find-todo-in-lineage (start-bounds)
+  "Find the innermost TODO heading in the lineage START-BOUNDS.
+
+START-BOUNDS is an ordered list of heading positions (innermost-first)
+as produced by `gptel-org--element-lineage-map'.
+
+Returns the zero-based index of the first position where the heading
+has a TODO keyword from `gptel-org-todo-keywords', or nil if no TODO
+heading is found in the lineage."
+  (cl-loop for pos in start-bounds
+           for idx from 0
+           when (save-excursion
+                  (goto-char pos)
+                  (gptel-org--heading-has-todo-keyword-p))
+           return idx))
 
 (defun gptel-org--find-model-in-tags (tags &optional skip-tag)
   "Find a model specification in TAGS.
