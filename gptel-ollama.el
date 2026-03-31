@@ -320,6 +320,7 @@ Media files, if present, are placed in `gptel-context'."
 ;;;###autoload
 (cl-defun gptel-make-ollama
     (name &key curl-args header key models stream request-params
+          concurrency-limit
           (host "localhost:11434")
           (protocol "http")
           (endpoint "/api/chat"))
@@ -374,6 +375,12 @@ parameters (as plist keys) and values supported by the API.  Use
 these to set parameters that gptel does not provide user options
 for.
 
+CONCURRENCY-LIMIT (optional) is the maximum number of simultaneous
+requests allowed to this backend's host.  When the limit is reached,
+additional requests are queued and dispatched as earlier ones complete.
+This is useful for local LLM servers like Ollama where concurrent
+requests cause expensive model switching.  nil means unlimited.
+
 Example:
 -------
 
@@ -394,6 +401,7 @@ Example:
                   :endpoint endpoint
                   :stream stream
                   :request-params request-params
+                  :concurrency-limit concurrency-limit
                   :url (if protocol
                            (concat protocol "://" host endpoint)
                          (concat host endpoint)))))
