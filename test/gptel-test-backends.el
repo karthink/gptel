@@ -16,7 +16,12 @@
 
 (defvar gptel-test-backends
   `((openai    . ,(gptel--make-openai
-                   :name "OpenAI" :models '(gpt-4o-mini)))
+                   :name "OpenAI"
+                   :models (gptel--process-models
+                            '((gpt-4o-mini
+                               :capabilities (media tool-use json url)
+                               :mime-types ("image/jpeg" "image/png"
+                                            "image/gif" "image/webp"))))))
     (anthropic . ,(gptel--make-anthropic
                    :name "Claude" :models '(claude-3-5-sonnet-20240620)))
     (gemini    . ,(gptel--make-gemini
