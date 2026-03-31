@@ -2755,6 +2755,15 @@ two arguments, the symbol being set and the value to set it to.  It
 defaults to `set', and can be set to a different function to (for
 example) apply the preset buffer-locally."
   (unless setter (setq setter #'set))
+  (when gptel-log-level
+    (gptel--log
+     (format "apply-preset: preset=%s type=%s setter=%s"
+             (if (memq (type-of preset) '(string symbol))
+                 preset
+               (format "<plist keys: %s>"
+                       (cl-loop for (k _v) on preset by #'cddr collect k)))
+             (type-of preset) setter)
+     "preset-debug" t))
   (when (memq (type-of preset) '(string symbol))
     (let ((spec (or (gptel-get-preset preset)
                     (user-error "gptel preset \"%s\": Cannot find preset"

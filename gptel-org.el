@@ -1136,6 +1136,14 @@ ARGS are the original function call arguments."
                                 (gptel--model-name gptel-model)))
             (when org-preset
               (gptel-org--debug "Applied preset from org property: %s" org-preset))
+            (when gptel-log-level
+              (gptel--log
+               (format "send-with-props: gptel--preset=%s backend=%s model=%s (org-preset=%s, buffer-default=%s)"
+                       gptel--preset
+                       (and gptel-backend (gptel-backend-name gptel-backend))
+                       gptel-model org-preset
+                       (default-value 'gptel--preset))
+               "preset-debug" t))
             (apply send-fun args))
         (apply send-fun args)))))
 

@@ -1835,6 +1835,15 @@ injects the results into the prompt data and transitions the FSM."
             (gptel-backend (or (plist-get info :backend) gptel-backend))
             (gptel-model (or (plist-get info :model) gptel-model))
             (pending-calls))
+        (when gptel-log-level
+          (gptel--log
+           (format "Tool exec restore: gptel--preset=%s (info:preset=%s buf-local=%s) backend=%s model=%s"
+                   gptel--preset
+                   (plist-get info :preset)
+                   (buffer-local-value 'gptel--preset (current-buffer))
+                   (and gptel-backend (gptel-backend-name gptel-backend))
+                   gptel-model)
+           "preset-debug" t))
         (mapc                           ; Construct function calls
          (lambda (tool-call)
            (letrec ((args (plist-get tool-call :args))
@@ -2236,6 +2245,13 @@ Initiate the request when done."
         (plist-put info :backend gptel-backend)
         (plist-put info :model gptel-model)
         (plist-put info :preset gptel--preset)
+        (when gptel-log-level
+          (gptel--log
+           (format "FSM info store: :preset=%s :backend=%s :model=%s"
+                   gptel--preset
+                   (and gptel-backend (gptel-backend-name gptel-backend))
+                   gptel-model)
+           "preset-debug" t))
         (when gptel-include-reasoning   ;Required for next-request-only scope
           (plist-put info :include-reasoning gptel-include-reasoning))
         (when (and gptel-use-tools gptel-tools)
