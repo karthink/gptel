@@ -697,6 +697,12 @@ line by themselves, separated from surrounding text."
 Each entry has the form (PROCESS . (FSM ABORT-CLOSURE))
 If the ABORT-CLOSURE is called, it must abort the PROCESS.")
 
+
+(defvar gptel--host-request-queue (make-hash-table :test #'equal)
+  "Hash table mapping host strings to queued FSMs.
+When a backend has a `concurrency-limit', requests exceeding the limit
+are queued here and dispatched when earlier requests complete.
+Keys are host strings, values are lists of FSMs (FIFO order).")
 (defvar gptel--request-params nil
   "Extra parameters sent with each gptel request.
 
@@ -855,7 +861,9 @@ Throw an error if there is no match."
   endpoint key models url request-params
   curl-args
   (coding-system
-   nil :documentation "Can be set to `binary' if the backend expects non UTF-8 output."))
+   nil :documentation "Can be set to `binary' if the backend expects non UTF-8 output.")
+  (concurrency-limit
+   nil :documentation "Max concurrent requests to this backend's host. nil means unlimited."))
 
 ;;;; Misc utilities
 (defun gptel-api-key-from-auth-source (&optional host user)
@@ -1773,15 +1781,62 @@ MACHINE is an instance of `gptel-fsm'"
 ;; The next few functions are default state handlers for gptel's state machine,
 ;; see `gptel-request--handlers'.
 
+
+(defun gptel--host-active-count (host)
+  "Count active requests for HOST in `gptel--request-alist'."
+  (let ((count 0))
+    (dolist (entry gptel--request-alist count)
+      (let* ((fsm (cadr entry))
+             (info (gptel-fsm-info fsm))
+             (backend (plist-get info :backend)))
+        (when (and backend (equal (gptel-backend-host backend) host))
+          (cl-incf count))))))
+
+(defun gptel--host-queue-dispatch (host)
+  "Dispatch the next queued FSM for HOST, if under concurrency limit.
+This should be called whenever a request for HOST completes."
+  (when-let* ((queue (gethash host gptel--host-request-queue))
+              (next-fsm (car queue)))
+    ;; Check if we're now under the limit
+    (let* ((info (gptel-fsm-info next-fsm))
+           (backend (plist-get info :backend))
+           (limit (and backend (gptel-backend-concurrency-limit backend))))
+      (when (or (null limit) (< (gptel--host-active-count host) limit))
+        ;; Remove from queue
+        (puthash host (cdr queue) gptel--host-request-queue)
+        (when (null (gethash host gptel--host-request-queue))
+          (remhash host gptel--host-request-queue))
+        ;; Actually fire the request
+        (gptel--handle-wait--dispatch next-fsm)))))
+
 (defun gptel--handle-wait (fsm)
-  "Fire the request contained in state machine FSM's info."
+  "Fire the request contained in state machine FSM's info.
+
+If the backend has a `concurrency-limit' and the host already has that
+many active requests, queue this FSM for later dispatch."
   ;; Reset some flags in info.  This is necessary when reusing fsm's context for
   ;; a second network request: gptel tests for the presence of these flags to
   ;; handle state transitions.  (NOTE: Don't add :uuid to this.)
-  (let ((info (gptel-fsm-info fsm)))
+  (let* ((info (gptel-fsm-info fsm))
+         (backend (plist-get info :backend))
+         (host (and backend (gptel-backend-host backend)))
+         (limit (and backend (gptel-backend-concurrency-limit backend))))
     (dolist (key '(:tool-result :tool-use :error :http-status :reasoning))
       (when (plist-get info key)
-        (plist-put info key nil))))
+        (plist-put info key nil)))
+    (if (and limit host (>= (gptel--host-active-count host) limit))
+        ;; Over the limit: queue the FSM
+        (let ((queue (gethash host gptel--host-request-queue)))
+          (puthash host (append queue (list fsm)) gptel--host-request-queue)
+          (message "gptel: request queued for %s (%d active, limit %d)"
+                   host (gptel--host-active-count host) limit))
+      ;; Under the limit (or no limit): fire immediately
+      (gptel--handle-wait--dispatch fsm))))
+
+(defun gptel--handle-wait--dispatch (fsm)
+  "Actually dispatch the HTTP request for FSM.
+This is the inner dispatch, called by `gptel--handle-wait' when the
+request is allowed to proceed (not queued)."
   (funcall
    (if gptel-use-curl
        #'gptel-curl-get-response
@@ -2299,9 +2354,18 @@ BUF defaults to the current buffer."
             (funcall cb 'abort info)))
         (funcall abort-fn)
         (gptel--fsm-transition fsm 'ABRT)))
-    ;; Remove all aborted entries from the alist
-    (dolist (proc found)
-      (setf (alist-get proc gptel--request-alist nil 'remove) nil))
+    ;; Remove all aborted entries from the alist and drain queues
+    (let (hosts-to-drain)
+      (dolist (proc found)
+        (when-let* ((entry (alist-get proc gptel--request-alist))
+                    (fsm (car entry))
+                    (info (gptel-fsm-info fsm))
+                    (backend (plist-get info :backend))
+                    (host (gptel-backend-host backend)))
+          (cl-pushnew host hosts-to-drain :test #'equal))
+        (setf (alist-get proc gptel--request-alist nil 'remove) nil))
+      (dolist (host hosts-to-drain)
+        (gptel--host-queue-dispatch host)))
     (when found
       (message "Stopped %d gptel request(s) in buffer %S"
                (length found) (buffer-name buf)))))
@@ -2622,7 +2686,10 @@ the response is inserted into the current buffer after point."
                                (with-demoted-errors "gptel callback error: %S"
                                  (funcall callback response info)))
                              (gptel--fsm-transition fsm) ;TYPE -> next
-                             (setf (alist-get buf gptel--request-alist nil 'remove) nil)
+                             (let ((host (and-let* ((backend (plist-get info :backend)))
+                                           (gptel-backend-host backend))))
+                               (setf (alist-get buf gptel--request-alist nil 'remove) nil)
+                               (when host (gptel--host-queue-dispatch host)))
                              (kill-buffer buf)))
                          nil t nil)))
       ;; TODO: Add transformer here.
@@ -2893,7 +2960,12 @@ PROCESS and _STATUS are process parameters."
         (with-demoted-errors "gptel callback error: %S"
           (funcall (plist-get info :callback) nil info))))
       (gptel--fsm-transition fsm))      ; Move to next state
-    (setf (alist-get process gptel--request-alist nil 'remove) nil)
+    (let ((host (and-let* ((fsm-entry (car (alist-get process gptel--request-alist)))
+                           (info (gptel-fsm-info fsm-entry))
+                           (backend (plist-get info :backend)))
+                  (gptel-backend-host backend))))
+      (setf (alist-get process gptel--request-alist nil 'remove) nil)
+      (when host (gptel--host-queue-dispatch host)))
     (kill-buffer proc-buf)))
 
 (defun gptel-curl--stream-filter (process output)
@@ -3041,7 +3113,12 @@ PROCESS and _STATUS are process parameters."
           (with-demoted-errors "gptel callback error: %S"
             (funcall proc-callback nil proc-info))))
       (gptel--fsm-transition fsm))      ;TYPE -> next
-    (setf (alist-get process gptel--request-alist nil 'remove) nil)
+    (let ((host (and-let* ((fsm-entry (car (alist-get process gptel--request-alist)))
+                           (info (gptel-fsm-info fsm-entry))
+                           (backend (plist-get info :backend)))
+                  (gptel-backend-host backend))))
+      (setf (alist-get process gptel--request-alist nil 'remove) nil)
+      (when host (gptel--host-queue-dispatch host)))
     (kill-buffer proc-buf)))
 
 (defun gptel-curl--parse-response (proc-info)
