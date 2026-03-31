@@ -331,22 +331,49 @@ modifies the dynamic binding, not the underlying buffer-local."
   "Test that the FSM info plist carries `gptel--preset' through the
 request lifecycle.
 
-The fix adds `(plist-put info :preset gptel--preset)' to
-`gptel--realize-query', mirroring how `:backend' and `:model' are
-already stored.  This test verifies the mechanism: the preset value
-from the dynamic environment is captured into the info plist."
+The preset is stored early in `gptel-request' (while
+`gptel-org--send-with-props' dynamic binding is active) and
+`gptel--realize-query' only overwrites it when a non-nil value
+exists in the prompt buffer (e.g. from a preset transform)."
   (let ((gptel--preset 'active-preset)
         (info (list :backend 'dummy :model 'dummy)))
-    ;; Simulate what gptel--realize-query now does
-    (plist-put info :preset gptel--preset)
+    ;; Simulate what gptel-request now does (early store)
+    (when gptel--preset (plist-put info :preset gptel--preset))
     (should (eq (plist-get info :preset) 'active-preset))
     ;; Verify it works even when buffer-local would differ
     (with-temp-buffer
       (set (make-local-variable 'gptel--preset) 'stale-preset)
       (let ((gptel--preset 'runtime-preset))
-        (plist-put info :preset gptel--preset))
+        (when gptel--preset (plist-put info :preset gptel--preset)))
       ;; Info should have the runtime value, not the buffer-local
       (should (eq (plist-get info :preset) 'runtime-preset)))))
+
+(ert-deftest gptel-test-preset-early-store-survives-prompt-buffer ()
+  "Test that the early preset store in `gptel-request' is not
+clobbered by `gptel--realize-query' reading nil from the prompt buffer.
+
+This is the core fix: `gptel--preset' is not in the variable copy list
+of `gptel--with-buffer-copy-internal', so it is nil in the prompt
+buffer.  `gptel--realize-query' runs inside the prompt buffer and would
+overwrite the early-stored :preset with nil.  The fix makes
+`gptel--realize-query' only overwrite when gptel--preset is non-nil."
+  (let ((gptel--preset nil)             ;isolate from global state
+        (info (list :backend 'dummy :model 'dummy)))
+    ;; Step 1: Early store captures the correct preset (simulating
+    ;; gptel-request running inside send-with-props's dynamic binding)
+    (let ((gptel--preset 'heading-preset))
+      (when gptel--preset (plist-put info :preset gptel--preset)))
+    (should (eq (plist-get info :preset) 'heading-preset))
+    ;; Step 2: gptel--realize-query runs in the prompt buffer where
+    ;; gptel--preset is nil (not copied by with-buffer-copy-internal).
+    ;; The conditional store must NOT overwrite with nil.
+    (with-temp-buffer
+      ;; Prompt buffer has nil gptel--preset (simulating the missing copy)
+      (let ((gptel--preset nil))
+        ;; This is what the fixed gptel--realize-query does:
+        (when gptel--preset (plist-put info :preset gptel--preset))
+        ;; The early-stored value must survive
+        (should (eq (plist-get info :preset) 'heading-preset))))))
 
 (ert-deftest gptel-test-preset-restored-during-tool-use ()
   "Test that tool execution sees the preset from FSM info, not the

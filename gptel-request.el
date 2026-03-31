@@ -2154,6 +2154,13 @@ be used to rerun or continue the request at a later time."
     (when in-place (plist-put info :in-place in-place))
     ;; Add info to state machine context
     (when dry-run (plist-put info :dry-run dry-run))
+    ;; Store preset early, while gptel-org--send-with-props's dynamic
+    ;; binding is still active.  gptel--realize-query runs inside the
+    ;; prompt buffer where gptel--preset is nil (not in the copy list of
+    ;; gptel--with-buffer-copy-internal), so the dynamic binding from
+    ;; send-with-props gets shadowed by the buffer-local nil.  Capturing
+    ;; here ensures the heading-specific preset survives into FSM info.
+    (when gptel--preset (plist-put info :preset gptel--preset))
     (setf (gptel-fsm-info fsm) info))
 
   ;; TEMP: Augment in separate let block for now.  Are we overcapturing?
@@ -2244,11 +2251,16 @@ Initiate the request when done."
         (unless stream (cl-remf info :stream))
         (plist-put info :backend gptel-backend)
         (plist-put info :model gptel-model)
-        (plist-put info :preset gptel--preset)
+        ;; Only overwrite :preset if the prompt buffer has a non-nil
+        ;; value (e.g. set by gptel--transform-apply-preset).  The
+        ;; early store in gptel-request already captured the correct
+        ;; heading-specific preset from the dynamic binding; do not
+        ;; clobber it with the prompt buffer's nil.
+        (when gptel--preset (plist-put info :preset gptel--preset))
         (when gptel-log-level
           (gptel--log
            (format "FSM info store: :preset=%s :backend=%s :model=%s"
-                   gptel--preset
+                   (plist-get info :preset)
                    (and gptel-backend (gptel-backend-name gptel-backend))
                    gptel-model)
            "preset-debug" t))
