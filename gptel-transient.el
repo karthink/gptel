@@ -59,17 +59,18 @@ If SCOPE is 1, reset it after the next gptel request.  (oneshot)
 Otherwise, clear any buffer-local value and set its default
 global value."
   (pcase scope
-    (1 (put sym 'gptel-history (symbol-value sym))
-       (set sym value)
-       (letrec ((restore-value
-                 (lambda ()
-                   (remove-hook 'gptel-post-request-hook restore-value)
-                   (run-at-time         ; Required to work around let bindings
-                    0 nil (lambda (s)        ; otherwise this change is overwritten!
-                            (set s (get s 'gptel-history))
-                            (put s 'gptel-history nil))
-                    sym))))
-         (add-hook 'gptel-post-request-hook restore-value)))
+    (1 (unless (get sym 'gptel-history)
+         (put sym 'gptel-history (symbol-value sym))
+         (letrec ((restore-value
+                   (lambda ()
+                     (remove-hook 'gptel-post-request-hook restore-value)
+                     (run-at-time         ; Required to work around let bindings
+                      0 nil (lambda (s)        ; otherwise this change is overwritten!
+                              (set s (get s 'gptel-history))
+                              (put s 'gptel-history nil))
+                      sym))))
+           (add-hook 'gptel-post-request-hook restore-value)))
+       (set sym value))
     ('t (set (make-local-variable sym) value))
     (_ (kill-local-variable sym)
        (set sym value))))
