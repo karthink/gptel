@@ -791,7 +791,16 @@ context."
                 (when (> todo-idx 0)
                   (setq start-bounds (nthcdr todo-idx start-bounds))
                   (setq end-bounds (nthcdr todo-idx end-bounds))
+                  ;; TODO subtree: include full content up to cursor
                   (setcar end-bounds prompt-end)
+                  ;; Ancestors above TODO: restrict to heading line only
+                  ;; (branching context = heading lines, no body text)
+                  (cl-loop for tail on (cdr start-bounds)
+                           for etail on (cdr end-bounds)
+                           do (setcar etail
+                                      (save-excursion
+                                        (goto-char (car tail))
+                                        (line-end-position))))
                   (gptel-org--debug "hybrid-context: after truncation start-bounds=%S end-bounds=%S"
                                     start-bounds end-bounds))))
             (gptel--with-buffer-copy org-buf nil nil
