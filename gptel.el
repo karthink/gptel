@@ -2572,15 +2572,18 @@ two arguments, the symbol being set and the value to set it to.  It
 defaults to `set', and can be set to a different function to (for
 example) apply the preset buffer-locally."
   (unless setter (setq setter #'set))
-  (when (memq (type-of preset) '(string symbol))
-    (let ((spec (or (gptel-get-preset preset)
-                    (user-error "gptel preset \"%s\": Cannot find preset"
-                                preset))))
-      (funcall setter 'gptel--preset preset)
-      (setq preset spec)))
-  (when-let* ((func (plist-get preset :pre))) (funcall func))
-  (when-let* ((parents (plist-get preset :parents)))
-    (mapc (lambda (parent) (gptel--apply-preset parent setter)) (ensure-list parents)))
+  (cl-flet ((get-preset (preset)
+              (or (gptel-get-preset preset)
+                  (user-error "gptel preset \"%s\": Cannot find preset"
+                              preset))))
+    (when (memq (type-of preset) '(string symbol))
+      (let ((spec (get-preset preset)))
+        (funcall setter 'gptel--preset preset)
+        (setq preset spec)))
+    (when-let* ((func (plist-get preset :pre))) (funcall func))
+    (when-let* ((parents (plist-get preset :parents)))
+      (mapc (lambda (parent) (gptel--apply-preset (get-preset parent) setter))
+            (ensure-list parents))))
   (map-do
    (lambda (key val)
      (pcase key
