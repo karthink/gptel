@@ -225,15 +225,10 @@ Mutate state INFO with response metadata."
   (let ((prompts-plist
          (list :model (gptel--model-name gptel-model)
                :messages (vconcat prompts)
-               :stream (or gptel-stream :json-false)))
-        (reasoning-model-p ; TODO: Embed this capability in the model's properties
-         (memq gptel-model '(o1 o1-preview o1-mini o3-mini o3 o4-mini
-                                gpt-5 gpt-5-mini gpt-5-nano gpt-5.1 gpt-5.2
-                                gpt-5.3-chat-latest gpt-5.4 gpt-5.4-mini
-                                gpt-5.4-nano))))
+               :stream (or gptel-stream :json-false))))
     (when gptel-stream
       (plist-put prompts-plist :stream_options '(:include_usage t)))
-    (when (and gptel-temperature (not reasoning-model-p))
+    (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-use-tools
       (when (eq gptel-use-tools 'force)
@@ -241,14 +236,11 @@ Mutate state INFO with response metadata."
       (when gptel-tools
         (plist-put prompts-plist :tools
                    (gptel--parse-tools backend gptel-tools))
-        (unless reasoning-model-p
-          (plist-put prompts-plist :parallel_tool_calls t))))
+        (plist-put prompts-plist :parallel_tool_calls t)))
     (when gptel-max-tokens
       ;; HACK: The OpenAI API has deprecated max_tokens, but we still need it
       ;; for OpenAI-compatible APIs like GPT4All (#485)
-      (plist-put prompts-plist
-                 (if reasoning-model-p :max_completion_tokens :max_tokens)
-                 gptel-max-tokens))
+      (plist-put prompts-plist :max_tokens gptel-max-tokens))
     (when gptel--schema
       (plist-put prompts-plist
                  :response_format (gptel--parse-schema backend gptel--schema)))
