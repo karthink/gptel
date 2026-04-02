@@ -1825,6 +1825,30 @@ since those buffers don't have the proper org heading structure."
 
 ;;; Response heading adjustment for subtree context
 
+(defun gptel-org--find-matching-block-end (block-type)
+  "Find the matching #+end for a #+begin block of BLOCK-TYPE.
+Handles nested blocks of the same type by counting nesting depth.
+Point should be on the line after #+begin.  Returns the position of
+the #+end line beginning, or nil if no match found.
+Point is moved to after the #+end line on success."
+  (let ((depth 1)
+        (begin-re (format "^[ \t]*#\\+begin_%s\\(?:[ \t]\\|$\\)" block-type))
+        (end-re (format "^[ \t]*#\\+end_%s[ \t]*$" block-type))
+        ;; Combined regex matches either begin or end
+        (combined-re (format "^[ \t]*#\\+\\(begin_%s\\(?:[ \t]\\|$\\)\\|end_%s[ \t]*$\\)"
+                             block-type block-type)))
+    (while (and (> depth 0)
+                (re-search-forward combined-re nil t))
+      (beginning-of-line)
+      (cond
+       ((looking-at-p begin-re) (cl-incf depth))
+       ((looking-at-p end-re) (cl-decf depth)))
+      (end-of-line))
+    (when (= depth 0)
+      (beginning-of-line)
+      (prog1 (point)
+        (end-of-line)))))
+
 (defun gptel-org--escape-example-blocks (beg end)
   "Prefix lines in example blocks with comma between BEG and END.
 
@@ -1835,30 +1859,49 @@ accessing the block contents.
 
 Lines already escaped (starting with `,*' or `,#+') are left unchanged.
 
+Handles nested example/src blocks correctly: the content of the
+outermost block is processed in a temporary buffer (similar to
+`org-edit-special'), where all special lines are escaped.  Nested
+block delimiters (#+begin/#+end) within the outer block are also
+escaped to prevent org from interpreting them as block structure.
+
 This should be called before `gptel-org--adjust-response-headings'
 so that headings inside examples are not modified."
   (save-excursion
     (save-restriction
       (narrow-to-region beg end)
       (goto-char (point-min))
-      ;; Find each example/src block and escape special lines within
+      ;; Find each top-level example/src block
       (while (re-search-forward
               "^[ \t]*#\\+begin_\\(example\\|src\\)\\(?:[ \t]\\|$\\)" nil t)
-        (let ((block-start (line-beginning-position 2)) ; line after #+begin
-              (block-end nil))
-          ;; Find the matching #+end
-          (when (re-search-forward
-                 "^[ \t]*#\\+end_\\(example\\|src\\)[ \t]*$" nil t)
-            (setq block-end (line-beginning-position))
-            ;; Escape lines within the block
-            (save-restriction
-              (narrow-to-region block-start block-end)
-              (goto-char (point-min))
-              (while (not (eobp))
-                ;; Only escape lines starting with * or #+, NOT already-escaped ,* or ,#+
-                (when (looking-at "^\\(\\*\\|#\\+\\)")
-                  (insert ","))
-                (forward-line 1)))))))))
+        (let* ((block-type (match-string 1))
+               (block-start (line-beginning-position 2)) ; line after #+begin
+               (block-end nil))
+          ;; Find the matching #+end, handling nesting
+          (setq block-end (gptel-org--find-matching-block-end block-type))
+          (when block-end
+            ;; Process the block content in a temporary buffer to
+            ;; handle escaping cleanly, similar to org-edit-special.
+            ;; This avoids issues with nested blocks where inner
+            ;; #+begin/#+end markers could confuse simple regex scanning.
+            (let* ((block-content (buffer-substring block-start block-end))
+                   (escaped-content
+                    (with-temp-buffer
+                      (insert block-content)
+                      (goto-char (point-min))
+                      (while (not (eobp))
+                        ;; Escape lines starting with * or #+
+                        ;; but NOT already-escaped ,* or ,#+
+                        (when (looking-at "^\\(\\*\\|#\\+\\)")
+                          (insert ","))
+                        (forward-line 1))
+                      (buffer-string))))
+              ;; Replace the original block content with escaped version
+              (unless (string= block-content escaped-content)
+                (delete-region block-start block-end)
+                (goto-char block-start)
+                (insert escaped-content)))))))))
+
 
 (defun gptel-org--in-example-block-p ()
   "Return non-nil if point is inside an example or src block."
@@ -1877,11 +1920,26 @@ so that headings inside examples are not modified."
               (setq in-block t)))))
       in-block)))
 
+(defun gptel-org--in-agent-indirect-buffer-p ()
+  "Return non-nil if the current buffer is an agent indirect buffer.
+An agent indirect buffer is an indirect buffer whose first heading
+has a tag matching the `*@agent' pattern."
+  (and (buffer-base-buffer (current-buffer))
+       (derived-mode-p 'org-mode)
+       (save-excursion
+         (goto-char (point-min))
+         (and (org-at-heading-p)
+              (cl-some (lambda (tag)
+                         (and (stringp tag)
+                              (string-suffix-p "@agent" tag)))
+                       (org-get-tags nil t))))))
+
 (defun gptel-org--adjust-response-headings (beg end)
   "Adjust heading levels in the response region from BEG to END.
 
-When `gptel-org-subtree-context' is enabled, any org headings in
-the AI response should be demoted to be children of the @assistant
+When `gptel-org-subtree-context' is enabled or we are in an agent
+indirect buffer (`gptel-org-agent-subtrees'), any org headings in
+the AI response should be demoted to be children of the preceding
 heading.  This prevents response headings from escaping the
 assistant subtree and breaking the conversation structure.
 
@@ -1890,18 +1948,28 @@ prefixed with comma per Org manual requirements.  Then headings
 outside of example blocks are adjusted.
 
 For example, if the @assistant heading is at level 4 (****), any
-headings in the response should be at level 5 or deeper."
-  (when (and gptel-org-subtree-context
-             (derived-mode-p 'org-mode))
+headings in the response should be at level 5 or deeper.
+
+In agent indirect buffers, the reference level is determined by
+searching backward from BEG for the nearest heading.  If no heading
+is found before BEG, the first heading in the narrowed buffer is
+used as the top-level reference, and response headings are demoted
+to be children of it."
+  (when (and (derived-mode-p 'org-mode)
+             (or gptel-org-subtree-context
+                 (gptel-org--in-agent-indirect-buffer-p)))
     ;; First: escape special lines in example blocks
     (gptel-org--escape-example-blocks beg end)
     (save-excursion
-      ;; Find the @assistant heading level.
+      ;; Find the reference heading level.
       ;; Search backward from beg for the nearest heading — this should
       ;; be the @assistant heading that precedes the response content.
       ;; In indirect buffers (agent subtrees), search respects narrowing
-      ;; so the @assistant heading must be within the narrowed region.
-      (let ((assistant-level
+      ;; so the heading must be within the narrowed region.
+      ;; If no heading is found before beg, use the first heading in
+      ;; the buffer as the top-level reference (relevant for agent
+      ;; indirect buffers where the agent heading is the first heading).
+      (let ((reference-level
              (save-excursion
                (goto-char beg)
                (if (re-search-backward org-outline-regexp-bol nil t)
@@ -1910,15 +1978,26 @@ headings in the response should be at level 5 or deeper."
                       "adjust-headings: found heading at level %d, line %d"
                       level (line-number-at-pos))
                      level)
-                 (gptel-org--debug
-                  "adjust-headings: no heading found before beg=%d, using level 1"
-                  beg)
-                 1)))
+                 ;; No heading before beg — check the first heading
+                 ;; in the buffer (for agent indirect buffers where
+                 ;; the agent heading is at point-min).
+                 (goto-char (point-min))
+                 (if (re-search-forward org-outline-regexp-bol beg t)
+                     (let ((level (org-outline-level)))
+                       (gptel-org--debug
+                        "adjust-headings: using first heading at level %d as reference"
+                        level)
+                       level)
+                   (gptel-org--debug
+                    "adjust-headings: no heading found before beg=%d, using level 1"
+                    beg)
+                   1))))
             (min-response-level nil))
         (gptel-org--debug
-         "adjust-headings: beg=%d end=%d assistant-level=%d buffer=%S narrowed=%s"
-         beg end assistant-level (buffer-name)
-         (if (buffer-narrowed-p) "yes" "no"))
+         "adjust-headings: beg=%d end=%d reference-level=%d buffer=%S narrowed=%s agent-indirect=%s"
+         beg end reference-level (buffer-name)
+         (if (buffer-narrowed-p) "yes" "no")
+         (if (gptel-org--in-agent-indirect-buffer-p) "yes" "no"))
         (save-restriction
           (narrow-to-region beg end)
           ;; First pass: find the minimum heading level in the response
@@ -1935,9 +2014,9 @@ headings in the response should be at level 5 or deeper."
            min-response-level)
           ;; Second pass: adjust headings if needed
           (when (and min-response-level
-                     (<= min-response-level assistant-level))
-            ;; Need to demote all headings by (assistant-level - min-response-level + 1)
-            (let ((level-diff (- (1+ assistant-level) min-response-level)))
+                     (<= min-response-level reference-level))
+            ;; Need to demote all headings by (reference-level - min-response-level + 1)
+            (let ((level-diff (- (1+ reference-level) min-response-level)))
               (gptel-org--debug
                "adjust-headings: demoting by %d levels" level-diff)
               (goto-char (point-min))

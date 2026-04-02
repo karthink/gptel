@@ -330,6 +330,190 @@ Disables `gptel-org-infer-bounds-from-tags' to test marker-based behavior."
        ;; Content should be unchanged
        (should (string= original (buffer-substring beg end)))))))
 
+;;; Tests for heading adjustment in agent indirect buffers
+
+(defmacro gptel-org-test-with-agent-indirect-buffer (content beg-marker &rest body)
+  "Create an agent indirect buffer simulating the agent subtree scenario.
+CONTENT is the full org content for the base buffer.  BEG-MARKER is a
+string to search for to position BEG (the start of AI response).
+The indirect buffer is narrowed to include all content from the
+:main@agent: heading to the end of the buffer, simulating how the
+real agent indirect buffer auto-expands its narrowing via a marker
+with insertion-type t as the AI streams text.
+BODY receives `beg' bound to the position of BEG-MARKER."
+  (declare (indent 2))
+  `(let ((org-inhibit-startup t)
+         (gptel-org-subtree-context nil)
+         (gptel-org-agent-subtrees t)
+         (gptel-org-chat-heading-markers '("@user" "@assistant")))
+     (with-temp-buffer
+       (delay-mode-hooks (org-mode))
+       (insert ,content)
+       ;; Find the :main@agent: heading
+       (goto-char (point-min))
+       (let ((agent-start nil))
+         (when (re-search-forward "^\\(\\*+\\) .*:main@agent:" nil t)
+           (beginning-of-line)
+           (setq agent-start (point)))
+         (should agent-start)
+         ;; Create indirect buffer narrowed from agent heading to end
+         ;; of buffer.  This simulates the real scenario where the
+         ;; narrowing end-marker has insertion-type t and expands as
+         ;; the AI streams incorrectly-leveled headings into the buffer.
+         (let* ((indirect-buf (make-indirect-buffer (current-buffer)
+                                                     " *gptel-test-agent*" t)))
+           (with-current-buffer indirect-buf
+             (delay-mode-hooks (org-mode))
+             (narrow-to-region agent-start (point-max))
+             ;; Find beg marker
+             (goto-char (point-min))
+             (search-forward ,beg-marker)
+             (beginning-of-line)
+             (let ((beg (point)))
+               ,@body))
+           (kill-buffer indirect-buf))))))
+
+(ert-deftest gptel-org-subtree-test-adjust-headings-agent-indirect-basic ()
+  "Test heading demotion in agent indirect buffer.
+AI response with top-level headings should be demoted to be children
+of the @assistant heading in the agent subtree."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** TODO Task 1\n*** :main@agent:                                       :main@agent:\n**** @user\nDo task 1\n**** @assistant\n* Summary\n** Phase 1\n** Phase 2\n*** Detail\n"
+   "* Summary"
+   (let ((end (point-max)))
+     (gptel-org--adjust-response-headings beg end)
+     (goto-char beg)
+     ;; @assistant is at level 4, so * Summary (level 1) should become ***** Summary (level 5)
+     ;; level-diff = (4 + 1) - 1 = 4
+     (should (looking-at "\\*\\*\\*\\*\\* Summary"))
+     (search-forward "Phase 1")
+     (beginning-of-line)
+     ;; ** Phase 1 -> ****** Phase 1
+     (should (looking-at "\\*\\*\\*\\*\\*\\* Phase 1"))
+     (search-forward "Detail")
+     (beginning-of-line)
+     ;; *** Detail -> ******* Detail
+     (should (looking-at "\\*\\*\\*\\*\\*\\*\\* Detail")))))
+
+(ert-deftest gptel-org-subtree-test-adjust-headings-agent-indirect-no-subtree-context ()
+  "Test that agent indirect buffer heading fix works without gptel-org-subtree-context.
+The fix should trigger based on being in an agent indirect buffer,
+even when gptel-org-subtree-context is nil."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** TODO Task 1\n*** :main@agent:                                       :main@agent:\n**** @assistant\n* Summary\nContent\n"
+   "* Summary"
+   (let ((end (point-max)))
+     ;; gptel-org-subtree-context is nil (set in the macro)
+     (should (not gptel-org-subtree-context))
+     (gptel-org--adjust-response-headings beg end)
+     (goto-char beg)
+     ;; Should still be demoted because we're in an agent indirect buffer
+     (should (looking-at "\\*\\*\\*\\*\\* Summary")))))
+
+(ert-deftest gptel-org-subtree-test-adjust-headings-agent-indirect-correct-level ()
+  "Test heading levels are correct when response is already at child level."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** TODO Task 1\n*** :main@agent:                                       :main@agent:\n**** @assistant\n***** Already correct\nContent\n"
+   "***** Already"
+   (let ((end (point-max)))
+     (gptel-org--adjust-response-headings beg end)
+     (goto-char beg)
+     ;; Already at level 5 (child of level-4 @assistant), should stay
+     (should (looking-at "\\*\\*\\*\\*\\* Already correct")))))
+
+(ert-deftest gptel-org-subtree-test-adjust-headings-agent-indirect-example-blocks ()
+  "Test that headings inside example blocks are not modified in agent indirect buffers."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** TODO Task 1\n*** :main@agent:                                       :main@agent:\n**** @assistant\n* Summary\n#+begin_example\n* Not a heading\n#+end_example\n"
+   "* Summary"
+   (let ((end (point-max)))
+     (gptel-org--adjust-response-headings beg end)
+     (goto-char beg)
+     ;; * Summary should be demoted
+     (should (looking-at "\\*\\*\\*\\*\\* Summary"))
+     ;; * inside example should be escaped with comma, not demoted
+     (search-forward "begin_example")
+     (forward-line 1)
+     (should (looking-at ",\\* Not a heading")))))
+
+(ert-deftest gptel-org-subtree-test-in-agent-indirect-buffer-p ()
+  "Test gptel-org--in-agent-indirect-buffer-p detection."
+  ;; Not in an indirect buffer
+  (let ((org-inhibit-startup t))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* Heading\n")
+      (should (not (gptel-org--in-agent-indirect-buffer-p)))))
+  ;; In an agent indirect buffer
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** TODO Task\n*** :main@agent:                                       :main@agent:\n**** @assistant\nContent\n"
+   "Content"
+   (should (gptel-org--in-agent-indirect-buffer-p))))
+
+;;; Tests for nested example block escaping
+
+(ert-deftest gptel-org-subtree-test-escape-nested-example-blocks ()
+  "Test that nested example blocks are properly escaped."
+  (gptel-org-test-with-buffer
+   "* Task\n** @assistant\n"
+   (goto-char (point-max))
+   (let ((beg (point)))
+     (insert "Here's an example:\n#+begin_example\n* Outer heading\n#+begin_example\n* Inner heading\n#+end_example\nMore content\n* Another outer heading\n#+end_example\n")
+     (let ((end (point)))
+       (gptel-org--escape-example-blocks beg end)
+       (goto-char beg)
+       (search-forward "#+begin_example" nil t)
+       (forward-line 1)
+       ;; * Outer heading should be escaped
+       (should (looking-at ",\\* Outer heading"))
+       (forward-line 1)
+       ;; #+begin_example (nested) should be escaped
+       (should (looking-at ",#\\+begin_example"))
+       (forward-line 1)
+       ;; * Inner heading should be escaped
+       (should (looking-at ",\\* Inner heading"))
+       (forward-line 1)
+       ;; #+end_example (inner) should be escaped
+       (should (looking-at ",#\\+end_example"))
+       (forward-line 1)
+       ;; More content - not special, unchanged
+       (should (looking-at "More content"))
+       (forward-line 1)
+       ;; * Another outer heading should be escaped
+       (should (looking-at ",\\* Another outer heading"))))))
+
+(ert-deftest gptel-org-subtree-test-escape-example-block-already-escaped ()
+  "Test that already-escaped lines are not double-escaped."
+  (gptel-org-test-with-buffer
+   "* Task\n** @assistant\n"
+   (goto-char (point-max))
+   (let ((beg (point)))
+     (insert "#+begin_example\n,* Already escaped\n* Not yet escaped\n#+end_example\n")
+     (let ((end (point)))
+       (gptel-org--escape-example-blocks beg end)
+       (goto-char beg)
+       (search-forward "#+begin_example" nil t)
+       (forward-line 1)
+       ;; ,* should remain as ,* (not become ,,*)
+       (should (looking-at ",\\* Already escaped"))
+       (forward-line 1)
+       ;; * should become ,*
+       (should (looking-at ",\\* Not yet escaped"))))))
+
+(ert-deftest gptel-org-subtree-test-escape-src-blocks ()
+  "Test that src blocks are also escaped."
+  (gptel-org-test-with-buffer
+   "* Task\n** @assistant\n"
+   (goto-char (point-max))
+   (let ((beg (point)))
+     (insert "#+begin_src org\n* Heading in src\n#+end_src\n")
+     (let ((end (point)))
+       (gptel-org--escape-example-blocks beg end)
+       (goto-char beg)
+       (search-forward "#+begin_src" nil t)
+       (forward-line 1)
+       (should (looking-at ",\\* Heading in src"))))))
+
 ;;; Integration tests
 
 (ert-deftest gptel-org-subtree-test-full-workflow ()
