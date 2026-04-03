@@ -597,7 +597,7 @@ Currently supported options are:
           (const :tag "With system message" system)
           (const :tag "With user prompt" user)))
 
-(defcustom gptel-include-reasoning t
+(defcustom gptel-include-reasoning 'ignore
   "How to handle LLM reasoning or \"thinking\" text blocks.
 
 Some LLMs include in their response a \"thinking\" section.  This
@@ -606,10 +606,10 @@ be interesting to you by itself.
 
 Supported options are the symbols
 
-    t       - Include with the response, the default
+    ignore  - Include in the response but ignore on subsequent
+              conversation turns (default)
+    t       - Include in the response
     nil     - Do not include
-    ignore  - Include with the response but ignore on subsequent
-              conversation turns
 
 It can also be a string naming a buffer, in which case the
 reasoning text will be inserted at the end of that buffer."

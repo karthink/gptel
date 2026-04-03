@@ -4,6 +4,12 @@
 
 ** Breaking changes
 
+- gptel's default ChatGPT backend has been removed. ~gptel-backend~ and
+  ~gptel-model~ now default to =nil=, and there are no registered
+  backends out of the box.  However gptel remains usable without
+  configuration: if ~gptel-send~ is called without a backend set, the
+  ChatGPT backend is created on the fly and used.
+
 - ~gptel-track-media~ affects gptel's link handling in all Org and
   Markdown buffers, not just chat buffers that have ~gptel-mode~ turned
   on.  When calling ~gptel-send~ with ~gptel-track-media~ turned on, and
@@ -14,11 +20,12 @@
   (This is actually how gptel has worked since v0.9.9.3, but this change
   in behavior was undocumented.)
 
-- gptel's default ChatGPT backend has been removed. ~gptel-backend~ and
-  ~gptel-model~ now default to =nil=, and there are no registered
-  backends out of the box.  However gptel remains usable without
-  configuration: if ~gptel-send~ is called without a backend set, the
-  ChatGPT backend is created on the fly and used.
+- ~gptel-include-reasoning~ now defaults to =ignore=, meaning that
+  reasoning text in LLM responses will be included in buffers but
+  ignored by ~gptel-send~ on subsequent conversation turns.  The reason
+  for this change is that including the reasoning text as the LLM's
+  response on new conversation turns is not recommeded by LLM APIs.
+  Reasoning text can also fill up the context window.
 
 - The models =gpt-41-copilot=, =gpt-5= and =claude-opus-41= have been
   removed from the default list of GitHub Copilot models.  These models
