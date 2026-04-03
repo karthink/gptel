@@ -27,6 +27,17 @@
   response on new conversation turns is not recommeded by LLM APIs.
   Reasoning text can also fill up the context window.
 
+- ~gptel-make-tool~ now sets the tool's =:include= slot by default.
+  This means that unless =:include nil= is explicitly specified,
+  gptel-tools will default to including their results in the buffer when
+  using ~gptel-send~.  This is recommended for coherent multi-turn
+  conversations involving tool use, as the LLM uses tool results from
+  past turns for context.
+
+  (Tool result inclusion can be controlled globally (or buffer-locally)
+  for all tools via ~gptel-include-tool-results~, whose default value
+  has not been altered.)
+
 - The models =gpt-41-copilot=, =gpt-5= and =claude-opus-41= have been
   removed from the default list of GitHub Copilot models.  These models
   are no longer available in the GitHub Copilot API.
