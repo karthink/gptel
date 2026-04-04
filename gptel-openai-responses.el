@@ -221,15 +221,12 @@ Mutate state INFO with response metadata."
             ;; previous_response_id. Each request contains full context.
             :store :json-false
             :stream ,(or gptel-stream :json-false)))
-        (reasoning-model-p
-         (memq gptel-model '(o1 o1-preview o1-mini o3-mini o3 o4-mini
-                                gpt-5 gpt-5-mini gpt-5-nano gpt-5.1 gpt-5.2
-                                gpt-5.3-chat-latest gpt-5.4))))
+        (o-model-p (memq gptel-model '(o1 o1-preview o1-mini o3-mini o3 o4-mini))))
     ;; System message becomes instructions
     (when gptel--system-message
       (plist-put prompts-plist :instructions gptel--system-message))
     ;; Temperature
-    (when (and gptel-temperature (not reasoning-model-p))
+    (when (and gptel-temperature (not o-model-p))
       (plist-put prompts-plist :temperature gptel-temperature))
     ;; Max tokens
     (when gptel-max-tokens
