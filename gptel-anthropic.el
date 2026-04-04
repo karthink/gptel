@@ -45,13 +45,13 @@
 USAGE is part of the response, INFO is the request plist."
   (when usage
     (let* ((tokens (plist-get info :tokens))
-           (input (+ (plist-get usage :input_tokens)
+           (input (+ (or (plist-get usage :input_tokens) 0)
                      (or (plist-get tokens :input) 0)))
-           (output (+ (plist-get usage :output_tokens)
+           (output (+ (or (plist-get usage :output_tokens) 0)
                       (or (plist-get tokens :output) 0)))
-           (cached (+ (plist-get usage :cache_read_input_tokens)
+           (cached (+ (or (plist-get usage :cache_read_input_tokens) 0)
                       (or (plist-get tokens :cached) 0)))
-           (cache (+ (plist-get usage :cache_creation_input_tokens)
+           (cache (+ (or (plist-get usage :cache_creation_input_tokens) 0)
                      (or (plist-get tokens :cache) 0))))
       (list :input input :output output
             :cache cache :cached cached))))
