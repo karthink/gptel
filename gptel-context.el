@@ -516,24 +516,20 @@ Ignore overlays, buffers and files that are not live or readable."
 
 CONTEXT-DATA is a plist with keys :overlays, :lines and :bounds.
 Returns a sorted list of (START . END) position pairs."
-  (let (regions)
+  (let ((regions                   ; Collect bounds (already in position format)
+         (when-let* ((bounds (plist-get context-data :bounds)))
+           (if (consp (car bounds)) bounds (list bounds)))))
     (with-current-buffer buffer
       (without-restriction
         ;; Collect overlays
         (dolist (ov (plist-get context-data :overlays))
           (when (overlay-start ov)
             (push (cons (overlay-start ov) (overlay-end ov))
-                  regions)))
-        ;; Collect bounds (already in position format)
-        (when-let* ((bounds (plist-get context-data :bounds)))
-          (if (consp (car bounds))
-              (setq regions (nconc regions bounds)) ;((start1 . end1) (start2 . end2) ...)
-            (push bounds regions)))                 ;(start1 . end1)
+                  regions)))                 ;(start1 . end1)
         ;; Collect lines (convert line numbers to positions)
         (when-let* ((line-bounds (plist-get context-data :lines)))
-          ;; Convert singleton (start1 . end1) to ((start1 . end1))
-          (unless (consp (car line-bounds)) (setq line-bounds (list line-bounds)))
-          (dolist (pair line-bounds)
+          (dolist (pair (if (consp (car line-bounds)) ;Handle single (BEG . END)
+                            line-bounds (list line-bounds)))
             (push (cons (progn (goto-char (point-min))
                                (forward-line (1- (car pair)))
                                (point))
@@ -543,7 +539,8 @@ Returns a sorted list of (START . END) position pairs."
                   regions)))))
     ;; TODO: Update sort for Emacs 28+ calling convention
     ;; Sort by start position.
-    (sort regions (lambda (a b) (< (car a) (car b))))))
+    ;; NOTE: This can modify `:bounds' of `context-data' by side-effect!
+    (sort regions #'car-less-than-car)))
 
 (defun gptel-context--insert-buffer-string (buffer context-data &optional header)
   "Insert at point a context string from CONTEXT-DATA in BUFFER.
