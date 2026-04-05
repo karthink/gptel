@@ -837,7 +837,9 @@ Also format the value of OBJ in the transient menu."
      (lambda () (interactive) (gptel--handle-tool-use gptel--fsm-last))
      :if (lambda () (and gptel--fsm-last
                     (eq (gptel-fsm-state gptel--fsm-last) 'TOOL))))]]
-  [[(gptel--preset
+  [[(gptel-preset
+     ;; gptel--preset
+     :transient t
      :key "@" :format "%d"
      :description
      (lambda ()
@@ -1027,6 +1029,62 @@ Customize `gptel-directives' for task-specific prompts."
     :pad-keys t])
 
 ;; ** Prefix for saving and applying presets
+;;;###autoload
+(defun gptel-preset (preset &optional setter)
+  "Load gptel PRESET with SETTER.
+
+Interactively, query for PRESET, allow the preset scope to be set
+dynamically, and offer to save the current gptel settings as a (new or
+existing) preset, as well."
+  (interactive
+   (let ((hint (concat (propertize "C-s" 'face 'transient-value)
+                       (propertize " Save as preset"
+                                   'face 'transient-inactive-value)
+                       ", " (propertize "=" 'face 'transient-value)
+                       (propertize " Scope " 'face 'transient-inactive-argument)))
+         (scope-obj (gptel--scope :variable 'gptel--set-buffer-locally))
+         (completion-extra-properties
+          (list :annotation-function
+                (lambda (cand)
+                  (and-let* ((str (plist-get
+                                   (cdr (assq (intern cand) gptel--known-presets))
+                                   :description)))
+                    (concat (propertize " " 'display '(space :align-to 25))
+                            (truncate-string-to-width str (- (frame-width) 40)
+                                                      nil nil t)))))))
+     (cl-flet* ((key-hint-ov ()
+                  (or (cdr-safe (get-char-property-and-overlay (point-min) 'gptel))
+                      (let ((ov (make-overlay (point-min) (minibuffer-prompt-end))))
+                        (overlay-put ov 'gptel 'prefix)
+                        (overlay-put ov 'before-string
+                                     (concat hint (transient-format-value scope-obj)
+                                             "\n"))
+                        ov)))
+                (save-preset ()
+                  (interactive)
+                  (when (minibufferp)
+                    (run-at-time 0 nil (lambda () (call-interactively #'gptel--save-preset)
+                                         (transient-setup 'gptel-menu)))
+                    (minibuffer-quit-recursive-edit)))
+                (update-scope ()
+                  (interactive)
+                  (transient-infix-set
+                   scope-obj
+                   (pcase gptel--set-buffer-locally (1 nil) ('nil t) ('t 1)))
+                  (overlay-put (key-hint-ov) 'before-string
+                               (concat hint
+                                       (transient-format-value scope-obj)
+                                       "\n"))))
+       (minibuffer-with-setup-hook
+           (lambda () (use-local-map (make-composed-keymap
+                                 (define-keymap "C-s" #'save-preset "=" #'update-scope)
+                                 (current-local-map)))
+             (key-hint-ov))
+         (list (intern (completing-read (format "Load preset: ")
+                                        gptel--known-presets nil t)))))))
+  (gptel--apply-preset preset
+                       (or setter (lambda (sym val) (gptel--set-with-scope
+                                                sym val gptel--set-buffer-locally)))))
 
 (transient-define-prefix gptel--preset ()
   "Apply a gptel preset, or save the current configuration as a preset.
