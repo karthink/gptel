@@ -954,6 +954,24 @@ org-mode."
                 (and (derived-mode-p 'org-mode)
                      (buffer-base-buffer buf)))))))
 
+(defun gptel-org-agent--ensure-tool-confirm-hook (buf)
+  "Ensure the tool confirmation hook is registered on BUF and its base buffer.
+
+The PENDING heading is created in an indirect buffer, but users
+typically change the TODO state from the base buffer.  This
+ensures the `org-after-todo-state-change-hook' handler is
+registered on both buffers so the state change is always caught."
+  (dolist (b (delq nil (list buf (buffer-base-buffer buf))))
+    (when (buffer-live-p b)
+      (with-current-buffer b
+        (unless (memq #'gptel-org-agent--on-todo-state-change
+                      org-after-todo-state-change-hook)
+          (add-hook 'org-after-todo-state-change-hook
+                    #'gptel-org-agent--on-todo-state-change nil t)
+          (gptel-org--debug
+           "org-agent tool-confirm: registered hook on buffer %s"
+           (buffer-name b)))))))
+
 (defun gptel-org-agent--display-tool-calls (tool-calls info)
   "Display TOOL-CALLS as a PENDING org heading in the agent subtree.
 
@@ -969,6 +987,10 @@ INFO is the FSM info plist."
          (pending-kw (nth 0 gptel-org-agent-tool-confirm-keywords))
          (pending-id (gptel-org-agent--generate-pending-id)))
     (with-current-buffer buf
+      ;; Ensure the todo-state-change hook is registered on both the
+      ;; indirect buffer and its base buffer so that the user can
+      ;; change PENDING→ALLOWED from either buffer.
+      (gptel-org-agent--ensure-tool-confirm-hook buf)
       (save-excursion
         (goto-char start-marker)
         ;; Navigate to enclosing heading to determine level
@@ -1025,11 +1047,15 @@ dynamic bindings from INFO before running each tool."
         (gptel-backend (or (plist-get info :backend)
                            (and (boundp 'gptel-backend) gptel-backend)))
         (gptel-model (or (plist-get info :model)
-                         (and (boundp 'gptel-model) gptel-model))))
-    (when (plist-get info :buffer)
-      (with-current-buffer (plist-get info :buffer)
+                         (and (boundp 'gptel-model) gptel-model)))
+        (buf (plist-get info :buffer)))
+    (when (and buf (buffer-live-p buf))
+      (with-current-buffer buf
         (gptel--update-status " Calling tool..." 'mode-line-emphasis)))
     (cl-loop for (tool-spec arg-plist process-tool-result) in tool-calls
+             do (gptel-org--debug
+                 "org-agent tool-confirm: executing tool %s"
+                 (gptel-tool-name tool-spec))
              for arg-values = (gptel--map-tool-args tool-spec arg-plist)
              do (if (gptel-tool-async tool-spec)
                     (apply (gptel-tool-function tool-spec)
@@ -1037,7 +1063,14 @@ dynamic bindings from INFO before running each tool."
                   (let ((result
                          (condition-case errdata
                              (apply (gptel-tool-function tool-spec) arg-values)
-                           (error (mapconcat #'gptel--to-string errdata " ")))))
+                           (error
+                            (gptel-org--debug
+                             "org-agent tool-confirm: tool %s errored: %s"
+                             (gptel-tool-name tool-spec) errdata)
+                            (mapconcat #'gptel--to-string errdata " ")))))
+                    (gptel-org--debug
+                     "org-agent tool-confirm: tool %s completed, calling process-tool-result"
+                     (gptel-tool-name tool-spec))
                     (funcall process-tool-result result))))))
 
 (defun gptel-org-agent--deny-tool-calls (tool-calls info &optional reason)
@@ -1064,35 +1097,58 @@ When a PENDING heading is changed to ALLOWED, run the pending tool
 calls.  When changed to DENIED, deny them and inform the LLM.
 
 This function is added to `org-after-todo-state-change-hook'."
+  (gptel-org--debug
+   "org-agent tool-confirm: todo-state-change hook fired in buffer %s, state=%s, subtrees=%s"
+   (buffer-name) (and (boundp 'org-state) org-state)
+   gptel-org-agent-subtrees)
   (when (and (bound-and-true-p gptel-org-agent-subtrees)
              (org-at-heading-p))
     (let ((new-state org-state)
           (allowed-kw (nth 1 gptel-org-agent-tool-confirm-keywords))
           (denied-kw (nth 2 gptel-org-agent-tool-confirm-keywords))
           (pending-id (org-entry-get nil "GPTEL_PENDING_ID")))
+      (gptel-org--debug
+       "org-agent tool-confirm: new-state=%s, pending-id=%s, hash-count=%d"
+       new-state pending-id
+       (hash-table-count gptel-org-agent--pending-tool-calls))
       (when pending-id
-        (when-let* ((entry (gethash pending-id
-                                    gptel-org-agent--pending-tool-calls)))
-          (let ((tool-calls (plist-get entry :tool-calls))
-                (info (plist-get entry :info)))
-            ;; Remove from pending table
-            (remhash pending-id gptel-org-agent--pending-tool-calls)
-            ;; Remove the property since it's no longer needed
-            (org-delete-property "GPTEL_PENDING_ID")
-            (cond
-             ((equal new-state allowed-kw)
+        (let ((entry (gethash pending-id
+                              gptel-org-agent--pending-tool-calls)))
+          (if (null entry)
               (gptel-org--debug
-               "org-agent tool-confirm: ALLOWED (id=%s)" pending-id)
-              (gptel-org-agent--accept-tool-calls tool-calls info)
-              (message "Tool calls accepted, continuing..."))
-             ((equal new-state denied-kw)
-              (gptel-org--debug
-               "org-agent tool-confirm: DENIED (id=%s)" pending-id)
-              ;; Check if user added a note after the heading (org prompts
-              ;; for a note when DENIED has @ in SEQ_TODO)
-              (let ((reason (org-entry-get nil "GPTEL_DENY_REASON")))
-                (gptel-org-agent--deny-tool-calls tool-calls info reason))
-              (message "Tool calls denied, informing LLM...")))))))))
+               "org-agent tool-confirm: WARNING no entry in hash table for id=%s"
+               pending-id)
+            (let ((tool-calls (plist-get entry :tool-calls))
+                  (info (plist-get entry :info))
+                  (stored-buf (plist-get entry :buffer)))
+              ;; Check that the stored buffer is still alive
+              (unless (and stored-buf (buffer-live-p stored-buf))
+                (gptel-org--debug
+                 "org-agent tool-confirm: WARNING stored buffer %s is dead"
+                 stored-buf))
+              ;; Remove from pending table
+              (remhash pending-id gptel-org-agent--pending-tool-calls)
+              ;; Remove the property since it's no longer needed
+              (org-delete-property "GPTEL_PENDING_ID")
+              (cond
+               ((equal new-state allowed-kw)
+                (gptel-org--debug
+                 "org-agent tool-confirm: ALLOWED (id=%s), running %d tool calls"
+                 pending-id (length tool-calls))
+                (gptel-org-agent--accept-tool-calls tool-calls info)
+                (message "Tool calls accepted, continuing..."))
+               ((equal new-state denied-kw)
+                (gptel-org--debug
+                 "org-agent tool-confirm: DENIED (id=%s)" pending-id)
+                ;; Check if user added a note after the heading (org prompts
+                ;; for a note when DENIED has @ in SEQ_TODO)
+                (let ((reason (org-entry-get nil "GPTEL_DENY_REASON")))
+                  (gptel-org-agent--deny-tool-calls tool-calls info reason))
+                (message "Tool calls denied, informing LLM..."))
+               (t
+                (gptel-org--debug
+                 "org-agent tool-confirm: state %s is neither ALLOWED(%s) nor DENIED(%s), ignoring"
+                 new-state allowed-kw denied-kw))))))))))
 
 (defun gptel-org-agent--display-tool-calls-advice (orig-fn tool-calls info
                                                             &optional use-minibuffer)
