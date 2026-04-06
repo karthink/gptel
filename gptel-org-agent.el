@@ -51,11 +51,28 @@
 (defvar gptel-org-todo-keywords)
 (defvar gptel-org-infer-bounds-from-tags)
 
+;; Forward declarations for variables defined in org.el
+;; org-state is dynamically bound by org-todo for hook functions
+(defvar org-state)
+
 ;; Forward declarations for functions defined in gptel-request.el
 (declare-function gptel-fsm-info "gptel-request")
 
+;; Forward declarations for functions defined in gptel.el
+(declare-function gptel--display-tool-calls "gptel")
+(declare-function gptel--format-tool-call "gptel")
+(declare-function gptel--map-tool-args "gptel-request")
+(declare-function gptel--update-status "gptel")
+(declare-function gptel--to-string "gptel")
+(declare-function gptel-tool-name "gptel")
+(declare-function gptel-tool-async "gptel")
+(declare-function gptel-tool-function "gptel")
+
 ;; Forward declarations for variables defined in gptel.el
 (defvar gptel-mode)
+(defvar gptel-backend)
+(defvar gptel-model)
+(defvar gptel--preset)
 
 
 ;;; ---- Customization --------------------------------------------------------
@@ -415,13 +432,19 @@ indirect buffer (identified by `buffer-base-buffer' returning non-nil)."
 
 Adds `gptel-org-agent--transform-redirect' to
 `gptel-prompt-transform-functions' so that requests from org-mode
-TODO headings are automatically routed to agent indirect buffers."
+TODO headings are automatically routed to agent indirect buffers.
+Also sets up tool confirmation advice and hooks."
   (add-to-list 'gptel-prompt-transform-functions
                #'gptel-org-agent--transform-redirect)
   ;; Add keybinding to gptel-mode-map for jumping to/from indirect buffers
   (when (boundp 'gptel-mode-map)
     (define-key gptel-mode-map (kbd "C-c g j")
-                #'gptel-org-agent-jump-to-indirect-buffer)))
+                #'gptel-org-agent-jump-to-indirect-buffer))
+  ;; Tool confirmation: advice on gptel--display-tool-calls
+  (advice-add 'gptel--display-tool-calls :around
+              #'gptel-org-agent--display-tool-calls-advice)
+  ;; Tool confirmation: hook for org-mode buffers
+  (add-hook 'org-mode-hook #'gptel-org-agent--setup-tool-confirm))
 
 (defun gptel-org-agent--disable ()
   "Disable agent subtree integration for `gptel-send'."
@@ -429,7 +452,11 @@ TODO headings are automatically routed to agent indirect buffers."
         (remq #'gptel-org-agent--transform-redirect
               gptel-prompt-transform-functions))
   (when (boundp 'gptel-mode-map)
-    (define-key gptel-mode-map (kbd "C-c g j") nil)))
+    (define-key gptel-mode-map (kbd "C-c g j") nil))
+  ;; Remove tool confirmation advice and hooks
+  (advice-remove 'gptel--display-tool-calls
+                 #'gptel-org-agent--display-tool-calls-advice)
+  (remove-hook 'org-mode-hook #'gptel-org-agent--setup-tool-confirm))
 
 ;; Always register the transform when this module is loaded.
 ;; The transform function itself checks gptel-org-agent-subtrees
@@ -866,6 +893,227 @@ Call this after gptel-agent is loaded."
     (setf (alist-get "advisor" gptel-agent--agents nil nil #'equal)
           (gptel-org-agent--advisor-preset))))
 
+
+;;; ---- Tool confirmation subtree integration (Phase 6) ----------------------
+;;
+;; When `gptel-org-agent-subtrees' is enabled, tool calls requiring
+;; confirmation are displayed as org headings with a PENDING TODO state
+;; instead of the legacy overlay-based widget.  The user changes the
+;; heading state to ALLOWED or DENIED (via org-todo) to approve or deny
+;; the tool call, which triggers the FSM to continue.
+;;
+;; This replaces the overlay-based confirmation UI (C-c C-c / C-c C-k)
+;; with an org-native workflow:
+;;
+;;   ******** PENDING Requesting permission to run: Bash
+;;   (Bash "ls -la")
+;;
+;; The user changes PENDING → ALLOWED to run, or PENDING → DENIED to
+;; deny (with optional note).  The org-after-todo-state-change-hook
+;; handles the dispatch.
+
+(defcustom gptel-org-agent-tool-confirm-keywords
+  '("PENDING" "ALLOWED" "DENIED")
+  "TODO keywords used for tool confirmation headings.
+
+A list of three strings: (PENDING-KW ALLOWED-KW DENIED-KW).
+These should be defined in the buffer's `#+SEQ_TODO' line.
+
+PENDING: Initial state when tool call awaits user decision.
+ALLOWED: User approves the tool call.
+DENIED: User denies the tool call."
+  :type '(list string string string)
+  :group 'gptel)
+
+(defvar gptel-org-agent--pending-tool-calls (make-hash-table :test 'equal)
+  "Global hash table mapping unique IDs to pending tool call data.
+
+Each entry is ID → (:tool-calls TOOL-CALLS :info INFO :buffer BUFFER)
+where TOOL-CALLS is the list of (tool-spec arg-plist process-tool-result)
+and INFO is the FSM info plist.")
+
+(defvar gptel-org-agent--pending-id-counter 0
+  "Counter for generating unique pending tool call IDs.")
+
+(defun gptel-org-agent--generate-pending-id ()
+  "Generate a unique ID for a pending tool call entry."
+  (format "gptel-pending-%d-%s"
+          (cl-incf gptel-org-agent--pending-id-counter)
+          (format-time-string "%s")))
+
+(defun gptel-org-agent--subtree-tool-confirm-p (info)
+  "Return non-nil if tool confirmation should use subtree headings.
+
+INFO is the FSM info plist.  Returns t when `gptel-org-agent-subtrees'
+is enabled and the request buffer is an agent indirect buffer in
+org-mode."
+  (and gptel-org-agent-subtrees
+       (let ((buf (plist-get info :buffer)))
+         (and buf (buffer-live-p buf)
+              (with-current-buffer buf
+                (and (derived-mode-p 'org-mode)
+                     (buffer-base-buffer buf)))))))
+
+(defun gptel-org-agent--display-tool-calls (tool-calls info)
+  "Display TOOL-CALLS as a PENDING org heading in the agent subtree.
+
+Creates a child heading under the current position with the PENDING
+TODO state and inserts tool call details as body text.  Stores the
+tool call data in `gptel-org-agent--pending-tool-calls' keyed by a
+unique ID stored as an org property on the heading.
+
+TOOL-CALLS is a list of (tool-spec arg-plist process-tool-result).
+INFO is the FSM info plist."
+  (let* ((buf (plist-get info :buffer))
+         (start-marker (plist-get info :position))
+         (pending-kw (nth 0 gptel-org-agent-tool-confirm-keywords))
+         (pending-id (gptel-org-agent--generate-pending-id)))
+    (with-current-buffer buf
+      (save-excursion
+        (goto-char start-marker)
+        ;; Navigate to enclosing heading to determine level
+        (unless (org-at-heading-p)
+          (ignore-errors (org-back-to-heading t)))
+        (when (org-at-heading-p)
+          (let* ((parent-level (org-current-level))
+                 (child-level (1+ parent-level))
+                 (stars (make-string child-level ?*))
+                 (tool-names (mapconcat
+                              (lambda (tc)
+                                (gptel-tool-name (car tc)))
+                              tool-calls ", "))
+                 (inhibit-read-only t))
+            ;; Move to end of current subtree content (before any child subtrees)
+            (org-end-of-subtree t)
+            (unless (bolp) (insert "\n"))
+            (let ((heading-pos (point)))
+              ;; Insert the PENDING heading
+              (insert (format "%s %s Requesting permission to run: %s\n"
+                              stars pending-kw tool-names))
+              ;; Insert tool call details as body
+              (dolist (tc tool-calls)
+                (let* ((tool-spec (car tc))
+                       (arg-plist (cadr tc))
+                       (arg-values (gptel--map-tool-args tool-spec arg-plist)))
+                  (insert (gptel--format-tool-call
+                           (gptel-tool-name tool-spec) arg-values))))
+              (insert "\n")
+              ;; Store the pending ID as an org property on the heading
+              (save-excursion
+                (goto-char heading-pos)
+                (org-set-property "GPTEL_PENDING_ID" pending-id))
+              ;; Store tool call data in global hash table
+              (puthash pending-id
+                       (list :tool-calls tool-calls
+                             :info info
+                             :buffer buf)
+                       gptel-org-agent--pending-tool-calls)
+              ;; Mark tool-pending so the FSM knows we're waiting
+              (plist-put info :tool-pending t)
+              (gptel-org--debug
+               "org-agent tool-confirm: created PENDING heading for %s (id=%s)"
+               tool-names pending-id))))))))
+
+(defun gptel-org-agent--accept-tool-calls (tool-calls info)
+  "Accept and run TOOL-CALLS with explicit INFO.
+
+This is a self-contained tool execution function that does not
+depend on overlays or `gptel--fsm-last'.  It restores the correct
+dynamic bindings from INFO before running each tool."
+  (let ((gptel--preset (or (plist-get info :preset)
+                           (and (boundp 'gptel--preset) gptel--preset)))
+        (gptel-backend (or (plist-get info :backend)
+                           (and (boundp 'gptel-backend) gptel-backend)))
+        (gptel-model (or (plist-get info :model)
+                         (and (boundp 'gptel-model) gptel-model))))
+    (when (plist-get info :buffer)
+      (with-current-buffer (plist-get info :buffer)
+        (gptel--update-status " Calling tool..." 'mode-line-emphasis)))
+    (cl-loop for (tool-spec arg-plist process-tool-result) in tool-calls
+             for arg-values = (gptel--map-tool-args tool-spec arg-plist)
+             do (if (gptel-tool-async tool-spec)
+                    (apply (gptel-tool-function tool-spec)
+                           process-tool-result arg-values)
+                  (let ((result
+                         (condition-case errdata
+                             (apply (gptel-tool-function tool-spec) arg-values)
+                           (error (mapconcat #'gptel--to-string errdata " ")))))
+                    (funcall process-tool-result result))))))
+
+(defun gptel-org-agent--deny-tool-calls (tool-calls info &optional reason)
+  "Deny TOOL-CALLS with explicit INFO and optional REASON.
+
+Sends a denial message back to the LLM for each tool call so it
+can adjust its approach.  Does not depend on overlays."
+  (let ((denial-msg
+         (if (or (null reason) (string-empty-p reason))
+             "Error: The user denied execution of this tool call.  \
+Adjust your approach or ask the user for guidance."
+           (format "Error: The user denied execution of this tool call.  \
+Reason: %s" reason))))
+    (when (plist-get info :buffer)
+      (with-current-buffer (plist-get info :buffer)
+        (gptel--update-status " Tools denied, informing LLM..." 'warning)))
+    (cl-loop for (_tool-spec _arg-plist process-tool-result) in tool-calls
+             do (funcall process-tool-result denial-msg))))
+
+(defun gptel-org-agent--on-todo-state-change ()
+  "Handle TODO state changes for PENDING tool confirmation headings.
+
+When a PENDING heading is changed to ALLOWED, run the pending tool
+calls.  When changed to DENIED, deny them and inform the LLM.
+
+This function is added to `org-after-todo-state-change-hook'."
+  (when (and (bound-and-true-p gptel-org-agent-subtrees)
+             (org-at-heading-p))
+    (let ((new-state org-state)
+          (allowed-kw (nth 1 gptel-org-agent-tool-confirm-keywords))
+          (denied-kw (nth 2 gptel-org-agent-tool-confirm-keywords))
+          (pending-id (org-entry-get nil "GPTEL_PENDING_ID")))
+      (when pending-id
+        (when-let* ((entry (gethash pending-id
+                                    gptel-org-agent--pending-tool-calls)))
+          (let ((tool-calls (plist-get entry :tool-calls))
+                (info (plist-get entry :info)))
+            ;; Remove from pending table
+            (remhash pending-id gptel-org-agent--pending-tool-calls)
+            ;; Remove the property since it's no longer needed
+            (org-delete-property "GPTEL_PENDING_ID")
+            (cond
+             ((equal new-state allowed-kw)
+              (gptel-org--debug
+               "org-agent tool-confirm: ALLOWED (id=%s)" pending-id)
+              (gptel-org-agent--accept-tool-calls tool-calls info)
+              (message "Tool calls accepted, continuing..."))
+             ((equal new-state denied-kw)
+              (gptel-org--debug
+               "org-agent tool-confirm: DENIED (id=%s)" pending-id)
+              ;; Check if user added a note after the heading (org prompts
+              ;; for a note when DENIED has @ in SEQ_TODO)
+              (let ((reason (org-entry-get nil "GPTEL_DENY_REASON")))
+                (gptel-org-agent--deny-tool-calls tool-calls info reason))
+              (message "Tool calls denied, informing LLM...")))))))))
+
+(defun gptel-org-agent--display-tool-calls-advice (orig-fn tool-calls info
+                                                            &optional use-minibuffer)
+  "Advice for `gptel--display-tool-calls' to use subtree headings.
+
+When in agent subtree mode, create PENDING org headings instead of
+the overlay-based confirmation widget.  Otherwise, delegate to the
+original function ORIG-FN."
+  (if (gptel-org-agent--subtree-tool-confirm-p info)
+      (gptel-org-agent--display-tool-calls tool-calls info)
+    (funcall orig-fn tool-calls info use-minibuffer)))
+
+(defun gptel-org-agent--setup-tool-confirm ()
+  "Set up tool confirmation hooks for the current org buffer.
+
+Adds `gptel-org-agent--on-todo-state-change' to
+`org-after-todo-state-change-hook' (buffer-local)."
+  (when (and (derived-mode-p 'org-mode)
+             (bound-and-true-p gptel-org-agent-subtrees))
+    (add-hook 'org-after-todo-state-change-hook
+              #'gptel-org-agent--on-todo-state-change nil t)))
 
 
 ;;; ---- Navigation between base and indirect buffers -------------------------

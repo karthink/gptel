@@ -62,6 +62,33 @@ prompt copy so the LLM does not see prior agent conversations:
 In branching context mode, lineage heading positions are protected from
 stripping via the =protected-positions= parameter.
 
+** Tool Confirmation Flow (Phase 6)
+
+When a tool call requires user confirmation in subtree mode:
+
+#+begin_src
+LLM streams response into indirect buffer
+  → TOOL state: gptel--handle-tool-use collects pending-calls
+  → Callback dispatches (tool-call . pending-calls)
+  → INTERCEPTED by :around advice on gptel--display-tool-calls
+    → gptel-org-agent--subtree-tool-confirm-p checks:
+      ├─ gptel-org-agent-subtrees enabled?
+      ├─ Buffer is org-mode indirect buffer?
+      └─ If yes → gptel-org-agent--display-tool-calls
+         ├─ Creates child heading: "******** PENDING Requesting permission to run: Bash"
+         ├─ Inserts tool call details as body text
+         ├─ Stores (pending-id → tool-calls + info) in global hash table
+         └─ Stores GPTEL_PENDING_ID property on heading
+  → User changes TODO state:
+    ├─ PENDING → ALLOWED: org-after-todo-state-change-hook fires
+    │  → gptel-org-agent--on-todo-state-change retrieves data
+    │  → gptel-org-agent--accept-tool-calls runs tools
+    │  → FSM continues with tool results
+    └─ PENDING → DENIED: hook fires
+       → gptel-org-agent--deny-tool-calls sends denial to LLM
+       → FSM continues with denial message
+#+end_src
+
 ** Tag Hierarchy Pattern
 
 Agent subtrees are identified by tags ending in =@agent=.  The tag encodes
@@ -159,6 +186,19 @@ the full delegation chain:
 | =gptel-org-agent--advisor-preset= () | Returns preset plist with =:include-agent-subtrees t= |
 | =gptel-org-agent-register-advisor= () | Registers advisor preset with =gptel-agent--agents= |
 
+** Tool Confirmation Subtree Integration (Phase 6)
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-agent--subtree-tool-confirm-p= (info) | Returns non-nil if tool confirmation should use subtree headings (checks subtrees enabled + buffer is indirect + org-mode) |
+| =gptel-org-agent--display-tool-calls= (tool-calls info) | Creates PENDING org heading with tool call details instead of overlay widget. Stores tool-call data keyed by unique ID |
+| =gptel-org-agent--accept-tool-calls= (tool-calls info) | Runs tool calls with explicit INFO, no overlay dependency. Restores dynamic bindings (preset/backend/model) from INFO |
+| =gptel-org-agent--deny-tool-calls= (tool-calls info &optional reason) | Sends denial message to LLM for each tool call. No overlay dependency |
+| =gptel-org-agent--on-todo-state-change= () | Hook on =org-after-todo-state-change-hook=. Dispatches ALLOWED→accept, DENIED→deny for PENDING tool confirmation headings |
+| =gptel-org-agent--display-tool-calls-advice= (orig-fn tool-calls info &optional use-minibuffer) | =:around= advice on =gptel--display-tool-calls=. Routes to subtree headings in agent mode, original overlay otherwise |
+| =gptel-org-agent--setup-tool-confirm= () | Buffer-local setup: adds state change hook to org-mode buffers when subtrees enabled |
+| =gptel-org-agent--generate-pending-id= () | Generates unique ID for pending tool call entries |
+
 ** Navigation
 
 | Function | Purpose |
@@ -174,6 +214,7 @@ the full delegation chain:
 | =gptel-org-agent-subtrees= | =nil= | Master switch: enable agent subtree system |
 | =gptel-org-agent-todo-keywords= | =nil= | When non-nil, extra TODO keyword sequence added to buffer. When nil (default), uses buffer's existing keywords |
 | =gptel-org-agent-status-keyword-map= | =((pending . AI-DO) (in_progress . AI-DOING) (completed . AI-DONE))= | Alist mapping TodoWrite statuses to org TODO keywords |
+| =gptel-org-agent-tool-confirm-keywords= | =("PENDING" "ALLOWED" "DENIED")= | List of 3 keywords for tool confirmation headings: pending state, approval state, denial state |
 | =gptel-org-agent-include-subtrees= | =nil= (buffer-local) | When non-nil, include @agent subtrees in context (for Advisor) |
 
 * Keybindings
@@ -219,6 +260,25 @@ the full delegation chain:
    =with-eval-after-load 'gptel-request=); runtime guards in the function
    itself check whether to activate.  This avoids load-order race
    conditions.
+
+10. *Tool confirmation via org headings*: In subtree mode, tool calls
+    requiring user confirmation create PENDING org headings instead of the
+    legacy overlay-based widget.  This integrates with org's TODO state
+    change system (PENDING → ALLOWED/DENIED).  Implemented via =:around=
+    advice on =gptel--display-tool-calls= — zero changes to core files.
+
+11. *Global hash table for pending tool-calls*: Tool-call data (including
+    process-tool-result closures) cannot be serialized to org properties,
+    so a global hash table (=gptel-org-agent--pending-tool-calls=) maps
+    unique IDs to the data.  The ID is stored as an org property
+    (GPTEL_PENDING_ID) on the PENDING heading for retrieval when the user
+    changes the TODO state.
+
+12. *Overlay-free accept/deny*: Wrapper functions
+    =gptel-org-agent--accept-tool-calls= and =--deny-tool-calls= take
+    explicit INFO plists and do not depend on overlays or
+    =gptel--fsm-last=.  They restore dynamic bindings (preset, backend,
+    model) from the stored INFO.
 
 * Known Edge Cases and Fixes
 
