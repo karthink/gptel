@@ -584,40 +584,56 @@ Returns nil if INDIRECT-BUFFER is not live or contains no text."
 
 ;;; ---- TodoWrite org integration (Phase 4) ----------------------------------
 
-(defcustom gptel-org-agent-todo-keywords
-  '((sequence "PENDING(p)" "RUNNING(r)" "|" "DONE(d)" "ERROR(e)" "ABORTED(a)"))
+(defcustom gptel-org-agent-todo-keywords nil
   "TODO keyword sequence for agent task headings.
-Added to `org-todo-keywords' when agent subtrees are active.
-The keywords map to TodoWrite statuses:
-  - pending     → PENDING
-  - in_progress → RUNNING
-  - completed   → DONE"
-  :type 'sexp
+When non-nil, added to `org-todo-keywords' to ensure required
+keywords are available.  When nil (the default), the buffer's
+existing TODO keywords are used as-is.
+
+The mapping from TodoWrite statuses to org keywords is controlled by
+`gptel-org-agent-status-keyword-map'."
+  :type '(choice (const :tag "Use buffer keywords" nil)
+                 (sexp :tag "Custom keyword sequence"))
+  :group 'gptel)
+
+(defcustom gptel-org-agent-status-keyword-map
+  '(("pending"     . "AI-DO")
+    ("in_progress" . "AI-DOING")
+    ("completed"   . "AI-DONE"))
+  "Alist mapping TodoWrite status strings to org TODO keywords.
+Each entry is (STATUS . KEYWORD) where STATUS is one of the strings
+the LLM sends (\"pending\", \"in_progress\", \"completed\") and
+KEYWORD is the org TODO keyword to use.
+
+The keywords should match keywords defined in the buffer's
+`#+SEQ_TODO' line or `org-todo-keywords'.  Defaults align with
+the `gptel-org-tasks' workflow (AI-DO/AI-DOING/AI-DONE)."
+  :type '(alist :key-type string :value-type string)
   :group 'gptel)
 
 (defun gptel-org-agent--ensure-todo-keywords ()
   "Ensure agent TODO keywords are available in the current buffer.
-Adds `gptel-org-agent-todo-keywords' to `org-todo-keywords' if not
-already present, then refreshes org's TODO keyword parsing."
-  (let ((needs-refresh nil))
-    (dolist (kw-seq gptel-org-agent-todo-keywords)
-      (unless (member kw-seq org-todo-keywords)
-        (push kw-seq org-todo-keywords)
-        (setq needs-refresh t)))
-    (when needs-refresh
-      ;; Make the change buffer-local so we don't pollute other buffers
-      (setq-local org-todo-keywords org-todo-keywords)
-      (org-set-regexps-and-options))))
+When `gptel-org-agent-todo-keywords' is non-nil, adds its entries
+to `org-todo-keywords' if not already present, then refreshes org's
+TODO keyword parsing.  When nil, assumes the buffer already defines
+the required keywords (e.g. via #+SEQ_TODO)."
+  (when gptel-org-agent-todo-keywords
+    (let ((needs-refresh nil))
+      (dolist (kw-seq gptel-org-agent-todo-keywords)
+        (unless (member kw-seq org-todo-keywords)
+          (push kw-seq org-todo-keywords)
+          (setq needs-refresh t)))
+      (when needs-refresh
+        ;; Make the change buffer-local so we don't pollute other buffers
+        (setq-local org-todo-keywords org-todo-keywords)
+        (org-set-regexps-and-options)))))
 
 (defun gptel-org-agent--status-to-keyword (status)
   "Map a TodoWrite STATUS string to an org TODO keyword.
-Returns \"PENDING\" for \"pending\", \"RUNNING\" for \"in_progress\",
-\"DONE\" for \"completed\", or the uppercased STATUS for anything else."
-  (pcase status
-    ("pending"     "PENDING")
-    ("in_progress" "RUNNING")
-    ("completed"   "DONE")
-    (_             (upcase (or status "PENDING")))))
+Uses `gptel-org-agent-status-keyword-map' for the mapping.
+Falls back to the uppercased STATUS if no mapping is found."
+  (or (alist-get status gptel-org-agent-status-keyword-map nil nil #'equal)
+      (upcase (or status "AI-DO"))))
 
 (defun gptel-org-agent--find-or-create-tasks-heading (level)
   "Find or create a \"Tasks\" heading at LEVEL under the current heading.
@@ -706,10 +722,8 @@ The heading is appended under the Tasks subtree at TASKS-POS."
 (defun gptel-org-agent--write-todo-org (todos)
   "Display TODOS as org TODO headings in the agent subtree.
 
-Each todo becomes a heading at the appropriate level with a TODO keyword:
-  - pending     → PENDING
-  - in_progress → RUNNING
-  - completed   → DONE
+Each todo becomes a heading at the appropriate level with a TODO keyword
+mapped via `gptel-org-agent-status-keyword-map' (default: AI-DO/AI-DOING/AI-DONE).
 
 TODOS is a list of plists with :content, :activeForm, and :status.
 This function is idempotent: calling it multiple times with the same

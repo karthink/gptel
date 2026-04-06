@@ -147,8 +147,8 @@ the full delegation chain:
 
 | Function | Purpose |
 |----------+---------|
-| =gptel-org-agent--ensure-todo-keywords= () | Ensures agent TODO keywords are in =org-todo-keywords= |
-| =gptel-org-agent--status-to-keyword= (status) | Maps pending→PENDING, in_progress→RUNNING, completed→DONE |
+| =gptel-org-agent--ensure-todo-keywords= () | When =gptel-org-agent-todo-keywords= is non-nil, ensures they are in =org-todo-keywords=. When nil, assumes buffer already defines required keywords |
+| =gptel-org-agent--status-to-keyword= (status) | Maps TodoWrite status via =gptel-org-agent-status-keyword-map= (default: pending→AI-DO, in_progress→AI-DOING, completed→AI-DONE) |
 | =gptel-org-agent--write-todo-org= (todos) | Idempotent: creates/updates/removes TODO headings under "Tasks" sub-heading |
 
 ** Advisor Agent Integration (Phase 5)
@@ -172,7 +172,8 @@ the full delegation chain:
 | Variable | Default | Purpose |
 |----------+---------+---------|
 | =gptel-org-agent-subtrees= | =nil= | Master switch: enable agent subtree system |
-| =gptel-org-agent-todo-keywords= | =(sequence "PENDING(p)" "RUNNING(r)" "\vert" "DONE(d)" "ERROR(e)" "ABORTED(a)")= | TODO keywords for agent task headings |
+| =gptel-org-agent-todo-keywords= | =nil= | When non-nil, extra TODO keyword sequence added to buffer. When nil (default), uses buffer's existing keywords |
+| =gptel-org-agent-status-keyword-map= | =((pending . AI-DO) (in_progress . AI-DOING) (completed . AI-DONE))= | Alist mapping TodoWrite statuses to org TODO keywords |
 | =gptel-org-agent-include-subtrees= | =nil= (buffer-local) | When non-nil, include @agent subtrees in context (for Advisor) |
 
 * Keybindings
