@@ -730,36 +730,40 @@ This function is idempotent: calling it multiple times with the same
 data produces the same result.  It handles adding new tasks, updating
 existing task states, and removing tasks that are no longer in the list."
   (gptel-org-agent--ensure-todo-keywords)
+  (when (vectorp todos) (setq todos (append todos nil)))
   (save-excursion
     (goto-char (point-min))             ;agent heading in narrowed buffer
-    (let* ((agent-level (org-current-level))
-           (tasks-level (1+ agent-level))
-           (todo-level  (+ 2 agent-level))
-           (tasks-pos (gptel-org-agent--find-or-create-tasks-heading tasks-level)))
-      ;; Collect existing headings under the Tasks heading
-      (let ((existing-headings
-             (gptel-org-agent--collect-todo-headings todo-level tasks-pos))
-            (seen-contents (make-hash-table :test 'equal)))
-        ;; Update or create todo headings
-        (dolist (todo todos)
-          (let* ((content (plist-get todo :content))
-                 (status  (plist-get todo :status))
-                 (keyword (gptel-org-agent--status-to-keyword status))
-                 (existing (assoc content existing-headings)))
-            (puthash content t seen-contents)
-            (if existing
-                ;; Update existing heading's TODO keyword
-                (save-excursion
-                  (goto-char (cdr existing))
-                  (gptel-org-agent--set-todo-keyword keyword))
-              ;; Create new heading under Tasks
-              (gptel-org-agent--create-todo-heading
-               todo-level content keyword tasks-pos))))
-        ;; Remove headings not in the current todo list.
-        ;; Process in reverse order to avoid position shifts.
-        (dolist (existing (reverse existing-headings))
-          (unless (gethash (car existing) seen-contents)
-            (gptel-org-agent--remove-todo-heading (cdr existing)))))))
+    (unless (org-at-heading-p)
+      (condition-case nil (org-back-to-heading t) (error nil)))
+    (when (org-at-heading-p)            ;bail if no heading context
+      (let* ((agent-level (org-current-level))
+             (tasks-level (1+ agent-level))
+             (todo-level  (+ 2 agent-level))
+             (tasks-pos (gptel-org-agent--find-or-create-tasks-heading tasks-level)))
+        ;; Collect existing headings under the Tasks heading
+        (let ((existing-headings
+               (gptel-org-agent--collect-todo-headings todo-level tasks-pos))
+              (seen-contents (make-hash-table :test 'equal)))
+          ;; Update or create todo headings
+          (dolist (todo todos)
+            (let* ((content (plist-get todo :content))
+                   (status  (plist-get todo :status))
+                   (keyword (gptel-org-agent--status-to-keyword status))
+                   (existing (assoc content existing-headings)))
+              (puthash content t seen-contents)
+              (if existing
+                  ;; Update existing heading's TODO keyword
+                  (save-excursion
+                    (goto-char (cdr existing))
+                    (gptel-org-agent--set-todo-keyword keyword))
+                ;; Create new heading under Tasks
+                (gptel-org-agent--create-todo-heading
+                 todo-level content keyword tasks-pos))))
+          ;; Remove headings not in the current todo list.
+          ;; Process in reverse order to avoid position shifts.
+          (dolist (existing (reverse existing-headings))
+            (unless (gethash (car existing) seen-contents)
+              (gptel-org-agent--remove-todo-heading (cdr existing))))))))
   t)
 
 
