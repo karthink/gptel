@@ -638,7 +638,10 @@ the correct number.  If BASE-PREFIX doesn't start with stars
 \(e.g. \"@user\\n\"), stars are prepended to create a proper
 org heading."
   (if (and gptel-org-subtree-context
-           (derived-mode-p 'org-mode))
+           (derived-mode-p 'org-mode)
+           ;; Don't generate legacy :assistant: prefixes in agent indirect
+           ;; buffers — the agent system manages its own heading structure.
+           (not (gptel-org--in-agent-indirect-buffer-p)))
       (let* ((parent-level (gptel-org--get-parent-heading-level))
              (target-level (if (> parent-level 0) (1+ parent-level) 1))
              (stars (make-string target-level ?*)))

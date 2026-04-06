@@ -328,8 +328,8 @@ Cleans up the narrowing end-marker."
 (defun gptel-org-agent--maybe-setup-subtree ()
   "Conditionally create an agent subtree and indirect buffer.
 
-Check whether `gptel-org-agent-subtrees' is enabled and point is on a
-heading with a TODO keyword from `gptel-org-todo-keywords'.
+Check whether `gptel-org-agent-subtrees' is enabled and point is at
+or under a heading with any org TODO keyword.
 
 If both conditions are met:
   - Look for an existing `:main@agent:' child subtree and reuse it.
@@ -341,23 +341,29 @@ If both conditions are met:
 If conditions are not met, return nil so that `gptel-send' proceeds
 with its normal behavior."
   (when (and gptel-org-agent-subtrees
-             (derived-mode-p 'org-mode)
-             (org-at-heading-p))
+             (derived-mode-p 'org-mode))
     (save-excursion
-      ;; Ensure we're at the beginning of the heading
-      (beginning-of-line)
-      (when (gptel-org--heading-has-todo-keyword-p)
-        (gptel-org--debug "org-agent maybe-setup-subtree: TODO heading detected at line %d"
-                          (line-number-at-pos))
-        (let* ((main-tag (gptel-org-agent--construct-tag "main"))
-               (existing (gptel-org-agent--find-agent-subtree main-tag))
-               (heading-marker (or existing
-                                   (gptel-org-agent--create-subtree "main")))
-               (base-buffer (current-buffer)))
-          (when existing
-            (gptel-org--debug "org-agent maybe-setup-subtree: reusing existing %S subtree"
-                              main-tag))
-          (gptel-org-agent--open-indirect-buffer base-buffer heading-marker))))))
+      ;; Navigate to enclosing heading if point is in the body
+      (unless (org-at-heading-p)
+        (ignore-errors (org-back-to-heading t)))
+      (when (org-at-heading-p)
+        ;; Ensure we're at the beginning of the heading
+        (beginning-of-line)
+        ;; Accept any org TODO keyword, not just gptel-org-todo-keywords.
+        ;; The gptel-org-todo-keywords list is for model-tag extraction,
+        ;; agent subtrees should work with any task heading.
+        (when (org-get-todo-state)
+          (gptel-org--debug "org-agent maybe-setup-subtree: TODO heading detected at line %d"
+                            (line-number-at-pos))
+          (let* ((main-tag (gptel-org-agent--construct-tag "main"))
+                 (existing (gptel-org-agent--find-agent-subtree main-tag))
+                 (heading-marker (or existing
+                                     (gptel-org-agent--create-subtree "main")))
+                 (base-buffer (current-buffer)))
+            (when existing
+              (gptel-org--debug "org-agent maybe-setup-subtree: reusing existing %S subtree"
+                                main-tag))
+            (gptel-org-agent--open-indirect-buffer base-buffer heading-marker)))))))
 
 (defvar gptel-prompt-transform-functions)
 
@@ -731,19 +737,32 @@ data produces the same result.  It handles adding new tasks, updating
 existing task states, and removing tasks that are no longer in the list."
   (gptel-org-agent--ensure-todo-keywords)
   (when (vectorp todos) (setq todos (append todos nil)))
+  (gptel-org--debug "write-todo-org: called with %d todos in buffer %S (base: %S)"
+                    (length todos) (buffer-name) (buffer-name (buffer-base-buffer)))
+  (gptel-org--debug "write-todo-org: narrowed=%S point-min=%d point-max=%d"
+                    (buffer-narrowed-p) (point-min) (point-max))
   (save-excursion
     (goto-char (point-min))             ;agent heading in narrowed buffer
+    (gptel-org--debug "write-todo-org: at point-min, org-at-heading-p=%S line=%S"
+                      (org-at-heading-p)
+                      (buffer-substring-no-properties
+                       (point) (min (+ (point) 80) (point-max))))
     (unless (org-at-heading-p)
       (condition-case nil (org-back-to-heading t) (error nil)))
-    (when (org-at-heading-p)            ;bail if no heading context
+    (if (not (org-at-heading-p))
+        (gptel-org--debug "write-todo-org: BAILING - no heading context at point %d" (point))
       (let* ((agent-level (org-current-level))
              (tasks-level (1+ agent-level))
              (todo-level  (+ 2 agent-level))
              (tasks-pos (gptel-org-agent--find-or-create-tasks-heading tasks-level)))
+        (gptel-org--debug "write-todo-org: agent-level=%d tasks-level=%d todo-level=%d tasks-pos=%d"
+                          agent-level tasks-level todo-level tasks-pos)
         ;; Collect existing headings under the Tasks heading
         (let ((existing-headings
                (gptel-org-agent--collect-todo-headings todo-level tasks-pos))
               (seen-contents (make-hash-table :test 'equal)))
+          (gptel-org--debug "write-todo-org: %d existing headings found"
+                            (length existing-headings))
           ;; Update or create todo headings
           (dolist (todo todos)
             (let* ((content (plist-get todo :content))
@@ -753,17 +772,24 @@ existing task states, and removing tasks that are no longer in the list."
               (puthash content t seen-contents)
               (if existing
                   ;; Update existing heading's TODO keyword
-                  (save-excursion
-                    (goto-char (cdr existing))
-                    (gptel-org-agent--set-todo-keyword keyword))
+                  (progn
+                    (gptel-org--debug "write-todo-org: updating %S -> %S at %d"
+                                      content keyword (cdr existing))
+                    (save-excursion
+                      (goto-char (cdr existing))
+                      (gptel-org-agent--set-todo-keyword keyword)))
                 ;; Create new heading under Tasks
+                (gptel-org--debug "write-todo-org: creating %S %S at tasks-pos=%d"
+                                  keyword content tasks-pos)
                 (gptel-org-agent--create-todo-heading
                  todo-level content keyword tasks-pos))))
           ;; Remove headings not in the current todo list.
           ;; Process in reverse order to avoid position shifts.
           (dolist (existing (reverse existing-headings))
             (unless (gethash (car existing) seen-contents)
+              (gptel-org--debug "write-todo-org: removing %S" (car existing))
               (gptel-org-agent--remove-todo-heading (cdr existing))))))))
+  (gptel-org--debug "write-todo-org: done, buffer size now %d" (buffer-size))
   t)
 
 
