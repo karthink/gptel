@@ -1230,7 +1230,7 @@ returned as a list of strings."
 
 
 (defun gptel--decode-utf8 (str)
-  "Decode STR as UTF-8, filtering non-Unicode characters for logging.
+  "Decode STR as UTF-8, guaranteeing valid Unicode output for logging.
 
 Handles three kinds of problematic strings:
 - Unibyte strings: decoded as UTF-8.
@@ -1239,7 +1239,9 @@ Handles three kinds of problematic strings:
 - Literal octal escapes (\\\\342\\\\200\\\\224) from `format' %S
   of unibyte data: parsed and decoded as UTF-8.
 
-Valid multibyte Unicode strings pass through unchanged."
+Any bytes that cannot be decoded as valid UTF-8 are replaced with
+the Unicode replacement character U+FFFD.  Valid multibyte Unicode
+strings pass through unchanged."
   ;; First, handle raw byte representations
   (let ((str (cond
               ((not (multibyte-string-p str))
@@ -1250,21 +1252,26 @@ Valid multibyte Unicode strings pass through unchanged."
               (t str))))
     ;; Then, filter literal octal escape sequences (\NNN) that
     ;; format %S produces for unibyte strings with high bytes.
-    (if (string-match-p "\\\\[0-3][0-7][0-7]" str)
-        (replace-regexp-in-string
-         "\\(\\\\[0-3][0-7][0-7]\\)+"
-         (lambda (match)
-           (save-match-data
-             (let ((bytes nil) (pos 0))
-               (while (string-match
-                       "\\\\\\([0-3][0-7][0-7]\\)" match pos)
-                 (push (string-to-number (match-string 1 match) 8)
-                       bytes)
-                 (setq pos (match-end 0)))
-               (decode-coding-string
-                (apply #'unibyte-string (nreverse bytes))
-                'utf-8))))
-         str)
+    (when (string-match-p "\\\\[0-3][0-7][0-7]" str)
+      (setq str
+            (replace-regexp-in-string
+             "\\(\\\\[0-3][0-7][0-7]\\)+"
+             (lambda (match)
+               (save-match-data
+                 (let ((bytes nil) (pos 0))
+                   (while (string-match
+                           "\\\\\\([0-3][0-7][0-7]\\)" match pos)
+                     (push (string-to-number (match-string 1 match) 8)
+                           bytes)
+                     (setq pos (match-end 0)))
+                   (decode-coding-string
+                    (apply #'unibyte-string (nreverse bytes))
+                    'utf-8))))
+             str)))
+    ;; Finally, replace any remaining eight-bit characters that
+    ;; survived decoding (invalid UTF-8 byte sequences) with U+FFFD.
+    (if (string-match-p "[\x3fff80-\x3fffff]" str)
+        (replace-regexp-in-string "[\x3fff80-\x3fffff]+" "\xfffd" str)
       str)))
 
 (defun gptel--log (data &optional type no-json)
@@ -1275,9 +1282,10 @@ Valid JSON unless NO-JSON is t."
   (with-current-buffer (get-buffer-create gptel--log-buffer-name)
     (set-buffer-multibyte t)
     (let* ((p (goto-char (point-max)))
-           (data (if (stringp data)
-                     (gptel--decode-utf8 data)
-                   data)))
+           (data (cond
+                  ((stringp data) (gptel--decode-utf8 data))
+                  ((not data) "null")
+                  (t (gptel--decode-utf8 (prin1-to-string data))))))
       (unless (bobp) (insert "\n"))
       (insert (format "{\"gptel\": \"%s\", " (or type "none"))
               (format-time-string "\"timestamp\": \"%Y-%m-%d %H:%M:%S\"}\n")
@@ -1834,6 +1842,20 @@ state machine and driven by it."
   (table gptel-request--transitions)
   (handlers gptel-request--handlers) info)
 
+(defun gptel--fsm-summary (fsm)
+  "Return a short debug summary of FSM as a valid Unicode string.
+Includes state and key info fields, without dumping the full
+request data that may contain raw bytes."
+  (if (not (cl-typep fsm 'gptel-fsm))
+      (format "#<non-fsm %s>" (type-of fsm))
+    (let ((info (gptel-fsm-info fsm)))
+      (format "#<gptel-fsm state=%s backend=%s model=%s preset=%s>"
+              (gptel-fsm-state fsm)
+              (and (plist-get info :backend)
+                   (gptel-backend-name (plist-get info :backend)))
+              (plist-get info :model)
+              (plist-get info :preset)))))
+
 (defun gptel--fsm-transition (machine &optional new-state)
   "Move MACHINE to its next state.
 
@@ -1937,16 +1959,17 @@ If all pending tool calls in the current request have finished, it
 injects the results into the prompt data and transitions the FSM."
   (when (eq gptel-log-level 'debug)
     (gptel--log
-     (format "process-tool-call ENTRY: fsm=%S fsm-type=%s tool=%s buffer=%s base-buffer=%s"
-             fsm (type-of fsm)
+     (format "process-tool-call ENTRY: fsm=%s tool=%s buffer=%s base-buffer=%s"
+             (gptel--fsm-summary fsm)
              (and tool-spec (gptel-tool-name tool-spec))
              (buffer-name) (and (buffer-base-buffer) (buffer-name (buffer-base-buffer))))
      "tool-call-debug" 'no-json))
   (unless (cl-typep fsm 'gptel-fsm)
     (when (eq gptel-log-level 'debug)
       (gptel--log
-       (format "process-tool-call ERROR: fsm is %S (type %s), expected gptel-fsm! tool-call=%S"
-               fsm (type-of fsm) tool-call)
+       (format "process-tool-call ERROR: fsm is %s, expected gptel-fsm! tool-call name=%s"
+               (gptel--fsm-summary fsm)
+               (and (listp tool-call) (plist-get tool-call :name)))
        "tool-call-debug" 'no-json))
     (error "gptel--process-tool-call: fsm is %S (type %s), not gptel-fsm"
            fsm (type-of fsm)))
@@ -2007,8 +2030,9 @@ injects the results into the prompt data and transitions the FSM."
                                                           fsm tool-spec tool-call)))
              (when (eq gptel-log-level 'debug)
                (gptel--log
-                (format "handle-tool-use: creating closure for tool=%s fsm=%S fsm-type=%s tool-spec=%S confirm-pending=%s"
-                        name fsm (type-of fsm) (and tool-spec (gptel-tool-name tool-spec))
+                (format "handle-tool-use: creating closure for tool=%s fsm=%s tool-spec=%s confirm-pending=%s"
+                        name (gptel--fsm-summary fsm)
+                        (and tool-spec (gptel-tool-name tool-spec))
                         (and (boundp 'gptel-confirm-tool-calls) gptel-confirm-tool-calls))
                 "tool-call-debug" 'no-json))
              (if (null tool-spec)
