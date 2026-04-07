@@ -1085,16 +1085,16 @@ non-whitespace content on its line."
 (defsubst gptel--model-name (model)
   "Get name of gptel MODEL.
 If MODEL has a :model-id property, return that instead (for aliases)."
-  (or (get model :model-id)
+  (or (and (symbolp model) (get model :model-id))
       (gptel--to-string model)))
 
 (defsubst gptel--model-capabilities (model)
   "Get MODEL capabilities."
-  (get model :capabilities))
+  (and (symbolp model) (get model :capabilities)))
 
 (defsubst gptel--model-mimes (model)
   "Get supported mime-types for MODEL."
-  (get model :mime-types))
+  (and (symbolp model) (get model :mime-types)))
 
 (defsubst gptel--model-capable-p (cap &optional model)
   "Return non-nil if MODEL supports capability CAP."
@@ -1109,7 +1109,7 @@ If MODEL has a :model-id property, return that instead (for aliases)."
 
 (defsubst gptel--model-request-params (model)
   "Get model-specific request parameters for MODEL."
-  (get model :request-params))
+  (and (symbolp model) (get model :request-params)))
 
 ;;;; File handling
 (defun gptel--base64-encode (file)
