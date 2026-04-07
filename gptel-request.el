@@ -1228,6 +1228,23 @@ returned as a list of strings."
 
 (declare-function json-pretty-print "json")
 
+
+(defun gptel--decode-utf8 (str)
+  "Decode STR as UTF-8, handling both unibyte and eight-bit characters.
+
+Unibyte strings and multibyte strings containing eight-bit raw
+byte characters (from `string-to-multibyte' or `format' with %S
+of unibyte data) are decoded as UTF-8.  Strings that are already
+valid multibyte Unicode are returned as-is."
+  (cond
+   ((not (multibyte-string-p str))
+    (decode-coding-string str 'utf-8))
+   ((string-match-p "[\x3fff80-\x3fffff]" str)
+    ;; Multibyte string contains eight-bit raw byte characters.
+    ;; Re-encode to raw bytes then decode as UTF-8.
+    (decode-coding-string (encode-coding-string str 'raw-text) 'utf-8))
+   (t str)))
+
 (defun gptel--log (data &optional type no-json)
   "Log DATA to `gptel--log-buffer-name'.
 
@@ -1235,11 +1252,10 @@ TYPE is a label for data being logged.  DATA is assumed to be
 Valid JSON unless NO-JSON is t."
   (with-current-buffer (get-buffer-create gptel--log-buffer-name)
     (set-buffer-multibyte t)
-    (let ((p (goto-char (point-max)))
-          (data (if (and (stringp data)
-                         (not (multibyte-string-p data)))
-                    (decode-coding-string data 'utf-8)
-                  data)))
+    (let* ((p (goto-char (point-max)))
+           (data (if (stringp data)
+                     (gptel--decode-utf8 data)
+                   data)))
       (unless (bobp) (insert "\n"))
       (insert (format "{\"gptel\": \"%s\", " (or type "none"))
               (format-time-string "\"timestamp\": \"%Y-%m-%d %H:%M:%S\"}\n")
