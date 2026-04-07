@@ -1852,6 +1852,21 @@ TOOL-SPEC is the `gptel-tool' object, and FSM is the request state.
 
 If all pending tool calls in the current request have finished, it
 injects the results into the prompt data and transitions the FSM."
+  (when (eq gptel-log-level 'debug)
+    (gptel--log
+     (format "process-tool-call ENTRY: fsm=%S fsm-type=%s tool=%s buffer=%s base-buffer=%s"
+             fsm (type-of fsm)
+             (and tool-spec (gptel-tool-name tool-spec))
+             (buffer-name) (and (buffer-base-buffer) (buffer-name (buffer-base-buffer))))
+     "tool-call-debug" 'no-json))
+  (unless (cl-typep fsm 'gptel-fsm)
+    (when (eq gptel-log-level 'debug)
+      (gptel--log
+       (format "process-tool-call ERROR: fsm is %S (type %s), expected gptel-fsm! tool-call=%S"
+               fsm (type-of fsm) tool-call)
+       "tool-call-debug" 'no-json))
+    (error "gptel--process-tool-call: fsm is %S (type %s), not gptel-fsm"
+           fsm (type-of fsm)))
   (let* ((info (gptel-fsm-info fsm))
          (tool-result-alist (plist-get info :tool-result))
          ;; MAYBE(tool-hooks): Use plist-member for valid nil :result?
@@ -1907,6 +1922,12 @@ injects the results into the prompt data and transitions the FSM."
                                            (plist-get info :tools)))
                     (process-tool-result (apply-partially #'gptel--process-tool-call
                                                           fsm tool-spec tool-call)))
+             (when (eq gptel-log-level 'debug)
+               (gptel--log
+                (format "handle-tool-use: creating closure for tool=%s fsm=%S fsm-type=%s tool-spec=%S confirm-pending=%s"
+                        name fsm (type-of fsm) (and tool-spec (gptel-tool-name tool-spec))
+                        (and (boundp 'gptel-confirm-tool-calls) gptel-confirm-tool-calls))
+                "tool-call-debug" 'no-json))
              (if (null tool-spec)
                  (if (equal name gptel--ersatz-json-tool) ;Could be a JSON response
                      ;; Handle structured JSON output supplied as tool call

@@ -1049,10 +1049,28 @@ dynamic bindings from INFO before running each tool."
         (gptel-model (or (plist-get info :model)
                          (and (boundp 'gptel-model) gptel-model)))
         (buf (plist-get info :buffer)))
+    (when (eq gptel-log-level 'debug)
+      (gptel--log
+       (format "accept-tool-calls ENTRY: buffer=%s base-buffer=%s info-buffer=%s buf-live=%s num-tools=%d"
+               (buffer-name) (and (buffer-base-buffer) (buffer-name (buffer-base-buffer)))
+               (and buf (buffer-name buf)) (and buf (buffer-live-p buf))
+               (length tool-calls))
+       "tool-call-debug" 'no-json)
+      (gptel--log
+       (format "accept-tool-calls: info keys=%S fsm-last-in-current=%S"
+               (cl-loop for (k _v) on info by #'cddr collect k)
+               (and (boundp 'gptel--fsm-last) gptel--fsm-last))
+       "tool-call-debug" 'no-json))
     (when (and buf (buffer-live-p buf))
       (with-current-buffer buf
         (gptel--update-status " Calling tool..." 'mode-line-emphasis)))
     (cl-loop for (tool-spec arg-plist process-tool-result) in tool-calls
+             for idx from 0
+             do (when (eq gptel-log-level 'debug)
+                  (gptel--log
+                   (format "accept-tool-calls: [%d] tool=%s process-tool-result=%S"
+                           idx (gptel-tool-name tool-spec) process-tool-result)
+                   "tool-call-debug" 'no-json))
              do (gptel-org--debug
                  "org-agent tool-confirm: executing tool %s"
                  (gptel-tool-name tool-spec))
@@ -1121,6 +1139,21 @@ This function is added to `org-after-todo-state-change-hook'."
             (let ((tool-calls (plist-get entry :tool-calls))
                   (info (plist-get entry :info))
                   (stored-buf (plist-get entry :buffer)))
+              (when (eq gptel-log-level 'debug)
+                (gptel--log
+                 (format "on-todo-change: entry found, tool-calls=%d stored-buf=%s stored-buf-live=%s info-buffer=%s"
+                         (length tool-calls) stored-buf
+                         (and stored-buf (buffer-live-p stored-buf))
+                         (and info (plist-get info :buffer)
+                              (buffer-name (plist-get info :buffer))))
+                 "tool-call-debug" 'no-json)
+                ;; Log each tool-call closure for debugging
+                (cl-loop for (ts ap ptr) in tool-calls
+                         for i from 0
+                         do (gptel--log
+                             (format "on-todo-change: tool-call[%d] tool=%s process-tool-result=%S"
+                                     i (and ts (gptel-tool-name ts)) ptr)
+                             "tool-call-debug" 'no-json)))
               ;; Check that the stored buffer is still alive
               (unless (and stored-buf (buffer-live-p stored-buf))
                 (gptel-org--debug
