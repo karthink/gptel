@@ -545,5 +545,58 @@ Macros cause stale bytecode issues; this must remain a function."
   (should (functionp #'gptel--json-encode))
   (should-not (macrop (symbol-function 'gptel--json-encode))))
 
+(ert-deftest gptel-test-curl-get-args-with-unibyte-request-data ()
+  "Ensure `gptel-curl--get-args' builds args when data contains unibyte UTF-8.
+This exercises the actual curl code path, not just a simulation."
+  (let* ((bad (encode-coding-string
+               "Never use bash echo for communication — output text directly → use ×"
+               'utf-8))
+         (backend (alist-get 'openai gptel-test-backends))
+         (model (car (gptel-backend-models backend)))
+         (info (list :data (list :model "gpt-4o-mini"
+                                 :messages (vector (list :role "system"
+                                                         :content bad)))
+                     :backend backend
+                     :model model
+                     :stream t)))
+    (should-not (multibyte-string-p bad))
+    (should (listp (gptel-curl--get-args info "test-uuid")))))
+
+(ert-deftest gptel-test-json-encode-tool-schema-payload ()
+  "Test JSON encoding of tool schema payloads with special characters.
+Mirrors the real crash scenario where tool descriptions contain
+Unicode punctuation like →, —, and ×."
+  (let* ((tool-desc (encode-coding-string
+                     "Multiply two numbers using × operator. Returns result → stdout. Use — for ranges."
+                     'utf-8))
+         (param-desc (encode-coding-string
+                      "The first operand — must be a number"
+                      'utf-8))
+         (data (list :model "gpt-4o-mini"
+                     :messages (vector
+                                (list :role "system"
+                                      :content "You are helpful."))
+                     :tools (vector
+                             (list :type "function"
+                                   :function
+                                   (list :name "multiply"
+                                         :description tool-desc
+                                         :parameters
+                                         (list :type "object"
+                                               :properties
+                                               (list :a (list :type "number"
+                                                              :description param-desc)
+                                                     :b (list :type "number"
+                                                              :description "second operand")))))))))
+    (should-not (multibyte-string-p tool-desc))
+    (should-not (multibyte-string-p param-desc))
+    (let ((json-str (gptel--json-encode data)))
+      (should (stringp json-str))
+      ;; json-serialize returns unibyte UTF-8; decode to verify content
+      (let ((decoded (decode-coding-string json-str 'utf-8)))
+        (should (string-match-p "×" decoded))
+        (should (string-match-p "→" decoded))
+        (should (string-match-p "—" decoded))))))
+
 (provide 'gptel-unit-tests)
 ;;; gptel-unit-tests.el ends here
