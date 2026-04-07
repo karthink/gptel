@@ -1234,7 +1234,12 @@ returned as a list of strings."
 TYPE is a label for data being logged.  DATA is assumed to be
 Valid JSON unless NO-JSON is t."
   (with-current-buffer (get-buffer-create gptel--log-buffer-name)
-    (let ((p (goto-char (point-max))))
+    (set-buffer-multibyte t)
+    (let ((p (goto-char (point-max)))
+          (data (if (and (stringp data)
+                         (not (multibyte-string-p data)))
+                    (decode-coding-string data 'utf-8)
+                  data)))
       (unless (bobp) (insert "\n"))
       (insert (format "{\"gptel\": \"%s\", " (or type "none"))
               (format-time-string "\"timestamp\": \"%Y-%m-%d %H:%M:%S\"}\n")
