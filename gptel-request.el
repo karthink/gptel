@@ -1230,20 +1230,42 @@ returned as a list of strings."
 
 
 (defun gptel--decode-utf8 (str)
-  "Decode STR as UTF-8, handling both unibyte and eight-bit characters.
+  "Decode STR as UTF-8, filtering non-Unicode characters for logging.
 
-Unibyte strings and multibyte strings containing eight-bit raw
-byte characters (from `string-to-multibyte' or `format' with %S
-of unibyte data) are decoded as UTF-8.  Strings that are already
-valid multibyte Unicode are returned as-is."
-  (cond
-   ((not (multibyte-string-p str))
-    (decode-coding-string str 'utf-8))
-   ((string-match-p "[\x3fff80-\x3fffff]" str)
-    ;; Multibyte string contains eight-bit raw byte characters.
-    ;; Re-encode to raw bytes then decode as UTF-8.
-    (decode-coding-string (encode-coding-string str 'raw-text) 'utf-8))
-   (t str)))
+Handles three kinds of problematic strings:
+- Unibyte strings: decoded as UTF-8.
+- Multibyte strings with eight-bit raw byte characters
+  (#x3FFF80-#x3FFFFF): re-encoded and decoded as UTF-8.
+- Literal octal escapes (\\\\342\\\\200\\\\224) from `format' %S
+  of unibyte data: parsed and decoded as UTF-8.
+
+Valid multibyte Unicode strings pass through unchanged."
+  ;; First, handle raw byte representations
+  (let ((str (cond
+              ((not (multibyte-string-p str))
+               (decode-coding-string str 'utf-8))
+              ((string-match-p "[\x3fff80-\x3fffff]" str)
+               (decode-coding-string
+                (encode-coding-string str 'raw-text) 'utf-8))
+              (t str))))
+    ;; Then, filter literal octal escape sequences (\NNN) that
+    ;; format %S produces for unibyte strings with high bytes.
+    (if (string-match-p "\\\\[0-3][0-7][0-7]" str)
+        (replace-regexp-in-string
+         "\\(\\\\[0-3][0-7][0-7]\\)+"
+         (lambda (match)
+           (save-match-data
+             (let ((bytes nil) (pos 0))
+               (while (string-match
+                       "\\\\\\([0-3][0-7][0-7]\\)" match pos)
+                 (push (string-to-number (match-string 1 match) 8)
+                       bytes)
+                 (setq pos (match-end 0)))
+               (decode-coding-string
+                (apply #'unibyte-string (nreverse bytes))
+                'utf-8))))
+         str)
+      str)))
 
 (defun gptel--log (data &optional type no-json)
   "Log DATA to `gptel--log-buffer-name'.
