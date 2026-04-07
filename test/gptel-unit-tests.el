@@ -598,5 +598,28 @@ Unicode punctuation like →, —, and ×."
         (should (string-match-p "→" decoded))
         (should (string-match-p "—" decoded))))))
 
+(ert-deftest gptel-test-json-encode-already-json-object ()
+  "Test that already-encoded JSON objects pass through unchanged.
+When a string starting with { is passed to `gptel--json-encode',
+it should be returned as-is to prevent double encoding."
+  (let ((json-str "{\"model\":\"gpt-4\",\"messages\":[]}"))
+    (should (equal json-str (gptel--json-encode json-str)))))
+
+(ert-deftest gptel-test-json-encode-already-json-array ()
+  "Test that already-encoded JSON arrays pass through unchanged."
+  (let ((json-str "[{\"role\":\"user\",\"content\":\"hello\"}]"))
+    (should (equal json-str (gptel--json-encode json-str)))))
+
+(ert-deftest gptel-test-json-encode-already-json-with-whitespace ()
+  "Test that JSON strings with leading whitespace pass through unchanged."
+  (let ((json-str "  {\"a\":1}"))
+    (should (equal json-str (gptel--json-encode json-str)))))
+
+(ert-deftest gptel-test-json-encode-plain-string-not-json ()
+  "Test that plain strings are still serialized as JSON strings.
+A string like \"hello\" should be JSON-encoded, not passed through."
+  (let ((result (gptel--json-encode "hello world")))
+    (should (equal "\"hello world\"" result))))
+
 (provide 'gptel-unit-tests)
 ;;; gptel-unit-tests.el ends here

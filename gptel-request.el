@@ -832,28 +832,34 @@ strings as UTF-8 so they are safe for serialization."
   "Serialize OBJECT as JSON.
 
 Uses native `json-serialize' when available, falling back to
-`json-encode'.  If `json-serialize' fails due to unibyte strings
-containing multibyte characters (signaling `wrong-type-argument'
-with `json-value-p'), the object is sanitized by converting all
-strings to multibyte and serialization is retried."
-  (if (fboundp 'json-serialize)
-      (condition-case err
-          (json-serialize object
-            :null-object :null
-            :false-object :json-false)
-        (wrong-type-argument
-         (if (eq (cadr err) 'json-value-p)
-             (json-serialize (gptel--ensure-multibyte object)
-               :null-object :null
-               :false-object :json-false)
-           (signal (car err) (cdr err)))))
-    (require 'json)
-    (defvar json-false)
-    (defvar json-null)
-    (declare-function json-encode "json" (object))
-    (let ((json-false :json-false)
-          (json-null  :null))
-      (json-encode object))))
+`json-encode'.  If OBJECT is a string that already looks like
+serialized JSON (starts with { or [), it is returned as-is to
+prevent double encoding.  If `json-serialize' fails due to
+unibyte strings containing multibyte characters (signaling
+`wrong-type-argument' with `json-value-p'), the object is
+sanitized by converting all strings to multibyte and
+serialization is retried."
+  (if (and (stringp object)
+           (string-match-p "\\`[[:space:]]*[{[]" object))
+      object
+    (if (fboundp 'json-serialize)
+        (condition-case err
+            (json-serialize object
+              :null-object :null
+              :false-object :json-false)
+          (wrong-type-argument
+           (if (eq (cadr err) 'json-value-p)
+               (json-serialize (gptel--ensure-multibyte object)
+                 :null-object :null
+                 :false-object :json-false)
+             (signal (car err) (cdr err)))))
+      (require 'json)
+      (defvar json-false)
+      (defvar json-null)
+      (declare-function json-encode "json" (object))
+      (let ((json-false :json-false)
+            (json-null  :null))
+        (json-encode object)))))
 
 (defun gptel--process-models (models)
   "Convert items in MODELS to symbols with appropriate properties."
@@ -2772,7 +2778,7 @@ See `gptel-curl--get-response' for its contents.")
     (save-excursion
       (goto-char url-http-end-of-headers)
       (when (eq gptel-log-level 'debug)
-        (gptel--log (gptel--json-encode (buffer-substring-no-properties (point-min) (point)))
+        (gptel--log (buffer-substring-no-properties (point-min) (point))
                     "response headers"))
       (gptel--log (buffer-substring-no-properties (point) (point-max))
                   "response body")))
@@ -2954,9 +2960,8 @@ PROC-INFO is the plist containing process metadata."
       (goto-char (point-min))
       (when (re-search-forward "?\n?\n" nil t)
         (when (eq gptel-log-level 'debug)
-          (gptel--log (gptel--json-encode
-                       (buffer-substring-no-properties
-                        (point-min) (1- (point))))
+          (gptel--log (buffer-substring-no-properties
+                       (point-min) (1- (point)))
                       "response headers"))
         (let ((p (point)))
           (when (search-forward (plist-get proc-info :uuid) nil t)
