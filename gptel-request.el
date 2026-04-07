@@ -807,12 +807,44 @@ when including context from these major modes.")
     `(let ((json-object-type 'plist))
       (json-read-from-string ,str))))
 
+(defun gptel--ensure-multibyte (obj)
+  "Recursively ensure all strings in OBJ are multibyte.
+
+Emacs's native `json-serialize' rejects unibyte strings
+containing bytes above 127 (e.g. UTF-8 encoded Unicode
+characters like →), signaling a `json-value-p' type error.
+This function walks the data structure and decodes any such
+strings as UTF-8 so they are safe for serialization."
+  (cond
+   ((stringp obj)
+    (if (multibyte-string-p obj) obj
+      (decode-coding-string obj 'utf-8)))
+   ((vectorp obj)
+    (cl-map 'vector #'gptel--ensure-multibyte obj))
+   ((consp obj)
+    (cons (gptel--ensure-multibyte (car obj))
+          (gptel--ensure-multibyte (cdr obj))))
+   (t obj)))
+
 (defmacro gptel--json-encode (object)
-  "Serialize OBJECT as JSON."
+  "Serialize OBJECT as JSON.
+
+Uses native `json-serialize' when available, falling back to
+`json-encode'.  If `json-serialize' fails due to unibyte strings
+containing multibyte characters (signaling `wrong-type-argument'
+with `json-value-p'), the object is sanitized by converting all
+strings to multibyte and serialization is retried."
   (if (fboundp 'json-serialize)
-      `(json-serialize ,object
-        :null-object :null
-        :false-object :json-false)
+      (let ((obj (make-symbol "obj")))
+        `(let ((,obj ,object))
+           (condition-case nil
+               (json-serialize ,obj
+                 :null-object :null
+                 :false-object :json-false)
+             (wrong-type-argument
+              (json-serialize (gptel--ensure-multibyte ,obj)
+                :null-object :null
+                :false-object :json-false)))))
     (require 'json)
     (defvar json-false)
     (defvar json-null)

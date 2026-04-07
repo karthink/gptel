@@ -462,5 +462,55 @@ heading-specific bindings."
       (should (eq gptel-backend 'stale-backend))
       (should (eq gptel-model 'stale-model)))))
 
+;;; Tests for JSON serialization with multibyte characters
+
+(ert-deftest gptel-test-json-encode-multibyte-string ()
+  "Test that `gptel--json-encode' handles multibyte strings correctly."
+  (should (stringp (gptel--json-encode "hello → world")))
+  (should (string-match-p "hello.*world"
+                          (gptel--json-encode "hello → world"))))
+
+(ert-deftest gptel-test-json-encode-unibyte-string ()
+  "Test that `gptel--json-encode' handles unibyte strings with high bytes.
+This is the core bug: `json-serialize' rejects unibyte strings containing
+bytes above 127, such as UTF-8 encoded → (\\342\\206\\222)."
+  (let ((unibyte-str (encode-coding-string "Error: has → arrow" 'utf-8)))
+    ;; Verify our test string is actually unibyte
+    (should-not (multibyte-string-p unibyte-str))
+    ;; json-serialize alone would fail on this
+    (should-error (json-serialize unibyte-str
+                    :null-object :null :false-object :json-false)
+                  :type 'wrong-type-argument)
+    ;; But gptel--json-encode should handle it
+    (should (stringp (gptel--json-encode unibyte-str)))))
+
+(ert-deftest gptel-test-json-encode-nested-unibyte ()
+  "Test that `gptel--json-encode' handles unibyte strings nested in plists."
+  (let* ((unibyte-str (encode-coding-string "→ nested" 'utf-8))
+         (data (list :role "tool" :content unibyte-str)))
+    (should-not (multibyte-string-p unibyte-str))
+    (should (stringp (gptel--json-encode data)))
+    (should (string-match-p "\"role\":\"tool\"" (gptel--json-encode data)))))
+
+(ert-deftest gptel-test-json-encode-nested-unibyte-in-vector ()
+  "Test that `gptel--json-encode' handles unibyte strings in vectors."
+  (let* ((unibyte-str (encode-coding-string "→ in vector" 'utf-8))
+         (data (list :messages (vector (list :role "tool"
+                                            :content unibyte-str)))))
+    (should (stringp (gptel--json-encode data)))))
+
+(ert-deftest gptel-test-ensure-multibyte-preserves-types ()
+  "Test that `gptel--ensure-multibyte' preserves non-string types."
+  (should (eq nil (gptel--ensure-multibyte nil)))
+  (should (eq 42 (gptel--ensure-multibyte 42)))
+  (should (eq :keyword (gptel--ensure-multibyte :keyword)))
+  (should (eq t (gptel--ensure-multibyte t)))
+  (should (multibyte-string-p
+           (gptel--ensure-multibyte
+            (encode-coding-string "→" 'utf-8))))
+  ;; Already-multibyte strings pass through unchanged
+  (let ((s "already multibyte →"))
+    (should (eq s (gptel--ensure-multibyte s)))))
+
 (provide 'gptel-unit-tests)
 ;;; gptel-unit-tests.el ends here
