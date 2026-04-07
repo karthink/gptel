@@ -512,5 +512,38 @@ bytes above 127, such as UTF-8 encoded → (\\342\\206\\222)."
   (let ((s "already multibyte →"))
     (should (eq s (gptel--ensure-multibyte s)))))
 
+(ert-deftest gptel-test-ensure-multibyte-ascii-unibyte ()
+  "Test that `gptel--ensure-multibyte' converts pure ASCII unibyte to multibyte.
+Pure ASCII unibyte strings (no high bytes) should be converted to multibyte
+without UTF-8 decoding, which could corrupt data."
+  (let ((s (string-to-unibyte "plain ascii")))
+    (should-not (multibyte-string-p s))
+    (let ((result (gptel--ensure-multibyte s)))
+      (should (multibyte-string-p result))
+      (should (string= "plain ascii" result)))))
+
+(ert-deftest gptel-test-json-encode-curl-path-unibyte ()
+  "Regression test: curl path encode-coding-string + gptel--json-encode.
+The curl path wraps gptel--json-encode output with encode-coding-string.
+Previously it used decode-coding-string which corrupted the JSON payload.
+This test simulates the curl path encoding pipeline."
+  (let* ((unibyte-content (encode-coding-string "Use → for arrows and — for dashes" 'utf-8))
+         (data (list :messages (vector (list :role "user"
+                                            :content unibyte-content))))
+         ;; Simulate curl path: encode-coding-string wrapping gptel--json-encode
+         (data-json (encode-coding-string (gptel--json-encode data) 'utf-8)))
+    ;; Result must be a valid string
+    (should (stringp data-json))
+    ;; Must contain the expected characters when decoded back
+    (let ((decoded (decode-coding-string data-json 'utf-8)))
+      (should (string-match-p "→" decoded))
+      (should (string-match-p "—" decoded)))))
+
+(ert-deftest gptel-test-json-encode-is-function ()
+  "Test that `gptel--json-encode' is a function, not a macro.
+Macros cause stale bytecode issues; this must remain a function."
+  (should (functionp #'gptel--json-encode))
+  (should-not (macrop (symbol-function 'gptel--json-encode))))
+
 (provide 'gptel-unit-tests)
 ;;; gptel-unit-tests.el ends here

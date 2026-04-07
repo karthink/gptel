@@ -818,7 +818,9 @@ strings as UTF-8 so they are safe for serialization."
   (cond
    ((stringp obj)
     (if (multibyte-string-p obj) obj
-      (decode-coding-string obj 'utf-8)))
+      (if (string-match-p "[^\000-\177]" obj)
+          (decode-coding-string obj 'utf-8)
+        (string-to-multibyte obj))))
    ((vectorp obj)
     (cl-map 'vector #'gptel--ensure-multibyte obj))
    ((consp obj)
@@ -826,7 +828,7 @@ strings as UTF-8 so they are safe for serialization."
           (gptel--ensure-multibyte (cdr obj))))
    (t obj)))
 
-(defmacro gptel--json-encode (object)
+(defun gptel--json-encode (object)
   "Serialize OBJECT as JSON.
 
 Uses native `json-serialize' when available, falling back to
@@ -835,23 +837,23 @@ containing multibyte characters (signaling `wrong-type-argument'
 with `json-value-p'), the object is sanitized by converting all
 strings to multibyte and serialization is retried."
   (if (fboundp 'json-serialize)
-      (let ((obj (make-symbol "obj")))
-        `(let ((,obj ,object))
-           (condition-case nil
-               (json-serialize ,obj
-                 :null-object :null
-                 :false-object :json-false)
-             (wrong-type-argument
-              (json-serialize (gptel--ensure-multibyte ,obj)
-                :null-object :null
-                :false-object :json-false)))))
+      (condition-case err
+          (json-serialize object
+            :null-object :null
+            :false-object :json-false)
+        (wrong-type-argument
+         (if (eq (cadr err) 'json-value-p)
+             (json-serialize (gptel--ensure-multibyte object)
+               :null-object :null
+               :false-object :json-false)
+           (signal (car err) (cdr err)))))
     (require 'json)
     (defvar json-false)
     (defvar json-null)
     (declare-function json-encode "json" (object))
-    `(let ((json-false :json-false)
-           (json-null  :null))
-      (json-encode ,object))))
+    (let ((json-false :json-false)
+          (json-null  :null))
+      (json-encode object))))
 
 (defun gptel--process-models (models)
   "Convert items in MODELS to symbols with appropriate properties."
@@ -2820,7 +2822,7 @@ INFO contains the request data, UUID is a unique identifier."
          (url (let ((backend-url (gptel-backend-url gptel-backend)))
                 (if (functionp backend-url)
                     (funcall backend-url) backend-url)))
-         (data-json (decode-coding-string (gptel--json-encode data) 'utf-8 t))
+         (data-json (encode-coding-string (gptel--json-encode data) 'utf-8))
          (headers
           (append '(("Content-Type" . "application/json"))
                   (when-let* ((header (gptel-backend-header gptel-backend)))
