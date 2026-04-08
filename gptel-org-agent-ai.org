@@ -280,6 +280,42 @@ the full delegation chain:
     =gptel--fsm-last=.  They restore dynamic bindings (preset, backend,
     model) from the stored INFO.
 
+
+* Org Format Instructions
+
+Dynamic org formatting instructions are injected into the system message
+at request time via prompt transforms.  This tells the LLM to respond in
+org-mode format with the correct heading level for the current context.
+
+** How It Works
+
+1. =gptel-org-agent--transform-org-instructions= runs as a prompt transform
+   (registered in =gptel-prompt-transform-functions=)
+2. It resolves the response heading level dynamically:
+   - In agent indirect buffers: one level deeper than the agent heading
+   - In legacy subtree mode: parent heading level + 2
+3. Extracts the =#+SEQ_TODO= line from the buffer if present
+4. Calls =gptel-org-agent--format-instructions= to build the instruction string
+5. Appends the instructions to =gptel--system-message=
+6. Sets =gptel-org--org-format-response= to =t= (skips markdown→org conversion)
+
+** Key Design Points
+
+- The transform must run AFTER =gptel-org-agent--transform-redirect= so the
+  response buffer is the final agent indirect buffer
+- Instructions include a concrete example with correct heading levels,
+  escaped headings (comma-prefixed), and emphasis markers for weaker models
+- Gated behind =gptel-org-agent-format-instructions= variable (default =t=)
+
+** Key Functions
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-agent--format-instructions= | Build the instruction string with examples |
+| =gptel-org-agent--transform-org-instructions= | Prompt transform that injects instructions |
+| =gptel-org-agent--response-heading-level= | Resolve correct heading level for context |
+| =gptel-org-agent--seq-todo-line= | Extract #+SEQ_TODO from buffer |
+
 * Known Edge Cases and Fixes
 
 | Issue | Fix | Commit |

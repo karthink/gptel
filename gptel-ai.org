@@ -328,6 +328,7 @@ See feature-specific documents for details:
 - *Context caching*: hash-based invalidation, tags =:cache_files:=, =:cache_summary:=
 - *Markdown→Org conversion*: streaming and non-streaming
 - *Agent subtrees*: per-agent indirect buffers, recursive delegation, context stripping
+- *Org format instructions*: dynamic prompt injection telling LLM to use org-mode formatting with correct heading levels, examples, and #+SEQ_TODO keywords.  See [[file:gptel-org-agent-ai.org::*Org Format Instructions]]
 
 * Feature-Specific Documents
 

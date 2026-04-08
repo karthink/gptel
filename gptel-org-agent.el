@@ -500,10 +500,12 @@ Searches the base buffer (for indirect buffers) or BUFFER directly."
 
 RESPONSE-LEVEL is the heading level for the AI's top-level headings.
 SEQ_TODO is the optional #+SEQ_TODO line from the buffer."
-  (let ((stars (make-string response-level ?*))
-        (sub-stars (make-string (1+ response-level) ?*)))
+  (let* ((stars (make-string response-level ?*))
+         (sub-stars (make-string (1+ response-level) ?*))
+         (comma-stars (concat "," stars))
+         (comma-sub-stars (concat "," sub-stars)))
     (concat
-     "\n\n<org_format_instructions>\n"
+     "\n\n"
      "Respond using Emacs org-mode formatting.\n"
      "Use org headings for document structure, NOT markdown headings.\n"
      (format "Your top-level headings should be at level %d (%s Heading).\n"
@@ -513,11 +515,23 @@ SEQ_TODO is the optional #+SEQ_TODO line from the buffer."
      "Use org-mode markup: *bold*, /italic/, =verbatim=, ~code~.\n"
      "Use #+begin_src/#+end_src for code blocks (not markdown fences).\n"
      "Inside #+begin_example blocks, escape lines starting with * or #+ by prefixing with a comma.\n"
-     "For instance: ,* Not a heading and ,#+not_a_keyword. Org strips the comma on export.\n"
+     "REMEMBER! Org strips the leading comma on export.\n"
      (if seq-todo
          (format "The document uses these TODO keywords: %s\n" seq-todo)
        "")
-     "</org_format_instructions>\n")))
+     "\n"
+     "Example of correct org response format:\n"
+     "#+begin_src org\n"
+     (format "  %s Top heading   <-- REMEMBER! Correct heading level is %d\n"
+             comma-stars response-level)
+     "  - List item 1\n"
+     "  - List item 2\n"
+     (format "  %s Sub heading\n" comma-sub-stars)
+     "  Some text under sub heading\n"
+     "  ,#+begin_src elisp\n"
+     "  (message \"example code block\")\n"
+     "  ,#+end_src\n"
+     "#+end_src\n")))
 
 (defun gptel-org-agent--transform-org-instructions (fsm)
   "Prompt transform: append org formatting instructions to system message.
