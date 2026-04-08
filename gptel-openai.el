@@ -276,7 +276,8 @@ information if the stream contains it."
   "Parse an OpenAI (non-streaming) RESPONSE and return response text.
 
 Mutate state INFO with response metadata."
-  (let* ((choice0 (map-nested-elt response '(:choices 0)))
+  (let* ((choices (plist-get response :choices))
+         (choice0 (and (> (length choices) 0) (aref choices 0)))
          (message (plist-get choice0 :message))
          (content (plist-get message :content)))
     (plist-put info :stop-reason
@@ -286,10 +287,24 @@ Mutate state INFO with response metadata."
     ;; OpenAI returns either non-blank text content or a tool call, not both.
     ;; However OpenAI-compatible APIs like llama.cpp can include both (#819), so
     ;; we check for both tool calls and responses independently.
-    (when-let* ((tool-calls (plist-get message :tool_calls))
-                ((not (eq tool-calls :null))))
-      (gptel--inject-prompt        ; First add the tool call to the prompts list
-       (plist-get info :backend) (plist-get info :data) message)
+    ;; Some backends (e.g. Copilot) split content and tool_calls across separate
+    ;; choices, so collect tool_calls from all choices.
+    (when-let* ((tool-calls
+                 (cl-loop for choice across choices
+                          for msg = (plist-get choice :message)
+                          for tcs = (plist-get msg :tool_calls)
+                          when (and tcs (not (eq tcs :null)))
+                          vconcat tcs))
+                ((> (length tool-calls) 0)))
+      ;; Build a merged message for injecting into prompts: use the first
+      ;; message's content combined with all collected tool_calls.
+      (let ((merged-message (list :role "assistant"
+                                  :tool_calls tool-calls)))
+        (when (and content (not (or (eq content :null)
+                                    (string-empty-p content))))
+          (plist-put merged-message :content content))
+        (gptel--inject-prompt
+         (plist-get info :backend) (plist-get info :data) merged-message))
       (cl-loop             ;Then capture the tool call data for running the tool
        for tool-call across tool-calls  ;replace ":arguments" with ":args"
        for call-spec = (copy-sequence (plist-get tool-call :function))
