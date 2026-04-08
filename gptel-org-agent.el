@@ -52,6 +52,7 @@
 (defvar gptel-org-todo-keywords)
 (defvar gptel-org-infer-bounds-from-tags)
 (defvar gptel-org-subtree-context)
+(defvar gptel-org--org-format-response)
 
 ;; Forward declarations for variables defined in org.el
 ;; org-state is dynamically bound by org-todo for hook functions
@@ -540,6 +541,10 @@ FSM is the request state machine."
           (gptel-org--debug
            "org-agent transform-org-instructions: level=%d seq-todo=%S buffer=%S"
            response-level seq-todo (buffer-name response-buffer))
+          ;; Signal that the response will be in org format, so the
+          ;; markdown-to-org converter should be skipped.
+          (with-current-buffer response-buffer
+            (setq gptel-org--org-format-response t))
           ;; Append instructions to the system message in the prompt buffer.
           ;; We're already executing in the prompt buffer context (via
           ;; run-hook-wrapped in gptel-request.el).

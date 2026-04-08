@@ -70,6 +70,13 @@
 (defvar gptel-org--in-prefix-advice nil
   "Non-nil when inside prefix advice functions to prevent recursion.")
 
+(defvar-local gptel-org--org-format-response nil
+  "Non-nil when the AI was instructed to respond in org format.
+
+When set, the markdown-to-org converter is skipped since the
+response is already in org format.  A lightweight post-response
+sanitizer runs instead to fix common AI formatting mistakes.")
+
 ;; Debug support
 (defvar gptel-org-debug nil
   "When non-nil, output debug messages for subtree context operations.
@@ -2031,6 +2038,52 @@ to be children of it."
                     (replace-match (concat new-stars "\\2"))))))))))))
 
 (add-hook 'gptel-post-response-functions #'gptel-org--adjust-response-headings)
+
+
+;;; Post-response sanitizer for org-format responses
+
+(defun gptel-org--sanitize-org-response (beg end)
+  "Fix common AI formatting mistakes in org-format responses.
+
+When `gptel-org--org-format-response' is set, the markdown-to-org
+converter is skipped.  This function runs as a post-response hook
+to catch cases where the AI still uses markdown syntax despite
+being instructed to respond in org format.
+
+Called from `gptel-post-response-functions' with BEG and END
+positions of the response."
+  (when (and (derived-mode-p 'org-mode)
+             gptel-org--org-format-response)
+    (save-excursion
+      (save-restriction
+        (narrow-to-region beg end)
+        (goto-char (point-min))
+        ;; Convert markdown code fences to org src blocks
+        (while (re-search-forward "^[ \t]*```\\([[:alnum:]_+-]*\\)[ \t]*$" nil t)
+          (let ((lang (match-string 1)))
+            (if (save-excursion
+                  (re-search-forward "^[ \t]*```[ \t]*$" nil t))
+                (progn
+                  (replace-match (if (string-empty-p lang)
+                                     "#+begin_src"
+                                   (concat "#+begin_src " lang)))
+                  (when (re-search-forward "^[ \t]*```[ \t]*$" nil t)
+                    (replace-match "#+end_src")))
+              ;; No closing fence found, leave as-is
+              nil)))
+        ;; Convert markdown headings (## Heading) to org headings
+        (goto-char (point-min))
+        (while (re-search-forward "^\\(#+\\) " nil t)
+          (unless (or (gptel-org--in-example-block-p)
+                      ;; Don't touch org keywords like #+begin_src
+                      (looking-back "^#\\+[[:alpha:]]" (line-beginning-position)))
+            (let* ((hashes (match-string 1))
+                   (level (length hashes))
+                   (stars (make-string level ?*)))
+              (replace-match (concat stars " ")))))))))
+
+;; Run at priority 5 (after heading adjustment at 0, before title at 80)
+(add-hook 'gptel-post-response-functions #'gptel-org--sanitize-org-response 5)
 
 
 ;;; Response heading title generation

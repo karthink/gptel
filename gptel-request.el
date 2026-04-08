@@ -54,6 +54,7 @@
 (declare-function json-read "json" ())
 (defvar json-object-type)
 
+(defvar gptel-org--org-format-response)
 (declare-function gptel--stream-convert-markdown->org "gptel-org")
 (declare-function gptel--convert-markdown->org "gptel-org")
 (declare-function gptel-org--create-prompt-buffer "gptel-org")
@@ -2788,7 +2789,8 @@ the response is inserted into the current buffer after point."
           (gptel--json-encode (plist-get info :data))))
     (when (with-current-buffer (plist-get info :buffer)
             (and (derived-mode-p 'org-mode)
-                 gptel-org-convert-response))
+                 gptel-org-convert-response
+                 (not gptel-org--org-format-response)))
       (plist-put info :transformer #'gptel--convert-markdown->org))
     (plist-put info :callback callback)
     (when gptel-log-level               ;logging
@@ -2995,7 +2997,8 @@ the response is inserted into the current buffer after point."
                            :transformer
                            (when (with-current-buffer (plist-get info :buffer)
                                    (and (derived-mode-p 'org-mode)
-                                        gptel-org-convert-response))
+                                        gptel-org-convert-response
+                                        (not gptel-org--org-format-response)))
                              (gptel--stream-convert-markdown->org
                               (plist-get info :position))))
                      (unless (plist-get info :callback)
