@@ -512,6 +512,8 @@ SEQ_TODO is the optional #+SEQ_TODO line from the buffer."
               (1+ response-level) sub-stars)
      "Use org-mode markup: *bold*, /italic/, =verbatim=, ~code~.\n"
      "Use #+begin_src/#+end_src for code blocks (not markdown fences).\n"
+     "Inside #+begin_example blocks, escape lines starting with * or #+ by prefixing with a comma.\n"
+     "For instance: ,* Not a heading and ,#+not_a_keyword. Org strips the comma on export.\n"
      (if seq-todo
          (format "The document uses these TODO keywords: %s\n" seq-todo)
        "")
