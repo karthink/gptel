@@ -253,9 +253,11 @@ Tool/function-call specification.
 Presets bundle configuration into named, reusable profiles.
 
 - =gptel-make-preset= — Create preset with: backend, model, system prompt, tools, max-tokens, temperature, pre/post hooks
-- =gptel-get-preset= — Retrieve preset by name
+- =gptel-get-preset= — Retrieve preset by name (uses =#'equal=, works with both symbols and strings)
 - =gptel--apply-preset= — Apply preset to current buffer (sets buffer-local vars)
 - Presets are the foundation of the agent system (agents ARE presets)
+- Keys handled by =gptel--apply-preset=: =:backend=, =:model=, =:system=, =:tools=, =:pre=, =:post=, =:parents=, plus any key matching =gptel-*= or =gptel--*= variables
+- Keys explicitly skipped: =:parents= (handled via recursion), =:description=, =:pre=, =:post=, =:subagent-models= (consumed by gptel-agent layer)
 
 * Tool System
 
@@ -338,7 +340,120 @@ See feature-specific documents for details:
 | [[file:emacs-example-ai.org]] | Example AI task workflow | exists |
 
 * TODOs
-** AI-DONE Implement how main and delegated agent discussion context is organized in the org mode
+** TODO Study feasibility to change TodoWrite tool to use org mode todo
+*** Feasibility Analysis: TodoWrite → Org Mode TODO States
+**** Current State
+
+*Already implemented (Phase 4):* =gptel-org-agent--write-todo-org= in =gptel-org-agent.el= already converts TodoWrite calls into org headings when =gptel-org-agent-subtrees= is enabled. The mapping is:
+
+| TodoWrite status | Org keyword |
+|---|---|
+| =pending= | PENDING |
+| =in_progress= | RUNNING |
+| =completed= | DONE |
+
+*The gap:* The current implementation uses its own keyword set (=PENDING/RUNNING/DONE/ERROR/ABORTED=) which is completely separate from the document's =SEQ_TODO= states (=TODO/AI-DO/AI-DOING/AI-DONE/FEEDBACK/etc.=). The two systems don't talk to each other.
+
+**** What the Referenced Tasks Propose
+
+The vision in the two draft tasks is:
+
+1. *User writes a =TODO= heading* → human task
+2. *=gptel-send= creates =AI-DO= subheading* → queued AI task  
+3. *Scheduler transitions =AI-DO → AI-DOING=* → active AI task
+4. *On completion: =AI-DOING → AI-DONE=* or =FEEDBACK= if human input needed
+5. *Sub-agent delegation creates nested =AI-DO= headings* under the parent
+6. *Custom Org Agenda views* show human vs AI task queues separately
+7. *Handoff mechanism* for triage→specialist agent escalation
+
+**** Feasibility Assessment
+
+***** DONE ✅ Highly Feasible (Low effort)
+
+*Map TodoWrite statuses to document SEQ_TODO keywords:*
+- Change =gptel-org-agent--status-to-keyword= to map to =AI-DO/AI-DOING/AI-DONE= instead of =PENDING/RUNNING/DONE=
+- Make the mapping configurable or auto-detect from the buffer's =org-todo-keywords=
+- This is a ~20 line change in =gptel-org-agent.el=
+
+*Remove =gptel-org-agent-todo-keywords= defcustom* and use the document's own keywords:
+- Instead of injecting a parallel keyword sequence, respect whatever =#+SEQ_TODO= the document defines
+- The =--ensure-todo-keywords= function becomes unnecessary or simplified
+
+***** ✅ Feasible (Medium effort)
+
+*Auto-create =AI-DO= subheading on =gptel-send=:*
+- The subtree creation in =gptel-org-agent--maybe-setup-subtree= already creates child headings
+- Adding a TODO state transition (=TODO= parent stays, =AI-DO= child created) is straightforward
+- Needs: modify =--create-subtree= to set the TODO keyword to =AI-DO= on the agent subtree heading
+
+*Transition =AI-DO → AI-DOING= on task start:*
+- In =gptel-org-agent--transform-redirect=, when the FSM starts, transition the heading
+- On =DONE= FSM state, transition to =AI-DONE=
+- On =ERRS/ABRT=, transition to =CANCELED= or =ERROR=
+- This hooks into the existing FSM handler system (=gptel-agent-subtree--handlers=)
+
+*Sub-agent delegation creates nested =AI-DO=:*
+- =gptel-org-agent--setup-task-subtree= already creates sub-agent headings with agent tags
+- Adding TODO state to these headings is a small addition
+
+***** ⚠️ Feasible but Complex (Higher effort)
+
+*Task queue/scheduler for AI-DO → AI-DOING:*
+- Currently =gptel-send= immediately starts processing
+- A scheduler would need: queue data structure, sequential/parallel execution policy, retry logic
+- Would require new timer-based or idle-based dispatch mechanism
+- This is a new subsystem, not just a modification
+
+*Custom Org Agenda views:*
+- Doable via =org-agenda-custom-commands= configuration
+- Human view: filter on =TODO/FEEDBACK/HI-DO/HI-DONE=
+- AI view: filter on =AI-DO/AI-DOING/AI-DONE=
+- This is *configuration only* — suggest adding to init.el, not code changes
+
+*Handoff mechanism (triage → specialist):*
+- Requires: synthesizing context, creating new =AI-DO= heading with handoff content, killing current agent buffer
+- The sub-agent delegation pattern already exists; handoff differs in that the parent terminates
+- Medium-complex: needs a new tool or a modification to the =Agent= tool
+
+***** ❌ Challenges
+
+1. *=activeForm= has no org equivalent* — currently displayed in overlays/header-line. In org mode, this could become a property (=:ACTIVE_FORM:=) but wouldn't be as visible. Could use the heading text itself.
+
+2. *Keyword collision* — =DONE= in agent keywords vs =AI-DONE= in document keywords. Need clear namespace separation.
+
+3. *Non-org buffers* — TodoWrite must continue working in non-org contexts (the overlay fallback). Changes must be additive.
+
+4. *The tool schema itself* — The =TodoWrite= JSON schema uses =pending/in_progress/completed= strings. Changing these to =AI-DO/AI-DOING/AI-DONE= would require updating every agent's system prompt. Better to keep the schema stable and map internally.
+
+**** Recommended Implementation Plan
+
+*Phase A — Keyword alignment* (small, safe):
+1. Make =gptel-org-agent--status-to-keyword= configurable to map to the document's own TODO states
+2. Default mapping: =pending→AI-DO=, =in_progress→AI-DOING=, =completed→AI-DONE=
+3. Keep =PENDING/RUNNING/DONE= as fallback when document has no =AI-*= keywords
+
+*Phase B — Lifecycle integration* (medium):
+1. Set =AI-DO= on agent subtree creation
+2. Transition =AI-DO→AI-DOING= when FSM enters =WAIT=
+3. Transition to =AI-DONE= on FSM =DONE=, =CANCELED= on =ABRT=
+4. Sub-agent headings get =AI-DO= and follow same lifecycle
+
+*Phase C — Agenda integration* (config only):
+1. Add suggested =org-agenda-custom-commands= to init.el
+2. Human queue view, AI queue view, feedback view
+
+*Phase D — Queue/Scheduler* (new subsystem, defer):
+1. Implement only after A-C are stable
+2. Start with simple sequential queue
+
+**** Conclusion
+
+*High feasibility overall.* The infrastructure is 80% there — =gptel-org-agent.el= already creates org headings with TODO states from TodoWrite. The main work is:
+- Aligning keyword sets (trivial)
+- Adding FSM state → org TODO transitions (moderate)  
+- The scheduler is the only genuinely complex piece, and it can be deferred
+
+* AI-DONE Implement how main and delegated agent discussion context is organized in the org mode
 
 All 5 phases implemented in =gptel-org-agent.el=.  See [[file:gptel-org-agent-ai.org]] for
 the feature-specific reference document.
