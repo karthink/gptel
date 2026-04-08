@@ -728,7 +728,7 @@ See `gptel-backend'."
       '("--disable" "--location" "--silent" "-XPOST"
         "-y7200" "-Y1" "-D-")
     '("--disable" "--location" "--silent" "--compressed"
-      "-XPOST" "-y7200" "-Y1" "-D-"))
+      "-XPOST" "-y7200" "-Y1" "-N" "-D-"))
   "Arguments always passed to Curl for gptel queries.")
 
 (defvar gptel--link-type-cache nil
