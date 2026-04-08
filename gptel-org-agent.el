@@ -499,22 +499,22 @@ Searches the base buffer (for indirect buffers) or BUFFER directly."
 
 RESPONSE-LEVEL is the heading level for the AI's top-level headings.
 SEQ_TODO is the optional #+SEQ_TODO line from the buffer."
-  (let ((stars (make-string response-level ?*)))
+  (let ((stars (make-string response-level ?*))
+        (sub-stars (make-string (1+ response-level) ?*)))
     (concat
      "\n\n<org_format_instructions>\n"
      "Respond using Emacs org-mode formatting.\n"
      "Use org headings for document structure, NOT markdown headings.\n"
      (format "Your top-level headings should be at level %d (%s Heading).\n"
-             response-level stars)
-     (format "Deeper sub-headings start at level %d (%s* Sub-heading).\n"
-             (1+ response-level)
-             stars)
+              response-level stars)
+     (format "Deeper sub-headings start at level %d (%s Sub-heading).\n"
+              (1+ response-level) sub-stars)
      "Use org-mode markup: *bold*, /italic/, =verbatim=, ~code~.\n"
      "Use #+begin_src/#+end_src for code blocks (not markdown fences).\n"
      (if seq-todo
          (format "The document uses these TODO keywords: %s\n" seq-todo)
        "")
-     "</org_format_instructions>")))
+     "</org_format_instructions>\n")))
 
 (defun gptel-org-agent--transform-org-instructions (fsm)
   "Prompt transform: append org formatting instructions to system message.
