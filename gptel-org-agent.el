@@ -46,14 +46,19 @@
 (declare-function gptel-org--debug "gptel-org")
 (declare-function gptel-org--heading-has-tag-p "gptel-org")
 (declare-function gptel-org--heading-has-todo-keyword-p "gptel-org")
+(declare-function gptel-org--get-parent-heading-level "gptel-org")
 
 ;; Forward declarations for variables defined in gptel-org.el
 (defvar gptel-org-todo-keywords)
 (defvar gptel-org-infer-bounds-from-tags)
+(defvar gptel-org-subtree-context)
 
 ;; Forward declarations for variables defined in org.el
 ;; org-state is dynamically bound by org-todo for hook functions
 (defvar org-state)
+
+;; Forward declarations for variables defined in gptel-request.el
+(defvar gptel--system-message)
 
 ;; Forward declarations for functions defined in gptel-request.el
 (declare-function gptel-fsm-info "gptel-request")
@@ -427,6 +432,127 @@ indirect buffer (identified by `buffer-base-buffer' returning non-nil)."
              "org-agent transform-redirect: redirected to %S at pos %d"
              (buffer-name indirect-buf) (marker-position pos-marker))))))))
 
+
+;;; ---- Org format instructions for system message ----------------------------
+
+(defvar gptel-org-agent-format-instructions t
+  "When non-nil, inject org formatting instructions into the system message.
+
+When enabled, a prompt transform dynamically resolves the heading
+level context and appends instructions to the system message telling
+the LLM to respond using org-mode formatting with correct heading
+levels.
+
+This works in both `gptel-org-agent-subtrees' mode (agent indirect
+buffers) and legacy subtree mode (`gptel-org-subtree-context').")
+
+(defun gptel-org-agent--response-heading-level (buffer)
+  "Determine the heading level for AI response content in BUFFER.
+
+Return the heading level at which the AI should write its top-level
+headings, or nil if BUFFER is not in a relevant org-mode context.
+
+In agent indirect buffers, this is one level deeper than the agent
+heading (the first heading in the narrowed buffer).
+
+In legacy subtree mode, this is one level deeper than the parent
+heading found by `gptel-org--get-parent-heading-level' (which gives
+the level of the task heading; chat entries are at task+1, so
+content headings are at task+2)."
+  (when (and (buffer-live-p buffer)
+             (with-current-buffer buffer
+               (derived-mode-p 'org-mode)))
+    (with-current-buffer buffer
+      (cond
+       ;; Agent indirect buffer: response goes under the @agent heading
+       ((and (bound-and-true-p gptel-org-agent-subtrees)
+             (buffer-base-buffer buffer))
+        (save-excursion
+          (goto-char (point-min))
+          (when (org-at-heading-p)
+            (1+ (org-current-level)))))
+       ;; Legacy subtree mode: response goes under parent heading + 1
+       ;; (parent heading = task, chat entries = task+1, content = task+2)
+       ((bound-and-true-p gptel-org-subtree-context)
+        (save-excursion
+          (let ((parent-level (gptel-org--get-parent-heading-level)))
+            (when (> parent-level 0)
+              (+ parent-level 2)))))))))
+
+(defun gptel-org-agent--seq-todo-line (buffer)
+  "Return the #+SEQ_TODO line from BUFFER, or nil if none found.
+
+Searches the base buffer (for indirect buffers) or BUFFER directly."
+  (let ((search-buffer (or (buffer-base-buffer buffer) buffer)))
+    (when (buffer-live-p search-buffer)
+      (with-current-buffer search-buffer
+        (save-excursion
+          (save-restriction
+            (widen)
+            (goto-char (point-min))
+            (when (re-search-forward
+                   "^#\\+SEQ_TODO:.*$" nil t)
+              (match-string-no-properties 0))))))))
+
+(defun gptel-org-agent--format-instructions (response-level &optional seq-todo)
+  "Build org formatting instruction string.
+
+RESPONSE-LEVEL is the heading level for the AI's top-level headings.
+SEQ_TODO is the optional #+SEQ_TODO line from the buffer."
+  (let ((stars (make-string response-level ?*)))
+    (concat
+     "\n\n<org_format_instructions>\n"
+     "Respond using Emacs org-mode formatting.\n"
+     "Use org headings for document structure, NOT markdown headings.\n"
+     (format "Your top-level headings should be at level %d (%s Heading).\n"
+             response-level stars)
+     (format "Deeper sub-headings start at level %d (%s* Sub-heading).\n"
+             (1+ response-level)
+             stars)
+     "Use org-mode markup: *bold*, /italic/, =verbatim=, ~code~.\n"
+     "Use #+begin_src/#+end_src for code blocks (not markdown fences).\n"
+     (if seq-todo
+         (format "The document uses these TODO keywords: %s\n" seq-todo)
+       "")
+     "</org_format_instructions>")))
+
+(defun gptel-org-agent--transform-org-instructions (fsm)
+  "Prompt transform: append org formatting instructions to system message.
+
+When the response buffer is an org-mode buffer in agent subtree mode
+or legacy subtree mode, dynamically resolve the heading level context
+and append formatting instructions to `gptel--system-message'.
+
+This transform must run AFTER `gptel-org-agent--transform-redirect'
+so that `:buffer' in the FSM info points to the final response buffer
+\(which may be an agent indirect buffer after redirection).
+
+FSM is the request state machine."
+  (when gptel-org-agent-format-instructions
+    (let* ((info (gptel-fsm-info fsm))
+           (response-buffer (plist-get info :buffer))
+           (response-level
+            (gptel-org-agent--response-heading-level response-buffer)))
+      (when response-level
+        (let* ((seq-todo (gptel-org-agent--seq-todo-line response-buffer))
+               (instructions
+                (gptel-org-agent--format-instructions response-level seq-todo)))
+          (gptel-org--debug
+           "org-agent transform-org-instructions: level=%d seq-todo=%S buffer=%S"
+           response-level seq-todo (buffer-name response-buffer))
+          ;; Append instructions to the system message in the prompt buffer.
+          ;; We're already executing in the prompt buffer context (via
+          ;; run-hook-wrapped in gptel-request.el).
+          (setq gptel--system-message
+                (if (stringp gptel--system-message)
+                    (concat gptel--system-message instructions)
+                  ;; Multi-part directive: append to the first element (system part)
+                  (if (consp gptel--system-message)
+                      (cons (concat (car gptel--system-message) instructions)
+                            (cdr gptel--system-message))
+                    ;; No system message at all, just use instructions
+                    instructions))))))))
+
 (defun gptel-org-agent--enable ()
   "Enable agent subtree integration for `gptel-send'.
 
@@ -436,6 +562,13 @@ TODO headings are automatically routed to agent indirect buffers.
 Also sets up tool confirmation advice and hooks."
   (add-to-list 'gptel-prompt-transform-functions
                #'gptel-org-agent--transform-redirect)
+  ;; Org format instructions: must run AFTER transform-redirect so that
+  ;; :buffer in FSM info points to the final response buffer.  Since
+  ;; add-to-list prepends, adding this after redirect means it appears
+  ;; earlier in the list and runs first.  We need it to run AFTER, so
+  ;; append it to the end instead.
+  (add-to-list 'gptel-prompt-transform-functions
+               #'gptel-org-agent--transform-org-instructions t)
   ;; Add keybinding to gptel-mode-map for jumping to/from indirect buffers
   (when (boundp 'gptel-mode-map)
     (define-key gptel-mode-map (kbd "C-c g j")
@@ -450,7 +583,8 @@ Also sets up tool confirmation advice and hooks."
   "Disable agent subtree integration for `gptel-send'."
   (setq gptel-prompt-transform-functions
         (remq #'gptel-org-agent--transform-redirect
-              gptel-prompt-transform-functions))
+              (remq #'gptel-org-agent--transform-org-instructions
+                    gptel-prompt-transform-functions)))
   (when (boundp 'gptel-mode-map)
     (define-key gptel-mode-map (kbd "C-c g j") nil))
   ;; Remove tool confirmation advice and hooks
