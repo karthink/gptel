@@ -2011,10 +2011,12 @@ to be children of it."
         (save-restriction
           (narrow-to-region beg end)
           ;; First pass: find the minimum heading level in the response
-          ;; (only for headings outside example blocks)
+          ;; (only for headings outside example blocks, and skip
+          ;; empty headings which are boundary markers like "*** ")
           (goto-char (point-min))
           (while (re-search-forward org-outline-regexp-bol nil t)
-            (unless (gptel-org--in-example-block-p)
+            (unless (or (gptel-org--in-example-block-p)
+                        (looking-at-p "[ \t]*$"))
               (let ((level (org-outline-level)))
                 (when (or (null min-response-level)
                           (< level min-response-level))
@@ -2037,7 +2039,7 @@ to be children of it."
                          (new-stars (make-string new-level ?*)))
                     (replace-match (concat new-stars "\\2"))))))))))))
 
-(add-hook 'gptel-post-response-functions #'gptel-org--adjust-response-headings)
+;; (add-hook 'gptel-post-response-functions #'gptel-org--adjust-response-headings)
 
 
 ;;; Post-response sanitizer for org-format responses
@@ -2083,7 +2085,7 @@ positions of the response."
               (replace-match (concat stars " ")))))))))
 
 ;; Run at priority 5 (after heading adjustment at 0, before title at 80)
-(add-hook 'gptel-post-response-functions #'gptel-org--sanitize-org-response 5)
+;; (add-hook 'gptel-post-response-functions #'gptel-org--sanitize-org-response 5)
 
 
 ;;; Response heading title generation

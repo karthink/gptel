@@ -436,6 +436,27 @@ even when gptel-org-subtree-context is nil."
      (forward-line 1)
      (should (looking-at ",\\* Not a heading")))))
 
+(ert-deftest gptel-org-subtree-test-adjust-headings-agent-indirect-no-change-correct-level ()
+  "Test that correctly-leveled headings are not adjusted when trailing
+empty boundary heading is at the reference level.
+Reproduces the bug where a trailing empty heading like \"*** \" at the
+reference level triggers unnecessary demotion of headings that are
+already children of the reference heading."
+  (gptel-org-test-with-agent-indirect-buffer
+   "** AI-DOING Only print simple message with heading\n***                                                            :main@agent:\n\n\n#+begin_src gptel-reasoning\nThe user is testing AI responsiveness.\n#+end_src\n\n**** AI-DONE Testing complete\n\nTest message successful! AI is responding correctly to your request.\n\n*** \n"
+   "#+begin_src gptel-reasoning"
+   (let ((end (point-max))
+         (original (buffer-substring beg (point-max))))
+     (gptel-org--adjust-response-headings beg end)
+     ;; Nothing should change: **** AI-DONE is already a child of *** (level 3)
+     ;; and the trailing *** boundary should not trigger demotion
+     (should (string= original (buffer-substring beg (point-max))))
+     (goto-char beg)
+     ;; Verify the heading is still at level 4
+     (search-forward "AI-DONE")
+     (beginning-of-line)
+     (should (looking-at "\\*\\*\\*\\* AI-DONE Testing complete")))))
+
 (ert-deftest gptel-org-subtree-test-in-agent-indirect-buffer-p ()
   "Test gptel-org--in-agent-indirect-buffer-p detection."
   ;; Not in an indirect buffer
