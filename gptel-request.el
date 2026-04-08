@@ -1942,12 +1942,28 @@ many active requests, queue this FSM for later dispatch."
   "Actually dispatch the HTTP request for FSM.
 This is the inner dispatch, called by `gptel--handle-wait' when the
 request is allowed to proceed (not queued)."
-  (funcall
-   (if gptel-use-curl
-       #'gptel-curl-get-response
-     #'gptel--url-get-response)
-   fsm)
-  (run-hooks 'gptel-post-request-hook))
+  (condition-case err
+      (progn
+        (funcall
+         (if gptel-use-curl
+             #'gptel-curl-get-response
+           #'gptel--url-get-response)
+         fsm)
+        (run-hooks 'gptel-post-request-hook))
+    (error
+     ;; JSON encoding or request setup failed -- drive the FSM through
+     ;; its error path so it does not hang in the WAIT state.
+     (let* ((info (gptel-fsm-info fsm))
+            (errmsg (format "Request dispatch error: %s" (error-message-string err))))
+       (when (eq gptel-log-level 'debug)
+         (gptel--log errmsg "dispatch-error" 'no-json))
+       (plist-put info :error errmsg)
+       (plist-put info :status "Request error")
+       (gptel--fsm-transition fsm)        ;WAIT -> TYPE
+       (when-let* ((callback (plist-get info :callback)))
+         (with-demoted-errors "gptel callback error: %S"
+           (funcall callback nil info)))
+       (gptel--fsm-transition fsm)))))
 
 (defun gptel--process-tool-call (fsm tool-spec tool-call result)
   "Add tool RESULT to a TOOL-CALL and transition FSM if required.
