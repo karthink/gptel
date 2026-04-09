@@ -1080,6 +1080,16 @@ DENIED: User denies the tool call."
   :type '(list string string string)
   :group 'gptel)
 
+(defmacro gptel-org-agent--with-info-buffer (buf &rest body)
+  "Execute BODY in BUF if it is a live buffer, otherwise in current buffer.
+
+This ensures tool functions see the correct buffer-local variables
+\(e.g. `gptel--fsm-last') even when triggered from the base buffer."
+  (declare (indent 1) (debug t))
+  `(if (and ,buf (buffer-live-p ,buf))
+       (with-current-buffer ,buf ,@body)
+     ,@body))
+
 (defvar gptel-org-agent--pending-tool-calls (make-hash-table :test 'equal)
   "Global hash table mapping unique IDs to pending tool call data.
 
@@ -1194,9 +1204,10 @@ INFO is the FSM info plist."
 (defun gptel-org-agent--accept-tool-calls (tool-calls info)
   "Accept and run TOOL-CALLS with explicit INFO.
 
-This is a self-contained tool execution function that does not
-depend on overlays or `gptel--fsm-last'.  It restores the correct
-dynamic bindings from INFO before running each tool."
+Restores the correct dynamic bindings from INFO before running each
+tool.  Executes in the buffer stored in INFO's :buffer slot so that
+buffer-local state (including `gptel--fsm-last') is available to
+tool functions like `gptel-agent--task'."
   (let ((gptel--preset (or (plist-get info :preset)
                            (and (boundp 'gptel--preset) gptel--preset)))
         (gptel-backend (or (plist-get info :backend)
@@ -1212,13 +1223,20 @@ dynamic bindings from INFO before running each tool."
                (length tool-calls))
        "tool-call-debug" 'no-json)
       (gptel--log
-       (format "accept-tool-calls: info keys=%S fsm-last-in-current=%S"
+       (format "accept-tool-calls: info keys=%S fsm-last-in-current=%S fsm-last-in-info-buf=%S"
                (cl-loop for (k _v) on info by #'cddr collect k)
-               (and (boundp 'gptel--fsm-last) gptel--fsm-last))
+               (and (boundp 'gptel--fsm-last) gptel--fsm-last)
+               (and buf (buffer-live-p buf)
+                    (buffer-local-value 'gptel--fsm-last buf)))
        "tool-call-debug" 'no-json))
     (when (and buf (buffer-live-p buf))
       (with-current-buffer buf
         (gptel--update-status " Calling tool..." 'mode-line-emphasis)))
+    ;; Execute tools in the info buffer so that buffer-local variables
+    ;; (gptel--fsm-last, gptel-mode, etc.) are correct.  When the user
+    ;; changes PENDING→ALLOWED from the base buffer, the current buffer
+    ;; lacks the FSM that tool functions (e.g. gptel-agent--task) need.
+    (gptel-org-agent--with-info-buffer buf
     (cl-loop for (tool-spec arg-plist process-tool-result) in tool-calls
              for idx from 0
              do (when (eq gptel-log-level 'debug)
@@ -1256,7 +1274,7 @@ dynamic bindings from INFO before running each tool."
                                idx (gptel-tool-name tool-spec) (buffer-name)
                                (length (gptel--to-string result)))
                        "debug-state-change" 'no-json))
-                    (funcall process-tool-result result))))))
+                    (funcall process-tool-result result)))))))
 
 (defun gptel-org-agent--deny-tool-calls (tool-calls info &optional reason)
   "Deny TOOL-CALLS with explicit INFO and optional REASON.
@@ -1269,11 +1287,14 @@ can adjust its approach.  Does not depend on overlays."
 Adjust your approach or ask the user for guidance."
            (format "Error: The user denied execution of this tool call.  \
 Reason: %s" reason))))
-    (when (plist-get info :buffer)
-      (with-current-buffer (plist-get info :buffer)
-        (gptel--update-status " Tools denied, informing LLM..." 'warning)))
-    (cl-loop for (_tool-spec _arg-plist process-tool-result) in tool-calls
-             do (funcall process-tool-result denial-msg))))
+    (let ((buf (plist-get info :buffer)))
+      (when buf
+        (with-current-buffer buf
+          (gptel--update-status " Tools denied, informing LLM..." 'warning)))
+      ;; Execute in the info buffer for correct buffer-local state
+      (gptel-org-agent--with-info-buffer buf
+        (cl-loop for (_tool-spec _arg-plist process-tool-result) in tool-calls
+                 do (funcall process-tool-result denial-msg))))))
 
 (defun gptel-org-agent--on-todo-state-change ()
   "Handle TODO state changes for PENDING tool confirmation headings.
