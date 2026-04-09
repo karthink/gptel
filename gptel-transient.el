@@ -1348,24 +1348,27 @@ documention.  Return nil if user does not provide a number, for default."
   (if-let* ((effort-type (get gptel-model :reasoning-effort)))
       (cond
        ((eq (car effort-type) 'member)
-        (let ((table (let ((effort-choices (cdr effort-type)))
-                       ;; Display the completion candidates in the order listed
-                       ;; instead of allowing the completion framework to sort
-                       ;; them. This is cleaner since they are listed in
-                       ;; increasing order of reasoning effort.
-                       (lambda (string predicate action)
-                         (if (eq action 'metadata)
-                             (let ((current-metadata (cdr (completion-metadata
-                                                           (minibuffer-contents)
-                                                           effort-choices
-                                                           minibuffer-completion-predicate))))
-                               `(metadata
-                                 ,@(map-merge 'alist
-                                              current-metadata
-                                              '((display-sort-function . identity)
-                                                (cycle-sort-function . identity)))))
-                           (complete-with-action action effort-choices string predicate))))))
-          (intern (completing-read prompt table nil t))))
+        (let* ((table (let ((effort-choices (cons 'default (cdr effort-type))))
+                        ;; Display the completion candidates in the order listed
+                        ;; instead of allowing the completion framework to sort
+                        ;; them. This is cleaner since they are listed in
+                        ;; increasing order of reasoning effort.
+                        (lambda (string predicate action)
+                          (if (eq action 'metadata)
+                              (let ((current-metadata (cdr (completion-metadata
+                                                            (minibuffer-contents)
+                                                            effort-choices
+                                                            minibuffer-completion-predicate))))
+                                `(metadata
+                                  ,@(map-merge 'alist
+                                               current-metadata
+                                               '((display-sort-function . identity)
+                                                 (cycle-sort-function . identity)))))
+                            (complete-with-action action effort-choices string predicate)))))
+               (effort (completing-read prompt table nil t)))
+          ;; Allow the user to restore the value to nil.
+          (unless (string= effort "default")
+            (intern effort))))
        ((eq (car effort-type) 'integer)
         (let* ((minibuffer-default-prompt-format "")
                (num (read-number prompt -1 history)))
