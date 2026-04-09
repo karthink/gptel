@@ -133,6 +133,30 @@ the full delegation chain:
 - Buffer name format: =*gptel:TAG-HASH*= where HASH is a 6-character MD5
   derived from the outline path — allows multiple concurrent agents
 
+** Handover Mechanism
+
+Handover enables escalation workflows where a triage agent gathers context
+and then hands off to a specialist agent that creates a new actionable task.
+
+#+begin_example
+,**** AI-DOING Original task                          (parent TODO)
+,***** :main@agent:                                   (triage agent subtree)
+       Triage agent findings and tool results...
+,***** :handover@main@agent:                          (handover agent subtree, folded)
+       Handover agent's detailed plan...
+,**** AI-DO Specialist task description               (new sibling created by handover)
+       Body: handover agent's output
+#+end_example
+
+*Flow:*
+1. Parent agent calls =Agent= tool with =handover=true=
+2. =gptel-agent--task= extracts parent TODO content via =gptel-org-agent--extract-parent-context= and injects it into the handover agent's prompt
+3. =:agent-handover t= is set on the sub-agent FSM info plist
+4. Handover agent runs (reads context, uses tools, produces output)
+5. On completion, =gptel-agent-subtree--handle-handover= calls =gptel-org-agent--create-handover-heading= instead of returning text
+6. A new =AI-DO= sibling heading is created under the parent task
+7. Parent agent receives a confirmation message (not the full output)
+
 * Functions Reference
 
 ** Core Tag Helpers
@@ -152,6 +176,7 @@ the full delegation chain:
 | =gptel-org-agent--indirect-buffer-name= (base-buffer heading-pos tag) | Computes =*gptel:TAG-HASH*= buffer name (6-char MD5 from outline path) |
 | =gptel-org-agent--open-indirect-buffer= (base-buffer heading-marker) | Creates indirect buffer (clone=t), narrows to subtree, decouples fold state. Uses expanding end-marker (insertion-type t) |
 | =gptel-org-agent--close-indirect-buffer= (indirect-buffer &optional fold) | Kills indirect buffer, optionally folds subtree in base buffer, cleans up markers |
+| =gptel-org-agent--create-handover-heading= (body description) | Creates a new =AI-DO= sibling heading under the parent task for handover output. Navigates from agent subtree up to parent, inserts at end of parent subtree |
 | =gptel-org-agent--narrow-end-marker= | Buffer-local variable: marker at end of narrowed region (insertion-type t) |
 
 ** Integration / Entry Points
@@ -169,6 +194,7 @@ the full delegation chain:
 |----------+---------|
 | =gptel-org-agent--setup-task-subtree= (agent-type description) | Creates sub-agent subtree from within parent agent buffer. Returns plist: =(:indirect-buffer BUF :heading-marker M :position-marker M :parent-tag TAG)= |
 | =gptel-org-agent--extract-final-text= (indirect-buffer) | Extracts LLM response text (gptel 'response text property) from indirect buffer. Falls back to all body text after heading |
+| =gptel-org-agent--extract-parent-context= () | Extracts full text of parent TODO heading from base buffer. Used by handover agents to read the triage agent's findings |
 
 ** TodoWrite Org Integration (Phase 4)
 
