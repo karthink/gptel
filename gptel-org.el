@@ -2143,19 +2143,34 @@ markers like \"@assistant\"."
     (goto-char pos)
     ;; Go to beginning of line to handle being at end of heading line
     (beginning-of-line)
+    (gptel-org--debug "find-response-heading: pos=%d buf=%S indirect=%s at-heading=%s"
+                      pos (buffer-name) (if (buffer-base-buffer) "yes" "no")
+                      (org-at-heading-p))
     (if (and (org-at-heading-p)
              (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
                  (gptel-org--heading-has-agent-tag-p)
                  (gptel-org--chat-heading-p
                   (org-get-heading t t t t))))
-        (point)
+        (progn
+          (gptel-org--debug "find-response-heading: found at pos (heading at point) tags=%S heading=%S"
+                            (org-get-tags nil t)
+                            (org-get-heading t t t t))
+          (point))
       ;; Search backward for assistant heading
-      (when (re-search-backward org-heading-regexp nil t)
-        (when (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
-                  (gptel-org--heading-has-agent-tag-p)
-                  (gptel-org--chat-heading-p
-                   (org-get-heading t t t t)))
-          (point))))))
+      (gptel-org--debug "find-response-heading: not at matching heading, searching backward")
+      (if (re-search-backward org-heading-regexp nil t)
+          (let ((has-assistant (gptel-org--heading-has-tag-p gptel-org-assistant-tag))
+                (has-agent (gptel-org--heading-has-agent-tag-p))
+                (is-chat (gptel-org--chat-heading-p
+                          (org-get-heading t t t t))))
+            (gptel-org--debug "find-response-heading: backward search found heading at %d tags=%S heading=%S assistant=%s agent=%s chat=%s"
+                              (point) (org-get-tags nil t)
+                              (org-get-heading t t t t)
+                              has-assistant has-agent is-chat)
+            (when (or has-assistant has-agent is-chat)
+              (point)))
+        (gptel-org--debug "find-response-heading: no heading found searching backward")
+        nil))))
 
 (defun gptel-org--set-heading-title (heading-pos title)
   "Set the title of the heading at HEADING-POS to TITLE.
@@ -2179,17 +2194,28 @@ Preserves existing tags on the heading."
   "Apply a title to the response heading if configured.
 Called from `gptel-post-response-functions' with BEG and END
 positions of the response."
-  (when (and gptel-org-response-title-function
-             (derived-mode-p 'org-mode))
-    (let ((heading-pos (gptel-org--find-response-heading beg)))
-      (when heading-pos
-        (condition-case err
-            (let ((title (funcall gptel-org-response-title-function
-                                  beg end heading-pos)))
-              (when title
-                (gptel-org--set-heading-title heading-pos title)))
-          (error
-           (message "gptel: Error generating response title: %S" err)))))))
+  (gptel-org--debug "apply-response-title: beg=%d end=%d buf=%S title-fn=%S org-mode=%s"
+                    beg end (buffer-name)
+                    gptel-org-response-title-function
+                    (derived-mode-p 'org-mode))
+  (if (not gptel-org-response-title-function)
+      (gptel-org--debug "apply-response-title: SKIPPED - no title function configured")
+    (if (not (derived-mode-p 'org-mode))
+        (gptel-org--debug "apply-response-title: SKIPPED - not org-mode")
+      (let ((heading-pos (gptel-org--find-response-heading beg)))
+        (gptel-org--debug "apply-response-title: heading-pos=%S" heading-pos)
+        (if (not heading-pos)
+            (gptel-org--debug "apply-response-title: SKIPPED - no response heading found")
+          (condition-case err
+              (let ((title (funcall gptel-org-response-title-function
+                                    beg end heading-pos)))
+                (gptel-org--debug "apply-response-title: generated title=%S" title)
+                (when title
+                  (gptel-org--set-heading-title heading-pos title)
+                  (gptel-org--debug "apply-response-title: title applied successfully")))
+            (error
+             (gptel-org--debug "apply-response-title: ERROR %S" err)
+             (message "gptel: Error generating response title: %S" err))))))))
 
 ;; Add hook with high priority (run late, after heading adjustments)
 (add-hook 'gptel-post-response-functions #'gptel-org--apply-response-title 80)

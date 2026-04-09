@@ -58,6 +58,8 @@
 (require 'org)
 (require 'gptel)
 
+(declare-function gptel-org--debug "gptel-org")
+
 ;;; Customization
 
 (defgroup gptel-org-tasks nil
@@ -268,6 +270,10 @@ Returns t if inside an AI task, nil otherwise."
       (when-let* ((task-info (ignore-errors (gptel-org-tasks--get-task-info))))
         (let ((todo-state (plist-get task-info :todo-state))
               (profile-tag (plist-get task-info :profile-tag)))
+          (gptel-org--debug "tasks maybe-transition: heading=%S todo=%S profile=%S marker-buf=%S"
+                            (plist-get task-info :heading)
+                            todo-state profile-tag
+                            (buffer-name))
           ;; Apply profile from tag if enabled and tag exists
           (when (and gptel-org-tasks-apply-profile-on-send
                      profile-tag)
@@ -279,6 +285,10 @@ Returns t if inside an AI task, nil otherwise."
             (setq gptel-org-tasks--active-task-marker
                   (plist-get task-info :marker))
             (gptel-org-tasks--change-todo-state gptel-org-tasks-doing-keyword)
+            (gptel-org--debug "tasks maybe-transition: saved marker pos=%d buf=%S, transitioned to %s"
+                              (marker-position gptel-org-tasks--active-task-marker)
+                              (buffer-name (marker-buffer gptel-org-tasks--active-task-marker))
+                              gptel-org-tasks-doing-keyword)
             (message "gptel: Task state changed to %s"
                      gptel-org-tasks-doing-keyword))
           ;; Return t if this was an AI task
@@ -327,17 +337,35 @@ BUF is the buffer where the request was aborted."
 (defun gptel-org-tasks--clear-active-task (_start _end)
   "Transition AI-DOING task to AI-DONE and clear the active task marker.
 Added to `gptel-post-response-functions'."
-  (when-let* ((marker gptel-org-tasks--active-task-marker)
-              ((marker-buffer marker)))
-    (with-current-buffer (marker-buffer marker)
-      (save-excursion
-        (goto-char marker)
-        (when-let* ((task-info (ignore-errors (gptel-org-tasks--get-task-info)))
-                    (todo-state (plist-get task-info :todo-state))
-                    ((equal todo-state gptel-org-tasks-doing-keyword)))
-          (gptel-org-tasks--change-todo-state gptel-org-tasks-done-keyword)
-          (message "gptel: Task state changed to %s"
-                   gptel-org-tasks-done-keyword)))))
+  (gptel-org--debug "tasks clear-active-task: marker=%S marker-buffer=%S"
+                    gptel-org-tasks--active-task-marker
+                    (when gptel-org-tasks--active-task-marker
+                      (marker-buffer gptel-org-tasks--active-task-marker)))
+  (if (not gptel-org-tasks--active-task-marker)
+      (gptel-org--debug "tasks clear-active-task: SKIPPED - no active task marker")
+    (if (not (marker-buffer gptel-org-tasks--active-task-marker))
+        (gptel-org--debug "tasks clear-active-task: SKIPPED - marker has no buffer")
+      (let ((marker gptel-org-tasks--active-task-marker))
+        (with-current-buffer (marker-buffer marker)
+          (save-excursion
+            (goto-char marker)
+            (let ((task-info (ignore-errors (gptel-org-tasks--get-task-info))))
+              (gptel-org--debug "tasks clear-active-task: at marker pos=%d heading=%S todo-state=%S doing-keyword=%S"
+                                (marker-position marker)
+                                (when task-info (plist-get task-info :heading))
+                                (when task-info (plist-get task-info :todo-state))
+                                gptel-org-tasks-doing-keyword)
+              (if (not task-info)
+                  (gptel-org--debug "tasks clear-active-task: SKIPPED - get-task-info returned nil")
+                (let ((todo-state (plist-get task-info :todo-state)))
+                  (if (not (equal todo-state gptel-org-tasks-doing-keyword))
+                      (gptel-org--debug "tasks clear-active-task: SKIPPED - todo-state %S != %S"
+                                        todo-state gptel-org-tasks-doing-keyword)
+                    (gptel-org-tasks--change-todo-state gptel-org-tasks-done-keyword)
+                    (gptel-org--debug "tasks clear-active-task: transitioned to %s"
+                                      gptel-org-tasks-done-keyword)
+                    (message "gptel: Task state changed to %s"
+                             gptel-org-tasks-done-keyword))))))))))
   (setq gptel-org-tasks--active-task-marker nil))
 
 ;;;###autoload
