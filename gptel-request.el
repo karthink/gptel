@@ -1931,11 +1931,23 @@ MACHINE is an instance of `gptel-fsm'.
 The next state is NEW-STATE if given.  Otherwise it is determined
 automatically from MACHINE's transition table."
   (unless new-state (setq new-state (gptel--fsm-next machine)))
+  (when (eq gptel-log-level 'debug)
+    (gptel--log
+     (format "debug-state-change: transition %s -> %s in buffer=%s"
+             (gptel-fsm-state machine) new-state (buffer-name))
+     "debug-state-change" 'no-json))
   (push (gptel-fsm-state machine)
         (plist-get (gptel-fsm-info machine) :history))
   (setf (gptel-fsm-state machine) new-state)
   (when-let* ((handlers (alist-get new-state (gptel-fsm-handlers machine))))
-    (mapc (lambda (h) (funcall h machine)) handlers)))
+    (mapc (lambda (h)
+            (when (eq gptel-log-level 'debug)
+              (gptel--log
+               (format "debug-state-change: calling handler %s for state %s in buffer=%s"
+                       h new-state (buffer-name))
+               "debug-state-change" 'no-json))
+            (funcall h machine))
+          handlers)))
 
 (defun gptel--fsm-next (machine)
   "Determine MACHINE's next state according to its transition table.
@@ -2072,7 +2084,19 @@ injects the results into the prompt data and transitions the FSM."
       ;; FIXME: Make the implicit addition to :tool-use explicit
       (plist-put tool-call :result result)) ;for the LLM
     ;; All tools have run
-    (when (<= (cl-decf remaining) 0) (gptel--fsm-transition fsm))))
+    (when (<= (cl-decf remaining) 0)
+      (when (eq gptel-log-level 'debug)
+        (gptel--log
+         (format "debug-state-change: all tools done, transitioning fsm=%s state=%s buffer=%s info-buffer=%s info-buffer-live=%s"
+                 (gptel--fsm-summary fsm)
+                 (gptel-fsm-state fsm)
+                 (buffer-name)
+                 (and (plist-get info :buffer)
+                      (buffer-name (plist-get info :buffer)))
+                 (and (plist-get info :buffer)
+                      (buffer-live-p (plist-get info :buffer))))
+         "debug-state-change" 'no-json))
+      (gptel--fsm-transition fsm))))
 
 (defun gptel--handle-tool-use (fsm)
   "Run tool calls captured in FSM, and advance the state machine with the results."

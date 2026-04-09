@@ -1231,8 +1231,14 @@ dynamic bindings from INFO before running each tool."
                  (gptel-tool-name tool-spec))
              for arg-values = (gptel--map-tool-args tool-spec arg-plist)
              do (if (gptel-tool-async tool-spec)
-                    (apply (gptel-tool-function tool-spec)
-                           process-tool-result arg-values)
+                    (progn
+                      (when (eq gptel-log-level 'debug)
+                        (gptel--log
+                         (format "debug-state-change: accept-tool[%d] ASYNC tool=%s calling in buffer=%s"
+                                 idx (gptel-tool-name tool-spec) (buffer-name))
+                         "debug-state-change" 'no-json))
+                      (apply (gptel-tool-function tool-spec)
+                             process-tool-result arg-values))
                   (let ((result
                          (condition-case errdata
                              (apply (gptel-tool-function tool-spec) arg-values)
@@ -1244,6 +1250,12 @@ dynamic bindings from INFO before running each tool."
                     (gptel-org--debug
                      "org-agent tool-confirm: tool %s completed, calling process-tool-result"
                      (gptel-tool-name tool-spec))
+                    (when (eq gptel-log-level 'debug)
+                      (gptel--log
+                       (format "debug-state-change: accept-tool[%d] SYNC tool=%s completed, calling process-tool-result in buffer=%s result-len=%d"
+                               idx (gptel-tool-name tool-spec) (buffer-name)
+                               (length (gptel--to-string result)))
+                       "debug-state-change" 'no-json))
                     (funcall process-tool-result result))))))
 
 (defun gptel-org-agent--deny-tool-calls (tool-calls info &optional reason)
@@ -1323,6 +1335,26 @@ This function is added to `org-after-todo-state-change-hook'."
                 (gptel-org--debug
                  "org-agent tool-confirm: ALLOWED (id=%s), running %d tool calls"
                  pending-id (length tool-calls))
+                (when (eq gptel-log-level 'debug)
+                  (gptel--log
+                   (format "debug-state-change: ALLOWED in buffer=%s base-buffer=%s stored-buf=%s stored-buf-live=%s info-buffer=%s info-buffer-live=%s fsm-last=%S"
+                           (buffer-name)
+                           (and (buffer-base-buffer) (buffer-name (buffer-base-buffer)))
+                           (and stored-buf (buffer-name stored-buf))
+                           (and stored-buf (buffer-live-p stored-buf))
+                           (and info (plist-get info :buffer)
+                                (buffer-name (plist-get info :buffer)))
+                           (and info (plist-get info :buffer)
+                                (buffer-live-p (plist-get info :buffer)))
+                           (and (boundp 'gptel--fsm-last) gptel--fsm-last))
+                   "debug-state-change" 'no-json)
+                  ;; Log closures to verify FSM captured in process-tool-result
+                  (cl-loop for (ts _ap ptr) in tool-calls
+                           for i from 0
+                           do (gptel--log
+                               (format "debug-state-change: ALLOWED tool-call[%d] tool=%s process-tool-result=%S"
+                                       i (and ts (gptel-tool-name ts)) ptr)
+                               "debug-state-change" 'no-json)))
                 (gptel-org-agent--accept-tool-calls tool-calls info)
                 (message "Tool calls accepted, continuing..."))
                ((equal new-state denied-kw)
