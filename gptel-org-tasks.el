@@ -77,6 +77,13 @@ Tasks transition to this state when `gptel-send' is called."
   :type 'string
   :group 'gptel-org-tasks)
 
+(defcustom gptel-org-tasks-done-keyword "AI-DONE"
+  "TODO keyword for tasks that completed successfully.
+When a response completes for an AI-DOING task, the state will
+transition to this keyword."
+  :type 'string
+  :group 'gptel-org-tasks)
+
 (defcustom gptel-org-tasks-canceled-keyword "CANCELED"
   "TODO keyword for tasks that were aborted.
 When `gptel-abort' is called while processing an AI-DOING task,
@@ -318,8 +325,19 @@ BUF is the buffer where the request was aborted."
           (setq gptel-org-tasks--active-task-marker nil))))))
 
 (defun gptel-org-tasks--clear-active-task (_start _end)
-  "Clear the active task marker after response completes.
+  "Transition AI-DOING task to AI-DONE and clear the active task marker.
 Added to `gptel-post-response-functions'."
+  (when-let* ((marker gptel-org-tasks--active-task-marker)
+              ((marker-buffer marker)))
+    (with-current-buffer (marker-buffer marker)
+      (save-excursion
+        (goto-char marker)
+        (when-let* ((task-info (ignore-errors (gptel-org-tasks--get-task-info)))
+                    (todo-state (plist-get task-info :todo-state))
+                    ((equal todo-state gptel-org-tasks-doing-keyword)))
+          (gptel-org-tasks--change-todo-state gptel-org-tasks-done-keyword)
+          (message "gptel: Task state changed to %s"
+                   gptel-org-tasks-done-keyword)))))
   (setq gptel-org-tasks--active-task-marker nil))
 
 ;;;###autoload
