@@ -219,6 +219,51 @@ Return a marker to the newly created heading."
                         (line-number-at-pos marker) (marker-position marker))
       marker)))
 
+
+(defun gptel-org-agent--create-handover-heading (body description)
+  "Create a new AI-DO sibling heading for a handover task.
+
+Navigate from the end of the buffer backwards to find the current
+agent subtree heading, then go to its parent task heading.  Insert a
+new child heading under that parent with TODO keyword AI-DO and
+DESCRIPTION as the heading text.  BODY is inserted as the heading
+content.
+
+This is used by the handover mechanism: when a triage agent hands
+over to a specialist, the handover agent's output becomes a new
+AI-DO task heading that can be picked up by the scheduler or user.
+
+Returns the heading text of the created heading, or nil on failure."
+  (save-excursion
+    ;; Find an agent heading by searching backwards
+    (goto-char (point-max))
+    (let ((found nil))
+      (while (and (not found)
+                  (re-search-backward org-heading-regexp nil t))
+        (let ((tags (org-get-tags nil t)))
+          (when (cl-some #'gptel-org-agent--agent-tag-p tags)
+            ;; Found an agent heading — go up to its parent (the task heading)
+            (when (> (org-current-level) 1)
+              (org-up-heading-safe)
+              (setq found t)))))
+      (when found
+        (let* ((inhibit-read-only t)
+               (parent-level (org-current-level))
+               (child-level (1+ parent-level))
+               (stars (make-string child-level ?*))
+               (todo-keyword (gptel-org-agent--status-to-keyword "pending"))
+               (heading-text (format "%s %s %s" stars todo-keyword description)))
+          ;; Go to end of parent subtree to insert as last child
+          (org-end-of-subtree t)
+          (unless (bolp) (insert "\n"))
+          ;; Insert the heading
+          (insert heading-text "\n")
+          ;; Insert the body content
+          (when (and body (not (string-empty-p body)))
+            (insert body)
+            (unless (string-suffix-p "\n" body)
+              (insert "\n")))
+          heading-text)))))
 (defun gptel-org-agent--indirect-buffer-name (base-buffer heading-pos tag)
   "Compute a unique indirect buffer name for an agent subtree.
 
