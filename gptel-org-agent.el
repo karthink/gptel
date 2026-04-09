@@ -264,6 +264,44 @@ Returns the heading text of the created heading, or nil on failure."
             (unless (string-suffix-p "\n" body)
               (insert "\n")))
           heading-text)))))
+
+(defun gptel-org-agent--extract-parent-context ()
+  "Extract the full text of the parent TODO heading for handover context.
+
+When called from an agent indirect buffer, navigate to the base buffer,
+find the parent heading of the current agent subtree, and return its
+full subtree content as a string.
+
+This is used by the handover mechanism: the handover agent needs to read
+all the triage agent's findings, which are written under the parent
+TODO heading.  Returns nil if the context cannot be extracted."
+  (let ((base-buf (buffer-base-buffer (current-buffer))))
+    (when (and base-buf (buffer-live-p base-buf))
+      (let ((agent-tag (gptel-org-agent--current-agent-tag)))
+        (when agent-tag
+          (with-current-buffer base-buf
+            (save-excursion
+              (goto-char (point-min))
+              ;; Find the heading with our agent tag
+              (let ((found nil))
+                (while (and (not found)
+                            (re-search-forward org-heading-regexp nil t))
+                  (beginning-of-line)
+                  (let ((tags (org-get-tags nil t)))
+                    (when (cl-some (lambda (tg)
+                                     (string-equal-ignore-case tg agent-tag))
+                                   tags)
+                      (setq found t)))
+                  (unless found (forward-line 1)))
+                (when found
+                  ;; Go up to the parent heading (the task heading)
+                  (when (org-up-heading-safe)
+                    (let ((beg (point))
+                          (end (save-excursion
+                                 (org-end-of-subtree t)
+                                 (point))))
+                      (buffer-substring-no-properties beg end))))))))))))
+
 (defun gptel-org-agent--indirect-buffer-name (base-buffer heading-pos tag)
   "Compute a unique indirect buffer name for an agent subtree.
 
