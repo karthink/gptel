@@ -1245,6 +1245,14 @@ ARGS are the original function call arguments."
     (let ((tags (org-get-tags nil t)))  ; local tags only
       (cl-some (lambda (tg) (string-equal-ignore-case tg tag)) tags))))
 
+(defun gptel-org--heading-has-agent-tag-p ()
+  "Check if current heading has a tag matching the `*@agent' pattern."
+  (when (org-at-heading-p)
+    (cl-some (lambda (tag)
+               (and (stringp tag)
+                    (string-suffix-p "@agent" tag)))
+             (org-get-tags nil t))))
+
 (defun gptel-org--heading-has-todo-keyword-p ()
   "Check if current heading has a TODO keyword from `gptel-org-todo-keywords'."
   (when (org-at-heading-p)
@@ -1938,11 +1946,7 @@ has a tag matching the `*@agent' pattern."
        (derived-mode-p 'org-mode)
        (save-excursion
          (goto-char (point-min))
-         (and (org-at-heading-p)
-              (cl-some (lambda (tag)
-                         (and (stringp tag)
-                              (string-suffix-p "@agent" tag)))
-                       (org-get-tags nil t))))))
+         (gptel-org--heading-has-agent-tag-p))))
 
 (defun gptel-org--adjust-response-headings (beg end)
   "Adjust heading levels in the response region from BEG to END.
@@ -2130,19 +2134,25 @@ start of the response so that the title reflects the actual content."
 
 (defun gptel-org--find-response-heading (pos)
   "Find the assistant response heading containing or just before POS.
-Returns the position of the heading, or nil if not found."
+Returns the position of the heading, or nil if not found.
+
+Recognizes headings with the `gptel-org-assistant-tag' (usually
+\":assistant:\"), agent tags matching \"*@agent\", or chat heading
+markers like \"@assistant\"."
   (save-excursion
     (goto-char pos)
     ;; Go to beginning of line to handle being at end of heading line
     (beginning-of-line)
     (if (and (org-at-heading-p)
              (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
+                 (gptel-org--heading-has-agent-tag-p)
                  (gptel-org--chat-heading-p
                   (org-get-heading t t t t))))
         (point)
       ;; Search backward for assistant heading
       (when (re-search-backward org-heading-regexp nil t)
         (when (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
+                  (gptel-org--heading-has-agent-tag-p)
                   (gptel-org--chat-heading-p
                    (org-get-heading t t t t)))
           (point))))))
