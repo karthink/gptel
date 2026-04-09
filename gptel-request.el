@@ -1275,23 +1275,89 @@ strings pass through unchanged."
         (replace-regexp-in-string "[\x3fff80-\x3fffff]+" "\xfffd" str)
       str)))
 
-(defun gptel--log (data &optional type no-json)
-  "Log DATA to `gptel--log-buffer-name'.
+(defun gptel--log-escape-org-block (str)
+  "Escape lines in STR that would break org example/src blocks.
 
-TYPE is a label for data being logged.  DATA is assumed to be
-Valid JSON unless NO-JSON is t."
+Lines starting with `*' or `#+' are prefixed with a comma, which
+org-mode strips on export."
+  (replace-regexp-in-string
+   "^\\(\\*\\|#\\+\\)" ",\\1" str))
+
+(defvar-local gptel--log-request-phase nil
+  "Current phase in the log buffer request cycle.
+nil means no active request.  `request' means we're in the
+request phase.  `response' means response entries have started.")
+
+(defun gptel--log (data &optional type no-json)
+  "Log DATA to `gptel--log-buffer-name' in org format.
+
+TYPE is a label for the data being logged.  DATA is assumed to be
+valid JSON unless NO-JSON is t.
+
+Log entries are org headings grouped by request cycle:
+- A top-level heading is created for each request cycle
+- Individual entries (headers, body, etc.) are sub-headings
+- Non-request entries (tool calls, presets) get their own headings"
   (with-current-buffer (get-buffer-create gptel--log-buffer-name)
     (set-buffer-multibyte t)
-    (let* ((p (goto-char (point-max)))
+    (unless (derived-mode-p 'org-mode)
+      (org-mode)
+      (setq-local buffer-read-only nil))
+    (let* ((type (or type "log"))
+           (level-tag (if (eq gptel-log-level 'debug) "debug" "info"))
+           (request-start-p (member type '("request headers" "request body")))
+           (response-p (member type '("response headers" "response body")))
+           (request-entry-p (or request-start-p response-p
+                                (string= type "request Curl command")))
            (data (cond
                   ((stringp data) (gptel--decode-utf8 data))
                   ((not data) "null")
                   (t (gptel--decode-utf8 (prin1-to-string data))))))
+      (goto-char (point-max))
       (unless (bobp) (insert "\n"))
-      (insert (format "{\"gptel\": \"%s\", " (or type "none"))
-              (format-time-string "\"timestamp\": \"%Y-%m-%d %H:%M:%S\"}\n")
-              data)
-      (unless no-json (ignore-errors (json-pretty-print p (point)))))))
+      ;; Open a new request heading when a new request cycle starts
+      (when (and request-start-p
+                 (not (eq gptel--log-request-phase 'request)))
+        (insert (format-time-string "* Request [%Y-%m-%d %a %H:%M:%S]\n"))
+        (setq gptel--log-request-phase 'request))
+      ;; Track response phase
+      (when response-p
+        (setq gptel--log-request-phase 'response))
+      (cond
+       ;; Sub-heading under request cycle
+       (request-entry-p
+        (unless gptel--log-request-phase
+          ;; Orphan response entry — create a request heading for it
+          (insert (format-time-string "* Request [%Y-%m-%d %a %H:%M:%S]\n"))
+          (setq gptel--log-request-phase 'response))
+        (insert (format "** %s" type))
+        (insert (format " %43s\n"
+                        (concat ":" level-tag ":"))))
+       ;; Standalone entry (tool calls, presets, errors, etc.)
+       (t
+        (setq gptel--log-request-phase nil)
+        (insert (format "* %s" type))
+        (insert (format " %43s\n"
+                        (concat ":" level-tag ":")))
+        (insert (format-time-string "[%Y-%m-%d %a %H:%M:%S]\n"))))
+      ;; Insert data in appropriate block
+      (if no-json
+          (progn
+            (insert "#+begin_example\n")
+            (insert (gptel--log-escape-org-block data))
+            (unless (string-suffix-p "\n" data) (insert "\n"))
+            (insert "#+end_example\n"))
+        ;; JSON data: pretty-print into a src block
+        (let ((json-start (point)))
+          (insert data)
+          (ignore-errors (json-pretty-print json-start (point)))
+          (let ((json-data (buffer-substring-no-properties
+                            json-start (point))))
+            (delete-region json-start (point))
+            (insert "#+begin_src json\n")
+            (insert (gptel--log-escape-org-block json-data))
+            (unless (string-suffix-p "\n" json-data) (insert "\n"))
+            (insert "#+end_src\n")))))))
 
 
 ;;; Structured output

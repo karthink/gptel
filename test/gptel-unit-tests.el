@@ -621,5 +621,118 @@ A string like \"hello\" should be JSON-encoded, not passed through."
   (let ((result (gptel--json-encode "hello world")))
     (should (equal "\"hello world\"" result))))
 
+;; ------------------------------------------------------------------
+;; Org-format logging tests
+;; ------------------------------------------------------------------
+
+(ert-deftest gptel-test-log-org-format-request-cycle ()
+  "Test that gptel--log produces org-format output for a request cycle."
+  (let ((gptel-log-level 'info)
+        (gptel--log-buffer-name "*gptel-log-test*"))
+    (when (get-buffer gptel--log-buffer-name)
+      (kill-buffer gptel--log-buffer-name))
+    (unwind-protect
+        (progn
+          (gptel--log "{\"model\": \"test\"}" "request body")
+          (gptel--log "{\"content\": \"hello\"}" "response body")
+          (let ((content (with-current-buffer gptel--log-buffer-name
+                           (buffer-string))))
+            ;; Should have org headings
+            (should (string-match-p "^\\* Request \\[" content))
+            (should (string-match-p "^\\*\\* request body" content))
+            (should (string-match-p "^\\*\\* response body" content))
+            ;; Should have src blocks for JSON
+            (should (string-match-p "#\\+begin_src json" content))
+            (should (string-match-p "#\\+end_src" content))
+            ;; Should NOT have old JSON header format
+            (should-not (string-match-p "{\"gptel\":" content))
+            ;; Buffer should be in org-mode
+            (with-current-buffer gptel--log-buffer-name
+              (should (derived-mode-p 'org-mode)))))
+      (when (get-buffer gptel--log-buffer-name)
+        (kill-buffer gptel--log-buffer-name)))))
+
+(ert-deftest gptel-test-log-org-format-no-json ()
+  "Test that no-json entries use example blocks."
+  (let ((gptel-log-level 'debug)
+        (gptel--log-buffer-name "*gptel-log-test*"))
+    (when (get-buffer gptel--log-buffer-name)
+      (kill-buffer gptel--log-buffer-name))
+    (unwind-protect
+        (progn
+          (gptel--log "some debug info" "tool-call-debug" 'no-json)
+          (let ((content (with-current-buffer gptel--log-buffer-name
+                           (buffer-string))))
+            ;; Standalone heading for non-request entry
+            (should (string-match-p "^\\* tool-call-debug" content))
+            ;; Should use example block, not src
+            (should (string-match-p "#\\+begin_example" content))
+            (should (string-match-p "#\\+end_example" content))
+            ;; Should have tags
+            (should (string-match-p ":debug:" content))))
+      (when (get-buffer gptel--log-buffer-name)
+        (kill-buffer gptel--log-buffer-name)))))
+
+(ert-deftest gptel-test-log-org-format-consecutive-requests ()
+  "Test that consecutive requests get separate headings."
+  (let ((gptel-log-level 'info)
+        (gptel--log-buffer-name "*gptel-log-test*"))
+    (when (get-buffer gptel--log-buffer-name)
+      (kill-buffer gptel--log-buffer-name))
+    (unwind-protect
+        (progn
+          ;; First request cycle
+          (gptel--log "{\"model\": \"test\"}" "request body")
+          (gptel--log "{\"content\": \"hi\"}" "response body")
+          ;; Second request cycle
+          (gptel--log "{\"model\": \"test2\"}" "request body")
+          (gptel--log "{\"content\": \"bye\"}" "response body")
+          (let ((content (with-current-buffer gptel--log-buffer-name
+                           (buffer-string))))
+            ;; Should have two top-level Request headings
+            (should (= 2 (with-temp-buffer
+                           (insert content)
+                           (goto-char (point-min))
+                           (let ((count 0))
+                             (while (re-search-forward "^\\* Request \\[" nil t)
+                               (cl-incf count))
+                             count))))))
+      (when (get-buffer gptel--log-buffer-name)
+        (kill-buffer gptel--log-buffer-name)))))
+
+(ert-deftest gptel-test-log-org-escape-block-content ()
+  "Test that org-problematic content is escaped in blocks."
+  (let ((gptel-log-level 'debug)
+        (gptel--log-buffer-name "*gptel-log-test*"))
+    (when (get-buffer gptel--log-buffer-name)
+      (kill-buffer gptel--log-buffer-name))
+    (unwind-protect
+        (progn
+          (gptel--log "* heading\n#+begin_src\nfoo" "test-escape" 'no-json)
+          (let ((content (with-current-buffer gptel--log-buffer-name
+                           (buffer-string))))
+            ;; Asterisks and #+ at line start should be escaped with comma
+            (should (string-match-p ",\\* heading" content))
+            (should (string-match-p ",#\\+begin_src" content))))
+      (when (get-buffer gptel--log-buffer-name)
+        (kill-buffer gptel--log-buffer-name)))))
+
+(ert-deftest gptel-test-log-org-special-chars ()
+  "Test that special characters like arrows and em-dashes log correctly."
+  (let ((gptel-log-level 'debug)
+        (gptel--log-buffer-name "*gptel-log-test*"))
+    (when (get-buffer gptel--log-buffer-name)
+      (kill-buffer gptel--log-buffer-name))
+    (unwind-protect
+        (progn
+          (gptel--log "State: PENDING → ALLOWED — done" "test-chars" 'no-json)
+          (let ((content (with-current-buffer gptel--log-buffer-name
+                           (buffer-string))))
+            ;; Arrow and em-dash should appear as-is
+            (should (string-match-p "→" content))
+            (should (string-match-p "—" content))))
+      (when (get-buffer gptel--log-buffer-name)
+        (kill-buffer gptel--log-buffer-name)))))
+
 (provide 'gptel-unit-tests)
 ;;; gptel-unit-tests.el ends here
