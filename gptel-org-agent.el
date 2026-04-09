@@ -495,7 +495,11 @@ if PRESET is nil or empty."
 Check whether `gptel-org-agent-subtrees' is enabled and point is at
 or under a heading with any org TODO keyword.
 
-If both conditions are met:
+When point is on a `:user:' heading (created after an agent response),
+walk up to the parent TODO heading so the existing agent subtree is
+reused for the follow-up request.
+
+If conditions are met:
   - Derive the agent type from PRESET (or fall back to \"main\").
   - Look for an existing agent child subtree and reuse it.
   - If none exists, create one via `gptel-org-agent--create-subtree'.
@@ -514,6 +518,20 @@ with its normal behavior."
       (when (org-at-heading-p)
         ;; Ensure we're at the beginning of the heading
         (beginning-of-line)
+        ;; If on a :user: heading (no TODO state), walk up to parent TODO
+        ;; heading.  This handles the case where the user sends a follow-up
+        ;; from the :user: sibling created after an agent response.
+        (unless (org-get-todo-state)
+          (let ((user-tag (if (boundp 'gptel-org-user-tag)
+                              gptel-org-user-tag
+                            "user")))
+            (when (cl-some (lambda (tg)
+                             (string-equal-ignore-case tg user-tag))
+                           (org-get-tags nil t))
+              (gptel-org--debug
+               "org-agent maybe-setup-subtree: on :user: heading at line %d, walking up to parent"
+               (line-number-at-pos))
+              (ignore-errors (outline-up-heading 1 t)))))
         ;; Accept any org TODO keyword, not just gptel-org-todo-keywords.
         ;; The gptel-org-todo-keywords list is for model-tag extraction,
         ;; agent subtrees should work with any task heading.
