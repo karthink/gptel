@@ -288,6 +288,24 @@ To set the temperature for a chat session interactively call
   :type '(choice (number :tag "Temperature value")
                  (const :tag "Use default" nil)))
 
+(defcustom gptel-reasoning-effort nil
+  "Reasoning effort of the LLM response.
+
+This controls how hard the LLM will \"think\" before generating
+the final response. Not all models support reasoning effort. When
+this value is nil, the model's default reasoning effort will be
+used. The valid values vary depending on the model and the LLM
+provider.
+
+Symbols as well as non-negative integers are supported but may
+generate errors if the specified value isn't allowed."
+  :safe (lambda (v) (or (null v)
+                        (symbolp v)
+                        (and (integerp v) (>= v 0))))
+  :type '(choice (symbol :tag "Reasoning effort level")
+                 (integer :tag "Max thinking tokens")
+                 (const :tag "Use default" nil)))
+
 (defcustom gptel-cache nil
   "Whether the LLM should cache request content.
 
@@ -1020,7 +1038,8 @@ For BUF, START, END and BODY-THUNK see `gptel--with-buffer-copy'."
                       gptel-use-tools gptel-tools gptel-use-curl gptel--schema
                       gptel-use-context gptel-context gptel--num-messages-to-send
                       gptel-stream gptel-include-reasoning gptel--request-params
-                      gptel-temperature gptel-max-tokens gptel-cache))
+                      gptel-temperature gptel-reasoning-effort gptel-max-tokens
+                      gptel-cache))
         (set (make-local-variable sym) (buffer-local-value sym buf)))
       (when (and start end) (insert-buffer-substring buf start end))
       (setq major-mode (buffer-local-value 'major-mode buf))

@@ -850,6 +850,7 @@ Also format the value of OBJ in the transient menu."
      :if (lambda () (and gptel-expert-commands
                     (or gptel-mode gptel-track-response))))
     (gptel--infix-temperature :if (lambda () gptel-expert-commands))
+    (gptel--infix-reasoning-effort :if (lambda () gptel-expert-commands))
     (gptel--infix-use-context)
     (gptel--infix-include-reasoning)
     (gptel--infix-use-tools)
@@ -1332,6 +1333,57 @@ responses."
   :key "-T"
   :prompt "Temperature controls the response randomness (0.0-2.0, leave empty for API default): "
   :reader 'gptel--transient-read-number)
+
+(defun gptel--transient-read-reasoning-effort (prompt _initial-input history)
+  "Read the reasoning effort from the minibuffer.
+
+PROMPT, _INITIAL-INPUT and HISTORY are as in the transient reader
+documention.  Return nil if user does not provide a number, for default."
+  ;; Workaround for buggy transient behaviour when dealing with
+  ;; non-string values.  See: https://github.com/magit/transient/issues/172
+  (when-let* ((history-symbol (or (car-safe history) history))
+              (val (and (symbolp history-symbol) (symbol-value history-symbol))))
+    (unless (stringp (car val))
+      (setcar val (prin1-to-string (car val)))))
+  (if-let* ((effort-type (get gptel-model :reasoning-effort)))
+      (cond
+       ((eq (car effort-type) 'member)
+        (let ((table (let ((effort-choices (cdr effort-type)))
+                       ;; Display the completion candidates in the order listed
+                       ;; instead of allowing the completion framework to sort
+                       ;; them. This is cleaner since they are listed in
+                       ;; increasing order of reasoning effort.
+                       (lambda (string predicate action)
+                         (if (eq action 'metadata)
+                             (let ((current-metadata (cdr (completion-metadata
+                                                           (minibuffer-contents)
+                                                           effort-choices
+                                                           minibuffer-completion-predicate))))
+                               `(metadata
+                                 ,@(map-merge 'alist
+                                              current-metadata
+                                              '((display-sort-function . identity)
+                                                (cycle-sort-function . identity)))))
+                           (complete-with-action action effort-choices string predicate))))))
+          (intern (completing-read prompt table nil t))))
+       ((eq (car effort-type) 'integer)
+        (let* ((minibuffer-default-prompt-format "")
+               (num (read-number prompt -1 history)))
+          (if (= num -1) nil num)))
+       (t
+        (user-error "Unknown reasoning effort type: %S" effort-type)))
+    (user-error "Reasoning effort is not supported for this model")))
+
+(transient-define-infix gptel--infix-reasoning-effort ()
+  "Reasoning effort of request."
+  :description "Reasoning effort"
+  :display-nil "default"
+  :class 'gptel-lisp-variable
+  :variable 'gptel-reasoning-effort
+  :set-value #'gptel--set-with-scope
+  :key "-r"
+  :prompt "Reasoning effort controls how hard the LLM \"thinks\" (leave empty for API default): "
+  :reader 'gptel--transient-read-reasoning-effort)
 
 (transient-define-infix gptel--infix-track-response ()
   "Distinguish between user messages and LLM responses.
