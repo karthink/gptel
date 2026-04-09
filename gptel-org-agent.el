@@ -213,6 +213,9 @@ Point must be on the parent heading (the TODO heading or another agent
 heading).  The new heading is inserted at the end of the parent's
 subtree content, before any sibling heading.
 
+The child heading copies the parent heading's text and includes the
+AI-DOING keyword (from `gptel-org-tasks-doing-keyword').
+
 Return a marker to the newly created heading."
   (save-excursion
     (unless (org-at-heading-p)
@@ -224,8 +227,12 @@ Return a marker to the newly created heading."
            (parent-level (org-current-level))
            (child-level (1+ parent-level))
            (tag (gptel-org-agent--construct-tag agent-type parent-tag))
+           (parent-heading (org-element-property :raw-value (org-element-at-point)))
+           (doing-keyword (or (bound-and-true-p gptel-org-tasks-doing-keyword) "AI-DOING"))
            (stars (make-string child-level ?*))
-           (heading-text (format "%s :%s:" stars tag))
+           (heading-text (if parent-heading
+                             (format "%s %s %s :%s:" stars doing-keyword parent-heading tag)
+                           (format "%s :%s:" stars tag)))
            marker)
       (gptel-org--debug "org-agent create-subtree: creating %S at level %d under level %d"
                         tag child-level parent-level)

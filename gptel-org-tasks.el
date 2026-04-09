@@ -93,6 +93,14 @@ the state will transition to this keyword."
   :type 'string
   :group 'gptel-org-tasks)
 
+(defcustom gptel-org-tasks-user-doing-keyword "DOING"
+  "TODO keyword for user tasks that are being processed.
+When `gptel-send' is called inside a heading with a non-AI TODO
+keyword (e.g., TODO, HI-DO), the state will transition to this
+keyword.  Set to nil to disable user TODO state transitions."
+  :type '(choice string (const :tag "Disable" nil))
+  :group 'gptel-org-tasks)
+
 (defcustom gptel-org-tasks-apply-profile-on-send t
   "Whether to apply model profile from tags when sending.
 When non-nil, `gptel-send' will check for model profile tags
@@ -278,19 +286,30 @@ Returns t if inside an AI task, nil otherwise."
           (when (and gptel-org-tasks-apply-profile-on-send
                      profile-tag)
             (gptel-org-tasks--apply-profile profile-tag))
-          ;; Transition AI-DO -> AI-DOING if enabled
-          (when (and gptel-org-tasks-change-state-on-send
-                     (equal todo-state gptel-org-tasks-todo-keyword))
-            ;; Save marker to the task for abort handling
-            (setq gptel-org-tasks--active-task-marker
-                  (plist-get task-info :marker))
-            (gptel-org-tasks--change-todo-state gptel-org-tasks-doing-keyword)
-            (gptel-org--debug "tasks maybe-transition: saved marker pos=%d buf=%S, transitioned to %s"
-                              (marker-position gptel-org-tasks--active-task-marker)
-                              (buffer-name (marker-buffer gptel-org-tasks--active-task-marker))
-                              gptel-org-tasks-doing-keyword)
-            (message "gptel: Task state changed to %s"
-                     gptel-org-tasks-doing-keyword))
+          ;; Transition states if enabled
+          (when gptel-org-tasks-change-state-on-send
+            (cond
+             ;; AI-DO -> AI-DOING
+             ((equal todo-state gptel-org-tasks-todo-keyword)
+              (setq gptel-org-tasks--active-task-marker
+                    (plist-get task-info :marker))
+              (gptel-org-tasks--change-todo-state gptel-org-tasks-doing-keyword)
+              (gptel-org--debug "tasks maybe-transition: saved marker pos=%d buf=%S, transitioned to %s"
+                                (marker-position gptel-org-tasks--active-task-marker)
+                                (buffer-name (marker-buffer gptel-org-tasks--active-task-marker))
+                                gptel-org-tasks-doing-keyword)
+              (message "gptel: Task state changed to %s"
+                       gptel-org-tasks-doing-keyword))
+             ;; User TODO -> user DOING (non-AI keywords)
+             ((and gptel-org-tasks-user-doing-keyword
+                   todo-state
+                   (not (string-prefix-p "AI-" todo-state))
+                   (not (equal todo-state gptel-org-tasks-user-doing-keyword)))
+              (gptel-org-tasks--change-todo-state gptel-org-tasks-user-doing-keyword)
+              (gptel-org--debug "tasks maybe-transition: user heading transitioned to %s"
+                                gptel-org-tasks-user-doing-keyword)
+              (message "gptel: User task state changed to %s"
+                       gptel-org-tasks-user-doing-keyword))))
           ;; Return t if this was an AI task
           (string-prefix-p "AI-" (or todo-state "")))))))
 
