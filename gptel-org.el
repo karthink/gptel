@@ -644,11 +644,13 @@ If BASE-PREFIX starts with stars, those stars are replaced with
 the correct number.  If BASE-PREFIX doesn't start with stars
 \(e.g. \"@user\\n\"), stars are prepended to create a proper
 org heading."
-  (if (and gptel-org-subtree-context
-           (derived-mode-p 'org-mode)
-           ;; Don't generate legacy :assistant: prefixes in agent indirect
-           ;; buffers — the agent system manages its own heading structure.
-           (not (gptel-org--in-agent-indirect-buffer-p)))
+  (if (gptel-org--in-agent-indirect-buffer-p)
+      ;; Agent indirect buffers manage their own heading structure.
+      ;; Return empty string to suppress prefix insertion entirely —
+      ;; the agent system handles both response and user headings.
+      ""
+    (if (and gptel-org-subtree-context
+             (derived-mode-p 'org-mode))
       (let* ((parent-level (gptel-org--get-parent-heading-level))
              (target-level (if (> parent-level 0) (1+ parent-level) 1))
              (stars (make-string target-level ?*)))
@@ -697,7 +699,7 @@ org heading."
           (gptel-org--debug "dynamic-prefix-string: result=%S pending-tag=%S"
                             result gptel-org--pending-heading-tag)
           result))
-    base-prefix))
+      base-prefix)))
 
 ;;; Setting context and creating queries
 (defun gptel-org--get-topic-start ()
@@ -2172,9 +2174,10 @@ markers like \"@assistant\"."
         (gptel-org--debug "find-response-heading: no heading found searching backward")
         nil))))
 
-(defun gptel-org--set-heading-title (heading-pos title)
+(defun gptel-org--set-heading-title (heading-pos title &optional todo-keyword)
   "Set the title of the heading at HEADING-POS to TITLE.
-Preserves existing tags on the heading."
+Preserves existing tags on the heading.  When TODO-KEYWORD is
+non-nil, include it as the TODO keyword on the heading."
   (when (and heading-pos title (not (string-empty-p title)))
     (save-excursion
       (goto-char heading-pos)
@@ -2185,7 +2188,9 @@ Preserves existing tags on the heading."
           ;; Replace the entire heading line
           (beginning-of-line)
           (delete-region (point) (line-end-position))
-          (insert stars " " title)
+          (if todo-keyword
+              (insert stars " " todo-keyword " " title)
+            (insert stars " " title))
           ;; Re-apply tags
           (when tags
             (org-set-tags tags)))))))
@@ -2208,10 +2213,17 @@ positions of the response."
             (gptel-org--debug "apply-response-title: SKIPPED - no response heading found")
           (condition-case err
               (let ((title (funcall gptel-org-response-title-function
-                                    beg end heading-pos)))
-                (gptel-org--debug "apply-response-title: generated title=%S" title)
+                                    beg end heading-pos))
+                    ;; For agent headings, include the done keyword
+                    (done-keyword
+                     (when (and (gptel-org--in-agent-indirect-buffer-p)
+                                (boundp 'gptel-org-tasks-done-keyword)
+                                gptel-org-tasks-done-keyword)
+                       gptel-org-tasks-done-keyword)))
+                (gptel-org--debug "apply-response-title: generated title=%S done-keyword=%S"
+                                  title done-keyword)
                 (when title
-                  (gptel-org--set-heading-title heading-pos title)
+                  (gptel-org--set-heading-title heading-pos title done-keyword)
                   (gptel-org--debug "apply-response-title: title applied successfully")))
             (error
              (gptel-org--debug "apply-response-title: ERROR %S" err)
