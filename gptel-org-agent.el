@@ -99,6 +99,41 @@ complete."
 
 ;;; ---- Helpers --------------------------------------------------------------
 
+(defvar gptel-org-user-tag)
+
+(defun gptel-org-agent--find-user-heading-after-agent (user-tag agent-tag)
+  "Find a :USER-TAG: sibling heading after the :AGENT-TAG: heading.
+Point must be on the parent TODO heading.
+Return non-nil if found."
+  (save-excursion
+    (when (org-at-heading-p)
+      (let ((parent-level (org-current-level))
+            (bound (save-excursion (org-end-of-subtree t) (point)))
+            (found-agent nil)
+            (found-user nil))
+        (org-end-of-meta-data t)
+        (while (and (not found-user)
+                    (< (point) bound)
+                    (re-search-forward org-heading-regexp bound t))
+          (beginning-of-line)
+          (let ((level (org-current-level)))
+            (cond
+             ((= level (1+ parent-level))
+              (let ((tags (org-get-tags nil t)))
+                (when (cl-some (lambda (tg)
+                                 (string-equal-ignore-case tg agent-tag))
+                               tags)
+                  (setq found-agent t))
+                (when (and found-agent
+                           (cl-some (lambda (tg)
+                                      (string-equal-ignore-case tg user-tag))
+                                    tags))
+                  (setq found-user t))))
+             ((> level (1+ parent-level)) nil)
+             (t (goto-char bound))))
+          (unless found-user (forward-line 1)))
+        found-user))))
+
 (defun gptel-org-agent--agent-tag-p (tag)
   "Return non-nil if TAG matches the `*@agent' pattern.
 An agent tag is any tag string that ends with \"@agent\", such as
@@ -431,14 +466,31 @@ Cleans up the narrowing end-marker."
 
 ;;; ---- Integration point ----------------------------------------------------
 
-(defun gptel-org-agent--maybe-setup-subtree ()
+(defun gptel-org-agent--preset-to-agent-type (preset)
+  "Derive an agent type string from PRESET name.
+PRESET is a symbol or string naming the active gptel preset.
+Strips a leading \"gptel-\" prefix if present.  Returns \"main\"
+if PRESET is nil or empty."
+  (if (null preset)
+      "main"
+    (let ((name (cond
+                 ((symbolp preset) (symbol-name preset))
+                 ((stringp preset) preset)
+                 (t nil))))
+      (cond
+       ((or (null name) (string-empty-p name)) "main")
+       ((string-prefix-p "gptel-" name) (substring name 6))
+       (t name)))))
+
+(defun gptel-org-agent--maybe-setup-subtree (&optional preset)
   "Conditionally create an agent subtree and indirect buffer.
 
 Check whether `gptel-org-agent-subtrees' is enabled and point is at
 or under a heading with any org TODO keyword.
 
 If both conditions are met:
-  - Look for an existing `:main@agent:' child subtree and reuse it.
+  - Derive the agent type from PRESET (or fall back to \"main\").
+  - Look for an existing agent child subtree and reuse it.
   - If none exists, create one via `gptel-org-agent--create-subtree'.
   - Open an indirect buffer narrowed to the agent subtree via
     `gptel-org-agent--open-indirect-buffer'.
@@ -459,16 +511,18 @@ with its normal behavior."
         ;; The gptel-org-todo-keywords list is for model-tag extraction,
         ;; agent subtrees should work with any task heading.
         (when (org-get-todo-state)
-          (gptel-org--debug "org-agent maybe-setup-subtree: TODO heading detected at line %d"
-                            (line-number-at-pos))
-          (let* ((main-tag (gptel-org-agent--construct-tag "main"))
-                 (existing (gptel-org-agent--find-agent-subtree main-tag))
+          (let* ((agent-type (gptel-org-agent--preset-to-agent-type preset))
+                 (_ (gptel-org--debug
+                     "org-agent maybe-setup-subtree: TODO heading at line %d, agent-type=%S (preset=%S)"
+                     (line-number-at-pos) agent-type preset))
+                 (agent-tag (gptel-org-agent--construct-tag agent-type))
+                 (existing (gptel-org-agent--find-agent-subtree agent-tag))
                  (heading-marker (or existing
-                                     (gptel-org-agent--create-subtree "main")))
+                                     (gptel-org-agent--create-subtree agent-type)))
                  (base-buffer (current-buffer)))
             (when existing
               (gptel-org--debug "org-agent maybe-setup-subtree: reusing existing %S subtree"
-                                main-tag))
+                                agent-tag))
             (gptel-org-agent--open-indirect-buffer base-buffer heading-marker)))))))
 
 (defvar gptel-prompt-transform-functions)
@@ -477,9 +531,10 @@ with its normal behavior."
   "Prompt transform: redirect response to an agent indirect buffer.
 
 When the request originates from an org-mode buffer on a TODO heading
-with `gptel-org-agent-subtrees' enabled, create (or reuse) a
-`:main@agent:' child subtree and redirect the FSM's response buffer
-and position to the indirect buffer.
+with `gptel-org-agent-subtrees' enabled, create (or reuse) an agent
+child subtree and redirect the FSM's response buffer and position to
+the indirect buffer.  The agent tag reflects the active preset name
+\(e.g., `:triage@agent:' for gptel-triage preset).
 
 This function is registered in `gptel-prompt-transform-functions' so
 it runs during the prompt transform phase of `gptel-request'.  At this
@@ -489,7 +544,8 @@ this only affects where the response is inserted.
 Skips redirection when the request already originates from an agent
 indirect buffer (identified by `buffer-base-buffer' returning non-nil)."
   (let* ((info (gptel-fsm-info fsm))
-         (orig-buffer (plist-get info :buffer)))
+         (orig-buffer (plist-get info :buffer))
+         (preset (plist-get info :preset)))
     (when (and gptel-org-agent-subtrees
                (buffer-live-p orig-buffer)
                ;; Only redirect from a base org buffer, not from an
@@ -499,7 +555,7 @@ indirect buffer (identified by `buffer-base-buffer' returning non-nil)."
                  (derived-mode-p 'org-mode)))
       (when-let* ((indirect-buf
                    (with-current-buffer orig-buffer
-                     (gptel-org-agent--maybe-setup-subtree))))
+                     (gptel-org-agent--maybe-setup-subtree preset))))
         (with-current-buffer indirect-buf
           (goto-char (point-max))
           (let ((pos-marker (point-marker)))
@@ -513,8 +569,8 @@ indirect buffer (identified by `buffer-base-buffer' returning non-nil)."
             ;; Store reference for potential cleanup
             (plist-put info :agent-indirect-buffer indirect-buf)
             (gptel-org--debug
-             "org-agent transform-redirect: redirected to %S at pos %d"
-             (buffer-name indirect-buf) (marker-position pos-marker))))))))
+             "org-agent transform-redirect: redirected to %S at pos %d (preset=%S)"
+             (buffer-name indirect-buf) (marker-position pos-marker) preset)))))))
 
 
 ;;; ---- Org format instructions for system message ----------------------------
@@ -657,6 +713,52 @@ FSM is the request state machine."
                     ;; No system message at all, just use instructions
                     instructions))))))))
 
+(defun gptel-org-agent--insert-user-heading (_beg _end)
+  "Insert a :user: heading after the agent subtree when response completes.
+Added to `gptel-post-response-functions'.
+
+Creates an empty heading tagged with `gptel-org-user-tag' as a sibling
+after the agent subtree in the base buffer.  This heading serves as the
+prompt location for the user's next message in the conversation."
+  (when-let* (((gptel-org--in-agent-indirect-buffer-p))
+              (base-buffer (buffer-base-buffer (current-buffer)))
+              (user-tag (if (boundp 'gptel-org-user-tag)
+                            gptel-org-user-tag
+                          "user")))
+    ;; Find the agent heading in the indirect buffer to locate its
+    ;; position in the base buffer
+    (let ((agent-heading-pos
+           (save-excursion
+             (goto-char (point-min))
+             (when (org-at-heading-p) (point)))))
+      (when agent-heading-pos
+        (with-current-buffer base-buffer
+          (save-excursion
+            (goto-char agent-heading-pos)
+            (when (org-at-heading-p)
+              (let* ((agent-level (org-current-level))
+                     (inhibit-read-only t))
+                ;; Check if a :user: heading already exists as next sibling
+                (org-end-of-subtree t)
+                (let ((after-agent (point)))
+                  (unless (and (org-at-heading-p)
+                               (= (org-current-level) agent-level)
+                               (cl-some
+                                (lambda (tg)
+                                  (string-equal-ignore-case tg user-tag))
+                                (org-get-tags nil t)))
+                    ;; No user heading exists, create one
+                    (goto-char after-agent)
+                    (unless (bolp) (insert "\n"))
+                    (let ((stars (make-string agent-level ?*)))
+                      (insert (format "%s \n" stars))
+                      (forward-line -1)
+                      (beginning-of-line)
+                      (org-set-tags (list user-tag))
+                      (gptel-org--debug
+                       "org-agent insert-user-heading: created :%s: heading at level %d"
+                       user-tag agent-level))))))))))))
+
 (defun gptel-org-agent--enable ()
   "Enable agent subtree integration for `gptel-send'.
 
@@ -677,6 +779,9 @@ Also sets up tool confirmation advice and hooks."
   (when (boundp 'gptel-mode-map)
     (define-key gptel-mode-map (kbd "C-c g j")
                 #'gptel-org-agent-jump-to-indirect-buffer))
+  ;; Insert :user: heading after agent response completes
+  (add-hook 'gptel-post-response-functions
+            #'gptel-org-agent--insert-user-heading 95)
   ;; Tool confirmation: advice on gptel--display-tool-calls
   (advice-add 'gptel--display-tool-calls :around
               #'gptel-org-agent--display-tool-calls-advice)
@@ -691,6 +796,9 @@ Also sets up tool confirmation advice and hooks."
                     gptel-prompt-transform-functions)))
   (when (boundp 'gptel-mode-map)
     (define-key gptel-mode-map (kbd "C-c g j") nil))
+  ;; Remove user heading hook
+  (remove-hook 'gptel-post-response-functions
+               #'gptel-org-agent--insert-user-heading)
   ;; Remove tool confirmation advice and hooks
   (advice-remove 'gptel--display-tool-calls
                  #'gptel-org-agent--display-tool-calls-advice)
