@@ -1138,5 +1138,58 @@ ancestors above the TODO use branching context (heading lines only)."
           (when (buffer-live-p prompt-buf)
             (kill-buffer prompt-buf)))))))
 
+;;; Tests for gptel-org--auto-correct-stream (TODO keyword mode)
+
+(ert-deftest gptel-org-subtree-test-auto-correct-agent-indirect-preserves-agent-heading ()
+  "Test that auto-corrector does not rebase the agent heading at point-min.
+The agent heading (e.g. *** AI-DOING ... :main@agent:) is at point-min
+in the indirect buffer.  The corrector must skip it and only rebase
+the AI response content that follows."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** DOING What is 2 + 2\n*** AI-DOING What is 2 + 2              :main@agent:\n"
+   "AI-DOING"
+   ;; beg is at the agent heading line (point-min in indirect buffer)
+   ;; Simulate AI streaming a response after the agent heading
+   (goto-char (point-max))
+   (let ((response-start (point)))
+     (insert "* AI Simple Arithmetic\n\n2 + 2 = *4*.\n\n** AI Details\nMore info.\n")
+     ;; Enable TODO keywords mode
+     (let ((gptel-org-use-todo-keywords t)
+           (gptel-org-assistant-keyword "AI")
+           (gptel-org--corrector-state nil))
+       ;; Run the auto-corrector (simulates first stream chunk)
+       (gptel-org--auto-correct-stream)
+       ;; Verify the agent heading was NOT modified
+       (goto-char (point-min))
+       (should (looking-at "\\*\\*\\* AI-DOING What is 2 \\+ 2"))
+       ;; Verify AI response headings WERE rebased correctly
+       ;; ref-level = (1+ 3) = 4, so AI's "* AI" (level 1) → "**** AI" (level 4)
+       (goto-char response-start)
+       (should (looking-at "\\*\\*\\*\\* AI Simple Arithmetic"))
+       (search-forward "Details")
+       (beginning-of-line)
+       ;; AI's "** AI Details" (level 2) → "***** AI Details" (level 5)
+       (should (looking-at "\\*\\*\\*\\*\\* AI Details"))))))
+
+(ert-deftest gptel-org-subtree-test-auto-correct-agent-indirect-level-2-task ()
+  "Test auto-corrector with level-2 task heading produces correct levels.
+Reproduces the original bug where ** DOING → ********* headings."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* Project\n** DOING What is 2 + 2\n*** AI-DOING What is 2 + 2              :main@agent:\n"
+   "AI-DOING"
+   (goto-char (point-max))
+   (let ((response-start (point)))
+     (insert "* AI Answer\n\n2 + 2 = 4.\n")
+     (let ((gptel-org-use-todo-keywords t)
+           (gptel-org-assistant-keyword "AI")
+           (gptel-org--corrector-state nil))
+       (gptel-org--auto-correct-stream)
+       ;; Agent heading must remain at level 3
+       (goto-char (point-min))
+       (should (looking-at "\\*\\*\\* AI-DOING"))
+       ;; AI heading must be at level 4 (= agent level 3 + 1)
+       (goto-char response-start)
+       (should (looking-at "\\*\\*\\*\\* AI Answer"))))))
+
 (provide 'gptel-org-subtree-test)
 ;;; gptel-org-subtree-test.el ends here

@@ -2216,8 +2216,17 @@ example blocks, and convert markdown fences in real-time."
     (unless (plist-get gptel-org--corrector-state :active)
       (let ((ref-level (gptel-org--compute-response-level)))
         (when ref-level
-          (let ((marker (make-marker)))
-            (set-marker marker (point-min))
+          (let ((marker (make-marker))
+                (start (save-excursion
+                         (goto-char (point-min))
+                         ;; In agent indirect buffers, point-min is the
+                         ;; agent heading (e.g. *** AI-DOING :main@agent:).
+                         ;; Skip past it so the corrector doesn't rebase it.
+                         (if (and (org-at-heading-p)
+                                  (gptel-org--heading-has-agent-tag-p))
+                             (progn (forward-line 1) (point))
+                           (point)))))
+            (set-marker marker start)
             (setq gptel-org--corrector-state
                   (list :active t
                         :ref-level ref-level
