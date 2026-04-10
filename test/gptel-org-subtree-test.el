@@ -10,8 +10,7 @@
 ;; indirect buffer approach (previously gptel-org-agent-subtrees).
 ;;
 ;; Features tested:
-;; - gptel-org--chat-heading-p: Check if heading is a chat entry
-;; - gptel-org--dynamic-prefix-string: Adjust prefix heading levels
+;; - gptel-org--chat-heading-p: Check if heading is a chat entry (at-point)
 ;; - gptel-org--adjust-response-headings: Demote response headings
 ;; - gptel-org--escape-example-blocks: Escape blocks in responses
 ;; - Tag-based features (gptel-org-infer-bounds-from-tags)
@@ -52,40 +51,12 @@ Disables `gptel-org-infer-bounds-from-tags' to test marker-based behavior."
 
 ;;; Tests for gptel-org--chat-heading-p
 
-(ert-deftest gptel-org-subtree-test-chat-heading-p-user ()
-  "Test that @user heading is recognized as chat heading."
-  (gptel-org-test-with-buffer
-   "* Task\n** @user\nQuestion"
-   (should (gptel-org--chat-heading-p "@user"))))
-
-(ert-deftest gptel-org-subtree-test-chat-heading-p-assistant ()
-  "Test that @assistant heading is recognized as chat heading."
-  (gptel-org-test-with-buffer
-   "* Task\n** @assistant\nResponse"
-   (should (gptel-org--chat-heading-p "@assistant"))))
-
-(ert-deftest gptel-org-subtree-test-chat-heading-p-non-chat ()
-  "Test that regular headings are not recognized as chat headings."
-  (gptel-org-test-with-buffer
-   "* Task\n** Details\nSome text"
-   (should-not (gptel-org--chat-heading-p "Details"))
-   (should-not (gptel-org--chat-heading-p "TODO Something"))
-   (should-not (gptel-org--chat-heading-p "Summary"))))
-
-(ert-deftest gptel-org-subtree-test-chat-heading-p-embedded ()
-  "Test chat heading detection with embedded marker."
-  (gptel-org-test-with-buffer
-   "* Task"
-   ;; Marker embedded in larger text should still match
-   (should (gptel-org--chat-heading-p "My @user prompt"))
-   (should (gptel-org--chat-heading-p "@assistant response here"))))
-
 (ert-deftest gptel-org-subtree-test-chat-heading-p-at-heading ()
-  "Test gptel-org--chat-heading-p when point is at a heading."
-  (gptel-org-test-with-buffer
-   "* Task\n** @user\nQuestion"
+  "Test gptel-org--chat-heading-p when point is at a heading with :user: tag."
+  (gptel-org-test-with-tags-buffer
+   "* Task\n** Question :user:\nSome question"
    (goto-char (point-min))
-   (search-forward "** @user")
+   (search-forward "** Question")
    (beginning-of-line)
    (should (gptel-org--chat-heading-p))))
 
@@ -93,167 +64,84 @@ Disables `gptel-org-infer-bounds-from-tags' to test marker-based behavior."
 ;;; The function gptel-org--get-parent-heading-level has been removed
 ;;; (classical subtree mode no longer exists).
 
-;;; Tests for gptel-org--get-chat-siblings — REMOVED
-;;; The function gptel-org--get-chat-siblings has been removed
-;;; (classical subtree mode no longer exists).
-
-;;; Tests for gptel-org--dynamic-prefix-string
-
-(ert-deftest gptel-org-subtree-test-dynamic-prefix-basic ()
-  "Test dynamic prefix adjustment with starred prefix."
-  (gptel-org-test-with-buffer
-   "* Task\n** @user\nQuestion"
-   (search-forward "Question")
-   (let ((result (gptel-org--dynamic-prefix-string "** @assistant\n")))
-     ;; Parent level is 1, so target level is 2
-     (should (string= "** @assistant\n" result)))))
-
-(ert-deftest gptel-org-subtree-test-dynamic-prefix-nested ()
-  "Test dynamic prefix adjustment with nested task."
-  (gptel-org-test-with-buffer
-   "* Project\n** Task\n*** @user\nQuestion"
-   (search-forward "Question")
-   (let ((result (gptel-org--dynamic-prefix-string "** @assistant\n")))
-     ;; Parent level is 2, so target level is 3
-     (should (string= "*** @assistant\n" result)))))
-
-(ert-deftest gptel-org-subtree-test-dynamic-prefix-no-stars ()
-  "Test dynamic prefix when base prefix has no stars."
-  (gptel-org-test-with-buffer
-   "* Task\n** @user\nQuestion"
-   (search-forward "Question")
-   (let ((result (gptel-org--dynamic-prefix-string "@assistant\n")))
-     ;; Should prepend stars: level 1 parent -> level 2 for chat
-     (should (string= "** @assistant\n" result)))))
-
-(ert-deftest gptel-org-subtree-test-dynamic-prefix-empty ()
-  "Test dynamic prefix when base prefix is empty."
-  (gptel-org-test-with-buffer
-   "* Task\n** @user\nQuestion"
-   (search-forward "Question")
-   (let ((result (gptel-org--dynamic-prefix-string "")))
-     ;; Should create stars with space and newline
-     (should (string= "** \n" result)))))
-
-(ert-deftest gptel-org-subtree-test-dynamic-prefix-disabled ()
-  "Test that dynamic prefix returns base prefix when feature is disabled."
-  (let ((gptel-org-subtree-context nil))
-    (gptel-org-test-with-temp-buffer
-     "* Task\n** @user\nQuestion"
-     (search-forward "Question")
-     (let ((result (gptel-org--dynamic-prefix-string "** @assistant\n")))
-       ;; Should return unchanged
-       (should (string= "** @assistant\n" result))))))
-
-(ert-deftest gptel-org-subtree-test-dynamic-prefix-level-4 ()
-  "Test dynamic prefix at level 4 task."
-  (gptel-org-test-with-buffer
-   "* A\n** B\n*** C\n**** TODO Task\n***** @user\nQuestion"
-   (search-forward "Question")
-   (let ((result (gptel-org--dynamic-prefix-string "** @assistant\n")))
-     ;; Parent level is 4, so target level is 5
-     (should (string= "***** @assistant\n" result)))))
-
 ;;; Tests for gptel-org--adjust-response-headings
 
 (ert-deftest gptel-org-subtree-test-adjust-headings-basic ()
-  "Test that response headings are demoted correctly."
-  (gptel-org-test-with-buffer
-   "* Task\n** @assistant\n"
-   (goto-char (point-max))
-   (let ((beg (point)))
-     (insert "* Summary\nContent\n** Details\nMore")
-     (let ((end (point)))
-       (gptel-org--adjust-response-headings beg end)
-       (goto-char beg)
-       ;; * Summary should become *** Summary (level 2 + 1 = 3)
-       (should (looking-at "\\*\\*\\* Summary"))
-       (search-forward "Details")
-       (beginning-of-line)
-       ;; ** Details should become **** Details
-       (should (looking-at "\\*\\*\\*\\* Details"))))))
+  "Test that response headings are demoted correctly in agent indirect buffer."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** TODO Task\n*** :main@agent:                                       :main@agent:\n**** @assistant\n* Summary\nContent\n** Details\nMore\n"
+   "* Summary"
+   (let ((end (point-max)))
+     (gptel-org--adjust-response-headings beg end)
+     (goto-char beg)
+     ;; @assistant at level 4, so * Summary (level 1) -> ***** Summary (level 5)
+     ;; level-diff = (4 + 1) - 1 = 4
+     (should (looking-at "\\*\\*\\*\\*\\* Summary"))
+     (search-forward "Details")
+     (beginning-of-line)
+     ;; ** Details (level 2) -> ****** Details (level 6)
+     (should (looking-at "\\*\\*\\*\\*\\*\\* Details")))))
 
 (ert-deftest gptel-org-subtree-test-adjust-headings-no-change-needed ()
-  "Test that headings at correct level are not changed."
-  (gptel-org-test-with-buffer
-   "* Task\n** @assistant\n"
-   (goto-char (point-max))
-   (let ((beg (point)))
-     (insert "*** Summary\nContent\n**** Details\nMore")
-     (let ((end (point)))
-       (gptel-org--adjust-response-headings beg end)
-       (goto-char beg)
-       ;; Already at level 3+, should stay unchanged
-       (should (looking-at "\\*\\*\\* Summary"))
-       (search-forward "Details")
-       (beginning-of-line)
-       (should (looking-at "\\*\\*\\*\\* Details"))))))
+  "Test that headings at correct level are not changed in agent indirect buffer."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** TODO Task\n*** :main@agent:                                       :main@agent:\n**** @assistant\n***** Summary\nContent\n****** Details\nMore\n"
+   "***** Summary"
+   (let ((end (point-max)))
+     (gptel-org--adjust-response-headings beg end)
+     (goto-char beg)
+     ;; Already at level 5+ (children of level-4 @assistant), should stay unchanged
+     (should (looking-at "\\*\\*\\*\\*\\* Summary"))
+     (search-forward "Details")
+     (beginning-of-line)
+     (should (looking-at "\\*\\*\\*\\*\\*\\* Details")))))
 
 (ert-deftest gptel-org-subtree-test-adjust-headings-mixed-levels ()
-  "Test adjustment with mixed heading levels in response."
-  (gptel-org-test-with-buffer
-   "* Task\n** @assistant\n"
-   (goto-char (point-max))
-   (let ((beg (point)))
-     (insert "* Top\nContent\n** Middle\n*** Deep\n* Another top")
-     (let ((end (point)))
-       (gptel-org--adjust-response-headings beg end)
-       (goto-char beg)
-       ;; All headings should be shifted by the same amount
-       ;; Level 1 -> Level 3 (diff of 2)
-       (should (looking-at "\\*\\*\\* Top"))
-       (search-forward "Middle")
-       (beginning-of-line)
-       ;; Level 2 -> Level 4
-       (should (looking-at "\\*\\*\\*\\* Middle"))
-       (search-forward "Deep")
-       (beginning-of-line)
-       ;; Level 3 -> Level 5
-       (should (looking-at "\\*\\*\\*\\*\\* Deep"))))))
-
-(ert-deftest gptel-org-subtree-test-adjust-headings-disabled ()
-  "Test that heading adjustment is skipped when feature is disabled."
-  (let ((gptel-org-subtree-context nil))
-    (gptel-org-test-with-temp-buffer
-     "* Task\n** @assistant\n"
-     (goto-char (point-max))
-     (let ((beg (point)))
-       (insert "* Summary\nContent")
-       (let ((end (point)))
-         (gptel-org--adjust-response-headings beg end)
-         (goto-char beg)
-         ;; Should remain unchanged
-         (should (looking-at "\\* Summary")))))))
+  "Test adjustment with mixed heading levels in response in agent indirect buffer."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** TODO Task\n*** :main@agent:                                       :main@agent:\n**** @assistant\n* Top\nContent\n** Middle\n*** Deep\n* Another top\n"
+   "* Top"
+   (let ((end (point-max)))
+     (gptel-org--adjust-response-headings beg end)
+     (goto-char beg)
+     ;; All headings shifted by same amount: level-diff = (4+1) - 1 = 4
+     ;; Level 1 -> Level 5
+     (should (looking-at "\\*\\*\\*\\*\\* Top"))
+     (search-forward "Middle")
+     (beginning-of-line)
+     ;; Level 2 -> Level 6
+     (should (looking-at "\\*\\*\\*\\*\\*\\* Middle"))
+     (search-forward "Deep")
+     (beginning-of-line)
+     ;; Level 3 -> Level 7
+     (should (looking-at "\\*\\*\\*\\*\\*\\*\\* Deep")))))
 
 (ert-deftest gptel-org-subtree-test-adjust-headings-deeply-nested ()
-  "Test adjustment with deeply nested assistant heading."
-  (gptel-org-test-with-buffer
-   "* A\n** B\n*** TODO Task\n**** @assistant\n"
-   (goto-char (point-max))
-   (let ((beg (point)))
-     (insert "* Summary\nContent\n** Details\nMore")
-     (let ((end (point)))
-       (gptel-org--adjust-response-headings beg end)
-       (goto-char beg)
-       ;; Assistant at level 4, so min response level (1) should go to level 5
-       ;; Level diff = 5 - 1 = 4
-       (should (looking-at "\\*\\*\\*\\*\\* Summary"))
-       (search-forward "Details")
-       (beginning-of-line)
-       (should (looking-at "\\*\\*\\*\\*\\*\\* Details"))))))
+  "Test adjustment with deeply nested assistant heading in agent indirect buffer."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* A\n** B\n*** TODO Task\n**** :main@agent:                                       :main@agent:\n***** @assistant\n* Summary\nContent\n** Details\nMore\n"
+   "* Summary"
+   (let ((end (point-max)))
+     (gptel-org--adjust-response-headings beg end)
+     (goto-char beg)
+     ;; @assistant at level 5, so level-diff = (5+1) - 1 = 5
+     ;; * Summary (level 1) -> ****** Summary (level 6)
+     (should (looking-at "\\*\\*\\*\\*\\*\\* Summary"))
+     (search-forward "Details")
+     (beginning-of-line)
+     ;; ** Details (level 2) -> ******* Details (level 7)
+     (should (looking-at "\\*\\*\\*\\*\\*\\*\\* Details")))))
 
 (ert-deftest gptel-org-subtree-test-adjust-headings-no-headings ()
-  "Test that text without headings is not affected."
-  (gptel-org-test-with-buffer
-   "* Task\n** @assistant\n"
-   (goto-char (point-max))
-   (let ((beg (point)))
-     (insert "Just some text\nWith multiple lines\nNo headings here")
-     (let ((end (point))
-           (original (buffer-substring beg (point))))
-       (gptel-org--adjust-response-headings beg end)
-       ;; Content should be unchanged
-       (should (string= original (buffer-substring beg end)))))))
+  "Test that text without headings is not affected in agent indirect buffer."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** TODO Task\n*** :main@agent:                                       :main@agent:\n**** @assistant\nJust some text\nWith multiple lines\nNo headings here\n"
+   "Just some text"
+   (let ((end (point-max))
+         (original (buffer-substring beg (point-max))))
+     (gptel-org--adjust-response-headings beg end)
+     ;; Content should be unchanged
+     (should (string= original (buffer-substring beg (point-max)))))))
 
 ;;; Tests for heading adjustment in agent indirect buffers
 
@@ -325,13 +213,14 @@ even when gptel-org-subtree-context is nil."
   (gptel-org-test-with-agent-indirect-buffer
    "* H1\n** TODO Task 1\n*** :main@agent:                                       :main@agent:\n**** @assistant\n* Summary\nContent\n"
    "* Summary"
-   (let ((end (point-max)))
-     ;; gptel-org-subtree-context is nil (set in the macro)
-     (should (not gptel-org-subtree-context))
-     (gptel-org--adjust-response-headings beg end)
-     (goto-char beg)
-     ;; Should still be demoted because we're in an agent indirect buffer
-     (should (looking-at "\\*\\*\\*\\*\\* Summary")))))
+   (let ((gptel-org-subtree-context nil))
+     (let ((end (point-max)))
+       ;; gptel-org-subtree-context is nil (overridden above)
+       (should (not gptel-org-subtree-context))
+       (gptel-org--adjust-response-headings beg end)
+       (goto-char beg)
+       ;; Should still be demoted because we're in an agent indirect buffer
+       (should (looking-at "\\*\\*\\*\\*\\* Summary"))))))
 
 (ert-deftest gptel-org-subtree-test-adjust-headings-agent-indirect-correct-level ()
   "Test heading levels are correct when response is already at child level."
@@ -512,33 +401,6 @@ Point is placed at the first : character (tag marker) if present, otherwise at e
    (beginning-of-line)
    (should-not (gptel-org--chat-heading-p))))
 
-(ert-deftest gptel-org-subtree-test-dynamic-prefix-tag-mode ()
-  "Test dynamic prefix in tag-based mode."
-  (gptel-org-test-with-tags-buffer
-   "* Task\n** Question :user:\nQuestion text"
-   (search-forward "Question text")
-   (let ((result (gptel-org--dynamic-prefix-string "** @assistant\n")))
-     ;; In tag mode, should generate tag-style heading
-     (should (string= "** :assistant:\n" result)))))
-
-(ert-deftest gptel-org-subtree-test-dynamic-prefix-tag-nested ()
-  "Test dynamic prefix in tag-based mode with nested task."
-  (gptel-org-test-with-tags-buffer
-   "* Project\n** Task\n*** Question :user:\nQuestion text"
-   (search-forward "Question text")
-   (let ((result (gptel-org--dynamic-prefix-string "** @assistant\n")))
-     ;; Parent level is 2, so target level is 3
-     (should (string= "*** :assistant:\n" result)))))
-
-(ert-deftest gptel-org-subtree-test-dynamic-prefix-tag-for-prompt ()
-  "Test dynamic prefix for user prompt in tag mode."
-  (gptel-org-test-with-tags-buffer
-   "* Task\n** Response :assistant:\nAnswer"
-   (search-forward "Answer")
-   (let ((result (gptel-org--dynamic-prefix-string "** @user\n" t)))
-     ;; for-prompt=t should generate user tag
-     (should (string= "** :user:\n" result)))))
-
 (ert-deftest gptel-org-subtree-test-heading-has-tag-p ()
   "Test gptel-org--heading-has-tag-p function."
   (gptel-org-test-with-tags-buffer
@@ -548,76 +410,6 @@ Point is placed at the first : character (tag marker) if present, otherwise at e
    (should (gptel-org--heading-has-tag-p "assistant"))
    (should (gptel-org--heading-has-tag-p "work"))
    (should (gptel-org--heading-has-tag-p "ASSISTANT"))  ; case-insensitive
-   (should-not (gptel-org--heading-has-tag-p "user"))))
-
-(ert-deftest gptel-org-subtree-test-apply-pending-tag-correct-heading ()
-  "Test that pending tag is applied to newly inserted heading, not previous one.
-This tests the fix for a bug where `gptel-org--apply-pending-tag-on-change'
-would incorrectly apply the tag to the heading *before* the insertion point
-rather than to the newly inserted heading."
-  (gptel-org-test-with-tags-buffer
-   "* Project\n** AI-DOING Task\nSome content\n"
-   (goto-char (point-max))
-   ;; Simulate what happens when gptel inserts a response:
-   ;; 1. gptel-org--dynamic-prefix-string sets up pending tag
-   ;; 2. Heading is inserted
-   ;; 3. after-change-functions triggers apply-pending-tag-on-change
-   (let ((prefix (gptel-org--dynamic-prefix-string "** @assistant\n")))
-     ;; Verify prefix was generated with tag
-     (should (string-match-p ":assistant:" prefix))
-     ;; Now insert the prefix (this triggers after-change-functions)
-     (let ((insert-pos (point)))
-       (insert prefix)
-       ;; Manually trigger the hook since temp buffers may not have it active
-       (when gptel-org--pending-heading-tag
-         (gptel-org--apply-pending-tag-on-change insert-pos (point) 0))))
-   ;; Now verify the tags are on the correct headings
-   (goto-char (point-min))
-   (search-forward "AI-DOING")
-   (beginning-of-line)
-   ;; AI-DOING should NOT have the assistant tag
-   (should-not (gptel-org--heading-has-tag-p "assistant"))
-   ;; Find the new heading
-   (outline-next-heading)
-   ;; The new heading SHOULD have the assistant tag
-   (should (gptel-org--heading-has-tag-p "assistant"))))
-
-(ert-deftest gptel-org-subtree-test-pending-tag-no-leak-to-sibling ()
-  "Test that pending tag does not leak to a nearby sibling heading.
-This reproduces the real scenario: gptel-response-separator (\\n\\n) is
-inserted together with the prompt prefix in a single `insert' call.
-The `after-change-functions' hook fires with beg at the separator (not
-the heading), so `org-at-heading-p' fails and `re-search-forward' must
-find the correct heading rather than a nearby sibling."
-  (gptel-org-test-with-tags-buffer
-   ;; Buffer: two sibling tasks, cursor between them.
-   ;; The second heading is within 200 chars of the first.
-   (concat "* Project\n"
-           "** AI-DOING Print hello world\n"
-           "*** Response content :assistant:\n"
-           "Done.\n"
-           "** AI-DOING Run remote command\n")
-   ;; Go to end of "Done." line — where a user prompt would be inserted
-   (goto-char (point-min))
-   (search-forward "Done.\n")
-   ;; Simulate the real insertion: gptel-prompt-prefix-string is evaluated
-   ;; first (setting up the pending tag), then insert is called with both
-   ;; the separator and prefix together.
-   (let ((prefix (gptel-org--dynamic-prefix-string "*** @user\n" 'for-prompt))
-         (separator "\n\n"))
-     (should (string-match-p ":user:" prefix))
-     ;; This mirrors: (insert gptel-response-separator (gptel-prompt-prefix-string))
-     ;; The after-change-functions hook fires with beg at the separator position.
-     (let ((insert-pos (point)))
-       (insert separator prefix)
-       ;; Manually trigger since temp buffers may not have the hook active
-       (when gptel-org--pending-heading-tag
-         (gptel-org--apply-pending-tag-on-change insert-pos (point) 0))))
-   ;; The user tag should be on the newly inserted heading only
-   (goto-char (point-min))
-   (search-forward "Run remote command")
-   (beginning-of-line)
-   ;; The sibling heading MUST NOT have the :user: tag
    (should-not (gptel-org--heading-has-tag-p "user"))))
 
 (ert-deftest gptel-org-subtree-test-restore-bounds-assistant-children ()
