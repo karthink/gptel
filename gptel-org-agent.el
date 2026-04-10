@@ -763,12 +763,22 @@ prompt location for the user's next message in the conversation."
   (let ((in-agent (gptel-org--in-agent-indirect-buffer-p)))
     (gptel-org--debug "insert-user-heading: in-agent-indirect=%s" in-agent)
     (when-let* ((in-agent)
+                ;; Only insert user heading for top-level agents, not
+                ;; sub-agents.  Sub-agents (gatherer, researcher, etc.)
+                ;; don't have interactive conversations — they return
+                ;; results to the parent agent.  Sub-agent tags have 2+
+                ;; '@' signs (e.g. "researcher@main@agent"), main agent
+                ;; tags have exactly 1 (e.g. "main@agent").
+                (agent-tag (gptel-org-agent--current-agent-tag))
                 (base-buffer (buffer-base-buffer (current-buffer)))
                 (user-tag (if (boundp 'gptel-org-user-tag)
                               gptel-org-user-tag
                             "user")))
-      (gptel-org--debug "insert-user-heading: base-buffer=%S user-tag=%S"
-                        (buffer-name base-buffer) user-tag)
+      (gptel-org--debug "insert-user-heading: agent-tag=%S base-buffer=%S user-tag=%S"
+                        agent-tag (buffer-name base-buffer) user-tag)
+      ;; Skip sub-agent buffers: sub-agents don't have interactive
+      ;; conversations, so no user heading is needed.
+      (unless (string-match-p "@.*@" agent-tag)
       ;; Find the agent heading in the indirect buffer to locate its
       ;; position in the base buffer
       (let ((agent-heading-pos
@@ -837,7 +847,7 @@ prompt location for the user's next message in the conversation."
                           (org-set-tags (list user-tag))
                           (gptel-org--debug
                            "insert-user-heading: created :%s: heading at level %d after pos %d"
-                           user-tag agent-level after-agent))))))))))))))
+                           user-tag agent-level after-agent)))))))))))))))
 
 (defun gptel-org-agent--enable ()
   "Enable agent subtree integration for `gptel-send'.

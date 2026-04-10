@@ -1943,19 +1943,25 @@ example blocks, and convert markdown fences in real-time."
                         :last-pos marker
                         :in-example nil
                         :in-src nil))))))
-    ;; Process new text
+    ;; Process new text — bounded to (point) so we don't touch
+    ;; sub-agent subtrees that may exist after the insertion point.
     (when (plist-get gptel-org--corrector-state :active)
-      (gptel-org--correct-region))))
+      (gptel-org--correct-region (point)))))
 
-(defun gptel-org--correct-region ()
+(defun gptel-org--correct-region (&optional limit)
   "Correct org formatting in newly inserted text.
-Uses `gptel-org--corrector-state' to track position and block state."
+Uses `gptel-org--corrector-state' to track position and block state.
+
+When LIMIT is non-nil, only process up to that buffer position
+instead of `point-max'.  This prevents the corrector from
+re-processing sub-agent subtrees that exist after the current
+streaming insertion point in the buffer."
   (let* ((state gptel-org--corrector-state)
          (last-pos (plist-get state :last-pos))
          (ref-level (plist-get state :ref-level))
          (in-example (plist-get state :in-example))
          (in-src (plist-get state :in-src))
-         (end (point-max)))
+         (end (or limit (point-max))))
     (when (and (markerp last-pos)
                (marker-position last-pos)
                (< (marker-position last-pos) end))
