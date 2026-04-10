@@ -21,8 +21,7 @@ character if present, otherwise at end."
   (declare (indent 1))
   `(let ((org-inhibit-startup t)
          (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "|" "AI-DONE")))
-         (gptel-org-todo-keywords '("AI-DO" "AI-DOING"))
-         (gptel-org-chat-heading-markers '("@user" "@assistant")))
+         (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
      (with-temp-buffer
        (delay-mode-hooks (org-mode))
        (insert ,content)
@@ -292,7 +291,7 @@ Verify the child heading exists at the correct level with the right tag."
   "Test that maybe-setup-subtree works on an AI-DO heading."
   (gptel-org-agent-test-with-buffer
    "* AI-DO Implement feature\nDescription\n"
-   (let ((gptel-org-agent-subtrees t)
+   (let ((gptel-org-subtree-context t)
          (indirect-buf nil))
      (goto-char (point-min))
      (org-back-to-heading t)
@@ -313,10 +312,10 @@ Verify the child heading exists at the correct level with the right tag."
          (kill-buffer indirect-buf))))))
 
 (ert-deftest gptel-org-agent-test-maybe-setup-disabled ()
-  "Test that nil gptel-org-agent-subtrees returns nil."
+  "Test that nil gptel-org-subtree-context returns nil."
   (gptel-org-agent-test-with-buffer
    "* AI-DO Implement feature\nDescription\n"
-   (let ((gptel-org-agent-subtrees nil))
+   (let ((gptel-org-subtree-context nil))
      (goto-char (point-min))
      (org-back-to-heading t)
      (should-not (gptel-org-agent--maybe-setup-subtree)))))
@@ -325,7 +324,7 @@ Verify the child heading exists at the correct level with the right tag."
   "Test that a regular heading (no TODO keyword) returns nil."
   (gptel-org-agent-test-with-buffer
    "* Regular heading\nDescription\n"
-   (let ((gptel-org-agent-subtrees t))
+   (let ((gptel-org-subtree-context t))
      (goto-char (point-min))
      (org-back-to-heading t)
      (should-not (gptel-org-agent--maybe-setup-subtree)))))
@@ -334,7 +333,7 @@ Verify the child heading exists at the correct level with the right tag."
   "Test that calling maybe-setup-subtree twice reuses the existing subtree."
   (gptel-org-agent-test-with-buffer
    "* AI-DO Implement feature\nDescription\n"
-   (let ((gptel-org-agent-subtrees t)
+   (let ((gptel-org-subtree-context t)
          (indirect-buf-1 nil)
          (indirect-buf-2 nil))
      (unwind-protect
@@ -430,7 +429,7 @@ verify the base buffer shows the full tree structure."
    "* AI-DO Implement feature\nDescription\n"
    (goto-char (point-min))
    (org-back-to-heading t)
-   (let* ((gptel-org-agent-subtrees t)
+   (let* ((gptel-org-subtree-context t)
           (base-buf (current-buffer))
           (marker (gptel-org-agent--create-subtree "main"))
           (indirect-buf nil))
@@ -460,7 +459,7 @@ verify the base buffer shows the full tree structure."
    "* AI-DO Implement feature\nDescription\n"
    (goto-char (point-min))
    (org-back-to-heading t)
-   (let* ((gptel-org-agent-subtrees t)
+   (let* ((gptel-org-subtree-context t)
           (base-buf (current-buffer))
           (main-marker (gptel-org-agent--create-subtree "main"))
           (main-indirect nil)
@@ -505,12 +504,12 @@ verify the base buffer shows the full tree structure."
          (kill-buffer main-indirect))))))
 
 (ert-deftest gptel-org-agent-test-setup-task-subtree-disabled ()
-  "With gptel-org-agent-subtrees nil, setup-task-subtree returns nil."
+  "With gptel-org-subtree-context nil, setup-task-subtree returns nil."
   (gptel-org-agent-test-with-buffer
    "* AI-DO Implement feature\nDescription\n"
    (goto-char (point-min))
    (org-back-to-heading t)
-   (let* ((gptel-org-agent-subtrees nil)
+   (let* ((gptel-org-subtree-context nil)
           (base-buf (current-buffer))
           (main-marker (gptel-org-agent--create-subtree "main"))
           (main-indirect nil))
@@ -530,7 +529,7 @@ verify the base buffer shows the full tree structure."
    "* AI-DO Implement feature\nDescription\n"
    (goto-char (point-min))
    (org-back-to-heading t)
-   (let* ((gptel-org-agent-subtrees t)
+   (let* ((gptel-org-subtree-context t)
           (base-buf (current-buffer))
           (main-marker (gptel-org-agent--create-subtree "main"))
           (main-indirect nil)
@@ -794,7 +793,7 @@ Final thoughts
    "* AI-DO Implement feature\nDescription\n"
    (goto-char (point-min))
    (org-back-to-heading t)
-   (let* ((gptel-org-agent-subtrees t)
+   (let* ((gptel-org-subtree-context t)
           (base-buf (current-buffer))
           (fsm (gptel-make-fsm))
           (info (list :buffer base-buf
@@ -823,12 +822,12 @@ Final thoughts
            (kill-buffer indirect)))))))
 
 (ert-deftest gptel-org-agent-test-transform-redirect-disabled ()
-  "Transform does nothing when gptel-org-agent-subtrees is nil."
+  "Transform does nothing when gptel-org-subtree-context is nil."
   (gptel-org-agent-test-with-buffer
    "* AI-DO Implement feature\nDescription\n"
    (goto-char (point-min))
    (org-back-to-heading t)
-   (let* ((gptel-org-agent-subtrees nil)
+   (let* ((gptel-org-subtree-context nil)
           (base-buf (current-buffer))
           (fsm (gptel-make-fsm))
           (info (list :buffer base-buf
@@ -844,7 +843,7 @@ Final thoughts
    "* Regular heading\nDescription\n"
    (goto-char (point-min))
    (org-back-to-heading t)
-   (let* ((gptel-org-agent-subtrees t)
+   (let* ((gptel-org-subtree-context t)
           (base-buf (current-buffer))
           (fsm (gptel-make-fsm))
           (info (list :buffer base-buf
@@ -860,7 +859,7 @@ Final thoughts
    "* AI-DO Implement feature\nDescription\n"
    (goto-char (point-min))
    (org-back-to-heading t)
-   (let* ((gptel-org-agent-subtrees t)
+   (let* ((gptel-org-subtree-context t)
           (base-buf (current-buffer))
           ;; First create an indirect buffer to simulate being in one
           (marker (gptel-org-agent--create-subtree "main"))
@@ -887,7 +886,7 @@ Final thoughts
    "* AI-DO Implement feature\nDescription\n"
    (goto-char (point-min))
    (org-back-to-heading t)
-   (let* ((gptel-org-agent-subtrees t)
+   (let* ((gptel-org-subtree-context t)
           (base-buf (current-buffer))
           (fsm1 (gptel-make-fsm))
           (info1 (list :buffer base-buf
@@ -944,7 +943,7 @@ appears in both the indirect and base buffers."
    "* AI-DO Implement feature\nDescription\n"
    (goto-char (point-min))
    (org-back-to-heading t)
-   (let* ((gptel-org-agent-subtrees t)
+   (let* ((gptel-org-subtree-context t)
           (base-buf (current-buffer))
           (fsm (gptel-make-fsm))
           (info (list :buffer base-buf

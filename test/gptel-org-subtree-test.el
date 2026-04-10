@@ -1,14 +1,22 @@
 ;;; gptel-org-subtree-test.el --- Tests for gptel-org subtree context feature -*- lexical-binding: t; -*-
 
 ;; Tests for the gptel-org-subtree-context feature which enables
-;; task-oriented conversation workflows under TODO headings.
+;; task-oriented conversation workflows under TODO headings via
+;; agent indirect buffers.
+;;
+;; NOTE: Classical subtree mode (sibling scanning via
+;; gptel-org--get-parent-heading-level and gptel-org--get-chat-siblings)
+;; has been removed.  gptel-org-subtree-context now controls the
+;; indirect buffer approach (previously gptel-org-agent-subtrees).
 ;;
 ;; Features tested:
 ;; - gptel-org--chat-heading-p: Check if heading is a chat entry
-;; - gptel-org--get-parent-heading-level: Find task heading level
-;; - gptel-org--get-chat-siblings: Collect sibling chat headings
 ;; - gptel-org--dynamic-prefix-string: Adjust prefix heading levels
 ;; - gptel-org--adjust-response-headings: Demote response headings
+;; - gptel-org--escape-example-blocks: Escape blocks in responses
+;; - Tag-based features (gptel-org-infer-bounds-from-tags)
+;; - Hybrid branching context with agent subtrees
+;; - Auto-correct stream in agent indirect buffers
 
 (require 'ert)
 (require 'gptel)
@@ -22,8 +30,7 @@
 Point is placed at the first @ character if present, otherwise at end.
 Does NOT bind gptel-org-subtree-context - caller must do that."
   (declare (indent 1))
-  `(let ((org-inhibit-startup t)
-         (gptel-org-chat-heading-markers '("@user" "@assistant")))
+  `(let ((org-inhibit-startup t))
      (with-temp-buffer
        (delay-mode-hooks (org-mode))
        (insert ,content)
@@ -82,95 +89,13 @@ Disables `gptel-org-infer-bounds-from-tags' to test marker-based behavior."
    (beginning-of-line)
    (should (gptel-org--chat-heading-p))))
 
-;;; Tests for gptel-org--get-parent-heading-level
+;;; Tests for gptel-org--get-parent-heading-level — REMOVED
+;;; The function gptel-org--get-parent-heading-level has been removed
+;;; (classical subtree mode no longer exists).
 
-(ert-deftest gptel-org-subtree-test-parent-level-simple ()
-  "Test finding parent level in simple task structure."
-  (gptel-org-test-with-buffer
-   "* Task\n** @user\nQuestion"
-   (search-forward "Question")
-   (should (= 1 (gptel-org--get-parent-heading-level)))))
-
-(ert-deftest gptel-org-subtree-test-parent-level-nested ()
-  "Test finding parent level with nested task headings."
-  (gptel-org-test-with-buffer
-   "* Project\n** Task\n*** @user\nQuestion"
-   (search-forward "Question")
-   (should (= 2 (gptel-org--get-parent-heading-level)))))
-
-(ert-deftest gptel-org-subtree-test-parent-level-deeply-nested ()
-  "Test finding parent level with deeply nested structure."
-  (gptel-org-test-with-buffer
-   "* Level 1\n** Level 2\n*** TODO Task\n**** @user\nQuestion\n**** @assistant\nAnswer"
-   (search-forward "Question")
-   (should (= 3 (gptel-org--get-parent-heading-level)))))
-
-(ert-deftest gptel-org-subtree-test-parent-level-from-assistant ()
-  "Test finding parent level when inside @assistant subtree."
-  (gptel-org-test-with-buffer
-   "* Task\n** @user\nQuestion\n** @assistant\nAnswer\n*** Details\nMore info"
-   (search-forward "More info")
-   (should (= 1 (gptel-org--get-parent-heading-level)))))
-
-(ert-deftest gptel-org-subtree-test-parent-level-at-chat-heading ()
-  "Test finding parent level when at a chat heading."
-  (gptel-org-test-with-buffer
-   "* Task\n** @user\nQuestion"
-   (goto-char (point-min))
-   (search-forward "** @user")
-   (beginning-of-line)
-   (should (= 1 (gptel-org--get-parent-heading-level)))))
-
-;;; Tests for gptel-org--get-chat-siblings
-
-(ert-deftest gptel-org-subtree-test-get-siblings-basic ()
-  "Test collecting chat siblings in basic structure."
-  (gptel-org-test-with-buffer
-   "* Task\n** @user\nQuestion\n** @assistant\nAnswer"
-   (search-forward "Answer")
-   (let ((siblings (gptel-org--get-chat-siblings)))
-     (should (= 2 (length siblings)))
-     ;; Each sibling should be a cons of (beg . end)
-     (should (consp (car siblings)))
-     (should (consp (cadr siblings))))))
-
-(ert-deftest gptel-org-subtree-test-get-siblings-multiple-turns ()
-  "Test collecting chat siblings with multiple conversation turns."
-  (gptel-org-test-with-buffer
-   "* Task\n** @user\nQ1\n** @assistant\nA1\n** @user\nQ2\n** @assistant\nA2"
-   (goto-char (point-max))
-   (let ((siblings (gptel-org--get-chat-siblings)))
-     (should (= 4 (length siblings))))))
-
-(ert-deftest gptel-org-subtree-test-get-siblings-with-non-chat ()
-  "Test that non-chat siblings are excluded."
-  (gptel-org-test-with-buffer
-   "* Task\n** Notes\nSome notes\n** @user\nQuestion\n** @assistant\nAnswer\n** References\nLinks"
-   (search-forward "Answer")
-   (let ((siblings (gptel-org--get-chat-siblings)))
-     ;; Should only collect @user and @assistant, not Notes or References
-     (should (= 2 (length siblings))))))
-
-(ert-deftest gptel-org-subtree-test-get-siblings-nested-content ()
-  "Test that siblings with nested subheadings are fully captured."
-  (gptel-org-test-with-buffer
-   "* Task\n** @user\nQuestion\n** @assistant\nAnswer\n*** Details\nMore\n*** Code\nExample"
-   (search-forward "Question")
-   (let ((siblings (gptel-org--get-chat-siblings)))
-     (should (= 2 (length siblings)))
-     ;; The @assistant sibling should include its subheadings
-     (let* ((assistant-sibling (cadr siblings))
-            (content (buffer-substring (car assistant-sibling) (cdr assistant-sibling))))
-       (should (string-match-p "Details" content))
-       (should (string-match-p "Code" content))))))
-
-(ert-deftest gptel-org-subtree-test-get-siblings-disabled ()
-  "Test that get-chat-siblings returns nil when feature is disabled."
-  (let ((gptel-org-subtree-context nil))
-    (gptel-org-test-with-temp-buffer
-     "* Task\n** @user\nQuestion\n** @assistant\nAnswer"
-     (search-forward "Answer")
-     (should-not (gptel-org--get-chat-siblings)))))
+;;; Tests for gptel-org--get-chat-siblings — REMOVED
+;;; The function gptel-org--get-chat-siblings has been removed
+;;; (classical subtree mode no longer exists).
 
 ;;; Tests for gptel-org--dynamic-prefix-string
 
@@ -343,9 +268,7 @@ with insertion-type t as the AI streams text.
 BODY receives `beg' bound to the position of BEG-MARKER."
   (declare (indent 2))
   `(let ((org-inhibit-startup t)
-         (gptel-org-subtree-context nil)
-         (gptel-org-agent-subtrees t)
-         (gptel-org-chat-heading-markers '("@user" "@assistant")))
+         (gptel-org-subtree-context t))
      (with-temp-buffer
        (delay-mode-hooks (org-mode))
        (insert ,content)
@@ -535,28 +458,10 @@ already children of the reference heading."
        (forward-line 1)
        (should (looking-at ",\\* Heading in src"))))))
 
-;;; Integration tests
-
-(ert-deftest gptel-org-subtree-test-full-workflow ()
-  "Test the complete subtree context workflow."
-  (gptel-org-test-with-buffer
-   "* Project\n** TODO Implement feature\n*** @user\nHow do I implement X?\n*** @assistant\nHere's how:\n**** Step 1\nDo this\n**** Step 2\nDo that\n*** @user\nThanks, what about Y?\n"
-   ;; Position at the last @user entry
-   (goto-char (point-max))
-   (search-backward "@user")
-   (forward-line 1)
-   (end-of-line)
-   
-   ;; Verify parent level detection
-   (should (= 2 (gptel-org--get-parent-heading-level)))
-   
-   ;; Verify sibling collection
-   (let ((siblings (gptel-org--get-chat-siblings)))
-     (should (= 3 (length siblings))))
-   
-   ;; Verify prefix adjustment
-   (let ((prefix (gptel-org--dynamic-prefix-string "** @assistant\n")))
-     (should (string= "*** @assistant\n" prefix)))))
+;;; Integration test for full classical subtree workflow — REMOVED
+;;; The test gptel-org-subtree-test-full-workflow used
+;;; gptel-org--get-parent-heading-level and gptel-org--get-chat-siblings,
+;;; both of which have been removed with classical subtree mode.
 
 ;;; Tests for tag-based features (gptel-org-infer-bounds-from-tags)
 
@@ -568,7 +473,6 @@ Point is placed at the first : character (tag marker) if present, otherwise at e
          (gptel-org-infer-bounds-from-tags t)
          (gptel-org-assistant-tag "assistant")
          (gptel-org-user-tag "user")
-         (gptel-org-chat-heading-markers '("@user" "@assistant"))
          (org-inhibit-startup t))
      (with-temp-buffer
        (delay-mode-hooks (org-mode))
@@ -761,68 +665,13 @@ would re-visit untagged children and clear their properties."
    (should-not (get-text-property (point) 'gptel))))
 
 
-(ert-deftest gptel-org-subtree-test-branching-sibling-order ()
-  "Test that branching context with chat siblings preserves message order.
-When `gptel-org-branching-context' and `gptel-org-subtree-context' are
-both enabled, chat siblings must be inserted AFTER all lineage headings
-in the prompt buffer.  Previously, the siblings were inserted before
-intermediate lineage headings, causing the TODO heading to appear as
-the last user message instead of being part of the first (context)
-message.  This also caused the current user message to merge with the
-TODO heading."
-  (let ((gptel-org-branching-context t)
-        (gptel-org-subtree-context t)
-        (gptel-org-infer-bounds-from-tags t)
-        (gptel-org-assistant-tag "assistant")
-        (gptel-org-user-tag "user")
-        (gptel-org-chat-heading-markers '("@user" "@assistant"))
-        (gptel-org-ignore-elements nil)
-        (gptel-org-agent-subtrees nil)
-        (gptel-prompt-filter-hook nil)
-        (gptel--num-messages-to-send nil)
-        (gptel-track-response t)
-        (gptel-track-media nil)
-        (org-inhibit-startup t))
-    (with-temp-buffer
-      (delay-mode-hooks (org-mode))
-      (insert "* Project\n"
-              "** AI-DOING Fix the widget\n"
-              "*** First response                              :assistant:\n"
-              "Done fixing.\n"
-              "*** Follow-up question                          :user:\n"
-              "What about tests?\n"
-              "*** Second response                             :assistant:\n"
-              "Tests added.\n"
-              "*** Another question                            :user:\n"
-              "Looks good, commit it.\n")
-      (goto-char (point-max))
-      (let* ((backend (gptel-make-openai "test" :key "fake" :models '("gpt-4")))
-             (prompt-buf (gptel-org--create-prompt-buffer)))
-        (unwind-protect
-            (with-current-buffer prompt-buf
-              (setq gptel-mode t)
-              (goto-char (point-max))
-              (let ((messages (gptel--parse-buffer backend nil)))
-                ;; Should have 5 messages: context, asst, user, asst, user
-                (should (= (length messages) 5))
-                ;; First message should be user with BOTH parent AND TODO heading
-                (should (string= (plist-get (nth 0 messages) :role) "user"))
-                (should (string-match-p "Project" (plist-get (nth 0 messages) :content)))
-                (should (string-match-p "Fix the widget"
-                                        (plist-get (nth 0 messages) :content)))
-                ;; Last message should be just the current user message
-                (should (string= (plist-get (nth 4 messages) :role) "user"))
-                (should (string-match-p "Looks good"
-                                        (plist-get (nth 4 messages) :content)))
-                ;; TODO heading should NOT appear in last message
-                (should-not (string-match-p "AI-DOING"
-                                            (plist-get (nth 4 messages) :content)))))
-          (when (buffer-live-p prompt-buf)
-            (kill-buffer prompt-buf)))))))
+;;; gptel-org-subtree-test-branching-sibling-order — REMOVED
+;;; Tested classical subtree mode's sibling scanning in prompt buffers,
+;;; which no longer exists.  The agent indirect buffer approach replaces it.
 
 (ert-deftest gptel-org-subtree-test-branching-sibling-order-agent-subtrees ()
   "Test branching context with agent subtrees preserves sibling order.
-When `gptel-org-agent-subtrees' is enabled, the prompt buffer
+When `gptel-org-subtree-context' is enabled, the prompt buffer
 includes a `:main@agent:' heading whose children are the chat
 entries.  `gptel-org-agent--strip-agent-subtrees' must not delete
 the chat content that lives under the @agent heading in the
@@ -832,9 +681,7 @@ prompt copy."
         (gptel-org-infer-bounds-from-tags t)
         (gptel-org-assistant-tag "assistant")
         (gptel-org-user-tag "user")
-        (gptel-org-chat-heading-markers '("@user" "@assistant"))
         (gptel-org-ignore-elements nil)
-        (gptel-org-agent-subtrees t)
         (gptel-prompt-filter-hook nil)
         (gptel--num-messages-to-send nil)
         (gptel-track-response t)
@@ -894,15 +741,14 @@ prompt copy."
             (kill-buffer prompt-buf)))))))
 (ert-deftest gptel-org-subtree-test-hybrid-context-includes-siblings ()
   "Test that hybrid context includes sibling sub-headings of TODO heading.
-When `gptel-org-branching-context' and `gptel-org-agent-subtrees' are
+When `gptel-org-branching-context' and `gptel-org-subtree-context' are
 both enabled, content within a TODO heading's subtree should use
 non-branching context (include all siblings up to cursor), while
 ancestors above the TODO use branching context (heading lines only)."
   (let ((gptel-org-branching-context t)
-        (gptel-org-subtree-context nil)
+        (gptel-org-subtree-context t)
         (gptel-org-infer-bounds-from-tags nil)
         (gptel-org-ignore-elements nil)
-        (gptel-org-agent-subtrees t)
         (gptel-org-todo-keywords '("TODO" "AI-DO" "AI-DOING"))
         (gptel-prompt-filter-hook nil)
         (gptel--num-messages-to-send nil)
@@ -946,10 +792,9 @@ ancestors above the TODO use branching context (heading lines only)."
 (ert-deftest gptel-org-subtree-test-hybrid-context-excludes-after-cursor ()
   "Test that hybrid context excludes content after cursor position."
   (let ((gptel-org-branching-context t)
-        (gptel-org-subtree-context nil)
+        (gptel-org-subtree-context t)
         (gptel-org-infer-bounds-from-tags nil)
         (gptel-org-ignore-elements nil)
-        (gptel-org-agent-subtrees t)
         (gptel-org-todo-keywords '("TODO"))
         (gptel-prompt-filter-hook nil)
         (gptel--num-messages-to-send nil)
@@ -980,13 +825,12 @@ ancestors above the TODO use branching context (heading lines only)."
           (when (buffer-live-p prompt-buf)
             (kill-buffer prompt-buf)))))))
 
-(ert-deftest gptel-org-subtree-test-hybrid-context-pure-branching-without-agent ()
-  "Without gptel-org-agent-subtrees, pure branching context is used."
+(ert-deftest gptel-org-subtree-test-hybrid-context-pure-branching-without-subtree-context ()
+  "Without gptel-org-subtree-context, pure branching context is used."
   (let ((gptel-org-branching-context t)
         (gptel-org-subtree-context nil)
         (gptel-org-infer-bounds-from-tags nil)
         (gptel-org-ignore-elements nil)
-        (gptel-org-agent-subtrees nil)
         (gptel-org-todo-keywords '("TODO"))
         (gptel-prompt-filter-hook nil)
         (gptel--num-messages-to-send nil)
@@ -1016,10 +860,9 @@ ancestors above the TODO use branching context (heading lines only)."
 (ert-deftest gptel-org-subtree-test-hybrid-context-cursor-on-todo ()
   "Hybrid context works when cursor is on the TODO heading itself."
   (let ((gptel-org-branching-context t)
-        (gptel-org-subtree-context nil)
+        (gptel-org-subtree-context t)
         (gptel-org-infer-bounds-from-tags nil)
         (gptel-org-ignore-elements nil)
-        (gptel-org-agent-subtrees t)
         (gptel-org-todo-keywords '("TODO"))
         (gptel-prompt-filter-hook nil)
         (gptel--num-messages-to-send nil)
@@ -1049,14 +892,12 @@ ancestors above the TODO use branching context (heading lines only)."
 (ert-deftest gptel-org-subtree-test-hybrid-context-with-assistant-tags ()
   "Hybrid context correctly handles :assistant: and :user: tagged headings."
   (let ((gptel-org-branching-context t)
-        (gptel-org-subtree-context nil)
+        (gptel-org-subtree-context t)
         (gptel-org-infer-bounds-from-tags t)
         (gptel-org-assistant-tag "assistant")
         (gptel-org-user-tag "user")
         (gptel-org-ignore-elements nil)
-        (gptel-org-agent-subtrees t)
         (gptel-org-todo-keywords '("TODO" "AI-DO" "AI-DOING"))
-        (gptel-org-chat-heading-markers '("@user" "@assistant"))
         (gptel-prompt-filter-hook nil)
         (gptel--num-messages-to-send nil)
         (gptel-track-response t)
@@ -1110,10 +951,9 @@ ancestors above the TODO use branching context (heading lines only)."
 (ert-deftest gptel-org-subtree-test-hybrid-no-todo-in-lineage ()
   "When no TODO heading in lineage, pure branching context is used."
   (let ((gptel-org-branching-context t)
-        (gptel-org-subtree-context nil)
+        (gptel-org-subtree-context t)
         (gptel-org-infer-bounds-from-tags nil)
         (gptel-org-ignore-elements nil)
-        (gptel-org-agent-subtrees t)
         (gptel-org-todo-keywords '("TODO"))
         (gptel-prompt-filter-hook nil)
         (gptel--num-messages-to-send nil)
