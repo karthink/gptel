@@ -823,5 +823,58 @@ Reproduces the original bug where ** DOING → ********* headings."
        (goto-char response-start)
        (should (looking-at "\\*\\*\\*\\* AI Answer"))))))
 
+(ert-deftest gptel-org-subtree-test-auto-correct-multi-chunk-no-double-correction ()
+  "Test that heading correction is not applied twice across stream chunks.
+Reproduces the bug where a heading corrected in chunk 1 would be
+re-corrected in chunk 2 due to stale process-end position, producing
+******* (level 7) instead of **** (level 4)."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** DOING What is 2 + 2\n*** AI-DOING What is 2 + 2              :main@agent:\n"
+   "AI-DOING"
+   (let ((gptel-org-use-todo-keywords t)
+         (gptel-org-assistant-keyword "AI")
+         (gptel-org--corrector-state nil))
+     ;; Chunk 1: stream just the heading line
+     (goto-char (point-max))
+     (let ((response-start (point)))
+       (insert "* AI Simple arithmetic\n")
+       (gptel-org--auto-correct-stream)
+       ;; Verify heading was correctly rebased to level 4
+       (goto-char response-start)
+       (should (looking-at "\\*\\*\\*\\* AI Simple arithmetic"))
+       ;; Chunk 2: stream body text
+       (goto-char (point-max))
+       (insert "\n2 + 2 = 4.\n")
+       (gptel-org--auto-correct-stream)
+       ;; Verify heading is STILL at level 4, not double-corrected to level 7
+       (goto-char response-start)
+       (should (looking-at "\\*\\*\\*\\* AI Simple arithmetic"))))))
+
+(ert-deftest gptel-org-subtree-test-auto-correct-multi-chunk-multiple-headings ()
+  "Test multi-chunk correction with headings split across chunks."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** DOING Task\n*** AI-DOING Task              :main@agent:\n"
+   "AI-DOING"
+   (let ((gptel-org-use-todo-keywords t)
+         (gptel-org-assistant-keyword "AI")
+         (gptel-org--corrector-state nil))
+     ;; Chunk 1: first heading
+     (goto-char (point-max))
+     (let ((response-start (point)))
+       (insert "* AI Overview\nSome text.\n")
+       (gptel-org--auto-correct-stream)
+       ;; Chunk 2: second heading
+       (goto-char (point-max))
+       (insert "** AI Details\nMore text.\n")
+       (gptel-org--auto-correct-stream)
+       ;; Verify both headings at correct levels
+       (goto-char response-start)
+       ;; * AI Overview → **** AI Overview (level 4)
+       (should (looking-at "\\*\\*\\*\\* AI Overview"))
+       (search-forward "Details")
+       (beginning-of-line)
+       ;; ** AI Details → ***** AI Details (level 5)
+       (should (looking-at "\\*\\*\\*\\*\\* AI Details"))))))
+
 (provide 'gptel-org-subtree-test)
 ;;; gptel-org-subtree-test.el ends here

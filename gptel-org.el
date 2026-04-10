@@ -1963,10 +1963,15 @@ Uses `gptel-org--corrector-state' to track position and block state."
         (goto-char (marker-position last-pos))
         ;; Process only complete lines (don't touch partial lines at end)
         (beginning-of-line)
+        ;; Use a marker for process-end so it auto-adjusts when
+        ;; heading rebasing inserts/deletes characters.  A plain
+        ;; integer would go stale, causing last-pos to land inside
+        ;; an already-corrected heading and trigger double-correction.
         (let ((process-end (save-excursion
                              (goto-char end)
-                             (if (bolp) end (line-beginning-position)))))
-          (while (< (point) process-end)
+                             (copy-marker
+                              (if (bolp) end (line-beginning-position))))))
+          (while (< (point) (marker-position process-end))
             (let ((line-start (point))
                   (line-text (buffer-substring-no-properties
                               (point) (line-end-position))))
@@ -2020,7 +2025,8 @@ Uses `gptel-org--corrector-state' to track position and block state."
                     (insert new-stars))))))
             (forward-line 1))
           ;; Update last-pos to the end of processed region
-          (set-marker last-pos process-end))))))
+          (set-marker last-pos (marker-position process-end))
+          (set-marker process-end nil))))))
 
 (defun gptel-org--auto-correct-cleanup (_beg _end)
   "Clean up auto-corrector state after response completes.
