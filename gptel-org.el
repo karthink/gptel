@@ -331,6 +331,38 @@ The tag comparison is case-insensitive."
   :type 'string
   :group 'gptel)
 
+(defcustom gptel-org-assistant-keyword "AI"
+  "TODO keyword used to mark assistant message headings.
+
+Headings with this TODO keyword will be treated as assistant responses.
+When `gptel-org-use-todo-keywords' is enabled, this keyword replaces
+the tag-based assistant detection."
+  :type 'string
+  :group 'gptel)
+
+(defcustom gptel-org-user-keyword "HI"
+  "TODO keyword used to mark user message headings.
+
+Headings with this TODO keyword will be treated as user messages.
+When `gptel-org-use-todo-keywords' is enabled, this keyword replaces
+the tag-based user detection."
+  :type 'string
+  :group 'gptel)
+
+(defcustom gptel-org-use-todo-keywords nil
+  "When non-nil, use TODO keywords instead of tags for role detection.
+
+When enabled, `gptel-org-assistant-keyword' (default \"AI\") and
+`gptel-org-user-keyword' (default \"HI\") TODO keywords are used
+to mark assistant and user headings, replacing the tag-based
+`:assistant:' and `:user:' approach.
+
+The AI/HI keywords must be registered in the org TODO keyword
+sequence for proper fontification and cycling.  See
+`gptel-org--register-todo-keywords'."
+  :type 'boolean
+  :group 'gptel)
+
 (defcustom gptel-org-response-title-function
   #'gptel-org-response-title-from-first-line
   "Function to generate a title for assistant response headings.
@@ -506,8 +538,8 @@ when `gptel-org-subtree-context' is enabled."
   "Check if HEADING-TEXT (or current heading) is a chat entry.
 
 Returns non-nil if the heading contains any of the markers in
-`gptel-org-chat-heading-markers', or when `gptel-org-infer-bounds-from-tags'
-is enabled, if the heading has :assistant: or :user: tags."
+`gptel-org-chat-heading-markers', or if the heading has role
+tags/keywords (assistant/user or AI/HI)."
   (let* ((text (or heading-text
                    (and (org-at-heading-p)
                         (org-get-heading t t t t))))
@@ -516,15 +548,22 @@ is enabled, if the heading has :assistant: or :user: tags."
                (cl-some (lambda (marker)
                           (string-match-p (regexp-quote marker) text))
                         gptel-org-chat-heading-markers)))
+         (keyword-match
+          (and gptel-org-use-todo-keywords
+               (null heading-text)
+               (org-at-heading-p)
+               (or (gptel-org--heading-is-assistant-p)
+                   (gptel-org--heading-is-user-p))))
          (tag-match
-          (and gptel-org-infer-bounds-from-tags
+          (and (not gptel-org-use-todo-keywords)
+               gptel-org-infer-bounds-from-tags
                (null heading-text)
                (org-at-heading-p)
                (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
                    (gptel-org--heading-has-tag-p gptel-org-user-tag))))
-         (result (or marker-match tag-match)))
-    (gptel-org--debug "chat-heading-p: text=%S marker-match=%s tag-match=%s result=%s"
-                      text marker-match tag-match result)
+         (result (or marker-match keyword-match tag-match)))
+    (gptel-org--debug "chat-heading-p: text=%S marker-match=%s keyword-match=%s tag-match=%s result=%s"
+                      text marker-match keyword-match tag-match result)
     result))
 
 (defun gptel-org--get-chat-siblings ()
@@ -658,6 +697,27 @@ org heading."
                           base-prefix parent-level target-level for-prompt)
         (let ((result
                (cond
+                ;; When using TODO keywords for role detection, generate heading
+                ;; with keyword.  For AI responses, return empty string since
+                ;; the AI writes its own heading with the AI keyword.
+                ;; For HI (user) prompts, generate "*** HI \n".
+                (gptel-org-use-todo-keywords
+                 (if for-prompt
+                     ;; User prompt: generate heading with HI keyword
+                     (let ((kw gptel-org-user-keyword))
+                       (if (save-excursion
+                             (skip-chars-forward " \t\n")
+                             (and (org-at-heading-p)
+                                  (gptel-org--heading-is-user-p)))
+                           (progn
+                             (gptel-org--debug
+                              "dynamic-prefix-string: HI heading already exists at %d, skipping"
+                              (point))
+                             "")
+                         (concat stars " " kw " \n")))
+                   ;; AI response: return empty string, the AI writes its own heading
+                   ;; with "* AI <title>" which the auto-corrector rebases
+                   ""))
                 ;; When using tag-based bounds, generate heading with tag and schedule
                 ;; org-set-tags call for proper alignment
                 (gptel-org-infer-bounds-from-tags
@@ -1247,6 +1307,29 @@ ARGS are the original function call arguments."
     (let ((tags (org-get-tags nil t)))  ; local tags only
       (cl-some (lambda (tg) (string-equal-ignore-case tg tag)) tags))))
 
+
+(defun gptel-org--heading-has-role-keyword-p (keyword)
+  "Check if current heading has TODO keyword KEYWORD.
+KEYWORD should be a string like \"AI\" or \"HI\"."
+  (when (org-at-heading-p)
+    (let ((todo (org-get-todo-state)))
+      (and todo (string-equal todo keyword)))))
+
+(defun gptel-org--heading-is-assistant-p ()
+  "Check if current heading is an assistant message.
+Uses TODO keywords when `gptel-org-use-todo-keywords' is enabled,
+otherwise falls back to tag detection."
+  (if gptel-org-use-todo-keywords
+      (gptel-org--heading-has-role-keyword-p gptel-org-assistant-keyword)
+    (gptel-org--heading-has-tag-p gptel-org-assistant-tag)))
+
+(defun gptel-org--heading-is-user-p ()
+  "Check if current heading is a user message.
+Uses TODO keywords when `gptel-org-use-todo-keywords' is enabled,
+otherwise falls back to tag detection."
+  (if gptel-org-use-todo-keywords
+      (gptel-org--heading-has-role-keyword-p gptel-org-user-keyword)
+    (gptel-org--heading-has-tag-p gptel-org-user-tag)))
 (defun gptel-org--heading-has-agent-tag-p ()
   "Check if current heading has a tag matching the `*@agent' pattern."
   (when (org-at-heading-p)
@@ -1383,27 +1466,24 @@ Returns a plist (:backend BACKEND :model MODEL) if found, nil otherwise."
         found))))
 
 (defun gptel-org--restore-bounds-from-tags ()
-  "Restore gptel response properties based on heading tags.
+  "Restore gptel response properties based on heading tags or TODO keywords.
 
-Scans all headings in the buffer for :assistant: and :user: tags
-\(as configured by `gptel-org-assistant-tag' and `gptel-org-user-tag').
-Headings tagged with the assistant tag get their subtree content
-marked with the gptel response property.
+Scans all headings in the buffer for role indicators:
+- When `gptel-org-use-todo-keywords' is enabled: looks for AI/HI TODO keywords
+- Otherwise: looks for :assistant:/:user: tags
 
-User-tagged headings within an assistant subtree are treated as
-user feedback - their content is NOT marked as assistant response.
+Headings marked as assistant get their subtree content marked with
+the gptel response property.  User headings within an assistant
+subtree have their gptel property removed.
 
-Headings with no role tag have any stale gptel properties removed,
-preventing removed tags from persisting as text properties.
-
-Returns non-nil if any tagged headings were found and processed."
+Returns non-nil if any role headings were found and processed."
   (save-excursion
     (goto-char (point-min))
     (let ((found-tags nil))
       (while (outline-next-heading)
         (cond
-         ;; Assistant tag - mark subtree as response, but respect user tags within
-         ((gptel-org--heading-has-tag-p gptel-org-assistant-tag)
+         ;; Assistant heading - mark subtree as response, but respect user headings within
+         ((gptel-org--heading-is-assistant-p)
           (setq found-tags t)
           (let ((assistant-beg (point))
                 (assistant-end (save-excursion
@@ -1412,34 +1492,29 @@ Returns non-nil if any tagged headings were found and processed."
             ;; First, mark the entire assistant subtree as response
             (add-text-properties assistant-beg assistant-end
                                  '(gptel response front-sticky (gptel)))
-            ;; Then, scan for user tags within and remove gptel property from those
+            ;; Then, scan for user headings within and remove gptel property from those
             (save-excursion
               (goto-char assistant-beg)
               (while (and (outline-next-heading)
                           (< (point) assistant-end))
-                (when (gptel-org--heading-has-tag-p gptel-org-user-tag)
+                (when (gptel-org--heading-is-user-p)
                   (let ((user-beg (point))
                         (user-end (save-excursion
                                     (org-end-of-subtree t t)
                                     (min (point) assistant-end))))
                     (remove-text-properties user-beg user-end '(gptel nil))))))
-            ;; Skip past the assistant subtree so the outer loop doesn't
-            ;; re-visit its children (which have no tag and would get their
-            ;; gptel property cleared by the catch-all branch below).
+            ;; Skip past the assistant subtree
             (goto-char (1- assistant-end))))
-         ;; User tag at top level - ensure no gptel property (remove if present)
-         ((gptel-org--heading-has-tag-p gptel-org-user-tag)
+         ;; User heading at top level - ensure no gptel property
+         ((gptel-org--heading-is-user-p)
           (setq found-tags t)
           (let ((beg (point))
                 (end (save-excursion
                        (org-end-of-subtree t t)
                        (point))))
             (remove-text-properties beg end '(gptel nil))
-            ;; Skip past user subtree so children aren't re-processed
             (goto-char (1- end))))
-         ;; No role tag - clear any stale gptel properties from this subtree.
-         ;; This handles the case where an :assistant: tag was removed: without
-         ;; cleanup the gptel response text property would persist indefinitely.
+         ;; No role indicator - clear stale gptel properties
          (t
           (when (get-text-property (point) 'gptel)
             (let ((beg (point))
@@ -1447,7 +1522,6 @@ Returns non-nil if any tagged headings were found and processed."
                          (org-end-of-subtree t t)
                          (point))))
               (remove-text-properties beg end '(gptel nil))
-              ;; Skip past the subtree
               (goto-char (1- end)))))))
       found-tags)))
 
@@ -2149,7 +2223,7 @@ markers like \"@assistant\"."
                       pos (buffer-name) (if (buffer-base-buffer) "yes" "no")
                       (org-at-heading-p))
     (if (and (org-at-heading-p)
-             (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
+             (or (gptel-org--heading-is-assistant-p)
                  (gptel-org--heading-has-agent-tag-p)
                  (gptel-org--chat-heading-p
                   (org-get-heading t t t t))))
@@ -2161,7 +2235,7 @@ markers like \"@assistant\"."
       ;; Search backward for assistant heading
       (gptel-org--debug "find-response-heading: not at matching heading, searching backward")
       (if (re-search-backward org-heading-regexp nil t)
-          (let ((has-assistant (gptel-org--heading-has-tag-p gptel-org-assistant-tag))
+          (let ((has-assistant (gptel-org--heading-is-assistant-p))
                 (has-agent (gptel-org--heading-has-agent-tag-p))
                 (is-chat (gptel-org--chat-heading-p
                           (org-get-heading t t t t))))
@@ -2264,6 +2338,31 @@ indirect buffers or when subsequent text insertion disrupts overlays)."
 ;; Run at priority 90 (after heading adjustment at 0 and title at 80)
 (add-hook 'gptel-post-response-functions #'gptel-org--fold-special-blocks 90)
 
+
+(defun gptel-org--register-todo-keywords ()
+  "Register AI/HI TODO keywords in `org-todo-keywords' if needed.
+
+When `gptel-org-use-todo-keywords' is enabled, ensures that
+`gptel-org-assistant-keyword' and `gptel-org-user-keyword' are
+present in `org-todo-keywords' so they are recognized by org-mode
+and get proper fontification."
+  (when gptel-org-use-todo-keywords
+    (let ((ai-kw gptel-org-assistant-keyword)
+          (hi-kw gptel-org-user-keyword))
+      ;; Check if keywords are already registered
+      (unless (and (cl-some (lambda (seq)
+                              (and (listp seq)
+                                   (member ai-kw (cl-remove-if-not #'stringp seq))))
+                            org-todo-keywords)
+                   (cl-some (lambda (seq)
+                              (and (listp seq)
+                                   (member hi-kw (cl-remove-if-not #'stringp seq))))
+                            org-todo-keywords))
+        ;; Add a new sequence with AI and HI as done-type keywords
+        (push (list 'sequence ai-kw hi-kw) org-todo-keywords)
+        ;; Refresh org to pick up the new keywords
+        (when (derived-mode-p 'org-mode)
+          (org-mode-restart))))))
 (provide 'gptel-org)
 ;;; gptel-org.el ends here
 

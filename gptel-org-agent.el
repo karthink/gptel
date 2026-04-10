@@ -778,32 +778,46 @@ prompt location for the user's next message in the conversation."
                        (inhibit-read-only t))
                   (gptel-org--debug "insert-user-heading: agent heading=%S level=%d tags=%S"
                                     agent-heading agent-level agent-tags)
-                  ;; Check if a :user: heading already exists as next sibling
+                  ;; Check if a user heading already exists as next sibling
                   (org-end-of-subtree t)
                   (let* ((after-agent (point))
                          (at-heading (org-at-heading-p))
                          (next-level (when at-heading (org-current-level)))
-                         (next-tags (when at-heading (org-get-tags nil t)))
-                         (has-user (and at-heading
-                                        (= next-level agent-level)
-                                        (cl-some
-                                         (lambda (tg)
-                                           (string-equal-ignore-case tg user-tag))
-                                         next-tags))))
-                    (gptel-org--debug "insert-user-heading: after-subtree pos=%d at-heading=%s next-level=%S next-tags=%S has-user=%s"
-                                      after-agent at-heading next-level next-tags has-user)
+                         (has-user
+                          (and at-heading
+                               (= next-level agent-level)
+                               (if (and (boundp 'gptel-org-use-todo-keywords)
+                                        gptel-org-use-todo-keywords)
+                                   (gptel-org--heading-is-user-p)
+                                 (let ((next-tags (org-get-tags nil t)))
+                                   (cl-some
+                                    (lambda (tg)
+                                      (string-equal-ignore-case tg user-tag))
+                                    next-tags))))))
+                    (gptel-org--debug "insert-user-heading: after-subtree pos=%d at-heading=%s next-level=%S has-user=%s"
+                                      after-agent at-heading next-level has-user)
                     (unless has-user
                       ;; No user heading exists, create one
                       (goto-char after-agent)
                       (unless (bolp) (insert "\n"))
                       (let ((stars (make-string agent-level ?*)))
-                        (insert (format "%s \n" stars))
-                        (forward-line -1)
-                        (beginning-of-line)
-                        (org-set-tags (list user-tag))
-                        (gptel-org--debug
-                         "insert-user-heading: created :%s: heading at level %d after pos %d"
-                         user-tag agent-level after-agent)))))))))))))
+                        (if (and (boundp 'gptel-org-use-todo-keywords)
+                                 gptel-org-use-todo-keywords)
+                            (progn
+                              (insert (format "%s %s \n" stars
+                                              (if (boundp 'gptel-org-user-keyword)
+                                                  gptel-org-user-keyword "HI")))
+                              (gptel-org--debug
+                               "insert-user-heading: created %s heading at level %d after pos %d"
+                               (if (boundp 'gptel-org-user-keyword) gptel-org-user-keyword "HI")
+                               agent-level after-agent))
+                          (insert (format "%s \n" stars))
+                          (forward-line -1)
+                          (beginning-of-line)
+                          (org-set-tags (list user-tag))
+                          (gptel-org--debug
+                           "insert-user-heading: created :%s: heading at level %d after pos %d"
+                           user-tag agent-level after-agent))))))))))))))
 
 (defun gptel-org-agent--enable ()
   "Enable agent subtree integration for `gptel-send'.
