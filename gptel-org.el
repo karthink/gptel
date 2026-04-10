@@ -1599,7 +1599,8 @@ GPTEL_BOUNDS since the bounds are determined by heading tags.")
               (when tools (setq-local gptel-tools tools))))
         (:success (message "gptel chat restored."))
         (error (message "Could not restore gptel state, sorry! Error: %s" status)))
-      (set-buffer-modified-p modified))))
+      (set-buffer-modified-p modified)))
+  (gptel-org--register-todo-keywords))
 
 (defun gptel-org-set-properties (pt &optional msg)
   "Store the active gptel configuration under the current heading.
@@ -2488,29 +2489,55 @@ indirect buffers or when subsequent text insertion disrupts overlays)."
 (add-hook 'gptel-post-response-functions #'gptel-org--fold-special-blocks 90)
 
 
+(defcustom gptel-org-assistant-keyword-face
+  '(:foreground "#88C0D0" :weight bold)
+  "Face specification for the AI assistant TODO keyword.
+Applied via `org-todo-keyword-faces' when `gptel-org-use-todo-keywords'
+is enabled."
+  :type '(plist)
+  :group 'gptel)
+
+(defcustom gptel-org-user-keyword-face
+  '(:foreground "#EBCB8B" :weight bold)
+  "Face specification for the HI user TODO keyword.
+Applied via `org-todo-keyword-faces' when `gptel-org-use-todo-keywords'
+is enabled."
+  :type '(plist)
+  :group 'gptel)
+
 (defun gptel-org--register-todo-keywords ()
-  "Register AI/HI TODO keywords in `org-todo-keywords' if needed.
+  "Register AI/HI TODO keywords and their faces if needed.
 
 When `gptel-org-use-todo-keywords' is enabled, ensures that
 `gptel-org-assistant-keyword' and `gptel-org-user-keyword' are
-present in `org-todo-keywords' so they are recognized by org-mode
-and get proper fontification."
+present in `org-todo-keywords' and have faces registered in
+`org-todo-keyword-faces'."
   (when gptel-org-use-todo-keywords
     (let ((ai-kw gptel-org-assistant-keyword)
           (hi-kw gptel-org-user-keyword))
-      ;; Check if keywords are already registered
-      (unless (and (cl-some (lambda (seq)
-                              (and (listp seq)
-                                   (member ai-kw (cl-remove-if-not #'stringp seq))))
-                            org-todo-keywords)
-                   (cl-some (lambda (seq)
-                              (and (listp seq)
-                                   (member hi-kw (cl-remove-if-not #'stringp seq))))
-                            org-todo-keywords))
-        ;; Add a new sequence with AI and HI as done-type keywords
-        (push (list 'sequence ai-kw hi-kw) org-todo-keywords)
-        ;; Refresh org to pick up the new keywords
-        (when (derived-mode-p 'org-mode)
+      (let ((changed nil))
+        ;; Register keywords in org-todo-keywords if missing
+        (unless (and (cl-some (lambda (seq)
+                                (and (listp seq)
+                                     (member ai-kw (cl-remove-if-not #'stringp seq))))
+                              org-todo-keywords)
+                     (cl-some (lambda (seq)
+                                (and (listp seq)
+                                     (member hi-kw (cl-remove-if-not #'stringp seq))))
+                              org-todo-keywords))
+          (push (list 'sequence ai-kw hi-kw) org-todo-keywords)
+          (setq changed t))
+        ;; Register faces in org-todo-keyword-faces if missing
+        (unless (assoc ai-kw org-todo-keyword-faces)
+          (push (cons ai-kw gptel-org-assistant-keyword-face)
+                org-todo-keyword-faces)
+          (setq changed t))
+        (unless (assoc hi-kw org-todo-keyword-faces)
+          (push (cons hi-kw gptel-org-user-keyword-face)
+                org-todo-keyword-faces)
+          (setq changed t))
+        ;; Refresh org to pick up changes
+        (when (and changed (derived-mode-p 'org-mode))
           (org-mode-restart))))))
 (provide 'gptel-org)
 ;;; gptel-org.el ends here
