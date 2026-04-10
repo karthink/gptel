@@ -196,6 +196,8 @@ and then hands off to a specialist agent that creates a new actionable task.
 | =gptel-org-agent--extract-final-text= (indirect-buffer) | Extracts LLM response text (gptel 'response text property) from indirect buffer. Falls back to all body text after heading |
 | =gptel-org-agent--extract-parent-context= () | Extracts full text of parent TODO heading from base buffer. Used by handover agents to read the triage agent's findings |
 
+When a sub-agent completes, =gptel-agent-subtree--cleanup= (in gptel-agent) advances the parent buffer's auto-corrector =:last-pos= past the folded sub-agent subtree.  This prevents the corrector from double-rebasing the sub-agent's already-correct headings during the parent's continued streaming or final cleanup sweep.
+
 ** TodoWrite Org Integration (Phase 4)
 
 | Function | Purpose |
@@ -353,11 +355,16 @@ org-mode format with the correct heading level for the current context.
 | Infinite loop in =strip-agent-subtrees= | Fixed forward progress after matching agent headings | =cd78a2c= |
 | Branching lineage headings stripped | =protected-positions= parameter preserves lineage headings | =2788660= |
 | =org-back-to-heading= error before first headline | Guard for point before first headline | =441a0b0= |
+| Sub-agent HI heading pollution | Guard in =insert-user-heading= skips sub-agent tags (2+ =@= signs) | =1cee3c7= |
+| Corrector double-rebases sub-agent headings | Bound =correct-region= to =(point)= during streaming; advance =:last-pos= past folded subtrees | =1cee3c7=, =93bdf26= |
+| Separator/prefix in sub-agent indirect buffer | Custom =gptel-agent-subtree--handle-post-insert= omits separator/prefix for non-interactive sub-agents | =93bdf26= |
 
 * Git History (Key Commits)
 
 | Hash | Description |
 |------+-------------|
+| =1cee3c7= | fix: prevent garbled output in sub-agent delegated tasks (org-agent side) |
+| =93bdf26= | fix: prevent garbled output in sub-agent delegated tasks (agent-tools side) |
 | =582c987= | test: add branching sibling order test with agent subtrees enabled |
 | =2788660= | fix: protect lineage headings from agent subtree stripping |
 | =3a214a6= | Fix branching context chat sibling insertion order |

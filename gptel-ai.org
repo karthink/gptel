@@ -401,6 +401,8 @@ Reference level is computed by =gptel-org--compute-response-level=:
 - Agent indirect buffer: first heading level + 1
 - Subtree context: parent heading level + 2
 
+During streaming, the corrector is bounded to =(point)= (the end of just-inserted text) rather than =point-max=.  This prevents processing sub-agent subtrees that exist after the current insertion point.  The final cleanup sweep in =gptel-org--auto-correct-cleanup= still processes to =point-max= but relies on =:last-pos= being advanced past sub-agent subtrees by =gptel-agent-subtree--cleanup=.
+
 *** Deprecation of Classical Subtree Mode
 
 The classical =:assistant:= / =:user:= tag-based approach (=gptel-org-infer-bounds-from-tags=) is *deprecated* and will be removed in a future release.  It remains functional as the default (=gptel-org-use-todo-keywords= defaults to =nil=) for backward compatibility.
