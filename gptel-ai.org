@@ -133,11 +133,11 @@ Handlers: =gptel-request--handlers= (state→function alist).
 
 | File | Lines | Purpose |
 |------+-------+---------|
-| =gptel-org.el= | ~1800 | Org mode support: subtree context, properties, branching, links, Markdown→Org |
+| =gptel-org.el= | ~2350 | Org mode support: subtree context, properties, branching, links, Markdown→Org, AI/HI keywords |
 | =gptel-org-cache.el= | ~870 | Context caching: hash-based invalidation, tag-based auto-caching |
 | =gptel-org-tasks.el= | ~390 | AI task workflow: TODO transitions, model profiles via tags |
 | =gptel-org-archive.el= | ~590 | Archive with AI summaries: git tracking, two-phase workflow |
-| =gptel-org-agent.el= | ~620 | Agent subtrees: indirect buffers, sub-agent delegation, TodoWrite org integration |
+| =gptel-org-agent.el= | ~1240 | Agent subtrees: indirect buffers, sub-agent delegation, format instructions, TodoWrite |
 
 ** Other
 
@@ -330,6 +330,82 @@ See feature-specific documents for details:
 - *Agent subtrees*: per-agent indirect buffers, recursive delegation, context stripping
 - *Handover mechanism*: sub-agent can create a new =AI-DO= sibling heading instead of returning text, enabling triage→specialist escalation workflows.  See [[file:gptel-org-agent-ai.org::*Handover Mechanism]]
 - *Org format instructions*: dynamic prompt injection telling LLM to use org-mode formatting with correct heading levels, examples, and #+SEQ_TODO keywords.  See [[file:gptel-org-agent-ai.org::*Org Format Instructions]]
+- *AI/HI TODO keywords*: role-based conversation structure using TODO keywords instead of tags.  See [[*Discussion Structure: AI/HI Keywords]]
+
+** Discussion Structure: AI/HI Keywords
+
+/New approach/ — replaces the classical =:assistant:= / =:user:= tag-based subtree mode.
+
+*** Overview
+
+Conversation turns are marked with =AI= and =HI= TODO keywords on org headings instead of right-aligned =:assistant:= / =:user:= tags.  This gives each role a distinct foreground color via =org-todo-keyword-faces= and integrates naturally with org's keyword cycling.
+
+*** Structure
+
+#+begin_example
+,** DOING What is 2 + 2
+,*** AI-DOING What is 2 + 2                                    :agent@agent:
+,**** AI Response title here
+4
+
+,**** HI Add 7 to result
+
+,**** AI Another response
+11
+#+end_example
+
+- =AI= headings are assistant responses (get ='gptel 'response= text property)
+- =HI= headings are user messages (no gptel text property)
+- The AI writes its own heading (=* AI <title>=) — no post-process title extraction
+- A real-time auto-corrector rebases heading levels as the AI streams
+
+*** Activation
+
+Set =gptel-org-use-todo-keywords= to =t=.  The system then:
+1. Registers =AI= / =HI= in =org-todo-keywords= with colored faces
+2. Instructs the AI to start responses with =* AI <short title>=
+3. Runs the streaming auto-corrector (heading rebase, example escaping, fence conversion)
+4. Inserts =HI= keyword headings for user prompts after each response
+5. Skips post-response title generation (the AI wrote it)
+
+*** Configuration Variables
+
+| Variable | Default | Purpose |
+|----------+---------+---------|
+| =gptel-org-use-todo-keywords= | =nil= | Master switch for keyword mode |
+| =gptel-org-assistant-keyword= | ="AI"= | TODO keyword for assistant headings |
+| =gptel-org-user-keyword= | ="HI"= | TODO keyword for user headings |
+| =gptel-org-assistant-keyword-face= | =#88C0D0= bold | Face for AI keyword |
+| =gptel-org-user-keyword-face= | =#EBCB8B= bold | Face for HI keyword |
+
+*** Key Functions
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org--heading-is-assistant-p= | Unified role check (keywords or tags) |
+| =gptel-org--heading-is-user-p= | Unified role check (keywords or tags) |
+| =gptel-org--auto-correct-stream= | Per-chunk corrector on =gptel-post-stream-hook= |
+| =gptel-org--correct-region= | Core: rebase headings, escape examples, convert fences |
+| =gptel-org--register-todo-keywords= | Register AI/HI keywords + faces on mode activation |
+
+*** Real-Time Auto-Corrector
+
+The corrector runs on =gptel-post-stream-hook= (fires after every streaming chunk).  It processes only complete lines and maintains state across chunks via =gptel-org--corrector-state= (buffer-local plist with =:ref-level=, =:in-example=, =:in-src=, =:last-pos=).
+
+Corrections applied per line:
+- *Heading level rebase*: =* H= → =***** H= (offset = reference-level − 1)
+- *Example block escaping*: =*= or =#+= at BOL inside =#+begin_example= → comma-prefixed
+- *Markdown fence fallback*: =```lang= → =#+begin_src lang=, =```= → =#+end_src=
+
+Reference level is computed by =gptel-org--compute-response-level=:
+- Agent indirect buffer: first heading level + 1
+- Subtree context: parent heading level + 2
+
+*** Deprecation of Classical Subtree Mode
+
+The classical =:assistant:= / =:user:= tag-based approach (=gptel-org-infer-bounds-from-tags=) is *deprecated* and will be removed in a future release.  It remains functional as the default (=gptel-org-use-todo-keywords= defaults to =nil=) for backward compatibility.
+
+Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assistant:= tags to =AI= keywords, =:user:= tags to =HI= keywords.  No automated migration tool is provided yet.
 
 * Feature-Specific Documents
 
