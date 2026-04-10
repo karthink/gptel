@@ -986,9 +986,9 @@ appears in both the indirect and base buffers."
 ;;; ---- insert-user-heading tests (indirect buffer post-response) ------------
 
 (ert-deftest gptel-org-agent-test-insert-user-heading-after-indirect-response ()
-  "Insert exactly one HI heading after an agent indirect-buffer response.
-Verifies the heading is created in the base buffer as a sibling after the
-agent subtree, not inside it."
+  "Insert exactly one HI heading as a child of the agent subtree.
+Verifies the heading is created in the base buffer at agent-level + 1
+\(same level as AI response headings), as a child of the agent heading."
   (let ((org-inhibit-startup t)
         (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "HI" "|" "AI-DONE")))
         (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
@@ -1019,17 +1019,17 @@ agent subtree, not inside it."
                 (goto-char (point-min))
                 ;; Should have exactly one HI heading
                 (should (= 1
-                           (how-many "^\\*\\* HI"
+                           (how-many "^\\*\\*\\* HI"
                                      (point-min) (point-max))))
                 ;; Find the agent heading
                 (should (re-search-forward "^\\*\\* AI-DOING Implement feature" nil t))
                 (goto-char (match-beginning 0))
                 (let ((agent-level (org-current-level)))
-                  ;; Find the HI heading after the agent subtree
-                  (should (re-search-forward "^\\*\\* HI" nil t))
+                  ;; Find the HI heading inside the agent subtree
+                  (should (re-search-forward "^\\*\\*\\* HI" nil t))
                   (goto-char (match-beginning 0))
-                  ;; HI heading should be at same level as agent heading
-                  (should (= agent-level (org-current-level))))))
+                  ;; HI heading should be at agent-level + 1 (child of agent)
+                  (should (= (1+ agent-level) (org-current-level))))))
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
@@ -1064,8 +1064,71 @@ agent subtree, not inside it."
               ;; Should have exactly 1 HI heading, not 2
               (with-current-buffer base-buf
                 (should (= 1
-                           (how-many "^\\*\\* HI"
+                           (how-many "^\\*\\*\\* HI"
                                      (point-min) (point-max))))))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
+(ert-deftest gptel-org-agent-test-insert-user-heading-level-matches-ai-response ()
+  "User heading should be at same level as AI response headings (agent-level + 1).
+Reproduces a bug where user heading appeared at agent-level (sibling of agent)
+instead of agent-level + 1 (child of agent, same level as AI responses).
+
+Expected structure:
+  ** DOING Task              <- level 2 (parent)
+  *** AI-DOING Task          <- level 3 (agent heading)
+  **** AI Response           <- level 4 (AI response = agent + 1)
+  **** HI                    <- level 4 (user = agent + 1, CORRECT)
+
+Bug produced:
+  *** HI                     <- level 3 (user = agent-level, WRONG)"
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "HI" "|" "AI-DONE" "DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      ;; Use level 2 parent to match the bug report structure
+      (insert "** DOING Run simple gatherer task\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-user-keyword "HI")
+             (base-buf (current-buffer))
+             (parent-level (org-current-level))
+             (marker (gptel-org-agent--create-subtree "main"))
+             (indirect-buf nil))
+        (unwind-protect
+            (progn
+              (setq indirect-buf
+                    (gptel-org-agent--open-indirect-buffer base-buf marker))
+              ;; Simulate AI response at agent-level + 1
+              (with-current-buffer indirect-buf
+                (goto-char (point-max))
+                (insert "**** AI Getting current time\n\n=2026-04-10 21:28:45 EEST=\n"))
+              ;; Call insert-user-heading from indirect buffer context
+              (with-current-buffer indirect-buf
+                (gptel-org-agent--insert-user-heading nil nil))
+              ;; Verify structure in base buffer
+              (with-current-buffer base-buf
+                (goto-char (point-min))
+                ;; Parent task should be level 2
+                (should (= 2 parent-level))
+                ;; Find the agent heading — should be level 3
+                (should (re-search-forward "^\\*\\*\\* AI-DOING" nil t))
+                (goto-char (match-beginning 0))
+                (let ((agent-level (org-current-level)))
+                  (should (= 3 agent-level))
+                  ;; Find the AI response heading — should be level 4
+                  (should (re-search-forward "^\\*\\*\\*\\* AI Getting current time" nil t))
+                  (goto-char (match-beginning 0))
+                  (should (= 4 (org-current-level)))
+                  ;; Find the HI heading — should ALSO be level 4 (not 3!)
+                  (should (re-search-forward "^\\*\\*\\*\\* HI" nil t))
+                  (goto-char (match-beginning 0))
+                  (should (= 4 (org-current-level)))
+                  ;; HI should be at agent-level + 1
+                  (should (= (1+ agent-level) (org-current-level))))))
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 

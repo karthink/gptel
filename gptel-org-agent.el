@@ -800,37 +800,39 @@ prompt location for the user's next message in the conversation."
                        (inhibit-read-only t))
                   (gptel-org--debug "insert-user-heading: agent heading=%S level=%d tags=%S"
                                     agent-heading agent-level agent-tags)
-                  ;; Check if a user heading already exists as next sibling.
-                  ;; `org-end-of-subtree' leaves point at the end of the
-                  ;; subtree content, which may be a blank line rather than
-                  ;; the next heading.  Save the insertion point, then skip
-                  ;; forward to find the next heading.
-                  (org-end-of-subtree t)
-                  (let* ((after-agent (point))
-                         ;; Skip past whitespace/blank lines to find next heading
-                         (at-heading (progn
-                                       (skip-chars-forward " \t\n")
-                                       (beginning-of-line)
-                                       (org-at-heading-p)))
-                         (next-level (when at-heading (org-current-level)))
+                  ;; Check if a user heading already exists as last child
+                  ;; of the agent heading.  The user heading is placed at
+                  ;; agent-level + 1 (same level as AI response headings).
+                  (let* ((user-level (1+ agent-level))
+                         (subtree-end (save-excursion
+                                        (org-end-of-subtree t) (point)))
+                         ;; Search backwards from past end-of-line to find
+                         ;; last direct child heading.  We go to end-of-line
+                         ;; because org-heading-regexp requires $ and
+                         ;; re-search-backward won't match a line whose $
+                         ;; is past point.
                          (has-user
-                          (and at-heading
-                               (= next-level agent-level)
-                               (if (and (boundp 'gptel-org-use-todo-keywords)
-                                        gptel-org-use-todo-keywords)
-                                   (gptel-org--heading-is-user-p)
-                                 (let ((next-tags (org-get-tags nil t)))
-                                   (cl-some
-                                    (lambda (tg)
-                                      (string-equal-ignore-case tg user-tag))
-                                    next-tags))))))
-                    (gptel-org--debug "insert-user-heading: after-subtree pos=%d at-heading=%s next-level=%S has-user=%s"
-                                      after-agent at-heading next-level has-user)
+                          (save-excursion
+                            (goto-char subtree-end)
+                            (end-of-line)
+                            (and (re-search-backward org-heading-regexp
+                                                     agent-heading-pos t)
+                                 (= (org-current-level) user-level)
+                                 (if (and (boundp 'gptel-org-use-todo-keywords)
+                                          gptel-org-use-todo-keywords)
+                                     (gptel-org--heading-is-user-p)
+                                   (let ((last-tags (org-get-tags nil t)))
+                                     (cl-some
+                                      (lambda (tg)
+                                        (string-equal-ignore-case tg user-tag))
+                                      last-tags)))))))
+                    (gptel-org--debug "insert-user-heading: subtree-end=%d user-level=%d has-user=%s"
+                                      subtree-end user-level has-user)
                     (unless has-user
-                      ;; No user heading exists, create one
-                      (goto-char after-agent)
+                      ;; No user heading exists, create one as last child
+                      (goto-char subtree-end)
                       (unless (bolp) (insert "\n"))
-                      (let ((stars (make-string agent-level ?*)))
+                      (let ((stars (make-string user-level ?*)))
                         (if (and (boundp 'gptel-org-use-todo-keywords)
                                  gptel-org-use-todo-keywords)
                             (progn
@@ -840,14 +842,14 @@ prompt location for the user's next message in the conversation."
                               (gptel-org--debug
                                "insert-user-heading: created %s heading at level %d after pos %d"
                                (if (boundp 'gptel-org-user-keyword) gptel-org-user-keyword "HI")
-                               agent-level after-agent))
+                               user-level subtree-end))
                           (insert (format "%s \n" stars))
                           (forward-line -1)
                           (beginning-of-line)
                           (org-set-tags (list user-tag))
                           (gptel-org--debug
                            "insert-user-heading: created :%s: heading at level %d after pos %d"
-                           user-tag agent-level after-agent)))))))))))))))
+                           user-tag user-level subtree-end)))))))))))))))
 
 (defun gptel-org-agent--enable ()
   "Enable agent subtree integration for `gptel-send'.
