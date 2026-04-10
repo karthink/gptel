@@ -103,6 +103,33 @@ the full delegation chain:
 
 ** Org Structure Example
 
+With =gptel-org-use-todo-keywords= (AI/HI keyword mode):
+
+#+begin_src org
+  ,* DOING Implement feature X                         ← user's task heading (level 1)
+  ,** AI-DOING Implement feature X    :main@agent:     ← agent heading (level 2), indirect buffer A
+  ,*** AI-DOING Implement feature X   :gatherer@main@agent: ← sub-agent (level 3), indirect buffer B
+  ,**** AI Gatherer response                           ← sub-agent AI response (level 4)
+  Gatherer results...
+  ,*** AI-DOING Implement feature X   :researcher@main@agent: ← sub-agent (level 3), indirect buffer C
+  ,**** AI Researcher response                         ← sub-agent AI response (level 4)
+  Research findings...
+  ,*** AI Main agent response                          ← AI response at agent-level + 1 (level 3)
+  Based on the research results...
+  ,*** HI Follow-up question                           ← user heading at agent-level + 1 (level 3)
+  What about edge cases?
+  ,*** AI Edge case analysis                           ← next AI response (level 3)
+  Here are the edge cases...
+#+end_src
+
+Key structural rules:
+- Agent heading is one level deeper than its parent task heading
+- AI response headings and HI user headings are both at =agent-level + 1= (children of the agent heading)
+- Sub-agent headings are also at =agent-level + 1=, with nested tags (e.g. =gatherer@main@agent=)
+- Sub-agents do NOT get HI headings (guarded by the =@.*@= pattern check)
+
+Legacy tag-based structure (deprecated, for reference):
+
 #+begin_src org
   ,* TODO Implement feature X                          ← user's task heading
   ,** :main@agent:                                     ← indirect buffer A
@@ -132,6 +159,9 @@ the full delegation chain:
   as streaming text is inserted
 - Buffer name format: =*gptel:TAG-HASH*= where HASH is a 6-character MD5
   derived from the outline path — allows multiple concurrent agents
+- All content inside the indirect buffer (AI responses, user prompts, sub-agent
+  headings) lives at =agent-level + 1= — one level deeper than the agent heading
+  itself.  This is computed by =gptel-org--compute-response-level=.
 
 ** Handover Mechanism
 
@@ -358,11 +388,13 @@ org-mode format with the correct heading level for the current context.
 | Sub-agent HI heading pollution | Guard in =insert-user-heading= skips sub-agent tags (2+ =@= signs) | =1cee3c7= |
 | Corrector double-rebases sub-agent headings | Bound =correct-region= to =(point)= during streaming; advance =:last-pos= past folded subtrees | =1cee3c7=, =93bdf26= |
 | Separator/prefix in sub-agent indirect buffer | Custom =gptel-agent-subtree--handle-post-insert= omits separator/prefix for non-interactive sub-agents | =93bdf26= |
+| User heading at wrong level (sibling of agent) | =insert-user-heading= now uses =agent-level + 1= (child of agent, matching AI response level); backwards search for duplication check | =638ea2f= |
 
 * Git History (Key Commits)
 
 | Hash | Description |
 |------+-------------|
+| =638ea2f= | fix: user heading inserted at wrong level in agent subtree |
 | =1cee3c7= | fix: prevent garbled output in sub-agent delegated tasks (org-agent side) |
 | =93bdf26= | fix: prevent garbled output in sub-agent delegated tasks (agent-tools side) |
 | =582c987= | test: add branching sibling order test with agent subtrees enabled |

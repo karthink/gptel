@@ -356,8 +356,10 @@ Conversation turns are marked with =AI= and =HI= TODO keywords on org headings i
 
 - =AI= headings are assistant responses (get ='gptel 'response= text property)
 - =HI= headings are user messages (no gptel text property)
+- Both =AI= and =HI= headings are at the same level: one deeper than the agent heading (=agent-level + 1=), making them children of the agent subtree
 - The AI writes its own heading (=* AI <title>=) — no post-process title extraction
 - A real-time auto-corrector rebases heading levels as the AI streams
+- =gptel-org-agent--insert-user-heading= creates the =HI= heading after each response at the correct child level
 
 *** Activation
 
