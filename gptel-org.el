@@ -77,6 +77,15 @@ When set, the markdown-to-org converter is skipped since the
 response is already in org format.  A lightweight post-response
 sanitizer runs instead to fix common AI formatting mistakes.")
 
+(defvar-local gptel-org--corrector-state nil
+  "State for the real-time org response auto-corrector.
+Plist with keys:
+  :active       - non-nil when corrector is running for a response
+  :ref-level    - reference heading level (the AI response heading level)
+  :last-pos     - marker for last corrected position (avoid re-correction)
+  :in-example   - non-nil when inside #+begin_example block
+  :in-src       - non-nil when inside #+begin_src or ``` block")
+
 ;; Debug support
 (defvar gptel-org-debug nil
   "When non-nil, output debug messages for subtree context operations.
@@ -533,6 +542,23 @@ when `gptel-org-subtree-context' is enabled."
           (let ((result (if (org-at-heading-p) (org-outline-level) 0)))
             (gptel-org--debug "get-parent-heading-level: result=%d" result)
             result))))))
+
+
+(defun gptel-org--compute-response-level ()
+  "Compute the heading level for AI response content.
+Returns the level at which the AI's top-level headings should appear."
+  (cond
+   ;; Agent indirect buffer: one level deeper than the first heading
+   ((gptel-org--in-agent-indirect-buffer-p)
+    (save-excursion
+      (goto-char (point-min))
+      (when (org-at-heading-p)
+        (1+ (org-current-level)))))
+   ;; Subtree context: parent level + 2
+   (gptel-org-subtree-context
+    (let ((parent-level (gptel-org--get-parent-heading-level)))
+      (when (> parent-level 0)
+        (+ parent-level 2))))))
 
 (defun gptel-org--chat-heading-p (&optional heading-text)
   "Check if HEADING-TEXT (or current heading) is a chat entry.
@@ -2167,6 +2193,127 @@ positions of the response."
 ;; Run at priority 5 (after heading adjustment at 0, before title at 80)
 ;; (add-hook 'gptel-post-response-functions #'gptel-org--sanitize-org-response 5)
 
+;;; Real-time auto-corrector for TODO keyword mode
+;;
+;; When `gptel-org-use-todo-keywords' is enabled and the AI writes headings
+;; using `*' (no level constraint), this corrector rebases ALL headings to
+;; the correct level as they stream in.  It also escapes lines inside example
+;; blocks and converts markdown fences to org src blocks.
+
+(add-hook 'gptel-post-stream-hook #'gptel-org--auto-correct-stream)
+(add-hook 'gptel-post-response-functions #'gptel-org--auto-correct-cleanup 2)
+
+(defun gptel-org--auto-correct-stream ()
+  "Auto-correct AI response formatting during streaming.
+Runs on `gptel-post-stream-hook' to fix heading levels, escape
+example blocks, and convert markdown fences in real-time."
+  (when (and gptel-org-use-todo-keywords
+             (derived-mode-p 'org-mode)
+             (or gptel-org-subtree-context
+                 (gptel-org--in-agent-indirect-buffer-p)))
+    ;; Initialize state on first chunk
+    (unless (plist-get gptel-org--corrector-state :active)
+      (let ((ref-level (gptel-org--compute-response-level)))
+        (when ref-level
+          (let ((marker (make-marker)))
+            (set-marker marker (point-min))
+            (setq gptel-org--corrector-state
+                  (list :active t
+                        :ref-level ref-level
+                        :last-pos marker
+                        :in-example nil
+                        :in-src nil))))))
+    ;; Process new text
+    (when (plist-get gptel-org--corrector-state :active)
+      (gptel-org--correct-region))))
+
+(defun gptel-org--correct-region ()
+  "Correct org formatting in newly inserted text.
+Uses `gptel-org--corrector-state' to track position and block state."
+  (let* ((state gptel-org--corrector-state)
+         (last-pos (plist-get state :last-pos))
+         (ref-level (plist-get state :ref-level))
+         (in-example (plist-get state :in-example))
+         (in-src (plist-get state :in-src))
+         (end (point-max)))
+    (when (and (markerp last-pos)
+               (marker-position last-pos)
+               (< (marker-position last-pos) end))
+      (save-excursion
+        (goto-char (marker-position last-pos))
+        ;; Process only complete lines (don't touch partial lines at end)
+        (beginning-of-line)
+        (let ((process-end (save-excursion
+                             (goto-char end)
+                             (if (bolp) end (line-beginning-position)))))
+          (while (< (point) process-end)
+            (let ((line-start (point))
+                  (line-text (buffer-substring-no-properties
+                              (point) (line-end-position))))
+              (cond
+               ;; Track example blocks
+               ((string-match-p "^[ \t]*#\\+begin_example" line-text)
+                (setq in-example t)
+                (plist-put state :in-example t))
+               ((string-match-p "^[ \t]*#\\+end_example" line-text)
+                (setq in-example nil)
+                (plist-put state :in-example nil))
+               ;; Track src blocks
+               ((string-match-p "^[ \t]*#\\+begin_src" line-text)
+                (setq in-src t)
+                (plist-put state :in-src t))
+               ((string-match-p "^[ \t]*#\\+end_src" line-text)
+                (setq in-src nil)
+                (plist-put state :in-src nil))
+               ;; Convert markdown fences to org src blocks
+               ((and (not in-src) (not in-example)
+                     (string-match "^[ \t]*```\\([[:alnum:]_+-]*\\)[ \t]*$" line-text))
+                (let ((lang (match-string 1 line-text)))
+                  (delete-region line-start (line-end-position))
+                  (insert (if (string-empty-p lang)
+                              "#+begin_src"
+                            (concat "#+begin_src " lang)))
+                  (setq in-src t)
+                  (plist-put state :in-src t)))
+               ((and in-src (not in-example)
+                     (string-match-p "^[ \t]*```[ \t]*$" line-text))
+                (delete-region line-start (line-end-position))
+                (insert "#+end_src")
+                (setq in-src nil)
+                (plist-put state :in-src nil))
+               ;; Escape lines in example blocks
+               ((and in-example
+                     (string-match-p "^\\*\\|^#\\+" line-text))
+                (goto-char line-start)
+                (insert ","))
+               ;; Rebase heading levels (only outside blocks)
+               ((and (not in-src) (not in-example)
+                     (string-match "^\\(\\*+\\) " line-text))
+                (let* ((current-stars (length (match-string 1 line-text)))
+                       ;; Offset: we want AI's `*' (level 1) to become ref-level
+                       (offset (1- ref-level))
+                       (new-level (+ current-stars offset))
+                       (new-stars (make-string new-level ?*)))
+                  (when (> offset 0)
+                    (goto-char line-start)
+                    (delete-char current-stars)
+                    (insert new-stars))))))
+            (forward-line 1))
+          ;; Update last-pos to the end of processed region
+          (set-marker last-pos process-end))))))
+
+(defun gptel-org--auto-correct-cleanup (_beg _end)
+  "Clean up auto-corrector state after response completes.
+Runs on `gptel-post-response-functions'."
+  (when (plist-get gptel-org--corrector-state :active)
+    ;; Process any remaining partial line
+    (gptel-org--correct-region)
+    ;; Clean up
+    (when-let* ((marker (plist-get gptel-org--corrector-state :last-pos)))
+      (set-marker marker nil))
+    (setq gptel-org--corrector-state nil)))
+
+
 
 ;;; Response heading title generation
 
@@ -2279,6 +2426,8 @@ positions of the response."
                     (derived-mode-p 'org-mode))
   (if (not gptel-org-response-title-function)
       (gptel-org--debug "apply-response-title: SKIPPED - no title function configured")
+    (if gptel-org-use-todo-keywords
+        (gptel-org--debug "apply-response-title: SKIPPED - using TODO keywords, AI wrote its own heading")
     (if (not (derived-mode-p 'org-mode))
         (gptel-org--debug "apply-response-title: SKIPPED - not org-mode")
       (let ((heading-pos (gptel-org--find-response-heading beg)))
@@ -2301,7 +2450,7 @@ positions of the response."
                   (gptel-org--debug "apply-response-title: title applied successfully")))
             (error
              (gptel-org--debug "apply-response-title: ERROR %S" err)
-             (message "gptel: Error generating response title: %S" err))))))))
+             (message "gptel: Error generating response title: %S" err)))))))))
 
 ;; Add hook with high priority (run late, after heading adjustments)
 (add-hook 'gptel-post-response-functions #'gptel-org--apply-response-title 80)
