@@ -35,7 +35,7 @@
 ;;   - gatherer@main@agent     -- gatherer sub-agent of main
 ;;   - researcher@researcher@main@agent -- nested delegation
 ;;
-;; Enable by setting `gptel-org-agent-subtrees' to non-nil.
+;; Enable by setting `gptel-org-subtree-context' to non-nil.
 
 ;;; Code:
 
@@ -46,7 +46,6 @@
 (declare-function gptel-org--debug "gptel-org")
 (declare-function gptel-org--heading-has-tag-p "gptel-org")
 (declare-function gptel-org--heading-has-todo-keyword-p "gptel-org")
-(declare-function gptel-org--get-parent-heading-level "gptel-org")
 
 ;; Forward declarations for variables defined in gptel-org.el
 (defvar gptel-org-todo-keywords)
@@ -79,22 +78,6 @@
 (defvar gptel-backend)
 (defvar gptel-model)
 (defvar gptel--preset)
-
-
-;;; ---- Customization --------------------------------------------------------
-
-(defcustom gptel-org-agent-subtrees nil
-  "When non-nil, create agent subtrees for TODO heading conversations.
-
-When `gptel-send' is invoked on a heading with a TODO keyword from
-`gptel-org-todo-keywords', create a child subtree tagged with
-`:main@agent:' and open an indirect buffer narrowed to it.
-
-The agent's response will be streamed into the indirect buffer,
-keeping the main org buffer undisturbed until the conversation is
-complete."
-  :type 'boolean
-  :group 'gptel)
 
 
 ;;; ---- Helpers --------------------------------------------------------------
@@ -492,7 +475,7 @@ if PRESET is nil or empty."
 (defun gptel-org-agent--maybe-setup-subtree (&optional preset)
   "Conditionally create an agent subtree and indirect buffer.
 
-Check whether `gptel-org-agent-subtrees' is enabled and point is at
+Check whether `gptel-org-subtree-context' is enabled and point is at
 or under a heading with any org TODO keyword.
 
 When point is on a `:user:' heading (created after an agent response),
@@ -509,7 +492,7 @@ If conditions are met:
 
 If conditions are not met, return nil so that `gptel-send' proceeds
 with its normal behavior."
-  (when (and gptel-org-agent-subtrees
+  (when (and gptel-org-subtree-context
              (derived-mode-p 'org-mode))
     (save-excursion
       ;; Navigate to enclosing heading if point is in the body
@@ -556,7 +539,7 @@ with its normal behavior."
   "Prompt transform: redirect response to an agent indirect buffer.
 
 When the request originates from an org-mode buffer on a TODO heading
-with `gptel-org-agent-subtrees' enabled, create (or reuse) an agent
+with `gptel-org-subtree-context' enabled, create (or reuse) an agent
 child subtree and redirect the FSM's response buffer and position to
 the indirect buffer.  The agent tag reflects the active preset name
 \(e.g., `:triage@agent:' for gptel-triage preset).
@@ -571,7 +554,7 @@ indirect buffer (identified by `buffer-base-buffer' returning non-nil)."
   (let* ((info (gptel-fsm-info fsm))
          (orig-buffer (plist-get info :buffer))
          (preset (plist-get info :preset)))
-    (when (and gptel-org-agent-subtrees
+    (when (and gptel-org-subtree-context
                (buffer-live-p orig-buffer)
                ;; Only redirect from a base org buffer, not from an
                ;; indirect buffer (which is already an agent subtree)
@@ -608,8 +591,8 @@ level context and appends instructions to the system message telling
 the LLM to respond using org-mode formatting with correct heading
 levels.
 
-This works in both `gptel-org-agent-subtrees' mode (agent indirect
-buffers) and legacy subtree mode (`gptel-org-subtree-context').")
+This works when `gptel-org-subtree-context' is enabled and the buffer
+is an agent indirect buffer.")
 
 (defun gptel-org-agent--response-heading-level (buffer)
   "Determine the heading level for AI response content in BUFFER.
@@ -618,31 +601,19 @@ Return the heading level at which the AI should write its top-level
 headings, or nil if BUFFER is not in a relevant org-mode context.
 
 In agent indirect buffers, this is one level deeper than the agent
-heading (the first heading in the narrowed buffer).
-
-In legacy subtree mode, this is one level deeper than the parent
-heading found by `gptel-org--get-parent-heading-level' (which gives
-the level of the task heading; chat entries are at task+1, so
-content headings are at task+2)."
+heading (the first heading in the narrowed buffer)."
   (when (and (buffer-live-p buffer)
              (with-current-buffer buffer
                (derived-mode-p 'org-mode)))
     (with-current-buffer buffer
       (cond
        ;; Agent indirect buffer: response goes under the @agent heading
-       ((and (bound-and-true-p gptel-org-agent-subtrees)
+       ((and (bound-and-true-p gptel-org-subtree-context)
              (buffer-base-buffer buffer))
         (save-excursion
           (goto-char (point-min))
           (when (org-at-heading-p)
-            (1+ (org-current-level)))))
-       ;; Legacy subtree mode: response goes under parent heading + 1
-       ;; (parent heading = task, chat entries = task+1, content = task+2)
-       ((bound-and-true-p gptel-org-subtree-context)
-        (save-excursion
-          (let ((parent-level (gptel-org--get-parent-heading-level)))
-            (when (> parent-level 0)
-              (+ parent-level 2)))))))))
+            (1+ (org-current-level)))))))))
 
 (defun gptel-org-agent--seq-todo-line (buffer)
   "Return the #+SEQ_TODO line from BUFFER, or nil if none found.
@@ -899,7 +870,7 @@ Also sets up tool confirmation advice and hooks."
   (remove-hook 'org-mode-hook #'gptel-org-agent--setup-tool-confirm))
 
 ;; Always register the transform when this module is loaded.
-;; The transform function itself checks gptel-org-agent-subtrees
+;; The transform function itself checks gptel-org-subtree-context
 ;; at runtime and is a no-op when disabled, so unconditional
 ;; registration is safe and avoids load-order races with
 ;; gptel-request's defcustom.
@@ -944,10 +915,10 @@ an indirect buffer narrowed to it, and returns a plist with:
                       buffer, after the heading line)
   :parent-tag       - the parent's agent tag (or nil for top-level)
 
-Returns nil if `gptel-org-agent-subtrees' is disabled, we're not in
+Returns nil if `gptel-org-subtree-context' is disabled, we're not in
 org-mode, or we can't find a heading context to create the subtree."
   (ignore description)                  ;reserved for future use in heading text
-  (when (and gptel-org-agent-subtrees
+  (when (and gptel-org-subtree-context
              (derived-mode-p 'org-mode))
     (let* ((parent-tag (gptel-org-agent--current-agent-tag))
            (tag (gptel-org-agent--construct-tag agent-type parent-tag))
@@ -1336,7 +1307,7 @@ Call this after gptel-agent is loaded."
 
 ;;; ---- Tool confirmation subtree integration (Phase 6) ----------------------
 ;;
-;; When `gptel-org-agent-subtrees' is enabled, tool calls requiring
+;; When `gptel-org-subtree-context' is enabled, tool calls requiring
 ;; confirmation are displayed as org headings with a PENDING TODO state
 ;; instead of the legacy overlay-based widget.  The user changes the
 ;; heading state to ALLOWED or DENIED (via org-todo) to approve or deny
@@ -1394,10 +1365,10 @@ and INFO is the FSM info plist.")
 (defun gptel-org-agent--subtree-tool-confirm-p (info)
   "Return non-nil if tool confirmation should use subtree headings.
 
-INFO is the FSM info plist.  Returns t when `gptel-org-agent-subtrees'
+INFO is the FSM info plist.  Returns t when `gptel-org-subtree-context'
 is enabled and the request buffer is an agent indirect buffer in
 org-mode."
-  (and gptel-org-agent-subtrees
+  (and gptel-org-subtree-context
        (let ((buf (plist-get info :buffer)))
          (and buf (buffer-live-p buf)
               (with-current-buffer buf
@@ -1591,8 +1562,8 @@ This function is added to `org-after-todo-state-change-hook'."
   (gptel-org--debug
    "org-agent tool-confirm: todo-state-change hook fired in buffer %s, state=%s, subtrees=%s"
    (buffer-name) (and (boundp 'org-state) org-state)
-   gptel-org-agent-subtrees)
-  (when (and (bound-and-true-p gptel-org-agent-subtrees)
+   gptel-org-subtree-context)
+  (when (and (bound-and-true-p gptel-org-subtree-context)
              (org-at-heading-p))
     (let ((new-state org-state)
           (allowed-kw (nth 1 gptel-org-agent-tool-confirm-keywords))
@@ -1693,7 +1664,7 @@ original function ORIG-FN."
 Adds `gptel-org-agent--on-todo-state-change' to
 `org-after-todo-state-change-hook' (buffer-local)."
   (when (and (derived-mode-p 'org-mode)
-             (bound-and-true-p gptel-org-agent-subtrees))
+             (bound-and-true-p gptel-org-subtree-context))
     (add-hook 'org-after-todo-state-change-hook
               #'gptel-org-agent--on-todo-state-change nil t)))
 

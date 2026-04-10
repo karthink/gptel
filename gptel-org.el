@@ -30,10 +30,10 @@
 (require 'org-src)
 (eval-when-compile (require 'gptel-request))
 
-;; Load gptel-org-agent when agent subtrees are enabled.
-;; Use eval-after-load to handle the case where gptel-org-agent-subtrees
+;; Load gptel-org-agent when subtree context is enabled.
+;; Use eval-after-load to handle the case where gptel-org-subtree-context
 ;; is set after gptel-org.el is loaded (the defcustom lives in
-;; gptel-org-agent.el itself).
+;; gptel-org.el itself).
 (require 'gptel-org-agent nil t)
 
 ;; Register gptel-tool and gptel-reasoning as source block languages with
@@ -254,40 +254,21 @@ on a line by themselves, separated from surrounding text."
   "Link regex for `gptel-mode' in Org mode.")
 
 (defcustom gptel-org-subtree-context nil
-  "Include sibling conversation headings in context when enabled.
+  "Use indirect buffer mode for subtree-scoped conversations.
 
-When non-nil, gptel will include sibling @user and @assistant
-headings under the same parent heading in the context.  This is
-useful for task-oriented workflows where conversations happen
-under TODO headings.
+When non-nil, gptel will create an indirect buffer narrowed to the
+current subtree for each conversation.  This keeps conversation
+context scoped to the subtree and prevents responses from escaping
+into sibling headings.
 
-The user prompt prefix (`gptel-prompt-prefix-alist') and response
-prefix (`gptel-response-prefix-alist') will be adjusted to create
-headings one level deeper than the parent heading.
+The indirect buffer approach provides proper isolation: each
+conversation runs in its own narrowed view of the subtree, with
+heading levels automatically adjusted relative to the subtree root.
 
-Example structure:
-  *** TODO Some task
-  My question here
-  **** :assistant:
-  Response here
-  ***** Details
-  More details in subheading
-  **** :user: User feedback here
-  This message should be last in the context just before system message
-
-When sending from under a TODO heading with this option enabled,
-the @user and @assistant siblings will be included in context,
-and new responses will be inserted at the correct heading level."
+This is used by the agent system (`gptel-org-agent') to manage
+task-oriented workflows where conversations happen under TODO
+headings."
   :type 'boolean
-  :group 'gptel)
-
-(defcustom gptel-org-chat-heading-markers '("@user" "@assistant")
-  "List of heading text markers that indicate chat entries.
-
-These markers are used to identify conversation turns when
-`gptel-org-subtree-context' is enabled.  Headings containing any
-of these strings will be recognized as part of the conversation."
-  :type '(repeat string)
   :group 'gptel)
 
 (defcustom gptel-org-save-state t
@@ -457,181 +438,38 @@ The check is case-sensitive to match org-mode's TODO keyword handling."
 
 ;;; Subtree context helper functions
 
-(defun gptel-org--get-parent-heading-level ()
-  "Return the level of the task/conversation heading.
-
-This finds the heading that should contain the chat entries.  It walks
-up the heading hierarchy looking for the first heading whose direct
-children include chat headings (based on `gptel-org-chat-heading-markers'),
-or a heading that is not inside a chat subtree.
-
-This is used to determine the correct heading level for chat entries
-when `gptel-org-subtree-context' is enabled."
-  (save-excursion
-    ;; First, get to the current heading if not already there
-    (let ((started-at-heading (org-at-heading-p))
-          (start-pos (point)))
-      (gptel-org--debug "get-parent-heading-level: start at pos %d, line %d, at-heading=%s"
-                        start-pos (line-number-at-pos) started-at-heading)
-      (unless started-at-heading
-        (ignore-errors (outline-back-to-heading t)))
-      (gptel-org--debug "get-parent-heading-level: after back-to-heading at line %d: %s"
-                        (line-number-at-pos)
-                        (buffer-substring (line-beginning-position) (line-end-position)))
-      ;; Check if we're inside a chat subtree by looking at ancestors
-      (let ((inside-chat-subtree
-             (save-excursion
-               (let ((in-chat nil)
-                     (prev-pos nil))
-                 (while (and (not in-chat)
-                             (not (eq prev-pos (point)))
-                             (progn (setq prev-pos (point))
-                                    (ignore-errors (outline-up-heading 1 t))))
-                   (when (gptel-org--chat-heading-p)
-                     (setq in-chat t)))
-                 in-chat))))
-        (gptel-org--debug "get-parent-heading-level: inside-chat-subtree=%s" inside-chat-subtree)
-        ;; Walk up to find the task heading
-        ;; A heading is the task heading if:
-        ;; 1. It's not a chat heading itself, AND
-        ;; 2. It has at least one direct child that is a chat heading,
-        ;;    OR we started from body text NOT inside a chat subtree (new conversation)
-        ;;    OR we've walked out of all chat-related subtrees
-        (let ((found nil)
-              (started-from-chat (and started-at-heading
-                                      (gptel-org--chat-heading-p)))
-              (prev-pos nil))
-          (gptel-org--debug "get-parent-heading-level: started-from-chat=%s" started-from-chat)
-          (while (and (org-at-heading-p) (not found))
-            ;; Guard against infinite loop: if point hasn't moved, stop
-            (when (eq prev-pos (point))
-              (gptel-org--debug "get-parent-heading-level: infinite loop guard triggered at %d" (point))
-              (setq found t))
-            (setq prev-pos (point))
-            (unless found
-              (let ((current-heading (buffer-substring (line-beginning-position) (line-end-position)))
-                    (is-chat (gptel-org--chat-heading-p)))
-                (gptel-org--debug "get-parent-heading-level: checking heading: %s (is-chat=%s)"
-                                  current-heading is-chat)
-                (if is-chat
-                    ;; This is a chat heading, keep going up
-                    (ignore-errors (outline-up-heading 1 t))
-                  ;; Not a chat heading - this is the parent if:
-                  ;; - It has chat children, OR
-                  ;; - We started from body/heading NOT inside a chat subtree (new conversation), OR
-                  ;; - We walked up from a chat heading
-                  (let ((current-level (org-outline-level))
-                        (has-chat-child nil))
-                    (save-excursion
-                      (outline-next-heading)
-                      (when (and (org-at-heading-p)
-                                 (= (org-outline-level) (1+ current-level))
-                                 (gptel-org--chat-heading-p))
-                        (setq has-chat-child t)))
-                    (gptel-org--debug "get-parent-heading-level: non-chat heading level=%d has-chat-child=%s"
-                                      current-level has-chat-child)
-                    (if (or has-chat-child
-                            (and (not started-at-heading)      ; Started from body text
-                                 (not inside-chat-subtree))    ; and NOT inside chat subtree
-                            started-from-chat)                 ; Walked up from chat heading
-                        (setq found t)
-                      ;; No chat children, continue up
-                      (unless (ignore-errors (outline-up-heading 1 t))
-                        ;; Can't go up anymore, use this level
-                        (setq found t))))))))
-          (let ((result (if (org-at-heading-p) (org-outline-level) 0)))
-            (gptel-org--debug "get-parent-heading-level: result=%d" result)
-            result))))))
-
-
 (defun gptel-org--compute-response-level ()
   "Compute the heading level for AI response content.
 Returns the level at which the AI's top-level headings should appear."
-  (cond
-   ;; Agent indirect buffer: one level deeper than the first heading
-   ((gptel-org--in-agent-indirect-buffer-p)
+  (when (gptel-org--in-agent-indirect-buffer-p)
     (save-excursion
       (goto-char (point-min))
       (when (org-at-heading-p)
-        (1+ (org-current-level)))))
-   ;; Subtree context: parent level + 2
-   (gptel-org-subtree-context
-    (let ((parent-level (gptel-org--get-parent-heading-level)))
-      (when (> parent-level 0)
-        (+ parent-level 2))))))
+        (1+ (org-current-level))))))
 
 (defun gptel-org--chat-heading-p (&optional heading-text)
   "Check if HEADING-TEXT (or current heading) is a chat entry.
 
-Returns non-nil if the heading contains any of the markers in
-`gptel-org-chat-heading-markers', or if the heading has role
-tags/keywords (assistant/user or AI/HI)."
-  (let* ((text (or heading-text
-                   (and (org-at-heading-p)
-                        (org-get-heading t t t t))))
-         (marker-match
-          (and text
-               (cl-some (lambda (marker)
-                          (string-match-p (regexp-quote marker) text))
-                        gptel-org-chat-heading-markers)))
-         (keyword-match
+Returns non-nil if the heading has role tags/keywords
+\(assistant/user or AI/HI).  When HEADING-TEXT is provided, only
+keyword-based and tag-based detection is performed (requires point
+to be at the heading)."
+  (ignore heading-text)
+  (let* ((keyword-match
           (and gptel-org-use-todo-keywords
-               (null heading-text)
                (org-at-heading-p)
                (or (gptel-org--heading-is-assistant-p)
                    (gptel-org--heading-is-user-p))))
          (tag-match
           (and (not gptel-org-use-todo-keywords)
                gptel-org-infer-bounds-from-tags
-               (null heading-text)
                (org-at-heading-p)
                (or (gptel-org--heading-has-tag-p gptel-org-assistant-tag)
                    (gptel-org--heading-has-tag-p gptel-org-user-tag))))
-         (result (or marker-match keyword-match tag-match)))
-    (gptel-org--debug "chat-heading-p: text=%S marker-match=%s keyword-match=%s tag-match=%s result=%s"
-                      text marker-match keyword-match tag-match result)
+         (result (or keyword-match tag-match)))
+    (gptel-org--debug "chat-heading-p: keyword-match=%s tag-match=%s result=%s"
+                      keyword-match tag-match result)
     result))
-
-(defun gptel-org--get-chat-siblings ()
-  "Get bounds of all sibling chat headings under the task heading.
-
-Returns a list of (BEG . END) cons cells for each sibling heading
-that matches `gptel-org-chat-heading-markers'.  Used when
-`gptel-org-subtree-context' is enabled.
-
-This function finds the task heading (the heading whose direct
-children are chat headings) and collects all its direct children
-that are chat headings."
-  (when gptel-org-subtree-context
-    (save-excursion
-      (let ((siblings nil)
-            (task-level (gptel-org--get-parent-heading-level)))
-        (when (> task-level 0)
-          ;; Navigate to the task heading
-          (unless (org-at-heading-p)
-            (ignore-errors (outline-back-to-heading t)))
-          ;; Walk up to find the task heading
-          (while (and (org-at-heading-p)
-                      (> (org-outline-level) task-level))
-            (ignore-errors (outline-up-heading 1 t)))
-          ;; Now we should be at the task heading
-          (when (and (org-at-heading-p)
-                     (= (org-outline-level) task-level))
-            (let ((chat-level (1+ task-level)))
-              (outline-next-heading)
-              ;; Collect all immediate children that are chat entries
-              (while (and (not (eobp))
-                          (looking-at outline-regexp)
-                          (> (org-outline-level) task-level))
-                (when (and (= (org-outline-level) chat-level)
-                           (gptel-org--chat-heading-p))
-                  (let ((beg (point))
-                        (end (save-excursion
-                               (org-end-of-subtree t t)
-                               (point))))
-                    (push (cons beg end) siblings)))
-                (outline-next-heading)))))
-        (nreverse siblings)))))
 
 (defvar-local gptel-org--pending-heading-tag nil
   "Tag to apply to the heading after prefix insertion.
@@ -688,104 +526,18 @@ unrelated change (like a separator) triggers the hook."
                            #'gptel-org--apply-pending-tag-on-change t)
               (org-set-tags (list tag)))))))))
 
-(defun gptel-org--dynamic-prefix-string (base-prefix &optional for-prompt)
+(defun gptel-org--dynamic-prefix-string (base-prefix &optional _for-prompt)
   "Return BASE-PREFIX adjusted for current org heading context.
 
-When `gptel-org-subtree-context' is enabled and we're in an org
-buffer under a heading, adjust the number of stars in BASE-PREFIX
-to be one level deeper than the parent heading.
-
-When `gptel-org-infer-bounds-from-tags' is enabled, the prefix will
-include the tag inline for consistency with regex matching.  Additionally,
-a pending tag operation is scheduled so that after the heading is inserted,
-`org-set-tags' will be called to properly align the tag and run
-`org-after-tags-change-hook'.
-
-The user types their content BELOW the heading line (in the body),
-not on the heading line itself.  This ensures proper org structure
-with tags at the end of headings.
-
-If BASE-PREFIX starts with stars, those stars are replaced with
-the correct number.  If BASE-PREFIX doesn't start with stars
-\(e.g. \"@user\\n\"), stars are prepended to create a proper
-org heading."
+In agent indirect buffers, return an empty string since the agent
+system manages its own heading structure for both response and
+user headings.  Otherwise, return BASE-PREFIX unchanged."
   (if (gptel-org--in-agent-indirect-buffer-p)
       ;; Agent indirect buffers manage their own heading structure.
       ;; Return empty string to suppress prefix insertion entirely —
       ;; the agent system handles both response and user headings.
       ""
-    (if (and gptel-org-subtree-context
-             (derived-mode-p 'org-mode))
-      (let* ((parent-level (gptel-org--get-parent-heading-level))
-             (target-level (if (> parent-level 0) (1+ parent-level) 1))
-             (stars (make-string target-level ?*)))
-        (gptel-org--debug "dynamic-prefix-string: base=%S parent-level=%d target-level=%d for-prompt=%s"
-                          base-prefix parent-level target-level for-prompt)
-        (let ((result
-               (cond
-                ;; When using TODO keywords for role detection, generate heading
-                ;; with keyword.  For AI responses, return empty string since
-                ;; the AI writes its own heading with the AI keyword.
-                ;; For HI (user) prompts, generate "*** HI \n".
-                (gptel-org-use-todo-keywords
-                 (if for-prompt
-                     ;; User prompt: generate heading with HI keyword
-                     (let ((kw gptel-org-user-keyword))
-                       (if (save-excursion
-                             (skip-chars-forward " \t\n")
-                             (and (org-at-heading-p)
-                                  (gptel-org--heading-is-user-p)))
-                           (progn
-                             (gptel-org--debug
-                              "dynamic-prefix-string: HI heading already exists at %d, skipping"
-                              (point))
-                             "")
-                         (concat stars " " kw " \n")))
-                   ;; AI response: return empty string, the AI writes its own heading
-                   ;; with "* AI <title>" which the auto-corrector rebases
-                   ""))
-                ;; When using tag-based bounds, generate heading with tag and schedule
-                ;; org-set-tags call for proper alignment
-                (gptel-org-infer-bounds-from-tags
-                 (let ((tag (if for-prompt
-                                gptel-org-user-tag
-                              gptel-org-assistant-tag)))
-                   ;; Check if a heading with this tag already exists right
-                   ;; after the current position (skipping whitespace).  This
-                   ;; prevents creating duplicate user/assistant headings.
-                   (if (save-excursion
-                         (skip-chars-forward " \t\n")
-                         (and (org-at-heading-p)
-                              (gptel-org--heading-has-tag-p tag)))
-                       (progn
-                         (gptel-org--debug
-                          "dynamic-prefix-string: heading with tag %S already exists at %d, skipping"
-                          tag (point))
-                         "")
-                     (let ((marker (make-marker)))
-                       ;; Create a marker at current point to track insertion location
-                       (set-marker marker (point))
-                       ;; Store the pending tag to be applied after insertion
-                       (setq gptel-org--pending-heading-tag (cons marker tag))
-                       ;; Ensure the after-change function is active
-                       (add-hook 'after-change-functions
-                                 #'gptel-org--apply-pending-tag-on-change nil t)
-                       ;; Return heading with inline tag (for regex matching compatibility)
-                       ;; The tag will be re-set properly via org-set-tags after insertion
-                       (concat stars " :" tag ":\n")))))
-                ;; Prefix starts with stars - replace them
-                ((string-match "^\\(\\*+\\)\\(\\(?:.*\n?\\)?\\)" base-prefix)
-                 (let ((rest (match-string 2 base-prefix)))
-                   (concat stars rest)))
-                ;; Prefix doesn't start with stars but is non-empty - prepend stars and space
-                ((not (string-empty-p base-prefix))
-                 (concat stars " " base-prefix))
-                ;; Empty prefix - just return stars with space and newline
-                (t (concat stars " \n")))))
-          (gptel-org--debug "dynamic-prefix-string: result=%S pending-tag=%S"
-                            result gptel-org--pending-heading-tag)
-          result))
-      base-prefix)))
+    base-prefix))
 
 ;;; Setting context and creating queries
 (defun gptel-org--get-topic-start ()
@@ -825,9 +577,8 @@ Otherwise the prompt text is constructed from the contents of the
 current buffer up to point, or PROMPT-END if provided.  Its contents
 depend on the value of `gptel-org-branching-context', which see.
 
-When `gptel-org-subtree-context' is also enabled, sibling headings
-that match `gptel-org-chat-heading-markers' will be included in the
-context."
+When `gptel-org-subtree-context' is enabled, conversations run in
+indirect buffers narrowed to the relevant subtree."
   ;; Refresh bounds from tags before constructing prompt to ensure text
   ;; properties reflect current buffer state (avoids stale markers)
   (when gptel-org-infer-bounds-from-tags
@@ -836,9 +587,7 @@ context."
     (narrow-to-region (region-beginning) (region-end))
     (setq prompt-end (point-max)))
   (goto-char (or prompt-end (setq prompt-end (point))))
-  (let ((topic-start (gptel-org--get-topic-start))
-        (chat-siblings (when gptel-org-subtree-context
-                         (gptel-org--get-chat-siblings))))
+  (let ((topic-start (gptel-org--get-topic-start)))
     (when topic-start
       ;; narrow to GPTEL_TOPIC property scope
       (narrow-to-region topic-start prompt-end))
@@ -872,14 +621,18 @@ context."
                    for pos in (cdr start-bounds)
                    do (goto-char pos) (outline-next-heading)
                    collect (point) into ends
-                   finally return (cons prompt-end ends))))
-            ;; Hybrid context: when gptel-org-agent-subtrees is enabled
+                   finally return (cons prompt-end ends)))
+                 ;; Save lineage depth before hybrid context may truncate
+                 ;; start-bounds — needed for lineage position collection
+                 ;; during agent subtree stripping.
+                 (lineage-depth (length start-bounds)))
+            ;; Hybrid context: when gptel-org-subtree-context is enabled
             ;; and a TODO heading exists in the lineage, include the full
             ;; TODO subtree content (non-branching) up to prompt-end,
             ;; while keeping branching context for ancestors above it.
             ;; This ensures sibling sub-headings within the TODO task
             ;; are included in the context.
-            (when (bound-and-true-p gptel-org-agent-subtrees)
+            (when gptel-org-subtree-context
               (gptel-org--debug "hybrid-context: start-bounds=%S end-bounds=%S prompt-end=%d"
                                 start-bounds end-bounds prompt-end)
               (when-let* ((todo-idx
@@ -906,40 +659,6 @@ context."
                        for end in end-bounds
                        do (insert-buffer-substring org-buf start end)
                        (goto-char (point-min)))
-              ;; When gptel-org-subtree-context is enabled, include sibling
-              ;; chat headings (@user/@assistant) in the context.
-              ;; Insert siblings in chronological order before the current chat entry.
-              (when chat-siblings
-                ;; Find the current chat entry's position (the first chat heading
-                ;; in start-bounds that is a chat sibling)
-                (let* ((current-chat-start (car start-bounds))
-                       ;; Filter siblings that come before current entry and don't overlap
-                       (earlier-siblings
-                        (cl-remove-if
-                         (lambda (sib)
-                           (let ((sib-beg (car sib))
-                                 (sib-end (cdr sib)))
-                             ;; Skip if overlaps or comes after current position
-                             (or (>= sib-beg current-chat-start)
-                                 (cl-some (lambda (start-end)
-                                            (and (< sib-beg (cdr start-end))
-                                                 (> sib-end (car start-end))))
-                                          (cl-mapcar #'cons start-bounds end-bounds)))))
-                         chat-siblings)))
-                  ;; Insert earlier siblings right after the task heading (before current chat)
-                  ;; The task heading content ends where the first chat sibling would start
-                  (when earlier-siblings
-                    ;; Find where to insert: after all lineage headings but before current chat.
-                    ;; The copied buffer contains (length (cdr start-bounds)) lineage headings
-                    ;; followed by the current element content.  Skip past every lineage heading
-                    ;; to reach the insertion point.
-                    (goto-char (point-min))
-                    (let ((lineage-count (length (cdr start-bounds))))
-                      (dotimes (_ lineage-count)
-                        (outline-next-heading))
-                      ;; Insert earlier siblings here, in order
-                      (dolist (sib earlier-siblings)
-                        (insert-buffer-substring org-buf (car sib) (cdr sib)))))))
               (goto-char (point-max))
               (gptel-org--unescape-tool-results)
               (gptel-org--strip-block-headers)
@@ -947,7 +666,7 @@ context."
               ;; In branching context, protect lineage headings — they are
               ;; structural ancestors of the current conversation and their
               ;; subtrees contain the chat messages being sent.
-              (when (and (bound-and-true-p gptel-org-agent-subtrees)
+              (when (and gptel-org-subtree-context
                          (not (and (boundp 'gptel-org-agent-include-subtrees)
                                    (buffer-local-value
                                     'gptel-org-agent-include-subtrees org-buf)))
@@ -955,7 +674,7 @@ context."
                 (let (lineage-positions)
                   (save-excursion
                     (goto-char (point-min))
-                    (dotimes (_ (length start-bounds))
+                    (dotimes (_ lineage-depth)
                       (when (org-at-heading-p)
                         (push (point) lineage-positions))
                       (unless (eobp) (outline-next-heading))))
@@ -971,20 +690,11 @@ context."
       (let ((org-buf (current-buffer))
             (beg (point-min)))
         (gptel--with-buffer-copy org-buf beg prompt-end
-          ;; When gptel-org-subtree-context is enabled, include sibling
-          ;; chat headings (@user/@assistant) in the context
-          (when chat-siblings
-            (goto-char (point-max))
-            (cl-loop for (sib-beg . sib-end) in chat-siblings
-                     ;; Skip siblings that overlap with the range [beg, prompt-end]
-                     ;; Overlap: sib-beg < prompt-end AND sib-end > beg
-                     unless (and (< sib-beg prompt-end) (> sib-end beg))
-                     do (insert-buffer-substring org-buf sib-beg sib-end)))
           (goto-char (point-max))
           (gptel-org--unescape-tool-results)
           (gptel-org--strip-block-headers)
           ;; Strip @agent subtrees unless include-agent-subtrees is set
-          (when (and (bound-and-true-p gptel-org-agent-subtrees)
+          (when (and gptel-org-subtree-context
                      (not (and (boundp 'gptel-org-agent-include-subtrees)
                                (buffer-local-value
                                 'gptel-org-agent-include-subtrees org-buf)))
@@ -1367,8 +1077,10 @@ otherwise falls back to tag detection."
 (defun gptel-org--heading-has-todo-keyword-p ()
   "Check if current heading has a TODO keyword from `gptel-org-todo-keywords'."
   (when (org-at-heading-p)
-    (let ((todo (org-get-todo-state)))
-      (and todo (member todo gptel-org-todo-keywords)))))
+    (save-excursion
+      (beginning-of-line)
+      (and (looking-at "^\\*+ +\\([^ \t\n]+\\)")
+           (member (match-string-no-properties 1) gptel-org-todo-keywords)))))
 
 (defun gptel-org--find-todo-in-lineage (start-bounds)
   "Find the innermost TODO heading in the lineage START-BOUNDS.
@@ -2054,9 +1766,9 @@ has a tag matching the `*@agent' pattern."
 (defun gptel-org--adjust-response-headings (beg end)
   "Adjust heading levels in the response region from BEG to END.
 
-When `gptel-org-subtree-context' is enabled or we are in an agent
-indirect buffer (`gptel-org-agent-subtrees'), any org headings in
-the AI response should be demoted to be children of the preceding
+When in an agent indirect buffer (i.e. `gptel-org-subtree-context'
+is enabled), any org headings in the AI response should be demoted
+to be children of the preceding
 heading.  This prevents response headings from escaping the
 assistant subtree and breaking the conversation structure.
 
@@ -2073,8 +1785,7 @@ is found before BEG, the first heading in the narrowed buffer is
 used as the top-level reference, and response headings are demoted
 to be children of it."
   (when (and (derived-mode-p 'org-mode)
-             (or gptel-org-subtree-context
-                 (gptel-org--in-agent-indirect-buffer-p)))
+             (gptel-org--in-agent-indirect-buffer-p))
     ;; First: escape special lines in example blocks
     (gptel-org--escape-example-blocks beg end)
     (save-excursion
@@ -2210,8 +1921,7 @@ Runs on `gptel-post-stream-hook' to fix heading levels, escape
 example blocks, and convert markdown fences in real-time."
   (when (and gptel-org-use-todo-keywords
              (derived-mode-p 'org-mode)
-             (or gptel-org-subtree-context
-                 (gptel-org--in-agent-indirect-buffer-p)))
+             (gptel-org--in-agent-indirect-buffer-p))
     ;; Initialize state on first chunk
     (unless (plist-get gptel-org--corrector-state :active)
       (let ((ref-level (gptel-org--compute-response-level)))
