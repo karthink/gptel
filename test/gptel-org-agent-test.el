@@ -982,5 +982,303 @@ appears in both the indirect and base buffers."
          (when (buffer-live-p indirect)
            (kill-buffer indirect)))))))
 
+
+;;; ---- insert-user-heading tests (indirect buffer post-response) ------------
+
+(ert-deftest gptel-org-agent-test-insert-user-heading-after-indirect-response ()
+  "Insert exactly one HI heading after an agent indirect-buffer response.
+Verifies the heading is created in the base buffer as a sibling after the
+agent subtree, not inside it."
+  (gptel-org-agent-test-with-buffer
+   "* AI-DO What is 2 + 2\n"
+   (let* ((gptel-org-subtree-context t)
+          (gptel-org-use-todo-keywords t)
+          (gptel-org-user-keyword "HI")
+          (base-buf (current-buffer))
+          (fsm (gptel-make-fsm))
+          (info (list :buffer base-buf
+                      :position (point-marker))))
+     (setf (gptel-fsm-info fsm) info)
+     (unwind-protect
+         (progn
+           (goto-char (point-min))
+           (org-back-to-heading t)
+           (gptel-org-agent--transform-redirect fsm)
+           (let ((indirect-buf (plist-get info :buffer))
+                 (pos-marker (plist-get info :position)))
+             (with-current-buffer (marker-buffer pos-marker)
+               (goto-char pos-marker)
+               (insert "**** AI Simple Arithmetic\n2 + 2 =\n\n*4*.\n"))
+             (with-current-buffer indirect-buf
+               (gptel-org-agent--insert-user-heading nil nil))
+             (with-current-buffer base-buf
+               (goto-char (point-min))
+               (should (re-search-forward "^\\* AI-DO What is 2 [+] 2$" nil t))
+               (should (re-search-forward "^\\*\\* AI-DOING What is 2 [+] 2" nil t))
+               (let ((agent-heading-pos (match-beginning 0)))
+                 (goto-char agent-heading-pos)
+                 (let ((agent-end (save-excursion
+                                    (org-end-of-subtree t)
+                                    (point))))
+                   (goto-char agent-end)
+                   (should (looking-at "^\\*\\* HI[[:space:]]*$"))
+                   (let ((hi-pos (point)))
+                     (should (> hi-pos agent-heading-pos))
+                     (should (= hi-pos agent-end)))))
+               (should (= 1
+                          (how-many "^\\*\\* HI[[:space:]]*$"
+                                    (point-min) (point-max)))))))
+       (when-let* ((indirect (plist-get info :agent-indirect-buffer)))
+         (when (buffer-live-p indirect)
+           (kill-buffer indirect)))))))
+
+(ert-deftest gptel-org-agent-test-insert-user-heading-not-duplicated ()
+  "Repeated insert-user-heading calls should not create duplicate HI headings."
+  (gptel-org-agent-test-with-buffer
+   "* AI-DO What is 2 + 2\n"
+   (let* ((gptel-org-subtree-context t)
+          (gptel-org-use-todo-keywords t)
+          (gptel-org-user-keyword "HI")
+          (base-buf (current-buffer))
+          (fsm (gptel-make-fsm))
+          (info (list :buffer base-buf
+                      :position (point-marker))))
+     (setf (gptel-fsm-info fsm) info)
+     (unwind-protect
+         (progn
+           (goto-char (point-min))
+           (org-back-to-heading t)
+           (gptel-org-agent--transform-redirect fsm)
+           (let ((indirect-buf (plist-get info :buffer))
+                 (pos-marker (plist-get info :position)))
+             (with-current-buffer (marker-buffer pos-marker)
+               (goto-char pos-marker)
+               (insert "Answer\n"))
+             (with-current-buffer indirect-buf
+               (gptel-org-agent--insert-user-heading nil nil)
+               (gptel-org-agent--insert-user-heading nil nil))
+             (with-current-buffer base-buf
+               (should (= 1
+                          (how-many "^\\*\\* HI[[:space:]]*$"
+                                    (point-min) (point-max)))))))
+       (when-let* ((indirect (plist-get info :agent-indirect-buffer)))
+         (when (buffer-live-p indirect)
+           (kill-buffer indirect)))))))
+
+(defmacro gptel-org-agent-test-with-agent-indirect (content &rest body)
+  "Set up a base org buffer with CONTENT, create an agent indirect buffer, run BODY.
+
+Within BODY the following bindings are available:
+  `base-buf'     — the base org buffer
+  `indirect-buf' — the agent indirect buffer (narrowed to agent subtree)
+  `marker'       — marker at the agent heading
+
+Point is placed at `@' in CONTENT if present (in the base buffer).
+The agent heading (** AI-DOING ... :main@agent:) is created by
+`gptel-org-agent--create-subtree'.  An AI response heading is
+inserted inside the agent subtree to simulate a completed response.
+
+Cleans up the indirect buffer on exit."
+  (declare (indent 1))
+  `(gptel-org-agent-test-with-buffer ,content
+     (goto-char (point-min))
+     (org-back-to-heading t)
+     (let* ((gptel-org-subtree-context t)
+            (base-buf (current-buffer))
+            (marker (gptel-org-agent--create-subtree "main"))
+            (indirect-buf nil))
+       (unwind-protect
+           (progn
+             (setq indirect-buf
+                   (gptel-org-agent--open-indirect-buffer base-buf marker))
+             ;; Insert a simulated AI response inside the agent subtree
+             (with-current-buffer indirect-buf
+               (goto-char (point-max))
+               (insert "*** AI Simple Arithmetic\n2 + 2 = *4*.\n"))
+             ,@body)
+         (when (and indirect-buf (buffer-live-p indirect-buf))
+           (kill-buffer indirect-buf))))))
+
+(ert-deftest gptel-org-agent-test-insert-user-heading-basic ()
+  "After AI response in agent indirect buffer, insert-user-heading creates
+a sibling user heading in the base buffer after the agent subtree."
+  (gptel-org-agent-test-with-agent-indirect
+   "* AI-DO What is 2 + 2\n"
+   ;; Call insert-user-heading from within the indirect buffer
+   (with-current-buffer indirect-buf
+     (gptel-org-agent--insert-user-heading nil nil))
+   ;; Verify in the base buffer
+   (with-current-buffer base-buf
+     (let ((content (buffer-substring-no-properties
+                     (point-min) (point-max))))
+       ;; A user heading should exist (either :user: tag or HI keyword)
+       (should (or (string-match-p ":user:" content)
+                   (string-match-p "^\\*\\* HI " content)))
+       ;; The agent subtree should still be intact
+       (should (string-match-p "main@agent" content))
+       (should (string-match-p "Simple Arithmetic" content))))))
+
+(ert-deftest gptel-org-agent-test-insert-user-heading-correct-level ()
+  "The user heading is at the same level as the agent heading (sibling),
+not nested inside the agent subtree."
+  (gptel-org-agent-test-with-agent-indirect
+   "* AI-DO What is 2 + 2\n"
+   (with-current-buffer indirect-buf
+     (gptel-org-agent--insert-user-heading nil nil))
+   (with-current-buffer base-buf
+     ;; Find the agent heading level
+     (goto-char (point-min))
+     (let ((agent-level nil)
+           (user-heading-level nil))
+       ;; Find agent heading
+       (while (and (outline-next-heading) (not agent-level))
+         (when (cl-some (lambda (tg)
+                          (string-equal-ignore-case tg "main@agent"))
+                        (org-get-tags nil t))
+           (setq agent-level (org-current-level))))
+       (should agent-level)
+       ;; Find user heading — it should be after the agent subtree
+       ;; Scan from end of agent subtree
+       (org-end-of-subtree t)
+       (when (org-at-heading-p)
+         (setq user-heading-level (org-current-level)))
+       ;; User heading should be at same level as agent heading (sibling)
+       (should user-heading-level)
+       (should (= agent-level user-heading-level))))))
+
+(ert-deftest gptel-org-agent-test-insert-user-heading-outside-agent-subtree ()
+  "The user heading is placed AFTER (outside) the agent subtree, not inside it."
+  (gptel-org-agent-test-with-agent-indirect
+   "* AI-DO What is 2 + 2\n"
+   (with-current-buffer indirect-buf
+     (gptel-org-agent--insert-user-heading nil nil))
+   (with-current-buffer base-buf
+     (goto-char (point-min))
+     ;; Navigate to the agent heading
+     (let ((agent-start nil)
+           (agent-end nil)
+           (user-heading-pos nil))
+       (while (and (outline-next-heading) (not agent-start))
+         (when (cl-some (lambda (tg)
+                          (string-equal-ignore-case tg "main@agent"))
+                        (org-get-tags nil t))
+           (setq agent-start (point))))
+       (should agent-start)
+       (goto-char agent-start)
+       (org-end-of-subtree t)
+       (setq agent-end (point))
+       ;; The user heading should be at or after agent-end
+       (when (org-at-heading-p)
+         (setq user-heading-pos (point)))
+       (unless user-heading-pos
+         ;; Search forward for the user heading
+         (when (outline-next-heading)
+           (setq user-heading-pos (point))))
+       (should user-heading-pos)
+       (should (>= user-heading-pos agent-end))))))
+
+(ert-deftest gptel-org-agent-test-insert-user-heading-idempotent ()
+  "Calling insert-user-heading twice does not create a duplicate heading."
+  (gptel-org-agent-test-with-agent-indirect
+   "* AI-DO What is 2 + 2\n"
+   ;; First call
+   (with-current-buffer indirect-buf
+     (gptel-org-agent--insert-user-heading nil nil))
+   ;; Second call
+   (with-current-buffer indirect-buf
+     (gptel-org-agent--insert-user-heading nil nil))
+   ;; Count user headings in the base buffer
+   (with-current-buffer base-buf
+     (let ((user-heading-count 0))
+       (save-excursion
+         (goto-char (point-min))
+         ;; Find agent heading to determine its level
+         (let ((agent-level nil))
+           (while (and (outline-next-heading) (not agent-level))
+             (when (cl-some (lambda (tg)
+                              (string-equal-ignore-case tg "main@agent"))
+                            (org-get-tags nil t))
+               (setq agent-level (org-current-level))
+               ;; Now skip past agent subtree and count user headings
+               (org-end-of-subtree t)
+               (while (and (org-at-heading-p)
+                           (= (org-current-level) agent-level))
+                 (setq user-heading-count (1+ user-heading-count))
+                 (org-end-of-subtree t))))
+           (should agent-level)))
+       ;; Should have exactly one user heading, not two
+       (should (= 1 user-heading-count))))))
+
+(ert-deftest gptel-org-agent-test-insert-user-heading-with-todo-keywords ()
+  "With `gptel-org-use-todo-keywords' enabled, the user heading uses HI keyword."
+  (let ((gptel-org-use-todo-keywords t)
+        (gptel-org-user-keyword "HI")
+        (org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "AI" "HI" "|" "AI-DONE" "DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* AI-DO What is 2 + 2\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (base-buf (current-buffer))
+             (marker (gptel-org-agent--create-subtree "main"))
+             (indirect-buf nil))
+        (unwind-protect
+            (progn
+              (setq indirect-buf
+                    (gptel-org-agent--open-indirect-buffer base-buf marker))
+              ;; Insert simulated AI response
+              (with-current-buffer indirect-buf
+                (goto-char (point-max))
+                (insert "*** AI Simple Arithmetic\n2 + 2 = *4*.\n"))
+              ;; Call insert-user-heading
+              (with-current-buffer indirect-buf
+                (gptel-org-agent--insert-user-heading nil nil))
+              ;; Verify HI keyword heading was created in base buffer
+              (with-current-buffer base-buf
+                (let ((content (buffer-substring-no-properties
+                                (point-min) (point-max))))
+                  ;; Should contain an HI heading
+                  (should (string-match-p "^\\*\\* HI " content))
+                  ;; Should NOT contain a :user: tag instead
+                  ;; (the heading should use keyword, not tag)
+                  (save-excursion
+                    (goto-char (point-min))
+                    ;; Find the heading after the agent subtree
+                    (let ((found-hi nil))
+                      (while (outline-next-heading)
+                        (when (and (not (cl-some
+                                         (lambda (tg)
+                                           (gptel-org-agent--agent-tag-p tg))
+                                         (org-get-tags nil t)))
+                                   (equal (org-get-todo-state) "HI"))
+                          (setq found-hi t)))
+                      (should found-hi))))))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
+(ert-deftest gptel-org-agent-test-insert-user-heading-with-tags ()
+  "With `gptel-org-use-todo-keywords' disabled, the user heading uses :user: tag."
+  (gptel-org-agent-test-with-agent-indirect
+   "* AI-DO What is 2 + 2\n"
+   (let ((gptel-org-use-todo-keywords nil)
+         (gptel-org-user-tag "user"))
+     (with-current-buffer indirect-buf
+       (gptel-org-agent--insert-user-heading nil nil))
+     (with-current-buffer base-buf
+       (save-excursion
+         (goto-char (point-min))
+         ;; Find heading after agent subtree with :user: tag
+         (let ((found-user nil))
+           (while (outline-next-heading)
+             (when (cl-some
+                    (lambda (tg)
+                      (string-equal-ignore-case tg "user"))
+                    (org-get-tags nil t))
+               (setq found-user t)))
+           (should found-user)))))))
+
 (provide 'gptel-org-agent-test)
 ;;; gptel-org-agent-test.el ends here
