@@ -381,7 +381,14 @@ Return the indirect buffer."
                    (save-excursion
                      (goto-char heading-pos)
                      (let ((beg (pos-bol))
-                           (end (progn (org-end-of-subtree t) (point))))
+                           (end (progn
+                                  (org-end-of-subtree t)
+                                  ;; Include the trailing newline so that
+                                  ;; response text inserted at point-max
+                                  ;; starts on a new line, not on the
+                                  ;; heading line itself.
+                                  (when (eolp) (forward-char 1))
+                                  (point))))
                        (cons beg end)))))
          (beg (car region))
          (end (cdr region))
@@ -783,10 +790,18 @@ prompt location for the user's next message in the conversation."
                        (inhibit-read-only t))
                   (gptel-org--debug "insert-user-heading: agent heading=%S level=%d tags=%S"
                                     agent-heading agent-level agent-tags)
-                  ;; Check if a user heading already exists as next sibling
+                  ;; Check if a user heading already exists as next sibling.
+                  ;; `org-end-of-subtree' leaves point at the end of the
+                  ;; subtree content, which may be a blank line rather than
+                  ;; the next heading.  Save the insertion point, then skip
+                  ;; forward to find the next heading.
                   (org-end-of-subtree t)
                   (let* ((after-agent (point))
-                         (at-heading (org-at-heading-p))
+                         ;; Skip past whitespace/blank lines to find next heading
+                         (at-heading (progn
+                                       (skip-chars-forward " \t\n")
+                                       (beginning-of-line)
+                                       (org-at-heading-p)))
                          (next-level (when at-heading (org-current-level)))
                          (has-user
                           (and at-heading
