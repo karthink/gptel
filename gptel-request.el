@@ -1067,15 +1067,25 @@ If positions START and END are provided, insert that part of BUF first."
   "Prepare a temp buffer for a gptel request.
 
 For BUF, START, END and BODY-THUNK see `gptel--with-buffer-copy'."
-  (let ((temp-buffer (gptel--temp-buffer " *gptel-prompt*")))
+  (let* ((copy-syms '( gptel-backend gptel--system-message gptel-model
+                       gptel-mode gptel-track-response gptel-track-media
+                       gptel-use-tools gptel-tools gptel-use-curl gptel--schema
+                       gptel-use-context gptel-context gptel--num-messages-to-send
+                       gptel-stream gptel-include-reasoning gptel--request-params
+                       gptel-temperature gptel-max-tokens gptel-cache))
+         ;; Capture the caller's dynamic values BEFORE switching buffers.
+         ;; When gptel-with-preset let-binds gptel-model etc., symbol-value
+         ;; returns the let-bound value.  buffer-local-value on BUF would
+         ;; return the source buffer's (stale) buffer-local, which is wrong
+         ;; for sub-agent delegation.  We prefer the dynamic binding when it
+         ;; differs from BUF's buffer-local (indicating a let-override).
+         (caller-vals (mapcar (lambda (sym)
+                                (cons sym (if (boundp sym) (symbol-value sym))))
+                              copy-syms))
+         (temp-buffer (gptel--temp-buffer " *gptel-prompt*")))
     (with-current-buffer temp-buffer
-      (dolist (sym '( gptel-backend gptel--system-message gptel-model
-                      gptel-mode gptel-track-response gptel-track-media
-                      gptel-use-tools gptel-tools gptel-use-curl gptel--schema
-                      gptel-use-context gptel-context gptel--num-messages-to-send
-                      gptel-stream gptel-include-reasoning gptel--request-params
-                      gptel-temperature gptel-max-tokens gptel-cache))
-        (set (make-local-variable sym) (buffer-local-value sym buf)))
+      (dolist (entry caller-vals)
+        (set (make-local-variable (car entry)) (cdr entry)))
       (when (and start end) (insert-buffer-substring buf start end))
       (setq major-mode (buffer-local-value 'major-mode buf))
       (funcall body-thunk))))
