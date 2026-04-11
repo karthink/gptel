@@ -171,5 +171,65 @@ Sets up gptel-org-tasks-mode and related variables."
     (put 'test-alias :model-id nil)
     (put 'test-alias :description nil)))
 
+;;; Tests for HI keyword state preservation
+
+(ert-deftest gptel-org-tasks-test-hi-keyword-not-changed-to-doing ()
+  "HI keyword should not be transitioned to DOING on send.
+The user keyword (HI) marks user message headings and should be
+excluded from the user TODO -> DOING transition.  Reproduces a bug
+where HI was incorrectly changed to DOING because it matched the
+generic non-AI keyword transition rule."
+  (let ((org-inhibit-startup t)
+        (gptel-org-tasks-todo-keyword "AI-DO")
+        (gptel-org-tasks-doing-keyword "AI-DOING")
+        (gptel-org-tasks-user-doing-keyword "DOING")
+        (gptel-org-tasks-canceled-keyword "CANCELED")
+        (gptel-org-tasks-apply-profile-on-send t)
+        (gptel-org-tasks-change-state-on-send t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "HI"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-tasks--profiles nil)
+        (gptel-org-user-keyword "HI"))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Calculate 2 + 2\n*** AI-DOING Calculate 2 + 2\n**** AI\n2 + 2 = 4\n**** HI Add 6\n")
+      (goto-char (point-min))
+      ;; Navigate to the HI heading
+      (re-search-forward "^\\*\\*\\*\\* HI")
+      (beginning-of-line)
+      (org-back-to-heading t)
+      ;; Verify we're on the HI heading
+      (should (equal (org-get-todo-state) "HI"))
+      ;; Run the transition function
+      (gptel-org-tasks--maybe-transition-and-apply)
+      ;; HI should remain unchanged - not become DOING
+      (should (equal (org-get-todo-state) "HI")))))
+
+(ert-deftest gptel-org-tasks-test-user-todo-transitions-to-doing ()
+  "Regular user TODO keywords should still transition to DOING.
+Ensures the fix for HI preservation doesn't break normal behavior."
+  (let ((org-inhibit-startup t)
+        (gptel-org-tasks-todo-keyword "AI-DO")
+        (gptel-org-tasks-doing-keyword "AI-DOING")
+        (gptel-org-tasks-user-doing-keyword "DOING")
+        (gptel-org-tasks-canceled-keyword "CANCELED")
+        (gptel-org-tasks-apply-profile-on-send t)
+        (gptel-org-tasks-change-state-on-send t)
+        (org-todo-keywords '((sequence "TODO" "AI-DO" "AI-DOING" "DOING" "HI"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-tasks--profiles nil)
+        (gptel-org-user-keyword "HI"))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* TODO My task\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      ;; Verify we're on TODO heading
+      (should (equal (org-get-todo-state) "TODO"))
+      ;; Run the transition function
+      (gptel-org-tasks--maybe-transition-and-apply)
+      ;; TODO should transition to DOING normally
+      (should (equal (org-get-todo-state) "DOING")))))
+
 (provide 'gptel-org-tasks-test)
 ;;; gptel-org-tasks-test.el ends here

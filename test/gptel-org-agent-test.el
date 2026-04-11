@@ -1132,5 +1132,57 @@ Bug produced:
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
+;;; ---- maybe-setup-subtree walk-up from HI heading -------------------------
+
+(ert-deftest gptel-org-agent-test-maybe-setup-subtree-walks-up-from-hi-heading ()
+  "Sending from a HI heading should walk up to parent and reuse agent subtree.
+When `gptel-org-use-todo-keywords' is enabled, a HI heading is a user prompt
+heading.  `maybe-setup-subtree' must walk up to the parent DOING heading
+and reuse the existing agent subtree instead of creating a new one under HI.
+
+Reproduces a bug where HI (having a non-nil TODO state) was treated as a
+parent task heading, causing a new agent subtree to be created underneath it
+at the wrong level.
+
+Expected: reuse *** AI-DOING subtree under ** DOING
+Bug produced: new agent subtree created under **** HI"
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "HI"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Calculate 2 + 2
+*** AI-DOING Calculate 2 + 2                                  :main@agent:
+**** AI Calculate 2 + 2
+2 + 2 = 4
+**** HI Add 6
+")
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-user-keyword "HI")
+             (indirect-buf nil))
+        (unwind-protect
+            (progn
+              ;; Move to the HI heading
+              (goto-char (point-min))
+              (re-search-forward "^\\*\\*\\*\\* HI")
+              (beginning-of-line)
+              (should (equal (org-get-todo-state) "HI"))
+              ;; Call maybe-setup-subtree - should walk up and reuse existing
+              (setq indirect-buf (gptel-org-agent--maybe-setup-subtree))
+              ;; Should have returned an indirect buffer (reusing existing subtree)
+              (should indirect-buf)
+              (should (buffer-live-p indirect-buf))
+              ;; The indirect buffer should be narrowed to the existing agent subtree
+              (with-current-buffer indirect-buf
+                (goto-char (point-min))
+                (should (org-at-heading-p))
+                ;; Should be the existing AI-DOING heading, not a new one
+                (should (equal (org-get-todo-state) "AI-DOING"))
+                (should (= 3 (org-current-level)))))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
 (provide 'gptel-org-agent-test)
 ;;; gptel-org-agent-test.el ends here

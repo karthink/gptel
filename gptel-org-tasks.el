@@ -300,11 +300,13 @@ Returns t if inside an AI task, nil otherwise."
                                 gptel-org-tasks-doing-keyword)
               (message "gptel: Task state changed to %s"
                        gptel-org-tasks-doing-keyword))
-             ;; User TODO -> user DOING (non-AI keywords)
+             ;; User TODO -> user DOING (non-AI keywords, excluding user prompt keyword)
              ((and gptel-org-tasks-user-doing-keyword
                    todo-state
                    (not (string-prefix-p "AI-" todo-state))
-                   (not (equal todo-state gptel-org-tasks-user-doing-keyword)))
+                   (not (equal todo-state gptel-org-tasks-user-doing-keyword))
+                   (not (and (boundp 'gptel-org-user-keyword)
+                             (equal todo-state gptel-org-user-keyword))))
               (gptel-org-tasks--change-todo-state gptel-org-tasks-user-doing-keyword)
               (gptel-org--debug "tasks maybe-transition: user heading transitioned to %s"
                                 gptel-org-tasks-user-doing-keyword)
