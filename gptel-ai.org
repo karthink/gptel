@@ -331,6 +331,7 @@ See feature-specific documents for details:
 - *Handover mechanism*: sub-agent can create a new =AI-DO= sibling heading instead of returning text, enabling triage→specialist escalation workflows.  See [[file:gptel-org-agent-ai.org::*Handover Mechanism]]
 - *Org format instructions*: dynamic prompt injection telling LLM to use org-mode formatting with correct heading levels, examples, and #+SEQ_TODO keywords.  See [[file:gptel-org-agent-ai.org::*Org Format Instructions]]
 - *AI/HI TODO keywords*: role-based conversation structure using TODO keywords instead of tags.  See [[*Discussion Structure: AI/HI Keywords]]
+- *Unified org mode*: =gptel-org-mode= provides a single entry point that enables all org features (subtree context, TODO keywords, task workflow, highlighting)
 
 ** Discussion Structure: AI/HI Keywords
 
@@ -363,7 +364,8 @@ Conversation turns are marked with =AI= and =HI= TODO keywords on org headings i
 
 *** Activation
 
-Set =gptel-org-use-todo-keywords= to =t=.  The system then:
+Enable =gptel-org-mode= (which sets this automatically), or set
+=gptel-org-use-todo-keywords= to =t= manually.  The system then:
 1. Registers =AI= / =HI= in =org-todo-keywords= with colored faces
 2. Instructs the AI to start responses with =* AI <short title>=
 3. Runs the streaming auto-corrector (heading rebase, example escaping, fence conversion)
@@ -422,6 +424,35 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 | [[file:emacs-example-ai.org]] | Example AI task workflow | exists |
 
 * TODOs
+** Unified gptel-org-mode Refactoring
+*** Phase 1: Fix variable rename — DONE
+- Renamed =gptel-org-agent-subtrees= → =gptel-org-subtree-context= in gptel-agent
+- 7 occurrences in =gptel-agent-tools.el=, 1 in =gptel-agent-control.el=
+- The gptel package had already renamed the variable; gptel-agent was stale
+
+*** Phase 2: Create gptel-org-mode wrapper — DONE
+- New =gptel-org-mode= minor mode in =gptel-org.el=
+- Single entry point replaces manual configuration of 4 separate settings
+- Enables: =gptel-mode=, =gptel-org-subtree-context=, =gptel-org-use-todo-keywords=, =gptel-org-tasks-mode=, =gptel-highlight-mode=
+- Non-breaking: all existing variables and modes still work independently
+- Autoloaded via =;;;###autoload= cookie
+
+*** TODO Phase 3: Merge task handling
+- Move =gptel-org-tasks.el= TODO state machine into =gptel-org-agent.el=
+- Both currently handle the same AI-DO/AI-DOING/AI-DONE keywords:
+  - =gptel-org-tasks.el=: user-triggered transitions on =gptel-send=
+  - =gptel-org-agent.el=: LLM-triggered transitions via TodoWrite
+- Unify into one state transition system in =gptel-org-agent.el=
+- Remove =gptel-org-tasks-mode= as a separate mode
+- Profile system (tag→model mapping) moves into =gptel-org-agent.el=
+
+*** TODO Phase 4: Deprecate tag-based mode
+- Default =gptel-org-use-todo-keywords= to =t=
+- Mark =:assistant:= / =:user:= tag-based role detection as deprecated
+- Remove ~20 conditional branches in =gptel-org.el= and =gptel-org-agent.el=
+- Remove =gptel-org-infer-bounds-from-tags= and related code
+- Provide migration guide or automated conversion tool
+
 ** TODO Study feasibility to change TodoWrite tool to use org mode todo
 *** Feasibility Analysis: TodoWrite → Org Mode TODO States
 **** Current State

@@ -2270,6 +2270,53 @@ present in `org-todo-keywords' and have faces registered in
         ;; Refresh org to pick up changes
         (when (and changed (derived-mode-p 'org-mode))
           (org-mode-restart))))))
+;;; Unified Org Mode
+
+;;;###autoload
+(define-minor-mode gptel-org-mode
+  "Unified org-mode integration for gptel.
+
+This mode provides a single entry point for all gptel org-mode
+features.  Enabling it activates:
+
+- `gptel-mode' (core chat functionality)
+- `gptel-org-subtree-context' (agent subtree isolation)
+- `gptel-org-use-todo-keywords' (AI/HI keyword-based role detection)
+- `gptel-org-tasks-mode' (AI-DO/DOING/DONE state machine)
+- `gptel-highlight-mode' (visual response highlighting)
+
+Use this instead of manually configuring individual org-mode
+settings.  All features can still be customized via their
+respective variables after activation.
+
+This mode is only intended for `org-mode' buffers."
+  :lighter " GPT-Org"
+  :group 'gptel
+  (if gptel-org-mode
+      (progn
+        (unless (derived-mode-p 'org-mode)
+          (setq gptel-org-mode nil)
+          (user-error "`gptel-org-mode' can only be used in org-mode buffers"))
+        ;; Core chat mode
+        (unless gptel-mode (gptel-mode 1))
+        ;; Org-specific settings
+        (setq-local gptel-org-subtree-context t)
+        (setq-local gptel-org-use-todo-keywords t)
+        ;; Task workflow
+        (require 'gptel-org-tasks nil t)
+        (when (fboundp 'gptel-org-tasks-mode)
+          (gptel-org-tasks-mode 1))
+        ;; Visual highlighting
+        (when (fboundp 'gptel-highlight-mode)
+          (gptel-highlight-mode 1)))
+    ;; Disable chain
+    (when (fboundp 'gptel-org-tasks-mode)
+      (gptel-org-tasks-mode -1))
+    (when (fboundp 'gptel-highlight-mode)
+      (gptel-highlight-mode -1))
+    (kill-local-variable 'gptel-org-subtree-context)
+    (kill-local-variable 'gptel-org-use-todo-keywords)))
+
 (provide 'gptel-org)
 ;;; gptel-org.el ends here
 
