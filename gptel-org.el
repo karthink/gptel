@@ -86,6 +86,12 @@ Plist with keys:
   :in-example   - non-nil when inside #+begin_example block
   :in-src       - non-nil when inside #+begin_src or ``` block")
 
+(defvar-local gptel-org--response-start nil
+  "Marker for the start of the current AI response in this buffer.
+Set by `gptel-org-agent--transform-redirect' before streaming begins.
+Used by the auto-corrector to skip past existing content from prior
+response cycles when initializing on a follow-up request.")
+
 ;; Debug support
 (defvar gptel-org-debug nil
   "When non-nil, output debug messages for subtree context operations.
@@ -1926,16 +1932,27 @@ example blocks, and convert markdown fences in real-time."
     (unless (plist-get gptel-org--corrector-state :active)
       (let ((ref-level (gptel-org--compute-response-level)))
         (when ref-level
-          (let ((marker (make-marker))
-                (start (save-excursion
-                         (goto-char (point-min))
-                         ;; In agent indirect buffers, point-min is the
-                         ;; agent heading (e.g. *** AI-DOING :main@agent:).
-                         ;; Skip past it so the corrector doesn't rebase it.
-                         (if (and (org-at-heading-p)
-                                  (gptel-org--heading-has-agent-tag-p))
-                             (progn (forward-line 1) (point))
-                           (point)))))
+          (let* ((marker (make-marker))
+                 (start
+                  (cond
+                   ;; When gptel-org--response-start is set (by
+                   ;; transform-redirect), use it to skip past existing
+                   ;; content from prior response cycles.  Without this,
+                   ;; a follow-up request would re-process already-rebased
+                   ;; headings, doubling their level offset.
+                   ((and (markerp gptel-org--response-start)
+                         (marker-position gptel-org--response-start))
+                    (marker-position gptel-org--response-start))
+                   ;; Fallback: skip past the agent heading at point-min.
+                   (t (save-excursion
+                        (goto-char (point-min))
+                        ;; In agent indirect buffers, point-min is the
+                        ;; agent heading (e.g. *** AI-DOING :main@agent:).
+                        ;; Skip past it so the corrector doesn't rebase it.
+                        (if (and (org-at-heading-p)
+                                 (gptel-org--heading-has-agent-tag-p))
+                            (progn (forward-line 1) (point))
+                          (point)))))))
             (set-marker marker start)
             (setq gptel-org--corrector-state
                   (list :active t
@@ -2043,7 +2060,11 @@ Runs on `gptel-post-response-functions'."
     ;; Clean up
     (when-let* ((marker (plist-get gptel-org--corrector-state :last-pos)))
       (set-marker marker nil))
-    (setq gptel-org--corrector-state nil)))
+    (setq gptel-org--corrector-state nil))
+  ;; Clean up response-start marker
+  (when (markerp gptel-org--response-start)
+    (set-marker gptel-org--response-start nil)
+    (setq gptel-org--response-start nil)))
 
 
 

@@ -1132,6 +1132,174 @@ Bug produced:
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
+(ert-deftest gptel-org-agent-test-insert-user-heading-level-after-auto-correct ()
+  "HI heading level should be correct after auto-corrector rebases AI headings.
+Reproduces the real post-response sequence: auto-correct processes the AI
+response (rebasing level-1 headings to agent-level+1), then cleanup runs,
+then insert-user-heading runs.
+
+Expected structure:
+  ,** DOING Calculate 2 + 2            <- level 2 (parent)
+  ,*** AI-DOING Calculate 2 + 2        <- level 3 (agent heading, UNCHANGED)
+  ,**** AI Calculate 2 + 2             <- level 4 (rebased from * AI)
+  ,**** HI                             <- level 4 (user = agent + 1, CORRECT)"
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "HI"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Calculate 2 + 2\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-user-keyword "HI")
+             (gptel-org-assistant-keyword "AI")
+             (base-buf (current-buffer))
+             (marker (gptel-org-agent--create-subtree "main"))
+             (indirect-buf nil))
+        (unwind-protect
+            (progn
+              (setq indirect-buf
+                    (gptel-org-agent--open-indirect-buffer base-buf marker))
+              (with-current-buffer indirect-buf
+                ;; Simulate AI streaming: the AI writes at level 1 as instructed.
+                ;; The auto-corrector rebases these in real-time.
+                (goto-char (point-max))
+                (insert "* AI Calculate 2 + 2\n4.\n")
+                ;; Run auto-corrector on first chunk (initializes + processes)
+                (let ((gptel-org--corrector-state nil))
+                  (gptel-org--auto-correct-stream)
+                  ;; Simulate post-response hook sequence:
+                  ;; Priority 2: auto-correct-cleanup (processes remaining text)
+                  (gptel-org--auto-correct-cleanup nil nil)
+                  ;; Priority 95: insert-user-heading
+                  (gptel-org-agent--insert-user-heading nil nil)))
+              ;; Verify structure in base buffer
+              (with-current-buffer base-buf
+                (goto-char (point-min))
+                ;; Agent heading must still be level 3 (NOT rebased)
+                (should (re-search-forward "AI-DOING Calculate 2 \\+ 2" nil t))
+                (goto-char (match-beginning 0))
+                (beginning-of-line)
+                (should (= 3 (org-current-level)))
+                ;; AI response heading should be level 4 (rebased from 1)
+                (should (re-search-forward "AI Calculate 2 \\+ 2" nil t))
+                (goto-char (match-beginning 0))
+                (beginning-of-line)
+                (should (= 4 (org-current-level)))
+                ;; HI heading should be level 4 (agent-level + 1)
+                (should (re-search-forward "^\\*+ HI" nil t))
+                (goto-char (match-beginning 0))
+                (should (= 4 (org-current-level)))))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
+(ert-deftest gptel-org-agent-test-insert-user-heading-correct-after-second-send ()
+  "HI heading level is correct when user sends again from existing HI heading.
+Reproduces the exact bug scenario: after the first response creates a correct
+HI heading and the user types into it and sends again, the SECOND response
+cycle should also produce a correct-level HI heading.
+
+Scenario:
+1. User sends from ** DOING Calculate 2 + 2
+2. Agent creates *** AI-DOING, AI responds with `4.', HI heading created at level 4
+3. User types `+ 5' in the HI heading -> **** HI + 5
+4. User sends again from **** HI + 5
+5. maybe-setup-subtree reuses existing *** AI-DOING subtree
+6. Agent responds with `9.'
+7. insert-user-heading should create **** HI (level 4)
+
+Bug: the second HI heading appeared at level 7 (******* HI) instead of 4."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "HI"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      ;; Start with the state AFTER the first response + HI heading + user edit.
+      ;; The AI response heading was rebased from * AI to **** AI by the corrector.
+      (insert "\
+** DOING Calculate 2 + 2
+*** AI-DOING Calculate 2 + 2                                  :main@agent:
+**** AI Calculate 2 + 2
+4.
+**** HI + 5
+")
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-user-keyword "HI")
+             (gptel-org-assistant-keyword "AI")
+             (base-buf (current-buffer))
+             (indirect-buf nil))
+        (unwind-protect
+            (progn
+              ;; Simulate maybe-setup-subtree: find the existing agent subtree
+              ;; and open a fresh indirect buffer for it.
+              (goto-char (point-min))
+              (re-search-forward "^\\*\\*\\* AI-DOING")
+              (beginning-of-line)
+              (let ((heading-marker (point-marker)))
+                (setq indirect-buf
+                      (gptel-org-agent--open-indirect-buffer base-buf heading-marker)))
+              ;; Now the indirect buffer is narrowed to the *** AI-DOING subtree.
+              ;; The corrector must NOT re-process the already-rebased
+              ;; **** AI heading from the first response.
+              ;;
+              ;; In real usage, transform-redirect sets :position to
+              ;; (point-max) in the indirect buffer.  The AI response is
+              ;; streamed at that position (after **** HI + 5).
+              ;; The auto-corrector initializes with start = forward-line 1
+              ;; from point-min (the agent heading), which means it would
+              ;; try to re-process **** AI (already at level 4) and rebase
+              ;; it to level 7, corrupting the subtree.
+              (with-current-buffer indirect-buf
+                ;; Set response-start before inserting, just as
+                ;; transform-redirect does before streaming begins.
+                (goto-char (point-max))
+                (setq-local gptel-org--response-start (point-marker))
+                (insert "* AI Result\n9.\n")
+                ;; Run auto-corrector (initializes + processes)
+                (let ((gptel-org--corrector-state nil))
+                  (gptel-org--auto-correct-stream)
+                  ;; Simulate post-response hook sequence:
+                  ;; Priority 2: cleanup
+                  (gptel-org--auto-correct-cleanup nil nil)
+                  ;; Priority 95: insert-user-heading
+                  (gptel-org-agent--insert-user-heading nil nil)))
+              ;; Verify in base buffer
+              (with-current-buffer base-buf
+                (goto-char (point-min))
+                ;; Agent heading must STILL be level 3
+                (should (re-search-forward "AI-DOING Calculate 2 \\+ 2" nil t))
+                (goto-char (match-beginning 0))
+                (beginning-of-line)
+                (should (= 3 (org-current-level)))
+                ;; The FIRST AI response heading (from previous cycle)
+                ;; must still be level 4, NOT re-rebased to level 7.
+                (should (re-search-forward "AI Calculate 2 \\+ 2" nil t))
+                (goto-char (match-beginning 0))
+                (beginning-of-line)
+                (should (= 4 (org-current-level)))
+                ;; The original HI + 5 heading must still be level 4
+                (should (re-search-forward "HI \\+ 5" nil t))
+                (goto-char (match-beginning 0))
+                (beginning-of-line)
+                (should (= 4 (org-current-level)))
+                ;; The new AI response heading should be level 4
+                (should (re-search-forward "AI Result" nil t))
+                (goto-char (match-beginning 0))
+                (beginning-of-line)
+                (should (= 4 (org-current-level)))
+                ;; The NEW HI heading (second one) should also be level 4.
+                ;; Find the LAST HI heading in the buffer.
+                (goto-char (point-max))
+                (should (re-search-backward "^\\*+ HI " nil t))
+                (should (= 4 (org-current-level)))))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
 ;;; ---- maybe-setup-subtree walk-up from HI heading -------------------------
 
 (ert-deftest gptel-org-agent-test-maybe-setup-subtree-walks-up-from-hi-heading ()

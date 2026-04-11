@@ -597,6 +597,9 @@ indirect buffer (identified by `buffer-base-buffer' returning non-nil)."
             ;; Ensure gptel-mode is active for proper response formatting
             (unless (bound-and-true-p gptel-mode)
               (setq-local gptel-mode t))
+            ;; Mark where this response starts so the auto-corrector can
+            ;; skip past existing content from prior response cycles.
+            (setq-local gptel-org--response-start (point-marker))
             ;; Redirect the FSM's response target
             (plist-put info :buffer indirect-buf)
             (plist-put info :position pos-marker)
