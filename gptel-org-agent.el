@@ -1440,49 +1440,69 @@ INFO is the FSM info plist."
       ;; change PENDING→ALLOWED from either buffer.
       (gptel-org-agent--ensure-tool-confirm-hook buf)
       (save-excursion
-        (goto-char start-marker)
-        ;; Navigate to enclosing heading to determine level
-        (unless (org-at-heading-p)
-          (ignore-errors (org-back-to-heading t)))
-        (when (org-at-heading-p)
-          (let* ((parent-level (org-current-level))
-                 (child-level (1+ parent-level))
-                 (stars (make-string child-level ?*))
-                 (tool-names (mapconcat
-                              (lambda (tc)
-                                (gptel-tool-name (car tc)))
-                              tool-calls ", "))
-                 (inhibit-read-only t))
-            ;; Move to end of current subtree content (before any child subtrees)
-            (org-end-of-subtree t)
-            (unless (bolp) (insert "\n"))
-            (let ((heading-pos (point)))
-              ;; Insert the PENDING heading
-              (insert (format "%s %s Requesting permission to run: %s\n"
-                              stars pending-kw tool-names))
-              ;; Insert tool call details as body
-              (dolist (tc tool-calls)
-                (let* ((tool-spec (car tc))
-                       (arg-plist (cadr tc))
-                       (arg-values (gptel--map-tool-args tool-spec arg-plist)))
-                  (insert (gptel--format-tool-call
-                           (gptel-tool-name tool-spec) arg-values))))
-              (insert "\n")
-              ;; Store the pending ID as an org property on the heading
-              (save-excursion
-                (goto-char heading-pos)
-                (org-set-property "GPTEL_PENDING_ID" pending-id))
-              ;; Store tool call data in global hash table
-              (puthash pending-id
-                       (list :tool-calls tool-calls
-                             :info info
-                             :buffer buf)
-                       gptel-org-agent--pending-tool-calls)
-              ;; Mark tool-pending so the FSM knows we're waiting
-              (plist-put info :tool-pending t)
-              (gptel-org--debug
-               "org-agent tool-confirm: created PENDING heading for %s (id=%s)"
-               tool-names pending-id))))))))
+        ;; Compute the PENDING heading level from the agent heading at
+        ;; point-min of the narrowed indirect buffer.  We cannot rely on
+        ;; start-marker (:position) because it drifts to the end of all
+        ;; streamed content (both start-marker and tracking-marker share
+        ;; the same initial position with insertion-type t, so both
+        ;; advance as text is inserted).  Using org-back-to-heading from
+        ;; start-marker would find the AI response heading (which may
+        ;; still be at an uncorrected level if the auto-corrector hasn't
+        ;; run yet), producing the wrong child level.
+        ;;
+        ;; Instead, compute the response level from the agent heading
+        ;; (always at point-min in the narrowed buffer) and add 1 for
+        ;; the PENDING heading, which should be a child of the AI
+        ;; response heading.
+        (let* ((response-level (gptel-org--compute-response-level))
+               (child-level (if response-level
+                                (1+ response-level)
+                              ;; Fallback: navigate from start-marker
+                              (goto-char start-marker)
+                              (unless (org-at-heading-p)
+                                (ignore-errors (org-back-to-heading t)))
+                              (1+ (or (and (org-at-heading-p)
+                                           (org-current-level))
+                                      1))))
+               (stars (make-string child-level ?*))
+               (tool-names (mapconcat
+                            (lambda (tc)
+                              (gptel-tool-name (car tc)))
+                            tool-calls ", "))
+               (inhibit-read-only t))
+          ;; Position at the end of the buffer content for insertion.
+          ;; Use start-marker (which has drifted to end of content) as
+          ;; the insertion point, since that's where new content should
+          ;; go — after the AI response text.
+          (goto-char (or (plist-get info :tracking-marker) start-marker))
+          (unless (bolp) (insert "\n"))
+          (let ((heading-pos (point)))
+            ;; Insert the PENDING heading
+            (insert (format "%s %s Requesting permission to run: %s\n"
+                            stars pending-kw tool-names))
+            ;; Insert tool call details as body
+            (dolist (tc tool-calls)
+              (let* ((tool-spec (car tc))
+                     (arg-plist (cadr tc))
+                     (arg-values (gptel--map-tool-args tool-spec arg-plist)))
+                (insert (gptel--format-tool-call
+                         (gptel-tool-name tool-spec) arg-values))))
+            (insert "\n")
+            ;; Store the pending ID as an org property on the heading
+            (save-excursion
+              (goto-char heading-pos)
+              (org-set-property "GPTEL_PENDING_ID" pending-id))
+            ;; Store tool call data in global hash table
+            (puthash pending-id
+                     (list :tool-calls tool-calls
+                           :info info
+                           :buffer buf)
+                     gptel-org-agent--pending-tool-calls)
+            ;; Mark tool-pending so the FSM knows we're waiting
+            (plist-put info :tool-pending t)
+            (gptel-org--debug
+             "org-agent tool-confirm: created PENDING heading for %s (id=%s)"
+             tool-names pending-id)))))))
 
 (defun gptel-org-agent--accept-tool-calls (tool-calls info)
   "Accept and run TOOL-CALLS with explicit INFO.
