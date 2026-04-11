@@ -52,6 +52,7 @@
 (defvar gptel-org-infer-bounds-from-tags)
 (defvar gptel-org-subtree-context)
 (defvar gptel-org--org-format-response)
+(defvar gptel-org--corrector-state)
 
 ;; Forward declarations for variables defined in org.el
 ;; org-state is dynamically bound by org-todo for hook functions
@@ -1530,23 +1531,24 @@ INFO is the FSM info plist."
         ;; advance as text is inserted).  Using org-back-to-heading from
         ;; start-marker would find the AI response heading (which may
         ;; still be at an uncorrected level if the auto-corrector hasn't
-        ;; run yet), producing the wrong child level.
+        ;; run yet), producing the wrong level.
         ;;
         ;; Instead, compute the response level from the agent heading
-        ;; (always at point-min in the narrowed buffer) and add 1 for
-        ;; the PENDING heading, which should be a child of the AI
-        ;; response heading.
+        ;; (always at point-min in the narrowed buffer).  The PENDING
+        ;; heading is a sibling of the AI response heading — both are
+        ;; direct children of the agent heading — so use response-level
+        ;; directly (agent-level + 1), not response-level + 1.
         (let* ((response-level (gptel-org--compute-response-level))
-               (child-level (if response-level
-                                (1+ response-level)
-                              ;; Fallback: navigate from start-marker
-                              (goto-char start-marker)
-                              (unless (org-at-heading-p)
-                                (ignore-errors (org-back-to-heading t)))
-                              (1+ (or (and (org-at-heading-p)
-                                           (org-current-level))
-                                      1))))
-               (stars (make-string child-level ?*))
+               (pending-level (if response-level
+                                  response-level
+                                ;; Fallback: navigate from start-marker
+                                (goto-char start-marker)
+                                (unless (org-at-heading-p)
+                                  (ignore-errors (org-back-to-heading t)))
+                                (or (and (org-at-heading-p)
+                                         (org-current-level))
+                                    1)))
+               (stars (make-string pending-level ?*))
                (tool-names (mapconcat
                             (lambda (tc)
                               (gptel-tool-name (car tc)))
@@ -1582,6 +1584,16 @@ INFO is the FSM info plist."
                      gptel-org-agent--pending-tool-calls)
             ;; Mark tool-pending so the FSM knows we're waiting
             (plist-put info :tool-pending t)
+            ;; Advance the auto-corrector's :last-pos past the PENDING
+            ;; heading so it won't rebase its level.  The corrector treats
+            ;; every heading it encounters as AI-written content and
+            ;; applies a level offset — but the PENDING heading is
+            ;; inserted at the correct absolute level by this function.
+            (when-let* ((state gptel-org--corrector-state)
+                        ((plist-get state :active))
+                        (last-pos (plist-get state :last-pos))
+                        ((markerp last-pos)))
+              (set-marker last-pos (point)))
             (gptel-org--debug
              "org-agent tool-confirm: created PENDING heading for %s (id=%s)"
              tool-names pending-id)))))))
