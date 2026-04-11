@@ -1135,26 +1135,34 @@ Tasks heading."
             (insert stars " Tasks\n")
             pos)))))
 
-(defun gptel-org-agent--collect-todo-headings (level tasks-pos)
-  "Collect existing todo headings at LEVEL under the Tasks heading at TASKS-POS.
-Returns an alist of (CONTENT . POSITION) where CONTENT is the heading
-text stripped of the TODO keyword and POSITION is the beginning of the
-heading line."
-  (let (result)
+(defun gptel-org-agent--collect-todo-headings (level parent-pos)
+  "Collect existing todo headings at LEVEL under PARENT-POS.
+Only headings with a TODO keyword from `gptel-org-agent-status-keyword-map'
+are collected.  Returns an alist of (CONTENT . MARKER) where CONTENT
+is the heading text stripped of the TODO keyword and MARKER is a marker
+at the beginning of the heading line.  Markers are used instead of
+positions to survive subsequent buffer modifications (e.g. keyword
+changes that shift text)."
+  (let ((todo-keywords (mapcar #'cdr gptel-org-agent-status-keyword-map))
+        result)
     (save-excursion
-      (goto-char tasks-pos)
-      (let ((tasks-end (save-excursion (org-end-of-subtree t) (point))))
+      (goto-char parent-pos)
+      (let ((parent-end (save-excursion (org-end-of-subtree t) (point))))
         (forward-line 1)
-        (while (and (< (point) tasks-end)
-                    (re-search-forward org-heading-regexp tasks-end t))
+        (while (and (< (point) parent-end)
+                    (re-search-forward org-heading-regexp parent-end t))
           (beginning-of-line)
           (when (= (org-current-level) level)
             (let* ((components (org-heading-components))
                    ;; org-heading-components returns:
                    ;; (level reduced-level todo priority heading tags)
+                   (todo-kw (nth 2 components))
                    (heading-text (nth 4 components)))
-              (when heading-text
-                (push (cons (org-trim heading-text) (point)) result))))
+              (when (and heading-text
+                         (member todo-kw todo-keywords))
+                (push (cons (org-trim heading-text)
+                            (copy-marker (point)))
+                      result))))
           (forward-line 1))))
     (nreverse result)))
 
@@ -1168,11 +1176,11 @@ text replacement if the keyword is not in org's known set."
         ;; org-todo with a specific keyword argument sets it directly
         (org-todo keyword)))))
 
-(defun gptel-org-agent--create-todo-heading (level content keyword tasks-pos)
+(defun gptel-org-agent--create-todo-heading (level content keyword parent-pos)
   "Create a new TODO heading at LEVEL with CONTENT and KEYWORD.
-The heading is appended under the Tasks subtree at TASKS-POS."
+The heading is appended at the end of the subtree at PARENT-POS."
   (save-excursion
-    (goto-char tasks-pos)
+    (goto-char parent-pos)
     (org-end-of-subtree t)
     (unless (bolp) (insert "\n"))
     (let ((stars (make-string level ?*)))
@@ -1190,6 +1198,30 @@ The heading is appended under the Tasks subtree at TASKS-POS."
                                   (min (1+ (point)) (point-max))))))
         (delete-region beg end)))))
 
+
+(defun gptel-org-agent--redirect-markers-to-heading (heading-pos)
+  "Move the FSM position and tracking markers to end of heading at HEADING-POS.
+This redirects subsequent AI response streaming to appear under the
+heading at HEADING-POS (typically the in_progress todo heading).
+
+Accesses the FSM via `gptel--fsm-last' which is buffer-local."
+  (when (and (boundp 'gptel--fsm-last) gptel--fsm-last)
+    (let* ((info (gptel-fsm-info gptel--fsm-last))
+           (pos-marker (plist-get info :position))
+           (tracking-marker (plist-get info :tracking-marker))
+           (target (save-excursion
+                     (goto-char heading-pos)
+                     (org-end-of-subtree t)
+                     (point))))
+      (gptel-org--debug
+       "redirect-markers: heading-pos=%d target=%d pos-marker=%S tracking=%S"
+       heading-pos target
+       (and (markerp pos-marker) (marker-position pos-marker))
+       (and (markerp tracking-marker) (marker-position tracking-marker)))
+      (when (markerp pos-marker)
+        (move-marker pos-marker target))
+      (when (markerp tracking-marker)
+        (move-marker tracking-marker target)))))
 (defun gptel-org-agent--write-todo-org (todos)
   "Display TODOS as org TODO headings in the agent subtree.
 
@@ -1199,7 +1231,13 @@ mapped via `gptel-org-agent-status-keyword-map' (default: AI-DO/AI-DOING/AI-DONE
 TODOS is a list of plists with :content, :activeForm, and :status.
 This function is idempotent: calling it multiple times with the same
 data produces the same result.  It handles adding new tasks, updating
-existing task states, and removing tasks that are no longer in the list."
+existing task states, and removing tasks that are no longer in the list.
+
+Todo headings are created directly under the agent heading (no
+intermediate \"Tasks\" container).  When a todo transitions to
+in_progress, the FSM's position and tracking markers are moved to the
+end of that heading's subtree so subsequent AI responses stream under
+the active task heading."
   (gptel-org-agent--ensure-todo-keywords)
   (when (vectorp todos) (setq todos (append todos nil)))
   (gptel-org--debug "write-todo-org: called with %d todos in buffer %S (base: %S)"
@@ -1217,15 +1255,15 @@ existing task states, and removing tasks that are no longer in the list."
     (if (not (org-at-heading-p))
         (gptel-org--debug "write-todo-org: BAILING - no heading context at point %d" (point))
       (let* ((agent-level (org-current-level))
-             (tasks-level (1+ agent-level))
-             (todo-level  (+ 2 agent-level))
-             (tasks-pos (gptel-org-agent--find-or-create-tasks-heading tasks-level)))
-        (gptel-org--debug "write-todo-org: agent-level=%d tasks-level=%d todo-level=%d tasks-pos=%d"
-                          agent-level tasks-level todo-level tasks-pos)
-        ;; Collect existing headings under the Tasks heading
+             (todo-level  (1+ agent-level))
+             (agent-pos   (point)))
+        (gptel-org--debug "write-todo-org: agent-level=%d todo-level=%d agent-pos=%d"
+                          agent-level todo-level agent-pos)
+        ;; Collect existing todo headings directly under the agent heading
         (let ((existing-headings
-               (gptel-org-agent--collect-todo-headings todo-level tasks-pos))
-              (seen-contents (make-hash-table :test 'equal)))
+               (gptel-org-agent--collect-todo-headings todo-level agent-pos))
+              (seen-contents (make-hash-table :test 'equal))
+              in-progress-pos)
           (gptel-org--debug "write-todo-org: %d existing headings found"
                             (length existing-headings))
           ;; Update or create todo headings
@@ -1242,18 +1280,40 @@ existing task states, and removing tasks that are no longer in the list."
                                       content keyword (cdr existing))
                     (save-excursion
                       (goto-char (cdr existing))
-                      (gptel-org-agent--set-todo-keyword keyword)))
-                ;; Create new heading under Tasks
-                (gptel-org--debug "write-todo-org: creating %S %S at tasks-pos=%d"
-                                  keyword content tasks-pos)
+                      (gptel-org-agent--set-todo-keyword keyword))
+                    (when (equal status "in_progress")
+                      (setq in-progress-pos (cdr existing))))
+                ;; Create new heading under agent
+                (gptel-org--debug "write-todo-org: creating %S %S at agent-pos=%d"
+                                  keyword content agent-pos)
                 (gptel-org-agent--create-todo-heading
-                 todo-level content keyword tasks-pos))))
+                 todo-level content keyword agent-pos)
+                (when (equal status "in_progress")
+                  ;; Find the just-created heading position
+                  (setq in-progress-pos
+                        (save-excursion
+                          (goto-char agent-pos)
+                          (let ((end (save-excursion
+                                       (org-end-of-subtree t) (point))))
+                            (catch 'found
+                              (while (re-search-forward
+                                      org-heading-regexp end t)
+                                (beginning-of-line)
+                                (when (and (= (org-current-level) todo-level)
+                                           (let ((h (nth 4 (org-heading-components))))
+                                             (equal (and h (org-trim h)) content)))
+                                  (throw 'found (point)))
+                                (forward-line 1))))))))))
           ;; Remove headings not in the current todo list.
           ;; Process in reverse order to avoid position shifts.
           (dolist (existing (reverse existing-headings))
             (unless (gethash (car existing) seen-contents)
               (gptel-org--debug "write-todo-org: removing %S" (car existing))
-              (gptel-org-agent--remove-todo-heading (cdr existing))))))))
+              (gptel-org-agent--remove-todo-heading (cdr existing))))
+          ;; Move FSM markers into the in_progress heading so subsequent
+          ;; AI text streams under it.
+          (when in-progress-pos
+            (gptel-org-agent--redirect-markers-to-heading in-progress-pos))))))
   (gptel-org--debug "write-todo-org: done, buffer size now %d" (buffer-size))
   t)
 
