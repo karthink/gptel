@@ -137,7 +137,7 @@ Handlers: =gptel-request--handlers= (state→function alist).
 | =gptel-org-cache.el= | ~870 | Context caching: hash-based invalidation, tag-based auto-caching |
 | =gptel-org-tasks.el= | ~390 | AI task workflow: TODO transitions, model profiles via tags |
 | =gptel-org-archive.el= | ~590 | Archive with AI summaries: git tracking, two-phase workflow |
-| =gptel-org-agent.el= | ~1240 | Agent subtrees: indirect buffers, sub-agent delegation, format instructions, TodoWrite |
+| =gptel-org-agent.el= | ~1340 | Agent subtrees: indirect buffers, sub-agent delegation, format instructions, TodoWrite with FSM marker redirection |
 
 ** Other
 
@@ -426,15 +426,22 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 *** Feasibility Analysis: TodoWrite → Org Mode TODO States
 **** Current State
 
-*Already implemented (Phase 4):* =gptel-org-agent--write-todo-org= in =gptel-org-agent.el= already converts TodoWrite calls into org headings when =gptel-org-agent-subtrees= is enabled. The mapping is:
+*Implemented:* =gptel-org-agent--write-todo-org= in =gptel-org-agent.el= converts TodoWrite calls into org headings when =gptel-org-agent-subtrees= is enabled.  The configurable mapping (=gptel-org-agent-status-keyword-map=) defaults to:
 
 | TodoWrite status | Org keyword |
 |---|---|
-| =pending= | PENDING |
-| =in_progress= | RUNNING |
-| =completed= | DONE |
+| =pending= | =AI-DO= |
+| =in_progress= | =AI-DOING= |
+| =completed= | =AI-DONE= |
 
-*The gap:* The current implementation uses its own keyword set (=PENDING/RUNNING/DONE/ERROR/ABORTED=) which is completely separate from the document's =SEQ_TODO= states (=TODO/AI-DO/AI-DOING/AI-DONE/FEEDBACK/etc.=). The two systems don't talk to each other.
+*Heading structure:* Todo headings are created as direct children of the agent heading (no intermediate "Tasks" container).  When a todo transitions to =in_progress=, the FSM's position and tracking markers are redirected to the end of that heading's subtree via =gptel-org-agent--redirect-markers-to-heading=.  This ensures subsequent AI responses (text + tool results) stream under the active task heading rather than appearing as a separate block.
+
+*Key functions:*
+- =gptel-org-agent--write-todo-org= — creates/updates todo headings, triggers marker redirection
+- =gptel-org-agent--redirect-markers-to-heading= — moves FSM =:position= and =:tracking-marker= into the in_progress heading via =gptel--fsm-last=
+- =gptel-org-agent--collect-todo-headings= — collects headings using markers (not positions) to survive keyword-length changes during updates
+
+*Remaining gap:* Phases B–D below (lifecycle integration, agenda, scheduler) are not yet implemented.
 
 **** What the Referenced Tasks Propose
 
@@ -450,16 +457,15 @@ The vision in the two draft tasks is:
 
 **** Feasibility Assessment
 
-***** DONE ✅ Highly Feasible (Low effort)
+***** DONE ✅ Highly Feasible (Low effort) — IMPLEMENTED
 
 *Map TodoWrite statuses to document SEQ_TODO keywords:*
-- Change =gptel-org-agent--status-to-keyword= to map to =AI-DO/AI-DOING/AI-DONE= instead of =PENDING/RUNNING/DONE=
-- Make the mapping configurable or auto-detect from the buffer's =org-todo-keywords=
-- This is a ~20 line change in =gptel-org-agent.el=
-
-*Remove =gptel-org-agent-todo-keywords= defcustom* and use the document's own keywords:
-- Instead of injecting a parallel keyword sequence, respect whatever =#+SEQ_TODO= the document defines
-- The =--ensure-todo-keywords= function becomes unnecessary or simplified
+- =gptel-org-agent--status-to-keyword= maps via configurable =gptel-org-agent-status-keyword-map=
+- Default: =pending→AI-DO=, =in_progress→AI-DOING=, =completed→AI-DONE=
+- Heading structure: todo items are direct children of agent heading (no "Tasks" container)
+- FSM marker redirection: =gptel-org-agent--redirect-markers-to-heading= moves =:position= and =:tracking-marker= into the =in_progress= heading so AI work streams under it
+- =gptel-org-agent--collect-todo-headings= uses markers instead of positions to survive keyword-length changes during =org-todo= calls
+- Commit: =903ad6c=
 
 ***** ✅ Feasible (Medium effort)
 
@@ -509,10 +515,12 @@ The vision in the two draft tasks is:
 
 **** Recommended Implementation Plan
 
-*Phase A — Keyword alignment* (small, safe):
-1. Make =gptel-org-agent--status-to-keyword= configurable to map to the document's own TODO states
-2. Default mapping: =pending→AI-DO=, =in_progress→AI-DOING=, =completed→AI-DONE=
-3. Keep =PENDING/RUNNING/DONE= as fallback when document has no =AI-*= keywords
+*Phase A — Keyword alignment + heading structure* (DONE):
+1. ✅ =gptel-org-agent-status-keyword-map= provides configurable mapping
+2. ✅ Default: =pending→AI-DO=, =in_progress→AI-DOING=, =completed→AI-DONE=
+3. ✅ Removed "Tasks" container heading; todos are direct children of agent heading
+4. ✅ FSM markers redirect into =in_progress= heading for correct nesting
+5. ✅ Markers used instead of positions in =collect-todo-headings= for robustness
 
 *Phase B — Lifecycle integration* (medium):
 1. Set =AI-DO= on agent subtree creation
@@ -530,10 +538,10 @@ The vision in the two draft tasks is:
 
 **** Conclusion
 
-*High feasibility overall.* The infrastructure is 80% there — =gptel-org-agent.el= already creates org headings with TODO states from TodoWrite. The main work is:
-- Aligning keyword sets (trivial)
-- Adding FSM state → org TODO transitions (moderate)  
-- The scheduler is the only genuinely complex piece, and it can be deferred
+*High feasibility overall.* Phase A (keyword alignment + heading structure + FSM marker redirection) is complete.  Remaining work:
+- Phase B: FSM state → org TODO lifecycle transitions (moderate)
+- Phase C: Agenda integration (config only)
+- Phase D: Queue/scheduler (complex, defer)
 
 * AI-DONE Implement how main and delegated agent discussion context is organized in the org mode
 
@@ -547,11 +555,12 @@ the feature-specific reference document.
 | 1 | Recursive indirect buffer pattern | Done |
 | 2 | Sub-agent subtree writing | Done |
 | 3 | Control buffer for tool requests (prompt transform redirect) | Done |
-| 4 | TodoWrite → native org TODO cycling | Done |
+| 4 | TodoWrite → native org TODO cycling + marker redirection | Done |
 | 5 | Advisor agent integration | Done |
 
 Key commits: =825073a=, =6d3a663=, =3f87fd5=, =cd78a2c=, =50e31ba=, =2dfd1c0=,
-=441a0b0=, =ff0257f=, =ad8cd43=, =1b89c1d=, =a41b57f=, =2788660=, =582c987=
+=441a0b0=, =ff0257f=, =ad8cd43=, =1b89c1d=, =a41b57f=, =2788660=, =582c987=,
+=903ad6c=
 
 ** TODO Delegated sub-agents don't inherit heading-specific GPTEL_PRESET subagent-models
 
