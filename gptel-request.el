@@ -1306,7 +1306,7 @@ valid JSON unless NO-JSON is t.
 
 Log entries are org headings grouped by request cycle:
 - A top-level heading is created for each request cycle
-- Individual entries (headers, body, etc.) are sub-headings
+- Individual entries (headers, response, etc.) are sub-headings
 - Non-request entries (tool calls, presets) get their own headings"
   (with-current-buffer (get-buffer-create gptel--log-buffer-name)
     (set-buffer-multibyte t)
@@ -1315,10 +1315,9 @@ Log entries are org headings grouped by request cycle:
       (setq-local buffer-read-only nil))
     (let* ((type (or type "log"))
            (level-tag (if (eq gptel-log-level 'debug) "debug" "info"))
-           (request-start-p (member type '("request headers" "request body")))
+           (request-start-p (string= type "request headers"))
            (response-p (member type '("response headers" "response body")))
-           (request-entry-p (or request-start-p response-p
-                                (string= type "request Curl command")))
+           (request-entry-p (or request-start-p response-p))
            (data (cond
                   ((stringp data) (gptel--decode-utf8 data))
                   ((not data) "null")
@@ -2893,13 +2892,11 @@ the response is inserted into the current buffer after point."
                  (not gptel-org--org-format-response)))
       (plist-put info :transformer #'gptel--convert-markdown->org))
     (plist-put info :callback callback)
-    (when gptel-log-level               ;logging
-      (when (eq gptel-log-level 'debug)
-        (gptel--log (gptel--json-encode
-                     (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
-                             url-request-extra-headers))
-                    "request headers"))
-      (gptel--log url-request-data "request body"))
+    (when (eq gptel-log-level 'debug)   ;logging
+      (gptel--log (gptel--json-encode
+                   (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
+                           url-request-extra-headers))
+                  "request headers"))
     (let ((proc-buf
            (url-retrieve (let ((backend-url (gptel-backend-url gptel-backend)))
                            (if (functionp backend-url)
@@ -3019,13 +3016,11 @@ INFO contains the request data, UUID is a unique identifier."
                   (when-let* ((header (gptel-backend-header gptel-backend)))
                     (if (functionp header)
                         (funcall header) header)))))
-    (when gptel-log-level
-      (when (eq gptel-log-level 'debug)
-        (gptel--log (gptel--json-encode
-                     (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
-                             headers))
-                    "request headers"))
-      (gptel--log data-json "request body"))
+    (when (eq gptel-log-level 'debug)
+      (gptel--log (gptel--json-encode
+                   (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
+                           headers))
+                  "request headers"))
     (append
      gptel-curl--common-args
      gptel-curl-extra-args
@@ -3075,9 +3070,6 @@ the response is inserted into the current buffer after point."
          (stream (plist-get info :stream))
          (process (apply #'start-process "gptel-curl"
                          (gptel--temp-buffer " *gptel-curl*") (gptel--curl-path) args)))
-    (when (eq gptel-log-level 'debug)
-      (gptel--log (mapconcat #'shell-quote-argument (cons (gptel--curl-path) args) " \\\n")
-                  "request Curl command" 'no-json))
     (with-current-buffer (process-buffer process)
       (cond
        ((eq (gptel-backend-coding-system backend) 'binary)

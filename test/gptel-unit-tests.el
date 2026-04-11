@@ -633,13 +633,13 @@ A string like \"hello\" should be JSON-encoded, not passed through."
       (kill-buffer gptel--log-buffer-name))
     (unwind-protect
         (progn
-          (gptel--log "{\"model\": \"test\"}" "request body")
+          (gptel--log "{\"Authorization\": \"Bearer test\"}" "request headers")
           (gptel--log "{\"content\": \"hello\"}" "response body")
           (let ((content (with-current-buffer gptel--log-buffer-name
                            (buffer-string))))
             ;; Should have org headings
             (should (string-match-p "^\\* Request \\[" content))
-            (should (string-match-p "^\\*\\* request body" content))
+            (should (string-match-p "^\\*\\* request headers" content))
             (should (string-match-p "^\\*\\* response body" content))
             ;; Should have src blocks for JSON
             (should (string-match-p "#\\+begin_src json" content))
@@ -682,10 +682,10 @@ A string like \"hello\" should be JSON-encoded, not passed through."
     (unwind-protect
         (progn
           ;; First request cycle
-          (gptel--log "{\"model\": \"test\"}" "request body")
+          (gptel--log "{\"Authorization\": \"Bearer test\"}" "request headers")
           (gptel--log "{\"content\": \"hi\"}" "response body")
           ;; Second request cycle
-          (gptel--log "{\"model\": \"test2\"}" "request body")
+          (gptel--log "{\"Authorization\": \"Bearer test2\"}" "request headers")
           (gptel--log "{\"content\": \"bye\"}" "response body")
           (let ((content (with-current-buffer gptel--log-buffer-name
                            (buffer-string))))
