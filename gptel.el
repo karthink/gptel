@@ -2775,6 +2775,11 @@ example) apply the preset buffer-locally."
     (mapc (lambda (parent) (gptel--apply-preset parent setter)) (ensure-list parents)))
   (map-do
    (lambda (key val)
+     (when (and gptel-log-level (memq key '(:backend :model)))
+       (gptel--log
+        (format "apply-preset map-do: key=%s val=%s"
+                key val)
+        "preset-debug" t))
      (pcase key
        ((or :parents :description :pre :post :subagent-models) nil)
        ((or :system :system-message :rewrite-directive)
