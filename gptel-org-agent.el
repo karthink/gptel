@@ -1194,10 +1194,28 @@ changes that shift text)."
 Uses `org-todo' for proper state tracking, but falls back to direct
 text replacement if the keyword is not in org's known set."
   (when (org-at-heading-p)
-    (let* ((current (org-get-todo-state)))
+    (let* ((current (org-get-todo-state))
+           (level-before (org-current-level))
+           (heading-before (buffer-substring-no-properties
+                            (line-beginning-position)
+                            (line-end-position))))
+      (gptel-org--debug
+       "set-todo-keyword: BEFORE org-todo: keyword=%s current=%s level=%d heading=%S"
+       keyword current level-before heading-before)
       (unless (equal current keyword)
         ;; org-todo with a specific keyword argument sets it directly
-        (org-todo keyword)))))
+        (org-todo keyword)
+        (let ((level-after (org-current-level))
+              (heading-after (buffer-substring-no-properties
+                              (line-beginning-position)
+                              (line-end-position))))
+          (gptel-org--debug
+           "set-todo-keyword: AFTER org-todo: level=%d heading=%S"
+           level-after heading-after)
+          (when (/= level-before level-after)
+            (gptel-org--debug
+             "set-todo-keyword: WARNING level changed! %d -> %d"
+             level-before level-after)))))))
 
 (defun gptel-org-agent--create-todo-heading (level content keyword parent-pos)
   "Create a new TODO heading at LEVEL with CONTENT and KEYWORD.
@@ -1554,6 +1572,15 @@ INFO is the FSM info plist."
                               (gptel-tool-name (car tc)))
                             tool-calls ", "))
                (inhibit-read-only t))
+          (gptel-org--debug
+           "display-tool-calls: response-level=%S pending-level=%d stars=%S buffer=%S narrowed=%s point-min-heading=%S"
+           response-level pending-level stars (buffer-name)
+           (if (buffer-narrowed-p) "yes" "no")
+           (save-excursion
+             (goto-char (point-min))
+             (when (org-at-heading-p)
+               (buffer-substring-no-properties
+                (point) (line-end-position)))))
           ;; Position at the end of the buffer content for insertion.
           ;; Use start-marker (which has drifted to end of content) as
           ;; the insertion point, since that's where new content should
@@ -1572,10 +1599,33 @@ INFO is the FSM info plist."
                 (insert (gptel--format-tool-call
                          (gptel-tool-name tool-spec) arg-values))))
             (insert "\n")
+            ;; Verify the heading was inserted correctly
+            (save-excursion
+              (goto-char heading-pos)
+              (gptel-org--debug
+               "display-tool-calls: inserted heading at pos=%d: %S"
+               heading-pos
+               (buffer-substring-no-properties
+                (point) (line-end-position))))
             ;; Store the pending ID as an org property on the heading
             (save-excursion
               (goto-char heading-pos)
-              (org-set-property "GPTEL_PENDING_ID" pending-id))
+              (org-set-property "GPTEL_PENDING_ID" pending-id)
+              ;; Verify level after property insertion (org-set-property
+              ;; may modify heading structure)
+              (goto-char heading-pos)
+              (when (org-at-heading-p)
+                (let ((level-after-prop (org-current-level))
+                      (heading-after-prop
+                       (buffer-substring-no-properties
+                        (line-beginning-position) (line-end-position))))
+                  (gptel-org--debug
+                   "display-tool-calls: after org-set-property: level=%d heading=%S"
+                   level-after-prop heading-after-prop)
+                  (when (/= pending-level level-after-prop)
+                    (gptel-org--debug
+                     "display-tool-calls: WARNING org-set-property changed level! %d -> %d"
+                     pending-level level-after-prop)))))
             ;; Store tool call data in global hash table
             (puthash pending-id
                      (list :tool-calls tool-calls
@@ -1700,16 +1750,20 @@ When a PENDING heading is changed to ALLOWED, run the pending tool
 calls.  When changed to DENIED, deny them and inform the LLM.
 
 This function is added to `org-after-todo-state-change-hook'."
-  (gptel-org--debug
-   "org-agent tool-confirm: todo-state-change hook fired in buffer %s, state=%s, subtrees=%s"
-   (buffer-name) (and (boundp 'org-state) org-state)
-   gptel-org-subtree-context)
+  (let ((hook-level (and (org-at-heading-p) (org-current-level)))
+        (hook-heading (buffer-substring-no-properties
+                       (line-beginning-position) (line-end-position))))
+    (gptel-org--debug
+     "org-agent tool-confirm: todo-state-change hook fired in buffer %s, state=%s, subtrees=%s level=%S heading=%S"
+     (buffer-name) (and (boundp 'org-state) org-state)
+     gptel-org-subtree-context hook-level hook-heading))
   (when (and (bound-and-true-p gptel-org-subtree-context)
              (org-at-heading-p))
     (let ((new-state org-state)
           (allowed-kw (nth 1 gptel-org-agent-tool-confirm-keywords))
           (denied-kw (nth 2 gptel-org-agent-tool-confirm-keywords))
-          (pending-id (org-entry-get nil "GPTEL_PENDING_ID")))
+          (pending-id (org-entry-get nil "GPTEL_PENDING_ID"))
+          (level-at-entry (org-current-level)))
       (gptel-org--debug
        "org-agent tool-confirm: new-state=%s, pending-id=%s, hash-count=%d"
        new-state pending-id
@@ -1748,11 +1802,22 @@ This function is added to `org-after-todo-state-change-hook'."
               (remhash pending-id gptel-org-agent--pending-tool-calls)
               ;; Remove the property since it's no longer needed
               (org-delete-property "GPTEL_PENDING_ID")
+              (let ((level-after-cleanup (org-current-level))
+                    (heading-after-cleanup
+                     (buffer-substring-no-properties
+                      (line-beginning-position) (line-end-position))))
+                (gptel-org--debug
+                 "org-agent tool-confirm: after property removal: level=%d (was %d) heading=%S"
+                 level-after-cleanup level-at-entry heading-after-cleanup)
+                (when (/= level-at-entry level-after-cleanup)
+                  (gptel-org--debug
+                   "org-agent tool-confirm: WARNING level changed after property removal! %d -> %d"
+                   level-at-entry level-after-cleanup)))
               (cond
                ((equal new-state allowed-kw)
                 (gptel-org--debug
-                 "org-agent tool-confirm: ALLOWED (id=%s), running %d tool calls"
-                 pending-id (length tool-calls))
+                 "org-agent tool-confirm: ALLOWED (id=%s), running %d tool calls, level=%d"
+                 pending-id (length tool-calls) (org-current-level))
                 (when (eq gptel-log-level 'debug)
                   (gptel--log
                    (format "debug-state-change: ALLOWED in buffer=%s base-buffer=%s stored-buf=%s stored-buf-live=%s info-buffer=%s info-buffer-live=%s fsm-last=%S"
@@ -1774,6 +1839,17 @@ This function is added to `org-after-todo-state-change-hook'."
                                        i (and ts (gptel-tool-name ts)) ptr)
                                "debug-state-change" 'no-json)))
                 (gptel-org-agent--accept-tool-calls tool-calls info)
+                (let ((level-after-accept (org-current-level))
+                      (heading-after-accept
+                       (buffer-substring-no-properties
+                        (line-beginning-position) (line-end-position))))
+                  (gptel-org--debug
+                   "org-agent tool-confirm: AFTER accept: level=%d (was %d) heading=%S"
+                   level-after-accept level-at-entry heading-after-accept)
+                  (when (/= level-at-entry level-after-accept)
+                    (gptel-org--debug
+                     "org-agent tool-confirm: WARNING level changed after accept! %d -> %d"
+                     level-at-entry level-after-accept)))
                 (message "Tool calls accepted, continuing..."))
                ((equal new-state denied-kw)
                 (gptel-org--debug
