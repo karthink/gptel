@@ -537,14 +537,31 @@ unrelated change (like a separator) triggers the hook."
                            #'gptel-org--apply-pending-tag-on-change t)
               (org-set-tags (list tag)))))))))
 
+(defun gptel-org--point-in-agent-subtree-p ()
+  "Return non-nil if point is inside an agent subtree.
+Walk up the heading hierarchy looking for a heading with an agent
+tag (matching `*@agent').  Works in both base and indirect buffers."
+  (and (derived-mode-p 'org-mode)
+       (save-excursion
+         (when (or (org-at-heading-p)
+                   (ignore-errors (org-back-to-heading t)))
+           (cl-block nil
+             (while (org-at-heading-p)
+               (when (gptel-org--heading-has-agent-tag-p)
+                 (cl-return t))
+               (unless (ignore-errors (org-up-heading-all 1) t)
+                 (cl-return nil))))))))
+
 (defun gptel-org--dynamic-prefix-string (base-prefix &optional _for-prompt)
   "Return BASE-PREFIX adjusted for current org heading context.
 
-In agent indirect buffers, return an empty string since the agent
-system manages its own heading structure for both response and
-user headings.  Otherwise, return BASE-PREFIX unchanged."
-  (if (gptel-org--in-agent-indirect-buffer-p)
-      ;; Agent indirect buffers manage their own heading structure.
+In agent indirect buffers or inside an agent subtree in the base
+buffer, return an empty string since the agent system manages its
+own heading structure for both response and user headings.
+Otherwise, return BASE-PREFIX unchanged."
+  (if (or (gptel-org--in-agent-indirect-buffer-p)
+          (gptel-org--point-in-agent-subtree-p))
+      ;; Agent subtrees manage their own heading structure.
       ;; Return empty string to suppress prefix insertion entirely —
       ;; the agent system handles both response and user headings.
       ""
