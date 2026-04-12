@@ -292,10 +292,13 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
               (rest (cdr index)))
           (when (and p2 (equal (plist-get p1 :role)
                                (plist-get p2 :role)))
-            (setf (plist-get p1 :content)
-                  (concat (plist-get p1 :content) "\n"
-                          (plist-get p2 :content)))
-            (setcdr index (cdr rest)))
+            ;; Blocks to be merged must both be text blocks
+            ;; and not tool calls
+            (when-let* ((content1 (plist-get p1 :content))
+                        (content2 (plist-get p2 :content)))
+              (plist-put p1 :content
+                         (concat content1 "\n" content2))
+              (setcdr index (cdr rest))))
           (setq index (cdr index)))))))
 
 ;;;###autoload
@@ -309,13 +312,13 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
           (models '((deepseek-reasoner
                      :capabilities (tool reasoning)
                      :context-window 128
-                     :input-cost 0.56
-                     :output-cost 1.68)
+                     :input-cost 0.28
+                     :output-cost 0.42)
                     (deepseek-chat
                      :capabilities (tool)
                      :context-window 128
-                     :input-cost 0.56
-                     :output-cost 1.68))))
+                     :input-cost 0.28
+                     :output-cost 0.42))))
   "Register a DeepSeek backend for gptel with NAME.
 
 For the meanings of the keyword arguments, see `gptel-make-openai'."
