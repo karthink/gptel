@@ -1670,11 +1670,15 @@ tool functions like `gptel-agent--task'."
                (length tool-calls))
        "tool-call-debug" 'no-json)
       (gptel--log
-       (format "accept-tool-calls: info keys=%S fsm-last-in-current=%S fsm-last-in-info-buf=%S"
+       (format "accept-tool-calls: info keys=%S fsm-last-in-current=%s fsm-last-in-info-buf=%s"
                (cl-loop for (k _v) on info by #'cddr collect k)
-               (and (boundp 'gptel--fsm-last) gptel--fsm-last)
-               (and buf (buffer-live-p buf)
-                    (buffer-local-value 'gptel--fsm-last buf)))
+               (if (and (boundp 'gptel--fsm-last) gptel--fsm-last)
+                   (gptel--fsm-summary gptel--fsm-last) "nil")
+               (if (and buf (buffer-live-p buf)
+                         (buffer-local-value 'gptel--fsm-last buf))
+                   (gptel--fsm-summary
+                    (buffer-local-value 'gptel--fsm-last buf))
+                 "nil"))
        "tool-call-debug" 'no-json))
     (when (and buf (buffer-live-p buf))
       (with-current-buffer buf
@@ -1688,8 +1692,9 @@ tool functions like `gptel-agent--task'."
              for idx from 0
              do (when (eq gptel-log-level 'debug)
                   (gptel--log
-                   (format "accept-tool-calls: [%d] tool=%s process-tool-result=%S"
-                           idx (gptel-tool-name tool-spec) process-tool-result)
+                   (format "accept-tool-calls: [%d] tool=%s process-tool-result=%s"
+                           idx (gptel-tool-name tool-spec)
+                           (if process-tool-result "fn" "nil"))
                    "tool-call-debug" 'no-json))
              do (gptel-org--debug
                  "org-agent tool-confirm: executing tool %s"
@@ -1790,8 +1795,9 @@ This function is added to `org-after-todo-state-change-hook'."
                 (cl-loop for (ts ap ptr) in tool-calls
                          for i from 0
                          do (gptel--log
-                             (format "on-todo-change: tool-call[%d] tool=%s process-tool-result=%S"
-                                     i (and ts (gptel-tool-name ts)) ptr)
+                             (format "on-todo-change: tool-call[%d] tool=%s process-tool-result=%s"
+                                     i (and ts (gptel-tool-name ts))
+                                     (if ptr "fn" "nil"))
                              "tool-call-debug" 'no-json)))
               ;; Check that the stored buffer is still alive
               (unless (and stored-buf (buffer-live-p stored-buf))
@@ -1820,7 +1826,7 @@ This function is added to `org-after-todo-state-change-hook'."
                  pending-id (length tool-calls) (org-current-level))
                 (when (eq gptel-log-level 'debug)
                   (gptel--log
-                   (format "debug-state-change: ALLOWED in buffer=%s base-buffer=%s stored-buf=%s stored-buf-live=%s info-buffer=%s info-buffer-live=%s fsm-last=%S"
+                   (format "debug-state-change: ALLOWED in buffer=%s base-buffer=%s stored-buf=%s stored-buf-live=%s info-buffer=%s info-buffer-live=%s fsm-last=%s"
                            (buffer-name)
                            (and (buffer-base-buffer) (buffer-name (buffer-base-buffer)))
                            (and stored-buf (buffer-name stored-buf))
@@ -1829,14 +1835,16 @@ This function is added to `org-after-todo-state-change-hook'."
                                 (buffer-name (plist-get info :buffer)))
                            (and info (plist-get info :buffer)
                                 (buffer-live-p (plist-get info :buffer)))
-                           (and (boundp 'gptel--fsm-last) gptel--fsm-last))
+                           (if (and (boundp 'gptel--fsm-last) gptel--fsm-last)
+                               (gptel--fsm-summary gptel--fsm-last) "nil"))
                    "debug-state-change" 'no-json)
                   ;; Log closures to verify FSM captured in process-tool-result
                   (cl-loop for (ts _ap ptr) in tool-calls
                            for i from 0
                            do (gptel--log
-                               (format "debug-state-change: ALLOWED tool-call[%d] tool=%s process-tool-result=%S"
-                                       i (and ts (gptel-tool-name ts)) ptr)
+                               (format "debug-state-change: ALLOWED tool-call[%d] tool=%s process-tool-result=%s"
+                                       i (and ts (gptel-tool-name ts))
+                                       (if ptr "fn" "nil"))
                                "debug-state-change" 'no-json)))
                 (gptel-org-agent--accept-tool-calls tool-calls info)
                 (let ((level-after-accept (org-current-level))
