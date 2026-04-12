@@ -895,8 +895,12 @@ in the conversation."
                   ;; the agent subtree (same level).  In tag mode, it's a
                   ;; child (agent-level + 1) for backward compatibility.
                   (let* ((user-level (if keyword-mode agent-level (1+ agent-level)))
+                         ;; Use a marker so the position tracks buffer
+                         ;; modifications (keyword transition, tag removal)
+                         ;; that happen before we insert the FEEDBACK heading.
                          (subtree-end (save-excursion
-                                        (org-end-of-subtree t) (point)))
+                                        (org-end-of-subtree t)
+                                        (point-marker)))
                          (has-user
                           (if keyword-mode
                               ;; Keyword mode: check for FEEDBACK sibling
@@ -921,7 +925,7 @@ in the conversation."
                                         (string-equal-ignore-case tg user-tag))
                                       last-tags)))))))
                     (gptel-org--debug "insert-user-heading: subtree-end=%d user-level=%d has-user=%s"
-                                      subtree-end user-level has-user)
+                                      (marker-position subtree-end) user-level has-user)
                     ;; In keyword mode, transition the agent heading to
                     ;; AI-DONE and remove its agent tag so that
                     ;; find-agent-subtree won't confuse completed subtrees
@@ -949,14 +953,16 @@ in the conversation."
                               (insert (format "%s %s \n" stars kw))
                               (gptel-org--debug
                                "insert-user-heading: created %s sibling heading at level %d after pos %d"
-                               kw user-level subtree-end))
+                               kw user-level (marker-position subtree-end)))
                           (insert (format "%s \n" stars))
                           (forward-line -1)
                           (beginning-of-line)
                           (org-set-tags (list user-tag))
                           (gptel-org--debug
                            "insert-user-heading: created :%s: heading at level %d after pos %d"
-                           user-tag user-level subtree-end)))))))))))))))
+                           user-tag user-level (marker-position subtree-end)))))
+                    ;; Clean up marker
+                    (set-marker subtree-end nil))))))))))))
 
 (defun gptel-org-agent--enable ()
   "Enable agent subtree integration for `gptel-send'.
