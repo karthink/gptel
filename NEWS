@@ -65,6 +65,12 @@
 
 ** New features and UI changes
 
+- New command ~gptel-preset~ to choose a gptel preset to apply, or save
+  gptel's current settings as a preset.
+
+  ~gptel-menu~ now uses this command instead of a transient menu for
+  applying presets.
+
 - The UI indicators in chat buffers that report status changes (such as
   =Waiting=, =Ready= etc) now show the names of tools being called.  The
   mode-line indicator display (see ~gptel-use-header-line~) has been
