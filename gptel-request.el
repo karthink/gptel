@@ -1298,6 +1298,22 @@ org-mode strips on export."
 nil means no active request.  `request' means we're in the
 request phase.  `response' means response entries have started.")
 
+(defvar gptel--log-sensitive-headers
+  '("x-api-key" "authorization" "api-key")
+  "List of HTTP header names (lowercase) whose values should be redacted in logs.")
+
+(defun gptel--log-redact-headers (headers)
+  "Return a copy of HEADERS alist with sensitive values redacted.
+
+HEADERS is an alist of (NAME . VALUE) pairs.  Header names
+listed in `gptel--log-sensitive-headers' will have their values
+replaced with \"[redacted]\"."
+  (mapcar (lambda (pair)
+            (if (member (downcase (car pair)) gptel--log-sensitive-headers)
+                (cons (car pair) "[redacted]")
+              pair))
+          headers))
+
 (defun gptel--log (data &optional type no-json)
   "Log DATA to `gptel--log-buffer-name' in org format.
 
@@ -2895,7 +2911,7 @@ the response is inserted into the current buffer after point."
     (when (eq gptel-log-level 'debug)   ;logging
       (gptel--log (gptel--json-encode
                    (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
-                           url-request-extra-headers))
+                           (gptel--log-redact-headers url-request-extra-headers)))
                   "request headers"))
     (let ((proc-buf
            (url-retrieve (let ((backend-url (gptel-backend-url gptel-backend)))
@@ -3019,7 +3035,7 @@ INFO contains the request data, UUID is a unique identifier."
     (when (eq gptel-log-level 'debug)
       (gptel--log (gptel--json-encode
                    (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
-                           headers))
+                           (gptel--log-redact-headers headers)))
                   "request headers"))
     (append
      gptel-curl--common-args
