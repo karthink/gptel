@@ -2762,7 +2762,7 @@ example) apply the preset buffer-locally."
                  preset
                (format "<plist keys: %s>"
                        (cl-loop for (k _v) on preset by #'cddr collect k)))
-             (type-of preset) setter)
+             (type-of preset) (gptel--format-for-log setter))
      "preset-debug" t))
   (when (memq (type-of preset) '(string symbol))
     (let ((spec (or (gptel-get-preset preset)

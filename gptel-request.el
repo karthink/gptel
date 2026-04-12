@@ -1239,6 +1239,19 @@ returned as a list of strings."
 
 (declare-function json-pretty-print "json")
 
+(defun gptel--format-for-log (obj)
+  "Format OBJ as a safe, UTF-8-clean string for debug logging.
+
+Closures and byte-compiled functions are represented as short
+hash-based tokens instead of their raw printed form, which can
+contain non-Unicode bytecode bytes."
+  (cond ((memq (car-safe obj) '(closure lambda))
+         (format "#<lambda %#x>" (sxhash obj)))
+        ((byte-code-function-p obj)
+         (format "#<compiled %#x>" (sxhash obj)))
+        ((stringp obj)
+         (string-replace "\n" "\\n" obj))
+        (t (prin1-to-string obj))))
 
 (defun gptel--decode-utf8 (str)
   "Decode STR as UTF-8, guaranteeing valid Unicode output for logging.
@@ -1328,7 +1341,8 @@ Log entries are org headings grouped by request cycle:
     (set-buffer-multibyte t)
     (unless (derived-mode-p 'org-mode)
       (org-mode)
-      (setq-local buffer-read-only nil))
+      (setq-local buffer-read-only nil)
+      (set-buffer-file-coding-system 'utf-8-unix))
     (let* ((type (or type "log"))
            (level-tag (if (eq gptel-log-level 'debug) "debug" "info"))
            (request-start-p (string= type "request headers"))
