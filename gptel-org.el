@@ -336,12 +336,17 @@ the tag-based assistant detection."
   :type 'string
   :group 'gptel)
 
-(defcustom gptel-org-user-keyword "HI"
+(defcustom gptel-org-user-keyword "FEEDBACK"
   "TODO keyword used to mark user message headings.
 
-Headings with this TODO keyword will be treated as user messages.
-When `gptel-org-use-todo-keywords' is enabled, this keyword replaces
-the tag-based user detection."
+Headings with this TODO keyword will be treated as user messages
+and serve as the prompt location for user feedback in the iterative
+AI task cycle.  When `gptel-org-use-todo-keywords' is enabled, this
+keyword replaces the tag-based user detection.
+
+In keyword mode, FEEDBACK headings are created as siblings of agent
+subtrees after each AI response cycle.  Sending from a FEEDBACK
+heading mutates it into an AI-DOING agent subtree."
   :type 'string
   :group 'gptel)
 
@@ -349,11 +354,11 @@ the tag-based user detection."
   "When non-nil, use TODO keywords instead of tags for role detection.
 
 When enabled, `gptel-org-assistant-keyword' (default \"AI\") and
-`gptel-org-user-keyword' (default \"HI\") TODO keywords are used
-to mark assistant and user headings, replacing the tag-based
+`gptel-org-user-keyword' (default \"FEEDBACK\") TODO keywords are
+used to mark assistant and user headings, replacing the tag-based
 `:assistant:' and `:user:' approach.
 
-The AI/HI keywords must be registered in the org TODO keyword
+The AI/FEEDBACK keywords must be registered in the org TODO keyword
 sequence for proper fontification and cycling.  See
 `gptel-org--register-todo-keywords'."
   :type 'boolean

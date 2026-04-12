@@ -986,11 +986,12 @@ appears in both the indirect and base buffers."
 ;;; ---- insert-user-heading tests (indirect buffer post-response) ------------
 
 (ert-deftest gptel-org-agent-test-insert-user-heading-after-indirect-response ()
-  "Insert exactly one HI heading as a child of the agent subtree.
-Verifies the heading is created in the base buffer at agent-level + 1
-\(same level as AI response headings), as a child of the agent heading."
+  "Insert exactly one FEEDBACK heading as a sibling of the agent subtree.
+Verifies the heading is created in the base buffer at agent-level
+\(same level as the agent heading), and that the agent heading transitions
+to AI-DONE with its tag removed."
   (let ((org-inhibit-startup t)
-        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "HI" "|" "AI-DONE")))
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "FEEDBACK" "|" "AI-DONE")))
         (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
     (with-temp-buffer
       (delay-mode-hooks (org-mode))
@@ -999,7 +1000,8 @@ Verifies the heading is created in the base buffer at agent-level + 1
       (org-back-to-heading t)
       (let* ((gptel-org-subtree-context t)
              (gptel-org-use-todo-keywords t)
-             (gptel-org-user-keyword "HI")
+             (gptel-org-user-keyword "FEEDBACK")
+             (gptel-org-tasks-done-keyword "AI-DONE")
              (base-buf (current-buffer))
              (marker (gptel-org-agent--create-subtree "main"))
              (indirect-buf nil))
@@ -1014,29 +1016,31 @@ Verifies the heading is created in the base buffer at agent-level + 1
               ;; Call insert-user-heading from indirect buffer context
               (with-current-buffer indirect-buf
                 (gptel-org-agent--insert-user-heading nil nil))
-              ;; Verify HI heading in base buffer
+              ;; Verify FEEDBACK heading in base buffer
               (with-current-buffer base-buf
                 (goto-char (point-min))
-                ;; Should have exactly one HI heading
+                ;; Should have exactly one FEEDBACK heading at agent level (2)
                 (should (= 1
-                           (how-many "^\\*\\*\\* HI"
+                           (how-many "^\\*\\* FEEDBACK"
                                      (point-min) (point-max))))
-                ;; Find the agent heading
-                (should (re-search-forward "^\\*\\* AI-DOING Implement feature" nil t))
+                ;; Agent heading should have transitioned to AI-DONE with tag removed
+                (should (re-search-forward "^\\*\\* AI-DONE Implement feature" nil t))
                 (goto-char (match-beginning 0))
                 (let ((agent-level (org-current-level)))
-                  ;; Find the HI heading inside the agent subtree
-                  (should (re-search-forward "^\\*\\*\\* HI" nil t))
+                  ;; Agent should NOT have its tag anymore
+                  (should-not (org-get-tags nil t))
+                  ;; Find the FEEDBACK heading — should be sibling at agent-level
+                  (should (re-search-forward "^\\*\\* FEEDBACK" nil t))
                   (goto-char (match-beginning 0))
-                  ;; HI heading should be at agent-level + 1 (child of agent)
-                  (should (= (1+ agent-level) (org-current-level))))))
+                  ;; FEEDBACK heading should be at agent-level (sibling of agent)
+                  (should (= agent-level (org-current-level))))))
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
 (ert-deftest gptel-org-agent-test-insert-user-heading-not-duplicated ()
-  "Repeated insert-user-heading calls should not create duplicate HI headings."
+  "Repeated insert-user-heading calls should not create duplicate FEEDBACK headings."
   (let ((org-inhibit-startup t)
-        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "HI" "|" "AI-DONE")))
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "FEEDBACK" "|" "AI-DONE")))
         (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
     (with-temp-buffer
       (delay-mode-hooks (org-mode))
@@ -1045,7 +1049,8 @@ Verifies the heading is created in the base buffer at agent-level + 1
       (org-back-to-heading t)
       (let* ((gptel-org-subtree-context t)
              (gptel-org-use-todo-keywords t)
-             (gptel-org-user-keyword "HI")
+             (gptel-org-user-keyword "FEEDBACK")
+             (gptel-org-tasks-done-keyword "AI-DONE")
              (base-buf (current-buffer))
              (marker (gptel-org-agent--create-subtree "main"))
              (indirect-buf nil))
@@ -1061,39 +1066,37 @@ Verifies the heading is created in the base buffer at agent-level + 1
               (with-current-buffer indirect-buf
                 (gptel-org-agent--insert-user-heading nil nil)
                 (gptel-org-agent--insert-user-heading nil nil))
-              ;; Should have exactly 1 HI heading, not 2
+              ;; Should have exactly 1 FEEDBACK heading at agent level, not 2
               (with-current-buffer base-buf
                 (should (= 1
-                           (how-many "^\\*\\*\\* HI"
+                           (how-many "^\\*\\* FEEDBACK"
                                      (point-min) (point-max))))))
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
-(ert-deftest gptel-org-agent-test-insert-user-heading-level-matches-ai-response ()
-  "User heading should be at same level as AI response headings (agent-level + 1).
-Reproduces a bug where user heading appeared at agent-level (sibling of agent)
-instead of agent-level + 1 (child of agent, same level as AI responses).
+(ert-deftest gptel-org-agent-test-insert-user-heading-level-is-agent-sibling ()
+  "FEEDBACK heading should be at agent-level (sibling of agent subtree).
+In keyword mode, the FEEDBACK heading is created as a sibling of the agent
+subtree at the same level, NOT as a child at agent-level + 1.
 
 Expected structure:
   ** DOING Task              <- level 2 (parent)
-  *** AI-DOING Task          <- level 3 (agent heading)
+  *** AI-DONE Task           <- level 3 (agent heading, transitioned)
   **** AI Response           <- level 4 (AI response = agent + 1)
-  **** HI                    <- level 4 (user = agent + 1, CORRECT)
-
-Bug produced:
-  *** HI                     <- level 3 (user = agent-level, WRONG)"
+  *** FEEDBACK               <- level 3 (user = agent-level, CORRECT)"
   (let ((org-inhibit-startup t)
-        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "HI" "|" "AI-DONE" "DONE")))
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "FEEDBACK" "|" "AI-DONE" "DONE")))
         (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
     (with-temp-buffer
       (delay-mode-hooks (org-mode))
-      ;; Use level 2 parent to match the bug report structure
+      ;; Use level 2 parent to match the structure
       (insert "** DOING Run simple gatherer task\nDescription\n")
       (goto-char (point-min))
       (org-back-to-heading t)
       (let* ((gptel-org-subtree-context t)
              (gptel-org-use-todo-keywords t)
-             (gptel-org-user-keyword "HI")
+             (gptel-org-user-keyword "FEEDBACK")
+             (gptel-org-tasks-done-keyword "AI-DONE")
              (base-buf (current-buffer))
              (parent-level (org-current-level))
              (marker (gptel-org-agent--create-subtree "main"))
@@ -1114,8 +1117,8 @@ Bug produced:
                 (goto-char (point-min))
                 ;; Parent task should be level 2
                 (should (= 2 parent-level))
-                ;; Find the agent heading — should be level 3
-                (should (re-search-forward "^\\*\\*\\* AI-DOING" nil t))
+                ;; Find the agent heading — should be level 3, now AI-DONE
+                (should (re-search-forward "^\\*\\*\\* AI-DONE" nil t))
                 (goto-char (match-beginning 0))
                 (let ((agent-level (org-current-level)))
                   (should (= 3 agent-level))
@@ -1123,28 +1126,28 @@ Bug produced:
                   (should (re-search-forward "^\\*\\*\\*\\* AI Getting current time" nil t))
                   (goto-char (match-beginning 0))
                   (should (= 4 (org-current-level)))
-                  ;; Find the HI heading — should ALSO be level 4 (not 3!)
-                  (should (re-search-forward "^\\*\\*\\*\\* HI" nil t))
+                  ;; Find the FEEDBACK heading — should be level 3 (agent-level)
+                  (should (re-search-forward "^\\*\\*\\* FEEDBACK" nil t))
                   (goto-char (match-beginning 0))
-                  (should (= 4 (org-current-level)))
-                  ;; HI should be at agent-level + 1
-                  (should (= (1+ agent-level) (org-current-level))))))
+                  (should (= 3 (org-current-level)))
+                  ;; FEEDBACK should be at agent-level (sibling)
+                  (should (= agent-level (org-current-level))))))
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
 (ert-deftest gptel-org-agent-test-insert-user-heading-level-after-auto-correct ()
-  "HI heading level should be correct after auto-corrector rebases AI headings.
+  "FEEDBACK heading level should be correct after auto-corrector rebases AI headings.
 Reproduces the real post-response sequence: auto-correct processes the AI
 response (rebasing level-1 headings to agent-level+1), then cleanup runs,
 then insert-user-heading runs.
 
 Expected structure:
   ,** DOING Calculate 2 + 2            <- level 2 (parent)
-  ,*** AI-DOING Calculate 2 + 2        <- level 3 (agent heading, UNCHANGED)
+  ,*** AI-DONE Calculate 2 + 2         <- level 3 (agent heading, transitioned)
   ,**** AI Calculate 2 + 2             <- level 4 (rebased from * AI)
-  ,**** HI                             <- level 4 (user = agent + 1, CORRECT)"
+  ,*** FEEDBACK                        <- level 3 (user = agent-level, CORRECT)"
   (let ((org-inhibit-startup t)
-        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "HI"
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
                                        "|" "AI-DONE" "DONE")))
         (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
     (with-temp-buffer
@@ -1154,7 +1157,8 @@ Expected structure:
       (org-back-to-heading t)
       (let* ((gptel-org-subtree-context t)
              (gptel-org-use-todo-keywords t)
-             (gptel-org-user-keyword "HI")
+             (gptel-org-user-keyword "FEEDBACK")
+             (gptel-org-tasks-done-keyword "AI-DONE")
              (gptel-org-assistant-keyword "AI")
              (base-buf (current-buffer))
              (marker (gptel-org-agent--create-subtree "main"))
@@ -1179,8 +1183,8 @@ Expected structure:
               ;; Verify structure in base buffer
               (with-current-buffer base-buf
                 (goto-char (point-min))
-                ;; Agent heading must still be level 3 (NOT rebased)
-                (should (re-search-forward "AI-DOING Calculate 2 \\+ 2" nil t))
+                ;; Agent heading must still be level 3, now AI-DONE
+                (should (re-search-forward "AI-DONE Calculate 2 \\+ 2" nil t))
                 (goto-char (match-beginning 0))
                 (beginning-of-line)
                 (should (= 3 (org-current-level)))
@@ -1189,71 +1193,68 @@ Expected structure:
                 (goto-char (match-beginning 0))
                 (beginning-of-line)
                 (should (= 4 (org-current-level)))
-                ;; HI heading should be level 4 (agent-level + 1)
-                (should (re-search-forward "^\\*+ HI" nil t))
+                ;; FEEDBACK heading should be level 3 (agent-level)
+                (should (re-search-forward "^\\*+ FEEDBACK" nil t))
                 (goto-char (match-beginning 0))
-                (should (= 4 (org-current-level)))))
+                (should (= 3 (org-current-level)))))
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
 (ert-deftest gptel-org-agent-test-insert-user-heading-correct-after-second-send ()
-  "HI heading level is correct when user sends again from existing HI heading.
-Reproduces the exact bug scenario: after the first response creates a correct
-HI heading and the user types into it and sends again, the SECOND response
-cycle should also produce a correct-level HI heading.
+  "FEEDBACK heading level is correct on second send cycle with mutated FEEDBACK.
+Tests the full two-cycle scenario where the user sends feedback and the
+FEEDBACK heading is mutated into a new AI-DOING agent subtree.
 
 Scenario:
-1. User sends from ** DOING Calculate 2 + 2
-2. Agent creates *** AI-DOING, AI responds with `4.', HI heading created at level 4
-3. User types `+ 5' in the HI heading -> **** HI + 5
-4. User sends again from **** HI + 5
-5. maybe-setup-subtree reuses existing *** AI-DOING subtree
-6. Agent responds with `9.'
-7. insert-user-heading should create **** HI (level 4)
+1. First cycle completed: *** AI-DONE (tag removed), *** FEEDBACK + 5 created
+2. User sends from *** FEEDBACK + 5
+3. maybe-setup-subtree mutates FEEDBACK to *** AI-DOING + 5 with :main@agent:
+4. Agent responds with `9.'
+5. insert-user-heading should create *** FEEDBACK (level 3, sibling)
 
-Bug: the second HI heading appeared at level 7 (******* HI) instead of 4."
+Expected final structure:
+  ** DOING Calculate 2 + 2
+  *** AI-DONE Calculate 2 + 2              <- first agent, AI-DONE, no tag
+  **** AI Calculate 2 + 2
+       4.
+  *** AI-DONE + 5                          <- mutated from FEEDBACK, now AI-DONE
+  **** AI Result                           <- new AI response
+       9.
+  *** FEEDBACK                             <- new FEEDBACK heading"
   (let ((org-inhibit-startup t)
-        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "HI"
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
                                        "|" "AI-DONE" "DONE")))
         (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
     (with-temp-buffer
       (delay-mode-hooks (org-mode))
-      ;; Start with the state AFTER the first response + HI heading + user edit.
-      ;; The AI response heading was rebased from * AI to **** AI by the corrector.
+      ;; Start with the state AFTER the first response cycle completed and the
+      ;; user typed feedback.  The FEEDBACK heading has been mutated to AI-DOING
+      ;; by maybe-setup-subtree (simulating what happens when user sends from
+      ;; FEEDBACK heading).
       (insert "\
 ** DOING Calculate 2 + 2
-*** AI-DOING Calculate 2 + 2                                  :main@agent:
+*** AI-DONE Calculate 2 + 2
 **** AI Calculate 2 + 2
 4.
-**** HI + 5
+*** AI-DOING + 5                                              :main@agent:
 ")
       (let* ((gptel-org-subtree-context t)
              (gptel-org-use-todo-keywords t)
-             (gptel-org-user-keyword "HI")
+             (gptel-org-user-keyword "FEEDBACK")
+             (gptel-org-tasks-done-keyword "AI-DONE")
              (gptel-org-assistant-keyword "AI")
              (base-buf (current-buffer))
              (indirect-buf nil))
         (unwind-protect
             (progn
-              ;; Simulate maybe-setup-subtree: find the existing agent subtree
-              ;; and open a fresh indirect buffer for it.
+              ;; Open indirect buffer on the mutated FEEDBACK->AI-DOING subtree
               (goto-char (point-min))
-              (re-search-forward "^\\*\\*\\* AI-DOING")
+              (re-search-forward "^\\*\\*\\* AI-DOING \\+ 5")
               (beginning-of-line)
               (let ((heading-marker (point-marker)))
                 (setq indirect-buf
                       (gptel-org-agent--open-indirect-buffer base-buf heading-marker)))
-              ;; Now the indirect buffer is narrowed to the *** AI-DOING subtree.
-              ;; The corrector must NOT re-process the already-rebased
-              ;; **** AI heading from the first response.
-              ;;
-              ;; In real usage, transform-redirect sets :position to
-              ;; (point-max) in the indirect buffer.  The AI response is
-              ;; streamed at that position (after **** HI + 5).
-              ;; The auto-corrector initializes with start = forward-line 1
-              ;; from point-min (the agent heading), which means it would
-              ;; try to re-process **** AI (already at level 4) and rebase
-              ;; it to level 7, corrupting the subtree.
+              ;; In the indirect buffer, simulate AI response streaming
               (with-current-buffer indirect-buf
                 ;; Set response-start before inserting, just as
                 ;; transform-redirect does before streaming begins.
@@ -1271,84 +1272,97 @@ Bug: the second HI heading appeared at level 7 (******* HI) instead of 4."
               ;; Verify in base buffer
               (with-current-buffer base-buf
                 (goto-char (point-min))
-                ;; Agent heading must STILL be level 3
-                (should (re-search-forward "AI-DOING Calculate 2 \\+ 2" nil t))
+                ;; The first agent heading should be AI-DONE at level 3
+                (should (re-search-forward "AI-DONE Calculate 2 \\+ 2" nil t))
                 (goto-char (match-beginning 0))
                 (beginning-of-line)
                 (should (= 3 (org-current-level)))
-                ;; The FIRST AI response heading (from previous cycle)
-                ;; must still be level 4, NOT re-rebased to level 7.
+                ;; The FIRST AI response heading must still be level 4
                 (should (re-search-forward "AI Calculate 2 \\+ 2" nil t))
                 (goto-char (match-beginning 0))
                 (beginning-of-line)
                 (should (= 4 (org-current-level)))
-                ;; The original HI + 5 heading must still be level 4
-                (should (re-search-forward "HI \\+ 5" nil t))
+                ;; The second agent heading (mutated FEEDBACK) should be
+                ;; AI-DONE at level 3, with tag removed
+                (should (re-search-forward "AI-DONE \\+ 5" nil t))
                 (goto-char (match-beginning 0))
                 (beginning-of-line)
-                (should (= 4 (org-current-level)))
+                (should (= 3 (org-current-level)))
                 ;; The new AI response heading should be level 4
                 (should (re-search-forward "AI Result" nil t))
                 (goto-char (match-beginning 0))
                 (beginning-of-line)
                 (should (= 4 (org-current-level)))
-                ;; The NEW HI heading (second one) should also be level 4.
-                ;; Find the LAST HI heading in the buffer.
+                ;; The NEW FEEDBACK heading should be level 3 (agent-level).
+                ;; Find the LAST FEEDBACK heading in the buffer.
                 (goto-char (point-max))
-                (should (re-search-backward "^\\*+ HI " nil t))
-                (should (= 4 (org-current-level)))))
+                (should (re-search-backward "^\\*+ FEEDBACK" nil t))
+                (should (= 3 (org-current-level)))))
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
-;;; ---- maybe-setup-subtree walk-up from HI heading -------------------------
+;;; ---- maybe-setup-subtree mutation from FEEDBACK heading -------------------
 
-(ert-deftest gptel-org-agent-test-maybe-setup-subtree-walks-up-from-hi-heading ()
-  "Sending from a HI heading should walk up to parent and reuse agent subtree.
-When `gptel-org-use-todo-keywords' is enabled, a HI heading is a user prompt
-heading.  `maybe-setup-subtree' must walk up to the parent DOING heading
-and reuse the existing agent subtree instead of creating a new one under HI.
+(ert-deftest gptel-org-agent-test-maybe-setup-subtree-mutates-feedback-heading ()
+  "Sending from a FEEDBACK heading should mutate it into an AI-DOING agent subtree.
+When `gptel-org-use-todo-keywords' is enabled, a FEEDBACK heading is a user
+prompt heading created as a sibling of the agent subtree.
+`maybe-setup-subtree' must:
+1. Mutate the FEEDBACK heading in-place (change to AI-DOING + add agent tag)
+2. Transition the parent heading to AI-DOING
+3. Return an indirect buffer narrowed to the mutated heading
 
-Reproduces a bug where HI (having a non-nil TODO state) was treated as a
-parent task heading, causing a new agent subtree to be created underneath it
-at the wrong level.
-
-Expected: reuse *** AI-DOING subtree under ** DOING
-Bug produced: new agent subtree created under **** HI"
+Expected:
+  ** DOING Task           -> ** AI-DOING Task (parent transitioned)
+  *** AI-DONE Task        <- previous agent, completed
+  *** FEEDBACK Add 6      -> *** AI-DOING Add 6 :main@agent: (mutated)"
   (let ((org-inhibit-startup t)
-        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "HI"
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
                                        "|" "AI-DONE" "DONE")))
         (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
     (with-temp-buffer
       (delay-mode-hooks (org-mode))
       (insert "** DOING Calculate 2 + 2
-*** AI-DOING Calculate 2 + 2                                  :main@agent:
+*** AI-DONE Calculate 2 + 2
 **** AI Calculate 2 + 2
 2 + 2 = 4
-**** HI Add 6
+*** FEEDBACK Add 6
 ")
       (let* ((gptel-org-subtree-context t)
              (gptel-org-use-todo-keywords t)
-             (gptel-org-user-keyword "HI")
+             (gptel-org-user-keyword "FEEDBACK")
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (gptel-org-tasks--active-task-marker nil)
              (indirect-buf nil))
         (unwind-protect
             (progn
-              ;; Move to the HI heading
+              ;; Move to the FEEDBACK heading
               (goto-char (point-min))
-              (re-search-forward "^\\*\\*\\*\\* HI")
+              (re-search-forward "^\\*\\*\\* FEEDBACK")
               (beginning-of-line)
-              (should (equal (org-get-todo-state) "HI"))
-              ;; Call maybe-setup-subtree - should walk up and reuse existing
+              (should (equal (org-get-todo-state) "FEEDBACK"))
+              ;; Call maybe-setup-subtree - should mutate FEEDBACK heading
               (setq indirect-buf (gptel-org-agent--maybe-setup-subtree))
-              ;; Should have returned an indirect buffer (reusing existing subtree)
+              ;; Should have returned an indirect buffer
               (should indirect-buf)
               (should (buffer-live-p indirect-buf))
-              ;; The indirect buffer should be narrowed to the existing agent subtree
+              ;; The indirect buffer should be narrowed to the mutated heading
               (with-current-buffer indirect-buf
                 (goto-char (point-min))
                 (should (org-at-heading-p))
-                ;; Should be the existing AI-DOING heading, not a new one
+                ;; Should be the mutated FEEDBACK heading, now AI-DOING
                 (should (equal (org-get-todo-state) "AI-DOING"))
-                (should (= 3 (org-current-level)))))
+                (should (= 3 (org-current-level)))
+                ;; Should have the agent tag
+                (should (cl-some #'gptel-org-agent--agent-tag-p
+                                 (org-get-tags nil t))))
+              ;; Verify the parent heading was transitioned to AI-DOING
+              (goto-char (point-min))
+              (re-search-forward "^\\*\\* ")
+              (beginning-of-line)
+              (should (equal (org-get-todo-state) "AI-DOING"))
+              ;; Verify the active task marker was set
+              (should gptel-org-tasks--active-task-marker))
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 

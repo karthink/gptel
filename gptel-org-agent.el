@@ -486,9 +486,17 @@ if PRESET is nil or empty."
 Check whether `gptel-org-subtree-context' is enabled and point is at
 or under a heading with any org TODO keyword.
 
-When point is on a `:user:' heading (created after an agent response),
-walk up to the parent TODO heading so the existing agent subtree is
-reused for the follow-up request.
+When point is on a user/feedback heading (created after an agent
+response), handle it based on mode:
+
+- Keyword mode: The FEEDBACK heading is a sibling of agent subtrees
+  (same level, direct child of parent TODO).  It is mutated in-place
+  to become the new agent subtree: state changes to AI-DOING, agent
+  tag is added, and the parent TODO transitions to AI-DOING.
+
+- Tag mode: The :user: heading is a child of the agent subtree.
+  Walk up to the parent TODO heading to reuse the existing agent
+  subtree.
 
 If conditions are met:
   - Derive the agent type from PRESET (or fall back to \"main\").
@@ -509,56 +517,107 @@ with its normal behavior."
       (when (org-at-heading-p)
         ;; Ensure we're at the beginning of the heading
         (beginning-of-line)
-        ;; If on a user heading, walk up to parent TODO heading.  This
-        ;; handles the case where the user sends a follow-up from the
-        ;; user sibling created after an agent response.
-        ;; Detect user headings in both modes:
-        ;; - Tag mode: no TODO state, has :user: tag
-        ;; - Keyword mode: TODO state equals gptel-org-user-keyword (e.g. "HI")
-        (when (or
-               ;; Tag mode: no TODO state, has :user: tag
-               (and (not (org-get-todo-state))
-                    (let ((user-tag (if (boundp 'gptel-org-user-tag)
-                                        gptel-org-user-tag
-                                      "user")))
-                      (cl-some (lambda (tg)
-                                 (string-equal-ignore-case tg user-tag))
-                               (org-get-tags nil t))))
-               ;; Keyword mode: TODO state is the user keyword (e.g. "HI")
-               (and (boundp 'gptel-org-user-keyword)
-                    gptel-org-user-keyword
-                    (equal (org-get-todo-state) gptel-org-user-keyword)))
-          (gptel-org--debug
-           "org-agent maybe-setup-subtree: on user heading at line %d, walking up to parent"
-           (line-number-at-pos))
-          (ignore-errors (outline-up-heading 1 t))
-          ;; In keyword mode, the user heading (HI) is a child of the
-          ;; agent subtree (at agent-level + 1), so one walk-up lands on
-          ;; the agent heading itself (e.g. *** AI-DOING :main@agent:).
-          ;; We need to walk up once more to reach the actual parent task.
-          (when (cl-some #'gptel-org-agent--agent-tag-p
-                         (org-get-tags nil t))
+        (let ((result nil)
+              (user-keyword (and (boundp 'gptel-org-user-keyword)
+                                 gptel-org-user-keyword))
+              (keyword-mode (and (boundp 'gptel-org-use-todo-keywords)
+                                 gptel-org-use-todo-keywords)))
+
+          ;; --- Keyword mode: FEEDBACK heading as sibling of agent subtrees ---
+          ;; The FEEDBACK heading is mutated into the new AI-DOING agent
+          ;; subtree.  It is a direct child of the parent TODO, at the
+          ;; same level as previous agent subtrees.
+          (when (and keyword-mode
+                     user-keyword
+                     (equal (org-get-todo-state) user-keyword))
+            (let ((feedback-marker (point-marker)))
+              (gptel-org--debug
+               "org-agent maybe-setup-subtree: on FEEDBACK heading at line %d, mutating to agent subtree"
+               (line-number-at-pos))
+              ;; Walk up one level: FEEDBACK is direct child of parent TODO
+              (ignore-errors (outline-up-heading 1 t))
+              (when (org-get-todo-state)
+                (let* ((agent-type (gptel-org-agent--preset-to-agent-type preset))
+                       (agent-tag (gptel-org-agent--construct-tag agent-type))
+                       (doing-keyword (or (bound-and-true-p gptel-org-tasks-doing-keyword)
+                                          "AI-DOING"))
+                       (base-buffer (current-buffer)))
+                  ;; Transition parent TODO heading to AI-DOING
+                  (gptel-org-agent--set-todo-keyword doing-keyword)
+                  ;; Set the active task marker so that
+                  ;; gptel-org-tasks--clear-active-task can transition
+                  ;; the parent back to FEEDBACK when AI completes, and
+                  ;; after-abort can transition to CANCELED.
+                  (when (boundp 'gptel-org-tasks--active-task-marker)
+                    (setq gptel-org-tasks--active-task-marker
+                          (point-marker)))
+                  (gptel-org--debug
+                   "org-agent maybe-setup-subtree: parent transitioned to %s at line %d"
+                   doing-keyword (line-number-at-pos))
+                  ;; Mutate the FEEDBACK heading: change state to AI-DOING
+                  ;; and add the agent tag
+                  (save-excursion
+                    (goto-char feedback-marker)
+                    (gptel-org-agent--set-todo-keyword doing-keyword)
+                    (org-set-tags (list agent-tag))
+                    (gptel-org--debug
+                     "org-agent maybe-setup-subtree: FEEDBACK mutated to %s with tag %S at line %d"
+                     doing-keyword agent-tag (line-number-at-pos)))
+                  ;; Open indirect buffer on the mutated heading
+                  (setq result
+                        (gptel-org-agent--open-indirect-buffer
+                         base-buffer feedback-marker))))))
+
+          ;; --- Tag mode: :user: heading as child of agent subtree ---
+          ;; Walk up from user heading through agent heading to parent TODO.
+          (when (and (not result)
+                     (or
+                      ;; Tag mode: no TODO state, has :user: tag
+                      (and (not (org-get-todo-state))
+                           (let ((user-tag (if (boundp 'gptel-org-user-tag)
+                                               gptel-org-user-tag
+                                             "user")))
+                             (cl-some (lambda (tg)
+                                        (string-equal-ignore-case tg user-tag))
+                                      (org-get-tags nil t))))
+                      ;; Keyword mode fallback: if not handled above (e.g.
+                      ;; old HI headings still in the buffer)
+                      (and (not keyword-mode)
+                           user-keyword
+                           (equal (org-get-todo-state) user-keyword))))
             (gptel-org--debug
-             "org-agent maybe-setup-subtree: landed on agent heading at line %d, walking up again"
+             "org-agent maybe-setup-subtree: on user heading at line %d, walking up to parent"
              (line-number-at-pos))
-            (ignore-errors (outline-up-heading 1 t))))
-        ;; Accept any org TODO keyword, not just gptel-org-todo-keywords.
-        ;; The gptel-org-todo-keywords list is for model-tag extraction,
-        ;; agent subtrees should work with any task heading.
-        (when (org-get-todo-state)
-          (let* ((agent-type (gptel-org-agent--preset-to-agent-type preset))
-                 (_ (gptel-org--debug
-                     "org-agent maybe-setup-subtree: TODO heading at line %d, agent-type=%S (preset=%S)"
-                     (line-number-at-pos) agent-type preset))
-                 (agent-tag (gptel-org-agent--construct-tag agent-type))
-                 (existing (gptel-org-agent--find-agent-subtree agent-tag))
-                 (heading-marker (or existing
-                                     (gptel-org-agent--create-subtree agent-type)))
-                 (base-buffer (current-buffer)))
-            (when existing
-              (gptel-org--debug "org-agent maybe-setup-subtree: reusing existing %S subtree"
-                                agent-tag))
-            (gptel-org-agent--open-indirect-buffer base-buffer heading-marker)))))))
+            (ignore-errors (outline-up-heading 1 t))
+            ;; In tag mode, the user heading is a child of the agent
+            ;; subtree, so one walk-up lands on the agent heading itself.
+            ;; Walk up once more to reach the actual parent task.
+            (when (cl-some #'gptel-org-agent--agent-tag-p
+                           (org-get-tags nil t))
+              (gptel-org--debug
+               "org-agent maybe-setup-subtree: landed on agent heading at line %d, walking up again"
+               (line-number-at-pos))
+              (ignore-errors (outline-up-heading 1 t))))
+
+          ;; --- Normal TODO heading path ---
+          ;; On a TODO heading, find or create an agent subtree.
+          (when (and (not result) (org-get-todo-state))
+            (let* ((agent-type (gptel-org-agent--preset-to-agent-type preset))
+                   (_ (gptel-org--debug
+                       "org-agent maybe-setup-subtree: TODO heading at line %d, agent-type=%S (preset=%S)"
+                       (line-number-at-pos) agent-type preset))
+                   (agent-tag (gptel-org-agent--construct-tag agent-type))
+                   (existing (gptel-org-agent--find-agent-subtree agent-tag))
+                   (heading-marker (or existing
+                                       (gptel-org-agent--create-subtree agent-type)))
+                   (base-buffer (current-buffer)))
+              (when existing
+                (gptel-org--debug "org-agent maybe-setup-subtree: reusing existing %S subtree"
+                                  agent-tag))
+              (setq result
+                    (gptel-org-agent--open-indirect-buffer base-buffer heading-marker))))
+
+          result)))))
 
 (defvar gptel-prompt-transform-functions)
 
@@ -774,12 +833,19 @@ FSM is the request state machine."
                     instructions))))))))
 
 (defun gptel-org-agent--insert-user-heading (_beg _end)
-  "Insert a :user: heading after the agent subtree when response completes.
+  "Insert a user/feedback heading after the agent subtree when response completes.
 Added to `gptel-post-response-functions'.
 
-Creates an empty heading tagged with `gptel-org-user-tag' as a sibling
-after the agent subtree in the base buffer.  This heading serves as the
-prompt location for the user's next message in the conversation."
+In keyword mode (`gptel-org-use-todo-keywords'), creates a FEEDBACK
+heading as a sibling of the agent subtree (same level), transitions
+the agent heading to AI-DONE (removing its agent tag), and transitions
+the parent TODO heading to FEEDBACK.
+
+In tag mode, creates a :user: tagged heading as a child of the agent
+subtree (original behavior).
+
+This heading serves as the prompt location for the user's next message
+in the conversation."
   (gptel-org--debug "insert-user-heading: buf=%S indirect=%s"
                     (buffer-name)
                     (if (buffer-base-buffer) "yes" "no"))
@@ -820,30 +886,35 @@ prompt location for the user's next message in the conversation."
                 (let* ((agent-level (org-current-level))
                        (agent-tags (org-get-tags nil t))
                        (agent-heading (org-get-heading t t t t))
-                       (inhibit-read-only t))
-                  (gptel-org--debug "insert-user-heading: agent heading=%S level=%d tags=%S"
-                                    agent-heading agent-level agent-tags)
-                  ;; Check if a user heading already exists as last child
-                  ;; of the agent heading.  The user heading is placed at
-                  ;; agent-level + 1 (same level as AI response headings).
-                  (let* ((user-level (1+ agent-level))
+                       (inhibit-read-only t)
+                       (keyword-mode (and (boundp 'gptel-org-use-todo-keywords)
+                                          gptel-org-use-todo-keywords)))
+                  (gptel-org--debug "insert-user-heading: agent heading=%S level=%d tags=%S keyword-mode=%s"
+                                    agent-heading agent-level agent-tags keyword-mode)
+                  ;; In keyword mode, the user heading is a sibling of
+                  ;; the agent subtree (same level).  In tag mode, it's a
+                  ;; child (agent-level + 1) for backward compatibility.
+                  (let* ((user-level (if keyword-mode agent-level (1+ agent-level)))
                          (subtree-end (save-excursion
                                         (org-end-of-subtree t) (point)))
-                         ;; Search backwards from past end-of-line to find
-                         ;; last direct child heading.  We go to end-of-line
-                         ;; because org-heading-regexp requires $ and
-                         ;; re-search-backward won't match a line whose $
-                         ;; is past point.
                          (has-user
-                          (save-excursion
-                            (goto-char subtree-end)
-                            (end-of-line)
-                            (and (re-search-backward org-heading-regexp
-                                                     agent-heading-pos t)
-                                 (= (org-current-level) user-level)
-                                 (if (and (boundp 'gptel-org-use-todo-keywords)
-                                          gptel-org-use-todo-keywords)
-                                     (gptel-org--heading-is-user-p)
+                          (if keyword-mode
+                              ;; Keyword mode: check for FEEDBACK sibling
+                              ;; after the agent subtree
+                              (save-excursion
+                                (goto-char subtree-end)
+                                (and (re-search-forward org-heading-regexp nil t)
+                                     (beginning-of-line)
+                                     (= (org-current-level) user-level)
+                                     (gptel-org--heading-is-user-p)))
+                            ;; Tag mode: check for :user: child within
+                            ;; agent subtree (original behavior)
+                            (save-excursion
+                              (goto-char subtree-end)
+                              (end-of-line)
+                              (and (re-search-backward org-heading-regexp
+                                                       agent-heading-pos t)
+                                   (= (org-current-level) user-level)
                                    (let ((last-tags (org-get-tags nil t)))
                                      (cl-some
                                       (lambda (tg)
@@ -851,21 +922,34 @@ prompt location for the user's next message in the conversation."
                                       last-tags)))))))
                     (gptel-org--debug "insert-user-heading: subtree-end=%d user-level=%d has-user=%s"
                                       subtree-end user-level has-user)
+                    ;; In keyword mode, transition the agent heading to
+                    ;; AI-DONE and remove its agent tag so that
+                    ;; find-agent-subtree won't confuse completed subtrees
+                    ;; with active ones.  The parent heading's transition
+                    ;; to FEEDBACK is handled by
+                    ;; gptel-org-tasks--clear-active-task (which runs at
+                    ;; depth 0, before this function at depth 95).
+                    (when keyword-mode
+                      (let ((done-kw (or (bound-and-true-p gptel-org-tasks-done-keyword) "AI-DONE")))
+                        ;; Agent heading -> AI-DONE, remove agent tag
+                        (save-excursion
+                          (goto-char agent-heading-pos)
+                          (gptel-org-agent--set-todo-keyword done-kw)
+                          (org-set-tags nil)
+                          (gptel-org--debug
+                           "insert-user-heading: agent heading transitioned to %s, tag removed"
+                           done-kw))))
                     (unless has-user
-                      ;; No user heading exists, create one as last child
+                      ;; Create the user/feedback heading
                       (goto-char subtree-end)
                       (unless (bolp) (insert "\n"))
                       (let ((stars (make-string user-level ?*)))
-                        (if (and (boundp 'gptel-org-use-todo-keywords)
-                                 gptel-org-use-todo-keywords)
-                            (progn
-                              (insert (format "%s %s \n" stars
-                                              (if (boundp 'gptel-org-user-keyword)
-                                                  gptel-org-user-keyword "HI")))
+                        (if keyword-mode
+                            (let ((kw (or (bound-and-true-p gptel-org-user-keyword) "FEEDBACK")))
+                              (insert (format "%s %s \n" stars kw))
                               (gptel-org--debug
-                               "insert-user-heading: created %s heading at level %d after pos %d"
-                               (if (boundp 'gptel-org-user-keyword) gptel-org-user-keyword "HI")
-                               user-level subtree-end))
+                               "insert-user-heading: created %s sibling heading at level %d after pos %d"
+                               kw user-level subtree-end))
                           (insert (format "%s \n" stars))
                           (forward-line -1)
                           (beginning-of-line)
