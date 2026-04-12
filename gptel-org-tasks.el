@@ -25,13 +25,19 @@
 ;; Features:
 ;; - Model profiles: map simple tag names (haiku, opus, gpt4) to actual models
 ;; - Auto state transition: AI-DO -> AI-DOING when gptel-send is called
+;; - Feedback cycle: AI-DONE -> AI-DOING when user sends again (iterative refinement)
 ;; - Tag-based model selection: apply model config from task tags
 ;; - Built-in support for Anthropic model aliases (haiku, sonnet, opus)
+;;
+;; State cycle:
+;;   AI-DO -> AI-DOING -> AI-DONE -> AI-DOING -> AI-DONE -> ... -> DONE
+;;   The user breaks the cycle by manually setting DONE when satisfied.
+;;   AI-DONE is not a terminal state; sending from it re-enters AI-DOING.
 ;;
 ;; Setup:
 ;; 1. Add TODO keywords to your org file:
 ;;
-;;    #+SEQ_TODO: AI-DO(a) AI-DOING(i!) HI-FEEDBACK(h@) | AI-DONE(d!) HI-DONE(D!)
+;;    #+SEQ_TODO: TODO(t) AI-DO(a) AI-DOING(i) DOING | AI-DONE(d) DONE(D)
 ;;
 ;; 2. Tag tasks with model names:
 ;;
@@ -80,9 +86,11 @@ Tasks transition to this state when `gptel-send' is called."
   :group 'gptel-org-tasks)
 
 (defcustom gptel-org-tasks-done-keyword "AI-DONE"
-  "TODO keyword for tasks that completed successfully.
+  "TODO keyword for tasks that completed an AI response cycle.
 When a response completes for an AI-DOING task, the state will
-transition to this keyword."
+transition to this keyword.  This is not a terminal state: calling
+`gptel-send' from AI-DONE re-enters AI-DOING for iterative
+feedback.  The user manually sets DONE when satisfied."
   :type 'string
   :group 'gptel-org-tasks)
 
@@ -268,9 +276,15 @@ Returns nil if not in an org heading."
 (defun gptel-org-tasks--maybe-transition-and-apply ()
   "Handle AI task state transition and profile application.
 Called before `gptel-send' to:
-1. Check if inside an AI-DO task
+1. Check if inside an AI-DO or AI-DONE task
 2. Apply model profile from tag if present
 3. Transition to AI-DOING state
+
+The state cycle for AI tasks is:
+  AI-DO -> AI-DOING -> AI-DONE -> AI-DOING -> AI-DONE -> ... -> DONE
+AI-DONE is not terminal; sending from it re-enters the AI-DOING
+state, allowing iterative feedback without redundant sub-headings.
+The user breaks the cycle by manually setting DONE.
 
 Returns t if inside an AI task, nil otherwise."
   (when (derived-mode-p 'org-mode)
@@ -289,7 +303,7 @@ Returns t if inside an AI task, nil otherwise."
           ;; Transition states if enabled
           (when gptel-org-tasks-change-state-on-send
             (cond
-             ;; AI-DO -> AI-DOING
+             ;; AI-DO -> AI-DOING (initial send)
              ((equal todo-state gptel-org-tasks-todo-keyword)
               (setq gptel-org-tasks--active-task-marker
                     (plist-get task-info :marker))
@@ -299,6 +313,18 @@ Returns t if inside an AI task, nil otherwise."
                                 (buffer-name (marker-buffer gptel-org-tasks--active-task-marker))
                                 gptel-org-tasks-doing-keyword)
               (message "gptel: Task state changed to %s"
+                       gptel-org-tasks-doing-keyword))
+             ;; AI-DONE -> AI-DOING (user feedback cycle)
+             ((equal todo-state gptel-org-tasks-done-keyword)
+              (setq gptel-org-tasks--active-task-marker
+                    (plist-get task-info :marker))
+              (gptel-org-tasks--change-todo-state gptel-org-tasks-doing-keyword)
+              (gptel-org--debug "tasks maybe-transition: feedback cycle, saved marker pos=%d buf=%S, transitioned %s -> %s"
+                                (marker-position gptel-org-tasks--active-task-marker)
+                                (buffer-name (marker-buffer gptel-org-tasks--active-task-marker))
+                                gptel-org-tasks-done-keyword
+                                gptel-org-tasks-doing-keyword)
+              (message "gptel: Task re-entered %s (feedback cycle)"
                        gptel-org-tasks-doing-keyword))
              ;; User TODO -> user DOING (non-AI keywords, excluding user prompt keyword)
              ((and gptel-org-tasks-user-doing-keyword
@@ -395,8 +421,14 @@ Added to `gptel-post-response-functions'."
 
 When enabled:
 - Calling `gptel-send' inside an AI-DO task transitions it to AI-DOING
+- Calling `gptel-send' inside an AI-DONE task re-enters AI-DOING (feedback cycle)
 - Calling `gptel-abort' while an AI-DOING task is active transitions it to CANCELED
 - Model profiles are applied from task tags before sending
+
+The state cycle is:
+  AI-DO -> AI-DOING -> AI-DONE -> AI-DOING -> AI-DONE -> ... -> DONE
+AI-DONE is not terminal; the user can provide feedback and re-send.
+The user manually sets DONE when satisfied with the result.
 
 Define profiles with `gptel-org-tasks-define-profile', then tag
 your tasks with the profile name:
