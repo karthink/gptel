@@ -104,6 +104,7 @@ Handlers: =gptel-request--handlers= (state→function alist).
 - *Overlays* for response bounds and visual feedback
 - *Plist-based context passing* (FSM info plist)
 - *Hooks + transform functions* for customization pipeline
+- *Cache reset after inhibited edits*: code that modifies buffers inside =after-change-functions= with =inhibit-modification-hooks= t must reset the org-element cache afterward (see [[*Idempotent Auto-Corrector]])
 
 * Source Files
 
@@ -411,6 +412,20 @@ Reference level is computed by =gptel-org--compute-response-level=:
 - Agent indirect buffer: first heading level + 1
 
 Setup: =gptel-org--enable-auto-correct= is called from =gptel-org-agent--open-indirect-buffer= when creating each indirect buffer.
+
+**** org-element cache interaction (critical pitfall)
+
+The auto-corrector runs with =inhibit-modification-hooks= t to prevent recursive triggering from =after-change-functions=.  This has a critical side effect: the *org-element cache* does not see the secondary edits (heading rebasing, fence conversion, escaping), because =org-element--cache-after-change= is also on =after-change-functions= and is suppressed.
+
+Without cache invalidation, =org-end-of-subtree=, =org-element-at-point=, and similar functions return stale results — they rely on =org-element-headline-parser= which computes =:end= via the cache.  For example, =org-end-of-subtree= may stop at the end of a heading line instead of spanning its children, causing =insert-user-heading= to place the FEEDBACK heading in the wrong position.
+
+The fix: after the edit loop, when modifications were made (=modified= flag), call =org-element-cache-reset=.  A re-entrancy guard (=gptel-org--auto-correcting=) prevents the auto-corrector from being triggered by the reset.
+
+Key rules for any code that modifies buffers inside =after-change-functions=:
+- =inhibit-modification-hooks= t suppresses *all* hooks, including the org-element cache updater
+- =combine-change-calls= does NOT help here — it cannot nest inside an already-running =after-change-functions= chain
+- =org-element-cache-reset= is the reliable fix; it forces lazy re-parsing on next access
+- Always track whether actual modifications were made to avoid unnecessary resets
 
 *** Deprecation of Classical Subtree Mode
 
