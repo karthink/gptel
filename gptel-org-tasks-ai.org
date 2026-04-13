@@ -28,25 +28,35 @@ Customization for the above (also in =gptel-org.el=):
 
 * TODO State Machine
 
+When =gptel-org-use-todo-keywords= is enabled, the state machine supports an iterative FEEDBACK cycle:
+
 #+begin_example
-AI-DO  ──gptel-send──→  AI-DOING  ──response complete──→  (user marks AI-DONE/HI-DONE)
-  │                        │
-  │                        └──gptel-abort──→  CANCELED
+AI-DO ──gptel-send──→ AI-DOING ──response complete──→ FEEDBACK ──gptel-send──→ AI-DOING → ...
+  │                      │                                                        │
+  │                      └──gptel-abort──→ CANCELED                               └──→ FEEDBACK → ... → DONE
   │
-  └──(manual)──→  HI-FEEDBACK  (user review, with note)
+  └──(manual)──→ FEEDBACK (user review)
+#+end_example
+
+Without keyword mode, the simpler legacy flow applies:
+
+#+begin_example
+AI-DO ──gptel-send──→ AI-DOING ──response complete──→ (cleared/AI-DONE)
+                         │
+                         └──gptel-abort──→ CANCELED
 #+end_example
 
 ** Typical SEQ_TODO Setup
 
 #+begin_example
-#+SEQ_TODO: AI-DO(a) AI-DOING(i!) HI-FEEDBACK(h@) | AI-DONE(d!) HI-DONE(D!) CANCELED(c)
+#+SEQ_TODO: TODO(t) AI-DO(a) AI-DOING(i) DOING FEEDBACK(f) | AI-DONE(d) DONE(D) CANCELED(c)
 #+end_example
 
 - =AI-DO= — task ready for AI processing
 - =AI-DOING= — task being processed (auto-transition on =gptel-send=)
-- =HI-FEEDBACK= — user review needed (requires note on transition)
-- =AI-DONE= — completed by AI (with timestamp)
-- =HI-DONE= — completed by human (with timestamp)
+- =FEEDBACK= — AI finished, awaiting user review/input (auto-transition from AI-DOING on response completion in keyword mode)
+- =AI-DONE= — completed by AI
+- =DONE= — completed (user ends the FEEDBACK cycle)
 - =CANCELED= — aborted (auto-transition on =gptel-abort=)
 
 ** State Transition Triggers
@@ -54,9 +64,11 @@ AI-DO  ──gptel-send──→  AI-DOING  ──response complete──→  (u
 | Transition | Trigger | Condition |
 |------------+---------+-----------|
 | AI-DO → AI-DOING | =gptel-send= | =gptel-org-tasks-change-state-on-send= is non-nil |
+| AI-DOING → FEEDBACK | Response complete | =gptel-org-use-todo-keywords= enabled |
+| AI-DOING → (cleared) | Response complete | Legacy mode (keyword mode disabled) |
+| FEEDBACK → AI-DOING | =gptel-send= | User sends from FEEDBACK heading (keyword mode) |
 | AI-DOING → CANCELED | =gptel-abort= | Active task marker exists |
-| AI-DOING → (cleared) | Response complete | =gptel-post-response-functions= hook |
-| Any → HI-FEEDBACK | Manual | User changes state |
+| Any → DONE | Manual | User ends the feedback cycle |
 
 * Model Profiles via Tags
 

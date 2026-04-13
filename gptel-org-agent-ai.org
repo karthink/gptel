@@ -103,7 +103,7 @@ the full delegation chain:
 
 ** Org Structure Example
 
-With =gptel-org-use-todo-keywords= (AI/HI keyword mode):
+With =gptel-org-use-todo-keywords= (AI/FEEDBACK keyword mode):
 
 #+begin_src org
   ,* DOING Implement feature X                         ← user's task heading (level 1)
@@ -116,7 +116,7 @@ With =gptel-org-use-todo-keywords= (AI/HI keyword mode):
   Research findings...
   ,*** AI Main agent response                          ← AI response at agent-level + 1 (level 3)
   Based on the research results...
-  ,*** HI Follow-up question                           ← user heading at agent-level + 1 (level 3)
+  ,*** FEEDBACK Follow-up question                      ← user heading at agent-level + 1 (level 3)
   What about edge cases?
   ,*** AI Edge case analysis                           ← next AI response (level 3)
   Here are the edge cases...
@@ -124,9 +124,9 @@ With =gptel-org-use-todo-keywords= (AI/HI keyword mode):
 
 Key structural rules:
 - Agent heading is one level deeper than its parent task heading
-- AI response headings and HI user headings are both at =agent-level + 1= (children of the agent heading)
+- AI response headings and FEEDBACK user headings are both at =agent-level + 1= (children of the agent heading)
 - Sub-agent headings are also at =agent-level + 1=, with nested tags (e.g. =gatherer@main@agent=)
-- Sub-agents do NOT get HI headings (guarded by the =@.*@= pattern check)
+- Sub-agents do NOT get FEEDBACK headings (guarded by the =@.*@= pattern check)
 
 Legacy tag-based structure (deprecated, for reference):
 
@@ -390,7 +390,7 @@ org-mode format with the correct heading level for the current context.
 | Infinite loop in =strip-agent-subtrees= | Fixed forward progress after matching agent headings | =cd78a2c= |
 | Branching lineage headings stripped | =protected-positions= parameter preserves lineage headings | =2788660= |
 | =org-back-to-heading= error before first headline | Guard for point before first headline | =441a0b0= |
-| Sub-agent HI heading pollution | Guard in =insert-user-heading= skips sub-agent tags (2+ =@= signs) | =1cee3c7= |
+| Sub-agent FEEDBACK heading pollution | Guard in =insert-user-heading= skips sub-agent tags (2+ =@= signs) | =1cee3c7= |
 | Corrector double-rebases sub-agent headings | Replaced stateful corrector with idempotent =after-change-functions= hook; headings at correct level are skipped | =6021e59= |
 | Separator/prefix in sub-agent indirect buffer | Custom =gptel-agent-subtree--handle-post-insert= omits separator/prefix for non-interactive sub-agents | =93bdf26= |
 | User heading at wrong level (sibling of agent) | =insert-user-heading= now uses =agent-level + 1= (child of agent, matching AI response level); backwards search for duplication check | =638ea2f= |

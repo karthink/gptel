@@ -134,7 +134,7 @@ Handlers: =gptel-request--handlers= (state→function alist).
 
 | File | Lines | Purpose |
 |------+-------+---------|
-| =gptel-org.el= | ~2350 | Org mode support: subtree context, properties, branching, links, Markdown→Org, AI/HI keywords |
+| =gptel-org.el= | ~2350 | Org mode support: subtree context, properties, branching, links, Markdown→Org, AI/FEEDBACK keywords |
 | =gptel-org-cache.el= | ~870 | Context caching: hash-based invalidation, tag-based auto-caching |
 | =gptel-org-tasks.el= | ~390 | AI task workflow: TODO transitions, model profiles via tags |
 | =gptel-org-archive.el= | ~590 | Archive with AI summaries: git tracking, two-phase workflow |
@@ -331,16 +331,16 @@ See feature-specific documents for details:
 - *Agent subtrees*: per-agent indirect buffers, recursive delegation, context stripping
 - *Handover mechanism*: sub-agent can create a new =AI-DO= sibling heading instead of returning text, enabling triage→specialist escalation workflows.  See [[file:gptel-org-agent-ai.org::*Handover Mechanism]]
 - *Org format instructions*: dynamic prompt injection telling LLM to use org-mode formatting with correct heading levels, examples, and #+SEQ_TODO keywords.  See [[file:gptel-org-agent-ai.org::*Org Format Instructions]]
-- *AI/HI TODO keywords*: role-based conversation structure using TODO keywords instead of tags.  See [[*Discussion Structure: AI/HI Keywords]]
+- *AI/FEEDBACK TODO keywords*: role-based conversation structure using TODO keywords instead of tags.  The =FEEDBACK= keyword also drives the iterative task cycle (AI finishes → FEEDBACK → user sends → AI-DOING → ...).  See [[*Discussion Structure: AI/FEEDBACK Keywords]]
 - *Unified org mode*: =gptel-org-mode= provides a single entry point that enables all org features (subtree context, TODO keywords, task workflow, highlighting)
 
-** Discussion Structure: AI/HI Keywords
+** Discussion Structure: AI/FEEDBACK Keywords
 
 /New approach/ — replaces the classical =:assistant:= / =:user:= tag-based subtree mode.
 
 *** Overview
 
-Conversation turns are marked with =AI= and =HI= TODO keywords on org headings instead of right-aligned =:assistant:= / =:user:= tags.  This gives each role a distinct foreground color via =org-todo-keyword-faces= and integrates naturally with org's keyword cycling.
+Conversation turns are marked with =AI= and =FEEDBACK= TODO keywords on org headings instead of right-aligned =:assistant:= / =:user:= tags.  This gives each role a distinct foreground color via =org-todo-keyword-faces= and integrates naturally with org's keyword cycling.  In task mode, =FEEDBACK= serves a dual role: it marks user message headings and signals "AI finished, awaiting user review/input" as part of the iterative task cycle.
 
 *** Structure
 
@@ -350,27 +350,49 @@ Conversation turns are marked with =AI= and =HI= TODO keywords on org headings i
 ,**** AI Response title here
 4
 
-,**** HI Add 7 to result
+,**** FEEDBACK Add 7 to result
 
 ,**** AI Another response
 11
 #+end_example
 
 - =AI= headings are assistant responses (get ='gptel 'response= text property)
-- =HI= headings are user messages (no gptel text property)
-- Both =AI= and =HI= headings are at the same level: one deeper than the agent heading (=agent-level + 1=), making them children of the agent subtree
+- =FEEDBACK= headings are user messages (no gptel text property)
+- Both =AI= and =FEEDBACK= headings are at the same level: one deeper than the agent heading (=agent-level + 1=), making them children of the agent subtree
 - The AI writes its own heading (=* AI <title>=) — no post-process title extraction
 - A real-time auto-corrector rebases heading levels as the AI streams
-- =gptel-org-agent--insert-user-heading= creates the =HI= heading after each response at the correct child level
+- =gptel-org-agent--insert-user-heading= creates the =FEEDBACK= heading after each response at the correct child level
+
+*** Task-Level FEEDBACK Cycle
+
+When using =gptel-org-tasks= with agents, the FEEDBACK state drives an iterative cycle at the task level:
+
+#+begin_example
+State cycle:
+  AI-DO → AI-DOING → FEEDBACK → AI-DOING → FEEDBACK → ... → DONE
+#+end_example
+
+- =AI-DO= → =gptel-send= → =AI-DOING= (auto-transition on send)
+- =AI-DOING= → response complete → parent heading transitions to =FEEDBACK=; a =FEEDBACK= sibling heading is created next to the agent subtree
+- =FEEDBACK= → =gptel-send= → the FEEDBACK heading is mutated into a new =AI-DOING= agent subtree; parent transitions back to =AI-DOING=
+- User manually sets =DONE= to end the cycle
+
+Task-level org structure after AI response:
+
+#+begin_example
+,** FEEDBACK My task                              ← parent: awaiting user review
+,*** AI-DONE Implement feature X                  ← completed agent subtree
+,*** FEEDBACK                                     ← user prompt location (sibling)
+#+end_example
 
 *** Activation
 
 Enable =gptel-org-mode= (which sets this automatically), or set
 =gptel-org-use-todo-keywords= to =t= manually.  The system then:
-1. Registers =AI= / =HI= in =org-todo-keywords= with colored faces
+1. Registers =AI= / =FEEDBACK= in =org-todo-keywords= with colored faces
 2. Instructs the AI to start responses with =* AI <short title>=
 3. Enables the idempotent auto-corrector in each agent indirect buffer (heading rebase, example escaping, fence conversion)
-4. Inserts =HI= keyword headings for user prompts after each response
+4. Inserts =FEEDBACK= keyword headings for user prompts after each response
 5. Skips post-response title generation (the AI wrote it)
 
 *** Configuration Variables
@@ -379,9 +401,9 @@ Enable =gptel-org-mode= (which sets this automatically), or set
 |----------+---------+---------|
 | =gptel-org-use-todo-keywords= | =nil= | Master switch for keyword mode |
 | =gptel-org-assistant-keyword= | ="AI"= | TODO keyword for assistant headings |
-| =gptel-org-user-keyword= | ="HI"= | TODO keyword for user headings |
+| =gptel-org-user-keyword= | ="FEEDBACK"= | TODO keyword for user headings |
 | =gptel-org-assistant-keyword-face= | =#88C0D0= bold | Face for AI keyword |
-| =gptel-org-user-keyword-face= | =#EBCB8B= bold | Face for HI keyword |
+| =gptel-org-user-keyword-face= | =#EBCB8B= bold | Face for FEEDBACK keyword |
 
 *** Key Functions
 
@@ -391,7 +413,7 @@ Enable =gptel-org-mode= (which sets this automatically), or set
 | =gptel-org--heading-is-user-p= | Unified role check (keywords or tags) |
 | =gptel-org--auto-correct-on-change= | Idempotent corrector on =after-change-functions= (buffer-local) |
 | =gptel-org--enable-auto-correct= | Set up ref-level and register the corrector hook |
-| =gptel-org--register-todo-keywords= | Register AI/HI keywords + faces on mode activation |
+| =gptel-org--register-todo-keywords= | Register AI/FEEDBACK keywords + faces on mode activation |
 
 *** Idempotent Auto-Corrector
 
@@ -431,7 +453,7 @@ Key rules for any code that modifies buffers inside =after-change-functions=:
 
 The classical =:assistant:= / =:user:= tag-based approach (=gptel-org-infer-bounds-from-tags=) is *deprecated* and will be removed in a future release.  It remains functional as the default (=gptel-org-use-todo-keywords= defaults to =nil=) for backward compatibility.
 
-Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assistant:= tags to =AI= keywords, =:user:= tags to =HI= keywords.  No automated migration tool is provided yet.
+Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assistant:= tags to =AI= keywords, =:user:= tags to =FEEDBACK= keywords.  No automated migration tool is provided yet.
 
 * Feature-Specific Documents
 

@@ -179,7 +179,7 @@ Use org heading tags instead of text properties to identify message roles:
 Provides TODO state management and model profile switching:
 
 ```org
-#+SEQ_TODO: AI-DO(a) AI-DOING(i!) FEEDBACK(f@) CANCELED(c) | AI-DONE(d!) HI-DONE(D!)
+#+SEQ_TODO: AI-DO(a) AI-DOING(i!) FEEDBACK(f@) CANCELED(c) | AI-DONE(d!) DONE(D!)
 
 ** AI-DO Implement feature X                            :haiku:
 ** AI-DO Complex analysis                               :opus:
@@ -386,7 +386,7 @@ None. All new features are opt-in via customization options.
 
 1. Add to your org file:
    ```org
-   #+SEQ_TODO: AI-DO(a) AI-DOING(i!) FEEDBACK(f@) CANCELED(c) | AI-DONE(d!) HI-DONE(D!)
+   #+SEQ_TODO: AI-DO(a) AI-DOING(i!) FEEDBACK(f@) CANCELED(c) | AI-DONE(d!) DONE(D!)
    ```
 
 2. Enable the modes:
