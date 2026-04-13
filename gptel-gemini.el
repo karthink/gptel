@@ -630,8 +630,8 @@ source:
     (name &key curl-args key request-params
           (stream nil)
           (header
-           (lambda () (when-let* ((key (gptel--get-api-key)))
-                   `(("X-goog-api-key" . ,key)))))
+           (lambda (_info) (when-let* ((key (gptel--get-api-key)))
+                        `(("X-goog-api-key" . ,key)))))
           (host "generativelanguage.googleapis.com")
           (protocol "https")
           (models gptel--gemini-models)
@@ -700,7 +700,7 @@ for."
                   :stream stream
                   :request-params request-params
                   :key key
-                  :url (lambda ()
+                  :url (lambda (_info)
                          (let ((method
                                 (if (and stream gptel-use-curl gptel-stream)
                                     "streamGenerateContent"

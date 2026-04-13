@@ -706,10 +706,10 @@ URL `https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-tab
 (cl-defun gptel-make-anthropic
     (name &key curl-args stream key request-params
           (header
-           (lambda () (when-let* ((key (gptel--get-api-key)))
-                   `(("x-api-key" . ,key)
-                     ("anthropic-version" . "2023-06-01")
-                     ("anthropic-beta" . "extended-cache-ttl-2025-04-11")))))
+           (lambda (_info) (when-let* ((key (gptel--get-api-key)))
+                        `(("x-api-key" . ,key)
+                          ("anthropic-version" . "2023-06-01")
+                          ("anthropic-beta" . "extended-cache-ttl-2025-04-11")))))
           (models gptel--anthropic-models)
           (host "api.anthropic.com")
           (protocol "https")

@@ -112,8 +112,9 @@
 (cl-defun gptel-make-privategpt
     (name &key curl-args stream key request-params
           (header
-           (lambda () (when-let* ((key (gptel--get-api-key)))
-		   `(("Authorization" . ,(concat "Bearer " key))))))
+           (lambda (_info)
+             (when-let* ((key (gptel--get-api-key)))
+	       `(("Authorization" . ,(concat "Bearer " key))))))
           (host "localhost:8001")
           (protocol "http")
 	  (models '(private-gpt))
@@ -221,8 +222,9 @@ the response."
 (cl-defun gptel-make-perplexity
     (name &key curl-args stream key
           (header
-           (lambda () (when-let* ((key (gptel--get-api-key)))
-                   `(("Authorization" . ,(concat "Bearer " key))))))
+           (lambda (_info)
+             (when-let* ((key (gptel--get-api-key)))
+               `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.perplexity.ai")
           (protocol "https")
           ;; https://docs.perplexity.ai/guides/model-cards
@@ -304,8 +306,9 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
 ;;;###autoload
 (cl-defun gptel-make-deepseek
     (name &key curl-args stream key request-params
-          (header (lambda () (when-let* ((key (gptel--get-api-key)))
-                          `(("Authorization" . ,(concat "Bearer " key))))))
+          (header (lambda (_info)
+                    (when-let* ((key (gptel--get-api-key)))
+                      `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.deepseek.com")
           (protocol "https")
           (endpoint "/v1/chat/completions")
@@ -342,8 +345,9 @@ For the meanings of the keyword arguments, see `gptel-make-openai'."
 ;;;###autoload
 (cl-defun gptel-make-xai
     (name &key curl-args stream key request-params
-          (header (lambda () (when-let* ((key (gptel--get-api-key)))
-                          `(("Authorization" . ,(concat "Bearer " key))))))
+          (header (lambda (_info)
+                    (when-let* ((key (gptel--get-api-key)))
+                      `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.x.ai")
           (protocol "https")
           (endpoint "/v1/chat/completions")

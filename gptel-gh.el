@@ -462,8 +462,7 @@ Then we need a session token."
 ;;;###autoload
 (cl-defun gptel-make-gh-copilot
     (name &key curl-args request-params
-          (header (lambda ()
-                    (gptel--gh-auth)
+          (header (lambda (_info) (gptel--gh-auth)
                     `(("openai-intent" . "conversation-panel")
                       ("authorization" . ,(concat "Bearer "
                                            (plist-get (gptel--gh-token gptel-backend) :token)))
@@ -530,7 +529,7 @@ parameters (as plist keys) and values supported by the API.  Use
 these to set parameters that gptel does not provide user options
 for."
   (declare (indent 1))
-  (let* ((url (lambda ()
+  (let* ((url (lambda (_info)
                 (concat protocol "://" host
                         (if (gptel--model-capable-p 'responses-api gptel-model)
                             "/v1/responses" endpoint))))

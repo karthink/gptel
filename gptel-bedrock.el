@@ -719,7 +719,7 @@ parameters (as plist keys) and values supported by the API."
            :curl-args (lambda () (append curl-args (gptel-bedrock--curl-args region aws-profile aws-bearer-token)))
            :request-params request-params
            :url
-           (lambda ()
+           (lambda (_info)
              (concat protocol "://" host
                      "/model/" (gptel-bedrock--get-model-id gptel-model model-region)
                      "/" (if stream "converse-stream" "converse")))))))

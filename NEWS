@@ -46,6 +46,15 @@
   from the default list of OpenAI models.  These models are either
   deprecated or no longer available.
 
+- Breaking change to the ~gptel-backend~ API: When the =header= or =url=
+  fields of a backend are specified as functions, they now accept one
+  argument: the request context plist (=info=).  This is only relevant
+  if you have defined custom header or url functions for your gptel
+  backends.
+
+  (This change is required for backends whose request header or URL
+  should be modified depending on the state of the request.)
+
 ** New models and backends
 
 - xAI backend: Add support for =grok-4-1-fast-reasoning=,
