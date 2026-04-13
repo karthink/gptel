@@ -2015,9 +2015,34 @@ MACHINE is an instance of `gptel-fsm'"
         (when (and backend (equal (gptel-backend-host backend) host))
           (cl-incf count))))))
 
+(defun gptel--debug-log-alist (label)
+  "Log the current state of `gptel--request-alist' with LABEL."
+  (when (eq gptel-log-level 'debug)
+    (gptel--log
+     (format "debug-alist: [%s] alist-length=%d entries=(%s) queue-hosts=(%s)"
+             label
+             (length gptel--request-alist)
+             (mapconcat
+              (lambda (entry)
+                (let* ((fsm (cadr entry))
+                       (info (and fsm (gptel-fsm-info fsm))))
+                  (format "proc=%s state=%s preset=%s"
+                          (car entry) (and fsm (gptel-fsm-state fsm))
+                          (and info (plist-get info :preset)))))
+              gptel--request-alist ", ")
+             (let (hosts) (maphash (lambda (k v) (push (format "%s:%d" k (length v)) hosts))
+                                   gptel--host-request-queue) (mapconcat #'identity hosts ", ")))
+     "debug-alist" 'no-json)))
+
 (defun gptel--host-queue-dispatch (host)
   "Dispatch the next queued FSM for HOST, if under concurrency limit.
 This should be called whenever a request for HOST completes."
+  (when (eq gptel-log-level 'debug)
+    (gptel--log
+     (format "debug-queue-dispatch: host=%s active=%d queue-len=%d"
+             host (gptel--host-active-count host)
+             (length (gethash host gptel--host-request-queue)))
+     "debug-queue-dispatch" 'no-json))
   (when-let* ((queue (gethash host gptel--host-request-queue))
               (next-fsm (car queue)))
     ;; Check if we're now under the limit
@@ -2029,6 +2054,11 @@ This should be called whenever a request for HOST completes."
         (puthash host (cdr queue) gptel--host-request-queue)
         (when (null (gethash host gptel--host-request-queue))
           (remhash host gptel--host-request-queue))
+        (when (eq gptel-log-level 'debug)
+          (gptel--log
+           (format "debug-queue-dispatch: DISPATCHING queued fsm=%s"
+                   (gptel--fsm-summary next-fsm))
+           "debug-queue-dispatch" 'no-json))
         ;; Actually fire the request
         (gptel--handle-wait--dispatch next-fsm)))))
 
@@ -2047,6 +2077,7 @@ many active requests, queue this FSM for later dispatch."
     (dolist (key '(:tool-result :tool-use :error :http-status :reasoning))
       (when (plist-get info key)
         (plist-put info key nil)))
+    (gptel--debug-log-alist (format "handle-wait fsm=%s" (gptel--fsm-summary fsm)))
     (if (and limit host (>= (gptel--host-active-count host) limit))
         ;; Over the limit: queue the FSM
         (let ((queue (gethash host gptel--host-request-queue)))
@@ -3227,12 +3258,18 @@ PROCESS and _STATUS are process parameters."
                (t (plist-put info :error "Could not parse HTTP response."))))))
         (with-demoted-errors "gptel callback error: %S"
           (funcall (plist-get info :callback) nil info))))
+      (gptel--debug-log-alist
+       (format "stream-cleanup BEFORE-transition fsm=%s" (gptel--fsm-summary fsm)))
       (gptel--fsm-transition fsm))      ; Move to next state
+    (gptel--debug-log-alist
+     (format "stream-cleanup AFTER-transition proc=%s" process))
     (let ((host (and-let* ((fsm-entry (car (alist-get process gptel--request-alist)))
                            (info (gptel-fsm-info fsm-entry))
                            (backend (plist-get info :backend)))
                   (gptel-backend-host backend))))
       (setf (alist-get process gptel--request-alist nil 'remove) nil)
+      (gptel--debug-log-alist
+       (format "stream-cleanup AFTER-remove proc=%s host=%s" process host))
       (when host (gptel--host-queue-dispatch host)))
     (kill-buffer proc-buf)))
 
@@ -3380,12 +3417,18 @@ PROCESS and _STATUS are process parameters."
           (gptel--fsm-transition fsm)   ;WAIT -> TYPE
           (with-demoted-errors "gptel callback error: %S"
             (funcall proc-callback nil proc-info))))
+      (gptel--debug-log-alist
+       (format "sentinel BEFORE-transition fsm=%s" (gptel--fsm-summary fsm)))
       (gptel--fsm-transition fsm))      ;TYPE -> next
+    (gptel--debug-log-alist
+     (format "sentinel AFTER-transition proc=%s" process))
     (let ((host (and-let* ((fsm-entry (car (alist-get process gptel--request-alist)))
                            (info (gptel-fsm-info fsm-entry))
                            (backend (plist-get info :backend)))
                   (gptel-backend-host backend))))
       (setf (alist-get process gptel--request-alist nil 'remove) nil)
+      (gptel--debug-log-alist
+       (format "sentinel AFTER-remove proc=%s host=%s" process host))
       (when host (gptel--host-queue-dispatch host)))
     (kill-buffer proc-buf)))
 
