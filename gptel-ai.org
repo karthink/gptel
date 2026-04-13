@@ -368,7 +368,7 @@ Enable =gptel-org-mode= (which sets this automatically), or set
 =gptel-org-use-todo-keywords= to =t= manually.  The system then:
 1. Registers =AI= / =HI= in =org-todo-keywords= with colored faces
 2. Instructs the AI to start responses with =* AI <short title>=
-3. Runs the streaming auto-corrector (heading rebase, example escaping, fence conversion)
+3. Enables the idempotent auto-corrector in each agent indirect buffer (heading rebase, example escaping, fence conversion)
 4. Inserts =HI= keyword headings for user prompts after each response
 5. Skips post-response title generation (the AI wrote it)
 
@@ -388,24 +388,29 @@ Enable =gptel-org-mode= (which sets this automatically), or set
 |----------+---------|
 | =gptel-org--heading-is-assistant-p= | Unified role check (keywords or tags) |
 | =gptel-org--heading-is-user-p= | Unified role check (keywords or tags) |
-| =gptel-org--auto-correct-stream= | Per-chunk corrector on =gptel-post-stream-hook= |
-| =gptel-org--correct-region= | Core: rebase headings, escape examples, convert fences |
+| =gptel-org--auto-correct-on-change= | Idempotent corrector on =after-change-functions= (buffer-local) |
+| =gptel-org--enable-auto-correct= | Set up ref-level and register the corrector hook |
 | =gptel-org--register-todo-keywords= | Register AI/HI keywords + faces on mode activation |
 
-*** Real-Time Auto-Corrector
+*** Idempotent Auto-Corrector
 
-The corrector runs on =gptel-post-stream-hook= (fires after every streaming chunk).  It processes only complete lines and maintains state across chunks via =gptel-org--corrector-state= (buffer-local plist with =:ref-level=, =:in-example=, =:in-src=, =:last-pos=).
+The corrector runs as a buffer-local =after-change-functions= hook (=gptel-org--auto-correct-on-change=) on each agent indirect buffer.  It fires on every buffer change and processes the changed region for corrections.
 
-Corrections applied per line:
-- *Heading level rebase*: =* H= → =***** H= (offset = reference-level − 1)
+The design is stateless and idempotent:
+- =gptel-org--ref-level= (buffer-local integer) is computed once when the indirect buffer is created
+- Headings with level < ref-level are rebased by adding =(ref-level - 1)= stars
+- Headings already at or above ref-level are skipped — no double-correction possible
+- Block context is checked per-heading via =gptel-org--in-example-block-p= (point-based backward search)
+
+Corrections applied per line in the changed region:
+- *Heading level rebase*: =* H= → =***** H= (only if level < ref-level)
 - *Example block escaping*: =*= or =#+= at BOL inside =#+begin_example= → comma-prefixed
-- *Markdown fence fallback*: =```lang= → =#+begin_src lang=, =```= → =#+end_src=
+- *Markdown fence conversion*: =```lang= → =#+begin_src lang=, =```= → =#+end_src=
 
 Reference level is computed by =gptel-org--compute-response-level=:
 - Agent indirect buffer: first heading level + 1
-- Subtree context: parent heading level + 2
 
-During streaming, the corrector is bounded to =(point)= (the end of just-inserted text) rather than =point-max=.  This prevents processing sub-agent subtrees that exist after the current insertion point.  The final cleanup sweep in =gptel-org--auto-correct-cleanup= still processes to =point-max= but relies on =:last-pos= being advanced past sub-agent subtrees by =gptel-agent-subtree--cleanup=.
+Setup: =gptel-org--enable-auto-correct= is called from =gptel-org-agent--open-indirect-buffer= when creating each indirect buffer.
 
 *** Deprecation of Classical Subtree Mode
 

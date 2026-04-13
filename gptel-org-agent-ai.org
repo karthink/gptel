@@ -162,6 +162,11 @@ Legacy tag-based structure (deprecated, for reference):
 - All content inside the indirect buffer (AI responses, user prompts, sub-agent
   headings) lives at =agent-level + 1= — one level deeper than the agent heading
   itself.  This is computed by =gptel-org--compute-response-level=.
+- An idempotent auto-corrector (=gptel-org--auto-correct-on-change=) is registered
+  as a buffer-local =after-change-functions= hook.  It rebases any heading with
+  level < =gptel-org--ref-level= and handles example block escaping and markdown
+  fence conversion.  Because the correction is idempotent, sub-agent subtrees
+  (already at correct levels) are automatically skipped.
 
 ** Handover Mechanism
 
@@ -386,7 +391,7 @@ org-mode format with the correct heading level for the current context.
 | Branching lineage headings stripped | =protected-positions= parameter preserves lineage headings | =2788660= |
 | =org-back-to-heading= error before first headline | Guard for point before first headline | =441a0b0= |
 | Sub-agent HI heading pollution | Guard in =insert-user-heading= skips sub-agent tags (2+ =@= signs) | =1cee3c7= |
-| Corrector double-rebases sub-agent headings | Bound =correct-region= to =(point)= during streaming; advance =:last-pos= past folded subtrees | =1cee3c7=, =93bdf26= |
+| Corrector double-rebases sub-agent headings | Replaced stateful corrector with idempotent =after-change-functions= hook; headings at correct level are skipped | =6021e59= |
 | Separator/prefix in sub-agent indirect buffer | Custom =gptel-agent-subtree--handle-post-insert= omits separator/prefix for non-interactive sub-agents | =93bdf26= |
 | User heading at wrong level (sibling of agent) | =insert-user-heading= now uses =agent-level + 1= (child of agent, matching AI response level); backwards search for duplication check | =638ea2f= |
 
