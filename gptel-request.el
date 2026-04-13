@@ -823,7 +823,7 @@ Otherwise, evaluate it as a variable."
        ;; benefit of users who have personal customizations touching gptel's
        ;; internal API re: backend header and url functions.
        (condition-case nil
-           (apply ,func-or-sym ',args)
+           (apply ,func-or-sym (list ,@args))
          (wrong-number-of-arguments
           (message "Displaying warning")
           (display-warning
