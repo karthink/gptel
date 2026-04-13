@@ -910,5 +910,183 @@ causing it to be comma-escaped and permanently breaking the block."
      ;; CRITICAL: outer #+end_src must NOT be comma-escaped
      (should (looking-at "#\\+end_src"))
      (should (not (looking-at ","))))))
+
+(ert-deftest gptel-org-subtree-test-auto-correct-simple-src-block-closing ()
+  "Test that #+end_src of a simple src block is NOT comma-escaped.
+Reproduces the case where #+begin_src org contains only headings
+and text (no nested blocks), and the outer #+end_src still gets
+incorrectly comma-escaped."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** DOING Task\n*** AI-DOING Task              :main@agent:\n"
+   "AI-DOING"
+   (goto-char (point-max))
+   (let ((response-start (point))
+         (gptel-org-use-todo-keywords t)
+         (gptel-org-assistant-keyword "AI"))
+     (gptel-org--enable-auto-correct)
+     ;; Simulate AI writing a src org block with headings (no nested blocks)
+     (insert "#+begin_src org\n**** Result\n2 + 2 = /4/\n#+end_src\n")
+     (goto-char response-start)
+     (search-forward "#+begin_src org")
+     (forward-line 1)
+     ;; Heading inside block should be comma-escaped
+     (should (looking-at ",\\*\\*\\*\\* Result"))
+     (forward-line 1)
+     ;; Normal text - no escaping needed
+     (should (looking-at "2 \\+ 2"))
+     (forward-line 1)
+     ;; CRITICAL: outer #+end_src must NOT be comma-escaped
+     (should (looking-at "#\\+end_src"))
+     (should (not (looking-at ","))))))
+
+(ert-deftest gptel-org-subtree-test-auto-correct-src-block-after-reasoning ()
+  "Test that #+end_src of src org block is not escaped after reasoning block.
+Reproduces the real-world case where a gptel-reasoning block precedes
+a #+begin_src org block.  The reasoning block's #+end_src must not
+confuse the block-depth tracking for the subsequent org block."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** DOING Task\n*** AI-DOING Task              :main@agent:\n"
+   "AI-DOING"
+   (goto-char (point-max))
+   (let ((response-start (point))
+         (gptel-org-use-todo-keywords t)
+         (gptel-org-assistant-keyword "AI"))
+     (gptel-org--enable-auto-correct)
+     ;; Simulate AI writing reasoning block then src org block
+     (insert "#+begin_src gptel-reasoning\nThinking...\n#+end_src\n\n#+begin_src org\n**** Result\n2 + 2 = /4/\n#+end_src\n")
+     (goto-char response-start)
+     ;; Reasoning block should be untouched (no * or #+ content inside)
+     (search-forward "#+begin_src gptel-reasoning")
+     (forward-line 1)
+     (should (looking-at "Thinking\\.\\.\\."))
+     (forward-line 1)
+     ;; Reasoning block's #+end_src must NOT be escaped
+     (should (looking-at "#\\+end_src"))
+     ;; Now check the org block
+     (search-forward "#+begin_src org")
+     (forward-line 1)
+     ;; Heading inside block should be comma-escaped
+     (should (looking-at ",\\*\\*\\*\\* Result"))
+     (forward-line 1)
+     (should (looking-at "2 \\+ 2"))
+     (forward-line 1)
+     ;; CRITICAL: org block's #+end_src must NOT be comma-escaped
+     (should (looking-at "#\\+end_src"))
+     (should (not (looking-at ","))))))
+
+(ert-deftest gptel-org-subtree-test-auto-correct-streaming-src-block ()
+  "Test that streaming #+end_src is not escaped when arriving in a later chunk.
+Simulates the real streaming scenario where #+begin_src org arrives
+in one chunk and #+end_src arrives in a subsequent chunk."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** DOING Task\n*** AI-DOING Task              :main@agent:\n"
+   "AI-DOING"
+   (goto-char (point-max))
+   (let ((response-start (point))
+         (gptel-org-use-todo-keywords t)
+         (gptel-org-assistant-keyword "AI"))
+     (gptel-org--enable-auto-correct)
+     ;; Chunk 1: reasoning block
+     (insert "#+begin_src gptel-reasoning\nThinking...\n#+end_src\n\n")
+     ;; Chunk 2: src org opener and content
+     (insert "#+begin_src org\n**** Result\n2 + 2 = /4/\n")
+     ;; Chunk 3: closing delimiter arrives
+     (insert "#+end_src\n")
+     ;; Verify the org block
+     (goto-char response-start)
+     (search-forward "#+begin_src org")
+     (forward-line 1)
+     (should (looking-at ",\\*\\*\\*\\* Result"))
+     (forward-line 1)
+     (should (looking-at "2 \\+ 2"))
+     (forward-line 1)
+     ;; CRITICAL: #+end_src must NOT be comma-escaped
+     (should (looking-at "#\\+end_src"))
+     (should (not (looking-at ","))))))
+
+(ert-deftest gptel-org-subtree-test-auto-correct-remove-comma-from-outer-closer ()
+  "Test that a comma-escaped outer #+end_example is corrected.
+When the AI writes ,#+end_example as the outer block closer, the
+comma must be removed because org does not strip commas from
+delimiter lines — only from content lines inside the block.
+A ,#+end_example is never recognised as a block closer by org,
+so the block runs to end-of-file."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** DOING Task\n*** AI-DOING Task              :main@agent:\n"
+   "AI-DOING"
+   (goto-char (point-max))
+   (let ((response-start (point))
+         (gptel-org-use-todo-keywords t)
+         (gptel-org-assistant-keyword "AI"))
+     (gptel-org--enable-auto-correct)
+     ;; Simulate AI writing an example block where the closer is
+     ;; incorrectly comma-escaped
+     (insert "#+begin_example\n* Top heading\n- List item\n,#+end_example\n")
+     (goto-char response-start)
+     (search-forward "#+begin_example")
+     (forward-line 1)
+     ;; * heading inside block should be comma-escaped
+     (should (looking-at ",\\* Top heading"))
+     (forward-line 1)
+     (should (looking-at "- List item"))
+     (forward-line 1)
+     ;; CRITICAL: comma must have been REMOVED from #+end_example
+     (should (looking-at "#\\+end_example"))
+     (should (not (looking-at ","))))))
+
+(ert-deftest gptel-org-subtree-test-auto-correct-remove-comma-from-outer-end-src ()
+  "Test that a comma-escaped outer #+end_src is corrected.
+Same as the end_example test but for src blocks."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** DOING Task\n*** AI-DOING Task              :main@agent:\n"
+   "AI-DOING"
+   (goto-char (point-max))
+   (let ((response-start (point))
+         (gptel-org-use-todo-keywords t)
+         (gptel-org-assistant-keyword "AI"))
+     (gptel-org--enable-auto-correct)
+     ;; Simulate AI writing a src block where the closer is
+     ;; incorrectly comma-escaped
+     (insert "#+begin_src org\n* Heading\n,#+end_src\n")
+     (goto-char response-start)
+     (search-forward "#+begin_src org")
+     (forward-line 1)
+     ;; * heading inside block should be comma-escaped
+     (should (looking-at ",\\* Heading"))
+     (forward-line 1)
+     ;; CRITICAL: comma must have been REMOVED from #+end_src
+     (should (looking-at "#\\+end_src"))
+     (should (not (looking-at ","))))))
+
+(ert-deftest gptel-org-subtree-test-auto-correct-keep-comma-on-inner-closer ()
+  "Test that comma on inner #+end_example is preserved.
+When a block closer is inside an outer block (nested), it is content
+and its comma prefix must be kept."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** DOING Task\n*** AI-DOING Task              :main@agent:\n"
+   "AI-DOING"
+   (goto-char (point-max))
+   (let ((response-start (point))
+         (gptel-org-use-todo-keywords t)
+         (gptel-org-assistant-keyword "AI"))
+     (gptel-org--enable-auto-correct)
+     ;; Outer src block containing an inner example block
+     ;; AI correctly writes content but incorrectly commas the outer closer
+     (insert "#+begin_src org\n#+begin_example\nContent\n#+end_example\n,#+end_src\n")
+     (goto-char response-start)
+     (search-forward "#+begin_src org")
+     (forward-line 1)
+     ;; Inner #+begin_example should be comma-escaped (content of outer block)
+     (should (looking-at ",#\\+begin_example"))
+     (forward-line 1)
+     (should (looking-at "Content"))
+     (forward-line 1)
+     ;; Inner #+end_example should be comma-escaped (content of outer block)
+     (should (looking-at ",#\\+end_example"))
+     (forward-line 1)
+     ;; CRITICAL: outer #+end_src must have comma REMOVED
+     (should (looking-at "#\\+end_src"))
+     (should (not (looking-at ","))))))
+
 (provide 'gptel-org-subtree-test)
 ;;; gptel-org-subtree-test.el ends here

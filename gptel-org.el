@@ -2042,6 +2042,24 @@ skipped, making this safe to run on any region at any time."
                 (goto-char line-start)
                 (insert ",")
                 (setq modified t))
+               ;; Remove incorrect comma from outer block closers.
+               ;; AI models sometimes comma-escape #+end_example or
+               ;; #+end_src even when it is the outermost block closer.
+               ;; Org does not strip commas from delimiter lines, so
+               ;; ,#+end_example is never recognised as a block closer
+               ;; and the block runs to end-of-file.
+               ;; The check: line matches ,#+end_TYPE and
+               ;; `gptel-org--in-example-block-p' returns nil (meaning
+               ;; this line IS recognised as the closer by the
+               ;; comma-aware find-block-end-pos, so it is not content).
+               ((and (string-match-p
+                      "^[ \t]*,#\\+end_\\(example\\|src\\)[ \t]*$"
+                      line-text)
+                     (not (gptel-org--in-example-block-p)))
+                (goto-char line-start)
+                (skip-chars-forward " \t")
+                (delete-char 1)         ; remove the comma
+                (setq modified t))
                ;; Rebase heading levels (only outside blocks)
                ((and (string-match "^\\(\\*+\\) " line-text)
                      (not (gptel-org--in-example-block-p)))
