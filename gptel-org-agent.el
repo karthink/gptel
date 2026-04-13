@@ -46,13 +46,13 @@
 (declare-function gptel-org--debug "gptel-org")
 (declare-function gptel-org--heading-has-tag-p "gptel-org")
 (declare-function gptel-org--heading-has-todo-keyword-p "gptel-org")
+(declare-function gptel-org--enable-auto-correct "gptel-org")
 
 ;; Forward declarations for variables defined in gptel-org.el
 (defvar gptel-org-todo-keywords)
 (defvar gptel-org-infer-bounds-from-tags)
 (defvar gptel-org-subtree-context)
 (defvar gptel-org--org-format-response)
-(defvar gptel-org--corrector-state)
 
 ;; Forward declarations for variables defined in org.el
 ;; org-state is dynamically bound by org-todo for hook functions
@@ -419,7 +419,9 @@ Return the indirect buffer."
       (goto-char (point-min))
       ;; Store the end-marker on a buffer-local variable so we can clean it
       ;; up later
-      (setq-local gptel-org-agent--narrow-end-marker end-marker))
+      (setq-local gptel-org-agent--narrow-end-marker end-marker)
+      ;; Enable the idempotent auto-corrector for heading level rebasing
+      (gptel-org--enable-auto-correct))
     (gptel-org--debug "org-agent open-indirect-buffer: created buffer %S" buf-name)
     indirect-buf))
 
@@ -657,9 +659,6 @@ indirect buffer (identified by `buffer-base-buffer' returning non-nil)."
             ;; Ensure gptel-mode is active for proper response formatting
             (unless (bound-and-true-p gptel-mode)
               (setq-local gptel-mode t))
-            ;; Mark where this response starts so the auto-corrector can
-            ;; skip past existing content from prior response cycles.
-            (setq-local gptel-org--response-start (point-marker))
             ;; Redirect the FSM's response target
             (plist-put info :buffer indirect-buf)
             (plist-put info :position pos-marker)
@@ -1724,16 +1723,6 @@ INFO is the FSM info plist."
                      gptel-org-agent--pending-tool-calls)
             ;; Mark tool-pending so the FSM knows we're waiting
             (plist-put info :tool-pending t)
-            ;; Advance the auto-corrector's :last-pos past the PENDING
-            ;; heading so it won't rebase its level.  The corrector treats
-            ;; every heading it encounters as AI-written content and
-            ;; applies a level offset — but the PENDING heading is
-            ;; inserted at the correct absolute level by this function.
-            (when-let* ((state gptel-org--corrector-state)
-                        ((plist-get state :active))
-                        (last-pos (plist-get state :last-pos))
-                        ((markerp last-pos)))
-              (set-marker last-pos (point)))
             (gptel-org--debug
              "org-agent tool-confirm: created PENDING heading for %s (id=%s)"
              tool-names pending-id)))))))

@@ -77,20 +77,16 @@ When set, the markdown-to-org converter is skipped since the
 response is already in org format.  A lightweight post-response
 sanitizer runs instead to fix common AI formatting mistakes.")
 
-(defvar-local gptel-org--corrector-state nil
-  "State for the real-time org response auto-corrector.
-Plist with keys:
-  :active       - non-nil when corrector is running for a response
-  :ref-level    - reference heading level (the AI response heading level)
-  :last-pos     - marker for last corrected position (avoid re-correction)
-  :in-example   - non-nil when inside #+begin_example block
-  :in-src       - non-nil when inside #+begin_src or ``` block")
+(defvar-local gptel-org--ref-level nil
+  "Reference heading level for auto-correction in agent indirect buffers.
+Set once when the indirect buffer is created.  This is the level at
+which the AI's top-level headings (level 1) should appear — computed
+as one more than the agent heading level at `point-min'.
 
-(defvar-local gptel-org--response-start nil
-  "Marker for the start of the current AI response in this buffer.
-Set by `gptel-org-agent--transform-redirect' before streaming begins.
-Used by the auto-corrector to skip past existing content from prior
-response cycles when initializing on a follow-up request.")
+The auto-corrector uses this to rebase any heading with fewer stars
+than ref-level by adding an offset of (ref-level - 1).  Headings
+already at or above ref-level are left untouched, making the
+correction idempotent.")
 
 ;; Debug support
 (defvar gptel-org-debug nil
@@ -1916,160 +1912,103 @@ positions of the response."
 ;; Run at priority 5 (after heading adjustment at 0, before title at 80)
 ;; (add-hook 'gptel-post-response-functions #'gptel-org--sanitize-org-response 5)
 
-;;; Real-time auto-corrector for TODO keyword mode
+;;; Idempotent auto-corrector for agent indirect buffers
 ;;
-;; When `gptel-org-use-todo-keywords' is enabled and the AI writes headings
-;; using `*' (no level constraint), this corrector rebases ALL headings to
-;; the correct level as they stream in.  It also escapes lines inside example
-;; blocks and converts markdown fences to org src blocks.
+;; When `gptel-org-use-todo-keywords' is enabled, the AI writes headings
+;; at level 1 (* Heading).  This corrector, hooked into
+;; `after-change-functions' on each agent indirect buffer, rebases any
+;; heading with fewer stars than `gptel-org--ref-level' by adding an
+;; offset of (ref-level - 1).
+;;
+;; The correction is idempotent: headings already at or above ref-level
+;; are left untouched.  This eliminates stateful tracking (no :last-pos
+;; marker, no :in-src/:in-example state, no response-start marker) and
+;; removes ordering dependencies with sub-agent cleanup, PENDING heading
+;; insertion, etc.
+;;
+;; The hook is registered buffer-locally in each indirect buffer by
+;; `gptel-org-agent--enable-auto-correct'.  No global hooks are needed.
 
-(add-hook 'gptel-post-stream-hook #'gptel-org--auto-correct-stream)
-(add-hook 'gptel-post-response-functions #'gptel-org--auto-correct-cleanup 2)
+(defun gptel-org--auto-correct-on-change (beg end _old-len)
+  "Idempotent auto-corrector for agent indirect buffers.
+Runs on `after-change-functions' (buffer-local) to fix heading
+levels, escape example block content, and convert markdown fences.
 
-(defun gptel-org--auto-correct-stream ()
-  "Auto-correct AI response formatting during streaming.
-Runs on `gptel-post-stream-hook' to fix heading levels, escape
-example blocks, and convert markdown fences in real-time."
-  (when (and gptel-org-use-todo-keywords
-             (derived-mode-p 'org-mode)
-             (gptel-org--in-agent-indirect-buffer-p))
-    ;; Initialize state on first chunk
-    (unless (plist-get gptel-org--corrector-state :active)
-      (let ((ref-level (gptel-org--compute-response-level)))
-        (when ref-level
-          (let* ((marker (make-marker))
-                 (start
-                  (cond
-                   ;; When gptel-org--response-start is set (by
-                   ;; transform-redirect), use it to skip past existing
-                   ;; content from prior response cycles.  Without this,
-                   ;; a follow-up request would re-process already-rebased
-                   ;; headings, doubling their level offset.
-                   ((and (markerp gptel-org--response-start)
-                         (marker-position gptel-org--response-start))
-                    (marker-position gptel-org--response-start))
-                   ;; Fallback: skip past the agent heading at point-min.
-                   (t (save-excursion
-                        (goto-char (point-min))
-                        ;; In agent indirect buffers, point-min is the
-                        ;; agent heading (e.g. *** AI-DOING :main@agent:).
-                        ;; Skip past it so the corrector doesn't rebase it.
-                        (if (and (org-at-heading-p)
-                                 (gptel-org--heading-has-agent-tag-p))
-                            (progn (forward-line 1) (point))
-                          (point)))))))
-            (set-marker marker start)
-            (setq gptel-org--corrector-state
-                  (list :active t
-                        :ref-level ref-level
-                        :last-pos marker
-                        :in-example nil
-                        :in-src nil))))))
-    ;; Process new text — bounded to (point) so we don't touch
-    ;; sub-agent subtrees that may exist after the insertion point.
-    (when (plist-get gptel-org--corrector-state :active)
-      (gptel-org--correct-region (point)))))
+BEG and END delimit the changed region (after the change).
+Only complete lines within this region are processed.
 
-(defun gptel-org--correct-region (&optional limit)
-  "Correct org formatting in newly inserted text.
-Uses `gptel-org--corrector-state' to track position and block state.
-
-When LIMIT is non-nil, only process up to that buffer position
-instead of `point-max'.  This prevents the corrector from
-re-processing sub-agent subtrees that exist after the current
-streaming insertion point in the buffer."
-  (let* ((state gptel-org--corrector-state)
-         (last-pos (plist-get state :last-pos))
-         (ref-level (plist-get state :ref-level))
-         (in-example (plist-get state :in-example))
-         (in-src (plist-get state :in-src))
-         (end (or limit (point-max))))
-    (when (and (markerp last-pos)
-               (marker-position last-pos)
-               (< (marker-position last-pos) end))
+Headings with level < `gptel-org--ref-level' are rebased by adding
+\(ref-level - 1) stars.  Headings already at the correct level are
+skipped, making this safe to run on any region at any time."
+  (when-let* ((ref-level gptel-org--ref-level)
+              ((> ref-level 1)))
+    (let ((offset (1- ref-level))
+          (inhibit-modification-hooks t))
       (save-excursion
-        (goto-char (marker-position last-pos))
-        ;; Process only complete lines (don't touch partial lines at end)
-        (beginning-of-line)
-        ;; Use a marker for process-end so it auto-adjusts when
-        ;; heading rebasing inserts/deletes characters.  A plain
-        ;; integer would go stale, causing last-pos to land inside
-        ;; an already-corrected heading and trigger double-correction.
-        (let ((process-end (save-excursion
-                             (goto-char end)
-                             (copy-marker
-                              (if (bolp) end (line-beginning-position))))))
-          (while (< (point) (marker-position process-end))
+        ;; Expand to full lines
+        (goto-char beg)
+        (setq beg (line-beginning-position))
+        (goto-char end)
+        (unless (bolp) (setq end (line-beginning-position 2)))
+        ;; Use a marker for end so it tracks insertions during correction
+        (let ((end-marker (copy-marker end)))
+          (goto-char beg)
+          (while (< (point) (marker-position end-marker))
             (let ((line-start (point))
                   (line-text (buffer-substring-no-properties
                               (point) (line-end-position))))
               (cond
-               ;; Track example blocks
-               ((string-match-p "^[ \t]*#\\+begin_example" line-text)
-                (setq in-example t)
-                (plist-put state :in-example t))
-               ((string-match-p "^[ \t]*#\\+end_example" line-text)
-                (setq in-example nil)
-                (plist-put state :in-example nil))
-               ;; Track src blocks
-               ((string-match-p "^[ \t]*#\\+begin_src" line-text)
-                (setq in-src t)
-                (plist-put state :in-src t))
-               ((string-match-p "^[ \t]*#\\+end_src" line-text)
-                (setq in-src nil)
-                (plist-put state :in-src nil))
-               ;; Convert markdown fences to org src blocks
-               ((and (not in-src) (not in-example)
-                     (string-match "^[ \t]*```\\([[:alnum:]_+-]*\\)[ \t]*$" line-text))
+               ;; Convert markdown opening fence to org src block
+               ((and (not (gptel-org--in-example-block-p))
+                     (string-match
+                      "^[ \t]*```\\([[:alnum:]_+-]*\\)[ \t]*$" line-text))
                 (let ((lang (match-string 1 line-text)))
                   (delete-region line-start (line-end-position))
                   (insert (if (string-empty-p lang)
                               "#+begin_src"
-                            (concat "#+begin_src " lang)))
-                  (setq in-src t)
-                  (plist-put state :in-src t)))
-               ((and in-src (not in-example)
-                     (string-match-p "^[ \t]*```[ \t]*$" line-text))
+                            (concat "#+begin_src " lang)))))
+               ;; Convert markdown closing fence to org end_src
+               ((and (string-match-p "^[ \t]*```[ \t]*$" line-text)
+                     (not (gptel-org--in-example-block-p)))
                 (delete-region line-start (line-end-position))
-                (insert "#+end_src")
-                (setq in-src nil)
-                (plist-put state :in-src nil))
-               ;; Escape lines in example blocks
-               ((and in-example
-                     (string-match-p "^\\*\\|^#\\+" line-text))
+                (insert "#+end_src"))
+               ;; Escape lines in example blocks that start with * or #+
+               ((and (string-match-p "^\\*\\|^#\\+" line-text)
+                     (gptel-org--in-example-block-p))
                 (goto-char line-start)
                 (insert ","))
                ;; Rebase heading levels (only outside blocks)
-               ((and (not in-src) (not in-example)
-                     (string-match "^\\(\\*+\\) " line-text))
-                (let* ((current-stars (length (match-string 1 line-text)))
-                       ;; Offset: we want AI's `*' (level 1) to become ref-level
-                       (offset (1- ref-level))
-                       (new-level (+ current-stars offset))
-                       (new-stars (make-string new-level ?*)))
-                  (when (> offset 0)
-                    (goto-char line-start)
-                    (delete-char current-stars)
-                    (insert new-stars))))))
+               ((and (string-match "^\\(\\*+\\) " line-text)
+                     (not (gptel-org--in-example-block-p)))
+                (let ((current-stars (length (match-string 1 line-text))))
+                  ;; Only rebase headings that are too shallow.
+                  ;; Headings at or above ref-level are already correct.
+                  (when (< current-stars ref-level)
+                    (let ((new-stars (make-string
+                                     (+ current-stars offset) ?*)))
+                      (goto-char line-start)
+                      (delete-char current-stars)
+                      (insert new-stars)))))))
             (forward-line 1))
-          ;; Update last-pos to the end of processed region
-          (set-marker last-pos (marker-position process-end))
-          (set-marker process-end nil))))))
+          (set-marker end-marker nil))))))
 
-(defun gptel-org--auto-correct-cleanup (_beg _end)
-  "Clean up auto-corrector state after response completes.
-Runs on `gptel-post-response-functions'."
-  (when (plist-get gptel-org--corrector-state :active)
-    ;; Process any remaining partial line
-    (gptel-org--correct-region)
-    ;; Clean up
-    (when-let* ((marker (plist-get gptel-org--corrector-state :last-pos)))
-      (set-marker marker nil))
-    (setq gptel-org--corrector-state nil))
-  ;; Clean up response-start marker
-  (when (markerp gptel-org--response-start)
-    (set-marker gptel-org--response-start nil)
-    (setq gptel-org--response-start nil)))
+(defun gptel-org--enable-auto-correct ()
+  "Enable the idempotent auto-corrector in the current indirect buffer.
+Computes `gptel-org--ref-level' from the agent heading at `point-min'
+and registers `gptel-org--auto-correct-on-change' as a buffer-local
+`after-change-functions' hook.
+
+This should be called once when an agent indirect buffer is created."
+  (when (and (bound-and-true-p gptel-org-use-todo-keywords)
+             (gptel-org--in-agent-indirect-buffer-p))
+    (let ((ref-level (gptel-org--compute-response-level)))
+      (when ref-level
+        (setq-local gptel-org--ref-level ref-level)
+        (add-hook 'after-change-functions
+                  #'gptel-org--auto-correct-on-change nil t)
+        (gptel-org--debug
+         "auto-correct enabled: ref-level=%d buffer=%S"
+         ref-level (buffer-name))))))
 
 
 
