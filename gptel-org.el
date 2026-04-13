@@ -93,6 +93,12 @@ correction idempotent.")
 Used as a re-entrancy guard to prevent the auto-corrector from
 being triggered by the cache reset that follows its own edits.")
 
+(defvar-local gptel-org--agent-indirect-buffer-p nil
+  "Non-nil when this buffer is an agent indirect buffer.
+Set by `gptel-org-agent--open-indirect-buffer'.  Unlike checking
+the agent tag on the heading, this flag persists even after the
+tag is removed (e.g. by `gptel-org-agent--insert-user-heading').")
+
 ;; Debug support
 (defvar gptel-org-debug nil
   "When non-nil, output debug messages for subtree context operations.
@@ -1751,29 +1757,32 @@ so that headings inside examples are not modified."
 (defun gptel-org--in-example-block-p ()
   "Return non-nil if point is inside an example or src block."
   (save-excursion
-    (let ((pos (point))
-          (in-block nil))
-      (goto-char (point-min))
-      (while (and (not in-block)
-                  (re-search-forward
-                   "^[ \t]*#\\+begin_\\(example\\|src\\)\\(?:[ \t]\\|$\\)" pos t))
-        (let ((block-start (point)))
-          (when (re-search-forward
-                 "^[ \t]*#\\+end_\\(example\\|src\\)[ \t]*$" nil t)
-            (when (and (>= pos block-start)
-                       (<= pos (point)))
-              (setq in-block t)))))
-      in-block)))
+    (save-match-data
+      (let ((pos (point))
+            (in-block nil))
+        (goto-char (point-min))
+        (while (and (not in-block)
+                    (re-search-forward
+                     "^[ \t]*#\\+begin_\\(example\\|src\\)\\(?:[ \t]\\|$\\)" pos t))
+          (let ((block-start (point)))
+            (when (re-search-forward
+                   "^[ \t]*#\\+end_\\(example\\|src\\)[ \t]*$" nil t)
+              (when (and (>= pos block-start)
+                         (<= pos (point)))
+                (setq in-block t)))))
+        in-block))))
 
 (defun gptel-org--in-agent-indirect-buffer-p ()
   "Return non-nil if the current buffer is an agent indirect buffer.
 An agent indirect buffer is an indirect buffer whose first heading
-has a tag matching the `*@agent' pattern."
+has a tag matching the `*@agent' pattern, or has been marked with
+the buffer-local flag `gptel-org--agent-indirect-buffer-p'."
   (and (buffer-base-buffer (current-buffer))
        (derived-mode-p 'org-mode)
-       (save-excursion
-         (goto-char (point-min))
-         (gptel-org--heading-has-agent-tag-p))))
+       (or (bound-and-true-p gptel-org--agent-indirect-buffer-p)
+           (save-excursion
+             (goto-char (point-min))
+             (gptel-org--heading-has-agent-tag-p)))))
 
 (defun gptel-org--adjust-response-headings (beg end)
   "Adjust heading levels in the response region from BEG to END.
