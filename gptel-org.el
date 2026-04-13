@@ -88,6 +88,11 @@ than ref-level by adding an offset of (ref-level - 1).  Headings
 already at or above ref-level are left untouched, making the
 correction idempotent.")
 
+(defvar-local gptel-org--auto-correcting nil
+  "Non-nil while the auto-corrector is modifying the buffer.
+Used as a re-entrancy guard to prevent the auto-corrector from
+being triggered by the cache reset that follows its own edits.")
+
 ;; Debug support
 (defvar gptel-org-debug nil
   "When non-nil, output debug messages for subtree context operations.
@@ -1941,9 +1946,12 @@ Headings with level < `gptel-org--ref-level' are rebased by adding
 \(ref-level - 1) stars.  Headings already at the correct level are
 skipped, making this safe to run on any region at any time."
   (when-let* ((ref-level gptel-org--ref-level)
-              ((> ref-level 1)))
-    (let ((offset (1- ref-level))
-          (inhibit-modification-hooks t))
+              ((> ref-level 1))
+              ((not gptel-org--auto-correcting)))
+    (let ((gptel-org--auto-correcting t)
+          (offset (1- ref-level))
+          (inhibit-modification-hooks t)
+          (modified nil))
       (save-excursion
         ;; Expand to full lines
         (goto-char beg)
@@ -1966,17 +1974,20 @@ skipped, making this safe to run on any region at any time."
                   (delete-region line-start (line-end-position))
                   (insert (if (string-empty-p lang)
                               "#+begin_src"
-                            (concat "#+begin_src " lang)))))
+                            (concat "#+begin_src " lang))))
+                (setq modified t))
                ;; Convert markdown closing fence to org end_src
                ((and (string-match-p "^[ \t]*```[ \t]*$" line-text)
                      (not (gptel-org--in-example-block-p)))
                 (delete-region line-start (line-end-position))
-                (insert "#+end_src"))
+                (insert "#+end_src")
+                (setq modified t))
                ;; Escape lines in example blocks that start with * or #+
                ((and (string-match-p "^\\*\\|^#\\+" line-text)
                      (gptel-org--in-example-block-p))
                 (goto-char line-start)
-                (insert ","))
+                (insert ",")
+                (setq modified t))
                ;; Rebase heading levels (only outside blocks)
                ((and (string-match "^\\(\\*+\\) " line-text)
                      (not (gptel-org--in-example-block-p)))
@@ -1988,9 +1999,18 @@ skipped, making this safe to run on any region at any time."
                                      (+ current-stars offset) ?*)))
                       (goto-char line-start)
                       (delete-char current-stars)
-                      (insert new-stars)))))))
+                      (insert new-stars)
+                      (setq modified t)))))))
             (forward-line 1))
-          (set-marker end-marker nil))))))
+          (set-marker end-marker nil)))
+      ;; The auto-corrector runs inside after-change-functions with
+      ;; inhibit-modification-hooks t, so the org-element cache does not
+      ;; see the secondary edits (heading rebasing, fence conversion,
+      ;; escaping).  Reset the cache when changes were made so that
+      ;; subsequent callers of org-end-of-subtree, org-element-at-point,
+      ;; etc. get correct results.
+      (when modified
+        (org-element-cache-reset)))))
 
 (defun gptel-org--enable-auto-correct ()
   "Enable the idempotent auto-corrector in the current indirect buffer.
