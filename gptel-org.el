@@ -1755,22 +1755,67 @@ so that headings inside examples are not modified."
 
 
 (defun gptel-org--in-example-block-p ()
-  "Return non-nil if point is inside an example or src block."
+  "Return non-nil if point is inside an example or src block.
+Point is considered inside the block if it is between the end of the
+opening delimiter and the beginning of the nesting-matched closing
+delimiter.  The delimiter lines themselves are not inside the block.
+
+Handles nesting: inner #+begin_/#+end_ pairs (including those that
+have been comma-escaped by the auto-corrector) are correctly skipped
+when searching for the matching outer closer."
   (save-excursion
     (save-match-data
       (let ((pos (point))
-            (in-block nil))
+            (in-block nil)
+            (done nil))
         (goto-char (point-min))
         (while (and (not in-block)
+                    (not done)
                     (re-search-forward
                      "^[ \t]*#\\+begin_\\(example\\|src\\)\\(?:[ \t]\\|$\\)" pos t))
-          (let ((block-start (point)))
-            (when (re-search-forward
-                   "^[ \t]*#\\+end_\\(example\\|src\\)[ \t]*$" nil t)
-              (when (and (>= pos block-start)
-                         (<= pos (point)))
-                (setq in-block t)))))
+          (let ((block-start (point))
+                (block-type (match-string 1)))
+            ;; Find the nesting-matched closer for this opener.
+            (let ((end-pos (gptel-org--find-block-end-pos block-type)))
+              (if end-pos
+                  (if (< pos end-pos)
+                      ;; pos is before the closing delimiter line
+                      (when (>= pos block-start)
+                        (setq in-block t))
+                    ;; pos is at or past the closer; not inside this
+                    ;; block.  Stop if point moved past pos.
+                    (when (> (point) pos)
+                      (setq done t)))
+                ;; No closing delimiter found — block is unclosed.
+                ;; During streaming, content may arrive before the
+                ;; closer.  Treat content after the opener as inside.
+                (when (>= pos block-start)
+                  (setq in-block t))))))
         in-block))))
+
+(defun gptel-org--find-block-end-pos (block-type)
+  "Find the line-beginning position of the matching #+end_ for BLOCK-TYPE.
+Handles nesting by counting depth of same-type #+begin_/#+end_ pairs.
+Point should be after the opening #+begin_ line.  Moves point to the
+end of the matched #+end_ line on success.  Returns the line-beginning
+position of the #+end_ line, or nil if no match."
+  (let ((depth 1)
+        (begin-re (format "^[ \t]*,*#\\+begin_%s\\(?:[ \t]\\|$\\)" block-type))
+        (end-re (format "^[ \t]*,*#\\+end_%s[ \t]*$" block-type))
+        (combined-re (format "^[ \t]*,*#\\+\\(begin_%s\\(?:[ \t]\\|$\\)\\|end_%s[ \t]*$\\)"
+                             block-type block-type))
+        (result nil))
+    (while (and (> depth 0)
+                (re-search-forward combined-re nil t))
+      (beginning-of-line)
+      (cond
+       ((looking-at-p begin-re) (cl-incf depth))
+       ((looking-at-p end-re)
+        (cl-decf depth)
+        (when (= depth 0)
+          (setq result (point)))))
+      (end-of-line))
+    result))
 
 (defun gptel-org--in-agent-indirect-buffer-p ()
   "Return non-nil if the current buffer is an agent indirect buffer.

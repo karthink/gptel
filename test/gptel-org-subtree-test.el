@@ -867,5 +867,48 @@ inserting more text after a corrected heading must not re-correct it."
        ;; ** AI Details → ***** AI Details (level 5)
        (should (looking-at "\\*\\*\\*\\*\\* AI Details"))))))
 
+
+(ert-deftest gptel-org-subtree-test-auto-correct-example-block-closing-delimiter ()
+  "Test that outer #+end_src is NOT comma-escaped by auto-corrector.
+Reproduces the bug where `gptel-org--in-example-block-p' treats the
+closing delimiter of the outermost block as \"inside\" the block,
+causing it to be comma-escaped and permanently breaking the block."
+  (gptel-org-test-with-agent-indirect-buffer
+   "* H1\n** DOING Task\n*** AI-DOING Task              :main@agent:\n"
+   "AI-DOING"
+   (goto-char (point-max))
+   (let ((response-start (point))
+         (gptel-org-use-todo-keywords t)
+         (gptel-org-assistant-keyword "AI"))
+     (gptel-org--enable-auto-correct)
+     ;; Simulate AI writing a src org block containing nested org syntax
+     (insert "#+begin_src org\n* Heading\n#+begin_src elisp\n(+ 2 2)\n#+end_src\n#+begin_example\n4\n#+end_example\n#+end_src\n")
+     ;; The outer #+end_src must NOT be comma-escaped
+     (goto-char response-start)
+     ;; Inner content should be comma-escaped
+     (search-forward "#+begin_src org")
+     (forward-line 1)
+     (should (looking-at ",\\* Heading"))
+     (forward-line 1)
+     (should (looking-at ",#\\+begin_src elisp"))
+     (forward-line 1)
+     ;; (+ 2 2) doesn't start with * or #+, so no comma
+     (should (looking-at "(\\+ 2 2)"))
+     (forward-line 1)
+     ;; Inner #+end_src should be comma-escaped
+     (should (looking-at ",#\\+end_src"))
+     (forward-line 1)
+     ;; #+begin_example should be comma-escaped
+     (should (looking-at ",#\\+begin_example"))
+     (forward-line 1)
+     ;; 4 doesn't need escaping
+     (should (looking-at "4"))
+     (forward-line 1)
+     ;; #+end_example should be comma-escaped
+     (should (looking-at ",#\\+end_example"))
+     (forward-line 1)
+     ;; CRITICAL: outer #+end_src must NOT be comma-escaped
+     (should (looking-at "#\\+end_src"))
+     (should (not (looking-at ","))))))
 (provide 'gptel-org-subtree-test)
 ;;; gptel-org-subtree-test.el ends here
