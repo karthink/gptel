@@ -542,35 +542,6 @@ which see."
             (propertize "@" 'face 'transient-key)
             (propertize "preset" 'face 'transient-inactive-value))))
 
-;; TODO(preset): Unify this with `gptel--apply-preset'?
-(defun gptel--read-apply-preset (name)
-  "Read gptel preset NAME and apply it."
-  (interactive
-   (list
-    (let ((completion-extra-properties
-           `(:annotation-function
-             ,(lambda (comp)
-                (and-let* ((desc
-                            (plist-get (gptel-get-preset (intern-soft comp))
-                                       :description)))
-                  (concat (propertize " " 'display '(space :align-to 32))
-                          (if (string-match "\\(\n\\)" desc)
-                              (substring desc 0 (match-beginning 1))
-                            desc)))))))
-      (intern
-       (completing-read (format "Apply preset (%s): "
-                                (pcase gptel--set-buffer-locally
-                                  (1 "for next request only")
-                                  ('t "buffer-locally")
-                                  (_ "globally")))
-                        gptel--known-presets nil t)))))
-  (gptel--apply-preset
-   name (lambda (sym val)
-          (gptel--set-with-scope sym val gptel--set-buffer-locally)))
-  (message "Applied gptel preset %s"
-           (propertize (symbol-name name) 'face 'transient-value))
-  (when transient--stack (run-at-time 0 nil #'transient-setup)))
-
 
 ;; * Transient classes and methods for gptel
 
@@ -837,7 +808,8 @@ Also format the value of OBJ in the transient menu."
      (lambda () (interactive) (gptel--handle-tool-use gptel--fsm-last))
      :if (lambda () (and gptel--fsm-last
                     (eq (gptel-fsm-state gptel--fsm-last) 'TOOL))))]]
-  [[(gptel--preset
+  [[(gptel-preset
+     :transient t
      :key "@" :format "%d"
      :description
      (lambda ()
@@ -1028,63 +1000,63 @@ Customize `gptel-directives' for task-specific prompts."
     :pad-keys t])
 
 ;; ** Prefix for saving and applying presets
+;;;###autoload
+(defun gptel-preset (preset &optional setter)
+  "Load gptel PRESET with SETTER.
 
-(transient-define-prefix gptel--preset ()
-  "Apply a gptel preset, or save the current configuration as a preset.
-
-A \"preset\" is a collection of gptel settings, such as the model,
-backend, system message and enabled tools, that are applied and used
-together.  See `gptel-make-preset' for details."
-  :transient-suffix #'transient--do-return
-  [:description "Save or apply a preset collection of gptel options"
-   [:pad-keys t
-    ("@" "Select via completing-read" gptel--read-apply-preset)
-    ("C-s" "Save current settings as new preset" gptel--save-preset)]]
-  [:if (lambda () gptel--known-presets)
-   :class transient-column
-   :setup-children
-   (lambda (_)
-     (transient-parse-suffixes
-      'gptel--preset
-      (cl-loop
-       for (name-sym . preset) in gptel--known-presets
-       for name = (format "%s" name-sym)
-       with unused-keys = (nconc (number-sequence ?a ?z)
-                                 (number-sequence ?0 ?9))
-       for description = (plist-get preset :description)
-       for key = (seq-find (lambda (k) (member k unused-keys))
-                           name (seq-first unused-keys))
-       do (setq unused-keys (delq key unused-keys))
-       collect
-       (list
-        (key-description (list key))
-        (concat name
-                (propertize " " 'display '(space :align-to 20))
-                (and description
-                     (propertize (concat
-                                  "(" (gptel--describe-directive
-                                       description (- (window-width) 30))
-                                  ")")
-                                 'face 'shadow)))
-        `(lambda () (interactive)
-           (gptel--set-with-scope 'gptel--preset ',name-sym
-            gptel--set-buffer-locally)
-           (gptel--apply-preset ',preset
-            (lambda (sym val) (gptel--set-with-scope
-                          sym val gptel--set-buffer-locally)))
-           (message "Applied gptel preset %s"
-            (propertize ,name 'face 'transient-value))
-           (when transient--stack
-            (run-at-time 0 nil #'transient-setup))))
-       into generated
-       finally return
-       (nconc (list '(gptel--infix-variable-scope
-                      :format "%d %k %v"
-                      :description
-                      (lambda () (format "%s        %s"
-                             (propertize "Apply preset" 'face 'transient-heading)
-                             (propertize "Scope" 'face 'transient-active-prefix)))))
-              generated))))])
+Interactively, query for PRESET, allow the preset scope to be set
+dynamically, and offer to save the current gptel settings as a new or
+existing preset, as well."
+  (interactive
+   (let ((hint (concat (propertize "C-s" 'face 'transient-value)
+                       (propertize " Save as preset"
+                                   'face 'transient-inactive-value)
+                       ", " (propertize "=" 'face 'transient-value)
+                       (propertize " Scope " 'face 'transient-inactive-argument)))
+         (scope-obj (gptel--scope :variable 'gptel--set-buffer-locally))
+         (completion-extra-properties
+          (list :annotation-function
+                (lambda (cand)
+                  (and-let* ((str (plist-get
+                                   (cdr (assq (intern cand) gptel--known-presets))
+                                   :description)))
+                    (concat (propertize " " 'display '(space :align-to 25))
+                            (truncate-string-to-width str (- (frame-width) 40)
+                                                      nil nil t)))))))
+     (cl-flet* ((key-hint-ov ()
+                  (or (cdr-safe (get-char-property-and-overlay (point-min) 'gptel))
+                      (let ((ov (make-overlay (point-min) (minibuffer-prompt-end))))
+                        (overlay-put ov 'gptel 'prefix)
+                        (overlay-put ov 'before-string
+                                     (concat hint (transient-format-value scope-obj)
+                                             "\n"))
+                        ov)))
+                (save-preset ()
+                  (interactive)
+                  (when (minibufferp)
+                    (run-at-time 0 nil (lambda (menu) (call-interactively #'gptel--save-preset)
+                                         (when menu (transient-setup 'gptel-menu)))
+                                 transient--prefix)
+                    (minibuffer-quit-recursive-edit)))
+                (update-scope ()
+                  (interactive)
+                  (transient-infix-set
+                   scope-obj
+                   (pcase gptel--set-buffer-locally (1 nil) ('nil t) ('t 1)))
+                  (overlay-put (key-hint-ov) 'before-string
+                               (concat hint
+                                       (transient-format-value scope-obj)
+                                       "\n"))))
+       (minibuffer-with-setup-hook
+           (lambda () (use-local-map (make-composed-keymap
+                                 (define-keymap "C-s" #'save-preset "=" #'update-scope)
+                                 (current-local-map)))
+             (key-hint-ov))
+         (list (intern (completing-read (format "Load preset: ")
+                                        gptel--known-presets nil t)))))))
+  (gptel--apply-preset preset
+                       (or setter (lambda (sym val) (gptel--set-with-scope
+                                                sym val gptel--set-buffer-locally)))))
 
 ;; ** Prefix for selecting tools
 

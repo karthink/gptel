@@ -2572,73 +2572,76 @@ two arguments, the symbol being set and the value to set it to.  It
 defaults to `set', and can be set to a different function to (for
 example) apply the preset buffer-locally."
   (unless setter (setq setter #'set))
-  (let* ((spec (if (memq (type-of preset) '(string symbol))
-                   (or (gptel-get-preset preset)
-                       (user-error "gptel preset \"%s\": Cannot find preset"
-                                   preset))
-                 preset)))
-    (when-let* ((func (plist-get spec :pre))) (funcall func))
-    (when-let* ((parents (plist-get spec :parents)))
-      (mapc (lambda (parent) (gptel--apply-preset parent setter))
-            (ensure-list parents)))
+  (cl-flet ((preset-spec (preset)
+              (if (memq (type-of preset) '(symbol string))
+                  (or (gptel-get-preset preset)
+                      (user-error "gptel preset \"%s\": Cannot find preset"
+                                  preset))
+                preset)))
     ;; Record preset name for persistence and UI display
     (when (memq (type-of preset) '(string symbol))
       (funcall setter 'gptel--preset preset))
-    (map-do
-     (lambda (key val)
-       (pcase key
-         ((or :parents :description :pre :post) nil)
-         ((or :system :system-message :rewrite-directive)
-          (let ((sym (if (eq key :rewrite-directive)
-                         'gptel--rewrite-directive 'gptel--system-message)))
-            (when (consp val)
-              ;; Possibly complain about trying to compose a system message string
-              ;; with a non-string
-              ;; TODO(modify-list): Catch other incompatible combinations
-              (and (or (plist-member val :append) (plist-member val :prepend))
-                   (not (stringp (symbol-value sym)))
-                   (user-error "Composing non-string system messages is not implemented"))
-              (setq val (gptel--modify-value (symbol-value sym) val)))
-            (if (and (symbolp val) (not (functionp val)))
-                (if-let* ((directive (alist-get val gptel-directives)))
-                    (funcall setter sym directive)
-                  (user-error "gptel preset: Cannot find directive %s" val))
-              (funcall setter sym val))))
-         (:backend
-          (when (consp val) (setq val (gptel--modify-value 'gptel-backend val)))
-          (setq val (cl-etypecase val
-                      (gptel-backend val)
-                      (string (gptel-get-backend val))))
-          (unless val
-            (user-error "gptel preset: Cannot find backend %s" val))
-          (funcall setter 'gptel-backend val))
-         (:tools                          ;TEMP Confirm this `:append' convention
-          (setq val (gptel--modify-value gptel-tools val))
-          (let* ((tools
-                  (flatten-list
-                   (cl-loop for tool-name in (ensure-list val)
-                            for tool = (cl-etypecase tool-name
-                                         (gptel-tool tool-name)
-                                         (string (ignore-errors
-                                                   (gptel-get-tool tool-name))))
-                            do (unless tool
-                                 (user-error "gptel preset: Cannot find tool %S"
-                                             tool-name))
-                            collect tool))))
-            (funcall setter 'gptel-tools (cl-delete-duplicates tools :test #'eq))))
-         ((and (let sym (or (intern-soft
-                             (concat "gptel-" (substring (symbol-name key) 1)))
-                            (intern-soft
-                             (concat "gptel--" (substring (symbol-name key) 1)))))
-               (guard (and sym (boundp sym))))
-          (funcall setter sym (if (consp val)
-                                  (gptel--modify-value (symbol-value sym) val)
-                                val)))
-         (_ (display-warning
-             '(gptel presets)
-             (format "gptel preset: setting for %s not found, ignoring." key)))))
-     spec)
-    (when-let* ((func (plist-get spec :post))) (funcall func))))
+    ;; Ensure that preset is a plist spec
+    (setq preset (preset-spec preset))
+    (when-let* ((func (plist-get preset :pre))) (funcall func))
+    (when-let* ((parents (plist-get preset :parents)))
+      (mapc (lambda (parent) (gptel--apply-preset (preset-spec parent) setter))
+            (ensure-list parents))))
+  (map-do
+   (lambda (key val)
+     (pcase key
+       ((or :parents :description :pre :post) nil)
+       ((or :system :system-message :rewrite-directive)
+        (let ((sym (if (eq key :rewrite-directive)
+                       'gptel--rewrite-directive 'gptel--system-message)))
+          (when (consp val)
+            ;; Possibly complain about trying to compose a system message string
+            ;; with a non-string
+            ;; TODO(modify-list): Catch other incompatible combinations
+            (and (or (plist-member val :append) (plist-member val :prepend))
+                 (not (stringp (symbol-value sym)))
+                 (user-error "Composing non-string system messages is not implemented"))
+            (setq val (gptel--modify-value (symbol-value sym) val)))
+          (if (and (symbolp val) (not (functionp val)))
+              (if-let* ((directive (alist-get val gptel-directives)))
+                  (funcall setter sym directive)
+                (user-error "gptel preset: Cannot find directive %s" val))
+            (funcall setter sym val))))
+       (:backend
+        (when (consp val) (setq val (gptel--modify-value 'gptel-backend val)))
+        (setq val (cl-etypecase val
+                    (gptel-backend val)
+                    (string (gptel-get-backend val))))
+        (unless val
+          (user-error "gptel preset: Cannot find backend %s" val))
+        (funcall setter 'gptel-backend val))
+       (:tools                          ;TEMP Confirm this `:append' convention
+        (setq val (gptel--modify-value gptel-tools val))
+        (let* ((tools
+                (flatten-list
+                 (cl-loop for tool-name in (ensure-list val)
+                          for tool = (cl-etypecase tool-name
+                                       (gptel-tool tool-name)
+                                       (string (ignore-errors
+                                                 (gptel-get-tool tool-name))))
+                          do (unless tool
+                               (user-error "gptel preset: Cannot find tool %S"
+                                           tool-name))
+                          collect tool))))
+          (funcall setter 'gptel-tools (cl-delete-duplicates tools :test #'eq))))
+       ((and (let sym (or (intern-soft
+                           (concat "gptel-" (substring (symbol-name key) 1)))
+                          (intern-soft
+                           (concat "gptel--" (substring (symbol-name key) 1)))))
+             (guard (and sym (boundp sym))))
+        (funcall setter sym (if (consp val)
+                                (gptel--modify-value (symbol-value sym) val)
+                              val)))
+       (_ (display-warning
+           '(gptel presets)
+           (format "gptel preset: setting for %s not found, ignoring." key)))))
+   preset)
+  (when-let* ((func (plist-get preset :post))) (funcall func)))
 
 (defun gptel--preset-syms (preset)
   "Return a list of gptel variables (symbols) set by PRESET.

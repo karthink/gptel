@@ -123,7 +123,8 @@
 (cl-defun gptel-make-kagi
     (name &key curl-args stream key
           (host "kagi.com")
-          (header (lambda () `(("Authorization" . ,(concat "Bot " (gptel--get-api-key))))))
+          (header (lambda (_info)
+                    `(("Authorization" . ,(concat "Bot " (gptel--get-api-key))))))
           (models '((fastgpt :capabilities (nosystem))
                     (summarize:cecil :capabilities (nosystem))
                     (summarize:agnes :capabilities (nosystem))
@@ -173,7 +174,7 @@ Example:
                   :protocol protocol
                   :endpoint endpoint
                   :url
-                  (lambda ()
+                  (lambda (_info)
                     (concat protocol "://" host endpoint
                             (if (equal gptel-model 'fastgpt)
                                 "fastgpt" "summarize"))))))

@@ -710,8 +710,9 @@ sources:
     (name &key curl-args (models gptel--openai-models)
           stream key request-params
           (header
-           (lambda () (when-let* ((key (gptel--get-api-key)))
-                   `(("Authorization" . ,(concat "Bearer " key))))))
+           (lambda (_info)
+             (when-let* ((key (gptel--get-api-key)))
+               `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.openai.com")
           (protocol "https")
           endpoint)
@@ -800,7 +801,7 @@ for."
 (cl-defun gptel-make-azure
     (name &key curl-args host
           (protocol "https")
-          (header (lambda () `(("api-key" . ,(gptel--get-api-key)))))
+          (header (lambda (_info) `(("api-key" . ,(gptel--get-api-key)))))
           (key 'gptel-api-key)
           models stream endpoint request-params)
   "Register an Azure backend for gptel with NAME.

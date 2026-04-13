@@ -518,8 +518,8 @@ Media files, if present, are placed in `gptel-context'."
     (name &key curl-args (models gptel--openai-models)
           stream key request-params
           (header
-           (lambda () (when-let* ((key (gptel--get-api-key)))
-                   `(("Authorization" . ,(concat "Bearer " key))))))
+           (lambda (_info) (when-let* ((key (gptel--get-api-key)))
+                        `(("Authorization" . ,(concat "Bearer " key))))))
           (host "api.openai.com")
           (protocol "https")
           (endpoint "/v1/responses"))

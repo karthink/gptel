@@ -462,18 +462,21 @@ Then we need a session token."
 ;;;###autoload
 (cl-defun gptel-make-gh-copilot
     (name &key curl-args request-params
-          (header (lambda ()
-                    (gptel--gh-auth)
-                    `(("openai-intent" . "conversation-panel")
-                      ("authorization" . ,(concat "Bearer "
-                                           (plist-get (gptel--gh-token gptel-backend) :token)))
-                      ("x-request-id" . ,(gptel--gh-uuid))
-                      ("vscode-sessionid" . ,(or (gptel--gh-sessionid gptel-backend) ""))
-                      ("vscode-machineid" . ,(or (gptel--gh-machineid gptel-backend) ""))
-                      ,@(when (and gptel-track-media
-                                   (gptel--model-capable-p 'media))
-                          `(("copilot-vision-request" . "true")))
-                      ("copilot-integration-id" . "vscode-chat"))))
+          (header
+           (lambda (info) (gptel--gh-auth)
+             `(("openai-intent" . "conversation-panel")
+               ("authorization" . ,( concat "Bearer "
+                                     (plist-get (gptel--gh-token gptel-backend) :token)))
+               ("x-initiator"  . ,(or (plist-get info :gh-initiator) ;tool call return turn
+                                      (prog1 "user"                  ;user turn
+                                        (plist-put info :gh-initiator "agent"))))
+               ("x-request-id" . ,(gptel--gh-uuid))
+               ("vscode-sessionid" . ,(or (gptel--gh-sessionid gptel-backend) ""))
+               ("vscode-machineid" . ,(or (gptel--gh-machineid gptel-backend) ""))
+               ,@(when (and gptel-track-media
+                            (gptel--model-capable-p 'media))
+                   `(("copilot-vision-request" . "true")))
+               ("copilot-integration-id" . "vscode-chat"))))
           (host "api.githubcopilot.com")
           (protocol "https")
           (endpoint "/chat/completions")
@@ -530,7 +533,7 @@ parameters (as plist keys) and values supported by the API.  Use
 these to set parameters that gptel does not provide user options
 for."
   (declare (indent 1))
-  (let* ((url (lambda ()
+  (let* ((url (lambda (_info)
                 (concat protocol "://" host
                         (if (gptel--model-capable-p 'responses-api gptel-model)
                             "/v1/responses" endpoint))))

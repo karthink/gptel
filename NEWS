@@ -46,6 +46,15 @@
   from the default list of OpenAI models.  These models are either
   deprecated or no longer available.
 
+- Breaking change to the ~gptel-backend~ API: When the =header= or =url=
+  fields of a backend are specified as functions, they now accept one
+  argument: the request context plist (=info=).  This is only relevant
+  if you have defined custom header or url functions for your gptel
+  backends.
+
+  (This change is required for backends whose request header or URL
+  should be modified depending on the state of the request.)
+
 ** New models and backends
 
 - xAI backend: Add support for =grok-4-1-fast-reasoning=,
@@ -64,6 +73,12 @@
   =gpt-5-mini=, =gpt-5-nano= and =o3-pro=.
 
 ** New features and UI changes
+
+- New command ~gptel-preset~ to choose a gptel preset to apply, or save
+  gptel's current settings as a preset.
+
+  ~gptel-menu~ now uses this command instead of a transient menu for
+  applying presets.
 
 - The UI indicators in chat buffers that report status changes (such as
   =Waiting=, =Ready= etc) now show the names of tools being called.  The
