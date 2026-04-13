@@ -1169,17 +1169,14 @@ Expected structure:
                     (gptel-org-agent--open-indirect-buffer base-buf marker))
               (with-current-buffer indirect-buf
                 ;; Simulate AI streaming: the AI writes at level 1 as instructed.
-                ;; The auto-corrector rebases these in real-time.
+                ;; The idempotent auto-corrector rebases via after-change-functions.
+                ;; open-indirect-buffer already called enable-auto-correct, but
+                ;; the test macro doesn't, so enable it here.
+                (gptel-org--enable-auto-correct)
                 (goto-char (point-max))
                 (insert "* AI Calculate 2 + 2\n4.\n")
-                ;; Run auto-corrector on first chunk (initializes + processes)
-                (let ((gptel-org--corrector-state nil))
-                  (gptel-org--auto-correct-stream)
-                  ;; Simulate post-response hook sequence:
-                  ;; Priority 2: auto-correct-cleanup (processes remaining text)
-                  (gptel-org--auto-correct-cleanup nil nil)
-                  ;; Priority 95: insert-user-heading
-                  (gptel-org-agent--insert-user-heading nil nil)))
+                ;; Simulate post-response hook: insert-user-heading
+                (gptel-org-agent--insert-user-heading nil nil))
               ;; Verify structure in base buffer
               (with-current-buffer base-buf
                 (goto-char (point-min))
@@ -1256,19 +1253,12 @@ Expected final structure:
                       (gptel-org-agent--open-indirect-buffer base-buf heading-marker)))
               ;; In the indirect buffer, simulate AI response streaming
               (with-current-buffer indirect-buf
-                ;; Set response-start before inserting, just as
-                ;; transform-redirect does before streaming begins.
+                ;; open-indirect-buffer already called enable-auto-correct,
+                ;; so the after-change hook is active.
                 (goto-char (point-max))
-                (setq-local gptel-org--response-start (point-marker))
                 (insert "* AI Result\n9.\n")
-                ;; Run auto-corrector (initializes + processes)
-                (let ((gptel-org--corrector-state nil))
-                  (gptel-org--auto-correct-stream)
-                  ;; Simulate post-response hook sequence:
-                  ;; Priority 2: cleanup
-                  (gptel-org--auto-correct-cleanup nil nil)
-                  ;; Priority 95: insert-user-heading
-                  (gptel-org-agent--insert-user-heading nil nil)))
+                ;; Simulate post-response hook: insert-user-heading
+                (gptel-org-agent--insert-user-heading nil nil))
               ;; Verify in base buffer
               (with-current-buffer base-buf
                 (goto-char (point-min))

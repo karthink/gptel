@@ -770,7 +770,7 @@ ancestors above the TODO use branching context (heading lines only)."
           (when (buffer-live-p prompt-buf)
             (kill-buffer prompt-buf)))))))
 
-;;; Tests for gptel-org--auto-correct-stream (TODO keyword mode)
+;;; Tests for gptel-org--auto-correct-on-change (idempotent corrector)
 
 (ert-deftest gptel-org-subtree-test-auto-correct-agent-indirect-preserves-agent-heading ()
   "Test that auto-corrector does not rebase the agent heading at point-min.
@@ -780,28 +780,25 @@ the AI response content that follows."
   (gptel-org-test-with-agent-indirect-buffer
    "* H1\n** DOING What is 2 + 2\n*** AI-DOING What is 2 + 2              :main@agent:\n"
    "AI-DOING"
-   ;; beg is at the agent heading line (point-min in indirect buffer)
-   ;; Simulate AI streaming a response after the agent heading
    (goto-char (point-max))
-   (let ((response-start (point)))
+   (let ((response-start (point))
+         (gptel-org-use-todo-keywords t)
+         (gptel-org-assistant-keyword "AI"))
+     ;; Enable the idempotent auto-corrector
+     (gptel-org--enable-auto-correct)
+     ;; Simulate AI streaming — the after-change hook fires automatically
      (insert "* AI Simple Arithmetic\n\n2 + 2 = *4*.\n\n** AI Details\nMore info.\n")
-     ;; Enable TODO keywords mode
-     (let ((gptel-org-use-todo-keywords t)
-           (gptel-org-assistant-keyword "AI")
-           (gptel-org--corrector-state nil))
-       ;; Run the auto-corrector (simulates first stream chunk)
-       (gptel-org--auto-correct-stream)
-       ;; Verify the agent heading was NOT modified
-       (goto-char (point-min))
-       (should (looking-at "\\*\\*\\* AI-DOING What is 2 \\+ 2"))
-       ;; Verify AI response headings WERE rebased correctly
-       ;; ref-level = (1+ 3) = 4, so AI's "* AI" (level 1) → "**** AI" (level 4)
-       (goto-char response-start)
-       (should (looking-at "\\*\\*\\*\\* AI Simple Arithmetic"))
-       (search-forward "Details")
-       (beginning-of-line)
-       ;; AI's "** AI Details" (level 2) → "***** AI Details" (level 5)
-       (should (looking-at "\\*\\*\\*\\*\\* AI Details"))))))
+     ;; Verify the agent heading was NOT modified
+     (goto-char (point-min))
+     (should (looking-at "\\*\\*\\* AI-DOING What is 2 \\+ 2"))
+     ;; Verify AI response headings WERE rebased correctly
+     ;; ref-level = (1+ 3) = 4, so AI's "* AI" (level 1) → "**** AI" (level 4)
+     (goto-char response-start)
+     (should (looking-at "\\*\\*\\*\\* AI Simple Arithmetic"))
+     (search-forward "Details")
+     (beginning-of-line)
+     ;; AI's "** AI Details" (level 2) → "***** AI Details" (level 5)
+     (should (looking-at "\\*\\*\\*\\*\\* AI Details")))))
 
 (ert-deftest gptel-org-subtree-test-auto-correct-agent-indirect-level-2-task ()
   "Test auto-corrector with level-2 task heading produces correct levels.
@@ -810,42 +807,38 @@ Reproduces the original bug where ** DOING → ********* headings."
    "* Project\n** DOING What is 2 + 2\n*** AI-DOING What is 2 + 2              :main@agent:\n"
    "AI-DOING"
    (goto-char (point-max))
-   (let ((response-start (point)))
+   (let ((response-start (point))
+         (gptel-org-use-todo-keywords t)
+         (gptel-org-assistant-keyword "AI"))
+     (gptel-org--enable-auto-correct)
      (insert "* AI Answer\n\n2 + 2 = 4.\n")
-     (let ((gptel-org-use-todo-keywords t)
-           (gptel-org-assistant-keyword "AI")
-           (gptel-org--corrector-state nil))
-       (gptel-org--auto-correct-stream)
-       ;; Agent heading must remain at level 3
-       (goto-char (point-min))
-       (should (looking-at "\\*\\*\\* AI-DOING"))
-       ;; AI heading must be at level 4 (= agent level 3 + 1)
-       (goto-char response-start)
-       (should (looking-at "\\*\\*\\*\\* AI Answer"))))))
+     ;; Agent heading must remain at level 3
+     (goto-char (point-min))
+     (should (looking-at "\\*\\*\\* AI-DOING"))
+     ;; AI heading must be at level 4 (= agent level 3 + 1)
+     (goto-char response-start)
+     (should (looking-at "\\*\\*\\*\\* AI Answer")))))
 
 (ert-deftest gptel-org-subtree-test-auto-correct-multi-chunk-no-double-correction ()
   "Test that heading correction is not applied twice across stream chunks.
-Reproduces the bug where a heading corrected in chunk 1 would be
-re-corrected in chunk 2 due to stale process-end position, producing
-******* (level 7) instead of **** (level 4)."
+The idempotent corrector should skip already-rebased headings, so
+inserting more text after a corrected heading must not re-correct it."
   (gptel-org-test-with-agent-indirect-buffer
    "* H1\n** DOING What is 2 + 2\n*** AI-DOING What is 2 + 2              :main@agent:\n"
    "AI-DOING"
    (let ((gptel-org-use-todo-keywords t)
-         (gptel-org-assistant-keyword "AI")
-         (gptel-org--corrector-state nil))
+         (gptel-org-assistant-keyword "AI"))
+     (gptel-org--enable-auto-correct)
      ;; Chunk 1: stream just the heading line
      (goto-char (point-max))
      (let ((response-start (point)))
        (insert "* AI Simple arithmetic\n")
-       (gptel-org--auto-correct-stream)
        ;; Verify heading was correctly rebased to level 4
        (goto-char response-start)
        (should (looking-at "\\*\\*\\*\\* AI Simple arithmetic"))
        ;; Chunk 2: stream body text
        (goto-char (point-max))
        (insert "\n2 + 2 = 4.\n")
-       (gptel-org--auto-correct-stream)
        ;; Verify heading is STILL at level 4, not double-corrected to level 7
        (goto-char response-start)
        (should (looking-at "\\*\\*\\*\\* AI Simple arithmetic"))))))
@@ -856,17 +849,15 @@ re-corrected in chunk 2 due to stale process-end position, producing
    "* H1\n** DOING Task\n*** AI-DOING Task              :main@agent:\n"
    "AI-DOING"
    (let ((gptel-org-use-todo-keywords t)
-         (gptel-org-assistant-keyword "AI")
-         (gptel-org--corrector-state nil))
+         (gptel-org-assistant-keyword "AI"))
+     (gptel-org--enable-auto-correct)
      ;; Chunk 1: first heading
      (goto-char (point-max))
      (let ((response-start (point)))
        (insert "* AI Overview\nSome text.\n")
-       (gptel-org--auto-correct-stream)
        ;; Chunk 2: second heading
        (goto-char (point-max))
        (insert "** AI Details\nMore text.\n")
-       (gptel-org--auto-correct-stream)
        ;; Verify both headings at correct levels
        (goto-char response-start)
        ;; * AI Overview → **** AI Overview (level 4)
