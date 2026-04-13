@@ -2122,7 +2122,7 @@ TOOL-SPEC is the `gptel-tool' object, and FSM is the request state.
 
 If all pending tool calls in the current request have finished, it
 injects the results into the prompt data and transitions the FSM."
-  (when (eq gptel-log-level 'debug)
+  (when gptel-log-level
     (gptel--log
      (format "process-tool-call ENTRY: fsm=%s tool=%s buffer=%s base-buffer=%s"
              (gptel--fsm-summary fsm)
@@ -2130,7 +2130,7 @@ injects the results into the prompt data and transitions the FSM."
              (buffer-name) (and (buffer-base-buffer) (buffer-name (buffer-base-buffer))))
      "tool-call-debug" 'no-json))
   (unless (cl-typep fsm 'gptel-fsm)
-    (when (eq gptel-log-level 'debug)
+    (when gptel-log-level
       (gptel--log
        (format "process-tool-call ERROR: fsm is %s, expected gptel-fsm! tool-call name=%s"
                (gptel--fsm-summary fsm)
@@ -2155,7 +2155,7 @@ injects the results into the prompt data and transitions the FSM."
       (plist-put tool-call :result result)) ;for the LLM
     ;; All tools have run
     (when (<= (cl-decf remaining) 0)
-      (when (eq gptel-log-level 'debug)
+      (when gptel-log-level
         (gptel--log
          (format "debug-state-change: all tools done, transitioning fsm=%s state=%s buffer=%s info-buffer=%s info-buffer-live=%s"
                  (gptel--fsm-summary fsm)
@@ -3169,7 +3169,13 @@ the response is inserted into the current buffer after point."
                       ;; Clean up Curl process
                       (set-process-sentinel process #'ignore)
                       (delete-process process)
-                      (kill-buffer (process-buffer process))))))))
+                      (kill-buffer (process-buffer process)))))
+      (when gptel-log-level
+        (gptel--log
+         (format "curl-get-response: started process=%s for fsm=%s stream=%s alist-len=%d"
+                 process (gptel--fsm-summary fsm) stream
+                 (length gptel--request-alist))
+         "debug-state-change" 'no-json)))))
 
 ;; ;; Ahead-Of-Time dispatch code for the parsers
 ;; :parser ; FIXME `cl--generic-*' are internal functions
@@ -3280,14 +3286,19 @@ PROCESS and _STATUS are process parameters."
             (kill-buffer proc-buf)))
       ;; FSM not found: process already removed from alist (e.g. sentinel
       ;; fired twice, or request was aborted).  Clean up process buffer.
+      (when gptel-log-level
+        (gptel--log
+         (format "stream-cleanup: FSM NOT FOUND for process %s (exit=%d, alist-len=%d) -- already removed or aborted"
+                 process exit-status (length gptel--request-alist))
+         "debug-state-change" 'no-json))
       (when (buffer-live-p proc-buf) (kill-buffer proc-buf)))))
 
 (defun gptel-curl--stream-filter (process output)
-  (when-let* ((fsm (car (alist-get process gptel--request-alist)))
-              (proc-info (gptel-fsm-info fsm)))
-    (let* ((callback (or (plist-get proc-info :callback)
-                         #'gptel-curl--stream-insert-response)))
-      (with-current-buffer (process-buffer process)
+  (if-let* ((fsm (car (alist-get process gptel--request-alist)))
+            (proc-info (gptel-fsm-info fsm)))
+      (let* ((callback (or (plist-get proc-info :callback)
+                           #'gptel-curl--stream-insert-response)))
+        (with-current-buffer (process-buffer process)
       ;; Insert output
       (save-excursion
         (goto-char (process-mark process))
@@ -3369,7 +3380,13 @@ PROCESS and _STATUS are process parameters."
                   (funcall callback '(reasoning . t) proc-info)
                   (plist-put proc-info :reasoning-block 'done))))
             (unless (equal response "") ;Response callback
-              (funcall callback response proc-info)))))))))
+              (funcall callback response proc-info))))))))
+    ;; FSM not found in alist: output dropped silently
+    (when (eq gptel-log-level 'debug)
+      (gptel--log
+       (format "stream-filter: FSM not found for process %s -- output DROPPED (%d bytes)"
+               process (length output))
+       "debug-state-change" 'no-json)))
 
 (cl-defgeneric gptel-curl--parse-stream (backend proc-info)
   "Stream parser for gptel-curl.
