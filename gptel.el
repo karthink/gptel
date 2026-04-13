@@ -1319,8 +1319,10 @@ See `gptel-request--handlers' for details.")
             (setf (plist-get data key) nil))))
       (setf (gptel-fsm-info fsm)
             (plist-put info :end-time (current-time-string)))
-      (with-current-buffer (plist-get info :buffer)
-        (setq gptel--fsm-last fsm))))
+      (when-let* ((buf (plist-get info :buffer))
+                  ((buffer-live-p buf)))
+        (with-current-buffer buf
+          (setq gptel--fsm-last fsm)))))
 
 (defun gptel--inspect-fsm (&optional fsm)
   "Inspect gptel request state FSM.

@@ -3260,18 +3260,24 @@ PROCESS and _STATUS are process parameters."
           (funcall (plist-get info :callback) nil info))))
       (gptel--debug-log-alist
        (format "stream-cleanup BEFORE-transition fsm=%s" (gptel--fsm-summary fsm)))
-      (gptel--fsm-transition fsm))      ; Move to next state
-    (gptel--debug-log-alist
-     (format "stream-cleanup AFTER-transition proc=%s" process))
-    (let ((host (and-let* ((fsm-entry (car (alist-get process gptel--request-alist)))
-                           (info (gptel-fsm-info fsm-entry))
-                           (backend (plist-get info :backend)))
-                  (gptel-backend-host backend))))
-      (setf (alist-get process gptel--request-alist nil 'remove) nil)
-      (gptel--debug-log-alist
-       (format "stream-cleanup AFTER-remove proc=%s host=%s" process host))
-      (when host (gptel--host-queue-dispatch host)))
-    (kill-buffer proc-buf)))
+      ;; Wrap FSM transition in unwind-protect: the transition fires
+      ;; DONE handlers which may signal errors (e.g. sub-agent cleanup
+      ;; kills a buffer that gptel--fsm-last then tries to access).
+      ;; The alist removal MUST run regardless to avoid leaking entries
+      ;; in gptel--request-alist which blocks the request queue.
+      (unwind-protect
+          (gptel--fsm-transition fsm)   ; Move to next state
+        (gptel--debug-log-alist
+         (format "stream-cleanup AFTER-transition proc=%s" process))
+        (let ((host (and-let* ((fsm-entry (car (alist-get process gptel--request-alist)))
+                               (info (gptel-fsm-info fsm-entry))
+                               (backend (plist-get info :backend)))
+                      (gptel-backend-host backend))))
+          (setf (alist-get process gptel--request-alist nil 'remove) nil)
+          (gptel--debug-log-alist
+           (format "stream-cleanup AFTER-remove proc=%s host=%s" process host))
+          (when host (gptel--host-queue-dispatch host)))
+        (kill-buffer proc-buf)))))
 
 (defun gptel-curl--stream-filter (process output)
   (let* ((fsm (car (alist-get process gptel--request-alist)))
@@ -3419,18 +3425,24 @@ PROCESS and _STATUS are process parameters."
             (funcall proc-callback nil proc-info))))
       (gptel--debug-log-alist
        (format "sentinel BEFORE-transition fsm=%s" (gptel--fsm-summary fsm)))
-      (gptel--fsm-transition fsm))      ;TYPE -> next
-    (gptel--debug-log-alist
-     (format "sentinel AFTER-transition proc=%s" process))
-    (let ((host (and-let* ((fsm-entry (car (alist-get process gptel--request-alist)))
-                           (info (gptel-fsm-info fsm-entry))
-                           (backend (plist-get info :backend)))
-                  (gptel-backend-host backend))))
-      (setf (alist-get process gptel--request-alist nil 'remove) nil)
-      (gptel--debug-log-alist
-       (format "sentinel AFTER-remove proc=%s host=%s" process host))
-      (when host (gptel--host-queue-dispatch host)))
-    (kill-buffer proc-buf)))
+      ;; Wrap FSM transition in unwind-protect: the transition fires
+      ;; DONE handlers which may signal errors (e.g. sub-agent cleanup
+      ;; kills a buffer that gptel--fsm-last then tries to access).
+      ;; The alist removal MUST run regardless to avoid leaking entries
+      ;; in gptel--request-alist which blocks the request queue.
+      (unwind-protect
+          (gptel--fsm-transition fsm)   ;TYPE -> next
+        (gptel--debug-log-alist
+         (format "sentinel AFTER-transition proc=%s" process))
+        (let ((host (and-let* ((fsm-entry (car (alist-get process gptel--request-alist)))
+                               (info (gptel-fsm-info fsm-entry))
+                               (backend (plist-get info :backend)))
+                      (gptel-backend-host backend))))
+          (setf (alist-get process gptel--request-alist nil 'remove) nil)
+          (gptel--debug-log-alist
+           (format "sentinel AFTER-remove proc=%s host=%s" process host))
+          (when host (gptel--host-queue-dispatch host)))
+        (kill-buffer proc-buf)))))
 
 (defun gptel-curl--parse-response (proc-info)
   "Parse the buffer BUF with curl's response.
