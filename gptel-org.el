@@ -606,9 +606,9 @@ depend on the value of `gptel-org-branching-context', which see.
 
 When `gptel-org-subtree-context' is enabled, conversations run in
 indirect buffers narrowed to the relevant subtree."
-  ;; Refresh bounds from tags before constructing prompt to ensure text
-  ;; properties reflect current buffer state (avoids stale markers)
-  (when gptel-org-infer-bounds-from-tags
+  ;; Refresh bounds from tags/keywords before constructing prompt to ensure
+  ;; text properties reflect current buffer state (avoids stale markers)
+  (when (or gptel-org-infer-bounds-from-tags gptel-org-use-todo-keywords)
     (gptel-org--restore-bounds-from-tags))
   (when (use-region-p)
     (narrow-to-region (region-beginning) (region-end))
@@ -1253,7 +1253,9 @@ Scans all headings in the buffer for role indicators:
 
 Headings marked as assistant get their subtree content marked with
 the gptel response property.  User headings within an assistant
-subtree have their gptel property removed.
+subtree have their gptel property removed.  Conversely, assistant
+headings within a user subtree get their gptel response property
+restored.
 
 Returns non-nil if any role headings were found and processed."
   (save-excursion
@@ -1284,7 +1286,7 @@ Returns non-nil if any role headings were found and processed."
                     (remove-text-properties user-beg user-end '(gptel nil))))))
             ;; Skip past the assistant subtree
             (goto-char (1- assistant-end))))
-         ;; User heading at top level - ensure no gptel property
+         ;; User heading - ensure no gptel property, but mark assistant sub-headings
          ((gptel-org--heading-is-user-p)
           (setq found-tags t)
           (let ((beg (point))
@@ -1292,6 +1294,18 @@ Returns non-nil if any role headings were found and processed."
                        (org-end-of-subtree t t)
                        (point))))
             (remove-text-properties beg end '(gptel nil))
+            ;; Scan for assistant headings within and mark them as response
+            (save-excursion
+              (goto-char beg)
+              (while (and (outline-next-heading)
+                          (< (point) end))
+                (when (gptel-org--heading-is-assistant-p)
+                  (let ((asst-beg (point))
+                        (asst-end (save-excursion
+                                    (org-end-of-subtree t t)
+                                    (min (point) end))))
+                    (add-text-properties asst-beg asst-end
+                                         '(gptel response front-sticky (gptel)))))))
             (goto-char (1- end))))
          ;; No role indicator - clear stale gptel properties
          (t
@@ -1317,8 +1331,9 @@ GPTEL_BOUNDS since the bounds are determined by heading tags.")
       (widen)
       (condition-case status
           (progn
-            ;; Try tag-based bounds first if enabled
-            (if (and gptel-org-infer-bounds-from-tags
+            ;; Try tag/keyword-based bounds first if enabled
+            (if (and (or gptel-org-infer-bounds-from-tags
+                        gptel-org-use-todo-keywords)
                      (gptel-org--restore-bounds-from-tags))
                 (setq gptel-org--bounds-from-tags t)
               ;; Fall back to GPTEL_BOUNDS property
