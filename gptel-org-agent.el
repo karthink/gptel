@@ -2085,5 +2085,83 @@ position of the agent subtree.
                             (buffer-name indirect)))
       (user-error "No agent indirect buffer found for subtree at point")))))
 
+
+;;; ---- Manual PENDING task execution ----------------------------------------
+
+(defun gptel-org-agent--find-pending-heading ()
+  "Find the nearest PENDING tool confirmation heading.
+
+Search at point first, then search forward and backward from point
+for a heading with the PENDING TODO keyword and a GPTEL_PENDING_ID
+property.  Return the position of the heading, or nil."
+  (let ((pending-kw (nth 0 gptel-org-agent-tool-confirm-keywords)))
+    (or
+     ;; Check current heading
+     (save-excursion
+       (when (and (or (org-at-heading-p)
+                      (ignore-errors (org-back-to-heading t)))
+                  (equal (org-get-todo-state) pending-kw)
+                  (org-entry-get nil "GPTEL_PENDING_ID"))
+         (point)))
+     ;; Search forward
+     (save-excursion
+       (let ((found nil))
+         (while (and (not found)
+                     (re-search-forward org-heading-regexp nil t))
+           (beginning-of-line)
+           (when (and (equal (org-get-todo-state) pending-kw)
+                      (org-entry-get nil "GPTEL_PENDING_ID"))
+             (setq found (point))))
+         found))
+     ;; Search backward
+     (save-excursion
+       (let ((found nil))
+         (while (and (not found)
+                     (re-search-backward org-heading-regexp nil t))
+           (when (and (equal (org-get-todo-state) pending-kw)
+                      (org-entry-get nil "GPTEL_PENDING_ID"))
+             (setq found (point))))
+         found)))))
+
+(defun gptel-org-agent-run-pending ()
+  "Run the PENDING tool confirmation heading at or near point.
+
+This is a backup command for when changing the TODO state from
+PENDING to ALLOWED does not trigger tool execution via the
+`org-after-todo-state-change-hook'.
+
+Finds the nearest PENDING heading with a GPTEL_PENDING_ID property,
+retrieves the stored tool calls, changes the state to ALLOWED, and
+executes them."
+  (interactive)
+  (let ((pos (gptel-org-agent--find-pending-heading)))
+    (unless pos
+      (user-error "No PENDING tool confirmation heading found"))
+    (save-excursion
+      (goto-char pos)
+      (let* ((pending-id (org-entry-get nil "GPTEL_PENDING_ID"))
+             (entry (gethash pending-id
+                             gptel-org-agent--pending-tool-calls))
+             (heading (org-get-heading t t t t)))
+        (unless entry
+          (user-error "No pending tool call data for id=%s (heading: %s)"
+                      pending-id heading))
+        (let ((tool-calls (plist-get entry :tool-calls))
+              (info (plist-get entry :info))
+              (stored-buf (plist-get entry :buffer)))
+          (gptel-org--debug
+           "org-agent run-pending: manually running id=%s, %d tool calls"
+           pending-id (length tool-calls))
+          ;; Change state to ALLOWED visually (inhibit hooks to avoid
+          ;; double execution if the hook does fire)
+          (let ((org-after-todo-state-change-hook nil))
+            (org-todo (nth 1 gptel-org-agent-tool-confirm-keywords)))
+          ;; Remove from pending table and clean up property
+          (remhash pending-id gptel-org-agent--pending-tool-calls)
+          (org-delete-property "GPTEL_PENDING_ID")
+          ;; Execute the tool calls
+          (gptel-org-agent--accept-tool-calls tool-calls info)
+          (message "Tool calls executed manually for: %s" heading))))))
+
 (provide 'gptel-org-agent)
 ;;; gptel-org-agent.el ends here
