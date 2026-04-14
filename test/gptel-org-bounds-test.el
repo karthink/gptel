@@ -6,6 +6,8 @@
 (require 'ert)
 (require 'gptel)
 (require 'gptel-org)
+(require 'gptel-openai)
+(require 'gptel-test-backends)
 
 ;;; Helper macro
 
@@ -231,6 +233,121 @@ subtree without marking assistant sub-headings."
       (should (eq (get-text-property (point) 'gptel) 'response))
       ;; ** Follow-up :user: — no gptel
       (outline-next-heading)
+      (should (null (get-text-property (point) 'gptel))))))
+
+;;; Integration: full parse-buffer tests
+
+(ert-deftest gptel-test-bounds-parse-feedback-ai-done-feedback ()
+  "Test full parsing of FEEDBACK parent with AI-DONE and FEEDBACK children.
+This is the exact scenario from the bug report:
+  ** FEEDBACK Calculate 2 + 2
+  *** AI-DONE Calculate 2 + 2
+      ...assistant content...
+  *** FEEDBACK Add 11 to the result
+Should produce: user, assistant, user messages."
+  (gptel-org-bounds-test-with-buffer
+      (concat "** FEEDBACK Calculate 2 + 2\n"
+              "*** AI-DONE Calculate 2 + 2\n\n"
+              "The answer is 4.\n\n"
+              "*** FEEDBACK Add 11 to the result\n")
+    (let ((gptel-org-use-todo-keywords t)
+          (gptel-org-assistant-keyword "AI")
+          (gptel-org-user-keyword "FEEDBACK")
+          (gptel-org-infer-bounds-from-tags t)
+          (gptel-org-tasks-done-keyword "AI-DONE")
+          (gptel-org-tasks-doing-keyword "AI-DOING"))
+      (gptel-org--restore-bounds-from-tags)
+      ;; Verify text properties at each heading
+      (goto-char (point-min))
+      ;; ** FEEDBACK Calculate 2 + 2 — user, nil
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "FEEDBACK"))
+      (should (null (get-text-property (point) 'gptel)))
+      ;; *** AI-DONE Calculate 2 + 2 — assistant, response
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "AI-DONE"))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; *** FEEDBACK Add 11 — user, nil
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "FEEDBACK"))
+      (should (null (get-text-property (point) 'gptel))))))
+
+(ert-deftest gptel-test-bounds-parse-buffer-feedback-cycle ()
+  "Integration test: gptel--parse-buffer produces correct user/assistant messages.
+Mirrors the real conversation from siro-ai.org:
+  ** FEEDBACK Calculate 2 + A where you pick A value from 0-9
+  *** AI-DONE Calculate 2 + A where you pick A value from 0-9
+  **** Calculation result
+  I'll pick A = 5.  Result: 2 + 5 = 7
+  *** FEEDBACK Add 11 to the result
+Verifies that gptel--parse-buffer (which reads gptel text properties)
+produces three messages: user, assistant, user."
+  (gptel-org-bounds-test-with-buffer
+      (concat "** FEEDBACK Calculate 2 + A where you pick A value from 0-9\n"
+              "*** AI-DONE Calculate 2 + A where you pick A value from 0-9\n\n"
+              "**** Calculation result\n\n"
+              "I'll pick A = 5 from the range 0-9.\n\n"
+              "Result: *2 + 5 = 7*\n\n"
+              "*** FEEDBACK Add 11 to the result\n")
+    (let ((gptel-org-use-todo-keywords t)
+          (gptel-org-assistant-keyword "AI")
+          (gptel-org-user-keyword "FEEDBACK")
+          (gptel-org-infer-bounds-from-tags t)
+          (gptel-org-tasks-done-keyword "AI-DONE")
+          (gptel-org-tasks-doing-keyword "AI-DOING")
+          (gptel-track-response t)
+          (gptel-backend (alist-get 'openai gptel-test-backends))
+          (gptel-model 'gpt-4o-mini))
+      ;; Mark bounds from keywords
+      (gptel-org--restore-bounds-from-tags)
+      ;; Parse from the end of buffer (where user would be typing)
+      (goto-char (point-max))
+      (let ((messages (gptel--parse-buffer gptel-backend)))
+        ;; Should produce 3 messages: user, assistant, user
+        (should (= (length messages) 3))
+        ;; First message: user asking "Calculate 2 + A..."
+        (should (string-equal (plist-get (nth 0 messages) :role) "user"))
+        (should (string-match-p "Calculate 2 \\+ A"
+                                (plist-get (nth 0 messages) :content)))
+        ;; Second message: assistant with the calculation
+        (should (string-equal (plist-get (nth 1 messages) :role) "assistant"))
+        (should (string-match-p "pick A = 5"
+                                (plist-get (nth 1 messages) :content)))
+        (should (string-match-p "2 \\+ 5 = 7"
+                                (plist-get (nth 1 messages) :content)))
+        ;; Third message: user follow-up "Add 11 to the result"
+        (should (string-equal (plist-get (nth 2 messages) :role) "user"))
+        (should (string-match-p "Add 11 to the result"
+                                (plist-get (nth 2 messages) :content)))))))
+
+(ert-deftest gptel-test-bounds-parse-ai-doing-parent ()
+  "Test parsing when top-level is AI-DOING (works in original code).
+  * AI-DOING Task
+  *** AI-DONE Task
+  *** FEEDBACK Next"
+  (gptel-org-bounds-test-with-buffer
+      (concat "* AI-DOING Task\n"
+              "*** AI-DONE Task\n\n"
+              "The answer is 4.\n\n"
+              "*** FEEDBACK Next\n")
+    (let ((gptel-org-use-todo-keywords t)
+          (gptel-org-assistant-keyword "AI")
+          (gptel-org-user-keyword "FEEDBACK")
+          (gptel-org-infer-bounds-from-tags t)
+          (gptel-org-tasks-done-keyword "AI-DONE")
+          (gptel-org-tasks-doing-keyword "AI-DOING"))
+      (gptel-org--restore-bounds-from-tags)
+      ;; * AI-DOING — assistant, response
+      (goto-char (point-min))
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "AI-DOING"))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; *** AI-DONE — still within assistant subtree, response
+      (outline-next-heading)
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; *** FEEDBACK — user within assistant, should be nil
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "FEEDBACK"))
       (should (null (get-text-property (point) 'gptel))))))
 
 (provide 'gptel-org-bounds-test)
