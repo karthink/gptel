@@ -1081,9 +1081,23 @@ KEYWORD should be a string like \"AI\" or \"HI\"."
 (defun gptel-org--heading-is-assistant-p ()
   "Check if current heading is an assistant message.
 Uses TODO keywords when `gptel-org-use-todo-keywords' is enabled,
-otherwise falls back to tag detection."
+otherwise falls back to tag detection.
+
+In keyword mode, this recognizes:
+- The assistant keyword (default \"AI\")
+- Task done keyword (\"AI-DONE\") - completed AI responses
+- Task doing keyword (\"AI-DOING\") - in-progress AI responses"
   (if gptel-org-use-todo-keywords
-      (gptel-org--heading-has-role-keyword-p gptel-org-assistant-keyword)
+      (when (org-at-heading-p)
+        (let ((todo (org-get-todo-state)))
+          (and todo
+               (or (string-equal todo gptel-org-assistant-keyword)
+                   (and (boundp 'gptel-org-tasks-done-keyword)
+                        gptel-org-tasks-done-keyword
+                        (string-equal todo gptel-org-tasks-done-keyword))
+                   (and (boundp 'gptel-org-tasks-doing-keyword)
+                        gptel-org-tasks-doing-keyword
+                        (string-equal todo gptel-org-tasks-doing-keyword))))))
     (gptel-org--heading-has-tag-p gptel-org-assistant-tag)))
 
 (defun gptel-org--heading-is-user-p ()
