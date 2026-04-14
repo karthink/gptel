@@ -2649,7 +2649,13 @@ BUF defaults to the current buffer."
       (when-let* ((proc (car proc-attrs))
                   (fsm (cadr proc-attrs))
                   (info (gptel-fsm-info fsm))
-                  ((eq (plist-get info :buffer) buf))
+                  ;; Match requests targeting BUF directly, or requests
+                  ;; redirected to an indirect buffer whose base is BUF
+                  ;; (agent subtrees use indirect buffers via
+                  ;; gptel-org-agent--transform-redirect).
+                  ((let ((req-buf (plist-get info :buffer)))
+                     (or (eq req-buf buf)
+                         (eq (buffer-base-buffer req-buf) buf))))
                   (abort-fn (cddr proc-attrs)))
         (push proc found)
         ;; Run :callback with abort signal
