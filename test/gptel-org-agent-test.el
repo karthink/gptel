@@ -1623,5 +1623,116 @@ not the parent heading text (e.g. 'Delegate to researcher agent')."
           (when (and coord-indirect (buffer-live-p coord-indirect))
             (kill-buffer coord-indirect)))))))
 
+(ert-deftest gptel-org-agent-test-insert-user-heading-transitions-allowed-to-done ()
+  "ALLOWED tool confirmation headings should transition to AI-DONE.
+When insert-user-heading runs after a tool call response completes,
+any ALLOWED (or DENIED) tool confirmation headings within the agent
+subtree should be transitioned to AI-DONE along with the agent heading."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "PENDING" "ALLOWED"
+                                       "FEEDBACK" "|" "AI-DONE" "DENIED")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* AI-DO Calculate 2 + A\nPick A from 0-9\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-user-keyword "FEEDBACK")
+             (gptel-org-tasks-done-keyword "AI-DONE")
+             (gptel-org-agent-tool-confirm-keywords '("PENDING" "ALLOWED" "DENIED"))
+             (base-buf (current-buffer))
+             (marker (gptel-org-agent--create-subtree "main"))
+             (indirect-buf nil))
+        (unwind-protect
+            (progn
+              (setq indirect-buf
+                    (gptel-org-agent--open-indirect-buffer base-buf marker))
+              ;; Simulate AI response with a tool call that was ALLOWED
+              (with-current-buffer indirect-buf
+                (goto-char (point-max))
+                (insert "*** AI Simple Arithmetic\n\n"
+                        "Let me calculate 2 + 5.\n\n"
+                        "*** ALLOWED Requesting permission to run: Eval\n"
+                        "(Eval \"(+ 2 5)\")\n\n"
+                        "#+begin_src gptel-tool\n"
+                        "(Eval :expression \"(+ 2 5)\")\n"
+                        "(:name \"Eval\" :args (:expression \"(+ 2 5)\"))\n\n"
+                        "Result:\n7\n"
+                        "#+end_src\n"
+                        "*** Testing result\n\n"
+                        "The answer is *7*.\n"))
+              ;; Call insert-user-heading from indirect buffer context
+              (with-current-buffer indirect-buf
+                (gptel-org-agent--insert-user-heading nil nil))
+              ;; Verify in base buffer
+              (with-current-buffer base-buf
+                (goto-char (point-min))
+                ;; Agent heading should be AI-DONE
+                (should (re-search-forward "^\\*\\* AI-DONE" nil t))
+                ;; ALLOWED heading should have been transitioned to AI-DONE
+                (should (= 0 (how-many "^\\*\\*\\* ALLOWED"
+                                        (point-min) (point-max))))
+                (goto-char (point-min))
+                ;; The tool confirm heading should now be AI-DONE
+                (should (re-search-forward
+                         "^\\*\\*\\* AI-DONE Requesting permission to run: Eval"
+                         nil t))
+                ;; FEEDBACK heading should exist
+                (should (re-search-forward "^\\*\\* FEEDBACK" nil t))))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
+(ert-deftest gptel-org-agent-test-insert-user-heading-transitions-denied-to-done ()
+  "DENIED tool confirmation headings should also transition to AI-DONE.
+After the LLM processes a denied tool call and produces a final response,
+the DENIED heading should transition to AI-DONE."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "PENDING" "ALLOWED"
+                                       "FEEDBACK" "|" "AI-DONE" "DENIED")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* AI-DO Dangerous task\nDo something risky\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-user-keyword "FEEDBACK")
+             (gptel-org-tasks-done-keyword "AI-DONE")
+             (gptel-org-agent-tool-confirm-keywords '("PENDING" "ALLOWED" "DENIED"))
+             (base-buf (current-buffer))
+             (marker (gptel-org-agent--create-subtree "main"))
+             (indirect-buf nil))
+        (unwind-protect
+            (progn
+              (setq indirect-buf
+                    (gptel-org-agent--open-indirect-buffer base-buf marker))
+              ;; Simulate a denied tool call followed by LLM response
+              (with-current-buffer indirect-buf
+                (goto-char (point-max))
+                (insert "*** AI Attempting risky operation\n\n"
+                        "*** DENIED Requesting permission to run: Bash\n"
+                        "(Bash \"rm -rf /\")\n\n"
+                        "#+begin_src gptel-tool\n"
+                        "Error: denied\n"
+                        "#+end_src\n"
+                        "*** Adjusted approach\n\n"
+                        "I'll take a safer approach.\n"))
+              (with-current-buffer indirect-buf
+                (gptel-org-agent--insert-user-heading nil nil))
+              (with-current-buffer base-buf
+                (goto-char (point-min))
+                ;; DENIED heading should be transitioned to AI-DONE
+                (should (= 0 (how-many "^\\*\\*\\* DENIED"
+                                        (point-min) (point-max))))
+                (goto-char (point-min))
+                (should (re-search-forward
+                         "^\\*\\*\\* AI-DONE Requesting permission to run: Bash"
+                         nil t))))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
 (provide 'gptel-org-agent-test)
 ;;; gptel-org-agent-test.el ends here

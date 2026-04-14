@@ -945,7 +945,30 @@ in the conversation."
                           (org-set-tags nil)
                           (gptel-org--debug
                            "insert-user-heading: agent heading transitioned to %s, tag removed"
-                           done-kw))))
+                           done-kw))
+                        ;; Transition any ALLOWED/DENIED tool confirmation
+                        ;; headings within the agent subtree to AI-DONE.
+                        ;; These headings were created by
+                        ;; gptel-org-agent--display-tool-calls and left in
+                        ;; their confirmation state after tool execution.
+                        (let ((confirm-keywords
+                               (when (boundp 'gptel-org-agent-tool-confirm-keywords)
+                                 (cdr gptel-org-agent-tool-confirm-keywords))))
+                          (when confirm-keywords
+                            (save-excursion
+                              (goto-char agent-heading-pos)
+                              (let ((subtree-bound (save-excursion
+                                                     (org-end-of-subtree t)
+                                                     (point))))
+                                (while (re-search-forward
+                                        org-heading-regexp subtree-bound t)
+                                  (let ((state (org-get-todo-state)))
+                                    (when (and state
+                                               (member state confirm-keywords))
+                                      (gptel-org-agent--set-todo-keyword done-kw)
+                                      (gptel-org--debug
+                                       "insert-user-heading: tool confirm heading transitioned from %s to %s"
+                                       state done-kw))))))))))
                     (unless has-user
                       ;; Create the user/feedback heading
                       (goto-char subtree-end)
