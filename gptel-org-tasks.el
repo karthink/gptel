@@ -314,9 +314,13 @@ Returns t if inside an AI task, nil otherwise."
                    (not (equal todo-state gptel-org-tasks-user-doing-keyword))
                    (not (and (boundp 'gptel-org-user-keyword)
                              (equal todo-state gptel-org-user-keyword))))
+              (setq gptel-org-tasks--active-task-marker
+                    (plist-get task-info :marker))
               (gptel-org-tasks--change-todo-state gptel-org-tasks-user-doing-keyword)
-              (gptel-org--debug "tasks maybe-transition: user heading transitioned to %s"
-                                gptel-org-tasks-user-doing-keyword)
+              (gptel-org--debug "tasks maybe-transition: user heading transitioned to %s, saved marker pos=%d buf=%S"
+                                gptel-org-tasks-user-doing-keyword
+                                (marker-position gptel-org-tasks--active-task-marker)
+                                (buffer-name (marker-buffer gptel-org-tasks--active-task-marker)))
               (message "gptel: User task state changed to %s"
                        gptel-org-tasks-user-doing-keyword))))
           ;; Return t if this was an AI task
@@ -388,14 +392,9 @@ Added to `gptel-post-response-functions'."
               (if (not task-info)
                   (gptel-org--debug "tasks clear-active-task: SKIPPED - get-task-info returned nil")
                 (let ((todo-state (plist-get task-info :todo-state)))
-                  (if (not (equal todo-state gptel-org-tasks-doing-keyword))
-                      (gptel-org--debug "tasks clear-active-task: SKIPPED - todo-state %S != %S"
-                                        todo-state gptel-org-tasks-doing-keyword)
-                    ;; In keyword mode, the parent heading transitions to
-                    ;; FEEDBACK (the user keyword) instead of AI-DONE,
-                    ;; enabling the iterative feedback cycle.
-                    ;; insert-user-heading handles the agent subtree's
-                    ;; AI-DONE transition separately.
+                  (cond
+                   ;; AI-DOING -> FEEDBACK (keyword mode) or AI-DONE (legacy)
+                   ((equal todo-state gptel-org-tasks-doing-keyword)
                     (let ((target-state
                            (if (and (boundp 'gptel-org-use-todo-keywords)
                                     gptel-org-use-todo-keywords
@@ -407,7 +406,27 @@ Added to `gptel-post-response-functions'."
                       (gptel-org--debug "tasks clear-active-task: transitioned to %s"
                                         target-state)
                       (message "gptel: Task state changed to %s"
-                               target-state)))))))))))
+                               target-state)))
+                   ;; DOING (user task) -> FEEDBACK (keyword mode) or AI-DONE (legacy)
+                   ((and gptel-org-tasks-user-doing-keyword
+                         (equal todo-state gptel-org-tasks-user-doing-keyword))
+                    (let ((target-state
+                           (if (and (boundp 'gptel-org-use-todo-keywords)
+                                    gptel-org-use-todo-keywords
+                                    (boundp 'gptel-org-user-keyword)
+                                    gptel-org-user-keyword)
+                               gptel-org-user-keyword
+                             gptel-org-tasks-done-keyword)))
+                      (gptel-org-tasks--change-todo-state target-state)
+                      (gptel-org--debug "tasks clear-active-task: user task transitioned to %s"
+                                        target-state)
+                      (message "gptel: User task state changed to %s"
+                               target-state)))
+                   (t
+                    (gptel-org--debug "tasks clear-active-task: SKIPPED - todo-state %S not in (%S %S)"
+                                      todo-state
+                                      gptel-org-tasks-doing-keyword
+                                      gptel-org-tasks-user-doing-keyword)))))))))))
   (setq gptel-org-tasks--active-task-marker nil))
 
 ;;;###autoload

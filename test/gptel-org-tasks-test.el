@@ -231,5 +231,128 @@ Ensures the fix for HI preservation doesn't break normal behavior."
       ;; TODO should transition to DOING normally
       (should (equal (org-get-todo-state) "DOING")))))
 
+;;; Tests for clear-active-task state transitions
+
+(ert-deftest gptel-org-tasks-test-clear-active-task-ai-doing-to-feedback ()
+  "AI-DOING heading should transition to FEEDBACK on response completion.
+When `gptel-org-use-todo-keywords' is enabled, `clear-active-task'
+should transition the active AI-DOING heading to the user keyword
+\(FEEDBACK)."
+  (let ((org-inhibit-startup t)
+        (gptel-org-tasks-todo-keyword "AI-DO")
+        (gptel-org-tasks-doing-keyword "AI-DOING")
+        (gptel-org-tasks-done-keyword "AI-DONE")
+        (gptel-org-tasks-user-doing-keyword "DOING")
+        (gptel-org-tasks-canceled-keyword "CANCELED")
+        (gptel-org-tasks-change-state-on-send t)
+        (org-todo-keywords '((sequence "TODO" "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-tasks--profiles nil)
+        (gptel-org-use-todo-keywords t)
+        (gptel-org-user-keyword "FEEDBACK"))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* AI-DOING Test task\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      ;; Set the active task marker to this heading
+      (setq-local gptel-org-tasks--active-task-marker (point-marker))
+      ;; Run clear-active-task (simulates post-response hook)
+      (gptel-org-tasks--clear-active-task nil nil)
+      ;; Should transition to FEEDBACK
+      (should (equal (org-get-todo-state) "FEEDBACK"))
+      ;; Marker should be cleared
+      (should (null gptel-org-tasks--active-task-marker)))))
+
+(ert-deftest gptel-org-tasks-test-clear-active-task-user-doing-to-feedback ()
+  "DOING (user task) heading should transition to FEEDBACK on response completion.
+When a user task heading (DOING) has the active-task-marker set,
+`clear-active-task' should transition it to FEEDBACK, not skip it."
+  (let ((org-inhibit-startup t)
+        (gptel-org-tasks-todo-keyword "AI-DO")
+        (gptel-org-tasks-doing-keyword "AI-DOING")
+        (gptel-org-tasks-done-keyword "AI-DONE")
+        (gptel-org-tasks-user-doing-keyword "DOING")
+        (gptel-org-tasks-canceled-keyword "CANCELED")
+        (gptel-org-tasks-change-state-on-send t)
+        (org-todo-keywords '((sequence "TODO" "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-tasks--profiles nil)
+        (gptel-org-use-todo-keywords t)
+        (gptel-org-user-keyword "FEEDBACK"))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* DOING Test task\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      ;; Set the active task marker to this DOING heading
+      (setq-local gptel-org-tasks--active-task-marker (point-marker))
+      ;; Run clear-active-task
+      (gptel-org-tasks--clear-active-task nil nil)
+      ;; DOING should transition to FEEDBACK (not be skipped)
+      (should (equal (org-get-todo-state) "FEEDBACK"))
+      ;; Marker should be cleared
+      (should (null gptel-org-tasks--active-task-marker)))))
+
+(ert-deftest gptel-org-tasks-test-user-todo-sets-active-task-marker ()
+  "User TODO -> DOING transition should set the active-task-marker.
+This ensures `clear-active-task' can later transition DOING -> FEEDBACK
+when the agent response completes."
+  (let ((org-inhibit-startup t)
+        (gptel-org-tasks-todo-keyword "AI-DO")
+        (gptel-org-tasks-doing-keyword "AI-DOING")
+        (gptel-org-tasks-done-keyword "AI-DONE")
+        (gptel-org-tasks-user-doing-keyword "DOING")
+        (gptel-org-tasks-canceled-keyword "CANCELED")
+        (gptel-org-tasks-apply-profile-on-send t)
+        (gptel-org-tasks-change-state-on-send t)
+        (org-todo-keywords '((sequence "TODO" "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-tasks--profiles nil)
+        (gptel-org-use-todo-keywords t)
+        (gptel-org-user-keyword "FEEDBACK"))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* TODO My task\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      ;; Marker should be nil before transition
+      (setq-local gptel-org-tasks--active-task-marker nil)
+      ;; Run the transition
+      (gptel-org-tasks--maybe-transition-and-apply)
+      ;; TODO should become DOING
+      (should (equal (org-get-todo-state) "DOING"))
+      ;; Active task marker should now be set
+      (should gptel-org-tasks--active-task-marker)
+      (should (marker-buffer gptel-org-tasks--active-task-marker)))))
+
+(ert-deftest gptel-org-tasks-test-clear-active-task-skips-non-doing ()
+  "clear-active-task should skip headings not in a doing state.
+If the heading at the marker has an unexpected state (e.g. FEEDBACK or TODO),
+it should not be transitioned."
+  (let ((org-inhibit-startup t)
+        (gptel-org-tasks-todo-keyword "AI-DO")
+        (gptel-org-tasks-doing-keyword "AI-DOING")
+        (gptel-org-tasks-done-keyword "AI-DONE")
+        (gptel-org-tasks-user-doing-keyword "DOING")
+        (gptel-org-tasks-canceled-keyword "CANCELED")
+        (gptel-org-tasks-change-state-on-send t)
+        (org-todo-keywords '((sequence "TODO" "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-tasks--profiles nil)
+        (gptel-org-use-todo-keywords t)
+        (gptel-org-user-keyword "FEEDBACK"))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* FEEDBACK Test task\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (setq-local gptel-org-tasks--active-task-marker (point-marker))
+      (gptel-org-tasks--clear-active-task nil nil)
+      ;; Should remain FEEDBACK (not transitioned)
+      (should (equal (org-get-todo-state) "FEEDBACK"))
+      ;; Marker still cleared regardless
+      (should (null gptel-org-tasks--active-task-marker)))))
+
 (provide 'gptel-org-tasks-test)
 ;;; gptel-org-tasks-test.el ends here
