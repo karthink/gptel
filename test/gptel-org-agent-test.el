@@ -1356,5 +1356,272 @@ Expected:
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
+;;; ---- Auto-corrector heading level stability --------------------------------
+
+(ert-deftest gptel-org-agent-test-auto-correct-does-not-rebase-agent-heading ()
+  "Auto-corrector must NOT rebase the agent heading at point-min.
+Reproduces a bug where the coordinator agent heading at level 3 gets
+rebased to level 6 by the auto-corrector (ref-level=4, offset=3,
+3+3=6).
+
+The auto-corrector rebases headings with stars < ref-level.  The agent
+heading at point-min of the indirect buffer IS at a level < ref-level
+\(e.g. level 3 < ref-level 4), but it must be excluded because it is
+the structural heading that owns the subtree, not AI response content.
+
+Setup: level-2 parent -> level-3 coordinator agent heading.
+The coordinator writes a level-1 AI heading which gets rebased to 4.
+Verify the agent heading stays at level 3."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Delegate to researcher\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-user-keyword "FEEDBACK")
+             (gptel-org-tasks-done-keyword "AI-DONE")
+             (gptel-org-assistant-keyword "AI")
+             (base-buf (current-buffer))
+             (marker (gptel-org-agent--create-subtree "coordinator"))
+             (indirect-buf nil))
+        (unwind-protect
+            (progn
+              (setq indirect-buf
+                    (gptel-org-agent--open-indirect-buffer base-buf marker))
+              ;; Verify the agent heading is at level 3 before any AI response
+              (with-current-buffer indirect-buf
+                (goto-char (point-min))
+                (should (org-at-heading-p))
+                (should (= 3 (org-current-level))))
+              ;; Simulate AI streaming: the coordinator writes level-1 heading
+              ;; The auto-corrector (enabled by open-indirect-buffer) should
+              ;; rebase it to level 4 but leave the agent heading at level 3.
+              (with-current-buffer indirect-buf
+                (goto-char (point-max))
+                (insert "* AI Delegation result\nThe chain worked.\n"))
+              ;; THE BUG: the agent heading at point-min was rebased from 3 to 6
+              (with-current-buffer indirect-buf
+                (goto-char (point-min))
+                (should (org-at-heading-p))
+                ;; Agent heading MUST still be level 3, NOT 6
+                (should (= 3 (org-current-level))))
+              ;; The AI response heading should have been rebased to level 4
+              (with-current-buffer base-buf
+                (goto-char (point-min))
+                (should (re-search-forward "AI Delegation result" nil t))
+                (beginning-of-line)
+                (should (= 4 (org-current-level)))))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
+(ert-deftest gptel-org-agent-test-auto-correct-preserves-agent-heading-with-sub-agents ()
+  "Agent heading levels preserved during 3-level delegation chain.
+Reproduces the real bug from coordinator -> researcher -> gatherer chain.
+
+The coordinator indirect buffer has auto-correct with ref-level=4.
+When the researcher sub-agent is created inside that buffer via
+setup-task-subtree, the coordinator heading must remain at level 3.
+
+Expected structure:
+  ** DOING Delegate task                              <- level 2 (parent)
+  *** AI-DOING Delegate task  :coordinator@agent:     <- level 3 (coordinator)
+  **** AI-DOING Research...   :researcher@coord@agent: <- level 4 (researcher)
+  ***** AI-DOING Run date     :gatherer@res@coord@agent: <- level 5 (gatherer)
+
+The bug: coordinator heading ends up at level 6 (3 + offset 3)."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Delegate to researcher agent\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-user-keyword "FEEDBACK")
+             (gptel-org-tasks-done-keyword "AI-DONE")
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (gptel-org-assistant-keyword "AI")
+             (base-buf (current-buffer))
+             ;; Step 1: Create coordinator subtree (level 3 under level 2)
+             (coord-marker (gptel-org-agent--create-subtree "coordinator"))
+             (coord-indirect nil)
+             (researcher-result nil)
+             (researcher-indirect nil)
+             (gatherer-result nil)
+             (gatherer-indirect nil))
+        (unwind-protect
+            (progn
+              ;; Step 2: Open coordinator indirect buffer (enables auto-correct)
+              (setq coord-indirect
+                    (gptel-org-agent--open-indirect-buffer base-buf coord-marker))
+              ;; Verify coordinator heading at level 3
+              (with-current-buffer coord-indirect
+                (goto-char (point-min))
+                (should (= 3 (org-current-level))))
+
+              ;; Step 3: Create researcher sub-agent inside coordinator buffer
+              ;; This is what happens when the coordinator LLM calls Agent tool
+              (with-current-buffer coord-indirect
+                (setq researcher-result
+                      (gptel-org-agent--setup-task-subtree
+                       "researcher" "Research with date delegation")))
+              (should researcher-result)
+              (setq researcher-indirect
+                    (plist-get researcher-result :indirect-buffer))
+
+              ;; Verify coordinator heading still at level 3
+              (with-current-buffer coord-indirect
+                (goto-char (point-min))
+                (should (= 3 (org-current-level))))
+
+              ;; Verify researcher heading at level 4
+              (with-current-buffer researcher-indirect
+                (goto-char (point-min))
+                (should (= 4 (org-current-level))))
+
+              ;; Step 4: Create gatherer sub-agent inside researcher buffer
+              (with-current-buffer researcher-indirect
+                (setq gatherer-result
+                      (gptel-org-agent--setup-task-subtree
+                       "gatherer" "Run date command")))
+              (should gatherer-result)
+              (setq gatherer-indirect
+                    (plist-get gatherer-result :indirect-buffer))
+
+              ;; Verify all heading levels are still correct
+              ;; Coordinator: level 3
+              (with-current-buffer coord-indirect
+                (goto-char (point-min))
+                (should (= 3 (org-current-level))))
+              ;; Researcher: level 4
+              (with-current-buffer researcher-indirect
+                (goto-char (point-min))
+                (should (= 4 (org-current-level))))
+              ;; Gatherer: level 5
+              (with-current-buffer gatherer-indirect
+                (goto-char (point-min))
+                (should (= 5 (org-current-level))))
+
+              ;; Step 5: Simulate gatherer response (writes at level 1, auto-corrected)
+              (with-current-buffer gatherer-indirect
+                (goto-char (point-max))
+                (insert "#+begin_example\nTue Apr 14 13:06:37 EEST 2026\n#+end_example\n"))
+
+              ;; Step 6: Simulate gatherer completion and cleanup
+              ;; (In real code, subtree--handle-done extracts text and closes buffer)
+              (when (buffer-live-p gatherer-indirect)
+                (gptel-org-agent--close-indirect-buffer gatherer-indirect t)
+                (setq gatherer-indirect nil))
+
+              ;; Step 7: Simulate researcher writing its final response
+              (with-current-buffer researcher-indirect
+                (goto-char (point-max))
+                (insert "* AI Gatherer Output\nThe date is Tue Apr 14.\n"))
+
+              ;; Verify coordinator heading STILL at level 3
+              (with-current-buffer coord-indirect
+                (goto-char (point-min))
+                (should (= 3 (org-current-level))))
+
+              ;; Step 8: Simulate researcher completion
+              (when (buffer-live-p researcher-indirect)
+                (gptel-org-agent--close-indirect-buffer researcher-indirect t)
+                (setq researcher-indirect nil))
+
+              ;; Step 9: Simulate coordinator writing final response
+              (with-current-buffer coord-indirect
+                (goto-char (point-max))
+                (insert "The chain worked: coordinator -> researcher -> gatherer.\nResult: Tue Apr 14 13:06:37 EEST 2026\n"))
+
+              ;; Step 10: Verify the coordinator heading is STILL level 3
+              (with-current-buffer coord-indirect
+                (goto-char (point-min))
+                (should (= 3 (org-current-level))))
+
+              ;; Step 11: insert-user-heading should create FEEDBACK at level 3
+              (with-current-buffer coord-indirect
+                (gptel-org-agent--insert-user-heading nil nil))
+
+              ;; Step 12: Verify final structure in base buffer
+              (with-current-buffer base-buf
+                (goto-char (point-min))
+                ;; Parent at level 2
+                (should (re-search-forward "^\\*\\* " nil t))
+                (beginning-of-line)
+                (should (= 2 (org-current-level)))
+                ;; Agent heading (now AI-DONE) at level 3, NOT level 6
+                (should (re-search-forward "AI-DONE" nil t))
+                (beginning-of-line)
+                (should (= 3 (org-current-level)))
+                ;; FEEDBACK heading at level 3 (sibling of agent)
+                (goto-char (point-max))
+                (should (re-search-backward "^\\*+ FEEDBACK" nil t))
+                (should (= 3 (org-current-level)))))
+          ;; Cleanup
+          (when (and gatherer-indirect (buffer-live-p gatherer-indirect))
+            (kill-buffer gatherer-indirect))
+          (when (and researcher-indirect (buffer-live-p researcher-indirect))
+            (kill-buffer researcher-indirect))
+          (when (and coord-indirect (buffer-live-p coord-indirect))
+            (kill-buffer coord-indirect)))))))
+
+(ert-deftest gptel-org-agent-test-heading-titles-use-description-not-parent ()
+  "Sub-agent headings should use the task description, not the parent heading title.
+When setup-task-subtree creates a researcher sub-agent, the heading title
+should be the description parameter (e.g. 'Research with date delegation'),
+not the parent heading text (e.g. 'Delegate to researcher agent')."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Delegate to researcher agent\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (base-buf (current-buffer))
+             (coord-marker (gptel-org-agent--create-subtree "coordinator"))
+             (coord-indirect nil)
+             (researcher-result nil)
+             (researcher-indirect nil))
+        (unwind-protect
+            (progn
+              (setq coord-indirect
+                    (gptel-org-agent--open-indirect-buffer base-buf coord-marker))
+              ;; Create researcher sub-agent with a specific description
+              (with-current-buffer coord-indirect
+                (setq researcher-result
+                      (gptel-org-agent--setup-task-subtree
+                       "researcher" "Research with date delegation")))
+              (should researcher-result)
+              (setq researcher-indirect
+                    (plist-get researcher-result :indirect-buffer))
+              ;; The researcher heading should use the description, not parent title
+              (with-current-buffer researcher-indirect
+                (goto-char (point-min))
+                (should (org-at-heading-p))
+                (let ((heading-text (org-get-heading t t t t)))
+                  ;; Should contain the description
+                  (should (string-match-p "Research with date delegation"
+                                          heading-text))
+                  ;; Should NOT be the parent's heading text
+                  (should-not (string-match-p "Delegate to researcher agent"
+                                              heading-text)))))
+          (when (and researcher-indirect (buffer-live-p researcher-indirect))
+            (kill-buffer researcher-indirect))
+          (when (and coord-indirect (buffer-live-p coord-indirect))
+            (kill-buffer coord-indirect)))))))
+
 (provide 'gptel-org-agent-test)
 ;;; gptel-org-agent-test.el ends here
