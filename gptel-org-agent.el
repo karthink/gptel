@@ -183,7 +183,7 @@ Return a marker to the child heading if found, or nil."
 
 ;;; ---- Core functions -------------------------------------------------------
 
-(defun gptel-org-agent--create-subtree (agent-type &optional parent-tag)
+(defun gptel-org-agent--create-subtree (agent-type &optional parent-tag description)
   "Create an agent child heading under the current heading.
 
 AGENT-TYPE is a string identifying the agent (e.g., \"main\",
@@ -193,12 +193,15 @@ PARENT-TAG is an optional string for constructing recursive tags.
 When nil, the tag is \"<AGENT-TYPE>@agent\".  When provided, the tag
 is \"<AGENT-TYPE>@<PARENT-TAG>\".
 
+DESCRIPTION is an optional string to use as the heading title.
+When nil, the parent heading's text is used instead.
+
 Point must be on the parent heading (the TODO heading or another agent
 heading).  The new heading is inserted at the end of the parent's
 subtree content, before any sibling heading.
 
-The child heading copies the parent heading's text and includes the
-AI-DOING keyword (from `gptel-org-tasks-doing-keyword').
+The child heading uses DESCRIPTION (or the parent heading's text) and
+includes the AI-DOING keyword (from `gptel-org-tasks-doing-keyword').
 
 Return a marker to the newly created heading."
   (save-excursion
@@ -211,11 +214,12 @@ Return a marker to the newly created heading."
            (parent-level (org-current-level))
            (child-level (1+ parent-level))
            (tag (gptel-org-agent--construct-tag agent-type parent-tag))
-           (parent-heading (org-element-property :raw-value (org-element-at-point)))
+           (heading-title (or description
+                              (org-element-property :raw-value (org-element-at-point))))
            (doing-keyword (or (bound-and-true-p gptel-org-tasks-doing-keyword) "AI-DOING"))
            (stars (make-string child-level ?*))
-           (heading-text (if parent-heading
-                             (format "%s %s %s :%s:" stars doing-keyword parent-heading tag)
+           (heading-text (if heading-title
+                             (format "%s %s %s :%s:" stars doing-keyword heading-title tag)
                            (format "%s :%s:" stars tag)))
            marker)
       (gptel-org--debug "org-agent create-subtree: creating %S at level %d under level %d"
@@ -1056,7 +1060,6 @@ an indirect buffer narrowed to it, and returns a plist with:
 
 Returns nil if `gptel-org-subtree-context' is disabled, we're not in
 org-mode, or we can't find a heading context to create the subtree."
-  (ignore description)                  ;reserved for future use in heading text
   (when (and gptel-org-subtree-context
              (derived-mode-p 'org-mode))
     (let* ((parent-tag (gptel-org-agent--current-agent-tag))
@@ -1083,7 +1086,7 @@ org-mode, or we can't find a heading context to create the subtree."
           (let* ((existing (gptel-org-agent--find-agent-subtree tag))
                  (heading-marker
                   (or existing
-                      (gptel-org-agent--create-subtree agent-type parent-tag)))
+                      (gptel-org-agent--create-subtree agent-type parent-tag description)))
                  (indirect-buf
                   (gptel-org-agent--open-indirect-buffer
                    base-buffer heading-marker)))
