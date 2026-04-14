@@ -1660,7 +1660,14 @@ INFO is the FSM info plist."
                             (lambda (tc)
                               (gptel-tool-name (car tc)))
                             tool-calls ", "))
-               (inhibit-read-only t))
+               (inhibit-read-only t)
+               ;; Suppress the auto-corrector during insertion.
+               ;; If the AI response contains an unclosed example/src
+               ;; block, `gptel-org--in-example-block-p' returns t for
+               ;; all subsequent positions.  Without this guard the
+               ;; auto-corrector would comma-escape the PENDING heading
+               ;; and its body text (they start with * or #+).
+               (gptel-org--auto-correcting t))
           (gptel-org--debug
            "display-tool-calls: response-level=%S pending-level=%d stars=%S buffer=%S narrowed=%s point-min-heading=%S"
            response-level pending-level stars (buffer-name)
