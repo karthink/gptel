@@ -1347,7 +1347,7 @@ Accesses the FSM via `gptel--fsm-last' which is buffer-local."
                      (org-end-of-subtree t)
                      (point))))
       (gptel-org--debug
-       "redirect-markers: heading-pos=%d target=%d pos-marker=%S tracking=%S"
+       "redirect-markers: heading-pos=%S target=%d pos-marker=%S tracking=%S"
        heading-pos target
        (and (markerp pos-marker) (marker-position pos-marker))
        (and (markerp tracking-marker) (marker-position tracking-marker)))
@@ -1409,7 +1409,7 @@ the active task heading."
               (if existing
                   ;; Update existing heading's TODO keyword
                   (progn
-                    (gptel-org--debug "write-todo-org: updating %S -> %S at %d"
+                    (gptel-org--debug "write-todo-org: updating %S -> %S at %S"
                                       content keyword (cdr existing))
                     (save-excursion
                       (goto-char (cdr existing))
