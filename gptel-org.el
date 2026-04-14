@@ -2019,6 +2019,15 @@ skipped, making this safe to run on any region at any time."
         ;; Expand to full lines
         (goto-char beg)
         (setq beg (line-beginning-position))
+        ;; Skip the agent heading at point-min.  It is the structural
+        ;; root of the indirect buffer (always at ref-level − 1) and
+        ;; must never be rebased.  Buffer modifications on or near this
+        ;; line (e.g. create-subtree inserting a newline at eol, or
+        ;; org-set-tags adjusting tags) can cause beg to snap back to
+        ;; point-min after line-beginning-position expansion.
+        (when (= beg (point-min))
+          (forward-line 1)
+          (setq beg (point)))
         (goto-char end)
         (unless (bolp) (setq end (line-beginning-position 2)))
         ;; Use a marker for end so it tracks insertions during correction
