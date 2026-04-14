@@ -106,14 +106,23 @@ Set to t to enable debug output to *Messages* buffer.
 Useful for diagnosing heading level issues.")
 
 (defun gptel-org--debug (format-string &rest args)
-  "Output debug message when `gptel-org-debug' is non-nil.
-FORMAT-STRING and ARGS are passed to `message'."
-  (when gptel-org-debug
-    (apply #'message (concat "[gptel-org] " format-string) args)))
+  "Output debug message for gptel-org operations.
+
+When `gptel-org-debug' is non-nil, output to *Messages* buffer.
+When `gptel-log-level' is \\='debug, also log to the structured
+*gptel-log* buffer as a sub-entry under the current request.
+
+FORMAT-STRING and ARGS are passed to `format'."
+  (let ((msg (apply #'format format-string args)))
+    (when gptel-org-debug
+      (message "[gptel-org] %s" msg))
+    (when (eq gptel-log-level 'debug)
+      (gptel--log msg "gptel-org" 'no-json))))
 
 (defvar org-link-angle-re)
 (defvar org-link-bracket-re)
 (declare-function mailcap-file-name-to-mime-type "mailcap")
+(declare-function gptel--log "gptel-request")
 (declare-function gptel--model-capable-p "gptel-request")
 (declare-function gptel--model-mime-capable-p "gptel-request")
 (declare-function gptel--model-name "gptel-request")

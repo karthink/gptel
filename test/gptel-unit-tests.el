@@ -637,8 +637,8 @@ A string like \"hello\" should be JSON-encoded, not passed through."
           (gptel--log "{\"content\": \"hello\"}" "response body")
           (let ((content (with-current-buffer gptel--log-buffer-name
                            (buffer-string))))
-            ;; Should have org headings
-            (should (string-match-p "^\\* Request \\[" content))
+            ;; Should have org headings with request counter
+            (should (string-match-p "^\\* Request #1 \\[" content))
             (should (string-match-p "^\\*\\* request headers" content))
             (should (string-match-p "^\\*\\* response body" content))
             ;; Should have src blocks for JSON
@@ -694,9 +694,12 @@ A string like \"hello\" should be JSON-encoded, not passed through."
                            (insert content)
                            (goto-char (point-min))
                            (let ((count 0))
-                             (while (re-search-forward "^\\* Request \\[" nil t)
+                             (while (re-search-forward "^\\* Request #[0-9]+ \\[" nil t)
                                (cl-incf count))
-                             count))))))
+                             count))))
+            ;; Should be numbered sequentially
+            (should (string-match-p "^\\* Request #1 \\[" content))
+            (should (string-match-p "^\\* Request #2 \\[" content))))
       (when (get-buffer gptel--log-buffer-name)
         (kill-buffer gptel--log-buffer-name)))))
 
@@ -731,6 +734,64 @@ A string like \"hello\" should be JSON-encoded, not passed through."
             ;; Arrow and em-dash should appear as-is
             (should (string-match-p "→" content))
             (should (string-match-p "—" content))))
+      (when (get-buffer gptel--log-buffer-name)
+        (kill-buffer gptel--log-buffer-name)))))
+
+(ert-deftest gptel-test-log-tool-entries-nest-under-request ()
+  "Test that tool-call entries become sub-headings under active request."
+  (let ((gptel-log-level 'debug)
+        (gptel--log-buffer-name "*gptel-log-test*"))
+    (when (get-buffer gptel--log-buffer-name)
+      (kill-buffer gptel--log-buffer-name))
+    (unwind-protect
+        (progn
+          ;; Start a request cycle
+          (gptel--log "{\"Authorization\": \"Bearer test\"}" "request headers")
+          ;; Tool call within the request cycle
+          (gptel--log "tool execution info" "tool-call-debug" 'no-json)
+          ;; State change within the request cycle
+          (gptel--log "state transition info" "debug-state-change" 'no-json)
+          ;; Response
+          (gptel--log "{\"content\": \"hello\"}" "response body")
+          (let ((content (with-current-buffer gptel--log-buffer-name
+                           (buffer-string))))
+            ;; Should have only ONE top-level heading
+            (should (= 1 (with-temp-buffer
+                           (insert content)
+                           (goto-char (point-min))
+                           (let ((count 0))
+                             (while (re-search-forward "^\\* " nil t)
+                               (cl-incf count))
+                             count))))
+            ;; Tool call and state change should be sub-headings
+            (should (string-match-p "^\\*\\* tool-call-debug" content))
+            (should (string-match-p "^\\*\\* debug-state-change" content))
+            ;; Request entries also sub-headings
+            (should (string-match-p "^\\*\\* request headers" content))
+            (should (string-match-p "^\\*\\* response body" content))))
+      (when (get-buffer gptel--log-buffer-name)
+        (kill-buffer gptel--log-buffer-name)))))
+
+(ert-deftest gptel-test-log-request-counter ()
+  "Test that request cycles are numbered sequentially."
+  (let ((gptel-log-level 'info)
+        (gptel--log-buffer-name "*gptel-log-test*"))
+    (when (get-buffer gptel--log-buffer-name)
+      (kill-buffer gptel--log-buffer-name))
+    (unwind-protect
+        (progn
+          ;; Three request cycles
+          (gptel--log "{}" "request headers")
+          (gptel--log "{}" "response body")
+          (gptel--log "{}" "request headers")
+          (gptel--log "{}" "response body")
+          (gptel--log "{}" "request headers")
+          (gptel--log "{}" "response body")
+          (let ((content (with-current-buffer gptel--log-buffer-name
+                           (buffer-string))))
+            (should (string-match-p "^\\* Request #1 \\[" content))
+            (should (string-match-p "^\\* Request #2 \\[" content))
+            (should (string-match-p "^\\* Request #3 \\[" content))))
       (when (get-buffer gptel--log-buffer-name)
         (kill-buffer gptel--log-buffer-name)))))
 

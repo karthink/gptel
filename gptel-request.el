@@ -1311,6 +1311,10 @@ org-mode strips on export."
 nil means no active request.  `request' means we're in the
 request phase.  `response' means response entries have started.")
 
+(defvar-local gptel--log-request-count 0
+  "Counter for request cycles in the log buffer.
+Incremented each time a new request cycle begins.")
+
 (defvar gptel--log-sensitive-headers
   '("x-api-key" "authorization" "api-key")
   "List of HTTP header names (lowercase) whose values should be redacted in logs.")
@@ -1357,7 +1361,10 @@ Log entries are org headings grouped by request cycle:
       ;; Open a new request heading when a new request cycle starts
       (when (and request-start-p
                  (not (eq gptel--log-request-phase 'request)))
-        (insert (format-time-string "* Request [%Y-%m-%d %a %H:%M:%S]\n"))
+        (cl-incf gptel--log-request-count)
+        (insert (format-time-string
+                 (format "* Request #%d [%%Y-%%m-%%d %%a %%H:%%M:%%S]\n"
+                         gptel--log-request-count)))
         (setq gptel--log-request-phase 'request))
       ;; Track response phase
       (when response-p
@@ -1367,18 +1374,28 @@ Log entries are org headings grouped by request cycle:
        (request-entry-p
         (unless gptel--log-request-phase
           ;; Orphan response entry — create a request heading for it
-          (insert (format-time-string "* Request [%Y-%m-%d %a %H:%M:%S]\n"))
+          (cl-incf gptel--log-request-count)
+          (insert (format-time-string
+                   (format "* Request #%d [%%Y-%%m-%%d %%a %%H:%%M:%%S]\n"
+                           gptel--log-request-count)))
           (setq gptel--log-request-phase 'response))
         (insert (format "** %s" type))
         (insert (format " %43s\n"
                         (concat ":" level-tag ":"))))
-       ;; Standalone entry (tool calls, presets, errors, etc.)
+       ;; Other entries: nest under active request or standalone
        (t
-        (setq gptel--log-request-phase nil)
-        (insert (format "* %s" type))
-        (insert (format " %43s\n"
-                        (concat ":" level-tag ":")))
-        (insert (format-time-string "[%Y-%m-%d %a %H:%M:%S]\n"))))
+        (if gptel--log-request-phase
+            ;; Within a request cycle: nest as sub-heading
+            (progn
+              (insert (format "** %s" type))
+              (insert (format " %43s\n"
+                              (concat ":" level-tag ":")))
+              (insert (format-time-string "[%Y-%m-%d %a %H:%M:%S]\n")))
+          ;; No active request: standalone heading
+          (insert (format "* %s" type))
+          (insert (format " %43s\n"
+                          (concat ":" level-tag ":")))
+          (insert (format-time-string "[%Y-%m-%d %a %H:%M:%S]\n")))))
       ;; Insert data in appropriate block
       (if no-json
           (progn
@@ -1399,6 +1416,36 @@ Log entries are org headings grouped by request cycle:
             (insert "#+end_src\n")))))))
 
 
+
+(defun gptel-log-summary ()
+  "Display a summary of the *gptel-log* buffer.
+
+Shows only the org headings from the log buffer in a temporary
+buffer, providing a quick overview of all logged request cycles
+and events.  Use this to navigate large log files efficiently."
+  (interactive)
+  (let ((log-buf (get-buffer gptel--log-buffer-name)))
+    (unless log-buf
+      (user-error "No gptel log buffer found"))
+    (let ((summary
+           (with-current-buffer log-buf
+             (save-excursion
+               (goto-char (point-min))
+               (let ((lines nil))
+                 (while (re-search-forward "^\\(\\*+\\s-+.*\\)" nil t)
+                   (push (match-string 1) lines))
+                 (string-join (nreverse lines) "\n"))))))
+      (if (string-empty-p summary)
+          (message "gptel log is empty")
+        (with-current-buffer (get-buffer-create "*gptel-log-summary*")
+          (let ((inhibit-read-only t))
+            (erase-buffer)
+            (insert summary "\n")
+            (goto-char (point-min))
+            (org-mode)
+            (setq-local buffer-read-only t))
+          (display-buffer (current-buffer)))))))
+
 ;;; Structured output
 (defvar gptel--schema nil
   "Response output schema for backends that support it.")
