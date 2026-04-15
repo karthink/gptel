@@ -28,7 +28,6 @@
 
 (declare-function gptel--json-encode "gptel-request")
 (declare-function gptel--json-read "gptel-request")
-(declare-function gptel--json-read-string "gptel-request")
 
 (defun gptel-oauth-save-token (file token)
   "Save TOKEN plist to FILE."
