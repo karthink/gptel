@@ -2120,8 +2120,8 @@ Note:
 
 1. This function is not fully self-contained.  Consider
 let-binding the parameters `gptel-backend', `gptel-model',
-`gptel-use-tools' and `gptel-use-context' around calls to it as
-required.
+`gptel-use-tools', `gptel-use-context' and
+`gptel-reasoning-effort' around calls to it as required.
 
 2. The return value of this function is a state machine that may
 be used to rerun or continue the request at a later time."
