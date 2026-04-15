@@ -75,6 +75,7 @@
 (declare-function gptel-tool-async "gptel")
 (declare-function gptel-tool-function "gptel")
 (declare-function gptel-tool-include "gptel")
+(declare-function org-indent-add-properties "org-indent")
 
 ;; Forward declarations for variables defined in gptel.el
 (defvar gptel-mode)
@@ -464,6 +465,22 @@ Cleans up the narrowing end-marker."
               (org-fold-subtree t)
               (gptel-org--debug "org-agent close-indirect-buffer: folded subtree at line %d"
                                 (line-number-at-pos))))))
+      ;; Refresh org-indent-mode properties for the agent subtree in
+      ;; the base buffer.  Text properties (line-prefix, wrap-prefix)
+      ;; are shared between indirect and base buffers.  Some edits in
+      ;; the indirect buffer may have left stale indent properties
+      ;; (e.g. when inhibit-modification-hooks was active), so ensure
+      ;; a clean state before the indirect buffer is killed.
+      (when (and (buffer-live-p base-buf)
+                 (with-current-buffer base-buf
+                   (bound-and-true-p org-indent-mode)))
+        (with-current-buffer base-buf
+          (org-indent-add-properties
+           subtree-start
+           (save-excursion
+             (goto-char subtree-start)
+             (org-end-of-subtree t)
+             (point)))))
       ;; Clean up the end-marker
       (when (markerp end-marker)
         (set-marker end-marker nil))

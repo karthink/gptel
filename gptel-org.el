@@ -135,6 +135,7 @@ FORMAT-STRING and ARGS are passed to `format'."
 (declare-function org-get-heading "org")
 (declare-function org-get-tags "org")
 (declare-function org-end-of-subtree "org")
+(declare-function org-indent-add-properties "org-indent")
 
 ;; Bundle `org-element-lineage-map' if it's not available (for Org 9.67 or older)
 (eval-and-compile
@@ -2162,6 +2163,8 @@ skipped, making this safe to run on any region at any time."
                       (insert new-stars)
                       (setq modified t)))))))
             (forward-line 1))
+          ;; Capture corrected region end before releasing the marker
+          (setq end (marker-position end-marker))
           (set-marker end-marker nil)))
       ;; The auto-corrector runs inside after-change-functions with
       ;; inhibit-modification-hooks t, so the org-element cache does not
@@ -2169,8 +2172,16 @@ skipped, making this safe to run on any region at any time."
       ;; escaping).  Reset the cache when changes were made so that
       ;; subsequent callers of org-end-of-subtree, org-element-at-point,
       ;; etc. get correct results.
+      ;;
+      ;; Also refresh org-indent-mode text properties for the corrected
+      ;; region.  The secondary edits leave stale line-prefix and
+      ;; wrap-prefix properties (which org-indent-mode uses for virtual
+      ;; indentation display), causing incorrect visual indentation in
+      ;; both the indirect buffer and the base buffer (shared text).
       (when modified
-        (org-element-cache-reset)))))
+        (org-element-cache-reset)
+        (when (bound-and-true-p org-indent-mode)
+          (org-indent-add-properties beg end))))))
 
 (defun gptel-org--enable-auto-correct ()
   "Enable the idempotent auto-corrector in the current indirect buffer.
