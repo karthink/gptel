@@ -1839,38 +1839,66 @@ Optional RAW disables text properties and transformation."
            (with-current-buffer (marker-buffer start-marker)
              (let ((separator         ;Separate from response prefix if required
                     (and (not tracking-marker) gptel-mode
-                         ;; Check the base prefix without triggering
-                         ;; org-mode side effects (pending tag hook).
                          (not (string-suffix-p
                                "\n" (let ((gptel-org--in-prefix-advice t))
                                       (gptel-response-prefix-string))))
-                         "\n"))
-                   (blocks (if (derived-mode-p 'org-mode)
-                               `("#+begin_src gptel-reasoning\n" . ,(concat "\n#+end_src"
-                                                           gptel-response-separator))
-                             ;; TODO(reasoning) remove properties and strip instead
-                             (cons (propertize "``` reasoning\n" 'gptel 'ignore
-                                               'keymap gptel--markdown-block-map)
-                                   (concat (propertize "\n```" 'gptel 'ignore
-                                                       'keymap gptel--markdown-block-map)
-                                           gptel-response-separator)))))
-               (if (eq include 'ignore)
-                   (progn
+                         "\n")))
+               (if (derived-mode-p 'org-mode)
+                   ;; Org-mode: use REASONING heading
+                   (let* ((lines (split-string text "\n"))
+                          (first-line (or (cl-find-if
+                                          (lambda (l) (not (string-empty-p (string-trim l))))
+                                          lines)
+                                         "..."))
+                          (rest-lines (if (string= first-line "...")
+                                         lines
+                                       (cdr (member first-line lines))))
+                          (rest-text (string-join rest-lines "\n"))
+                          (heading-text (concat "* REASONING " first-line "\n"))
+                          (body-text (unless (string-empty-p (string-trim rest-text))
+                                      (concat rest-text "\n")))
+                          (tail gptel-response-separator))
+                     ;; Heading line: always ignored (never sent to LLM)
                      (add-text-properties
-                      0 (length text) '(gptel ignore front-sticky (gptel)) text)
+                      0 (length heading-text)
+                      '(gptel ignore front-sticky (gptel)) heading-text)
+                     ;; Body text: ignored or response based on include setting
+                     (when body-text
+                       (if (eq include 'ignore)
+                           (add-text-properties
+                            0 (length body-text)
+                            '(gptel ignore front-sticky (gptel)) body-text)
+                         (add-text-properties
+                          0 (length body-text)
+                          '(gptel response front-sticky (gptel)) body-text)))
+                     ;; Insert everything as raw
                      (gptel--insert-response
-                      (concat (car blocks) text (cdr blocks)) info t))
-                 (gptel--insert-response (concat separator (car blocks)) info t)
-                 (gptel--insert-response text info)
-                 (gptel--insert-response (cdr blocks) info t))
-               (save-excursion
-                 (goto-char (plist-get info :tracking-marker))
-                 (if (derived-mode-p 'org-mode) ;fold block
-                     (progn (search-backward "#+end_src" start-marker t)
-                            (when (looking-at "^#\\+end_src")
-                              (org-cycle)))
-                   (when (re-search-backward "^```" start-marker t)
-                     (gptel-markdown-cycle-block)))))))))
+                      (concat separator heading-text body-text tail) info t)
+                     ;; Fold the REASONING heading
+                     (save-excursion
+                       (goto-char (plist-get info :tracking-marker))
+                       (when (re-search-backward "^\\*+ REASONING " start-marker t)
+                         (org-fold-subtree t))))
+                 ;; Markdown: keep existing behavior
+                 (let ((blocks
+                        (cons (propertize "``` reasoning\n" 'gptel 'ignore
+                                         'keymap gptel--markdown-block-map)
+                              (concat (propertize "\n```" 'gptel 'ignore
+                                                  'keymap gptel--markdown-block-map)
+                                      gptel-response-separator))))
+                   (if (eq include 'ignore)
+                       (progn
+                         (add-text-properties
+                          0 (length text) '(gptel ignore front-sticky (gptel)) text)
+                         (gptel--insert-response
+                          (concat (car blocks) text (cdr blocks)) info t))
+                     (gptel--insert-response (concat separator (car blocks)) info t)
+                     (gptel--insert-response text info)
+                     (gptel--insert-response (cdr blocks) info t))
+                   (save-excursion
+                     (goto-char (plist-get info :tracking-marker))
+                     (when (re-search-backward "^```" start-marker t)
+                       (gptel-markdown-cycle-block))))))))))
       (`(tool-call . ,tool-calls)
        (gptel--display-tool-calls tool-calls info))
       (`(tool-result . ,tool-results)
@@ -1997,49 +2025,119 @@ for streaming responses only."
         (with-current-buffer (marker-buffer start-marker)
           (if (eq text t)               ;end of stream
               (progn
-                (gptel-curl--stream-insert-response
-                 (concat (if (derived-mode-p 'org-mode)
-                             "\n#+end_src"
-                           ;; TODO(reasoning) remove properties and strip instead
-                           (propertize "\n```" 'gptel 'ignore
-                                       'keymap gptel--markdown-block-map))
-                         gptel-response-separator)
-                 info t)
-                (ignore-errors          ;fold block
-                  (save-excursion
-                    (goto-char tracking-marker)
-                    (if (derived-mode-p 'org-mode)
-                        (progn (search-backward "#+end_src" start-marker t)
-                               (when (looking-at "^#\\+end_src")
-                                 (org-cycle)))
+                (if (derived-mode-p 'org-mode)
+                    ;; Org: finalize REASONING heading
+                    (progn
+                      ;; If title was never set (no newline in entire reasoning),
+                      ;; set it now from whatever was accumulated
+                      (when (plist-get info :reasoning-title-pending)
+                        (let ((title-buf (or (plist-get info :reasoning-title-buffer) "...")))
+                          (save-excursion
+                            (goto-char (or tracking-marker start-marker))
+                            (when (re-search-backward "^\\(\\*+ REASONING\\) *$" start-marker t)
+                              (let ((inhibit-read-only t)
+                                    (inhibit-modification-hooks t))
+                                (replace-match (concat (match-string 1) " " (string-trim title-buf)))))))
+                        (plist-put info :reasoning-title-pending nil))
+                      ;; Insert separator
+                      (gptel-curl--stream-insert-response
+                       gptel-response-separator info t)
+                      ;; Fold the REASONING heading
+                      (ignore-errors
+                        (save-excursion
+                          (goto-char (or tracking-marker start-marker))
+                          (when (re-search-backward "^\\*+ REASONING " start-marker t)
+                            (org-fold-subtree t)))))
+                  ;; Markdown: close ``` block
+                  (gptel-curl--stream-insert-response
+                   (concat (propertize "\n```" 'gptel 'ignore
+                                       'keymap gptel--markdown-block-map)
+                           gptel-response-separator)
+                   info t)
+                  (ignore-errors
+                    (save-excursion
+                      (goto-char tracking-marker)
                       (when (re-search-backward "^```" start-marker t)
                         (gptel-markdown-cycle-block))))))
-            (unless (and reasoning-marker tracking-marker
-                         (= reasoning-marker tracking-marker))
-              (let ((separator        ;Separate from response prefix if required
-                     (and (not tracking-marker) gptel-mode
-                          ;; Check the base prefix without triggering
-                          ;; org-mode side effects (pending tag hook).
-                          ;; The full dynamic prefix will be computed
-                          ;; inside gptel-curl--stream-insert-response.
-                          (not (string-suffix-p
-                                "\n" (let ((gptel-org--in-prefix-advice t))
-                                       (gptel-response-prefix-string))))
-                          "\n")))
-                (gptel-curl--stream-insert-response
-                 (concat separator
-                         (if (derived-mode-p 'org-mode)
-                             "#+begin_src gptel-reasoning\n"
-                           ;; TODO(reasoning) remove properties and strip instead
-                           (propertize "``` reasoning\n" 'gptel 'ignore
-                                       'keymap gptel--markdown-block-map)))
-                 info t)))
-            (if (eq include 'ignore)
+            ;; Not end-of-stream: insert reasoning text
+            (if (derived-mode-p 'org-mode)
+                ;; Org-mode: REASONING heading approach
                 (progn
-                  (add-text-properties
-                   0 (length text) '(gptel ignore front-sticky (gptel)) text)
-                  (gptel-curl--stream-insert-response text info t))
-              (gptel-curl--stream-insert-response text info)))
+                  ;; Open the heading if not yet done
+                  (unless (and reasoning-marker tracking-marker
+                               (= reasoning-marker tracking-marker))
+                    (let ((separator
+                           (and (not tracking-marker) gptel-mode
+                                (not (string-suffix-p
+                                      "\n" (let ((gptel-org--in-prefix-advice t))
+                                             (gptel-response-prefix-string))))
+                                "\n"))
+                          (heading-str "* REASONING \n"))
+                      (add-text-properties
+                       0 (length heading-str)
+                       '(gptel ignore front-sticky (gptel)) heading-str)
+                      (gptel-curl--stream-insert-response
+                       (concat separator heading-str) info t)
+                      (plist-put info :reasoning-title-pending t)
+                      (plist-put info :reasoning-title-buffer "")))
+                  ;; Handle title extraction from first line
+                  (if (plist-get info :reasoning-title-pending)
+                      (let* ((buf (concat (plist-get info :reasoning-title-buffer) text))
+                             (newline-pos (string-match "\n" buf)))
+                        (if newline-pos
+                            ;; Found first newline — extract title and insert rest
+                            (let ((title (string-trim (substring buf 0 newline-pos)))
+                                  (rest (substring buf (1+ newline-pos))))
+                              ;; Update the heading with the title
+                              (when (not (string-empty-p title))
+                                (save-excursion
+                                  (goto-char (or tracking-marker start-marker))
+                                  (when (re-search-backward "^\\(\\*+ REASONING\\) *$" start-marker t)
+                                    (let ((inhibit-read-only t)
+                                          (inhibit-modification-hooks t))
+                                      (replace-match (concat (match-string 1) " " title))))))
+                              (plist-put info :reasoning-title-pending nil)
+                              ;; Insert remaining text as body
+                              (unless (string-empty-p rest)
+                                (let ((prop-rest (copy-sequence rest)))
+                                  (if (eq include 'ignore)
+                                      (add-text-properties
+                                       0 (length prop-rest)
+                                       '(gptel ignore front-sticky (gptel)) prop-rest)
+                                    (add-text-properties
+                                     0 (length prop-rest)
+                                     '(gptel response front-sticky (gptel)) prop-rest))
+                                  (gptel-curl--stream-insert-response prop-rest info))))
+                          ;; No newline yet — keep accumulating
+                          (plist-put info :reasoning-title-buffer buf)))
+                    ;; Title already set — stream body text normally
+                    (if (eq include 'ignore)
+                        (progn
+                          (add-text-properties
+                           0 (length text) '(gptel ignore front-sticky (gptel)) text)
+                          (gptel-curl--stream-insert-response text info t))
+                      (gptel-curl--stream-insert-response text info))))
+              ;; Markdown: keep existing behavior
+              (unless (and reasoning-marker tracking-marker
+                           (= reasoning-marker tracking-marker))
+                (let ((separator
+                       (and (not tracking-marker) gptel-mode
+                            (not (string-suffix-p
+                                  "\n" (let ((gptel-org--in-prefix-advice t))
+                                         (gptel-response-prefix-string))))
+                            "\n")))
+                  (gptel-curl--stream-insert-response
+                   (concat separator
+                           (propertize "``` reasoning\n" 'gptel 'ignore
+                                       'keymap gptel--markdown-block-map))
+                   info t)))
+              (if (eq include 'ignore)
+                  (progn
+                    (add-text-properties
+                     0 (length text) '(gptel ignore front-sticky (gptel)) text)
+                    (gptel-curl--stream-insert-response text info t))
+                (gptel-curl--stream-insert-response text info))))
+          ;; Update reasoning-marker (tracks end of reasoning content)
           (setq tracking-marker (plist-get info :tracking-marker))
           (if reasoning-marker
               (move-marker reasoning-marker tracking-marker)
@@ -2238,14 +2336,14 @@ for tool call results.  INFO contains the state of the request."
                                       display-call
                                       (floor (* (window-width) 0.6)) 0 nil " ...)"))))
                (if (derived-mode-p 'org-mode)
-                   (concat
-                    separator
-                    "#+begin_src gptel-tool\n"
-                    truncated-call
-                    (propertize
-                     (org-escape-code-in-string (concat "\n" call "\n\n" result))
-                     'gptel `(tool . ,id))
-                    "\n#+end_src\n")
+                   ;; Org-mode: insert TOOL heading
+                   (let* ((heading-line (concat "* TOOL " truncated-call "\n"))
+                          (body-text (concat call "\n\n" result "\n"))
+                          (prop-body (propertize body-text 'gptel `(tool . ,id))))
+                     (add-text-properties
+                      0 (length heading-line)
+                      '(gptel ignore front-sticky (gptel)) heading-line)
+                     (concat separator heading-line prop-body))
                  ;; TODO(tool) else branch is handling all front-ends as markdown.
                  ;; At least escape markdown.
                  (concat
@@ -2272,9 +2370,10 @@ for tool call results.  INFO contains the state of the request."
          (ignore-errors                 ;fold drawer
            (save-excursion
              (goto-char tracking-marker)
-             (forward-line -1)
              (if (derived-mode-p 'org-mode)
-                 (when (looking-at-p "^#\\+end_src") (org-cycle))
+                 (when (re-search-backward "^\\*+ TOOL " nil t)
+                   (org-cycle))
+               (forward-line -1)
                (when (looking-at-p "^```") (gptel-markdown-cycle-block))))))))))
 
 (defun gptel--format-tool-call (name arg-values)
