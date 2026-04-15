@@ -2332,5 +2332,34 @@ executes them."
           (gptel-org-agent--accept-tool-calls tool-calls info)
           (message "Tool calls executed manually for: %s" heading))))))
 
+(defun gptel-org-agent-accept-all-pending ()
+  "Accept all PENDING tool call headings in the accessible portion of the buffer.
+
+Changes each PENDING heading to ALLOWED, triggering tool execution
+via `org-after-todo-state-change-hook'.
+
+In agent indirect buffers (narrowed to the agent subtree), this
+accepts all pending tool calls for the current agent.  In a
+non-narrowed buffer it accepts every pending tool call in the
+buffer."
+  (interactive)
+  (unless (derived-mode-p 'org-mode)
+    (user-error "Not in an org-mode buffer"))
+  (let ((pending-kw (nth 0 gptel-org-agent-tool-confirm-keywords))
+        (allowed-kw (nth 1 gptel-org-agent-tool-confirm-keywords))
+        (count 0))
+    (save-excursion
+      (goto-char (point-min))
+      (while (re-search-forward org-heading-regexp nil t)
+        (beginning-of-line)
+        (when (and (org-at-heading-p)
+                   (string= (org-get-todo-state) pending-kw))
+          (org-todo allowed-kw)
+          (cl-incf count))
+        (forward-line 1)))
+    (if (zerop count)
+        (message "No PENDING tool calls found")
+      (message "Accepted %d tool call%s" count (if (= count 1) "" "s")))))
+
 (provide 'gptel-org-agent)
 ;;; gptel-org-agent.el ends here

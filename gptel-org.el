@@ -36,21 +36,9 @@
 ;; gptel-org.el itself).
 (require 'gptel-org-agent nil t)
 
-;; Register gptel-tool and gptel-reasoning as source block languages with
-;; org-src to prevent org-lint warnings about unknown source block languages.
-;; These blocks don't require a Babel backend.
-(eval-when-compile
-  ;; Only run at compile time to avoid modifying org-src-lang-modes at load time
-  (when (boundp 'org-src-lang-modes)
-    (add-to-list 'org-src-lang-modes '("gptel-tool" . fundamental))
-    (add-to-list 'org-src-lang-modes '("gptel-reasoning" . fundamental))))
-
-;; Ensure the languages are registered at runtime for org-lint
-(with-eval-after-load 'org-src
-  (unless (assoc "gptel-tool" org-src-lang-modes)
-    (add-to-list 'org-src-lang-modes '("gptel-tool" . fundamental)))
-  (unless (assoc "gptel-reasoning" org-src-lang-modes)
-    (add-to-list 'org-src-lang-modes '("gptel-reasoning" . fundamental))))
+;; NOTE: gptel-tool and gptel-reasoning src block language registrations
+;; have been removed.  Tool results and reasoning now use TOOL and
+;; REASONING org headings instead of src blocks.
 
 ;; Functions used for saving/restoring gptel state in Org buffers
 (defvar gptel--num-messages-to-send)
@@ -787,18 +775,48 @@ indirect buffers narrowed to the relevant subtree."
         (apply #'delete-region bounds)))))
 
 (defun gptel-org--strip-block-headers ()
-  "Remove all gptel-specific block headers and footers.
-Every line that matches will be removed entirely.
+  "Remove gptel-specific block headers, footers, and special subtrees.
+Every matching line or subtree is removed entirely.
+
+REASONING subtrees are stripped completely since reasoning content
+should not be sent back to the LLM.  TOOL heading lines are stripped
+but their body text (plist + result) is kept since the LLM needs to
+see tool return values.  Tool block headers/footers are stripped to
+avoid auto-mimicry.
 
 This removal is necessary to avoid auto-mimicry by LLMs."
   (save-excursion
+    ;; First pass: strip REASONING heading subtrees entirely
+    (goto-char (point-min))
+    (while (re-search-forward "^\\(\\*+\\) REASONING " nil t)
+      (let* ((stars (length (match-string 1)))
+             (subtree-start (match-beginning 0))
+             (subtree-end
+              (save-excursion
+                ;; Find the end of this subtree: next heading at same
+                ;; or higher level, or end of buffer
+                (forward-line 1)
+                (if (re-search-forward
+                     (format "^\\*\\{1,%d\\} " stars) nil t)
+                    (match-beginning 0)
+                  (point-max)))))
+        (delete-region subtree-start subtree-end)))
+    ;; Second pass: strip TOOL heading lines only (keep body text
+    ;; with plist and result since the LLM needs tool return values)
+    (goto-char (point-min))
+    (while (re-search-forward "^\\*+ TOOL " nil t)
+      (delete-region (match-beginning 0)
+                     (min (point-max) (1+ (line-end-position)))))
+    ;; Third pass: strip remaining block headers/footers (custom tool/reasoning
+    ;; blocks, and legacy gptel-reasoning/gptel-tool src blocks)
     (goto-char (point-min))
     (while (re-search-forward
             (rx line-start
                 (literal "#+")
                 (or (seq (or (literal "begin") (literal "end"))
                          (or (literal "_tool") (literal "_reasoning")))
-                    (literal "begin_src gptel-reasoning")))
+                    (literal "begin_src gptel-reasoning")
+                    (literal "begin_src gptel-tool")))
             nil t)
       (delete-region (match-beginning 0)
                      (min (point-max) (1+ (line-end-position)))))))
@@ -1101,14 +1119,17 @@ Uses TODO keywords when `gptel-org-use-todo-keywords' is enabled,
 otherwise falls back to tag detection.
 
 In keyword mode, a heading is assistant when its TODO state has the
-\"AI-\" prefix: AI-DO, AI-DOING, AI-DONE, AI-CANCELED, etc.  All
-AI-prefixed states contain AI-authored content.  Headings without a
-TODO state (plain headings) return nil here and inherit from their
-parent via `gptel-org--restore-bounds-from-tags'."
+\"AI-\" prefix (AI-DO, AI-DOING, AI-DONE, etc.) or is one of the
+special gptel states: REASONING, TOOL, PENDING, ALLOWED, DENIED.
+All these states contain AI-authored or AI-system content.  Headings
+without a TODO state (plain headings) return nil here and inherit
+from their parent via `gptel-org--restore-bounds-from-tags'."
   (if gptel-org-use-todo-keywords
       (when (org-at-heading-p)
         (let ((todo (org-get-todo-state)))
-          (and todo (string-prefix-p "AI-" todo))))
+          (and todo
+               (or (string-prefix-p "AI-" todo)
+                   (member todo '("REASONING" "TOOL" "PENDING" "ALLOWED" "DENIED"))))))
     (gptel-org--heading-has-tag-p gptel-org-assistant-tag)))
 
 (defun gptel-org--heading-is-user-p ()
@@ -2178,8 +2199,9 @@ This should be called once when an agent indirect buffer is created."
 BEG and END delimit the response region.  Returns the first
 non-empty, non-block line, truncated to 50 characters.
 
-Skips over `gptel-reasoning' and `gptel-tool' source blocks at the
-start of the response so that the title reflects the actual content."
+Skips over REASONING and TOOL heading subtrees, and `gptel-tool'
+source blocks at the start of the response so that the title
+reflects the actual content."
   (save-excursion
     (goto-char beg)
     (let ((first-line nil))
@@ -2191,11 +2213,29 @@ start of the response so that the title reflects the actual content."
                      (buffer-substring-no-properties
                       (point) (min end (line-end-position))))))
           (cond
-           ;; Skip org src blocks (reasoning, tool, etc.)
+           ;; Skip REASONING heading subtrees
+           ((string-match-p "^\\*+ REASONING " line)
+            (let ((stars (progn (string-match "^\\(\\*+\\)" line)
+                                (length (match-string 1 line)))))
+              (forward-line 1)
+              (if (re-search-forward
+                   (format "^\\*\\{1,%d\\} " stars) end t)
+                  (beginning-of-line)
+                (goto-char end))))
+           ;; Skip TOOL heading subtrees
+           ((string-match-p "^\\*+ TOOL " line)
+            (let ((stars (progn (string-match "^\\(\\*+\\)" line)
+                                (length (match-string 1 line)))))
+              (forward-line 1)
+              (if (re-search-forward
+                   (format "^\\*\\{1,%d\\} " stars) end t)
+                  (beginning-of-line)
+                (goto-char end))))
+           ;; Skip org src blocks (tool blocks, etc.)
            ((string-match-p "^#\\+begin_src" line)
             (if (re-search-forward "^#\\+end_src" end t)
-                (forward-line 1)        ;continue past the block
-              (goto-char end)))         ;unterminated block, give up
+                (forward-line 1)
+              (goto-char end)))
            ;; Skip markdown code fences
            ((string-match-p "^```" line)
             (forward-line 1)
@@ -2315,27 +2355,47 @@ positions of the response."
 ;;; Post-response block folding
 
 (defun gptel-org--fold-special-blocks (beg end)
-  "Fold gptel-tool and gptel-reasoning source blocks between BEG and END.
+  "Fold REASONING/TOOL headings and gptel-tool source blocks between BEG and END.
 
 Runs as a `gptel-post-response-functions' hook to ensure all special
-blocks are folded after the response is complete.  This supplements
-the inline folding done during streaming (which can be unreliable in
-indirect buffers or when subsequent text insertion disrupts overlays)."
+blocks and headings are folded after the response is complete.  This
+supplements the inline folding done during streaming (which can be
+unreliable in indirect buffers or when subsequent text insertion
+disrupts overlays)."
   (when (derived-mode-p 'org-mode)
     (save-excursion
+      ;; Fold REASONING heading subtrees
+      (goto-char beg)
+      (while (re-search-forward "^\\*+ REASONING " end t)
+        (beginning-of-line)
+        (condition-case nil
+            (when (and (org-at-heading-p)
+                       (not (org-fold-folded-p (point) 'headline)))
+              (org-fold-subtree t))
+          (error nil))
+        (forward-line 1))
+      ;; Fold TOOL heading subtrees
+      (goto-char beg)
+      (while (re-search-forward "^\\*+ TOOL " end t)
+        (beginning-of-line)
+        (condition-case nil
+            (when (and (org-at-heading-p)
+                       (not (org-fold-folded-p (point) 'headline)))
+              (org-fold-subtree t))
+          (error nil))
+        (forward-line 1))
+      ;; Fold gptel-tool source blocks (legacy)
       (goto-char beg)
       (while (re-search-forward
-              "^[ \t]*#\\+begin_src gptel-\\(?:tool\\|reasoning\\)" end t)
+              "^[ \t]*#\\+begin_src gptel-tool" end t)
         (beginning-of-line)
         (condition-case nil
             (let ((elem (org-element-at-point)))
               (when (and elem
                          (eq (org-element-type elem) 'src-block)
-                         ;; Only fold if not already folded
                          (not (org-fold-folded-p (point) 'block)))
                 (org-fold-hide-block-toggle 'hide nil elem)))
           (error nil))
-        ;; Move past the block to avoid re-matching
         (if (re-search-forward "^[ \t]*#\\+end_src" end t)
             (forward-line 1)
           (goto-char end))))))
@@ -2361,17 +2421,17 @@ is enabled."
   :group 'gptel)
 
 (defun gptel-org--register-todo-keywords ()
-  "Register AI/HI TODO keywords and their faces if needed.
+  "Register AI/HI/REASONING/TOOL TODO keywords and their faces if needed.
 
 When `gptel-org-use-todo-keywords' is enabled, ensures that
-`gptel-org-assistant-keyword' and `gptel-org-user-keyword' are
-present in `org-todo-keywords' and have faces registered in
-`org-todo-keyword-faces'."
+`gptel-org-assistant-keyword', `gptel-org-user-keyword', REASONING,
+and TOOL are present in `org-todo-keywords' and have faces registered
+in `org-todo-keyword-faces'."
   (when gptel-org-use-todo-keywords
     (let ((ai-kw gptel-org-assistant-keyword)
           (hi-kw gptel-org-user-keyword))
       (let ((changed nil))
-        ;; Register keywords in org-todo-keywords if missing
+        ;; Register AI/HI keywords in org-todo-keywords if missing
         (unless (and (cl-some (lambda (seq)
                                 (and (listp seq)
                                      (member ai-kw (cl-remove-if-not #'stringp seq))))
@@ -2382,6 +2442,13 @@ present in `org-todo-keywords' and have faces registered in
                               org-todo-keywords))
           (push (list 'sequence ai-kw hi-kw) org-todo-keywords)
           (setq changed t))
+        ;; Register REASONING and TOOL as done-state keywords if missing
+        (unless (cl-some (lambda (seq)
+                           (and (listp seq)
+                                (member "REASONING" (cl-remove-if-not #'stringp seq))))
+                         org-todo-keywords)
+          (push '(sequence "|" "REASONING" "TOOL") org-todo-keywords)
+          (setq changed t))
         ;; Register faces in org-todo-keyword-faces if missing
         (unless (assoc ai-kw org-todo-keyword-faces)
           (push (cons ai-kw gptel-org-assistant-keyword-face)
@@ -2389,6 +2456,16 @@ present in `org-todo-keywords' and have faces registered in
           (setq changed t))
         (unless (assoc hi-kw org-todo-keyword-faces)
           (push (cons hi-kw gptel-org-user-keyword-face)
+                org-todo-keyword-faces)
+          (setq changed t))
+        ;; REASONING face: dimmed/italic to de-emphasize thinking
+        (unless (assoc "REASONING" org-todo-keyword-faces)
+          (push '("REASONING" . (:foreground "#8FBCBB" :weight light :slant italic))
+                org-todo-keyword-faces)
+          (setq changed t))
+        ;; TOOL face: distinct color for tool execution state
+        (unless (assoc "TOOL" org-todo-keyword-faces)
+          (push '("TOOL" . (:foreground "#A3BE8C" :weight bold))
                 org-todo-keyword-faces)
           (setq changed t))
         ;; Refresh org to pick up changes
