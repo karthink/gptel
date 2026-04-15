@@ -1637,19 +1637,17 @@ registered on both buffers so the state change is always caught."
            (buffer-name b)))))))
 
 (defun gptel-org-agent--display-tool-calls (tool-calls info)
-  "Display TOOL-CALLS as a PENDING org heading in the agent subtree.
+  "Display TOOL-CALLS as separate PENDING org headings in the agent subtree.
 
-Creates a child heading under the current position with the PENDING
-TODO state and inserts tool call details as body text.  Stores the
-tool call data in `gptel-org-agent--pending-tool-calls' keyed by a
-unique ID stored as an org property on the heading.
+Creates one child heading per tool call under the current position,
+each with a PENDING TODO state and its own unique ID.  Stores each
+tool call's data separately in `gptel-org-agent--pending-tool-calls'.
 
 TOOL-CALLS is a list of (tool-spec arg-plist process-tool-result).
 INFO is the FSM info plist."
   (let* ((buf (plist-get info :buffer))
          (start-marker (plist-get info :position))
-         (pending-kw (nth 0 gptel-org-agent-tool-confirm-keywords))
-         (pending-id (gptel-org-agent--generate-pending-id)))
+         (pending-kw (nth 0 gptel-org-agent-tool-confirm-keywords)))
     (with-current-buffer buf
       ;; Ensure the todo-state-change hook is registered on both the
       ;; indirect buffer and its base buffer so that the user can
@@ -1682,10 +1680,6 @@ INFO is the FSM info plist."
                                          (org-current-level))
                                     1)))
                (stars (make-string pending-level ?*))
-               (tool-names (mapconcat
-                            (lambda (tc)
-                              (gptel-tool-name (car tc)))
-                            tool-calls ", "))
                (inhibit-read-only t)
                ;; Suppress the auto-corrector during insertion.
                ;; If the AI response contains an unclosed example/src
@@ -1695,70 +1689,78 @@ INFO is the FSM info plist."
                ;; and its body text (they start with * or #+).
                (gptel-org--auto-correcting t))
           (gptel-org--debug
-           "display-tool-calls: response-level=%S pending-level=%d stars=%S buffer=%S narrowed=%s point-min-heading=%S"
+           "display-tool-calls: response-level=%S pending-level=%d stars=%S buffer=%S narrowed=%s point-min-heading=%S num-tools=%d"
            response-level pending-level stars (buffer-name)
            (if (buffer-narrowed-p) "yes" "no")
            (save-excursion
              (goto-char (point-min))
              (when (org-at-heading-p)
                (buffer-substring-no-properties
-                (point) (line-end-position)))))
+                (point) (line-end-position))))
+           (length tool-calls))
           ;; Position at the end of the buffer content for insertion.
           ;; Use start-marker (which has drifted to end of content) as
           ;; the insertion point, since that's where new content should
           ;; go — after the AI response text.
           (goto-char (or (plist-get info :tracking-marker) start-marker))
           (unless (bolp) (insert "\n"))
-          (let ((heading-pos (point)))
-            ;; Insert the PENDING heading
-            (insert (format "%s %s Requesting permission to run: %s\n"
-                            stars pending-kw tool-names))
-            ;; Insert tool call details as body
-            (dolist (tc tool-calls)
-              (let* ((tool-spec (car tc))
-                     (arg-plist (cadr tc))
-                     (arg-values (gptel--map-tool-args tool-spec arg-plist)))
-                (insert (gptel--format-tool-call
-                         (gptel-tool-name tool-spec) arg-values))))
-            (insert "\n")
-            ;; Verify the heading was inserted correctly
-            (save-excursion
-              (goto-char heading-pos)
-              (gptel-org--debug
-               "display-tool-calls: inserted heading at pos=%d: %S"
-               heading-pos
-               (buffer-substring-no-properties
-                (point) (line-end-position))))
-            ;; Store the pending ID as an org property on the heading
-            (save-excursion
-              (goto-char heading-pos)
-              (org-set-property "GPTEL_PENDING_ID" pending-id)
-              ;; Verify level after property insertion (org-set-property
-              ;; may modify heading structure)
-              (goto-char heading-pos)
-              (when (org-at-heading-p)
-                (let ((level-after-prop (org-current-level))
-                      (heading-after-prop
-                       (buffer-substring-no-properties
-                        (line-beginning-position) (line-end-position))))
+          ;; Create one PENDING heading per tool call
+          (dolist (tc tool-calls)
+            (let* ((tool-spec (car tc))
+                   (arg-plist (cadr tc))
+                   (arg-values (gptel--map-tool-args tool-spec arg-plist))
+                   (tool-name (gptel-tool-name tool-spec))
+                   (pending-id (gptel-org-agent--generate-pending-id))
+                   (formatted-call (gptel--format-tool-call tool-name arg-values))
+                   ;; Build heading title from the formatted call,
+                   ;; e.g. "PENDING (Eval \"(* 7 10)\")"
+                   (call-title (string-trim-right formatted-call)))
+              (let ((heading-pos (point)))
+                ;; Insert the PENDING heading
+                (insert (format "%s %s %s\n" stars pending-kw call-title))
+                ;; Insert tool call details as body
+                (insert (format "(:name %S :args %S)\n\n"
+                                tool-name arg-plist))
+                ;; Verify the heading was inserted correctly
+                (save-excursion
+                  (goto-char heading-pos)
                   (gptel-org--debug
-                   "display-tool-calls: after org-set-property: level=%d heading=%S"
-                   level-after-prop heading-after-prop)
-                  (when (/= pending-level level-after-prop)
-                    (gptel-org--debug
-                     "display-tool-calls: WARNING org-set-property changed level! %d -> %d"
-                     pending-level level-after-prop)))))
-            ;; Store tool call data in global hash table
-            (puthash pending-id
-                     (list :tool-calls tool-calls
-                           :info info
-                           :buffer buf)
-                     gptel-org-agent--pending-tool-calls)
-            ;; Mark tool-pending so the FSM knows we're waiting
-            (plist-put info :tool-pending t)
-            (gptel-org--debug
-             "org-agent tool-confirm: created PENDING heading for %s (id=%s)"
-             tool-names pending-id)))))))
+                   "display-tool-calls: inserted heading at pos=%d: %S"
+                   heading-pos
+                   (buffer-substring-no-properties
+                    (point) (line-end-position))))
+                ;; Store the pending ID as an org property on the heading
+                (save-excursion
+                  (goto-char heading-pos)
+                  (org-set-property "GPTEL_PENDING_ID" pending-id)
+                  ;; Verify level after property insertion (org-set-property
+                  ;; may modify heading structure)
+                  (goto-char heading-pos)
+                  (when (org-at-heading-p)
+                    (let ((level-after-prop (org-current-level))
+                          (heading-after-prop
+                           (buffer-substring-no-properties
+                            (line-beginning-position) (line-end-position))))
+                      (gptel-org--debug
+                       "display-tool-calls: after org-set-property: level=%d heading=%S"
+                       level-after-prop heading-after-prop)
+                      (when (/= pending-level level-after-prop)
+                        (gptel-org--debug
+                         "display-tool-calls: WARNING org-set-property changed level! %d -> %d"
+                         pending-level level-after-prop)))))
+                ;; Store SINGLE tool call in hash table (list of one,
+                ;; preserving the expected list-of-lists structure for
+                ;; gptel-org-agent--accept-tool-calls / --deny-tool-calls)
+                (puthash pending-id
+                         (list :tool-calls (list tc)
+                               :info info
+                               :buffer buf)
+                         gptel-org-agent--pending-tool-calls)
+                (gptel-org--debug
+                 "org-agent tool-confirm: created PENDING heading for %s (id=%s)"
+                 tool-name pending-id))))
+          ;; Mark tool-pending so the FSM knows we're waiting
+          (plist-put info :tool-pending t))))))
 
 (defun gptel-org-agent--accept-tool-calls (tool-calls info)
   "Accept and run TOOL-CALLS with explicit INFO.
