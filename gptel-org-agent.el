@@ -66,6 +66,7 @@
 
 ;; Forward declarations for functions defined in gptel.el
 (declare-function gptel--display-tool-calls "gptel")
+(declare-function gptel--display-tool-results "gptel")
 (declare-function gptel--format-tool-call "gptel")
 (declare-function gptel--map-tool-args "gptel-request")
 (declare-function gptel--update-status "gptel")
@@ -73,12 +74,14 @@
 (declare-function gptel-tool-name "gptel")
 (declare-function gptel-tool-async "gptel")
 (declare-function gptel-tool-function "gptel")
+(declare-function gptel-tool-include "gptel")
 
 ;; Forward declarations for variables defined in gptel.el
 (defvar gptel-mode)
 (defvar gptel-backend)
 (defvar gptel-model)
 (defvar gptel--preset)
+(defvar gptel-include-tool-results)
 
 
 ;;; ---- Helpers --------------------------------------------------------------
@@ -1016,6 +1019,9 @@ Also sets up tool confirmation advice and hooks."
   ;; Tool confirmation: advice on gptel--display-tool-calls
   (advice-add 'gptel--display-tool-calls :around
               #'gptel-org-agent--display-tool-calls-advice)
+  ;; Tool results: advice to update existing headings instead of creating new ones
+  (advice-add 'gptel--display-tool-results :around
+              #'gptel-org-agent--display-tool-results-advice)
   ;; Tool confirmation: hook for org-mode buffers
   (add-hook 'org-mode-hook #'gptel-org-agent--setup-tool-confirm))
 
@@ -1033,6 +1039,8 @@ Also sets up tool confirmation advice and hooks."
   ;; Remove tool confirmation advice and hooks
   (advice-remove 'gptel--display-tool-calls
                  #'gptel-org-agent--display-tool-calls-advice)
+  (advice-remove 'gptel--display-tool-results
+                 #'gptel-org-agent--display-tool-results-advice)
   (remove-hook 'org-mode-hook #'gptel-org-agent--setup-tool-confirm))
 
 ;; Always register the transform when this module is loaded.
@@ -1996,6 +2004,142 @@ original function ORIG-FN."
   (if (gptel-org-agent--subtree-tool-confirm-p info)
       (gptel-org-agent--display-tool-calls tool-calls info)
     (funcall orig-fn tool-calls info use-minibuffer)))
+
+
+(defun gptel-org-agent--update-tool-heading (tool-spec args result id)
+  "Update a PENDING/ALLOWED heading to TOOL state with RESULT.
+
+Searches backward from point for a heading matching TOOL-SPEC's name
+in PENDING or ALLOWED state.  Changes the state to TOOL, updates the
+heading title with a truncated call display, and inserts the tool call
+details and RESULT as body text with appropriate text properties.
+
+ID is the tool-use identifier from the LLM response, used for the
+`gptel' text property on the result body.
+
+Returns non-nil if a heading was found and updated, nil otherwise."
+  (let* ((tool-name (gptel-tool-name tool-spec))
+         (pending-kw (nth 0 gptel-org-agent-tool-confirm-keywords))
+         (allowed-kw (nth 1 gptel-org-agent-tool-confirm-keywords))
+         (found nil))
+    (save-excursion
+      ;; Search backward for a PENDING or ALLOWED heading whose title
+      ;; contains this tool name in parentheses — the format created by
+      ;; gptel-org-agent--display-tool-calls is "PENDING (ToolName ...)"
+      (when (re-search-backward
+             (format "^\\(\\*+\\) \\(?:%s\\|%s\\) .*(\\(?:%s\\)[ \t\"]"
+                     (regexp-quote pending-kw)
+                     (regexp-quote allowed-kw)
+                     (regexp-quote tool-name))
+             nil t)
+        (let* ((heading-pos (line-beginning-position))
+               (stars (match-string 1))
+               (level (length stars))
+               (inhibit-read-only t)
+               (inhibit-modification-hooks t))
+          ;; Calculate end of this heading's subtree (up to next heading
+          ;; at same or higher level, or end of buffer)
+          (let ((subtree-end
+                 (save-excursion
+                   (forward-line 1)
+                   (if (re-search-forward
+                        (format "^\\*\\{1,%d\\} " level) nil t)
+                       (match-beginning 0)
+                     (point-max)))))
+            ;; Delete existing body content (the old plist details and
+            ;; any PROPERTIES drawer from the PENDING heading)
+            (save-excursion
+              (goto-char heading-pos)
+              (forward-line 1)
+              (delete-region (point) subtree-end))
+            ;; Replace the heading line: change keyword to TOOL and
+            ;; update the title to match the standard TOOL heading format
+            (goto-char heading-pos)
+            (let* ((display-call (format "(%s %s)" tool-name
+                                         (string-trim
+                                          (prin1-to-string args) "(" ")")))
+                   (truncated-call
+                    (string-replace
+                     "\n" " "
+                     (truncate-string-to-width
+                      display-call
+                      (max 60 (floor (* (window-width) 0.6)))
+                      0 nil " ...)")))
+                   (call (prin1-to-string `(:name ,tool-name :args ,args)))
+                   (result-str (if (stringp result) result
+                                 (format "%S" result)))
+                   ;; Build the new heading line with TOOL keyword
+                   (new-heading (concat stars " TOOL " truncated-call "\n"))
+                   ;; Build the body with plist and result
+                   (body-text (concat call "\n\n" result-str "\n")))
+              ;; Delete the old heading line
+              (let ((line-end (min (1+ (line-end-position)) (point-max))))
+                (delete-region heading-pos line-end))
+              ;; Insert new heading line with proper text properties
+              ;; (gptel 'ignore so the heading line itself is skipped by parser)
+              (goto-char heading-pos)
+              (let ((prop-heading (propertize new-heading
+                                             'gptel 'ignore
+                                             'front-sticky '(gptel)))
+                    (prop-body (propertize body-text
+                                          'gptel `(tool . ,id))))
+                (insert prop-heading prop-body)))
+            ;; Fold the TOOL heading
+            (goto-char heading-pos)
+            (ignore-errors
+              (when (org-at-heading-p)
+                (org-cycle)))
+            (setq found t)))))
+    found))
+
+(defun gptel-org-agent--display-tool-results-advice (orig-fn tool-results info)
+  "Advice for `gptel--display-tool-results' to update existing headings.
+
+When in agent subtree mode, find the existing PENDING/ALLOWED headings
+created by `gptel-org-agent--display-tool-calls' and transition them to
+TOOL state with the result body, instead of creating new TOOL headings.
+
+For tool results that don't have a matching heading (shouldn't normally
+happen), fall through to ORIG-FN for default handling.
+
+Respects `gptel-include-tool-results' filtering: only updates headings
+for tools whose results should be displayed."
+  (if (gptel-org-agent--subtree-tool-confirm-p info)
+      (let* ((start-marker (plist-get info :position))
+             (buf (plist-get info :buffer)))
+        (when (and buf (buffer-live-p buf)
+                   gptel-include-tool-results)
+          (with-current-buffer buf
+            (let* ((include-names
+                    (mapcar #'gptel-tool-name
+                            (cl-remove-if-not #'gptel-tool-include
+                                              (plist-get info :tools))))
+                   (unmatched nil))
+              (save-excursion
+                ;; Position near the end of content so backward search
+                ;; finds the most recent headings first
+                (goto-char (or (plist-get info :tracking-marker)
+                               start-marker))
+                (cl-loop
+                 for (tool-spec args result) in tool-results
+                 for name = (gptel-tool-name tool-spec)
+                 ;; Respect the same include filtering as the original
+                 when (or (eq gptel-include-tool-results t)
+                          (member name include-names))
+                 do (let* ((tool-use
+                            (cl-find-if
+                             (lambda (tu) (equal (plist-get tu :name) name))
+                             (plist-get info :tool-use)))
+                           (id (plist-get tool-use :id)))
+                      (unless (gptel-org-agent--update-tool-heading
+                               tool-spec args result id)
+                        ;; No matching heading found — collect for fallback
+                        (push (list tool-spec args result) unmatched)))))
+              ;; Any unmatched results get the default treatment
+              (when unmatched
+                (funcall orig-fn (nreverse unmatched) info))))))
+    ;; Not in agent subtree mode — use original function
+    (funcall orig-fn tool-results info)))
 
 (defun gptel-org-agent--setup-tool-confirm ()
   "Set up tool confirmation hooks for the current org buffer.
