@@ -24,6 +24,7 @@
 (require 'cl-lib)
 (require 'browse-url)
 (require 'url-http)
+(eval-and-compile (require 'gptel-request))
 
 (declare-function gptel--json-encode "gptel-request")
 (declare-function gptel--json-read "gptel-request")

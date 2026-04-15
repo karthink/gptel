@@ -23,9 +23,9 @@
 (require 'map)
 (eval-and-compile
   (require 'gptel-request)
+  (require 'gptel-oauth)
   (require 'gptel-openai)
   (require 'gptel-openai-responses))
-(require 'gptel-oauth)
 
 ;;; Github Copilot
 (defconst gptel--gh-models
