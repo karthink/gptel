@@ -1088,5 +1088,61 @@ and its comma prefix must be kept."
      (should (looking-at "#\\+end_src"))
      (should (not (looking-at ","))))))
 
+
+(ert-deftest gptel-org-subtree-test-branching-includes-assistant-sibling ()
+  "Branching context includes assistant-response sibling headings.
+
+When a user heading has an assistant-response sibling before it (e.g.
+AI-DONE), the branching context should include that assistant content
+in the prompt, preserving the conversation history."
+  (let ((gptel-org-branching-context t)
+        (gptel-org-subtree-context nil)
+        (gptel-org-infer-bounds-from-tags nil)
+        (gptel-org-use-todo-keywords t)
+        (gptel-org-ignore-elements nil)
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING"))
+        (gptel-prompt-filter-hook nil)
+        (gptel--num-messages-to-send nil)
+        (gptel-track-response t)
+        (gptel-track-media nil)
+        (org-inhibit-startup t)
+        ;; Register TODO keywords so org-get-todo-state recognizes them
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
+                                       "|" "AI-DONE" "DONE"))))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      ;; Activate the TODO keyword definitions in this buffer
+      (org-set-regexps-and-options)
+      (insert "* H1\n"
+              "** FEEDBACK Calculate 2 + A where you pick A value from 0-9\n"
+              "*** AI-DONE Calculate 2 + A where you pick A value from 0-9\n"
+              "I'll pick A = 7. So 2 + 7 = 9.\n"
+              "*** FEEDBACK Add 10 to the result\n"
+              "- cursor here\n")
+      (goto-char (point-min))
+      (search-forward "cursor here")
+      (let* ((backend (gptel-make-openai "test" :key "fake" :models '("gpt-4")))
+             (prompt-buf (gptel-org--create-prompt-buffer)))
+        (unwind-protect
+            (with-current-buffer prompt-buf
+              (setq gptel-mode t)
+              (goto-char (point-max))
+              (let ((messages (gptel--parse-buffer backend nil))
+                    (content (buffer-string)))
+                ;; Should have at least 2 messages: user context + assistant + user follow-up
+                (should (>= (length messages) 2))
+                ;; Should contain assistant response
+                (let ((asst-msg (cl-find "assistant" messages
+                                         :key (lambda (m) (plist-get m :role))
+                                         :test #'string=)))
+                  (should asst-msg)
+                  (should (string-match-p "2 \\+ 7 = 9"
+                                          (plist-get asst-msg :content))))
+                ;; Last message should be user with follow-up
+                (should (string= (plist-get (car (last messages)) :role) "user"))
+                (should (string-match-p "Add 10"
+                                        (plist-get (car (last messages)) :content)))))
+          (when (buffer-live-p prompt-buf)
+            (kill-buffer prompt-buf)))))))
 (provide 'gptel-org-subtree-test)
 ;;; gptel-org-subtree-test.el ends here

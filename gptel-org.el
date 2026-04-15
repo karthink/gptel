@@ -643,11 +643,35 @@ indirect buffers narrowed to the relevant subtree."
                            (list (point-min)))))
                  (end-bounds
                   (cl-loop
-                   ;; (car start-bounds) is the begining of the current element,
-                   ;; not relevant
+                   ;; For each ancestor, find the end of context to include.
+                   ;; Start from the first sub-heading (branching context
+                   ;; boundary), then extend forward to include any
+                   ;; contiguous assistant-response sibling headings that
+                   ;; precede the lineage child.  This preserves the
+                   ;; conversation history (user→assistant→user flow) while
+                   ;; still excluding unrelated sibling branches.
+                   for child-start in start-bounds
                    for pos in (cdr start-bounds)
-                   do (goto-char pos) (outline-next-heading)
-                   collect (point) into ends
+                   collect (save-excursion
+                             (goto-char pos)
+                             (if (outline-next-heading)
+                                 ;; Scan forward past assistant siblings
+                                 ;; that appear before the lineage child
+                                 (let ((end (point)))
+                                   (while (and (< (point) child-start)
+                                               (get-text-property
+                                                (point) 'gptel))
+                                     (setq end
+                                           (save-excursion
+                                             (org-end-of-subtree t t)
+                                             (point)))
+                                     (goto-char end)
+                                     ;; Skip whitespace to next heading
+                                     (unless (outline-next-heading)
+                                       (goto-char (point-max))))
+                                   (min end child-start))
+                               child-start))
+                   into ends
                    finally return (cons prompt-end ends)))
                  ;; Save lineage depth before hybrid context may truncate
                  ;; start-bounds — needed for lineage position collection
