@@ -2121,7 +2121,8 @@ many active requests, queue this FSM for later dispatch."
          (backend (plist-get info :backend))
          (host (and backend (gptel-backend-host backend)))
          (limit (and backend (gptel-backend-concurrency-limit backend))))
-    (dolist (key '(:tool-result :tool-use :error :http-status :reasoning))
+    (dolist (key '(:tool-result :tool-use :error :http-status :reasoning
+                   :tracking-marker :tool-marker))
       (when (plist-get info key)
         (plist-put info key nil)))
     (gptel--debug-log-alist (format "handle-wait fsm=%s" (gptel--fsm-summary fsm)))
