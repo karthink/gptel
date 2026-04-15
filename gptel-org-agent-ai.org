@@ -167,6 +167,11 @@ Legacy tag-based structure (deprecated, for reference):
   level < =gptel-org--ref-level= and handles example block escaping and markdown
   fence conversion.  Because the correction is idempotent, sub-agent subtrees
   (already at correct levels) are automatically skipped.
+- *Turn isolation*: each LLM turn (after tool execution) starts with a clean
+  =:tracking-marker=.  This ensures the streaming callback treats it as a fresh
+  response — the AI writes its own heading which the auto-corrector rebases.
+  Without this, continuation text would land inside the previous TOOL heading's
+  subtree.  See [[file:gptel-ai.org::*Turn Isolation]].
 
 ** Handover Mechanism
 
@@ -394,6 +399,7 @@ org-mode format with the correct heading level for the current context.
 | Corrector double-rebases sub-agent headings | Replaced stateful corrector with idempotent =after-change-functions= hook; headings at correct level are skipped | =6021e59= |
 | Separator/prefix in sub-agent indirect buffer | Custom =gptel-agent-subtree--handle-post-insert= omits separator/prefix for non-interactive sub-agents | =93bdf26= |
 | User heading at wrong level (sibling of agent) | =insert-user-heading= now uses =agent-level + 1= (child of agent, matching AI response level); backwards search for duplication check | =638ea2f= |
+| Post-tool continuation lands inside TOOL subtree | =:tracking-marker= and =:tool-marker= now reset in =gptel--handle-wait= between LLM turns; each turn starts fresh (see =gptel-ai.org= [[file:gptel-ai.org::*Turn Isolation][Turn Isolation]]) | =f73ade4= |
 
 * Git History (Key Commits)
 

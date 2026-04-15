@@ -87,15 +87,17 @@ gptel-send (or gptel-request)
 | State | Handler | Purpose |
 |-------+---------+---------|
 | INIT  | setup   | Create prompt buffer, apply transforms |
-| WAIT  | request | Fire HTTP, wait for response |
+| WAIT  | request | Fire HTTP, wait for response.  Resets per-turn state (see [[*Turn Isolation]]). |
 | TYPE  | route   | Decide: tool call or final response |
-| TOOL  | execute | Run tool functions, re-request |
+| TPRE  | pre-tool | Pre-tool setup, transition to TOOL |
+| TOOL  | execute | Run tool functions, collect results |
+| TRET  | result  | Inject tool results, display in buffer, transition to WAIT or DONE |
 | DONE  | insert  | Insert response, fire hooks |
 | ERRS  | error   | Handle errors |
 | ABRT  | abort   | User abort cleanup |
 
-Transition table: =gptel-request--transitions= (predicate-based).
-Handlers: =gptel-request--handlers= (state→function alist).
+Transition table: =gptel-send--transitions= (predicate-based).
+Handlers: =gptel-send--handlers= (state→function alist).
 
 ** Key Design Patterns
 
@@ -104,6 +106,7 @@ Handlers: =gptel-request--handlers= (state→function alist).
 - *Overlays* for response bounds and visual feedback
 - *Plist-based context passing* (FSM info plist)
 - *Hooks + transform functions* for customization pipeline
+- *Turn isolation*: each LLM turn starts with clean insertion state.  See [[*Turn Isolation]].
 - *Cache reset after inhibited edits*: code that modifies buffers inside =after-change-functions= with =inhibit-modification-hooks= t must reset the org-element cache afterward (see [[*Idempotent Auto-Corrector]])
 
 * Source Files
@@ -284,8 +287,10 @@ Presets bundle configuration into named, reusable profiles.
 4. Confirmation if =:confirm t= (via =gptel-confirm-tool-calls=)
 5. Call function with args
 6. Inject tool_call + result back into messages (via =gptel--inject-prompt=)
-7. Re-request LLM with function results
-8. Loop: WAIT→TYPE→TOOL→WAIT until no more tool calls
+7. Display tool results in buffer (TOOL/REASONING headings in org-mode)
+8. TRET→WAIT transition: =gptel--handle-wait= resets per-turn state (=:tracking-marker=, =:tool-marker=, etc.) so the next LLM response starts fresh (see [[*Turn Isolation]])
+9. Re-request LLM with function results
+10. Loop: WAIT→TYPE→TPRE→TOOL→TRET→WAIT until no more tool calls
 
 ** Backend Tool Format
 
@@ -491,6 +496,41 @@ Key rules for any code that modifies buffers inside =after-change-functions=:
 - =combine-change-calls= does NOT help here — it cannot nest inside an already-running =after-change-functions= chain
 - =org-element-cache-reset= is the reliable fix; it forces lazy re-parsing on next access
 - Always track whether actual modifications were made to avoid unnecessary resets
+
+*** Turn Isolation
+
+Each LLM request/response cycle is a *turn*.  A single user interaction may
+span multiple turns when tool calls are involved (WAIT→TYPE→TPRE→TOOL→TRET→WAIT→...).
+
+*Rule*: each turn starts with clean insertion state.
+
+=gptel--handle-wait= resets the following keys in the FSM info plist before
+firing each HTTP request:
+
+| Key | Why reset |
+|-----+-----------|
+| =:tracking-marker= | Forces the streaming callback to treat the response as a fresh start, inserting separator + prefix instead of continuing from the previous turn's end position |
+| =:tool-marker= | Clears the consecutive-tool-result tracking so separator logic starts fresh |
+| =:tool-result= | Clears stale tool results from the previous turn |
+| =:tool-use= | Clears stale tool-use data |
+| =:reasoning= | Clears stale reasoning state |
+| =:error=, =:http-status= | Clears stale HTTP state |
+
+*Why this matters for org-mode*: In org-mode with TODO keywords, every content
+block (AI response, TOOL result, REASONING) is an org heading.  If
+=:tracking-marker= persists from a previous turn, the streaming callback
+(=gptel-curl--stream-insert-response=) skips prefix insertion and appends text
+at the old marker position — inside the previous TOOL heading's subtree.
+Resetting the marker ensures the new turn starts fresh, the AI writes its own
+heading (=* AI-DOING ...=), and the auto-corrector rebases it to the correct
+level.
+
+*The uniform content model*:
+- The AI writes its own headings (=* AI-DOING=, =* AI=) — gptel does not insert heading prefixes in agent indirect buffers
+- TOOL results are wrapped in =* TOOL= headings by =gptel--display-tool-results=
+- REASONING content is wrapped in =* REASONING= headings by =gptel--display-reasoning-stream=
+- All headings are rebased to the correct level by the auto-corrector
+- Each heading defines a structural boundary — no content leaks between subtrees
 
 *** Deprecation of Classical Subtree Mode
 

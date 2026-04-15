@@ -2114,9 +2114,12 @@ This should be called whenever a request for HOST completes."
 
 If the backend has a `concurrency-limit' and the host already has that
 many active requests, queue this FSM for later dispatch."
-  ;; Reset some flags in info.  This is necessary when reusing fsm's context for
-  ;; a second network request: gptel tests for the presence of these flags to
-  ;; handle state transitions.  (NOTE: Don't add :uuid to this.)
+  ;; Reset per-turn state in info.  This is necessary when reusing fsm's context
+  ;; for a second network request: gptel tests for the presence of these flags
+  ;; to handle state transitions.  :tracking-marker and :tool-marker are reset
+  ;; so each LLM turn starts with clean insertion state — without this, the
+  ;; streaming callback treats the new response as a continuation of the
+  ;; previous turn, skipping prefix insertion.  (NOTE: Don't add :uuid to this.)
   (let* ((info (gptel-fsm-info fsm))
          (backend (plist-get info :backend))
          (host (and backend (gptel-backend-host backend)))
