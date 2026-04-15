@@ -340,28 +340,71 @@ See feature-specific documents for details:
 
 *** Overview
 
-Conversation turns are marked with =AI= and =FEEDBACK= TODO keywords on org headings instead of right-aligned =:assistant:= / =:user:= tags.  This gives each role a distinct foreground color via =org-todo-keyword-faces= and integrates naturally with org's keyword cycling.  In task mode, =FEEDBACK= serves a dual role: it marks user message headings and signals "AI finished, awaiting user review/input" as part of the iterative task cycle.
+Role detection uses a simple prefix rule on TODO keywords:
 
-*** Structure
+- *Assistant text*: heading has a TODO state with =AI-= prefix (=AI-DO=, =AI-DOING=, =AI-DONE=, etc.)
+- *User text*: heading has any other TODO state (=TODO=, =DOING=, =FEEDBACK=, =DONE=, =CANCELED=, etc.)
+- *Plain headings* (no TODO state): inherit role from their parent
+
+This gives each role a distinct foreground color via =org-todo-keyword-faces= and integrates naturally with org's keyword cycling.
+
+*** Role Detection Rule
+
+The rule is simple and complete:
+
+1. *Default*: everything is user text
+2. *Exception*: heading with =AI-= prefixed TODO state → assistant text (including sub-headings without any TODO state)
+3. *Exception to exception*: sub-heading with a non-=AI-= TODO state → user text again (including its children)
+
+Implementation:
+- =gptel-org--heading-is-assistant-p=: returns =t= when TODO state has =AI-= prefix
+- =gptel-org--heading-is-user-p=: returns =t= when TODO state exists and does NOT have =AI-= prefix
+- =gptel-org--restore-bounds-from-tags=: walks all headings, marks assistant subtrees with =gptel response= text property, carves out user sub-headings within, and vice versa
+- Plain headings (no TODO state) return =nil= from both functions and inherit from parent via text property propagation
+
+*** Structure Examples
+
+**** Active task (AI processing):
 
 #+begin_example
-,** DOING What is 2 + 2
-,*** AI-DOING What is 2 + 2                                    :agent@agent:
-,**** AI Response title here
-4
-
-,**** FEEDBACK Add 7 to result
-
-,**** AI Another response
-11
+,* DOING Calculate 2 + 2              ← user (DOING, no AI- prefix)
+,** AI-DOING Calculate 2 + 2          ← assistant (AI-DOING, has AI- prefix)
 #+end_example
 
-- =AI= headings are assistant responses (get ='gptel 'response= text property)
-- =FEEDBACK= headings are user messages (no gptel text property)
-- Both =AI= and =FEEDBACK= headings are at the same level: one deeper than the agent heading (=agent-level + 1=), making them children of the agent subtree
-- The AI writes its own heading (=* AI <title>=) — no post-process title extraction
-- A real-time auto-corrector rebases heading levels as the AI streams
-- =gptel-org-agent--insert-user-heading= creates the =FEEDBACK= heading after each response at the correct child level
+**** Task awaiting user feedback:
+
+#+begin_example
+,* FEEDBACK Calculate 2 + 2           ← user (FEEDBACK, no AI- prefix)
+,** AI-DONE Calculate 2 + 2           ← assistant (AI-DONE, has AI- prefix)
+,*** Result                           ← assistant (plain heading, inherits from AI-DONE parent)
+,** FEEDBACK                          ← user (FEEDBACK, no AI- prefix)
+#+end_example
+
+**** User injecting feedback below AI heading:
+
+#+begin_example
+,* FEEDBACK Calculate 2 + 2           ← user (FEEDBACK, no AI- prefix)
+,** AI-DONE Calculate 2 + 2           ← assistant (AI-DONE, has AI- prefix)
+,*** Result                           ← assistant (plain heading, inherits from AI-DONE parent)
+5
+,**** FEEDBACK I think result is wrong ← user (FEEDBACK, no AI- prefix)
+,** FEEDBACK Calculate again           ← user (FEEDBACK, no AI- prefix)
+#+end_example
+
+**** Completed task accepted by user:
+
+#+begin_example
+,* DONE Calculate 2 + 2               ← user (DONE, no AI- prefix)
+,** AI-DONE Calculate 2 + 2           ← assistant (AI-DONE, has AI- prefix)
+,*** Result                           ← assistant (plain heading, inherits from AI-DONE parent)
+5
+,**** FEEDBACK I think result is wrong ← user (FEEDBACK, no AI- prefix)
+,** DONE Calculate again               ← user (DONE, no AI- prefix)
+,** AI-DONE Calculate again            ← assistant (AI-DONE, has AI- prefix)
+,*** Result                           ← assistant (plain heading, inherits from AI-DONE parent)
+4
+,** DONE                              ← user (DONE, no AI- prefix)
+#+end_example
 
 *** Task-Level FEEDBACK Cycle
 
@@ -400,8 +443,8 @@ Enable =gptel-org-mode= (which sets this automatically), or set
 | Variable | Default | Purpose |
 |----------+---------+---------|
 | =gptel-org-use-todo-keywords= | =nil= | Master switch for keyword mode |
-| =gptel-org-assistant-keyword= | ="AI"= | TODO keyword for assistant headings |
-| =gptel-org-user-keyword= | ="FEEDBACK"= | TODO keyword for user headings |
+| =gptel-org-assistant-keyword= | ="AI"= | TODO keyword for assistant headings (faces, prompts) |
+| =gptel-org-user-keyword= | ="FEEDBACK"= | TODO keyword for user headings (task cycle, agent setup) |
 | =gptel-org-assistant-keyword-face= | =#88C0D0= bold | Face for AI keyword |
 | =gptel-org-user-keyword-face= | =#EBCB8B= bold | Face for FEEDBACK keyword |
 
@@ -409,8 +452,8 @@ Enable =gptel-org-mode= (which sets this automatically), or set
 
 | Function | Purpose |
 |----------+---------|
-| =gptel-org--heading-is-assistant-p= | Unified role check (keywords or tags) |
-| =gptel-org--heading-is-user-p= | Unified role check (keywords or tags) |
+| =gptel-org--heading-is-assistant-p= | =t= when TODO state has =AI-= prefix |
+| =gptel-org--heading-is-user-p= | =t= when TODO state exists and has no =AI-= prefix |
 | =gptel-org--auto-correct-on-change= | Idempotent corrector on =after-change-functions= (buffer-local) |
 | =gptel-org--enable-auto-correct= | Set up ref-level and register the corrector hook |
 | =gptel-org--register-todo-keywords= | Register AI/FEEDBACK keywords + faces on mode activation |
@@ -451,7 +494,7 @@ Key rules for any code that modifies buffers inside =after-change-functions=:
 
 *** Deprecation of Classical Subtree Mode
 
-The classical =:assistant:= / =:user:= tag-based approach (=gptel-org-infer-bounds-from-tags=) is *deprecated* and will be removed in a future release.  It remains functional as the default (=gptel-org-use-todo-keywords= defaults to =nil=) for backward compatibility.
+The classical =:assistant:= / =:user:= tag-based approach (=gptel-org-infer-bounds-from-tags=) is *deprecated* and will be removed in a future release.  It remains functional as the default (=gptel-org-use-todo-keywords= defaults to =nil=) for backward compatibility.  The tag-mode fallback is still present in =gptel-org--heading-is-assistant-p= and =gptel-org--heading-is-user-p= for this reason.
 
 Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assistant:= tags to =AI= keywords, =:user:= tags to =FEEDBACK= keywords.  No automated migration tool is provided yet.
 

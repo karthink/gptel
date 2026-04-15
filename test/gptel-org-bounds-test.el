@@ -1,7 +1,8 @@
 ;;; gptel-org-bounds-test.el --- Tests for gptel-org bounds restoration -*- lexical-binding: t; -*-
 
 ;; Tests for gptel-org--restore-bounds-from-tags which marks text properties
-;; based on heading tags (:assistant:/:user:) or TODO keywords (AI/FEEDBACK).
+;; based on heading tags (:assistant:/:user:) or TODO keywords with AI- prefix
+;; detection (AI-DO, AI-DOING, AI-DONE, etc. are assistant; all others are user).
 
 (require 'ert)
 (require 'gptel)
@@ -21,9 +22,12 @@ from `point-min' reaches the first heading, matching the traversal in
   `(let ((org-inhibit-startup t)
          (inhibit-message t)
          ;; Register TODO keywords so `org-get-todo-state' recognizes them.
-         ;; AI is a done-state so headings like "* AI Answer" parse correctly.
+         ;; Includes both user states (TODO, DOING, FEEDBACK, DONE, CANCELED)
+         ;; and AI-prefixed assistant states (AI-DO, AI-DOING, AI-DONE,
+         ;; AI-CANCELED).  The AI- prefix is what determines assistant role.
          (org-todo-keywords
-          '((sequence "FEEDBACK" "AI-DOING" "|" "AI-DONE" "AI"))))
+          '((sequence "TODO" "DOING" "FEEDBACK" "AI-DO" "AI-DOING"
+                      "|" "AI-DONE" "AI-CANCELED" "DONE" "CANCELED"))))
      (with-temp-buffer
        (delay-mode-hooks (org-mode))
        ;; Activate the TODO keyword definitions in this buffer.
@@ -71,11 +75,10 @@ from `point-min' reaches the first heading, matching the traversal in
 ;;; Keyword-based detection tests
 
 (ert-deftest gptel-test-bounds-keyword-ai-heading ()
-  "Test that AI keyword headings get gptel response property."
+  "Test that AI-DONE keyword headings get gptel response property."
   (gptel-org-bounds-test-with-buffer
-      "* FEEDBACK Question\n\nWhat is 2+2?\n\n* AI Answer\n\nIt is 4.\n"
+      "* FEEDBACK Question\n\nWhat is 2+2?\n\n* AI-DONE Answer\n\nIt is 4.\n"
     (let ((gptel-org-use-todo-keywords t)
-          (gptel-org-assistant-keyword "AI")
           (gptel-org-user-keyword "FEEDBACK")
           (gptel-org-infer-bounds-from-tags t))
       (gptel-org--restore-bounds-from-tags)
@@ -83,7 +86,7 @@ from `point-min' reaches the first heading, matching the traversal in
       (goto-char (point-min))
       (outline-next-heading)
       (should (null (get-text-property (point) 'gptel)))
-      ;; AI heading: assistant
+      ;; AI-DONE heading: assistant
       (outline-next-heading)
       (should (eq (get-text-property (point) 'gptel) 'response)))))
 
@@ -101,10 +104,8 @@ subtree without marking assistant sub-headings."
               "2 + 2 = 4\n\n"
               "*** FEEDBACK\n")
     (let ((gptel-org-use-todo-keywords t)
-          (gptel-org-assistant-keyword "AI")
           (gptel-org-user-keyword "FEEDBACK")
-          (gptel-org-infer-bounds-from-tags t)
-          (gptel-org-tasks-done-keyword "AI-DONE"))
+          (gptel-org-infer-bounds-from-tags t))
       (gptel-org--restore-bounds-from-tags)
       ;; ** FEEDBACK: user heading, no gptel property
       (goto-char (point-min))
@@ -131,10 +132,8 @@ subtree without marking assistant sub-headings."
               "In-progress response.\n\n"
               "*** FEEDBACK\n")
     (let ((gptel-org-use-todo-keywords t)
-          (gptel-org-assistant-keyword "AI")
           (gptel-org-user-keyword "FEEDBACK")
-          (gptel-org-infer-bounds-from-tags t)
-          (gptel-org-tasks-doing-keyword "AI-DOING"))
+          (gptel-org-infer-bounds-from-tags t))
       (gptel-org--restore-bounds-from-tags)
       ;; ** FEEDBACK: user
       (goto-char (point-min))
@@ -155,10 +154,8 @@ subtree without marking assistant sub-headings."
               "Answer to second.\n\n"
               "**** FEEDBACK\n")
     (let ((gptel-org-use-todo-keywords t)
-          (gptel-org-assistant-keyword "AI")
           (gptel-org-user-keyword "FEEDBACK")
-          (gptel-org-infer-bounds-from-tags t)
-          (gptel-org-tasks-done-keyword "AI-DONE"))
+          (gptel-org-infer-bounds-from-tags t))
       (gptel-org--restore-bounds-from-tags)
       ;; ** FEEDBACK: user
       (goto-char (point-min))
@@ -181,9 +178,8 @@ subtree without marking assistant sub-headings."
 (ert-deftest gptel-test-bounds-keyword-without-infer-bounds ()
   "Test that keyword mode works even when gptel-org-infer-bounds-from-tags is nil."
   (gptel-org-bounds-test-with-buffer
-      "* FEEDBACK Question\n\n* AI Answer\n\nResponse.\n"
+      "* FEEDBACK Question\n\n* AI-DONE Answer\n\nResponse.\n"
     (let ((gptel-org-use-todo-keywords t)
-          (gptel-org-assistant-keyword "AI")
           (gptel-org-user-keyword "FEEDBACK")
           (gptel-org-infer-bounds-from-tags nil))
       ;; Should still work via gptel-org-use-todo-keywords
@@ -191,7 +187,243 @@ subtree without marking assistant sub-headings."
       (goto-char (point-min))
       (outline-next-heading) ; FEEDBACK
       (should (null (get-text-property (point) 'gptel)))
-      (outline-next-heading) ; AI
+      (outline-next-heading) ; AI-DONE
+      (should (eq (get-text-property (point) 'gptel) 'response)))))
+
+;;; New keyword-mode tests: various TODO states
+
+(ert-deftest gptel-test-bounds-keyword-todo-heading ()
+  "Test that TODO state heading is user text (no gptel property)."
+  (gptel-org-bounds-test-with-buffer
+      "* TODO Implement feature\nDescription text.\n"
+    (let ((gptel-org-use-todo-keywords t)
+          (gptel-org-user-keyword "FEEDBACK")
+          (gptel-org-infer-bounds-from-tags t))
+      (gptel-org--restore-bounds-from-tags)
+      ;; TODO heading should be user (nil)
+      (goto-char (point-min))
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "TODO"))
+      (should (null (get-text-property (point) 'gptel))))))
+
+(ert-deftest gptel-test-bounds-keyword-doing-heading ()
+  "Test that DOING state is user, AI-DOING state is assistant."
+  (gptel-org-bounds-test-with-buffer
+      (concat "* DOING Implement feature\n"
+              "** AI-DOING Implement feature\n")
+    (let ((gptel-org-use-todo-keywords t)
+          (gptel-org-user-keyword "FEEDBACK")
+          (gptel-org-infer-bounds-from-tags t))
+      (gptel-org--restore-bounds-from-tags)
+      ;; DOING = user (nil)
+      (goto-char (point-min))
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "DOING"))
+      (should (null (get-text-property (point) 'gptel)))
+      ;; AI-DOING = assistant (response)
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "AI-DOING"))
+      (should (eq (get-text-property (point) 'gptel) 'response)))))
+
+(ert-deftest gptel-test-bounds-keyword-done-heading ()
+  "Test DONE is user, AI-DONE is assistant, plain child inherits, DONE resets."
+  (gptel-org-bounds-test-with-buffer
+      (concat "* DONE Calculate 2 + 2\n"
+              "** AI-DONE Calculate 2 + 2\n"
+              "*** Result\n"
+              "4\n"
+              "** DONE\n")
+    (let ((gptel-org-use-todo-keywords t)
+          (gptel-org-user-keyword "FEEDBACK")
+          (gptel-org-infer-bounds-from-tags t))
+      (gptel-org--restore-bounds-from-tags)
+      ;; DONE = user (nil)
+      (goto-char (point-min))
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "DONE"))
+      (should (null (get-text-property (point) 'gptel)))
+      ;; AI-DONE = assistant (response)
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "AI-DONE"))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; "Result" = plain heading, inherits from AI-DONE (response)
+      (outline-next-heading)
+      (should (null (org-get-todo-state)))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; DONE = user (nil)
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "DONE"))
+      (should (null (get-text-property (point) 'gptel))))))
+
+(ert-deftest gptel-test-bounds-keyword-ai-do-is-assistant ()
+  "Test that AI-DO state is recognized as assistant."
+  (gptel-org-bounds-test-with-buffer
+      (concat "* TODO My project\n"
+              "** AI-DO Implement feature X\n"
+              "Details about the feature.\n"
+              "** AI-DO Fix bug Y\n"
+              "Details about the bug.\n")
+    (let ((gptel-org-use-todo-keywords t)
+          (gptel-org-user-keyword "FEEDBACK")
+          (gptel-org-infer-bounds-from-tags t))
+      (gptel-org--restore-bounds-from-tags)
+      ;; TODO = user (nil)
+      (goto-char (point-min))
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "TODO"))
+      (should (null (get-text-property (point) 'gptel)))
+      ;; AI-DO Implement feature X = assistant (response)
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "AI-DO"))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; AI-DO Fix bug Y = assistant (response)
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "AI-DO"))
+      (should (eq (get-text-property (point) 'gptel) 'response)))))
+
+(ert-deftest gptel-test-bounds-keyword-plain-heading-inherits ()
+  "Test that plain headings (no TODO state) inherit from parent."
+  (gptel-org-bounds-test-with-buffer
+      (concat "* AI-DONE Calculate 2 + 2\n"
+              "** Result\n"
+              "4\n"
+              "** Details\n"
+              "*** Sub-detail\n")
+    (let ((gptel-org-use-todo-keywords t)
+          (gptel-org-user-keyword "FEEDBACK")
+          (gptel-org-infer-bounds-from-tags t))
+      (gptel-org--restore-bounds-from-tags)
+      ;; AI-DONE = assistant (response)
+      (goto-char (point-min))
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "AI-DONE"))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; "Result" = inherits from AI-DONE (response)
+      (outline-next-heading)
+      (should (null (org-get-todo-state)))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; "Details" = inherits from AI-DONE (response)
+      (outline-next-heading)
+      (should (null (org-get-todo-state)))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; "Sub-detail" = inherits from AI-DONE (response)
+      (outline-next-heading)
+      (should (null (org-get-todo-state)))
+      (should (eq (get-text-property (point) 'gptel) 'response)))))
+
+(ert-deftest gptel-test-bounds-keyword-user-feedback-under-assistant ()
+  "Test user FEEDBACK headings at same level as AI-DONE.
+Note: `gptel-org--restore-bounds-from-tags' applies one level of nesting:
+when it finds a user heading, it marks assistant children; when it finds
+an assistant heading, it marks user children.  Deeply nested user headings
+within an assistant subtree (e.g. **** FEEDBACK under ** AI-DONE found
+from * FEEDBACK scan) keep the assistant response property because the
+inner scan does not recurse.  To test the carve-out behavior, user
+FEEDBACK headings must be direct siblings of AI-DONE under the parent."
+  (gptel-org-bounds-test-with-buffer
+      (concat "* FEEDBACK Calculate 2 + 2\n"
+              "** AI-DONE Calculate 2 + 2\n"
+              "*** Result\n"
+              "5\n"
+              "** FEEDBACK I think your result is wrong\n"
+              "** FEEDBACK Calculate again\n")
+    (let ((gptel-org-use-todo-keywords t)
+          (gptel-org-user-keyword "FEEDBACK")
+          (gptel-org-infer-bounds-from-tags t))
+      (gptel-org--restore-bounds-from-tags)
+      ;; FEEDBACK Calculate = user (nil)
+      (goto-char (point-min))
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "FEEDBACK"))
+      (should (null (get-text-property (point) 'gptel)))
+      ;; AI-DONE Calculate = assistant (response)
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "AI-DONE"))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; "Result" = inherits from AI-DONE (response)
+      (outline-next-heading)
+      (should (null (org-get-todo-state)))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; FEEDBACK I think... = user sibling of AI-DONE (nil)
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "FEEDBACK"))
+      (should (null (get-text-property (point) 'gptel)))
+      ;; FEEDBACK Calculate again = user (nil)
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "FEEDBACK"))
+      (should (null (get-text-property (point) 'gptel))))))
+
+(ert-deftest gptel-test-bounds-keyword-full-task-lifecycle ()
+  "Test complete task lifecycle with multiple rounds of feedback.
+Matches the real conversation structure where FEEDBACK headings are
+siblings of AI-DONE under the parent DONE heading."
+  (gptel-org-bounds-test-with-buffer
+      (concat "* DONE Calculate 2 + 2\n"
+              "** AI-DONE Calculate 2 + 2\n"
+              "*** Result\n"
+              "5\n"
+              "** FEEDBACK I think your result is wrong\n"
+              "** DONE Calculate again\n"
+              "** AI-DONE Calculate again\n"
+              "*** Result\n"
+              "4\n"
+              "** DONE\n")
+    (let ((gptel-org-use-todo-keywords t)
+          (gptel-org-user-keyword "FEEDBACK")
+          (gptel-org-infer-bounds-from-tags t))
+      (gptel-org--restore-bounds-from-tags)
+      ;; * DONE Calculate 2 + 2 = user (nil)
+      (goto-char (point-min))
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "DONE"))
+      (should (null (get-text-property (point) 'gptel)))
+      ;; ** AI-DONE Calculate 2 + 2 = assistant (response)
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "AI-DONE"))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; *** Result = inherits from AI-DONE (response)
+      (outline-next-heading)
+      (should (null (org-get-todo-state)))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; ** FEEDBACK I think your result is wrong = user (nil)
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "FEEDBACK"))
+      (should (null (get-text-property (point) 'gptel)))
+      ;; ** DONE Calculate again = user (nil)
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "DONE"))
+      (should (null (get-text-property (point) 'gptel)))
+      ;; ** AI-DONE Calculate again = assistant (response)
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "AI-DONE"))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; *** Result = inherits from AI-DONE (response)
+      (outline-next-heading)
+      (should (null (org-get-todo-state)))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; ** DONE = user (nil)
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "DONE"))
+      (should (null (get-text-property (point) 'gptel))))))
+
+(ert-deftest gptel-test-bounds-keyword-ai-doing-parent-is-assistant ()
+  "Test that AI-DOING top-level and its plain children are assistant."
+  (gptel-org-bounds-test-with-buffer
+      (concat "* AI-DOING Task\n"
+              "** Subtask\n"
+              "Some content.\n")
+    (let ((gptel-org-use-todo-keywords t)
+          (gptel-org-user-keyword "FEEDBACK")
+          (gptel-org-infer-bounds-from-tags t))
+      (gptel-org--restore-bounds-from-tags)
+      ;; AI-DOING = assistant (response)
+      (goto-char (point-min))
+      (outline-next-heading)
+      (should (string-equal (org-get-todo-state) "AI-DOING"))
+      (should (eq (get-text-property (point) 'gptel) 'response))
+      ;; "Subtask" = inherits from AI-DOING (response)
+      (outline-next-heading)
+      (should (null (org-get-todo-state)))
       (should (eq (get-text-property (point) 'gptel) 'response)))))
 
 ;;; Edge cases
@@ -251,11 +483,8 @@ Should produce: user, assistant, user messages."
               "The answer is 4.\n\n"
               "*** FEEDBACK Add 11 to the result\n")
     (let ((gptel-org-use-todo-keywords t)
-          (gptel-org-assistant-keyword "AI")
           (gptel-org-user-keyword "FEEDBACK")
-          (gptel-org-infer-bounds-from-tags t)
-          (gptel-org-tasks-done-keyword "AI-DONE")
-          (gptel-org-tasks-doing-keyword "AI-DOING"))
+          (gptel-org-infer-bounds-from-tags t))
       (gptel-org--restore-bounds-from-tags)
       ;; Verify text properties at each heading
       (goto-char (point-min))
@@ -290,11 +519,8 @@ produces three messages: user, assistant, user."
               "Result: *2 + 5 = 7*\n\n"
               "*** FEEDBACK Add 11 to the result\n")
     (let ((gptel-org-use-todo-keywords t)
-          (gptel-org-assistant-keyword "AI")
           (gptel-org-user-keyword "FEEDBACK")
           (gptel-org-infer-bounds-from-tags t)
-          (gptel-org-tasks-done-keyword "AI-DONE")
-          (gptel-org-tasks-doing-keyword "AI-DOING")
           (gptel-track-response t)
           (gptel-backend (alist-get 'openai gptel-test-backends))
           (gptel-model 'gpt-4o-mini))
@@ -331,11 +557,8 @@ produces three messages: user, assistant, user."
               "The answer is 4.\n\n"
               "*** FEEDBACK Next\n")
     (let ((gptel-org-use-todo-keywords t)
-          (gptel-org-assistant-keyword "AI")
           (gptel-org-user-keyword "FEEDBACK")
-          (gptel-org-infer-bounds-from-tags t)
-          (gptel-org-tasks-done-keyword "AI-DONE")
-          (gptel-org-tasks-doing-keyword "AI-DOING"))
+          (gptel-org-infer-bounds-from-tags t))
       (gptel-org--restore-bounds-from-tags)
       ;; * AI-DOING — assistant, response
       (goto-char (point-min))
