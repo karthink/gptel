@@ -74,19 +74,7 @@ as one more than the agent heading level at `point-min'.
 The auto-corrector uses this to rebase any heading with fewer stars
 than ref-level by adding an offset of (ref-level - 1).  Headings
 already at or above ref-level are left untouched, making the
-correction idempotent.
-
-When TodoWrite redirects FSM markers into a sub-task,
-`gptel-org-agent--redirect-markers-to-heading' temporarily updates
-this to sub-task-level + 1 (saving the original in
-`gptel-org--base-ref-level').  This ensures AI-streamed headings
-are rebased to the correct nesting depth.")
-
-(defvar-local gptel-org--base-ref-level nil
-  "Original `gptel-org--ref-level' before TodoWrite marker redirection.
-Saved when `gptel-org-agent--redirect-markers-to-heading' updates
-`gptel-org--ref-level' for sub-task nesting.  Restored by
-`gptel-org-agent--write-todo-org' when no sub-task is in_progress.")
+correction idempotent.")
 
 (defvar-local gptel-org--auto-correcting nil
   "Non-nil while the auto-corrector is modifying the buffer.
