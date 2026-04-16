@@ -1368,11 +1368,6 @@ The heading is appended at the end of the subtree at PARENT-POS."
 This redirects subsequent AI response streaming to appear under the
 heading at HEADING-POS (typically the in_progress todo heading).
 
-Also updates `gptel-org--ref-level' so the auto-corrector rebases
-streamed headings to the correct nesting depth (sub-task-level + 1
-instead of agent-level + 1).  The original ref-level is saved in
-`gptel-org--base-ref-level' for later restoration.
-
 Accesses the FSM via `gptel--fsm-last' which is buffer-local."
   (when (and (boundp 'gptel--fsm-last) gptel--fsm-last)
     (let* ((info (gptel-fsm-info gptel--fsm-last))
@@ -1381,27 +1376,16 @@ Accesses the FSM via `gptel--fsm-last' which is buffer-local."
            (target (save-excursion
                      (goto-char heading-pos)
                      (org-end-of-subtree t)
-                     (point)))
-           (new-ref-level (save-excursion
-                            (goto-char heading-pos)
-                            (when (org-at-heading-p)
-                              (1+ (org-current-level))))))
+                     (point))))
       (gptel-org--debug
-       "redirect-markers: heading-pos=%S target=%d pos-marker=%S tracking=%S new-ref-level=%S"
+       "redirect-markers: heading-pos=%S target=%d pos-marker=%S tracking=%S"
        heading-pos target
        (and (markerp pos-marker) (marker-position pos-marker))
-       (and (markerp tracking-marker) (marker-position tracking-marker))
-       new-ref-level)
+       (and (markerp tracking-marker) (marker-position tracking-marker)))
       (when (markerp pos-marker)
         (move-marker pos-marker target))
       (when (markerp tracking-marker)
-        (move-marker tracking-marker target))
-      ;; Update ref-level for the auto-corrector so AI-streamed headings
-      ;; are rebased to sub-task-level+1 instead of agent-level+1
-      (when new-ref-level
-        (unless gptel-org--base-ref-level
-          (setq-local gptel-org--base-ref-level gptel-org--ref-level))
-        (setq-local gptel-org--ref-level new-ref-level)))))
+        (move-marker tracking-marker target)))))
 (defun gptel-org-agent--write-todo-org (todos)
   "Display TODOS as org TODO headings in the agent subtree.
 
@@ -1491,15 +1475,9 @@ the active task heading."
               (gptel-org--debug "write-todo-org: removing %S" (car existing))
               (gptel-org-agent--remove-todo-heading (cdr existing))))
           ;; Move FSM markers into the in_progress heading so subsequent
-          ;; AI text streams under it.  Also updates ref-level for the
-          ;; auto-corrector to rebase headings to the sub-task depth.
-          (if in-progress-pos
-              (gptel-org-agent--redirect-markers-to-heading in-progress-pos)
-            ;; No in_progress task — restore original ref-level if it
-            ;; was elevated by a previous marker redirection.
-            (when (bound-and-true-p gptel-org--base-ref-level)
-              (setq-local gptel-org--ref-level gptel-org--base-ref-level)
-              (setq-local gptel-org--base-ref-level nil)))))))
+          ;; AI text streams under it.
+          (when in-progress-pos
+            (gptel-org-agent--redirect-markers-to-heading in-progress-pos))))))
   (gptel-org--debug "write-todo-org: done, buffer size now %d" (buffer-size))
   t)
 
@@ -1684,28 +1662,31 @@ INFO is the FSM info plist."
       ;; change PENDING→ALLOWED from either buffer.
       (gptel-org-agent--ensure-tool-confirm-hook buf)
       (save-excursion
-        ;; Compute the PENDING heading level.  When TodoWrite has
-        ;; redirected FSM markers into a sub-task, use ref-level
-        ;; (which has been updated to sub-task-level + 1) so the
-        ;; PENDING heading appears as a child of the sub-task.
-        ;; Otherwise fall back to computing from point-min.
-        (let* ((pending-level
-                (or
-                 ;; If ref-level has been elevated by marker
-                 ;; redirection, use it directly — it already
-                 ;; reflects the correct nesting depth.
-                 (and (bound-and-true-p gptel-org--base-ref-level)
-                      gptel-org--ref-level)
-                 ;; Standard case: compute from agent heading
-                 (gptel-org--compute-response-level)
-                 ;; Fallback: navigate from start-marker
-                 (progn
-                   (goto-char start-marker)
-                   (unless (org-at-heading-p)
-                     (ignore-errors (org-back-to-heading t)))
-                   (or (and (org-at-heading-p)
-                            (org-current-level))
-                       1))))
+        ;; Compute the PENDING heading level from the agent heading at
+        ;; point-min of the narrowed indirect buffer.  We cannot rely on
+        ;; start-marker (:position) because it drifts to the end of all
+        ;; streamed content (both start-marker and tracking-marker share
+        ;; the same initial position with insertion-type t, so both
+        ;; advance as text is inserted).  Using org-back-to-heading from
+        ;; start-marker would find the AI response heading (which may
+        ;; still be at an uncorrected level if the auto-corrector hasn't
+        ;; run yet), producing the wrong level.
+        ;;
+        ;; Instead, compute the response level from the agent heading
+        ;; (always at point-min in the narrowed buffer).  The PENDING
+        ;; heading is a sibling of the AI response heading — both are
+        ;; direct children of the agent heading — so use response-level
+        ;; directly (agent-level + 1), not response-level + 1.
+        (let* ((response-level (gptel-org--compute-response-level))
+               (pending-level (if response-level
+                                  response-level
+                                ;; Fallback: navigate from start-marker
+                                (goto-char start-marker)
+                                (unless (org-at-heading-p)
+                                  (ignore-errors (org-back-to-heading t)))
+                                (or (and (org-at-heading-p)
+                                         (org-current-level))
+                                    1)))
                (stars (make-string pending-level ?*))
                (inhibit-read-only t)
                ;; Suppress the auto-corrector during insertion.
@@ -1716,10 +1697,9 @@ INFO is the FSM info plist."
                ;; and its body text (they start with * or #+).
                (gptel-org--auto-correcting t))
           (gptel-org--debug
-           "display-tool-calls: pending-level=%d stars=%S buffer=%S narrowed=%s base-ref=%S ref=%S point-min-heading=%S num-tools=%d"
-           pending-level stars (buffer-name)
+           "display-tool-calls: response-level=%S pending-level=%d stars=%S buffer=%S narrowed=%s point-min-heading=%S num-tools=%d"
+           response-level pending-level stars (buffer-name)
            (if (buffer-narrowed-p) "yes" "no")
-           gptel-org--base-ref-level gptel-org--ref-level
            (save-excursion
              (goto-char (point-min))
              (when (org-at-heading-p)
