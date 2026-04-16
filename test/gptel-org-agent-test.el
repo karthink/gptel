@@ -1734,5 +1734,228 @@ the DENIED heading should transition to AI-DONE."
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
+(ert-deftest gptel-org-agent-test-tool-heading-rebased-in-indirect-buffer ()
+  "TOOL heading inserted in indirect buffer should be rebased by auto-correct.
+When `gptel--display-tool-results' inserts a `* TOOL ...' heading in an
+agent indirect buffer (with ref-level set and auto-correct enabled), the
+auto-corrector must rebase it to the correct depth.
+
+This test covers the normal path: insertion happens in the indirect buffer
+and auto-correct fires via `after-change-functions'."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Run a tool\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (base-buf (current-buffer))
+             (coord-marker (gptel-org-agent--create-subtree "coordinator"))
+             (coord-indirect nil))
+        (unwind-protect
+            (progn
+              (setq coord-indirect
+                    (gptel-org-agent--open-indirect-buffer base-buf coord-marker))
+              ;; Verify auto-correct is enabled with correct ref-level
+              (with-current-buffer coord-indirect
+                (should (= 4 gptel-org--ref-level))
+                (should (memq #'gptel-org--auto-correct-on-change
+                              after-change-functions)))
+              ;; Simulate tool result insertion as display-tool-results does:
+              ;; always writes "* TOOL ..." (level 1), relying on auto-correct
+              ;; to rebase it.
+              (with-current-buffer coord-indirect
+                (goto-char (point-max))
+                (let ((tool-heading "* TOOL (Bash :command \"date\")\n")
+                      (tool-body "(:name \"Bash\" :args (:command \"date\"))\n#+begin_tool\nThu Apr 16 19:01:57 EEST 2026\n#+end_tool\n"))
+                  ;; Mark heading as gptel ignore (as display-tool-results does)
+                  (add-text-properties
+                   0 (length tool-heading)
+                   '(gptel ignore front-sticky (gptel)) tool-heading)
+                  (insert tool-heading tool-body)))
+              ;; Verify: the TOOL heading should be rebased to ref-level (4)
+              ;; by the auto-corrector that fires on after-change-functions
+              (with-current-buffer coord-indirect
+                (goto-char (point-min))
+                (should (re-search-forward "^\\(\\*+\\) TOOL " nil t))
+                (should (= 4 (length (match-string 1)))))
+              ;; Also verify in base buffer: heading should be at level 4
+              (with-current-buffer base-buf
+                (goto-char (point-min))
+                (should (re-search-forward "^\\(\\*+\\) TOOL " nil t))
+                (should (= 4 (length (match-string 1))))))
+          (when (and coord-indirect (buffer-live-p coord-indirect))
+            (kill-buffer coord-indirect)))))))
+
+(ert-deftest gptel-org-agent-test-tool-heading-at-root-when-inserted-in-base-buffer ()
+  "TOOL heading lands at root level when inserted in base buffer.
+This reproduces the bug where `display-tool-results' inserts TOOL
+content in the base buffer instead of the agent indirect buffer.
+In the base buffer, ref-level is nil and auto-correct is not active,
+resulting in a root-level `* TOOL' heading.
+
+The bug occurs in this sequence:
+1. Coordinator runs in indirect buffer (ref-level=4)
+2. Coordinator calls sub-agent tool (gatherer)
+3. Gatherer completes → its indirect buffer is closed
+4. display-tool-results ends up inserting in the base buffer
+   (because its start-marker resolves to the base buffer)
+5. No auto-correct fires → heading stays at level 1
+
+This test simulates step 4-5 by directly inserting in the base
+buffer where no auto-corrector is running."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Delegate task\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (base-buf (current-buffer))
+             (coord-marker (gptel-org-agent--create-subtree "coordinator"))
+             (coord-indirect nil))
+        (unwind-protect
+            (progn
+              (setq coord-indirect
+                    (gptel-org-agent--open-indirect-buffer base-buf coord-marker))
+              ;; Verify that ref-level IS set in indirect buffer
+              (with-current-buffer coord-indirect
+                (should (= 4 gptel-org--ref-level)))
+              ;; Verify that ref-level is NOT set in base buffer
+              (with-current-buffer base-buf
+                (should-not (bound-and-true-p gptel-org--ref-level)))
+              ;; Simulate the bug: insert TOOL heading in the BASE buffer
+              ;; (as happens when display-tool-results uses a marker that
+              ;; resolves to the base buffer instead of the indirect buffer)
+              (with-current-buffer base-buf
+                (goto-char (point-max))
+                (let ((tool-heading "* TOOL (Agent :subagent_type \"gatherer\")\n")
+                      (tool-body "(:name \"Agent\" :args (:subagent_type \"gatherer\"))\n#+begin_tool\nGatherer result\n#+end_tool\n"))
+                  (add-text-properties
+                   0 (length tool-heading)
+                   '(gptel ignore front-sticky (gptel)) tool-heading)
+                  (insert tool-heading tool-body)))
+              ;; BUG MANIFESTATION: TOOL heading is at level 1 in base buffer
+              ;; because there's no auto-corrector running there
+              (with-current-buffer base-buf
+                (goto-char (point-min))
+                (should (re-search-forward "^\\(\\*+\\) TOOL " nil t))
+                ;; Documents the bug: heading at level 1 instead of level 4
+                (should (= 1 (length (match-string 1)))))
+              ;; CONTRAST: the same insertion in the indirect buffer gets rebased
+              (with-current-buffer coord-indirect
+                (goto-char (point-max))
+                (let ((tool-heading "* TOOL (Bash :command \"echo hi\")\n")
+                      (tool-body "(:name \"Bash\" :args (:command \"echo hi\"))\n#+begin_tool\nhi\n#+end_tool\n"))
+                  (add-text-properties
+                   0 (length tool-heading)
+                   '(gptel ignore front-sticky (gptel)) tool-heading)
+                  (insert tool-heading tool-body)))
+              (with-current-buffer coord-indirect
+                (goto-char (point-min))
+                (should (re-search-forward "^\\(\\*+\\) TOOL (Bash" nil t))
+                ;; Correctly rebased to level 4 in indirect buffer
+                (should (= 4 (length (match-string 1))))))
+          (when (and coord-indirect (buffer-live-p coord-indirect))
+            (kill-buffer coord-indirect)))))))
+
+(ert-deftest gptel-org-agent-test-tool-heading-nested-agent-chain ()
+  "TOOL headings at each level of a coordinator->gatherer chain are rebased.
+When the coordinator calls a gatherer sub-agent, the gatherer's TOOL
+heading should be rebased in the gatherer's indirect buffer, and the
+coordinator's TOOL heading (for the Agent tool result) should be rebased
+in the coordinator's indirect buffer."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Delegate task\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (base-buf (current-buffer))
+             (coord-marker (gptel-org-agent--create-subtree "coordinator"))
+             (coord-indirect nil)
+             (gatherer-result nil)
+             (gatherer-indirect nil))
+        (unwind-protect
+            (progn
+              ;; Create coordinator indirect buffer (ref-level=4)
+              (setq coord-indirect
+                    (gptel-org-agent--open-indirect-buffer base-buf coord-marker))
+              (with-current-buffer coord-indirect
+                (should (= 4 gptel-org--ref-level)))
+
+              ;; Create gatherer sub-agent (ref-level=5)
+              (with-current-buffer coord-indirect
+                (setq gatherer-result
+                      (gptel-org-agent--setup-task-subtree
+                       "gatherer" "Run date command")))
+              (should gatherer-result)
+              (setq gatherer-indirect
+                    (plist-get gatherer-result :indirect-buffer))
+              (with-current-buffer gatherer-indirect
+                (should (= 5 gptel-org--ref-level)))
+
+              ;; Step 1: Insert TOOL heading in gatherer's buffer (simulates
+              ;; Bash tool result returned to gatherer)
+              (with-current-buffer gatherer-indirect
+                (goto-char (point-max))
+                (let ((tool-text "* TOOL (Bash :command \"date\")\n(:name \"Bash\" :args (:command \"date\"))\n#+begin_tool\nThu Apr 16 19:01:57 EEST 2026\n#+end_tool\n"))
+                  (insert tool-text)))
+
+              ;; Verify gatherer's TOOL heading is at level 5
+              (with-current-buffer gatherer-indirect
+                (goto-char (point-min))
+                (should (re-search-forward "^\\(\\*+\\) TOOL (Bash" nil t))
+                (should (= 5 (length (match-string 1)))))
+
+              ;; Step 2: Simulate gatherer completion — close its buffer
+              (gptel-org-agent--close-indirect-buffer gatherer-indirect t)
+              (setq gatherer-indirect nil)
+
+              ;; Step 3: Insert TOOL heading in coordinator's buffer (simulates
+              ;; Agent tool result returned to coordinator after gatherer completed)
+              (with-current-buffer coord-indirect
+                (goto-char (point-max))
+                (let ((tool-text "* TOOL (Agent :subagent_type \"gatherer\" :description \"Run date command\")\n(:name \"Agent\" :args (:subagent_type \"gatherer\"))\n#+begin_tool\nGatherer result for task: Run date command\n\nThu Apr 16 19:01:57 EEST 2026\n#+end_tool\n"))
+                  (insert tool-text)))
+
+              ;; Verify coordinator's TOOL heading is at level 4
+              (with-current-buffer coord-indirect
+                (goto-char (point-min))
+                (should (re-search-forward "^\\(\\*+\\) TOOL (Agent" nil t))
+                (should (= 4 (length (match-string 1)))))
+
+              ;; Verify full structure in base buffer
+              (with-current-buffer base-buf
+                (goto-char (point-min))
+                ;; Parent at level 2
+                (should (re-search-forward "^\\*\\* " nil t))
+                ;; Agent heading at level 3
+                (should (re-search-forward "^\\*\\*\\* AI-DOING" nil t))
+                ;; Gatherer's TOOL at level 5
+                (should (re-search-forward "^\\*\\*\\*\\*\\* TOOL (Bash" nil t))
+                ;; Coordinator's TOOL at level 4
+                (should (re-search-forward "^\\*\\*\\*\\* TOOL (Agent" nil t))))
+          (when (and gatherer-indirect (buffer-live-p gatherer-indirect))
+            (kill-buffer gatherer-indirect))
+          (when (and coord-indirect (buffer-live-p coord-indirect))
+            (kill-buffer coord-indirect)))))))
+
 (provide 'gptel-org-agent-test)
 ;;; gptel-org-agent-test.el ends here
