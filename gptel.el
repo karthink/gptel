@@ -1440,8 +1440,14 @@ No state transition here since that's handled by the process sentinels."
          (start-marker (plist-get info :position))
          (tracking-marker (or (plist-get info :tracking-marker)
                               start-marker))
-         ;; start-marker may have been moved if :buffer was read-only
-         (gptel-buffer (marker-buffer start-marker)))
+         ;; Prefer :buffer over marker-buffer.  start-marker may have
+         ;; been moved if :buffer was read-only, and markers in indirect
+         ;; buffers can report the base buffer when their buffer
+         ;; association becomes stale.
+         (gptel-buffer (let ((info-buf (plist-get info :buffer)))
+                         (if (and info-buf (buffer-live-p info-buf))
+                             info-buf
+                           (marker-buffer start-marker)))))
     (with-current-buffer gptel-buffer
       (if (not tracking-marker)         ;Empty response
           (when gptel-mode (gptel--update-status " Empty response" 'success))
@@ -1913,10 +1919,14 @@ See `gptel--url-get-response' for details.
 Optional RAW disables text properties and transformation."
   (pcase response
     ((pred stringp)
-     (let ((start-marker (plist-get info :position))
-           (tracking-marker (plist-get info :tracking-marker))
-           (transformer (plist-get info :transformer)))
-       (with-current-buffer (marker-buffer start-marker)
+     (let* ((start-marker (plist-get info :position))
+            (tracking-marker (plist-get info :tracking-marker))
+            (transformer (plist-get info :transformer))
+            (target-buffer (let ((info-buf (plist-get info :buffer)))
+                             (if (and info-buf (buffer-live-p info-buf))
+                                 info-buf
+                               (marker-buffer start-marker)))))
+       (with-current-buffer target-buffer
          (save-excursion
            (unless tracking-marker
              (goto-char start-marker)
@@ -2021,8 +2031,12 @@ for streaming responses only."
                             (insert text))))
       (let* ((reasoning-marker (plist-get info :reasoning-marker))
              (tracking-marker (plist-get info :tracking-marker))
-             (start-marker (plist-get info :position)))
-        (with-current-buffer (marker-buffer start-marker)
+             (start-marker (plist-get info :position))
+             (target-buffer (let ((info-buf (plist-get info :buffer)))
+                              (if (and info-buf (buffer-live-p info-buf))
+                                  info-buf
+                                (marker-buffer start-marker)))))
+        (with-current-buffer target-buffer
           (if (eq text t)               ;end of stream
               (progn
                 (if (derived-mode-p 'org-mode)
@@ -2297,9 +2311,18 @@ TOOL-RESULTS is
 for tool call results.  INFO contains the state of the request."
   (let* ((start-marker (plist-get info :position))
          (tool-marker (plist-get info :tool-marker))
-         (tracking-marker (plist-get info :tracking-marker)))
+         (tracking-marker (plist-get info :tracking-marker))
+         ;; Prefer :buffer (set by transform-redirect for agent indirect
+         ;; buffers) over marker-buffer.  Markers in indirect buffers can
+         ;; report the base buffer when their buffer association becomes
+         ;; stale, which causes TOOL headings to land at root level
+         ;; instead of being properly nested under the agent subtree.
+         (target-buffer (let ((info-buf (plist-get info :buffer)))
+                          (if (and info-buf (buffer-live-p info-buf))
+                              info-buf
+                            (marker-buffer start-marker)))))
     ;; Insert tool results
-    (with-current-buffer (marker-buffer start-marker)
+    (with-current-buffer target-buffer
       (when gptel-include-tool-results
         (cl-loop
          for (tool args result) in tool-results
