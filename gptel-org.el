@@ -76,6 +76,12 @@ than ref-level by adding an offset of (ref-level - 1).  Headings
 already at or above ref-level are left untouched, making the
 correction idempotent.")
 
+
+(defvar-local gptel-org--base-ref-level nil
+  "Original `gptel-org--ref-level' before TodoWrite sub-task redirect.
+Saved by `gptel-org-agent--redirect-markers-to-heading' when it updates
+`gptel-org--ref-level' for a sub-task.  Restored by
+`gptel-org-agent--write-todo-org' when no sub-task is in_progress.")
 (defvar-local gptel-org--auto-correcting nil
   "Non-nil while the auto-corrector is modifying the buffer.
 Used as a re-entrancy guard to prevent the auto-corrector from
