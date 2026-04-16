@@ -2084,10 +2084,7 @@ for tool call results.  INFO contains the state of the request."
                                  "\n")) ;start of response
                            ((not tool-marker) gptel-response-separator)
                            ((and (not (= tracking-marker tool-marker))
-                                 (save-excursion ;not consecutive tool result blocks
-                                   (goto-char tool-marker)
-                                   (skip-chars-forward " \r\t\n")
-                                   (>= (point) tracking-marker)))
+                                 (not (eq (char-before tracking-marker) ?\n)))
                             gptel-response-separator)))
                     (tool-use
                      ;; TODO(tool) also check args since there may be more than
