@@ -130,7 +130,10 @@ Sets up org-mode with AI-DO/AI-DOING/AI-DONE keywords."
 ;;; ---- FSM marker redirection -----------------------------------------------
 
 (ert-deftest gptel-org-todo-test-markers-redirected-to-in-progress ()
-  "FSM position markers should move to end of in_progress heading subtree."
+  "FSM position markers should move to end of in_progress heading subtree.
+After write-todo-org, the FSM is redirected to an indirect buffer narrowed
+to the in_progress heading.  The FSM's :position marker lives in the
+indirect buffer but shares the same absolute position as the base buffer."
   (gptel-org-todo-test-with-buffer
       "** AI-DOING My task :main@agent:\n"
     ;; Simulate FSM markers like gptel-org-agent--transform-redirect does
@@ -148,13 +151,19 @@ Sets up org-mode with AI-DO/AI-DOING/AI-DONE keywords."
       (gptel-org-agent--write-todo-org
        '((:content "Step one" :status "in_progress" :activeForm "Doing one")
          (:content "Step two" :status "pending" :activeForm "Doing two")))
-      ;; Markers should now be at end of "Step one" subtree
-      (goto-char (point-min))
-      (should (re-search-forward "^\\*\\*\\* AI-DOING Step one$" nil t))
-      (beginning-of-line)
-      (let ((heading-end (save-excursion (org-end-of-subtree t) (point))))
-        (should (= (marker-position pos-marker) heading-end))
-        (should (= (marker-position tracking-marker) heading-end))))))
+      ;; FSM should now be redirected to an indirect buffer for "Step one"
+      (let ((fsm-pos (plist-get info :position))
+            (fsm-buf (plist-get info :buffer)))
+        ;; The FSM buffer should be an indirect buffer
+        (should (buffer-base-buffer fsm-buf))
+        ;; Verify the marker is at the end of "Step one" subtree
+        (goto-char (point-min))
+        (should (re-search-forward "^\\*\\*\\* AI-DOING Step one$" nil t))
+        (beginning-of-line)
+        (let ((heading-end (save-excursion (org-end-of-subtree t) (point))))
+          (should (= (marker-position fsm-pos) heading-end)))
+        ;; tracking-marker should be nil (reset for fresh streaming)
+        (should (null (plist-get info :tracking-marker)))))))
 
 (ert-deftest gptel-org-todo-test-markers-follow-task-transition ()
   "When in_progress task changes, markers should move to new active task."
@@ -174,19 +183,21 @@ Sets up org-mode with AI-DO/AI-DOING/AI-DONE keywords."
       (gptel-org-agent--write-todo-org
        '((:content "Step one" :status "in_progress" :activeForm "Doing one")
          (:content "Step two" :status "pending" :activeForm "Doing two")))
-      ;; Simulate some AI text under Step one
-      (goto-char (marker-position pos-marker))
-      (insert "Some AI work under step one\n")
+      ;; Simulate some AI text under Step one using FSM's current position
+      (let ((fsm-pos (plist-get info :position)))
+        (goto-char (marker-position fsm-pos))
+        (insert "\nSome AI work under step one\n"))
       ;; Second: Step one done, Step two in progress
       (gptel-org-agent--write-todo-org
        '((:content "Step one" :status "completed" :activeForm "Doing one")
          (:content "Step two" :status "in_progress" :activeForm "Doing two")))
-      ;; Markers should now be at end of "Step two" subtree
-      (goto-char (point-min))
-      (should (re-search-forward "^\\*\\*\\* AI-DOING Step two$" nil t))
-      (beginning-of-line)
-      (let ((heading-end (save-excursion (org-end-of-subtree t) (point))))
-        (should (= (marker-position pos-marker) heading-end))))))
+      ;; FSM position should now point to end of "Step two" subtree
+      (let ((fsm-pos (plist-get info :position)))
+        (goto-char (point-min))
+        (should (re-search-forward "^\\*\\*\\* AI-DOING Step two$" nil t))
+        (beginning-of-line)
+        (let ((heading-end (save-excursion (org-end-of-subtree t) (point))))
+          (should (= (marker-position fsm-pos) heading-end)))))))
 
 ;;; ---- Simulated tool execution under todo headings -------------------------
 
@@ -215,9 +226,10 @@ This tests the expected org structure when tool calls happen under todo headings
          (:content "Check Emacs version" :status "pending"
           :activeForm "Checking Emacs version")))
 
-      ;; Simulate AI text + tool result appearing at pos-marker (under Step 1)
-      (goto-char (marker-position pos-marker))
-      (insert "\n#+begin_src gptel-tool\n(Eval :expression \"(current-time-string)\")\nResult: \"Sat Apr 11 10:49:58 2026\"\n#+end_src\n")
+      ;; Simulate AI text + tool result appearing at FSM position (under Step 1)
+      (let ((fsm-pos (plist-get info :position)))
+        (goto-char (marker-position fsm-pos))
+        (insert "\n#+begin_src gptel-tool\n(Eval :expression \"(current-time-string)\")\nResult: \"Sat Apr 11 10:49:58 2026\"\n#+end_src\n"))
 
       ;; Step 2: Complete step 1, start step 2
       (gptel-org-agent--write-todo-org
@@ -229,8 +241,9 @@ This tests the expected org structure when tool calls happen under todo headings
           :activeForm "Checking Emacs version")))
 
       ;; Simulate tool result under step 2
-      (goto-char (marker-position pos-marker))
-      (insert "\n#+begin_src gptel-tool\n(Eval :expression \"default-directory\")\nResult: \"/home/user/\"\n#+end_src\n")
+      (let ((fsm-pos (plist-get info :position)))
+        (goto-char (marker-position fsm-pos))
+        (insert "\n#+begin_src gptel-tool\n(Eval :expression \"default-directory\")\nResult: \"/home/user/\"\n#+end_src\n"))
 
       ;; Step 3: Complete step 2, start step 3
       (gptel-org-agent--write-todo-org
@@ -242,8 +255,9 @@ This tests the expected org structure when tool calls happen under todo headings
           :activeForm "Checking Emacs version")))
 
       ;; Simulate tool result under step 3
-      (goto-char (marker-position pos-marker))
-      (insert "\n#+begin_src gptel-tool\n(Eval :expression \"emacs-version\")\nResult: \"30.2\"\n#+end_src\n")
+      (let ((fsm-pos (plist-get info :position)))
+        (goto-char (marker-position fsm-pos))
+        (insert "\n#+begin_src gptel-tool\n(Eval :expression \"emacs-version\")\nResult: \"30.2\"\n#+end_src\n"))
 
       ;; Verify final structure:
       ;; 1. No "Tasks" heading
@@ -297,18 +311,20 @@ This tests the expected org structure when tool calls happen under todo headings
        '((:content "Task A" :status "in_progress" :activeForm "A")
          (:content "Task B" :status "pending" :activeForm "B")))
 
-      ;; Insert content at marker (should go under Task A)
-      (goto-char (marker-position pos-marker))
-      (insert "\nContent for Task A only\n")
+      ;; Insert content at FSM's current position (should go under Task A)
+      (let ((fsm-pos (plist-get info :position)))
+        (goto-char (marker-position fsm-pos))
+        (insert "\nContent for Task A only\n"))
 
       ;; Task 2 active
       (gptel-org-agent--write-todo-org
        '((:content "Task A" :status "completed" :activeForm "A")
          (:content "Task B" :status "in_progress" :activeForm "B")))
 
-      ;; Insert content at marker (should go under Task B)
-      (goto-char (marker-position pos-marker))
-      (insert "\nContent for Task B only\n")
+      ;; Insert content at FSM's current position (should go under Task B)
+      (let ((fsm-pos (plist-get info :position)))
+        (goto-char (marker-position fsm-pos))
+        (insert "\nContent for Task B only\n"))
 
       ;; Verify Task A's subtree has its content but not Task B's
       (goto-char (point-min))
