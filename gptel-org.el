@@ -843,7 +843,7 @@ contents."
             ;; User edits to clean up can potentially insert a tool-call header
             ;; that is propertized.  Tool call headers should not be
             ;; propertized.
-            (when (looking-at-p "[[:space:]]*#\\+begin_src gptel-tool")
+            (when (looking-at-p "[[:space:]]*#\\+begin\\(_src gptel-\\|_\\)tool")
               (goto-char (match-end 0)))
             ;; TODO this code is able to put the point behind prev-pt, which
             ;; makes the region inverted.  The `max' catches this, but really
@@ -2390,6 +2390,21 @@ disrupts overlays)."
               (org-fold-subtree t))
           (error nil))
         (forward-line 1))
+      ;; Fold #+begin_tool special blocks
+      (goto-char beg)
+      (while (re-search-forward
+              "^[ \t]*#\\+begin_tool" end t)
+        (beginning-of-line)
+        (condition-case nil
+            (let ((elem (org-element-at-point)))
+              (when (and elem
+                         (eq (org-element-type elem) 'special-block)
+                         (not (org-fold-folded-p (point) 'block)))
+                (org-fold-hide-block-toggle 'hide nil elem)))
+          (error nil))
+        (if (re-search-forward "^[ \t]*#\\+end_tool" end t)
+            (forward-line 1)
+          (goto-char end)))
       ;; Fold gptel-tool source blocks (legacy)
       (goto-char beg)
       (while (re-search-forward

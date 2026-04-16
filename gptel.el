@@ -2336,9 +2336,17 @@ for tool call results.  INFO contains the state of the request."
                                       display-call
                                       (floor (* (window-width) 0.6)) 0 nil " ...)"))))
                (if (derived-mode-p 'org-mode)
-                   ;; Org-mode: insert TOOL heading
+                   ;; Org-mode: insert TOOL heading with result in
+                   ;; special block to protect org formatting
                    (let* ((heading-line (concat "* TOOL " truncated-call "\n"))
-                          (body-text (concat call "\n\n" result "\n"))
+                          (escaped-result
+                           (org-escape-code-in-string
+                            (if (stringp result) result
+                              (format "%S" result))))
+                          (body-text (concat call "\n"
+                                            "#+begin_tool\n"
+                                            escaped-result "\n"
+                                            "#+end_tool\n"))
                           (prop-body (propertize body-text 'gptel `(tool . ,id))))
                      (add-text-properties
                       0 (length heading-line)

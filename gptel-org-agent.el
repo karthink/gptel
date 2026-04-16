@@ -470,6 +470,24 @@ Cleans up the narrowing end-marker."
                  (buffer-live-p base-buf))
         (with-current-buffer base-buf
           (save-excursion
+            ;; First fold individual TOOL/REASONING headings so they
+            ;; remain folded when user unfolds the agent subtree
+            (goto-char subtree-start)
+            (let ((subtree-end (or (and (markerp end-marker)
+                                       (marker-position end-marker))
+                                  (save-excursion
+                                    (goto-char subtree-start)
+                                    (org-end-of-subtree t t)
+                                    (point)))))
+              (while (re-search-forward
+                      "^\\*+ \\(?:TOOL\\|REASONING\\) " subtree-end t)
+                (beginning-of-line)
+                (ignore-errors
+                  (when (and (org-at-heading-p)
+                             (not (org-fold-folded-p (point) 'headline)))
+                    (org-fold-subtree t)))
+                (forward-line 1)))
+            ;; Then fold the entire agent subtree
             (goto-char subtree-start)
             (when (org-at-heading-p)
               (org-fold-subtree t)
@@ -2164,10 +2182,17 @@ Returns non-nil if a heading was found and updated, nil otherwise."
                    (call (prin1-to-string `(:name ,tool-name :args ,args)))
                    (result-str (if (stringp result) result
                                  (format "%S" result)))
+                   ;; Escape result to protect org formatting inside
+                   ;; the #+begin_tool special block
+                   (escaped-result (org-escape-code-in-string result-str))
                    ;; Build the new heading line with TOOL keyword
                    (new-heading (concat stars " TOOL " truncated-call "\n"))
-                   ;; Build the body with plist and result
-                   (body-text (concat call "\n\n" result-str "\n")))
+                   ;; Build the body with plist and result wrapped in
+                   ;; special block
+                   (body-text (concat call "\n"
+                                      "#+begin_tool\n"
+                                      escaped-result "\n"
+                                      "#+end_tool\n")))
               ;; Delete the old heading line
               (let ((line-end (min (1+ (line-end-position)) (point-max))))
                 (delete-region heading-pos line-end))
