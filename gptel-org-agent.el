@@ -1500,7 +1500,8 @@ the active task heading."
   ;; parent agent buffer after restore, or the current agent buffer
   ;; if no restore was needed).
   (let ((agent-buf (if (and (boundp 'gptel--fsm-last) gptel--fsm-last)
-                       (plist-get (gptel-fsm-info gptel--fsm-last) :buffer)
+                       (or (plist-get (gptel-fsm-info gptel--fsm-last) :buffer)
+                           (current-buffer))
                      (current-buffer))))
     (with-current-buffer agent-buf
       (gptel-org--debug "write-todo-org: called with %d todos in buffer %S (base: %S)"
