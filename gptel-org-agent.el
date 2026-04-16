@@ -443,6 +443,11 @@ Return the indirect buffer."
 This marker has insertion-type t so the region grows as text is appended.
 Stored for cleanup in `gptel-org-agent--close-indirect-buffer'.")
 
+(defvar-local gptel-org-agent--parent-indirect-buffer nil
+  "Parent indirect buffer when this is a TodoWrite sub-task buffer.
+Set by `gptel-org-agent--redirect-markers-to-heading' so the FSM can
+be restored to the parent buffer when the sub-task completes.")
+
 (defun gptel-org-agent--close-indirect-buffer (indirect-buffer &optional fold)
   "Close INDIRECT-BUFFER and clean up associated resources.
 
@@ -1370,47 +1375,89 @@ The heading is appended at the end of the subtree at PARENT-POS."
 
 
 (defun gptel-org-agent--redirect-markers-to-heading (heading-pos)
-  "Move the FSM position and tracking markers to end of heading at HEADING-POS.
-This redirects subsequent AI response streaming to appear under the
-heading at HEADING-POS (typically the in_progress todo heading).
+  "Redirect FSM streaming to the sub-task heading at HEADING-POS.
 
-Also updates `gptel-org--ref-level' so that the auto-corrector and
-tool-call display functions use the correct heading level for content
-inside the sub-task.  The original ref-level is saved in
-`gptel-org--base-ref-level' for later restoration.
+Creates a new indirect buffer narrowed to the sub-task subtree, with
+its own auto-corrector at the correct ref-level.  Updates the FSM's
+`:buffer' and `:position' so streaming inserts into the sub-task
+buffer.  The parent indirect buffer is saved for later restoration.
 
 Accesses the FSM via `gptel--fsm-last' which is buffer-local."
   (when (and (boundp 'gptel--fsm-last) gptel--fsm-last)
     (let* ((info (gptel-fsm-info gptel--fsm-last))
-           (pos-marker (plist-get info :position))
-           (tracking-marker (plist-get info :tracking-marker))
-           (heading-level (save-excursion
-                            (goto-char heading-pos)
-                            (when (org-at-heading-p)
-                              (org-current-level))))
-           (target (save-excursion
-                     (goto-char heading-pos)
-                     (org-end-of-subtree t)
-                     (point))))
+           (base-buffer (or (buffer-base-buffer (current-buffer))
+                            (current-buffer)))
+           (parent-buffer (current-buffer))
+           (heading-marker (save-excursion
+                             (goto-char heading-pos)
+                             (point-marker))))
       (gptel-org--debug
-       "redirect-markers: heading-pos=%S target=%d pos-marker=%S tracking=%S heading-level=%S"
-       heading-pos target
-       (and (markerp pos-marker) (marker-position pos-marker))
-       (and (markerp tracking-marker) (marker-position tracking-marker))
-       heading-level)
-      (when (markerp pos-marker)
-        (move-marker pos-marker target))
-      (when (markerp tracking-marker)
-        (move-marker tracking-marker target))
-      ;; Update ref-level so auto-corrector and display-tool-calls use
-      ;; the correct level for content inside the sub-task heading.
-      (when (and heading-level (bound-and-true-p gptel-org--ref-level))
-        (unless (bound-and-true-p gptel-org--base-ref-level)
-          (setq-local gptel-org--base-ref-level gptel-org--ref-level))
-        (setq-local gptel-org--ref-level (1+ heading-level))
-        (gptel-org--debug
-         "redirect-markers: updated ref-level to %d (base=%d)"
-         gptel-org--ref-level gptel-org--base-ref-level)))))
+       "redirect-markers: heading-pos=%S parent=%S base=%S"
+       heading-pos (buffer-name parent-buffer) (buffer-name base-buffer))
+      ;; Create indirect buffer for the sub-task heading
+      (let ((sub-indirect-buf
+             (gptel-org-agent--open-indirect-buffer
+              base-buffer heading-marker)))
+        ;; Create position marker inside the sub-task indirect buffer
+        (let ((pos-marker
+               (with-current-buffer sub-indirect-buf
+                 (goto-char (point-max))
+                 (skip-chars-backward "\n")
+                 (end-of-line)
+                 (let ((m (point-marker)))
+                   (set-marker-insertion-type m t)
+                   m))))
+          ;; Save parent buffer reference for restoration
+          (with-current-buffer sub-indirect-buf
+            (setq-local gptel-org-agent--parent-indirect-buffer parent-buffer))
+          ;; Redirect FSM to the sub-task buffer
+          (plist-put info :buffer sub-indirect-buf)
+          (plist-put info :position pos-marker)
+          ;; Reset tracking-marker so next streaming turn starts fresh
+          (plist-put info :tracking-marker nil)
+          (gptel-org--debug
+           "redirect-markers: created sub-task buffer %S pos=%S ref-level=%S"
+           (buffer-name sub-indirect-buf)
+           (marker-position pos-marker)
+           (buffer-local-value 'gptel-org--ref-level sub-indirect-buf)))))))
+
+(defun gptel-org-agent--restore-from-subtask-buffer ()
+  "Restore FSM from a sub-task indirect buffer back to the parent buffer.
+
+If the current FSM buffer is a sub-task buffer (has
+`gptel-org-agent--parent-indirect-buffer' set), switches the FSM's
+`:buffer' and `:position' back to the parent and kills the sub-task
+buffer.
+
+Returns the parent buffer if a restore was performed, nil otherwise."
+  (when (and (boundp 'gptel--fsm-last) gptel--fsm-last)
+    (let* ((info (gptel-fsm-info gptel--fsm-last))
+           (current-buf (plist-get info :buffer)))
+      (when (and current-buf (buffer-live-p current-buf))
+        (let ((parent-buf (buffer-local-value
+                           'gptel-org-agent--parent-indirect-buffer
+                           current-buf)))
+          (when (and parent-buf (buffer-live-p parent-buf))
+            (gptel-org--debug
+             "restore-from-subtask: %S -> %S"
+             (buffer-name current-buf) (buffer-name parent-buf))
+            ;; Create new position marker in parent buffer at end of content
+            (let ((pos-marker
+                   (with-current-buffer parent-buf
+                     (goto-char (point-max))
+                     (skip-chars-backward "\n")
+                     (end-of-line)
+                     (let ((m (point-marker)))
+                       (set-marker-insertion-type m t)
+                       m))))
+              ;; Restore FSM to parent buffer
+              (plist-put info :buffer parent-buf)
+              (plist-put info :position pos-marker)
+              (plist-put info :tracking-marker nil)
+              ;; Kill the sub-task indirect buffer
+              (kill-buffer current-buf)
+              parent-buf)))))))
+
 (defun gptel-org-agent--write-todo-org (todos)
   "Display TODOS as org TODO headings in the agent subtree.
 
@@ -1429,12 +1476,28 @@ end of that heading's subtree so subsequent AI responses stream under
 the active task heading."
   (gptel-org-agent--ensure-todo-keywords)
   (when (vectorp todos) (setq todos (append todos nil)))
-  (gptel-org--debug "write-todo-org: called with %d todos in buffer %S (base: %S)"
-                    (length todos) (buffer-name) (buffer-name (buffer-base-buffer)))
-  (gptel-org--debug "write-todo-org: narrowed=%S point-min=%d point-max=%d"
-                    (buffer-narrowed-p) (point-min) (point-max))
-  (save-excursion
-    (goto-char (point-min))             ;agent heading in narrowed buffer
+  ;; If the FSM was previously redirected into a sub-task buffer,
+  ;; restore back to the parent agent buffer first.  write-todo-org
+  ;; needs the full agent subtree visible (point-min = agent heading)
+  ;; to create/update todo headings.  The restore returns the parent
+  ;; buffer so we can switch context.
+  (let ((parent-buf (gptel-org-agent--restore-from-subtask-buffer)))
+    (when parent-buf
+      (gptel-org--debug "write-todo-org: switched to parent buffer %S"
+                        (buffer-name parent-buf))))
+  ;; Determine the correct buffer: use FSM :buffer (which is the
+  ;; parent agent buffer after restore, or the current agent buffer
+  ;; if no restore was needed).
+  (let ((agent-buf (if (and (boundp 'gptel--fsm-last) gptel--fsm-last)
+                       (plist-get (gptel-fsm-info gptel--fsm-last) :buffer)
+                     (current-buffer))))
+    (with-current-buffer agent-buf
+      (gptel-org--debug "write-todo-org: called with %d todos in buffer %S (base: %S)"
+                        (length todos) (buffer-name) (buffer-name (buffer-base-buffer)))
+      (gptel-org--debug "write-todo-org: narrowed=%S point-min=%d point-max=%d"
+                        (buffer-narrowed-p) (point-min) (point-max))
+      (save-excursion
+        (goto-char (point-min))             ;agent heading in narrowed buffer
     (gptel-org--debug "write-todo-org: at point-min, org-at-heading-p=%S line=%S"
                       (org-at-heading-p)
                       (buffer-substring-no-properties
@@ -1499,21 +1562,13 @@ the active task heading."
             (unless (gethash (car existing) seen-contents)
               (gptel-org--debug "write-todo-org: removing %S" (car existing))
               (gptel-org-agent--remove-todo-heading (cdr existing))))
-          ;; Move FSM markers into the in_progress heading so subsequent
-          ;; AI text streams under it.
-          (if in-progress-pos
-              (gptel-org-agent--redirect-markers-to-heading in-progress-pos)
-            ;; No in_progress task: restore ref-level to original value
-            ;; so subsequent content (tool headings, AI responses) uses
-            ;; the agent-level+1 depth again.
-            (when (bound-and-true-p gptel-org--base-ref-level)
-              (gptel-org--debug
-               "write-todo-org: restoring ref-level from %S to %S"
-               gptel-org--ref-level gptel-org--base-ref-level)
-              (setq-local gptel-org--ref-level gptel-org--base-ref-level)
-              (setq-local gptel-org--base-ref-level nil)))))))
+          ;; Redirect FSM into a sub-task indirect buffer so subsequent
+          ;; AI text streams under the in_progress heading with its own
+          ;; auto-corrector at the correct ref-level.
+          (when in-progress-pos
+            (gptel-org-agent--redirect-markers-to-heading in-progress-pos)))))))
   (gptel-org--debug "write-todo-org: done, buffer size now %d" (buffer-size))
-  t)
+  t))
 
 
 ;;; ---- Advisor agent integration (Phase 5) ----------------------------------
