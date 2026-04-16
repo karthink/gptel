@@ -244,7 +244,8 @@ When a sub-agent completes, =gptel-agent-subtree--cleanup= (in gptel-agent) adva
 |----------+---------|
 | =gptel-org-agent--ensure-todo-keywords= () | When =gptel-org-agent-todo-keywords= is non-nil, ensures they are in =org-todo-keywords=. When nil, assumes buffer already defines required keywords |
 | =gptel-org-agent--status-to-keyword= (status) | Maps TodoWrite status via =gptel-org-agent-status-keyword-map= (default: pending→AI-DO, in_progress→AI-DOING, completed→AI-DONE) |
-| =gptel-org-agent--write-todo-org= (todos) | Idempotent: creates/updates/removes TODO headings under "Tasks" sub-heading |
+| =gptel-org-agent--write-todo-org= (todos) | Idempotent: creates/updates/removes TODO headings under agent heading. Restores =gptel-org--base-ref-level= when no sub-task is in_progress |
+| =gptel-org-agent--redirect-markers-to-heading= (heading-pos) | Moves FSM =:position= and =:tracking-marker= to end of heading subtree. Updates =gptel-org--ref-level= to sub-task-level+1 and saves original in =gptel-org--base-ref-level= |
 
 ** Advisor Agent Integration (Phase 5)
 
@@ -400,6 +401,7 @@ org-mode format with the correct heading level for the current context.
 | Separator/prefix in sub-agent indirect buffer | Custom =gptel-agent-subtree--handle-post-insert= omits separator/prefix for non-interactive sub-agents | =93bdf26= |
 | User heading at wrong level (sibling of agent) | =insert-user-heading= now uses =agent-level + 1= (child of agent, matching AI response level); backwards search for duplication check | =638ea2f= |
 | Post-tool continuation lands inside TOOL subtree | =:tracking-marker= and =:tool-marker= now reset in =gptel--handle-wait= between LLM turns; each turn starts fresh (see =gptel-ai.org= [[file:gptel-ai.org::*Turn Isolation][Turn Isolation]]) | =f73ade4= |
+| TOOL/AI headings appear as siblings of TodoWrite sub-task instead of children | =redirect-markers-to-heading= now updates =gptel-org--ref-level= to sub-task-level+1 (saving original in =gptel-org--base-ref-level=); =display-tool-calls= uses elevated ref-level for PENDING level; =write-todo-org= restores base-ref-level when no sub-task is in_progress | =196d6eb= |
 
 * Git History (Key Commits)
 

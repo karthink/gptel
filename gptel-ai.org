@@ -468,7 +468,8 @@ Enable =gptel-org-mode= (which sets this automatically), or set
 The corrector runs as a buffer-local =after-change-functions= hook (=gptel-org--auto-correct-on-change=) on each agent indirect buffer.  It fires on every buffer change and processes the changed region for corrections.
 
 The design is stateless and idempotent:
-- =gptel-org--ref-level= (buffer-local integer) is computed once when the indirect buffer is created
+- =gptel-org--ref-level= (buffer-local integer) is initially computed when the indirect buffer is created as =agent-level + 1=
+- When TodoWrite redirects FSM markers into a sub-task, =gptel-org-agent--redirect-markers-to-heading= temporarily updates =ref-level= to =sub-task-level + 1= (saving the original in =gptel-org--base-ref-level=).  This ensures AI headings inside sub-tasks are rebased to the correct nesting depth.  The original is restored by =gptel-org-agent--write-todo-org= when no sub-task is =in_progress=
 - Headings with level < ref-level are rebased by adding =(ref-level - 1)= stars
 - Headings already at or above ref-level are skipped — no double-correction possible
 - Block context is checked per-heading via =gptel-org--in-example-block-p= (point-based backward search)
