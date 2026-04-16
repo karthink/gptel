@@ -424,6 +424,12 @@ Return the indirect buffer."
       ;; Narrow to the agent subtree
       (narrow-to-region beg end-marker)
       (goto-char (point-min))
+      ;; Mark this buffer as an agent indirect buffer.  This flag persists
+      ;; even after the agent tag is removed from the heading (e.g. by
+      ;; `gptel-org-agent--insert-user-heading'), ensuring that
+      ;; `gptel-org--in-agent-indirect-buffer-p' continues to return t
+      ;; and the dynamic prefix suppression remains active.
+      (setq-local gptel-org--agent-indirect-buffer-p t)
       ;; Store the end-marker on a buffer-local variable so we can clean it
       ;; up later
       (setq-local gptel-org-agent--narrow-end-marker end-marker)
