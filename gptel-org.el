@@ -2084,6 +2084,17 @@ Only complete lines within this region are processed.
 Headings with level < `gptel-org--ref-level' are rebased by adding
 \(ref-level - 1) stars.  Headings already at the correct level are
 skipped, making this safe to run on any region at any time."
+  (when (and (eq gptel-log-level 'debug)
+             (save-excursion
+               (goto-char beg)
+               (re-search-forward "^\\*+ \\(TOOL\\|REASONING\\) " end t)))
+    (gptel--log
+     (format "auto-correct-entry: ref-level=%S auto-correcting=%S beg=%S end=%S buffer=%S text=\"%s\""
+             gptel-org--ref-level gptel-org--auto-correcting beg end
+             (current-buffer)
+             (truncate-string-to-width
+              (buffer-substring-no-properties beg (min end (+ beg 120))) 120))
+     "tool-heading-debug" 'no-json))
   (when-let* ((ref-level gptel-org--ref-level)
               ((> ref-level 1))
               ((not gptel-org--auto-correcting)))
@@ -2158,6 +2169,15 @@ skipped, making this safe to run on any region at any time."
                ((and (string-match "^\\(\\*+\\) " line-text)
                      (not (gptel-org--in-example-block-p)))
                 (let ((current-stars (length (match-string 1 line-text))))
+                  (when (and (eq gptel-log-level 'debug)
+                             (string-match-p "^\\*+ \\(TOOL\\|REASONING\\) " line-text))
+                    (gptel--log
+                     (format "auto-correct: found %s heading stars=%d ref-level=%d offset=%d will-rebase=%S line=\"%s\""
+                             (if (string-match-p "TOOL" line-text) "TOOL" "REASONING")
+                             current-stars ref-level offset
+                             (< current-stars ref-level)
+                             (truncate-string-to-width line-text 80))
+                     "tool-heading-debug" 'no-json))
                   ;; Only rebase headings that are too shallow.
                   ;; Headings at or above ref-level are already correct.
                   (when (< current-stars ref-level)

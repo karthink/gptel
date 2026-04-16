@@ -2225,6 +2225,15 @@ happen), fall through to ORIG-FN for default handling.
 
 Respects `gptel-include-tool-results' filtering: only updates headings
 for tools whose results should be displayed."
+  (when (eq gptel-log-level 'debug)
+    (gptel--log
+     (format "display-tool-results-advice: subtree-tool-confirm=%S agent-indirect=%S buffer=%S"
+             (gptel-org-agent--subtree-tool-confirm-p info)
+             (and (fboundp 'gptel-org--in-agent-indirect-buffer-p)
+                  (with-current-buffer (plist-get info :buffer)
+                    (gptel-org--in-agent-indirect-buffer-p)))
+             (plist-get info :buffer))
+     "tool-heading-debug" 'no-json))
   (if (gptel-org-agent--subtree-tool-confirm-p info)
       (let* ((start-marker (plist-get info :position))
              (buf (plist-get info :buffer)))
@@ -2252,14 +2261,29 @@ for tools whose results should be displayed."
                              (lambda (tu) (equal (plist-get tu :name) name))
                              (plist-get info :tool-use)))
                            (id (plist-get tool-use :id)))
-                      (unless (gptel-org-agent--update-tool-heading
-                               tool-spec args result id)
-                        ;; No matching heading found — collect for fallback
-                        (push (list tool-spec args result) unmatched)))))
+                      (let ((updated (gptel-org-agent--update-tool-heading
+                                      tool-spec args result id)))
+                        (when (eq gptel-log-level 'debug)
+                          (gptel--log
+                           (format "display-tool-results-advice: tool=%s update-heading=%S"
+                                   name (if updated "matched" "unmatched"))
+                           "tool-heading-debug" 'no-json))
+                        (unless updated
+                          ;; No matching heading found — collect for fallback
+                          (push (list tool-spec args result) unmatched))))))
               ;; Any unmatched results get the default treatment
               (when unmatched
+                (when (eq gptel-log-level 'debug)
+                  (gptel--log
+                   (format "display-tool-results-advice: falling through to orig-fn with %d unmatched results"
+                           (length unmatched))
+                   "tool-heading-debug" 'no-json))
                 (funcall orig-fn (nreverse unmatched) info))))))
     ;; Not in agent subtree mode — use original function
+    (when (eq gptel-log-level 'debug)
+      (gptel--log
+       "display-tool-results-advice: NOT in agent subtree mode, calling orig-fn directly"
+       "tool-heading-debug" 'no-json))
     (funcall orig-fn tool-results info)))
 
 (defun gptel-org-agent--setup-tool-confirm ()

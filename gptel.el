@@ -2339,6 +2339,15 @@ for tool call results.  INFO contains the state of the request."
                    ;; Org-mode: insert TOOL heading with result in
                    ;; special block to protect org formatting
                    (let* ((heading-line (concat "* TOOL " truncated-call "\n"))
+                          (_ (when (eq gptel-log-level 'debug)
+                               (gptel--log
+                                (format "display-tool-results: creating heading=\"* TOOL\" ref-level=%S in-agent-indirect=%S start-marker=%S tracking-marker=%S buffer=%S inhibit-mod-hooks=%S"
+                                        (bound-and-true-p gptel-org--ref-level)
+                                        (and (fboundp 'gptel-org--in-agent-indirect-buffer-p)
+                                             (gptel-org--in-agent-indirect-buffer-p))
+                                        start-marker tracking-marker
+                                        (current-buffer) inhibit-modification-hooks)
+                                "tool-heading-debug" 'no-json)))
                           (escaped-result
                            (org-escape-code-in-string
                             (if (stringp result) result
