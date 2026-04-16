@@ -505,8 +505,16 @@ span multiple turns when tool calls are involved (WAIT→TYPE→TPRE→TOOL→TR
 
 *Rule*: each turn starts with clean insertion state.
 
-=gptel--handle-wait= resets the following keys in the FSM info plist before
-firing each HTTP request:
+=gptel--handle-wait= performs two operations on FSM info before firing each
+HTTP request:
+
+1. *Advance =:position=*: moves =:position= (start-marker) to where
+   =:tracking-marker= ended up.  Without this, =:position= retains its stale
+   value from the first chunk of the previous turn (right after the AI prefix
+   heading), causing the next turn's content to be inserted in the middle of
+   existing text — typically inside a TOOL heading's subtree.
+
+2. *Reset per-turn keys*:
 
 | Key | Why reset |
 |-----+-----------|
@@ -522,9 +530,18 @@ block (AI response, TOOL result, REASONING) is an org heading.  If
 =:tracking-marker= persists from a previous turn, the streaming callback
 (=gptel-curl--stream-insert-response=) skips prefix insertion and appends text
 at the old marker position — inside the previous TOOL heading's subtree.
-Resetting the marker ensures the new turn starts fresh, the AI writes its own
+Resetting the markers ensures the new turn starts fresh, the AI writes its own
 heading (=* AI-DOING ...=), and the auto-corrector rebases it to the correct
 level.
+
+*Marker lifecycle across turns*:
+- =:position= (start-marker): created at send time, moved once per turn (when
+  =:tracking-marker= is nil and prefix is inserted), then advanced by
+  =gptel--handle-wait= before the next turn.  Has insertion-type nil (default).
+- =:tracking-marker=: created per turn, advances with each insert (insertion-type
+  t), reset to nil between turns.
+- =:tool-marker=: tracks consecutive tool results within a turn, reset between
+  turns.
 
 *The uniform content model*:
 - The AI writes its own headings (=* AI-DOING=, =* AI=) — gptel does not insert heading prefixes in agent indirect buffers

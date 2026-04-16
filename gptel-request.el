@@ -2124,6 +2124,15 @@ many active requests, queue this FSM for later dispatch."
          (backend (plist-get info :backend))
          (host (and backend (gptel-backend-host backend)))
          (limit (and backend (gptel-backend-concurrency-limit backend))))
+    ;; Advance :position to where :tracking-marker ended up so the next
+    ;; turn inserts *after* all content from the previous turn (including
+    ;; TOOL/REASONING headings).  Without this, :position remains at the
+    ;; start of the previous turn's content and the next AI response gets
+    ;; inserted in the middle of existing text.
+    (when-let* ((tm (plist-get info :tracking-marker))
+                (pm (plist-get info :position))
+                ((marker-buffer tm)))
+      (move-marker pm tm))
     (dolist (key '(:tool-result :tool-use :error :http-status :reasoning
                    :tracking-marker :tool-marker))
       (when (plist-get info key)
