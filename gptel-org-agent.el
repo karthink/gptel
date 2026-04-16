@@ -1726,8 +1726,8 @@ INFO is the FSM info plist."
                ;; and its body text (they start with * or #+).
                (gptel-org--auto-correcting t))
           (gptel-org--debug
-           "display-tool-calls: response-level=%S pending-level=%d stars=%S buffer=%S narrowed=%s point-min-heading=%S num-tools=%d"
-           response-level pending-level stars (buffer-name)
+           "display-tool-calls: ref-level=%S pending-level=%d stars=%S buffer=%S narrowed=%s point-min-heading=%S num-tools=%d"
+           gptel-org--ref-level pending-level stars (buffer-name)
            (if (buffer-narrowed-p) "yes" "no")
            (save-excursion
              (goto-char (point-min))
