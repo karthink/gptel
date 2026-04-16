@@ -1002,7 +1002,16 @@ in the conversation."
                            "insert-user-heading: created :%s: heading at level %d after pos %d"
                            user-tag user-level (marker-position subtree-end)))))
                     ;; Clean up marker
-                    (set-marker subtree-end nil))))))))))))
+                    (set-marker subtree-end nil))))))))
+      ;; Close the indirect buffer now that the response is complete.
+      ;; Use run-at-time to defer cleanup until after all
+      ;; post-response processing (prompt prefix insertion, etc.)
+      ;; has finished — killing the buffer mid-hook would break
+      ;; code that still references it via (plist-get info :buffer).
+      (let ((buf (current-buffer)))
+        (run-at-time 0 nil
+                     #'gptel-org-agent--close-indirect-buffer
+                     buf 'fold))))))
 
 (defun gptel-org-agent--enable ()
   "Enable agent subtree integration for `gptel-send'.
@@ -1454,8 +1463,10 @@ Returns the parent buffer if a restore was performed, nil otherwise."
               (plist-put info :buffer parent-buf)
               (plist-put info :position pos-marker)
               (plist-put info :tracking-marker nil)
-              ;; Kill the sub-task indirect buffer
-              (kill-buffer current-buf)
+              ;; Close the sub-task indirect buffer, cleaning up its
+              ;; narrowing end-marker.  No fold — the sub-task content
+              ;; remains visible within the parent agent subtree.
+              (gptel-org-agent--close-indirect-buffer current-buf)
               parent-buf)))))))
 
 (defun gptel-org-agent--write-todo-org (todos)
