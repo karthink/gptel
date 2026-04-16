@@ -655,7 +655,8 @@ By default, gptel uses the directive associated with the `rewrite'
      (gptel--describe-directive
       gptel--rewrite-directive (max (- (window-width) 14) 20) " "))
    [""
-    (gptel--preset
+    (gptel-preset
+     :transient t
      :if (lambda () (or (get-char-property (point) 'gptel-rewrite)
                    (use-region-p)))
      :key "@" :format "%d"
