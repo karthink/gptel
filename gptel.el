@@ -209,6 +209,9 @@
 (declare-function gptel-org--heading-has-tag-p "gptel-org")
 (defvar gptel-org-assistant-tag)
 (defvar gptel-org--in-prefix-advice)
+(defvar gptel-org-reasoning-display)
+(declare-function gptel-org--reasoning-create-indirect-buffer "gptel-org")
+(declare-function gptel-org--reasoning-close-indirect-buffer "gptel-org")
 (declare-function org-at-heading-p "org")
 (declare-function org-get-tags "org")
 (declare-function org-end-of-subtree "org")
@@ -1880,6 +1883,13 @@ Optional RAW disables text properties and transformation."
                      ;; Insert everything as raw
                      (gptel--insert-response
                       (concat separator heading-text body-text tail) info t)
+                     ;; Show in indirect buffer for non-streaming
+                     ;; (left open for user to review at leisure)
+                     (when (eq gptel-org-reasoning-display 'indirect-buffer)
+                       (save-excursion
+                         (goto-char (plist-get info :tracking-marker))
+                         (when (re-search-backward "^\\*+ REASONING " start-marker t)
+                           (gptel-org--reasoning-create-indirect-buffer (point)))))
                      ;; Fold the REASONING heading
                      (save-excursion
                        (goto-char (plist-get info :tracking-marker))
@@ -2056,6 +2066,9 @@ for streaming responses only."
                       ;; Insert separator
                       (gptel-curl--stream-insert-response
                        gptel-response-separator info t)
+                      ;; Close reasoning indirect buffer before folding
+                      (when (eq gptel-org-reasoning-display 'indirect-buffer)
+                        (gptel-org--reasoning-close-indirect-buffer))
                       ;; Fold the REASONING heading
                       (ignore-errors
                         (save-excursion
@@ -2093,7 +2106,14 @@ for streaming responses only."
                       (gptel-curl--stream-insert-response
                        (concat separator heading-str) info t)
                       (plist-put info :reasoning-title-pending t)
-                      (plist-put info :reasoning-title-buffer "")))
+                      (plist-put info :reasoning-title-buffer "")
+                      ;; Create indirect buffer for live reasoning display
+                      (when (eq gptel-org-reasoning-display 'indirect-buffer)
+                        (save-excursion
+                          (goto-char (or (plist-get info :tracking-marker)
+                                         (plist-get info :position)))
+                          (when (re-search-backward "^\\*+ REASONING " start-marker t)
+                            (gptel-org--reasoning-create-indirect-buffer (point)))))))
                   ;; Handle title extraction from first line
                   (if (plist-get info :reasoning-title-pending)
                       (let* ((buf (concat (plist-get info :reasoning-title-buffer) text))

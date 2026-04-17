@@ -93,6 +93,13 @@ Set by `gptel-org-agent--open-indirect-buffer'.  Unlike checking
 the agent tag on the heading, this flag persists even after the
 tag is removed (e.g. by `gptel-org-agent--insert-user-heading').")
 
+(defvar-local gptel-org--reasoning-indirect-buffer nil
+  "The indirect buffer currently showing reasoning content, if any.
+Used to track and clean up the reasoning display buffer.")
+
+(defvar-local gptel-org--reasoning-end-marker nil
+  "End marker for the reasoning indirect buffer's narrowed region.")
+
 ;; Debug support
 (defvar gptel-org-debug nil
   "When non-nil, output debug messages for subtree context operations.
@@ -298,6 +305,24 @@ Set to nil to disable automatic property saving for Org files.
 This can be useful when you don't want gptel to modify your Org
 files with GPTEL_* properties."
   :type 'boolean
+  :group 'gptel)
+
+(defcustom gptel-org-reasoning-display 'fold
+  "How to display reasoning/thinking blocks in org-mode.
+
+Controls the visual presentation of REASONING headings:
+
+  fold            - Fold inline (default, current behavior).
+  indirect-buffer - Fold inline and show live in an indirect buffer.
+                    The indirect buffer is narrowed to the REASONING
+                    heading and updates in real-time during streaming.
+
+When set to `indirect-buffer', a side window shows the reasoning
+content as it streams in.  The indirect buffer is automatically
+closed when the response completes."
+  :type '(choice
+          (const :tag "Fold inline" fold)
+          (const :tag "Show in indirect buffer" indirect-buffer))
   :group 'gptel)
 
 (defcustom gptel-org-infer-bounds-from-tags t
@@ -2377,6 +2402,92 @@ positions of the response."
 ;; Add hook with high priority (run late, after heading adjustments)
 (add-hook 'gptel-post-response-functions #'gptel-org--apply-response-title 80)
 
+
+
+;;; Reasoning indirect buffer display
+
+(defun gptel-org--reasoning-create-indirect-buffer (reasoning-heading-pos)
+  "Create an indirect buffer for the REASONING heading at REASONING-HEADING-POS.
+
+Creates an indirect buffer narrowed to the REASONING subtree and
+displays it in a side window.  The buffer auto-expands as streaming
+content is inserted.
+
+Returns the indirect buffer, or nil if creation failed."
+  (condition-case err
+      (let* ((base-buf (or (buffer-base-buffer (current-buffer))
+                           (current-buffer)))
+             (buf-name (format "*gptel-reasoning:%s*"
+                               (buffer-name base-buf)))
+             ;; Compute subtree region
+             (beg (save-excursion
+                    (goto-char reasoning-heading-pos)
+                    (line-beginning-position)))
+             (end (save-excursion
+                    (goto-char reasoning-heading-pos)
+                    (org-end-of-subtree t t)
+                    (point)))
+             ;; End marker with insertion-type t so narrowing expands
+             (end-marker (with-current-buffer base-buf
+                           (let ((m (make-marker)))
+                             (set-marker m end)
+                             (set-marker-insertion-type m t)
+                             m)))
+             existing indirect-buf)
+        ;; Kill any existing reasoning IB for this base buffer
+        (when (setq existing (get-buffer buf-name))
+          (kill-buffer existing))
+        ;; Create indirect buffer
+        (setq indirect-buf (make-indirect-buffer base-buf buf-name t))
+        (with-current-buffer indirect-buf
+          (org-fold-core-decouple-indirect-buffer-folds)
+          (narrow-to-region beg end-marker)
+          (goto-char (point-min))
+          ;; Unfold the REASONING heading so content is visible
+          (when (org-at-heading-p)
+            (org-fold-subtree nil))
+          ;; Make buffer read-only for the user (content comes from streaming)
+          (setq buffer-read-only t)
+          ;; Store the end-marker for cleanup
+          (setq-local gptel-org--reasoning-end-marker end-marker))
+        ;; Display in side window
+        (display-buffer indirect-buf
+                        '((display-buffer-in-side-window)
+                          (side . bottom)
+                          (slot . 0)
+                          (window-height . 0.3)
+                          (preserve-size . (nil . t))))
+        ;; Store reference in base buffer
+        (with-current-buffer base-buf
+          (setq gptel-org--reasoning-indirect-buffer indirect-buf))
+        ;; Also store in the current buffer if it's an IB itself
+        (unless (eq (current-buffer) base-buf)
+          (setq gptel-org--reasoning-indirect-buffer indirect-buf))
+        indirect-buf)
+    (error
+     (gptel-org--debug "reasoning IB: creation failed: %S" err)
+     nil)))
+
+(defun gptel-org--reasoning-close-indirect-buffer ()
+  "Close the reasoning indirect buffer if one exists.
+
+Kills the indirect buffer and removes the side window.
+Safe to call even if no reasoning buffer exists."
+  (when-let* ((ib gptel-org--reasoning-indirect-buffer)
+              ((buffer-live-p ib)))
+    ;; Clean up end-marker
+    (when-let* ((m (buffer-local-value 'gptel-org--reasoning-end-marker ib))
+                ((markerp m)))
+      (set-marker m nil))
+    ;; Delete the window showing the buffer (if any)
+    (when-let* ((win (get-buffer-window ib t)))
+      (delete-window win))
+    (kill-buffer ib))
+  (setq gptel-org--reasoning-indirect-buffer nil)
+  ;; Also clear in base buffer
+  (when-let* ((base (buffer-base-buffer (current-buffer))))
+    (with-current-buffer base
+      (setq gptel-org--reasoning-indirect-buffer nil))))
 
 ;;; Post-response block folding
 
