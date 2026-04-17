@@ -230,14 +230,15 @@ or nil if not found."
            (found nil))
       (save-excursion
         (forward-line 1)
-        (while (and (not found)
-                    (re-search-forward regexp search-bound t))
-          (beginning-of-line)
-          ;; Verify this is truly at the expected level (not deeper)
-          (when (= (org-current-level) child-level)
-            (setq found (point)))
-          (unless found
-            (forward-line 1))))
+        (when (<= (point) search-bound)
+          (while (and (not found)
+                      (re-search-forward regexp search-bound t))
+            (beginning-of-line)
+            ;; Verify this is truly at the expected level (not deeper)
+            (when (= (org-current-level) child-level)
+              (setq found (point)))
+            (unless found
+              (forward-line 1)))))
       found)))
 
 (defun gptel-org-ib-create-terminator (heading-keyword &optional level)
@@ -370,12 +371,22 @@ Returns a marker to the newly created heading."
   "Compute the subtree region for the heading at HEADING-POS in BASE-BUFFER.
 
 Returns a cons cell (BEG . END) where BEG is the beginning of the
-heading line and END is the end of the subtree."
+heading line and END is the end of the subtree.  END is advanced past
+any trailing newline so that the region includes the final line
+terminator — this ensures that text inserted at point-max in a
+narrowed indirect buffer starts on its own line rather than appending
+to the last line of the heading."
   (with-current-buffer base-buffer
     (save-excursion
       (goto-char heading-pos)
       (let ((beg (pos-bol))
-            (end (progn (org-end-of-subtree t) (point))))
+            (end (progn (org-end-of-subtree t)
+                        ;; org-end-of-subtree may leave point before the
+                        ;; trailing newline.  Advance past it so the
+                        ;; narrowed region includes the line terminator.
+                        (when (eq (char-after) ?\n)
+                          (forward-char 1))
+                        (point))))
         (cons beg end)))))
 
 (defun gptel-org-ib--extract-tag-at (base-buffer heading-pos)

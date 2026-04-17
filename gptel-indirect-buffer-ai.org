@@ -26,13 +26,19 @@ indirect buffers are never disturbed.
 
 ** Relationship to gptel-org-agent.el
 
-The existing =gptel-org-agent.el= provides:
-- =gptel-org-agent--open-indirect-buffer= — creates IB narrowed to subtree
-- =gptel-org-agent--close-indirect-buffer= — kills IB, cleans markers
-- =gptel-org-agent--create-subtree= — creates agent child heading
-- =gptel-org-agent--indirect-buffer-name= — computes =*gptel:TAG-HASH*= name
+=gptel-org-agent.el= has been migrated to delegate core indirect buffer
+operations to this module.  The agent functions now serve as thin wrappers
+that add agent-specific concerns on top of the module's primitives:
 
-This new module adds on top of those:
+- =gptel-org-agent--open-indirect-buffer= → delegates to =gptel-org-ib-create=,
+  then applies agent-specific setup (flag, auto-correct, end-marker compat)
+- =gptel-org-agent--close-indirect-buffer= → delegates cleanup to
+  =gptel-org-ib-close=, keeps TOOL/REASONING fold logic as a pre-step
+- =gptel-org-agent--setup-task-subtree= → uses =gptel-org-ib-safe-insert-sibling=
+  for NEW sub-agent headings, keeps =--open-indirect-buffer= for reusing
+  EXISTING subtrees
+
+The module provides the foundational capabilities:
 - Terminator heading pattern (the key innovation preventing sibling merging)
 - Tracking registry for all active indirect buffers
 - Safe heading insertion before terminators
@@ -142,6 +148,74 @@ SOLUTION: gptel-org-ib-recreate
   3. Kill old IB
   4. Create new IB at heading's new position with same name
 #+end_example
+
+** Integration with gptel-org-agent.el
+
+This section documents how =gptel-org-agent.el= delegates to the module's
+primitives, and the agent-specific concerns layered on top.
+
+*** open-indirect-buffer → gptel-org-ib-create
+
+=gptel-org-agent--open-indirect-buffer= delegates buffer creation to
+=gptel-org-ib-create=, which handles:
+- Indirect buffer creation with =make-indirect-buffer=
+- Narrowing to the subtree region
+- Terminator heading creation (via =gptel-org-ib-ensure-terminator=)
+- Registry tracking
+
+After =gptel-org-ib-create= returns, the agent wrapper applies:
+- Sets the =gptel-org-agent--flag= buffer-local variable
+- Enables auto-correct mode for heading drift detection
+- Sets up end-marker compatibility for streaming insertion
+
+*** close-indirect-buffer → gptel-org-ib-close
+
+=gptel-org-agent--close-indirect-buffer= first performs agent-specific
+pre-cleanup (folding TOOL and REASONING headings), then delegates core
+cleanup to =gptel-org-ib-close=, which handles:
+- Removing the buffer from the tracking registry
+- Killing the indirect buffer
+- Cleaning up markers
+
+*** setup-task-subtree: Two Paths
+
+=gptel-org-agent--setup-task-subtree= uses different strategies depending
+on whether the subtree is new or existing:
+
+- *New sub-agent headings*: Uses =gptel-org-ib-safe-insert-sibling= which
+  inserts a new heading /before/ the terminator heading, ensuring proper
+  boundary separation.  This is the terminator-aware path.
+
+- *Existing subtrees*: Uses =gptel-org-agent--open-indirect-buffer= (the
+  wrapper around =gptel-org-ib-create=) to narrow to the already-existing
+  heading.
+
+*** On-demand Terminator Creation
+
+Terminators are NOT eagerly created for every heading.  They are created
+/on demand/ when =gptel-org-ib-create= is called (which calls
+=gptel-org-ib-ensure-terminator= internally).  This means:
+
+- A heading that is never opened as an indirect buffer has no terminator
+- Terminators appear only when actually needed for IB boundary management
+- =gptel-org-ib-safe-insert-sibling= also ensures a terminator exists
+  before inserting the new sibling
+
+This avoids cluttering the org tree with sentinel headings that may never
+be needed, while still guaranteeing correct boundaries when they matter.
+
+*** Agent-specific Setup (Post-creation)
+
+After =gptel-org-ib-create= returns the indirect buffer, the agent layer
+applies concerns that are outside the module's scope:
+
+1. *Flag*: Sets =gptel-org-agent--flag= to identify the buffer as an
+   agent-managed indirect buffer
+2. *Auto-correct*: Enables heading drift detection and correction so that
+   if a heading is moved, the IB can recover
+3. *End-marker compat*: Sets up an expanding end-marker (insertion-type=t)
+   at the end of the narrowed region so streaming LLM responses push the
+   boundary forward rather than overflowing
 
 * Emacs Indirect Buffer Internals
 
@@ -353,10 +427,11 @@ This is the scenario that motivates =gptel-org-ib-recreate=:
    hash is derived from the outline path, so even after reorder the heading
    can be found by recomputing the hash.
 
-6. *Complement, not replace*: The module does NOT replace existing
-   functions in =gptel-org-agent.el=.  It layers the terminator pattern
-   and registry on top.  The existing =open/close-indirect-buffer= functions
-   will eventually call into these functions for the terminator-aware path.
+6. *Complement, not replace*: The module does not replace the agent's
+   =open/close-indirect-buffer= functions.  Instead, those functions now
+   delegate core buffer management to the module (=gptel-org-ib-create=,
+   =gptel-org-ib-close=) while retaining agent-specific concerns like
+   flag setting, auto-correct, and TOOL/REASONING fold logic.
 
 7. *Idempotent terminator creation*: =gptel-org-ib-ensure-terminator= finds
    an existing terminator or creates one.  Safe to call multiple times
@@ -365,6 +440,12 @@ This is the scenario that motivates =gptel-org-ib-recreate=:
 8. *Root buffer resolution*: =gptel-org-ib-base-buffer= always resolves to
    the root base buffer, matching Emacs' own flattening behavior for
    indirect-of-indirect chains.
+
+9. *On-demand terminator creation*: Terminators are NOT eagerly created
+   for every heading.  They are created on demand when =gptel-org-ib-create=
+   or =gptel-org-ib-safe-insert-sibling= is called.  This avoids cluttering
+   the org tree with sentinel headings that may never be needed, while
+   guaranteeing correct boundaries when indirect buffers are actually used.
 
 * Usage Examples
 

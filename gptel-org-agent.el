@@ -41,6 +41,7 @@
 
 (require 'org)
 (require 'org-fold)
+(require 'gptel-indirect-buffer)
 
 ;; Forward declarations for functions defined in gptel-org.el
 (declare-function gptel-org--debug "gptel-org")
@@ -361,89 +362,38 @@ string."
 BASE-BUFFER is the org buffer containing the agent heading.
 HEADING-MARKER is a marker pointing to the agent heading.
 
-Create an indirect buffer via `make-indirect-buffer' with cloned
-state, narrow it to the agent's subtree, and decouple folding so
-that fold state in the indirect buffer is independent of the base.
-
-The narrowing end uses a marker with insertion-type t, so that as
-the LLM streams text at the end of the subtree the narrow region
-expands automatically.
-
-Each indirect buffer gets a unique name based on the agent tag and
-a short hash of the outline path, so multiple agent conversations
-can coexist without killing each other's buffers.
+Creates an indirect buffer via `gptel-org-ib-create' (which handles
+subtree narrowing, end-marker creation, fold decoupling, and registry
+tracking), then applies agent-specific setup: marks the buffer as an
+agent indirect buffer and enables auto-correction.
 
 Return the indirect buffer."
-  (let* ((heading-pos (marker-position heading-marker))
-         ;; Determine the agent tag for the buffer name
-         (tag (with-current-buffer base-buffer
-                (save-excursion
-                  (goto-char heading-pos)
-                  (let ((tags (org-get-tags nil t)))
-                    (or (cl-find-if #'gptel-org-agent--agent-tag-p tags)
-                        "agent")))))
-         (buf-name (gptel-org-agent--indirect-buffer-name
-                    base-buffer heading-pos tag))
-         ;; Compute the subtree region in the base buffer
-         (region (with-current-buffer base-buffer
-                   (save-excursion
-                     (goto-char heading-pos)
-                     (let ((beg (pos-bol))
-                           (end (progn
-                                  (org-end-of-subtree t)
-                                  ;; Include the trailing newline so that
-                                  ;; response text inserted at point-max
-                                  ;; starts on a new line, not on the
-                                  ;; heading line itself.
-                                  (when (eolp) (forward-char 1))
-                                  (point))))
-                       (cons beg end)))))
-         (beg (car region))
-         (end (cdr region))
-         ;; Create end marker with insertion-type t so narrowing expands
-         ;; as text is inserted at the boundary
-         (end-marker (with-current-buffer base-buffer
-                       (let ((m (make-marker)))
-                         (set-marker m end)
-                         (set-marker-insertion-type m t)
-                         m)))
-         indirect-buf)
-    (gptel-org--debug "org-agent open-indirect-buffer: tag=%S base=%S region=[%d,%d] buf-name=%S"
-                      tag (buffer-name base-buffer) beg end buf-name)
-    ;; If a buffer with this name already exists (same heading re-sent),
-    ;; kill it to get a fresh one.  Different headings produce different
-    ;; hashes so their buffers coexist.
-    (when-let ((existing (get-buffer buf-name)))
-      (gptel-org--debug "org-agent open-indirect-buffer: killing existing buffer %S before recreate"
-                        buf-name)
-      (kill-buffer existing))
-    ;; Create the indirect buffer (clone=t to inherit major mode, local vars, etc.)
-    (setq indirect-buf (make-indirect-buffer base-buffer buf-name t))
+  (let* ((heading-pos (if (markerp heading-marker)
+                          (marker-position heading-marker)
+                        heading-marker))
+         (indirect-buf (gptel-org-ib-create base-buffer heading-pos)))
+    ;; Apply agent-specific setup that gptel-org-ib-create doesn't do
     (with-current-buffer indirect-buf
-      ;; Decouple fold state so expanding/collapsing in the indirect buffer
-      ;; does not affect the base buffer
-      (org-fold-core-decouple-indirect-buffer-folds)
-      ;; Narrow to the agent subtree
-      (narrow-to-region beg end-marker)
-      (goto-char (point-min))
       ;; Mark this buffer as an agent indirect buffer.  This flag persists
       ;; even after the agent tag is removed from the heading (e.g. by
       ;; `gptel-org-agent--insert-user-heading'), ensuring that
       ;; `gptel-org--in-agent-indirect-buffer-p' continues to return t
       ;; and the dynamic prefix suppression remains active.
       (setq-local gptel-org--agent-indirect-buffer-p t)
-      ;; Store the end-marker on a buffer-local variable so we can clean it
-      ;; up later
-      (setq-local gptel-org-agent--narrow-end-marker end-marker)
+      ;; Store the end-marker on a buffer-local variable for backwards
+      ;; compatibility with code that reads it directly.
+      (let ((entry (gptel-org-ib-get (buffer-name indirect-buf))))
+        (when entry
+          (setq-local gptel-org-agent--narrow-end-marker
+                      (plist-get entry :end-marker))))
       ;; Enable the idempotent auto-corrector for heading level rebasing
       (gptel-org--enable-auto-correct))
     (gptel-org--debug
-     "org-agent open-indirect-buffer: CREATED %S base=%S ref-level=%S narrow=[%d,%d] end-marker=%S"
-     buf-name (buffer-name base-buffer)
+     "org-agent open-indirect-buffer: CREATED %S base=%S ref-level=%S narrow=[%d,%d]"
+     (buffer-name indirect-buf) (buffer-name base-buffer)
      (buffer-local-value 'gptel-org--ref-level indirect-buf)
      (with-current-buffer indirect-buf (point-min))
-     (with-current-buffer indirect-buf (point-max))
-     end-marker)
+     (with-current-buffer indirect-buf (point-max)))
     indirect-buf))
 
 (defvar-local gptel-org-agent--narrow-end-marker nil
@@ -462,31 +412,30 @@ be restored to the parent buffer when the sub-task completes.")
 If FOLD is non-nil, fold the agent subtree in the base buffer before
 killing the indirect buffer.
 
-Cleans up the narrowing end-marker."
+Uses `gptel-org-ib-close' for registry cleanup, marker management,
+and buffer killing.  Additionally folds TOOL and REASONING child
+headings when FOLD is requested."
   (when (buffer-live-p indirect-buffer)
-    (let ((base-buf (buffer-base-buffer indirect-buffer))
-          (end-marker (buffer-local-value
-                       'gptel-org-agent--narrow-end-marker
-                       indirect-buffer))
-          ;; Grab the narrowed region start before killing
-          (subtree-start (with-current-buffer indirect-buffer
-                           (point-min))))
+    (let* ((buf-name (buffer-name indirect-buffer))
+           (base-buf (or (buffer-base-buffer indirect-buffer)
+                         indirect-buffer))
+           (entry (gptel-org-ib-get buf-name))
+           (end-marker (or (plist-get entry :end-marker)
+                           (ignore-errors
+                             (buffer-local-value
+                              'gptel-org-agent--narrow-end-marker
+                              indirect-buffer))))
+           ;; Grab the narrowed region start before closing
+           (subtree-start (with-current-buffer indirect-buffer
+                            (point-min))))
       (gptel-org--debug
-       "org-agent close-indirect-buffer: CLOSING %S base=%S fold=%s ref-level=%S narrow=[%d,%S] end-marker=%S"
-       (buffer-name indirect-buffer)
-       (and base-buf (buffer-name base-buf))
-       fold
-       (buffer-local-value 'gptel-org--ref-level indirect-buffer)
-       subtree-start
-       (and (markerp end-marker) (marker-position end-marker))
-       end-marker)
-      ;; Optionally fold the completed subtree in the base buffer
-      (when (and fold
-                 (buffer-live-p base-buf))
+       "org-agent close-indirect-buffer: CLOSING %S base=%S fold=%s"
+       buf-name (and base-buf (buffer-name base-buf)) fold)
+      ;; When folding, first fold individual TOOL/REASONING headings so
+      ;; they remain folded when user unfolds the agent subtree
+      (when (and fold (buffer-live-p base-buf))
         (with-current-buffer base-buf
           (save-excursion
-            ;; First fold individual TOOL/REASONING headings so they
-            ;; remain folded when user unfolds the agent subtree
             (goto-char subtree-start)
             (let ((subtree-end (or (and (markerp end-marker)
                                        (marker-position end-marker))
@@ -501,18 +450,10 @@ Cleans up the narrowing end-marker."
                   (when (and (org-at-heading-p)
                              (not (org-fold-folded-p (point) 'headline)))
                     (org-fold-subtree t)))
-                (forward-line 1)))
-            ;; Then fold the entire agent subtree
-            (goto-char subtree-start)
-            (when (org-at-heading-p)
-              (org-fold-subtree t)
-              (gptel-org--debug "org-agent close-indirect-buffer: folded subtree at line %d"
-                                (line-number-at-pos))))))
-      ;; Clean up the end-marker
-      (when (markerp end-marker)
-        (set-marker end-marker nil))
-      ;; Kill the indirect buffer
-      (kill-buffer indirect-buffer))))
+                (forward-line 1))))))
+      ;; Delegate core cleanup (registry, markers, kill) to gptel-org-ib-close.
+      ;; Pass fold=t so it handles the whole-subtree fold.
+      (gptel-org-ib-close indirect-buffer fold))))
 
 
 ;;; ---- Integration point ----------------------------------------------------
@@ -1152,6 +1093,7 @@ org-mode, or we can't find a heading context to create the subtree."
              (derived-mode-p 'org-mode))
     (let* ((parent-tag (gptel-org-agent--current-agent-tag))
            (tag (gptel-org-agent--construct-tag agent-type parent-tag))
+           (doing-keyword (or (bound-and-true-p gptel-org-tasks-doing-keyword) "AI-DOING"))
            ;; Determine the base buffer (for indirect buffers, go to the base)
            (base-buffer (or (buffer-base-buffer (current-buffer))
                             (current-buffer))))
@@ -1172,43 +1114,71 @@ org-mode, or we can't find a heading context to create the subtree."
         (when (org-at-heading-p)
           ;; Check if there's already a subtree with this tag
           (let* ((existing (gptel-org-agent--find-agent-subtree tag))
-                 (heading-marker
-                  (or existing
-                      (gptel-org-agent--create-subtree agent-type parent-tag description)))
-                 (indirect-buf
-                  (gptel-org-agent--open-indirect-buffer
-                   base-buffer heading-marker)))
-            (when existing
-              (gptel-org--debug
-               "org-agent setup-task-subtree: reusing existing %S subtree"
-               tag))
+                 (heading-marker nil)
+                 (indirect-buf nil))
+            (if existing
+                ;; Reuse existing subtree — just open an indirect buffer
+                (progn
+                  (gptel-org--debug
+                   "org-agent setup-task-subtree: reusing existing %S subtree"
+                   tag)
+                  (setq heading-marker existing)
+                  (setq indirect-buf
+                        (gptel-org-agent--open-indirect-buffer
+                         base-buffer heading-marker)))
+              ;; Create new subtree using terminator-aware insertion.
+              ;; This ensures the heading is placed BEFORE the terminator
+              ;; (e.g., FEEDBACK), so existing sibling indirect buffers
+              ;; are not disturbed.
+              (let ((terminator-keyword
+                     (if (bound-and-true-p gptel-org-user-keyword)
+                         gptel-org-user-keyword
+                       "FEEDBACK")))
+                (gptel-org--debug
+                 "org-agent setup-task-subtree: creating new subtree via safe-insert-sibling (terminator=%S)"
+                 terminator-keyword)
+                (setq indirect-buf
+                      (gptel-org-ib-safe-insert-sibling
+                       doing-keyword
+                       (or description "Sub-task")
+                       (list tag)
+                       terminator-keyword))
+                ;; Extract the heading marker from the registry
+                (let ((entry (gptel-org-ib-get (buffer-name indirect-buf))))
+                  (setq heading-marker (plist-get entry :heading-marker)))
+                ;; Apply agent-specific setup
+                (with-current-buffer indirect-buf
+                  (setq-local gptel-org--agent-indirect-buffer-p t)
+                  (let ((entry (gptel-org-ib-get (buffer-name indirect-buf))))
+                    (when entry
+                      (setq-local gptel-org-agent--narrow-end-marker
+                                  (plist-get entry :end-marker))))
+                  (gptel-org--enable-auto-correct))))
             ;; Create a position marker inside the indirect buffer.
             ;; This is where the LLM response will start being inserted.
-            (let ((pos-marker
-                   (with-current-buffer indirect-buf
-                     ;; Ensure gptel-mode is active for proper heading insertion.
-                     ;; Indirect buffers with clone=t inherit buffer-local vars,
-                     ;; but gptel-mode is a minor mode that might not be active.
-                     (unless gptel-mode
-                       (setq-local gptel-mode t))
-                     ;; Position at end of buffer content (after heading line).
-                     ;; point-max is at the end of the narrowed region.
-                     (goto-char (point-max))
-                     ;; Back up past any trailing newlines to be at real content end
-                     (skip-chars-backward "\n")
-                     (end-of-line)
-                     (let ((m (point-marker)))
-                       (set-marker-insertion-type m t)
-                       m))))
-              (gptel-org--debug
-               "org-agent setup-task-subtree: CREATED indirect=%S pos=%d ref-level=%S base=%S tag=%S"
-               (buffer-name indirect-buf) (marker-position pos-marker)
-               (buffer-local-value 'gptel-org--ref-level indirect-buf)
-               (buffer-name base-buffer) tag)
-              (list :indirect-buffer indirect-buf
-                    :heading-marker heading-marker
-                    :position-marker pos-marker
-                    :parent-tag parent-tag))))))))
+            (when indirect-buf
+              (let ((pos-marker
+                     (with-current-buffer indirect-buf
+                       ;; Ensure gptel-mode is active for proper heading insertion.
+                       (unless gptel-mode
+                         (setq-local gptel-mode t))
+                       ;; Position at end of buffer content (after heading line).
+                       (goto-char (point-max))
+                       ;; Back up past any trailing newlines to be at real content end
+                       (skip-chars-backward "\n")
+                       (end-of-line)
+                       (let ((m (point-marker)))
+                         (set-marker-insertion-type m t)
+                         m))))
+                (gptel-org--debug
+                 "org-agent setup-task-subtree: CREATED indirect=%S pos=%d ref-level=%S base=%S tag=%S"
+                 (buffer-name indirect-buf) (marker-position pos-marker)
+                 (buffer-local-value 'gptel-org--ref-level indirect-buf)
+                 (buffer-name base-buffer) tag)
+                (list :indirect-buffer indirect-buf
+                      :heading-marker heading-marker
+                      :position-marker pos-marker
+                      :parent-tag parent-tag)))))))))
 
 (defun gptel-org-agent--extract-final-text (indirect-buffer)
   "Extract the final assistant response text from INDIRECT-BUFFER.
