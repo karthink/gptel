@@ -2798,11 +2798,18 @@ Add this to `completion-at-point-functions'."
              (list (point) (+ (point) num)
                    gptel--known-presets
                    :exclusive 'no
-                   :annotation-function
-                   #'(lambda (c) (thread-first
-                              (intern-soft c)
-                              (assq gptel--known-presets) (cdr)
-                              (plist-get :description)))))))))
+                   :company-doc-buffer
+                   #'(lambda (c) (let ((doc (thread-first
+                                              (intern-soft c)
+                                              (assq gptel--known-presets)
+                                              (cdr)
+                                              (plist-get :description))))
+                                    (when doc
+                                      (with-current-buffer
+                                          (get-buffer-create " *gptel-agent-doc*")
+                                        (erase-buffer)
+                                        (insert doc)
+                                        (current-buffer)))))))))))
 
 (defun gptel--prettify-preset ()
   "Get visual and completion help with presets in gptel buffers.
