@@ -1,0 +1,441 @@
+#+TITLE: gptel Indirect Buffer Management — AI Development Context
+#+DESCRIPTION: Reference document for AI-assisted development of gptel-indirect-buffer.el
+
+* Overview
+
+The gptel indirect buffer module provides systematic management of Emacs
+indirect buffers for AI task isolation in gptel's org-mode agent system.
+
+When multiple AI tasks run concurrently (AI-DOING, AI-DO subtasks, delegated
+agents), their content can merge and cursor locations get corrupted unless
+each task is properly isolated in its own indirect buffer.  Sibling tasks get
+merged because indirect buffers aren't properly isolating content boundaries.
+
+The solution is the "terminator heading" pattern: each active task's subtree
+is bounded by a terminator child heading (FEEDBACK for AI-DOING, Results for
+AI-DO).  New sibling tasks are inserted BEFORE the terminator so existing
+indirect buffers are never disturbed.
+
+** Core Module
+
+- File: =gptel-indirect-buffer.el=
+- Provides: =gptel-indirect-buffer=
+- Depends on: =org=, =org-fold=, =cl-lib=
+- Declares external functions from: =gptel-org.el=, =gptel-org-agent.el=
+- Complements (does NOT replace): =gptel-org-agent.el=
+
+** Relationship to gptel-org-agent.el
+
+The existing =gptel-org-agent.el= provides:
+- =gptel-org-agent--open-indirect-buffer= — creates IB narrowed to subtree
+- =gptel-org-agent--close-indirect-buffer= — kills IB, cleans markers
+- =gptel-org-agent--create-subtree= — creates agent child heading
+- =gptel-org-agent--indirect-buffer-name= — computes =*gptel:TAG-HASH*= name
+
+This new module adds on top of those:
+- Terminator heading pattern (the key innovation preventing sibling merging)
+- Tracking registry for all active indirect buffers
+- Safe heading insertion before terminators
+- Recreation after heading reorder
+- Auto-correction and validation
+
+* Architecture
+
+** The Terminator Heading Pattern
+
+The core innovation.  Each active task's subtree is bounded by a terminator
+child heading that serves as a sentinel.  New sibling tasks are inserted
+BEFORE the terminator so that existing sibling indirect buffers narrowed to
+earlier positions are never disturbed.
+
+Rules:
+1. Each AI task gets its own indirect buffer narrowed to its subtree.
+2. A terminator child heading bounds each task's writable content.
+3. New sibling tasks are inserted BEFORE the terminator heading.
+4. After reordering siblings, the moved task's indirect buffer must be recreated.
+
+** Org Structure Example
+
+#+begin_example
+,**** AI-DOING Study feasibility ...  :main@agent:   <- Indirect-buffer 1
+,***** AI-DO Subtask 1                               <- Indirect-buffer 2
+,****** Results                                      <- Terminator for Subtask 1
+,***** AI-DO Subtask 2                               <- Indirect-buffer 3
+,****** Results                                      <- Terminator for Subtask 2
+,***** FEEDBACK                                      <- Terminator for AI-DOING
+#+end_example
+
+Key observations:
+- The =FEEDBACK= heading is the terminator for the AI-DOING parent task.
+  It is always the LAST child.
+- Each =AI-DO= subtask has its own =Results= terminator as a child.
+- When a new =AI-DO Subtask 3= needs to be created, it is inserted on the
+  line BEFORE the =FEEDBACK= heading — so Subtask 1 and Subtask 2's
+  indirect buffers (narrowed to their subtrees) are not affected.
+
+** Indirect Buffer Lifecycle
+
+#+begin_example
+gptel-org-ib-safe-insert-sibling (high-level convenience)
+  → gptel-org-ib-ensure-terminator
+    ├─ gptel-org-ib-find-terminator (search for existing)
+    └─ gptel-org-ib-create-terminator (create if missing)
+  → gptel-org-ib-create-heading (insert BEFORE terminator)
+  → gptel-org-ib-create (create indirect buffer)
+    ├─ Compute subtree region
+    ├─ Create end-marker with insertion-type=t
+    ├─ make-indirect-buffer with clone=t
+    ├─ org-fold-core-decouple-indirect-buffer-folds
+    ├─ narrow-to-region [heading-start, end-marker]
+    └─ gptel-org-ib-register (add to tracking registry)
+
+...task runs, LLM streams into indirect buffer...
+
+gptel-org-ib-close (cleanup)
+  ├─ Optional: fold subtree in base buffer
+  ├─ gptel-org-ib-unregister (clean markers, remove from registry)
+  └─ kill-buffer
+#+end_example
+
+** Tracking Registry
+
+All active indirect buffers are tracked in =gptel-org-ib--registry=, a hash
+table mapping buffer-name (string) to a metadata plist:
+
+#+begin_src elisp
+;; Registry entry structure:
+(:buffer #<buffer *gptel:main@agent-a1b2c3*>
+ :base   #<buffer project.org>
+ :heading-marker #<marker at 1234 in project.org>
+ :end-marker     #<marker (moves after insertion) at 1567 in project.org>
+ :tag    "main@agent")
+#+end_src
+
+The registry enables:
+- Looking up any IB's metadata by name
+- Finding all IBs for a given base buffer
+- Cleaning up dead (killed) buffer entries
+- Tracking markers for recreation after reorder
+
+** Recreation After Heading Reorder
+
+When a subtree is reordered (e.g., by =org-move-subtree-up/down=), the
+indirect buffer's narrowing restriction markers collapse because the text
+at those positions was deleted and reinserted elsewhere.
+
+The indirect buffer does NOT die — it becomes a zombie showing empty content
+(point-min = point-max).  No error is raised; the condition must be actively
+detected.
+
+#+begin_example
+BEFORE reorder:
+  IB narrowed to [100, 200] — shows Subtask 1 content
+
+After org-move-subtree-down:
+  Text at [100, 200] was delete-and-reinserted at [250, 350]
+  begv_marker and zv_marker both collapsed to position 100
+  IB now shows "" (empty) — zombie state
+
+SOLUTION: gptel-org-ib-recreate
+  1. Parse buffer name → extract tag + hash
+  2. Search base buffer for heading matching tag + hash
+  3. Kill old IB
+  4. Create new IB at heading's new position with same name
+#+end_example
+
+* Emacs Indirect Buffer Internals
+
+This section documents the low-level behavior of Emacs indirect buffers,
+gathered through systematic introspection.  This is the authoritative
+reference for understanding the mechanics that the module relies on.
+
+** Shared vs Independent Properties
+
+| Property | Shared? | Notes |
+|----------+---------+-------|
+| Text content | SHARED | Core feature of indirect buffers |
+| Text properties | SHARED | Stored in =buffer_text.intervals= |
+| Modification flag / tick | SHARED | =modiff= in =buffer_text= |
+| Undo list | SHARED | =buffer-undo-list= is same =eq= object |
+| Markers | SHARED | All in =buffer_text.markers= chain |
+| Narrowing (point-min/max) | INDEPENDENT | =begv= / =zv= per =struct buffer= |
+| Point | INDEPENDENT | =pt= per buffer |
+| Overlays | INDEPENDENT | Overlay interval tree per buffer |
+| Major mode | INDEPENDENT | =major_mode= per buffer |
+| Buffer-local vars | INDEPENDENT | =local_var_alist= per buffer |
+| Mark (clone=nil) | INDEPENDENT | Separate marker objects |
+| Mark (clone=t) | SHARED | Same marker object copied by ref! |
+| before/after-change-functions | INDEPENDENT | But both fire on IB edit |
+| Overlay mod-hooks | INDEPENDENT | Fire only in owning buffer's context |
+
+** make-indirect-buffer Behavior
+
+#+begin_src elisp
+;; Signature:
+(make-indirect-buffer BASE-BUFFER NAME &optional CLONE INHIBIT-BUFFER-HOOKS)
+#+end_src
+
+- If =BASE-BUFFER= is itself indirect, the ROOT base is used (flattening).
+- =clone=t= copies major mode, minor modes, buffer-locals from base.
+- =clone=nil= resets to =fundamental-mode= defaults.
+- *PITFALL*: =clone=t= shares the mark-marker object by reference — setting
+  mark in one buffer affects the other.
+
+** Narrowing Behavior
+
+- Narrowing is completely independent per buffer.
+- Narrowing an indirect buffer does NOT affect the base buffer.
+- Internal restriction markers: =begv_marker= (insertion-type nil) and
+  =zv_marker= (insertion-type t).
+- Normal =insert= at either boundary GROWS the restricted region (text absorbed).
+- =insert-before-markers= at point-min PUSHES the restriction start forward
+  (text excluded from the narrowed view).
+
+** Marker Behavior Across Base/Indirect
+
+- All markers live in the shared =buffer_text.markers= chain.
+- Markers are relocated uniformly regardless of which buffer the edit occurs in.
+- Marker insertion-type nil = stays before inserted text.
+- Marker insertion-type t = advances past inserted text.
+- Same rules apply whether insert happens in base or indirect buffer.
+
+** What Happens When a Heading Is Moved (Reordered)
+
+This is the scenario that motivates =gptel-org-ib-recreate=:
+
+1. =delete-and-extract-region= moves all markers (including restriction
+   markers) to the deletion point.
+2. After deletion + reinsertion elsewhere, =begv_marker= and =zv_marker=
+   collapse to the same position.
+3. The restriction becomes EMPTY — indirect buffer shows "" with
+   =point-min= = =point-max=.
+4. The indirect buffer does NOT die — it becomes a zombie showing empty
+   content.
+5. No error is raised; the condition must be actively detected.
+6. *SOLUTION*: kill and recreate the indirect buffer at the new position
+   (=gptel-org-ib-recreate=).
+
+** What Happens When Preceding Text Is Deleted
+
+- Deletion of text BEFORE the narrowed region correctly relocates
+  restriction markers.
+- The narrowed content remains intact, just at shifted buffer positions.
+- No special handling required.
+
+** Indirect-of-Indirect (Chaining)
+
+- =buffer-base-buffer= ALWAYS returns the ROOT (never an intermediate
+  indirect buffer).
+- Narrowing is NOT inherited through chaining — new IB starts fully widened.
+- =clone=t= copies state from ROOT base buffer, not from intermediate.
+
+** after-change-functions Firing Order
+
+- Edit in IB: BOTH IB's and base's =before/after-change-functions= fire.
+- Order: =ib-before= → =base-before= → =ib-after= → =base-after=.
+- Edit in BASE: only base's hooks fire.
+- =(current-buffer)= inside hooks = the buffer where the edit happened.
+- *PITFALL*: base buffer hooks (auto-save, org-element cache) fire on IB
+  edits.  This can trigger unexpected behavior in the base buffer.
+
+** Overlays and Text Properties
+
+- Overlays are completely independent per buffer.
+- Base cannot see IB overlays and vice versa.
+- Text properties ARE shared (stored in =buffer_text.intervals=).
+- Overlay relocation IS synchronized across both buffers when text is
+  inserted/deleted.
+- =window= overlay property can restrict visibility to a specific window.
+
+** Modified Flag
+
+- Shared — cannot be set independently on base vs indirect.
+- =modiff= and =save_modiff= live in =struct buffer_text=.
+- =buffer-modified-tick= is also shared.
+- Cannot use the modification flag to distinguish which buffer caused
+  a change.
+
+* Functions Reference
+
+** Tracking Registry
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-ib--registry= | Hash table: buffer-name → plist (=:buffer :base :heading-marker :end-marker :tag=) |
+| =gptel-org-ib-register= (name ib base hm em tag) | Register indirect buffer in the tracking registry |
+| =gptel-org-ib-unregister= (name) | Remove entry from registry, clean up markers (set to nil) |
+| =gptel-org-ib-get= (name) | Look up registry entry by buffer name; returns plist or nil |
+| =gptel-org-ib-all-for-base= (base-buffer) | List all registered IB names for a given base buffer |
+| =gptel-org-ib-cleanup-dead= () | Remove entries for killed buffers; returns count removed |
+
+** Utility Functions
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-ib-base-buffer= (indirect-buffer) | Follow =buffer-base-buffer= chain to find root; returns self if not indirect |
+| =gptel-org-ib-heading-level= (indirect-buffer) | Org heading level of first heading at =point-min=; nil if dead or no heading |
+| =gptel-org-ib-heading-text= (indirect-buffer) | Raw heading text (via =org-get-heading=) of first heading; nil if dead |
+
+** Terminator Heading Management
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-ib-find-terminator= (keyword &optional bound) | Find terminator child heading matching KEYWORD in current subtree; returns position or nil |
+| =gptel-org-ib-create-terminator= (keyword &optional level) | Create terminator child heading at end of current subtree; returns marker |
+| =gptel-org-ib-ensure-terminator= (keyword) | Idempotent: find existing or create new terminator; returns marker |
+
+** Safe Heading Creation
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-ib-create-heading= (todo title &optional tags terminator) | Create child heading BEFORE the terminator heading; returns marker to new heading. This is the key innovation — the new heading is inserted on the line before the terminator, so existing sibling IBs are undisturbed |
+
+** Indirect Buffer Lifecycle
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-ib-create= (base-buffer heading-pos &optional name) | Central entry point: creates IB with clone=t, narrows to subtree, registers in tracking. Handles indirect-of-indirect (resolves to root), creates expanding end-marker, decouples fold state |
+| =gptel-org-ib-close= (indirect-buffer &optional fold) | Close IB: optionally fold subtree in base, unregister, clean markers, kill buffer. Also cleans up legacy =gptel-org-agent--narrow-end-marker= |
+| =gptel-org-ib-valid-p= (indirect-buffer) | Returns non-nil if IB is live, narrowed, has content, and starts with an org heading |
+
+** Recreation After Reorder
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-ib-recreate= (indirect-buffer) | Recreate IB after heading was moved: parse name → find new position → kill old → create new with same name. Returns new IB or nil |
+| =gptel-org-ib--find-heading-by-tag-and-hash= (base tag hash) | Search BASE-BUFFER for heading whose computed buffer name matches TAG and HASH |
+| =gptel-org-ib--parse-buffer-name= (buf-name) | Parse =*gptel:TAG-HASH*= into (TAG . HASH) cons cell |
+
+** Auto-correction
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-ib-validate-and-fix= (indirect-buffer) | Validate IB and auto-correct: detects collapsed narrowing → attempts recreate; checks heading at point-min, heading level, end-marker position. Returns t if valid (possibly after fix), nil if unrecoverable |
+| =gptel-org-ib-renarrow= (indirect-buffer) | Re-narrow IB to heading's current subtree bounds using registry markers. For shifted boundaries, NOT moved headings. Returns t on success |
+
+** High-level Convenience
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-ib-safe-insert-sibling= (todo title tags terminator) | All-in-one: ensure terminator → create heading before it → create IB narrowed to new heading. Returns the indirect buffer |
+
+** Internal Helpers
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-ib--terminator-regexp= (keyword level) | Build regexp matching a terminator heading at a specific level |
+| =gptel-org-ib--compute-subtree-region= (base-buf pos) | Compute (BEG . END) cons for subtree at POS in BASE-BUF |
+| =gptel-org-ib--extract-tag-at= (base-buf pos) | Extract agent tag from heading; falls back to ="agent"= |
+
+* Key Design Decisions
+
+1. *Terminator heading pattern*: Instead of relying on complex marker
+   arithmetic, a simple org heading serves as a boundary sentinel.
+   Inserting before it is a single, well-defined operation that preserves
+   all existing IB narrowing.
+
+2. *Registry for tracking*: A global hash table tracks all active IBs
+   with their metadata.  This enables cleanup, validation, and recreation
+   without walking the buffer.
+
+3. *Expanding end-marker (insertion-type=t)*: The end-of-subtree marker
+   automatically expands the narrowed region as streaming text is inserted.
+   This is the same technique used in =gptel-org-agent.el= but now
+   formalized in the registry.
+
+4. *Zombie detection over error handling*: When a heading is moved, the IB
+   becomes a zombie (empty narrowing) rather than raising an error.  The
+   module actively detects this condition (=point-min >= point-max=) and
+   triggers recreation.
+
+5. *Name-based recreation*: The =*gptel:TAG-HASH*= buffer name encodes
+   enough information to relocate a heading after it has been moved.  The
+   hash is derived from the outline path, so even after reorder the heading
+   can be found by recomputing the hash.
+
+6. *Complement, not replace*: The module does NOT replace existing
+   functions in =gptel-org-agent.el=.  It layers the terminator pattern
+   and registry on top.  The existing =open/close-indirect-buffer= functions
+   will eventually call into these functions for the terminator-aware path.
+
+7. *Idempotent terminator creation*: =gptel-org-ib-ensure-terminator= finds
+   an existing terminator or creates one.  Safe to call multiple times
+   without duplicating terminators.
+
+8. *Root buffer resolution*: =gptel-org-ib-base-buffer= always resolves to
+   the root base buffer, matching Emacs' own flattening behavior for
+   indirect-of-indirect chains.
+
+* Usage Examples
+
+** Creating a Safe Sibling Task
+
+#+begin_src elisp
+;; Point is on the AI-DOING parent heading in the base buffer
+(let ((ib (gptel-org-ib-safe-insert-sibling
+           "AI-DO"                  ; TODO keyword
+           "Research API options"   ; title
+           '("researcher@agent")   ; tags
+           "FEEDBACK")))           ; terminator keyword
+  ;; ib is now an indirect buffer narrowed to the new AI-DO subtree
+  ;; The FEEDBACK terminator was preserved as the last child
+  (with-current-buffer ib
+    ;; LLM can stream into this buffer safely
+    (goto-char (point-max))
+    (insert "Research findings...\n")))
+#+end_src
+
+** Handling a Reordered Heading
+
+#+begin_src elisp
+;; After org-move-subtree-down, check if IB is still valid
+(let ((ib (get-buffer "*gptel:researcher@agent-a1b2c3*")))
+  (unless (gptel-org-ib-valid-p ib)
+    ;; IB narrowing has collapsed — recreate at new position
+    (setq ib (gptel-org-ib-recreate ib))
+    (when ib
+      ;; Successfully recreated, continue using
+      (message "Recreated IB at new position"))))
+#+end_src
+
+** Validating and Auto-fixing All IBs for a Buffer
+
+#+begin_src elisp
+;; Clean up dead entries first
+(gptel-org-ib-cleanup-dead)
+
+;; Validate all IBs for a specific base buffer
+(dolist (name (gptel-org-ib-all-for-base (current-buffer)))
+  (let* ((entry (gptel-org-ib-get name))
+         (ib (plist-get entry :buffer)))
+    (unless (gptel-org-ib-validate-and-fix ib)
+      (message "Unrecoverable IB: %s" name)
+      (gptel-org-ib-close ib))))
+#+end_src
+
+** Step-by-step: Terminator + Heading + IB Creation
+
+#+begin_src elisp
+;; Low-level approach (gptel-org-ib-safe-insert-sibling does all of this)
+(save-excursion
+  (org-back-to-heading t)
+  ;; 1. Ensure terminator exists
+  (gptel-org-ib-ensure-terminator "FEEDBACK")
+
+  ;; 2. Create heading before the terminator
+  (let ((marker (gptel-org-ib-create-heading
+                 "AI-DO" "Analyze data" '("gatherer@agent") "FEEDBACK")))
+
+    ;; 3. Create indirect buffer for the new heading
+    (let ((ib (gptel-org-ib-create (current-buffer) marker)))
+      ;; ib is ready for use
+      ib)))
+#+end_src
+
+* Related Documents
+
+| Document | Feature |
+|----------+---------|
+| [[file:gptel-ai.org]] | gptel core architecture and API |
+| [[file:gptel-org-agent-ai.org]] | Agent subtrees (org indirect buffers, the module this complements) |
+| [[file:gptel-org-tasks-ai.org]] | Org tasks workflow (TODO transitions, model profiles) |

@@ -159,6 +159,11 @@ Legacy tag-based structure (deprecated, for reference):
   as streaming text is inserted
 - Buffer name format: =*gptel:TAG-HASH*= where HASH is a 6-character MD5
   derived from the outline path — allows multiple concurrent agents
+- *Terminator heading pattern*: each task's subtree is bounded by a terminator
+  child heading (FEEDBACK for AI-DOING, Results for AI-DO).  New siblings are
+  inserted BEFORE the terminator to avoid disturbing existing indirect buffers.
+  See [[file:gptel-indirect-buffer-ai.org]] for the full design, tracking registry,
+  and Emacs indirect buffer introspection reference.
 - All content inside the indirect buffer (AI responses, user prompts, sub-agent
   headings) lives at =agent-level + 1= — one level deeper than the agent heading
   itself.  This is computed by =gptel-org--compute-response-level=.
@@ -433,5 +438,6 @@ org-mode format with the correct heading level for the current context.
 |----------+---------|
 | [[file:gptel-ai.org]] | gptel core architecture and API |
 | [[file:gptel-org-tasks-ai.org]] | Org tasks workflow (TODO transitions, model profiles) |
+| [[file:gptel-indirect-buffer-ai.org]] | Indirect buffer management (terminator pattern, introspection) |
 | [[file:gptel-archive-ai.org]] | Archive with AI summaries |
 | [[file:gptel-remote-ai.org]] | Remote server tools (gptel-agent) |

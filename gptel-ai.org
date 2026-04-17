@@ -142,6 +142,7 @@ Handlers: =gptel-send--handlers= (state→function alist).
 | =gptel-org-tasks.el= | ~390 | AI task workflow: TODO transitions, model profiles via tags |
 | =gptel-org-archive.el= | ~590 | Archive with AI summaries: git tracking, two-phase workflow |
 | =gptel-org-agent.el= | ~1340 | Agent subtrees: indirect buffers, sub-agent delegation, format instructions, TodoWrite with FSM marker redirection |
+| =gptel-indirect-buffer.el= | ~740 | Indirect buffer management: terminator headings, safe sibling insertion, IB tracking registry, recreation after reorder |
 
 ** Other
 
@@ -334,6 +335,7 @@ See feature-specific documents for details:
 - *Context caching*: hash-based invalidation, tags =:cache_files:=, =:cache_summary:=
 - *Markdown→Org conversion*: streaming and non-streaming
 - *Agent subtrees*: per-agent indirect buffers, recursive delegation, context stripping
+- *Indirect buffer isolation*: terminator heading pattern prevents sibling task merging; tracking registry, safe insertion before terminators, recreation after reorder.  See [[file:gptel-indirect-buffer-ai.org]]
 - *Handover mechanism*: sub-agent can create a new =AI-DO= sibling heading instead of returning text, enabling triage→specialist escalation workflows.  See [[file:gptel-org-agent-ai.org::*Handover Mechanism]]
 - *Org format instructions*: dynamic prompt injection telling LLM to use org-mode formatting with correct heading levels, examples, and #+SEQ_TODO keywords.  See [[file:gptel-org-agent-ai.org::*Org Format Instructions]]
 - *AI/FEEDBACK TODO keywords*: role-based conversation structure using TODO keywords instead of tags.  The =FEEDBACK= keyword also drives the iterative task cycle (AI finishes → FEEDBACK → user sends → AI-DOING → ...).  See [[*Discussion Structure: AI/FEEDBACK Keywords]]
@@ -564,6 +566,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 | [[file:gptel-remote-ai.org]] | Remote server tools (gptel-agent) | exists |
 | [[file:gptel-org-tasks-ai.org]] | Org tasks workflow | exists |
 | [[file:gptel-org-agent-ai.org]] | Agent subtrees (org indirect buffers) | exists |
+| [[file:gptel-indirect-buffer-ai.org]] | Indirect buffer management (terminator pattern, introspection) | exists |
 | [[file:emacs-example-ai.org]] | Example AI task workflow | exists |
 
 * TODOs
