@@ -445,7 +445,7 @@ SWITCHES are diff arguments."
                 (funcall hideshow 'restore)
                 (remove-hook 'ediff-quit-hook gptel--ediff-restore))))
       (funcall hideshow)
-      (add-hook 'ediff-quit-hook gptel--ediff-restore)
+      (add-hook 'ediff-quit-hook gptel--ediff-restore 50)
       (let ((ediff-window-setup-function #'ediff-setup-windows-plain)
             (ediff-split-window-function #'split-window-horizontally))
         (ediff-buffers ov-buf newbuf)))))
