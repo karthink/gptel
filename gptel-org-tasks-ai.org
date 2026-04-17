@@ -61,14 +61,14 @@ AI-DO ──gptel-send──→ AI-DOING ──response complete──→ (clear
 
 ** State Transition Triggers
 
-| Transition | Trigger | Condition |
-|------------+---------+-----------|
-| AI-DO → AI-DOING | =gptel-send= | =gptel-org-tasks-change-state-on-send= is non-nil |
-| AI-DOING → FEEDBACK | Response complete | =gptel-org-use-todo-keywords= enabled |
-| AI-DOING → (cleared) | Response complete | Legacy mode (keyword mode disabled) |
-| FEEDBACK → AI-DOING | =gptel-send= | User sends from FEEDBACK heading (keyword mode) |
-| AI-DOING → CANCELED | =gptel-abort= | Active task marker exists |
-| Any → DONE | Manual | User ends the feedback cycle |
+| Transition           | Trigger           | Condition                                         |
+|----------------------+-------------------+---------------------------------------------------|
+| AI-DO → AI-DOING     | =gptel-send=      | =gptel-org-tasks-change-state-on-send= is non-nil |
+| AI-DOING → FEEDBACK  | Response complete | =gptel-org-use-todo-keywords= enabled             |
+| AI-DOING → (cleared) | Response complete | Legacy mode (keyword mode disabled)               |
+| FEEDBACK → AI-DOING  | =gptel-send=      | User sends from FEEDBACK heading (keyword mode)   |
+| AI-DOING → CANCELED  | =gptel-abort=     | Active task marker exists                         |
+| Any → DONE           | Manual            | User ends the feedback cycle                      |
 
 * Model Profiles via Tags
 
