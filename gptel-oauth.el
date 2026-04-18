@@ -15,9 +15,10 @@
 
 ;;; Commentary:
 
-;; Provides common OAuth 2.0 device flow utilities, an HTTP client with
-;; status-code introspection, and token persistence used across gptel
-;; backends (GitHub Copilot, ...).
+;; Provides common OAuth 2.0 utilities for gptel backends: device flow
+;; prompting, PKCE (RFC 7636), base64url encoding, URL parameter encoding,
+;; JWT payload parsing, browser authorization-code flow, and token
+;; persistence.
 
 ;;; Code:
 
@@ -26,8 +27,7 @@
 (require 'url-http)
 (eval-and-compile (require 'gptel-request))
 
-(declare-function gptel--json-encode "gptel-request")
-(declare-function gptel--json-read "gptel-request")
+;;; Token Storage
 
 (defun gptel-oauth-save-token (file token)
   "Save TOKEN plist to FILE."
@@ -51,6 +51,38 @@
             (read (current-buffer))
           (error nil))))))
 
+;;; PKCE Implementation
+
+(defun gptel-oauth-base64url-encode (str)
+  "Base64url-encode raw string STR (no padding)."
+  (let ((b64 (base64-encode-string str t)))
+    (setq b64 (replace-regexp-in-string "+" "-" b64))
+    (setq b64 (replace-regexp-in-string "/" "_" b64))
+    (replace-regexp-in-string "=+$" "" b64)))
+
+(defun gptel-oauth-base64url-decode (str)
+  "Decode Base64URL string STR, adding padding if necessary."
+  (let* ((s (replace-regexp-in-string "-" "+" str))
+         (s (replace-regexp-in-string "_" "/" s))
+         (pad (% (length s) 4)))
+    (when (> pad 0)
+      (setq s (concat s (make-string (- 4 pad) ?=))))
+    (decode-coding-string (base64-decode-string s) 'utf-8 t)))
+
+(defun gptel-oauth-generate-code-verifier ()
+  "Generate PKCE code verifier using Emacs' `random'."
+  (let ((chars "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"))
+    (apply #'string
+           (cl-loop repeat 128
+                    collect (aref chars (random (length chars)))))))
+
+(defun gptel-oauth-generate-code-challenge (verifier)
+  "Generate PKCE code challenge from VERIFIER."
+  (gptel-oauth-base64url-encode
+   (secure-hash 'sha256 verifier nil nil t)))
+
+;;; OAuth Flow
+
 (defun gptel-oauth-device-auth-prompt (user-code verification-uri)
   "Prompt the user to authorize the device flow using USER-CODE and VERIFICATION-URI.
 Copies USER-CODE to the clipboard and conditionally opens a browser."
@@ -70,48 +102,27 @@ Copies USER-CODE to the clipboard and conditionally opens a browser."
       (browse-url verification-uri)
       (read-from-minibuffer "Press ENTER after authorizing. "))))
 
-(cl-defun gptel-oauth-request (url &key (method 'post) data content-type headers)
-  "Retrieve URL synchronously and return (:status N :body PLIST :raw STRING).
+;;; URL / JWT helpers
 
-METHOD is a symbol, typically 'get or 'post.
-CONTENT-TYPE defaults to \"application/json\".  When CONTENT-TYPE is
-\"application/x-www-form-urlencoded\", DATA should be an already-encoded string.
-When CONTENT-TYPE is \"application/json\", DATA should be a plist.
-HEADERS is an alist of additional headers."
-  (let* ((content-type (or content-type "application/json"))
-         (url-request-method (upcase (symbol-name method)))
-         (url-request-data
-          (when data
-            (encode-coding-string
-             (cond
-              ((string-prefix-p "application/json" content-type)
-               (gptel--json-encode data))
-              (t data))
-             'utf-8)))
-         (url-request-extra-headers
-          `(("Content-Type" . ,content-type)
-            ("Accept" . "application/json")
-            ,@headers))
-         (url-mime-accept-string "application/json")
-         (buf (url-retrieve-synchronously url 'silent)))
-    (unwind-protect
-        (if (not (buffer-live-p buf))
-            (list :status nil :body nil :raw "")
-          (with-current-buffer buf
-            (let ((status (bound-and-true-p url-http-response-status))
-                  (raw-body "")
-                  (parsed nil))
-              (when (bound-and-true-p url-http-end-of-headers)
-                (goto-char url-http-end-of-headers)
-                (setq raw-body (buffer-substring-no-properties (point) (point-max)))
-                (condition-case nil
-                    (progn
-                      (goto-char url-http-end-of-headers)
-                      (setq parsed (gptel--json-read)))
-                  (error nil)))
-              (list :status status :body parsed :raw raw-body))))
-      (when (buffer-live-p buf)
-        (kill-buffer buf)))))
+(defun gptel-oauth-jwt-payload (jwt-string)
+  "Parse the payload of JWT-STRING and return it as a plist.
+Returns nil if parsing fails."
+  (condition-case nil
+      (let* ((parts (split-string jwt-string "\\."))
+             (payload (nth 1 parts)))
+        (when payload
+          (gptel--json-read-string
+           (gptel-oauth-base64url-decode payload))))
+    (error nil)))
+
+(defun gptel-oauth-url-encode-params (params)
+  "Encode PARAMS alist as application/x-www-form-urlencoded string.
+PARAMS is an alist of (KEY . VALUE) string pairs."
+  (mapconcat (lambda (pair)
+               (concat (url-hexify-string (car pair))
+                       "="
+                       (url-hexify-string (cdr pair))))
+             params "&"))
 
 (provide 'gptel-oauth)
 
