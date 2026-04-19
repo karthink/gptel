@@ -308,8 +308,9 @@ files with GPTEL_* properties."
   :group 'gptel)
 
 ;; Reasoning blocks in org-mode always use indirect buffers.
-;; A side window shows reasoning content live during streaming,
-;; and is automatically closed when the response completes.
+;; The indirect buffer is not displayed — it exists only as an
+;; isolated write target, and is automatically closed when the
+;; response completes.
 
 (defcustom gptel-org-infer-bounds-from-tags t
   "Infer assistant/user message bounds from org heading tags.
@@ -2393,14 +2394,15 @@ positions of the response."
 (defun gptel-org--reasoning-create-indirect-buffer (reasoning-heading-pos)
   "Create an indirect buffer for the REASONING heading at REASONING-HEADING-POS.
 
-Creates an indirect buffer narrowed to the REASONING subtree and
-displays it in a side window.  The buffer auto-expands as streaming
-content is inserted.
+Creates an indirect buffer narrowed to the REASONING subtree.  The
+buffer auto-expands as streaming content is inserted.  The buffer is
+not displayed in any window — it exists only as an isolated write
+target for streaming reasoning content.
 
 Delegates buffer creation to `gptel-org-ib-create' for consistent
 indirect buffer management (fold decoupling, end-marker, registry
-tracking).  Applies reasoning-specific setup: read-only mode,
-subtree unfolding, side window display.
+tracking).  Applies reasoning-specific setup: read-only mode and
+subtree unfolding.
 
 Returns the indirect buffer, or nil if creation failed."
   (gptel-org--debug
@@ -2440,14 +2442,6 @@ Returns the indirect buffer, or nil if creation failed."
                                       this-buf)
                               (setq gptel-org--reasoning-indirect-buffer nil))))))
                     nil t))
-        ;; Display in side window
-        (gptel-org--debug "reasoning IB create: displaying in side window")
-        (display-buffer indirect-buf
-                        '((display-buffer-in-side-window)
-                          (side . bottom)
-                          (slot . 0)
-                          (window-height . 0.3)
-                          (preserve-size . (nil . t))))
         ;; Store reference in base buffer
         (with-current-buffer base-buf
           (setq gptel-org--reasoning-indirect-buffer indirect-buf))
@@ -2465,8 +2459,7 @@ Returns the indirect buffer, or nil if creation failed."
   "Close the reasoning indirect buffer if one exists.
 
 Delegates cleanup to `gptel-org-ib-close' for consistent marker and
-registry cleanup.  Handles the reasoning-specific side window
-deletion and tracking variable reset.
+registry cleanup.  Handles the tracking variable reset.
 
 Safe to call even if no reasoning buffer exists."
   (gptel-org--debug
@@ -2479,11 +2472,7 @@ Safe to call even if no reasoning buffer exists."
   (when-let* ((ib gptel-org--reasoning-indirect-buffer)
               ((buffer-live-p ib)))
     (gptel-org--debug
-     "reasoning IB close: closing %S, window=%S"
-     (buffer-name ib) (get-buffer-window ib t))
-    ;; Delete the side window showing the buffer (if any)
-    (when-let* ((win (get-buffer-window ib t)))
-      (delete-window win))
+     "reasoning IB close: closing %S" (buffer-name ib))
     ;; Delegate cleanup to the indirect buffer module
     ;; (handles unregister, marker cleanup, kill)
     (gptel-org-ib-close ib))

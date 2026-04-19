@@ -49,10 +49,10 @@ mode (=gptel-org-reasoning-display= set to ='indirect-buffer=):
 
 - =gptel-org--reasoning-create-indirect-buffer= → delegates to
   =gptel-org-ib-create= with a custom buffer name =*gptel-reasoning:BASE*=,
-  then applies reasoning-specific setup (read-only, unfold subtree, side
-  window display)
-- =gptel-org--reasoning-close-indirect-buffer= → deletes the side window,
-  then delegates cleanup to =gptel-org-ib-close=
+  then applies reasoning-specific setup (read-only, unfold subtree).
+  The buffer is not displayed in any window.
+- =gptel-org--reasoning-close-indirect-buffer= → delegates cleanup to
+  =gptel-org-ib-close=
 - The =gptel-org--reasoning-indirect-buffer= buffer-local variable is
   retained as a fast reference, but the module's registry is the source
   of truth for marker tracking
@@ -259,16 +259,16 @@ After =gptel-org-ib-create= returns, the reasoning wrapper applies:
 - Unfolds the REASONING heading so content is visible (=org-fold-subtree nil=)
 - Sets =buffer-read-only t= (content comes from streaming, user shouldn't edit)
 - Adds =kill-buffer-hook= to clear =gptel-org--reasoning-indirect-buffer= in the
-  base buffer if the user kills the reasoning window manually
-- Displays the buffer in a side window (bottom, 30% height)
+  base buffer if the user kills the buffer externally
 - Stores the IB reference in =gptel-org--reasoning-indirect-buffer= for quick
   access by the streaming code
+- The buffer is *not displayed* in any window — like agent IBs, it exists
+  only as an isolated write target
 
 *** reasoning-close → gptel-org-ib-close
 
-=gptel-org--reasoning-close-indirect-buffer= first deletes the side window
-(reasoning-specific), then delegates core cleanup to =gptel-org-ib-close=
-which handles:
+=gptel-org--reasoning-close-indirect-buffer= delegates cleanup to
+=gptel-org-ib-close= which handles:
 - Removing the buffer from the tracking registry
 - Cleaning up markers (heading marker, end-marker)
 - Killing the indirect buffer
@@ -283,7 +283,8 @@ The reasoning IB is simpler than agent IBs:
   with sibling children)
 - No auto-correct or recreation (the heading doesn't move during streaming)
 - Read-only (user doesn't edit reasoning content)
-- Side window display (agent IBs are not displayed)
+- Not displayed in any window (same as agent IBs — exists only as an
+  isolated write target for streaming content)
 - Short-lived (exists only during streaming, closed on completion or error)
 
 * Emacs Indirect Buffer Internals
