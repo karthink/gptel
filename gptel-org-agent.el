@@ -751,6 +751,9 @@ SEQ_TODO is the optional #+SEQ_TODO line from the buffer."
          "Use #+begin_src/#+end_src for code blocks (not markdown fences).\n"
          "Inside #+begin_example blocks, escape lines starting with * or #+ by prefixing with a comma.\n"
          "REMEMBER! Org strips the leading comma on export.\n"
+         "IMPORTANT: Write your response as plain org-mode text directly.\n"
+         "Do NOT wrap your entire response inside #+begin_src, #+begin_example, or any other block.\n"
+         "Only use #+begin_src blocks for actual code snippets within your response.\n"
          (if seq-todo
              (format "The document uses these TODO keywords: %s\n" seq-todo)
            "")
@@ -784,6 +787,9 @@ SEQ_TODO is the optional #+SEQ_TODO line from the buffer."
        "Use #+begin_src/#+end_src for code blocks (not markdown fences).\n"
        "Inside #+begin_example blocks, escape lines starting with * or #+ by prefixing with a comma.\n"
        "REMEMBER! Org strips the leading comma on export.\n"
+       "IMPORTANT: Write your response as plain org-mode text directly.\n"
+       "Do NOT wrap your entire response inside #+begin_src, #+begin_example, or any other block.\n"
+       "Only use #+begin_src blocks for actual code snippets within your response.\n"
        (if seq-todo
            (format "The document uses these TODO keywords: %s\n" seq-todo)
          "")
