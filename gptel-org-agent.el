@@ -1143,12 +1143,15 @@ org-mode, or we can't find a heading context to create the subtree."
                          base-buffer heading-marker)))
               ;; Create new subtree using terminator-aware insertion.
               ;; This ensures the heading is placed BEFORE the terminator
-              ;; (e.g., FEEDBACK), so existing sibling indirect buffers
-              ;; are not disturbed.
+              ;; (e.g., FEEDBACK or Results), so existing sibling indirect
+              ;; buffers are not disturbed.
+              ;; Sub-agents (parent-tag non-nil) use "Results" terminator;
+              ;; top-level agents use FEEDBACK (or user's custom keyword).
               (let ((terminator-keyword
-                     (if (bound-and-true-p gptel-org-user-keyword)
-                         gptel-org-user-keyword
-                       "FEEDBACK")))
+                     (if parent-tag
+                         "Results"
+                       (or (bound-and-true-p gptel-org-user-keyword)
+                           "FEEDBACK"))))
                 (gptel-org--debug
                  "org-agent setup-task-subtree: creating new subtree via safe-insert-sibling (terminator=%S)"
                  terminator-keyword)
