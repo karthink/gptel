@@ -57,6 +57,8 @@
 
 ** New models and backends
 
+- Anthropic backend: Add support for =claude-opus-4.7=.
+
 - xAI backend: Add support for =grok-4-1-fast-reasoning=,
   =grok-4-1-fast-non-reasoning=, =grok-4-fast-reasoning=, and
   =grok-4-fast-non-reasoning=.
@@ -66,10 +68,10 @@
   =gemini-3.1-pro-preview=, =gpt-5.3-codex=, =gpt-5.4=, and
   =gpt-5.4-mini=.
 
-- Gemini backend: add support for =gemini-3.1-flash-lite-preview=;
+- Gemini backend: Add support for =gemini-3.1-flash-lite-preview=;
   add deprecation notice for =gemini-3-pro-preview=.
 
-- OpenAI backend: add support for =gpt-5.3-chat-latest=, =gpt-5.4=,
+- OpenAI backend: Add support for =gpt-5.3-chat-latest=, =gpt-5.4=,
   =gpt-5.4-pro=, =gpt-5.4-mini=, =gpt-5.4-nano=. =gpt-5.2=,
   =gpt-5-mini=, =gpt-5-nano= and =o3-pro=.
 
