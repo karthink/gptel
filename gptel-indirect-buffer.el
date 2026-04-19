@@ -225,32 +225,24 @@ Point is moved to the user-level heading on success."
       (point))))
 
 (defun gptel-org-ib-resolve-agent-heading (indirect-buffer)
-  "Return the position of the agent heading for INDIRECT-BUFFER in its base.
+  "Return the position of the agent heading for INDIRECT-BUFFER.
 
 In an indirect buffer, `point-min' IS the agent heading.  This function
 resolves that position in the base buffer context.
 
-When INDIRECT-BUFFER is a base buffer, searches backward from point-max
-for the first heading with an agent tag.
-
-Returns the position in the base buffer, or nil if not found."
+INDIRECT-BUFFER must be an actual indirect buffer.  Returns the
+position, or nil if not found or if called with a non-indirect buffer."
   (if (buffer-base-buffer indirect-buffer)
       ;; Indirect buffer: point-min is the agent heading
       (with-current-buffer indirect-buffer
         (save-excursion
           (goto-char (point-min))
           (when (org-at-heading-p) (point))))
-    ;; Base buffer fallback: search backward for an agent heading
-    (with-current-buffer indirect-buffer
-      (save-excursion
-        (goto-char (point-max))
-        (let ((found nil))
-          (while (and (not found)
-                      (re-search-backward org-heading-regexp nil t))
-            (when (cl-some #'gptel-org-agent--agent-tag-p
-                           (org-get-tags nil t))
-              (setq found t)))
-          (when found (point)))))))
+    ;; Not an indirect buffer — caller error
+    (gptel-org--debug
+     "org-ib resolve-agent-heading: called with non-indirect buffer %S"
+     (buffer-name indirect-buffer))
+    nil))
 
 
 ;;; ---- Terminator Heading Management ----------------------------------------
@@ -535,10 +527,12 @@ and kills the buffer."
   (when (buffer-live-p indirect-buffer)
     (let* ((buf-name (buffer-name indirect-buffer))
            (entry (gptel-org-ib-get buf-name))
-           (base-buf (or (plist-get entry :base)
-                         (gptel-org-ib-base-buffer indirect-buffer)))
+           (base-buf (plist-get entry :base))
            (subtree-start (with-current-buffer indirect-buffer
                             (point-min))))
+      (unless entry
+        (gptel-org--debug
+         "org-ib close: WARNING buffer %S not in registry" buf-name))
       (gptel-org--debug "org-ib close: closing %S (fold=%s)" buf-name fold)
       ;; Optionally fold the completed subtree in the base buffer
       (when (and fold (buffer-live-p base-buf))
@@ -644,9 +638,12 @@ found (e.g., it was deleted rather than moved)."
     (cl-return-from gptel-org-ib-recreate nil))
   (let* ((buf-name (buffer-name indirect-buffer))
          (entry (gptel-org-ib-get buf-name))
-         (base-buf (or (plist-get entry :base)
-                       (gptel-org-ib-base-buffer indirect-buffer)))
+         (base-buf (plist-get entry :base))
          (parsed (gptel-org-ib--parse-buffer-name buf-name)))
+    (unless base-buf
+      (gptel-org--debug
+       "org-ib recreate: no registry entry for %S, cannot recreate" buf-name)
+      (cl-return-from gptel-org-ib-recreate nil))
     (unless parsed
       (gptel-org--debug "org-ib recreate: cannot parse buffer name %S" buf-name)
       (cl-return-from gptel-org-ib-recreate nil))
@@ -749,8 +746,7 @@ Returns t on success, nil on failure."
     (cl-return-from gptel-org-ib-renarrow nil))
   (let* ((buf-name (buffer-name indirect-buffer))
          (entry (gptel-org-ib-get buf-name))
-         (base-buf (or (plist-get entry :base)
-                       (gptel-org-ib-base-buffer indirect-buffer)))
+         (base-buf (plist-get entry :base))
          (heading-marker (plist-get entry :heading-marker))
          (end-marker (plist-get entry :end-marker)))
     ;; Validate we have what we need

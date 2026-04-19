@@ -536,9 +536,8 @@ and buffer killing.  Additionally folds TOOL and REASONING child
 headings when FOLD is requested."
   (when (buffer-live-p indirect-buffer)
     (let* ((buf-name (buffer-name indirect-buffer))
-           (base-buf (or (buffer-base-buffer indirect-buffer)
-                         indirect-buffer))
            (entry (gptel-org-ib-get buf-name))
+           (base-buf (plist-get entry :base))
            (end-marker (or (plist-get entry :end-marker)
                            (ignore-errors
                              (buffer-local-value
