@@ -2180,6 +2180,19 @@ overlay in the query buffer."
             (mapconcat (lambda (name) (propertize name 'face 'font-lock-keyword-face))
                        names (propertize ", " 'face 'mode-line-emphasis))
             (propertize ")" 'face 'mode-line-emphasis)))))))
+  ;; Clear the overlays first, because we need the buffer to be cleaned up
+  ;; before inserting synchronous tool results.
+  (when (and (overlayp ov) (overlay-buffer ov))
+    (with-current-buffer (overlay-buffer ov)
+      (when-let* ((preview-handles (overlay-get ov 'previews)))
+        (dolist (func-to-handle preview-handles)
+          (when (car func-to-handle) (apply func-to-handle))))
+      (dolist (prompt-ov (overlay-get ov 'prompt))
+        (when-let* (((overlay-buffer prompt-ov))
+                    (inhibit-read-only t))
+          (delete-region (overlay-start prompt-ov)
+                         (overlay-end prompt-ov)))))
+    (delete-overlay ov))
   (message "Continuing query...")
   (cl-loop for (tool-spec arg-plist process-tool-result) in tool-calls
            for arg-values = (gptel--map-tool-args tool-spec arg-plist)
@@ -2191,18 +2204,7 @@ overlay in the query buffer."
                     (condition-case errdata
                         (apply (gptel-tool-function tool-spec) arg-values)
                       (error (mapconcat #'gptel--to-string errdata " ")))))
-               (funcall process-tool-result result))))
-  (when (and (overlayp ov) (overlay-buffer ov))
-    (with-current-buffer (overlay-buffer ov)
-      (when-let* ((preview-handles (overlay-get ov 'previews)))
-        (dolist (func-to-handle preview-handles)
-          (when (car func-to-handle) (apply func-to-handle))))
-      (dolist (prompt-ov (overlay-get ov 'prompt))
-        (when-let* (((overlay-buffer prompt-ov))
-                    (inhibit-read-only t))
-          (delete-region (overlay-start prompt-ov)
-                         (overlay-end prompt-ov)))))
-    (delete-overlay ov)))
+               (funcall process-tool-result result)))))
 
 (defun gptel--reject-tool-calls (&optional _tool-calls ov)
   "Cancel pending tool-calls.
