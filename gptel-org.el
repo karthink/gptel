@@ -1968,19 +1968,17 @@ to be children of it."
                       "adjust-headings: found heading at level %d, line %d"
                       level (line-number-at-pos))
                      level)
-                 ;; No heading before beg — check the first heading
-                 ;; in the buffer (for agent indirect buffers where
-                 ;; the agent heading is at point-min).
+                 ;; No heading before beg — in an agent indirect buffer,
+                 ;; point-min IS the agent heading.  Use it directly.
                  (goto-char (point-min))
-                 (if (re-search-forward org-outline-regexp-bol beg t)
+                 (if (org-at-heading-p)
                      (let ((level (org-outline-level)))
                        (gptel-org--debug
-                        "adjust-headings: using first heading at level %d as reference"
+                        "adjust-headings: using agent heading at point-min, level %d"
                         level)
                        level)
                    (gptel-org--debug
-                    "adjust-headings: no heading found before beg=%d, using level 1"
-                    beg)
+                    "adjust-headings: no heading at point-min, using level 1")
                    1))))
             (min-response-level nil))
         (gptel-org--debug

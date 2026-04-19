@@ -257,84 +257,87 @@ Return a marker to the newly created heading."
 (defun gptel-org-agent--create-handover-heading (body description)
   "Create a new AI-DO sibling heading for a handover task.
 
-Navigate from the end of the buffer backwards to find the current
-agent subtree heading, then go to its parent task heading.  Insert a
-new child heading under that parent with TODO keyword AI-DO and
-DESCRIPTION as the heading text.  BODY is inserted as the heading
-content.
+When called from an agent indirect buffer, use `point-min' to locate
+the agent heading, then switch to the base buffer to find its parent
+task heading and insert the new sibling there.
 
-This is used by the handover mechanism: when a triage agent hands
-over to a specialist, the handover agent's output becomes a new
-AI-DO task heading that can be picked up by the scheduler or user.
+BODY is inserted as the heading content.  DESCRIPTION becomes the
+heading title with TODO keyword AI-DO.
 
 Returns the heading text of the created heading, or nil on failure."
-  (save-excursion
-    ;; Find an agent heading by searching backwards
-    (goto-char (point-max))
-    (let ((found nil))
-      (while (and (not found)
-                  (re-search-backward org-heading-regexp nil t))
-        (let ((tags (org-get-tags nil t)))
-          (when (cl-some #'gptel-org-agent--agent-tag-p tags)
-            ;; Found an agent heading — go up to its parent (the task heading)
-            (when (> (org-current-level) 1)
-              (org-up-heading-safe)
-              (setq found t)))))
-      (when found
-        (let* ((inhibit-read-only t)
-               (parent-level (org-current-level))
-               (child-level (1+ parent-level))
-               (stars (make-string child-level ?*))
-               (todo-keyword (gptel-org-agent--status-to-keyword "pending"))
-               (heading-text (format "%s %s %s" stars todo-keyword description)))
-          ;; Go to end of parent subtree to insert as last child
-          (org-end-of-subtree t)
-          (unless (bolp) (insert "\n"))
-          ;; Insert the heading
-          (insert heading-text "\n")
-          ;; Insert the body content
-          (when (and body (not (string-empty-p body)))
-            (insert body)
-            (unless (string-suffix-p "\n" body)
-              (insert "\n")))
-          heading-text)))))
+  (let* ((base-buf (or (buffer-base-buffer (current-buffer))
+                       (current-buffer)))
+         ;; In an indirect buffer, point-min IS the agent heading.
+         ;; In the base buffer, search for it.
+         (agent-heading-pos
+          (if (buffer-base-buffer (current-buffer))
+              (save-excursion
+                (goto-char (point-min))
+                (when (org-at-heading-p) (point)))
+            ;; Fallback for base buffer context: search backward
+            (save-excursion
+              (goto-char (point-max))
+              (let ((found nil))
+                (while (and (not found)
+                            (re-search-backward org-heading-regexp nil t))
+                  (when (cl-some #'gptel-org-agent--agent-tag-p
+                                 (org-get-tags nil t))
+                    (setq found t)))
+                (when found (point)))))))
+    (when agent-heading-pos
+      (with-current-buffer base-buf
+        (save-excursion
+          (goto-char agent-heading-pos)
+          ;; Go up to the parent (task heading)
+          (when (and (> (org-current-level) 1)
+                     (org-up-heading-safe))
+            (let* ((inhibit-read-only t)
+                   (parent-level (org-current-level))
+                   (child-level (1+ parent-level))
+                   (stars (make-string child-level ?*))
+                   (todo-keyword (gptel-org-agent--status-to-keyword "pending"))
+                   (heading-text (format "%s %s %s" stars todo-keyword description)))
+              ;; Go to end of parent subtree to insert as last child
+              (org-end-of-subtree t)
+              (unless (bolp) (insert "\n"))
+              ;; Insert the heading
+              (insert heading-text "\n")
+              ;; Insert the body content
+              (when (and body (not (string-empty-p body)))
+                (insert body)
+                (unless (string-suffix-p "\n" body)
+                  (insert "\n")))
+              heading-text)))))))
 
 (defun gptel-org-agent--extract-parent-context ()
   "Extract the full text of the parent TODO heading for handover context.
 
-When called from an agent indirect buffer, navigate to the base buffer,
-find the parent heading of the current agent subtree, and return its
-full subtree content as a string.
+When called from an agent indirect buffer, use `point-min' to locate
+the agent heading, then navigate to its parent in the base buffer and
+return the parent's full subtree content as a string.
 
 This is used by the handover mechanism: the handover agent needs to read
 all the triage agent's findings, which are written under the parent
 TODO heading.  Returns nil if the context cannot be extracted."
   (let ((base-buf (buffer-base-buffer (current-buffer))))
     (when (and base-buf (buffer-live-p base-buf))
-      (let ((agent-tag (gptel-org-agent--current-agent-tag)))
-        (when agent-tag
+      ;; In an indirect buffer, point-min IS the agent heading.
+      ;; Its position in the base buffer is the same (shared text).
+      (let ((agent-heading-pos
+             (save-excursion
+               (goto-char (point-min))
+               (when (org-at-heading-p) (point)))))
+        (when agent-heading-pos
           (with-current-buffer base-buf
             (save-excursion
-              (goto-char (point-min))
-              ;; Find the heading with our agent tag
-              (let ((found nil))
-                (while (and (not found)
-                            (re-search-forward org-heading-regexp nil t))
-                  (beginning-of-line)
-                  (let ((tags (org-get-tags nil t)))
-                    (when (cl-some (lambda (tg)
-                                     (string-equal-ignore-case tg agent-tag))
-                                   tags)
-                      (setq found t)))
-                  (unless found (forward-line 1)))
-                (when found
-                  ;; Go up to the parent heading (the task heading)
-                  (when (org-up-heading-safe)
-                    (let ((beg (point))
-                          (end (save-excursion
-                                 (org-end-of-subtree t)
-                                 (point))))
-                      (buffer-substring-no-properties beg end))))))))))))
+              (goto-char agent-heading-pos)
+              ;; Go up to the parent heading (the task heading)
+              (when (org-up-heading-safe)
+                (let ((beg (point))
+                      (end (save-excursion
+                             (org-end-of-subtree t)
+                             (point))))
+                  (buffer-substring-no-properties beg end))))))))))
 
 (defun gptel-org-agent--indirect-buffer-name (base-buffer heading-pos tag)
   "Compute a unique indirect buffer name for an agent subtree.
@@ -405,6 +408,20 @@ Stored for cleanup in `gptel-org-agent--close-indirect-buffer'.")
   "Parent indirect buffer when this is a TodoWrite sub-task buffer.
 Set by `gptel-org-agent--redirect-markers-to-heading' so the FSM can
 be restored to the parent buffer when the sub-task completes.")
+
+
+(defun gptel-org-agent--make-insertion-marker (buffer)
+  "Create an insertion-type marker at the end of BUFFER's content.
+Position at end of the last non-empty line in BUFFER, create a marker
+with insertion-type t so it advances as text is appended.  This is the
+standard way to set up the FSM's `:position' marker in an indirect buffer."
+  (with-current-buffer buffer
+    (goto-char (point-max))
+    (skip-chars-backward "\n")
+    (end-of-line)
+    (let ((m (point-marker)))
+      (set-marker-insertion-type m t)
+      m)))
 
 (defun gptel-org-agent--close-indirect-buffer (indirect-buffer &optional fold)
   "Close INDIRECT-BUFFER and clean up associated resources.
@@ -644,10 +661,8 @@ indirect buffer (identified by `buffer-base-buffer' returning non-nil)."
       (when-let* ((indirect-buf
                    (with-current-buffer orig-buffer
                      (gptel-org-agent--maybe-setup-subtree preset))))
-        (with-current-buffer indirect-buf
-          (goto-char (point-max))
-          (let ((pos-marker (point-marker)))
-            (set-marker-insertion-type pos-marker t)
+        (let ((pos-marker (gptel-org-agent--make-insertion-marker indirect-buf)))
+          (with-current-buffer indirect-buf
             ;; Ensure gptel-mode is active for proper response formatting
             (unless (bound-and-true-p gptel-mode)
               (setq-local gptel-mode t))
@@ -1157,19 +1172,12 @@ org-mode, or we can't find a heading context to create the subtree."
             ;; Create a position marker inside the indirect buffer.
             ;; This is where the LLM response will start being inserted.
             (when indirect-buf
+              ;; Ensure gptel-mode is active for proper heading insertion.
+              (with-current-buffer indirect-buf
+                (unless gptel-mode
+                  (setq-local gptel-mode t)))
               (let ((pos-marker
-                     (with-current-buffer indirect-buf
-                       ;; Ensure gptel-mode is active for proper heading insertion.
-                       (unless gptel-mode
-                         (setq-local gptel-mode t))
-                       ;; Position at end of buffer content (after heading line).
-                       (goto-char (point-max))
-                       ;; Back up past any trailing newlines to be at real content end
-                       (skip-chars-backward "\n")
-                       (end-of-line)
-                       (let ((m (point-marker)))
-                         (set-marker-insertion-type m t)
-                         m))))
+                     (gptel-org-agent--make-insertion-marker indirect-buf)))
                 (gptel-org--debug
                  "org-agent setup-task-subtree: CREATED indirect=%S pos=%d ref-level=%S base=%S tag=%S"
                  (buffer-name indirect-buf) (marker-position pos-marker)
@@ -1420,13 +1428,7 @@ Accesses the FSM via `gptel--fsm-last' which is buffer-local."
               base-buffer heading-marker)))
         ;; Create position marker inside the sub-task indirect buffer
         (let ((pos-marker
-               (with-current-buffer sub-indirect-buf
-                 (goto-char (point-max))
-                 (skip-chars-backward "\n")
-                 (end-of-line)
-                 (let ((m (point-marker)))
-                   (set-marker-insertion-type m t)
-                   m))))
+               (gptel-org-agent--make-insertion-marker sub-indirect-buf)))
           ;; Save parent buffer reference for restoration
           (with-current-buffer sub-indirect-buf
             (setq-local gptel-org-agent--parent-indirect-buffer parent-buffer))
@@ -1466,13 +1468,7 @@ Returns the parent buffer if a restore was performed, nil otherwise."
              (buffer-local-value 'gptel-org--ref-level parent-buf))
             ;; Create new position marker in parent buffer at end of content
             (let ((pos-marker
-                   (with-current-buffer parent-buf
-                     (goto-char (point-max))
-                     (skip-chars-backward "\n")
-                     (end-of-line)
-                     (let ((m (point-marker)))
-                       (set-marker-insertion-type m t)
-                       m))))
+                   (gptel-org-agent--make-insertion-marker parent-buf)))
               ;; Restore FSM to parent buffer
               (plist-put info :buffer parent-buf)
               (plist-put info :position pos-marker)
@@ -1786,17 +1782,15 @@ INFO is the FSM info plist."
         ;;
         ;; Falls back to `gptel-org--compute-response-level' (which
         ;; always returns agent-level+1 from point-min) when ref-level
-        ;; is not set, and finally to navigating from start-marker.
+        ;; is not set, and finally to point-min (the agent heading in IB).
         (let* ((pending-level (or (bound-and-true-p gptel-org--ref-level)
                                   (gptel-org--compute-response-level)
-                                  ;; Fallback: navigate from start-marker
+                                  ;; Fallback: use point-min (agent heading in IB)
                                   (save-excursion
-                                    (goto-char start-marker)
-                                    (unless (org-at-heading-p)
-                                      (ignore-errors (org-back-to-heading t)))
-                                    (or (and (org-at-heading-p)
-                                             (org-current-level))
-                                        1))))
+                                    (goto-char (point-min))
+                                    (if (org-at-heading-p)
+                                        (1+ (org-current-level))
+                                      1))))
                (stars (make-string pending-level ?*))
                (inhibit-read-only t)
                ;; Suppress the auto-corrector during insertion.

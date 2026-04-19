@@ -589,3 +589,83 @@ This is the scenario that motivates =gptel-org-ib-recreate=:
 | [[file:gptel-ai.org]] | gptel core architecture and API |
 | [[file:gptel-org-agent-ai.org]] | Agent subtrees (org indirect buffers, the module this complements) |
 | [[file:gptel-org-tasks-ai.org]] | Org tasks workflow (TODO transitions, model profiles) |
+
+** Systematic Verification: Indirect Buffer as the Only Pattern
+
+Audit performed to verify that indirect buffers are used systematically
+as the /only/ design pattern for task boundary tracking in gptel-org.
+
+*** Design Principle
+
+Each AI action (tool launch, reasoning block, delegation, response) gets
+its own isolated indirect buffer.  The indirect buffer's narrowing
+(=point-min= / =point-max=) defines where the task starts and ends.
+Therefore:
+
+- *No additional marker storing* is needed for position tracking
+- *No backward search* is needed to find "where am I?"
+- *No ad-hoc point tracking* outside the IB narrowing
+
+*** Verified: Legitimate Marker Usage
+
+These marker patterns are /correct/ and serve purposes distinct from task
+boundary tracking:
+
+| Pattern | Location | Purpose |
+|---------+----------+---------|
+| =gptel-org--pending-heading-tag= (marker) | gptel-org.el | Async tag application after =insert= (Emacs API constraint) |
+| =gptel-org--restore-bounds-from-tags= | gptel-org.el | Full-buffer scan at init (pre-IB, initialization code) |
+| =gptel-org--save-state= offset-marker | gptel-org.el | Write-stability check for persistence layer |
+| =gptel--stream-convert-markdown->org= | gptel-org.el | Streaming parse cursor in temp buffer (state machine) |
+| =gptel-org--auto-correct-on-change= end-marker | gptel-org.el | Safe iteration marker (tracks insertions during correction) |
+| =gptel-org--fold-special-blocks= | gptel-org.el | Forward scan of =(beg end)= response region (parameter-driven) |
+| =gptel-org-agent--collect-todo-headings= copy-marker | gptel-org-agent.el | Position collection that must survive buffer mods |
+| =gptel-org-agent--insert-user-heading= subtree-end | gptel-org-agent.el | Base-buffer marker tracking drift during keyword transition |
+| =gptel-org-agent--update-tool-heading= backward search | gptel-org-agent.el | Bounded search within IB for PENDING heading pairing |
+
+*** Fixed: Anti-Patterns and Redundancies
+
+**** =gptel-org-agent--create-handover-heading= (anti-pattern → fixed)
+
+Was: backward search from =(point-max)= to find agent heading.
+Now: uses =(point-min)= of indirect buffer directly; switches to base
+buffer for =org-up-heading-safe= (parent is outside narrowing).
+
+**** =gptel-org-agent--extract-parent-context= (anti-pattern → fixed)
+
+Was: forward scan of /entire/ base buffer to find heading by tag.
+Now: uses =(point-min)= of indirect buffer as the already-known
+agent heading position.  O(1) instead of O(n).
+
+**** =gptel-org-agent--display-tool-calls= fallback (redundant → fixed)
+
+Was: =org-back-to-heading= from =start-marker= as third-tier fallback.
+Now: =(goto-char (point-min))= then =(1+ (org-current-level))= since
+=point-min= IS the agent heading in an IB.
+
+**** =gptel-org--adjust-response-headings= fallback (redundant → fixed)
+
+Was: =re-search-forward= from =(point-min)= to find first heading.
+Now: =(org-at-heading-p)= at =(point-min)= directly (in agent IB,
+=point-min= IS a heading).
+
+**** =gptel-org-agent--make-insertion-marker= (DRY helper → created)
+
+Was: 4 copies of pos-marker creation idiom (2 with trim, 2 without — inconsistent).
+Now: single helper function used by all 4 call sites with consistent behavior.
+
+*** Remaining Architectural Notes
+
+- =gptel-org-agent--narrow-end-marker= (buffer-local) duplicates the
+  IB registry's =:end-marker=.  Kept as a safety fallback for
+  =close-indirect-buffer= in case registry entry is absent.  Could be
+  removed once registry reliability is confirmed.
+
+- =gptel-org-agent--insert-user-heading= operates in the base buffer
+  (not the IB) because it inserts FEEDBACK siblings /outside/ the
+  narrowed region.  This is architecturally correct — the IB pattern
+  doesn't apply to operations on content outside the narrowed subtree.
+
+- =gptel-org-agent--find-parent-indirect-buffer= forward-scans the
+  base buffer for a parent tag.  This could use the IB registry
+  instead but is low priority (interactive utility).
