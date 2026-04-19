@@ -2063,12 +2063,13 @@ for streaming responses only."
                                     (inhibit-modification-hooks t))
                                 (replace-match (concat (match-string 1) " " (string-trim title-buf)))))))
                         (plist-put info :reasoning-title-pending nil))
+                      ;; Close reasoning indirect buffer before separator
+                      ;; (separator would expand the IB's narrowed region)
+                      (when (eq gptel-org-reasoning-display 'indirect-buffer)
+                        (gptel-org--reasoning-close-indirect-buffer))
                       ;; Insert separator
                       (gptel-curl--stream-insert-response
                        gptel-response-separator info t)
-                      ;; Close reasoning indirect buffer before folding
-                      (when (eq gptel-org-reasoning-display 'indirect-buffer)
-                        (gptel-org--reasoning-close-indirect-buffer))
                       ;; Fold the REASONING heading
                       (ignore-errors
                         (save-excursion
