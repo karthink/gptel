@@ -1887,29 +1887,22 @@ Optional RAW disables text properties and transformation."
                          (add-text-properties
                           0 (length body-text)
                           '(gptel response front-sticky (gptel)) body-text)))
-                     ;; Insert everything as raw
-                     (gptel--insert-response
-                      (concat separator heading-text body-text tail) info t)
-                     ;; Show in indirect buffer for non-streaming
-                     ;; (left open for user to review at leisure)
-                     (save-excursion
-                       (goto-char (plist-get info :tracking-marker))
+                     ;; Record heading position before insertion advances markers
+                     (let ((heading-pos (marker-position
+                                         (or tracking-marker start-marker))))
+                       ;; Insert everything as raw
+                       (gptel--insert-response
+                        (concat separator heading-text body-text tail) info t)
+                       ;; Show in indirect buffer for non-streaming
+                       ;; (no backward search — we know the heading position)
                        (gptel-org--debug
-                        "reasoning-insert: searching for REASONING heading from pos=%d to start=%S"
-                        (point) start-marker)
-                       (if (re-search-backward "^\\*+ REASONING " start-marker t)
-                           (progn
-                             (gptel-org--debug
-                              "reasoning-insert: found REASONING heading at pos=%d, creating IB"
-                              (point))
-                             (gptel-org--reasoning-create-indirect-buffer (point)))
-                         (gptel-org--debug
-                          "reasoning-insert: REASONING heading NOT FOUND")))
-                     ;; Fold the REASONING heading
-                     (save-excursion
-                       (goto-char (plist-get info :tracking-marker))
-                       (when (re-search-backward "^\\*+ REASONING " start-marker t)
-                         (org-fold-subtree t))))
+                        "reasoning-insert: creating IB at heading-pos=%d" heading-pos)
+                       (gptel-org--reasoning-create-indirect-buffer heading-pos)
+                       ;; Fold the REASONING heading
+                       (save-excursion
+                         (goto-char heading-pos)
+                         (when (org-at-heading-p)
+                           (org-fold-subtree t)))))
                  ;; Markdown: keep existing behavior
                  (let ((blocks
                         (cons (propertize "``` reasoning\n" 'gptel 'ignore
@@ -2077,17 +2070,18 @@ for streaming responses only."
                  (derived-mode-p 'org-mode))
                 (if (derived-mode-p 'org-mode)
                     ;; Org: finalize REASONING heading
-                    (progn
+                    (let ((reasoning-pos (plist-get info :reasoning-heading-pos)))
                       ;; If title was never set (no newline in entire reasoning),
                       ;; set it now from whatever was accumulated
                       (when (plist-get info :reasoning-title-pending)
                         (let ((title-buf (or (plist-get info :reasoning-title-buffer) "...")))
-                          (save-excursion
-                            (goto-char (or tracking-marker start-marker))
-                            (when (re-search-backward "^\\(\\*+ REASONING\\) *$" start-marker t)
-                              (let ((inhibit-read-only t)
-                                    (inhibit-modification-hooks t))
-                                (replace-match (concat (match-string 1) " " (string-trim title-buf)))))))
+                          (when reasoning-pos
+                            (save-excursion
+                              (goto-char reasoning-pos)
+                              (when (looking-at "^\\(\\*+ REASONING\\) *$")
+                                (let ((inhibit-read-only t)
+                                      (inhibit-modification-hooks t))
+                                  (replace-match (concat (match-string 1) " " (string-trim title-buf))))))))
                         (plist-put info :reasoning-title-pending nil))
                       ;; Close reasoning indirect buffer before separator
                       ;; (separator would expand the IB's narrowed region)
@@ -2097,11 +2091,12 @@ for streaming responses only."
                       (gptel-curl--stream-insert-response
                        gptel-response-separator info t)
                       ;; Fold the REASONING heading
-                      (ignore-errors
-                        (save-excursion
-                          (goto-char (or tracking-marker start-marker))
-                          (when (re-search-backward "^\\*+ REASONING " start-marker t)
-                            (org-fold-subtree t)))))
+                      (when reasoning-pos
+                        (ignore-errors
+                          (save-excursion
+                            (goto-char reasoning-pos)
+                            (when (org-at-heading-p)
+                              (org-fold-subtree t))))))
                   ;; Markdown: close ``` block
                   (gptel-curl--stream-insert-response
                    (concat (propertize "\n```" 'gptel 'ignore
@@ -2135,25 +2130,21 @@ for streaming responses only."
                       (add-text-properties
                        0 (length heading-str)
                        '(gptel ignore front-sticky (gptel)) heading-str)
-                      (gptel-curl--stream-insert-response
-                       (concat separator heading-str) info t)
-                      (plist-put info :reasoning-title-pending t)
-                      (plist-put info :reasoning-title-buffer "")
-                      ;; Create indirect buffer for live reasoning display
-                      (save-excursion
-                        (goto-char (or (plist-get info :tracking-marker)
-                                       (plist-get info :position)))
+                      ;; Record heading position before insertion advances markers
+                      (let ((heading-pos (marker-position
+                                          (or (plist-get info :tracking-marker)
+                                              (plist-get info :position)))))
+                        (gptel-curl--stream-insert-response
+                         (concat separator heading-str) info t)
+                        (plist-put info :reasoning-title-pending t)
+                        (plist-put info :reasoning-title-buffer "")
+                        ;; Store heading position for end-of-stream title/fold operations
+                        (plist-put info :reasoning-heading-pos heading-pos)
+                        ;; Create indirect buffer directly at the known heading position
+                        ;; (no backward search needed — we recorded position before insertion)
                         (gptel-org--debug
-                         "reasoning-stream: searching backward for REASONING heading from pos=%d to start=%S"
-                         (point) start-marker)
-                        (if (re-search-backward "^\\*+ REASONING " start-marker t)
-                            (progn
-                              (gptel-org--debug
-                               "reasoning-stream: found REASONING heading at pos=%d, creating IB"
-                               (point))
-                              (gptel-org--reasoning-create-indirect-buffer (point)))
-                          (gptel-org--debug
-                           "reasoning-stream: REASONING heading NOT FOUND in search range")))))
+                         "reasoning-stream: creating IB at heading-pos=%d" heading-pos)
+                        (gptel-org--reasoning-create-indirect-buffer heading-pos))))
                   ;; Handle title extraction from first line
                   (if (plist-get info :reasoning-title-pending)
                       (let* ((buf (concat (plist-get info :reasoning-title-buffer) text))
@@ -2163,10 +2154,11 @@ for streaming responses only."
                             (let ((title (string-trim (substring buf 0 newline-pos)))
                                   (rest (substring buf (1+ newline-pos))))
                               ;; Update the heading with the title
-                              (when (not (string-empty-p title))
+                              (when-let* (((not (string-empty-p title)))
+                                          (reasoning-pos (plist-get info :reasoning-heading-pos)))
                                 (save-excursion
-                                  (goto-char (or tracking-marker start-marker))
-                                  (when (re-search-backward "^\\(\\*+ REASONING\\) *$" start-marker t)
+                                  (goto-char reasoning-pos)
+                                  (when (looking-at "^\\(\\*+ REASONING\\) *$")
                                     (let ((inhibit-read-only t)
                                           (inhibit-modification-hooks t))
                                       (replace-match (concat (match-string 1) " " title))))))
