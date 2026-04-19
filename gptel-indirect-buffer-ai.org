@@ -24,11 +24,15 @@ indirect buffers are never disturbed.
 - Declares external functions from: =gptel-org.el=, =gptel-org-agent.el=
 - Complements (does NOT replace): =gptel-org-agent.el=
 
-** Relationship to gptel-org-agent.el
+** Relationship to Consumers
 
-=gptel-org-agent.el= has been migrated to delegate core indirect buffer
-operations to this module.  The agent functions now serve as thin wrappers
-that add agent-specific concerns on top of the module's primitives:
+The module is consumed by two callers in gptel, both fully migrated:
+
+*** gptel-org-agent.el (agent subtrees)
+
+=gptel-org-agent.el= delegates core indirect buffer operations to
+this module.  The agent functions serve as thin wrappers that add
+agent-specific concerns on top of the module's primitives:
 
 - =gptel-org-agent--open-indirect-buffer= → delegates to =gptel-org-ib-create=,
   then applies agent-specific setup (flag, auto-correct, end-marker compat)
@@ -38,7 +42,24 @@ that add agent-specific concerns on top of the module's primitives:
   for NEW sub-agent headings, keeps =--open-indirect-buffer= for reusing
   EXISTING subtrees
 
-The module provides the foundational capabilities:
+*** gptel-org.el (reasoning display)
+
+=gptel-org.el= uses the module for the =indirect-buffer= reasoning display
+mode (=gptel-org-reasoning-display= set to ='indirect-buffer=):
+
+- =gptel-org--reasoning-create-indirect-buffer= → delegates to
+  =gptel-org-ib-create= with a custom buffer name =*gptel-reasoning:BASE*=,
+  then applies reasoning-specific setup (read-only, unfold subtree, side
+  window display)
+- =gptel-org--reasoning-close-indirect-buffer= → deletes the side window,
+  then delegates cleanup to =gptel-org-ib-close=
+- The =gptel-org--reasoning-indirect-buffer= buffer-local variable is
+  retained as a fast reference, but the module's registry is the source
+  of truth for marker tracking
+
+*** Module capabilities
+
+The module provides the foundational capabilities used by both consumers:
 - Terminator heading pattern (the key innovation preventing sibling merging)
 - Tracking registry for all active indirect buffers
 - Safe heading insertion before terminators
@@ -216,6 +237,54 @@ applies concerns that are outside the module's scope:
 3. *End-marker compat*: Sets up an expanding end-marker (insertion-type=t)
    at the end of the narrowed region so streaming LLM responses push the
    boundary forward rather than overflowing
+
+** Integration with gptel-org.el (Reasoning Display)
+
+This section documents how =gptel-org.el= uses the module for the reasoning
+indirect buffer display feature (=gptel-org-reasoning-display= set to
+='indirect-buffer=).
+
+*** reasoning-create → gptel-org-ib-create
+
+=gptel-org--reasoning-create-indirect-buffer= delegates buffer creation to
+=gptel-org-ib-create= with a custom buffer name =*gptel-reasoning:BASE*=.
+The module handles:
+- Indirect buffer creation with =make-indirect-buffer=
+- Fold state decoupling (=org-fold-core-decouple-indirect-buffer-folds=)
+- Narrowing to the REASONING subtree region
+- End-marker with insertion-type t for auto-expansion during streaming
+- Registry tracking
+
+After =gptel-org-ib-create= returns, the reasoning wrapper applies:
+- Unfolds the REASONING heading so content is visible (=org-fold-subtree nil=)
+- Sets =buffer-read-only t= (content comes from streaming, user shouldn't edit)
+- Adds =kill-buffer-hook= to clear =gptel-org--reasoning-indirect-buffer= in the
+  base buffer if the user kills the reasoning window manually
+- Displays the buffer in a side window (bottom, 30% height)
+- Stores the IB reference in =gptel-org--reasoning-indirect-buffer= for quick
+  access by the streaming code
+
+*** reasoning-close → gptel-org-ib-close
+
+=gptel-org--reasoning-close-indirect-buffer= first deletes the side window
+(reasoning-specific), then delegates core cleanup to =gptel-org-ib-close=
+which handles:
+- Removing the buffer from the tracking registry
+- Cleaning up markers (heading marker, end-marker)
+- Killing the indirect buffer
+
+After close, the tracking variable =gptel-org--reasoning-indirect-buffer=
+is set to nil in both the current buffer and the base buffer.
+
+*** Differences from Agent Integration
+
+The reasoning IB is simpler than agent IBs:
+- No terminator heading needed (REASONING is a single subtree, not a parent
+  with sibling children)
+- No auto-correct or recreation (the heading doesn't move during streaming)
+- Read-only (user doesn't edit reasoning content)
+- Side window display (agent IBs are not displayed)
+- Short-lived (exists only during streaming, closed on completion or error)
 
 * Emacs Indirect Buffer Internals
 
