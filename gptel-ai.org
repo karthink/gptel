@@ -222,6 +222,7 @@ Tool/function-call specification.
 | =gptel-add= | | Add buffer/region to context |
 | =gptel-add-file= | | Add file/directory to context |
 | =gptel-abort= | | Stop active request |
+| =gptel-org-handoff= | | Stop current task and create AI-DO sibling for continuation with fresh context |
 
 ** Backend Constructors
 
@@ -336,7 +337,7 @@ See feature-specific documents for details:
 - *Markdown→Org conversion*: streaming and non-streaming
 - *Agent subtrees*: per-agent indirect buffers, recursive delegation, context stripping
 - *Indirect buffer isolation*: terminator heading pattern prevents sibling task merging; tracking registry, safe insertion before terminators, recreation after reorder.  See [[file:gptel-indirect-buffer-ai.org]]
-- *Handover mechanism*: sub-agent can create a new =AI-DO= sibling heading instead of returning text, enabling triage→specialist escalation workflows.  See [[file:gptel-org-agent-ai.org::*Handover Mechanism]]
+- *Handover mechanism*: sub-agent can create a new =AI-DO= heading at user task level instead of returning text, enabling triage→specialist escalation workflows.  Uses =gptel-org-ib-find-user-task-heading= to navigate past all agent headings.  =gptel-org-handoff= command provides user-initiated handoff for context optimization.  See [[file:gptel-org-agent-ai.org::*Handover Mechanism]]
 - *Org format instructions*: dynamic prompt injection telling LLM to use org-mode formatting with correct heading levels, examples, and #+SEQ_TODO keywords.  See [[file:gptel-org-agent-ai.org::*Org Format Instructions]]
 - *AI/FEEDBACK TODO keywords*: role-based conversation structure using TODO keywords instead of tags.  The =FEEDBACK= keyword also drives the iterative task cycle (AI finishes → FEEDBACK → user sends → AI-DOING → ...).  See [[*Discussion Structure: AI/FEEDBACK Keywords]]
 - *Unified org mode*: =gptel-org-mode= provides a single entry point that enables all org features (subtree context, TODO keywords, task workflow, highlighting)
