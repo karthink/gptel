@@ -419,6 +419,13 @@ This is the scenario that motivates =gptel-org-ib-recreate=:
 | =gptel-org-ib-heading-level= (indirect-buffer) | Org heading level of first heading at =point-min=; nil if dead or no heading |
 | =gptel-org-ib-heading-text= (indirect-buffer) | Raw heading text (via =org-get-heading=) of first heading; nil if dead |
 
+** Heading Navigation
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-ib-find-user-task-heading= () | Walk up from current heading past all agent headings (=*@agent= tags) to find the user-level task heading. Returns position and moves point on success, nil on failure. Used by handover mechanism to place new headings at user task level. |
+| =gptel-org-ib-resolve-agent-heading= (indirect-buffer) | Resolve the agent heading position for INDIRECT-BUFFER in the base buffer. In indirect buffers, =point-min= IS the agent heading. In base buffers, searches backward for the first heading with an agent tag. Returns position or nil. |
+
 ** Terminator Heading Management
 
 | Function | Purpose |

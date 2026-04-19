@@ -196,6 +196,63 @@ or nil if the buffer is dead or has no heading."
           (org-get-heading t t t t))))))
 
 
+;;; ---- Heading Navigation ---------------------------------------------------
+
+(declare-function gptel-org-agent--agent-tag-p "gptel-org-agent")
+
+(defun gptel-org-ib-find-user-task-heading ()
+  "Navigate from current position up to the user-level task heading.
+
+Walk up the org heading hierarchy past all agent headings (those with
+tags matching *@agent) until reaching a heading with no agent tag.
+This is the user-level task heading that owns the agent subtree chain.
+
+Point must be on an org heading in the base buffer (or at a position
+returned by `point-min' in an agent indirect buffer, resolved to the
+base buffer).
+
+Returns the position of the user-level heading, or nil if not found.
+Point is moved to the user-level heading on success."
+  (when (org-at-heading-p)
+    ;; Walk up past all agent headings
+    (while (and (> (org-current-level) 1)
+                (cl-some #'gptel-org-agent--agent-tag-p
+                         (org-get-tags nil t))
+                (org-up-heading-safe)))
+    ;; Verify we landed on a non-agent heading
+    (unless (cl-some #'gptel-org-agent--agent-tag-p
+                     (org-get-tags nil t))
+      (point))))
+
+(defun gptel-org-ib-resolve-agent-heading (indirect-buffer)
+  "Return the position of the agent heading for INDIRECT-BUFFER in its base.
+
+In an indirect buffer, `point-min' IS the agent heading.  This function
+resolves that position in the base buffer context.
+
+When INDIRECT-BUFFER is a base buffer, searches backward from point-max
+for the first heading with an agent tag.
+
+Returns the position in the base buffer, or nil if not found."
+  (if (buffer-base-buffer indirect-buffer)
+      ;; Indirect buffer: point-min is the agent heading
+      (with-current-buffer indirect-buffer
+        (save-excursion
+          (goto-char (point-min))
+          (when (org-at-heading-p) (point))))
+    ;; Base buffer fallback: search backward for an agent heading
+    (with-current-buffer indirect-buffer
+      (save-excursion
+        (goto-char (point-max))
+        (let ((found nil))
+          (while (and (not found)
+                      (re-search-backward org-heading-regexp nil t))
+            (when (cl-some #'gptel-org-agent--agent-tag-p
+                           (org-get-tags nil t))
+              (setq found t)))
+          (when found (point)))))))
+
+
 ;;; ---- Terminator Heading Management ----------------------------------------
 
 (defun gptel-org-ib--terminator-regexp (heading-keyword level)
