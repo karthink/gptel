@@ -1403,10 +1403,18 @@ buffer."
 Handle read-only buffers and run pre-response hooks (but only if
 the request succeeded)."
   (let* ((info (gptel-fsm-info fsm))
-         (start-marker (plist-get info :position)))
+         (start-marker (plist-get info :position))
+         (info-buf (plist-get info :buffer)))
     (when (memq (plist-get info :callback)
                 '(gptel--insert-response gptel-curl--stream-insert-response))
-      (with-current-buffer (plist-get info :buffer)
+      (unless (buffer-live-p info-buf)
+        (error "gptel--handle-pre-insert: target buffer was killed \
+(buffer=%S, state=%s, marker-pos=%S, marker-buf=%S, callback=%S)"
+               info-buf (gptel-fsm-state fsm)
+               (when (markerp start-marker) (marker-position start-marker))
+               (when (markerp start-marker) (marker-buffer start-marker))
+               (plist-get info :callback)))
+      (with-current-buffer info-buf
         (when (or buffer-read-only (get-char-property start-marker 'read-only))
           (cond
            ((derived-mode-p 'vterm-mode)
@@ -1423,14 +1431,22 @@ the request succeeded)."
              '((display-buffer-reuse-window
                 display-buffer-pop-up-window)
                (reusable-frames . visible))))))))
-    (with-current-buffer (marker-buffer start-marker)
-      (when (plist-get info :stream)
-        (gptel--update-status " Typing..." 'success))
-      (save-excursion
-        (goto-char start-marker)
-        (when (and (member (plist-get info :http-status) '("200" "100"))
-                   gptel-pre-response-hook)
-          (run-hooks 'gptel-pre-response-hook))))))
+    (let ((marker-buf (when (markerp start-marker)
+                        (marker-buffer start-marker))))
+      (unless marker-buf
+        (error "gptel--handle-pre-insert: start-marker has no buffer \
+(buffer=%S, state=%s, marker=%S, marker-pos=%S)"
+               info-buf (gptel-fsm-state fsm)
+               start-marker
+               (when (markerp start-marker) (marker-position start-marker))))
+      (with-current-buffer marker-buf
+        (when (plist-get info :stream)
+          (gptel--update-status " Typing..." 'success))
+        (save-excursion
+          (goto-char start-marker)
+          (when (and (member (plist-get info :http-status) '("200" "100"))
+                     gptel-pre-response-hook)
+            (run-hooks 'gptel-pre-response-hook)))))))
 
 (defun gptel--handle-post-insert (fsm)
   "Tasks after successfully inserting the LLM response with state FSM.
