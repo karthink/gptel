@@ -2311,7 +2311,15 @@ Returns non-nil if a heading was found and updated, nil otherwise."
             (ignore-errors
               (when (org-at-heading-p)
                 (org-cycle)))
-            (setq found t)))))
+            (setq found t)))
+        ;; The edits above ran with inhibit-modification-hooks t, so the
+        ;; org-element cache did not see the deletions and insertions.
+        ;; Reset it now to prevent stale cache entries from causing
+        ;; "Invalid search bound (wrong side of point)" errors when
+        ;; subsequent inserts (e.g. streaming tool results via orig-fn
+        ;; fallback) trigger org-element--cache-after-change.
+        (when found
+          (org-element-cache-reset))))
     found))
 
 (defun gptel-org-agent--display-tool-results-advice (orig-fn tool-results info)
