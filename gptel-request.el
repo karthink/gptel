@@ -727,13 +727,13 @@ See `gptel-backend'."
   (cond
    ((memq system-type '(windows-nt ms-dos))
     '("--disable" "--location" "--silent" "-XPOST"
-      "-y7200" "-Y1" "-D-"))
+      "-y7200" "-Y1" "-N" "-D-"))
    ((eq system-type 'darwin)
     '("--disable" "--location" "--silent" "--compressed"
       "-XPOST" "-y7200" "-Y1" "-N" "-D-"))
    (t
     '("--disable" "--location" "--silent" "--compressed"
-      "-XPOST" "-y7200" "-Y1" "-D-")))
+      "-XPOST" "-y7200" "-Y1" "-N" "-D-")))
   "Arguments always passed to Curl for gptel queries.")
 
 (defvar gptel--link-type-cache nil
