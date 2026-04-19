@@ -1839,11 +1839,19 @@ Optional RAW disables text properties and transformation."
              ;; for uniformity with streaming responses
              (set-marker-insertion-type tracking-marker t)))))
       (`(reasoning . ,text)
+       (gptel-org--debug
+        "reasoning-insert: include=%S buf=%S org=%S"
+        (plist-get info :include-reasoning)
+        (buffer-name (marker-buffer start-marker))
+        (with-current-buffer (marker-buffer start-marker)
+          (derived-mode-p 'org-mode)))
        (when-let* ((include (plist-get info :include-reasoning)))
          (if (stringp include)
-             (with-current-buffer (get-buffer-create
-                                   (plist-get info :include-reasoning))
-               (save-excursion (goto-char (point-max)) (insert text)))
+             (progn
+               (gptel-org--debug "reasoning-insert: routing to named buffer %S" include)
+               (with-current-buffer (get-buffer-create
+                                     (plist-get info :include-reasoning))
+                 (save-excursion (goto-char (point-max)) (insert text))))
            (with-current-buffer (marker-buffer start-marker)
              (let ((separator         ;Separate from response prefix if required
                     (and (not tracking-marker) gptel-mode
@@ -1886,8 +1894,17 @@ Optional RAW disables text properties and transformation."
                      ;; (left open for user to review at leisure)
                      (save-excursion
                        (goto-char (plist-get info :tracking-marker))
-                       (when (re-search-backward "^\\*+ REASONING " start-marker t)
-                         (gptel-org--reasoning-create-indirect-buffer (point))))
+                       (gptel-org--debug
+                        "reasoning-insert: searching for REASONING heading from pos=%d to start=%S"
+                        (point) start-marker)
+                       (if (re-search-backward "^\\*+ REASONING " start-marker t)
+                           (progn
+                             (gptel-org--debug
+                              "reasoning-insert: found REASONING heading at pos=%d, creating IB"
+                              (point))
+                             (gptel-org--reasoning-create-indirect-buffer (point)))
+                         (gptel-org--debug
+                          "reasoning-insert: REASONING heading NOT FOUND")))
                      ;; Fold the REASONING heading
                      (save-excursion
                        (goto-char (plist-get info :tracking-marker))
@@ -2032,6 +2049,9 @@ INTERACTIVEP is t when gptel is called interactively."
 INFO is the request INFO, see `gptel--url-get-response'.  This is
 for streaming responses only."
   (when-let* ((include (plist-get info :include-reasoning)))
+    (gptel-org--debug
+     "reasoning-stream: include=%S text-type=%S"
+     include (if (eq text t) 'end-of-stream 'chunk))
     (if (stringp include)
         (unless (eq text t)
           (with-current-buffer (get-buffer-create include)
@@ -2044,9 +2064,17 @@ for streaming responses only."
                               (if (and info-buf (buffer-live-p info-buf))
                                   info-buf
                                 (marker-buffer start-marker)))))
+        (gptel-org--debug
+         "reasoning-stream: target=%S reasoning-marker=%S tracking-marker=%S start=%S"
+         (buffer-name target-buffer) reasoning-marker tracking-marker start-marker)
         (with-current-buffer target-buffer
           (if (eq text t)               ;end of stream
               (progn
+                (gptel-org--debug
+                 "reasoning-stream: end-of-stream buf=%S base=%S org=%S"
+                 (buffer-name)
+                 (when (buffer-base-buffer) (buffer-name (buffer-base-buffer)))
+                 (derived-mode-p 'org-mode))
                 (if (derived-mode-p 'org-mode)
                     ;; Org: finalize REASONING heading
                     (progn
@@ -2063,6 +2091,7 @@ for streaming responses only."
                         (plist-put info :reasoning-title-pending nil))
                       ;; Close reasoning indirect buffer before separator
                       ;; (separator would expand the IB's narrowed region)
+                      (gptel-org--debug "reasoning-stream: closing reasoning IB")
                       (gptel-org--reasoning-close-indirect-buffer)
                       ;; Insert separator
                       (gptel-curl--stream-insert-response
@@ -2091,13 +2120,18 @@ for streaming responses only."
                   ;; Open the heading if not yet done
                   (unless (and reasoning-marker tracking-marker
                                (= reasoning-marker tracking-marker))
+                    (gptel-org--debug
+                     "reasoning-stream: creating heading buf=%S base=%S reasoning-marker=%S tracking-marker=%S start-marker=%S"
+                     (buffer-name)
+                     (when (buffer-base-buffer) (buffer-name (buffer-base-buffer)))
+                     reasoning-marker tracking-marker start-marker)
                     (let ((separator
                            (and (not tracking-marker) gptel-mode
                                 (not (string-suffix-p
                                       "\n" (let ((gptel-org--in-prefix-advice t))
                                              (gptel-response-prefix-string))))
                                 "\n"))
-                          (heading-str "* REASONING \n"))
+                          (heading-str (copy-sequence "* REASONING \n")))
                       (add-text-properties
                        0 (length heading-str)
                        '(gptel ignore front-sticky (gptel)) heading-str)
@@ -2109,8 +2143,17 @@ for streaming responses only."
                       (save-excursion
                         (goto-char (or (plist-get info :tracking-marker)
                                        (plist-get info :position)))
-                        (when (re-search-backward "^\\*+ REASONING " start-marker t)
-                          (gptel-org--reasoning-create-indirect-buffer (point))))))
+                        (gptel-org--debug
+                         "reasoning-stream: searching backward for REASONING heading from pos=%d to start=%S"
+                         (point) start-marker)
+                        (if (re-search-backward "^\\*+ REASONING " start-marker t)
+                            (progn
+                              (gptel-org--debug
+                               "reasoning-stream: found REASONING heading at pos=%d, creating IB"
+                               (point))
+                              (gptel-org--reasoning-create-indirect-buffer (point)))
+                          (gptel-org--debug
+                           "reasoning-stream: REASONING heading NOT FOUND in search range")))))
                   ;; Handle title extraction from first line
                   (if (plist-get info :reasoning-title-pending)
                       (let* ((buf (concat (plist-get info :reasoning-title-buffer) text))
@@ -2143,10 +2186,10 @@ for streaming responses only."
                           (plist-put info :reasoning-title-buffer buf)))
                     ;; Title already set — stream body text normally
                     (if (eq include 'ignore)
-                        (progn
+                        (let ((prop-text (copy-sequence text)))
                           (add-text-properties
-                           0 (length text) '(gptel ignore front-sticky (gptel)) text)
-                          (gptel-curl--stream-insert-response text info t))
+                           0 (length prop-text) '(gptel ignore front-sticky (gptel)) prop-text)
+                          (gptel-curl--stream-insert-response prop-text info t))
                       (gptel-curl--stream-insert-response text info))))
               ;; Markdown: keep existing behavior
               (unless (and reasoning-marker tracking-marker
@@ -2163,10 +2206,10 @@ for streaming responses only."
                                        'keymap gptel--markdown-block-map))
                    info t)))
               (if (eq include 'ignore)
-                  (progn
+                  (let ((prop-text (copy-sequence text)))
                     (add-text-properties
-                     0 (length text) '(gptel ignore front-sticky (gptel)) text)
-                    (gptel-curl--stream-insert-response text info t))
+                     0 (length prop-text) '(gptel ignore front-sticky (gptel)) prop-text)
+                    (gptel-curl--stream-insert-response prop-text info t))
                 (gptel-curl--stream-insert-response text info))))
           ;; Update reasoning-marker (tracks end of reasoning content)
           (setq tracking-marker (plist-get info :tracking-marker))

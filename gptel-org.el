@@ -2405,15 +2405,26 @@ tracking).  Applies reasoning-specific setup: read-only mode,
 subtree unfolding, side window display.
 
 Returns the indirect buffer, or nil if creation failed."
+  (gptel-org--debug
+   "reasoning IB create: pos=%S cur-buf=%S base=%S"
+   reasoning-heading-pos (buffer-name)
+   (when (buffer-base-buffer) (buffer-name (buffer-base-buffer))))
   (condition-case err
       (let* ((base-buf (or (buffer-base-buffer (current-buffer))
                            (current-buffer)))
              (buf-name (format "*gptel-reasoning:%s*"
                                (buffer-name (current-buffer))))
              indirect-buf)
+        (gptel-org--debug
+         "reasoning IB create: base-buf=%S buf-name=%S"
+         (buffer-name base-buf) buf-name)
         ;; Delegate creation to the indirect buffer module
         (setq indirect-buf (gptel-org-ib-create
                             base-buf reasoning-heading-pos buf-name))
+        (gptel-org--debug
+         "reasoning IB create: gptel-org-ib-create returned %S (live=%S)"
+         (when indirect-buf (buffer-name indirect-buf))
+         (when indirect-buf (buffer-live-p indirect-buf)))
         (with-current-buffer indirect-buf
           ;; Unfold the REASONING heading so content is visible
           (goto-char (point-min))
@@ -2432,6 +2443,7 @@ Returns the indirect buffer, or nil if creation failed."
                               (setq gptel-org--reasoning-indirect-buffer nil))))))
                     nil t))
         ;; Display in side window
+        (gptel-org--debug "reasoning IB create: displaying in side window")
         (display-buffer indirect-buf
                         '((display-buffer-in-side-window)
                           (side . bottom)
@@ -2444,6 +2456,8 @@ Returns the indirect buffer, or nil if creation failed."
         ;; Also store in the current buffer if it's an IB itself
         (unless (eq (current-buffer) base-buf)
           (setq gptel-org--reasoning-indirect-buffer indirect-buf))
+        (gptel-org--debug
+         "reasoning IB create: success, buffer=%S" (buffer-name indirect-buf))
         indirect-buf)
     (error
      (gptel-org--debug "reasoning IB: creation failed: %S" err)
@@ -2457,8 +2471,18 @@ registry cleanup.  Handles the reasoning-specific side window
 deletion and tracking variable reset.
 
 Safe to call even if no reasoning buffer exists."
+  (gptel-org--debug
+   "reasoning IB close: cur-buf=%S ib-var=%S ib-live=%S"
+   (buffer-name)
+   (when gptel-org--reasoning-indirect-buffer
+     (buffer-name gptel-org--reasoning-indirect-buffer))
+   (when gptel-org--reasoning-indirect-buffer
+     (buffer-live-p gptel-org--reasoning-indirect-buffer)))
   (when-let* ((ib gptel-org--reasoning-indirect-buffer)
               ((buffer-live-p ib)))
+    (gptel-org--debug
+     "reasoning IB close: closing %S, window=%S"
+     (buffer-name ib) (get-buffer-window ib t))
     ;; Delete the side window showing the buffer (if any)
     (when-let* ((win (get-buffer-window ib t)))
       (delete-window win))
