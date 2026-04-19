@@ -307,23 +307,9 @@ files with GPTEL_* properties."
   :type 'boolean
   :group 'gptel)
 
-(defcustom gptel-org-reasoning-display 'fold
-  "How to display reasoning/thinking blocks in org-mode.
-
-Controls the visual presentation of REASONING headings:
-
-  fold            - Fold inline (default, current behavior).
-  indirect-buffer - Fold inline and show live in an indirect buffer.
-                    The indirect buffer is narrowed to the REASONING
-                    heading and updates in real-time during streaming.
-
-When set to `indirect-buffer', a side window shows the reasoning
-content as it streams in.  The indirect buffer is automatically
-closed when the response completes."
-  :type '(choice
-          (const :tag "Fold inline" fold)
-          (const :tag "Show in indirect buffer" indirect-buffer))
-  :group 'gptel)
+;; Reasoning blocks in org-mode always use indirect buffers.
+;; A side window shows reasoning content live during streaming,
+;; and is automatically closed when the response completes.
 
 (defcustom gptel-org-infer-bounds-from-tags t
   "Infer assistant/user message bounds from org heading tags.
@@ -2497,8 +2483,7 @@ unreliable in indirect buffers or when subsequent text insertion
 disrupts overlays)."
   (when (derived-mode-p 'org-mode)
     ;; Close any orphaned reasoning indirect buffer (e.g. from errors)
-    (when (and (eq gptel-org-reasoning-display 'indirect-buffer)
-               gptel-org--reasoning-indirect-buffer)
+    (when gptel-org--reasoning-indirect-buffer
       (gptel-org--reasoning-close-indirect-buffer))
     (save-excursion
       ;; Fold REASONING heading subtrees

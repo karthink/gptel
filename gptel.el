@@ -209,7 +209,6 @@
 (declare-function gptel-org--heading-has-tag-p "gptel-org")
 (defvar gptel-org-assistant-tag)
 (defvar gptel-org--in-prefix-advice)
-(defvar gptel-org-reasoning-display)
 (declare-function gptel-org--reasoning-create-indirect-buffer "gptel-org")
 (declare-function gptel-org--reasoning-close-indirect-buffer "gptel-org")
 (declare-function org-at-heading-p "org")
@@ -1885,11 +1884,10 @@ Optional RAW disables text properties and transformation."
                       (concat separator heading-text body-text tail) info t)
                      ;; Show in indirect buffer for non-streaming
                      ;; (left open for user to review at leisure)
-                     (when (eq gptel-org-reasoning-display 'indirect-buffer)
-                       (save-excursion
-                         (goto-char (plist-get info :tracking-marker))
-                         (when (re-search-backward "^\\*+ REASONING " start-marker t)
-                           (gptel-org--reasoning-create-indirect-buffer (point)))))
+                     (save-excursion
+                       (goto-char (plist-get info :tracking-marker))
+                       (when (re-search-backward "^\\*+ REASONING " start-marker t)
+                         (gptel-org--reasoning-create-indirect-buffer (point))))
                      ;; Fold the REASONING heading
                      (save-excursion
                        (goto-char (plist-get info :tracking-marker))
@@ -2065,8 +2063,7 @@ for streaming responses only."
                         (plist-put info :reasoning-title-pending nil))
                       ;; Close reasoning indirect buffer before separator
                       ;; (separator would expand the IB's narrowed region)
-                      (when (eq gptel-org-reasoning-display 'indirect-buffer)
-                        (gptel-org--reasoning-close-indirect-buffer))
+                      (gptel-org--reasoning-close-indirect-buffer)
                       ;; Insert separator
                       (gptel-curl--stream-insert-response
                        gptel-response-separator info t)
@@ -2109,12 +2106,11 @@ for streaming responses only."
                       (plist-put info :reasoning-title-pending t)
                       (plist-put info :reasoning-title-buffer "")
                       ;; Create indirect buffer for live reasoning display
-                      (when (eq gptel-org-reasoning-display 'indirect-buffer)
-                        (save-excursion
-                          (goto-char (or (plist-get info :tracking-marker)
-                                         (plist-get info :position)))
-                          (when (re-search-backward "^\\*+ REASONING " start-marker t)
-                            (gptel-org--reasoning-create-indirect-buffer (point)))))))
+                      (save-excursion
+                        (goto-char (or (plist-get info :tracking-marker)
+                                       (plist-get info :position)))
+                        (when (re-search-backward "^\\*+ REASONING " start-marker t)
+                          (gptel-org--reasoning-create-indirect-buffer (point))))))
                   ;; Handle title extraction from first line
                   (if (plist-get info :reasoning-title-pending)
                       (let* ((buf (concat (plist-get info :reasoning-title-buffer) text))
