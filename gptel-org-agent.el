@@ -1978,6 +1978,12 @@ INFO is the FSM info plist."
                                :info info
                                :buffer buf)
                          gptel-org-agent--pending-tool-calls)
+                ;; Fold the PENDING heading so it doesn't clutter the
+                ;; buffer during task execution
+                (save-excursion
+                  (goto-char heading-pos)
+                  (when (org-at-heading-p)
+                    (ignore-errors (org-fold-subtree t))))
                 (gptel-org--debug
                  "org-agent tool-confirm: created PENDING heading for %s (id=%s)"
                  tool-name pending-id))))
@@ -2309,7 +2315,7 @@ Returns non-nil if a heading was found and updated, nil otherwise."
             (goto-char heading-pos)
             (ignore-errors
               (when (org-at-heading-p)
-                (org-cycle)))
+                (org-fold-subtree t)))
             (setq found t)))
         ;; The edits above ran with inhibit-modification-hooks t, so the
         ;; org-element cache did not see the deletions and insertions.

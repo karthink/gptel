@@ -2480,7 +2480,7 @@ for tool call results.  INFO contains the state of the request."
              (goto-char tracking-marker)
              (if (derived-mode-p 'org-mode)
                  (when (re-search-backward "^\\*+ TOOL " nil t)
-                   (org-cycle))
+                   (org-fold-subtree t))
                (forward-line -1)
                (when (looking-at-p "^```") (gptel-markdown-cycle-block))))))))))
 
