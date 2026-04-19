@@ -324,6 +324,123 @@ extracted."
                              (point))))
                   (buffer-substring-no-properties beg end))))))))))
 
+
+(defun gptel-org-agent--create-handover-data ()
+  "Extract filtered handover data from the user task subtree.
+
+Like `gptel-org-agent--extract-parent-context', navigates from the
+current agent indirect buffer to the user-level task heading.
+Instead of returning the raw subtree text, filters out raw tool
+outputs (regions with `gptel' text property set to a (tool . ID)
+cons cell) and heading lines marked with `gptel' = `ignore'.
+
+Returns a string containing:
+- The user task heading line and any body text before sub-headings
+- For each sub-heading: the heading line plus only LLM response
+  regions (where `gptel' property = `response')
+
+This produces a compact summary of agent findings without the
+bulk of raw tool call results, suitable for passing to the
+handover agent.
+
+Returns nil if the context cannot be extracted."
+  (let ((base-buf (buffer-base-buffer (current-buffer))))
+    (when (and base-buf (buffer-live-p base-buf))
+      (let ((agent-heading-pos
+             (gptel-org-ib-resolve-agent-heading (current-buffer))))
+        (when agent-heading-pos
+          (with-current-buffer base-buf
+            (save-excursion
+              (goto-char agent-heading-pos)
+              ;; Navigate up past all agent headings to user task
+              (when (gptel-org-ib-find-user-task-heading)
+                (let ((task-beg (point))
+                      (task-end (save-excursion
+                                  (org-end-of-subtree t)
+                                  (point)))
+                      (parts nil))
+                  ;; Collect heading line
+                  (push (buffer-substring-no-properties
+                         (line-beginning-position) (line-end-position))
+                        parts)
+                  (push "\n" parts)
+                  ;; Collect body text before first child heading
+                  ;; (this is the user's task description)
+                  (forward-line 1)
+                  (let ((body-start (point))
+                        (first-child (save-excursion
+                                       (if (re-search-forward
+                                            org-heading-regexp task-end t)
+                                           (line-beginning-position)
+                                         task-end))))
+                    (when (< body-start first-child)
+                      (push (string-trim-right
+                             (buffer-substring-no-properties
+                              body-start first-child))
+                            parts)
+                      (push "\n" parts)))
+                  ;; Walk through child headings, extracting only
+                  ;; response-propertied text
+                  (goto-char task-beg)
+                  (let ((task-level (org-current-level)))
+                    (while (and (outline-next-heading)
+                                (< (point) task-end))
+                      ;; Include every heading line for structure
+                      (push (buffer-substring-no-properties
+                             (line-beginning-position)
+                             (line-end-position))
+                            parts)
+                      (push "\n" parts)
+                      ;; Scan body of this heading (before next heading)
+                      (forward-line 1)
+                      (let ((body-start (point))
+                            (body-end
+                             (save-excursion
+                               (if (re-search-forward
+                                    org-heading-regexp task-end t)
+                                   (line-beginning-position)
+                                 task-end))))
+                        (when (< body-start body-end)
+                          (gptel-org-agent--collect-response-text
+                           body-start body-end parts)))
+                      ;; Stay at current heading for next iteration
+                      (beginning-of-line)))
+                  (let ((result (string-trim
+                                 (mapconcat #'identity
+                                            (nreverse parts) ""))))
+                    (if (string-empty-p result) nil result)))))))))))
+
+(defun gptel-org-agent--collect-response-text (beg end parts)
+  "Collect LLM response text from region BEG to END into PARTS.
+
+Walks through the region and pushes text segments where the
+`gptel' text property equals `response' onto the front of PARTS
+list (caller should `nreverse' later).  Skips regions with
+property value (tool . ID) or `ignore'.
+
+Unpropertied text (no `gptel' property at all) that looks like
+regular prose is also included, as it may be user-written task
+description or notes."
+  (let ((pos beg))
+    (while (< pos end)
+      (let ((gptel-val (get-text-property pos 'gptel))
+            (next-change (next-single-property-change
+                          pos 'gptel nil end)))
+        (cond
+         ;; Include response-propertied text (LLM findings)
+         ((eq gptel-val 'response)
+          (push (buffer-substring-no-properties pos next-change) parts))
+         ;; Include unpropertied text (user notes, task description)
+         ((null gptel-val)
+          (let ((text (buffer-substring-no-properties pos next-change)))
+            (unless (string-blank-p text)
+              (push text parts))))
+         ;; Skip tool results: (tool . id) cons cells
+         ;; Skip ignored regions: 'ignore
+         ;; Skip anything else
+         )
+        (setq pos next-change)))))
+
 (defun gptel-org-agent--indirect-buffer-name (base-buffer heading-pos tag)
   "Compute a unique indirect buffer name for an agent subtree.
 
