@@ -2449,7 +2449,19 @@ Returns the indirect buffer, or nil if creation failed."
           ;; Make buffer read-only for the user (content comes from streaming)
           (setq buffer-read-only t)
           ;; Store the end-marker for cleanup
-          (setq-local gptel-org--reasoning-end-marker end-marker))
+          (setq-local gptel-org--reasoning-end-marker end-marker)
+          ;; Clean up markers if user kills the buffer externally
+          (add-hook 'kill-buffer-hook
+                    (lambda ()
+                      (when-let* ((m gptel-org--reasoning-end-marker)
+                                  ((markerp m)))
+                        (set-marker m nil))
+                      (when-let* ((base (buffer-base-buffer (current-buffer))))
+                        (with-current-buffer base
+                          (when (eq gptel-org--reasoning-indirect-buffer
+                                    (current-buffer))
+                            (setq gptel-org--reasoning-indirect-buffer nil)))))
+                    nil t))
         ;; Display in side window
         (display-buffer indirect-buf
                         '((display-buffer-in-side-window)
@@ -2500,6 +2512,10 @@ supplements the inline folding done during streaming (which can be
 unreliable in indirect buffers or when subsequent text insertion
 disrupts overlays)."
   (when (derived-mode-p 'org-mode)
+    ;; Close any orphaned reasoning indirect buffer (e.g. from errors)
+    (when (and (eq gptel-org-reasoning-display 'indirect-buffer)
+               gptel-org--reasoning-indirect-buffer)
+      (gptel-org--reasoning-close-indirect-buffer))
     (save-excursion
       ;; Fold REASONING heading subtrees
       (goto-char beg)
