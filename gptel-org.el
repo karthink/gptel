@@ -2409,7 +2409,7 @@ Returns the indirect buffer, or nil if creation failed."
       (let* ((base-buf (or (buffer-base-buffer (current-buffer))
                            (current-buffer)))
              (buf-name (format "*gptel-reasoning:%s*"
-                               (buffer-name base-buf)))
+                               (buffer-name (current-buffer))))
              indirect-buf)
         ;; Delegate creation to the indirect buffer module
         (setq indirect-buf (gptel-org-ib-create

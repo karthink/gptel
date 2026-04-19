@@ -424,8 +424,10 @@ Returns the indirect buffer."
                 heading-pos))
          ;; Resolve to the root base buffer (handles indirect-of-indirect)
          (root-buf (gptel-org-ib-base-buffer base-buffer))
-         ;; Extract tag for naming
-         (tag (gptel-org-ib--extract-tag-at root-buf pos))
+         ;; Extract tag for naming (skip when name is provided —
+         ;; avoids dependency on gptel-org-agent for non-agent callers)
+         (tag (unless name
+                (gptel-org-ib--extract-tag-at root-buf pos)))
          ;; Compute buffer name
          (buf-name (or name
                        (gptel-org-agent--indirect-buffer-name root-buf pos tag)))
