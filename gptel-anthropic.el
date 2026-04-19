@@ -571,7 +571,7 @@ Media files, if present, are placed in `gptel-context'."
      :description "The best combination of speed and intelligence"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
+     :context-window 1000
      :input-cost 3
      :output-cost 15
      :cutoff-date "2025-08")
