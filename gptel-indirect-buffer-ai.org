@@ -662,6 +662,49 @@ Now: =(org-at-heading-p)= at =(point-min)= directly (in agent IB,
 Was: 4 copies of pos-marker creation idiom (2 with trim, 2 without — inconsistent).
 Now: single helper function used by all 4 call sites with consistent behavior.
 
+
+*** Defensive Fallback Removal (Registry as Single Source of Truth)
+
+Audit performed to remove all defensive fallback patterns where code
+silently fell back to =buffer-base-buffer= or =gptel-org-ib-base-buffer=
+when the registry entry was missing.  The indirect buffer registry is
+now the single source of truth for base buffer references.
+
+**** Removed Patterns
+
+| Function | Old Pattern | New Pattern |
+|----------+-------------+-------------|
+| =gptel-org-ib-close= | =(or (plist-get entry :base) (gptel-org-ib-base-buffer ...))= | =(plist-get entry :base)= + warning if nil |
+| =gptel-org-ib-recreate= | =(or (plist-get entry :base) (gptel-org-ib-base-buffer ...))= | =(plist-get entry :base)= + early return if nil |
+| =gptel-org-ib-renarrow= | =(or (plist-get entry :base) (gptel-org-ib-base-buffer ...))= | =(plist-get entry :base)= only |
+| =gptel-org-ib-resolve-agent-heading= | Full base-buffer backward search fallback | Warning + nil for non-IB callers |
+| =gptel-org-agent--close-indirect-buffer= | =(or (buffer-base-buffer ...) indirect-buffer)= | =(plist-get entry :base)= from registry |
+
+**** Kept Patterns (Legitimate Usage)
+
+These patterns are NOT defensive fallbacks and were intentionally kept:
+
+- =gptel-org-agent--seq-todo-line=: Must access base buffer to read
+  =#+SEQ_TODO:= which lives outside the narrowed region
+- =gptel.el= buffer preference over =marker-buffer=: Critical defense
+  against stale marker-to-buffer associations in indirect buffers
+- =gptel-org-agent--ensure-tool-confirm-hook=: Intentional
+  dual-registration so users can change TODO state from base buffer
+- =gptel-org--reasoning-close-indirect-buffer=: Correct cleanup
+  mirroring across both buffers
+- Interactive commands (=gptel-org-handoff=, =find-user-task-at-point=,
+  =find-indirect-buffer-at-point=): Legitimately support invocation
+  from both base and indirect buffers
+- =gptel-request.el= abort matching: Legitimately matches requests
+  running in indirect buffers when user invokes abort from base buffer
+
+**** Design Principle
+
+Missing registry entries now produce explicit =gptel-org--debug=
+warnings instead of being silently masked by fallback logic.  This
+makes registration bugs immediately visible in debug output rather
+than hidden behind defensive code that "works but is wrong."
+
 *** Remaining Architectural Notes
 
 - =gptel-org-agent--narrow-end-marker= (buffer-local) duplicates the
