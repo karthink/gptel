@@ -255,11 +255,14 @@ Return a marker to the newly created heading."
 
 
 (defun gptel-org-agent--create-handover-heading (body description)
-  "Create a new AI-DO sibling heading for a handover task.
+  "Create a new AI-DO heading at user task level for a handover task.
 
-When called from an agent indirect buffer, use `point-min' to locate
-the agent heading, then switch to the base buffer to find its parent
-task heading and insert the new sibling there.
+When called from an agent indirect buffer, resolve the agent heading
+position via `gptel-org-ib-resolve-agent-heading', then navigate up
+past all agent headings to the user-level task heading using
+`gptel-org-ib-find-user-task-heading'.  The new heading is inserted
+as a child of the user task heading (sibling of the top-level agent
+subtree).
 
 BODY is inserted as the heading content.  DESCRIPTION becomes the
 heading title with TODO keyword AI-DO.
@@ -267,30 +270,14 @@ heading title with TODO keyword AI-DO.
 Returns the heading text of the created heading, or nil on failure."
   (let* ((base-buf (or (buffer-base-buffer (current-buffer))
                        (current-buffer)))
-         ;; In an indirect buffer, point-min IS the agent heading.
-         ;; In the base buffer, search for it.
          (agent-heading-pos
-          (if (buffer-base-buffer (current-buffer))
-              (save-excursion
-                (goto-char (point-min))
-                (when (org-at-heading-p) (point)))
-            ;; Fallback for base buffer context: search backward
-            (save-excursion
-              (goto-char (point-max))
-              (let ((found nil))
-                (while (and (not found)
-                            (re-search-backward org-heading-regexp nil t))
-                  (when (cl-some #'gptel-org-agent--agent-tag-p
-                                 (org-get-tags nil t))
-                    (setq found t)))
-                (when found (point)))))))
+          (gptel-org-ib-resolve-agent-heading (current-buffer))))
     (when agent-heading-pos
       (with-current-buffer base-buf
         (save-excursion
           (goto-char agent-heading-pos)
-          ;; Go up to the parent (task heading)
-          (when (and (> (org-current-level) 1)
-                     (org-up-heading-safe))
+          ;; Navigate up past all agent headings to the user task
+          (when (gptel-org-ib-find-user-task-heading)
             (let* ((inhibit-read-only t)
                    (parent-level (org-current-level))
                    (child-level (1+ parent-level))
@@ -310,29 +297,27 @@ Returns the heading text of the created heading, or nil on failure."
               heading-text)))))))
 
 (defun gptel-org-agent--extract-parent-context ()
-  "Extract the full text of the parent TODO heading for handover context.
+  "Extract the full text of the user-level task heading for handover context.
 
-When called from an agent indirect buffer, use `point-min' to locate
-the agent heading, then navigate to its parent in the base buffer and
-return the parent's full subtree content as a string.
+When called from an agent indirect buffer, resolve the agent heading
+position and navigate up past all agent headings to the user-level
+task heading using `gptel-org-ib-find-user-task-heading'.  Returns
+the full subtree content of the user task as a string.
 
-This is used by the handover mechanism: the handover agent needs to read
-all the triage agent's findings, which are written under the parent
-TODO heading.  Returns nil if the context cannot be extracted."
+This is used by the handover mechanism: the handover agent needs to
+read all context accumulated under the user task heading, including
+any triage agent findings.  Returns nil if the context cannot be
+extracted."
   (let ((base-buf (buffer-base-buffer (current-buffer))))
     (when (and base-buf (buffer-live-p base-buf))
-      ;; In an indirect buffer, point-min IS the agent heading.
-      ;; Its position in the base buffer is the same (shared text).
       (let ((agent-heading-pos
-             (save-excursion
-               (goto-char (point-min))
-               (when (org-at-heading-p) (point)))))
+             (gptel-org-ib-resolve-agent-heading (current-buffer))))
         (when agent-heading-pos
           (with-current-buffer base-buf
             (save-excursion
               (goto-char agent-heading-pos)
-              ;; Go up to the parent heading (the task heading)
-              (when (org-up-heading-safe)
+              ;; Navigate up past all agent headings to user task
+              (when (gptel-org-ib-find-user-task-heading)
                 (let ((beg (point))
                       (end (save-excursion
                              (org-end-of-subtree t)
@@ -2504,6 +2489,96 @@ buffer."
     (if (zerop count)
         (message "No PENDING tool calls found")
       (message "Accepted %d tool call%s" count (if (= count 1) "" "s")))))
+
+;;; ---- Task handoff ---------------------------------------------------------
+
+(declare-function gptel-abort "gptel-request")
+
+(defun gptel-org-agent--find-user-task-at-point ()
+  "Find the user-level task heading from the current context.
+
+If in an agent indirect buffer, resolve the agent heading and navigate
+up to the user task via `gptel-org-ib-find-user-task-heading'.
+If in a base org buffer, walk up from point to find the nearest heading
+without an agent tag.
+
+Returns a marker to the user task heading, or nil if not found."
+  (let ((base-buf (or (buffer-base-buffer (current-buffer))
+                      (current-buffer))))
+    (if (buffer-base-buffer (current-buffer))
+        ;; In an indirect buffer
+        (let ((agent-pos (gptel-org-ib-resolve-agent-heading
+                          (current-buffer))))
+          (when agent-pos
+            (with-current-buffer base-buf
+              (save-excursion
+                (goto-char agent-pos)
+                (when (gptel-org-ib-find-user-task-heading)
+                  (point-marker))))))
+      ;; In base buffer: walk up from point to find non-agent heading
+      (save-excursion
+        (when (or (org-at-heading-p)
+                  (ignore-errors (org-back-to-heading t)))
+          (if (cl-some #'gptel-org-agent--agent-tag-p
+                       (org-get-tags nil t))
+              ;; On an agent heading, walk up
+              (when (gptel-org-ib-find-user-task-heading)
+                (point-marker))
+            ;; Already on a non-agent heading
+            (point-marker)))))))
+
+(defun gptel-org-handoff ()
+  "Stop the current task and create a new AI-DO heading for continuation.
+
+This command is used to optimize token usage when a conversation has
+grown large.  It:
+
+1. Finds the user-level task heading from the current context.
+2. Aborts any running gptel request in the buffer.
+3. Creates a new AI-DO sibling heading after the current task subtree.
+
+The new heading inherits the title of the current task (prefixed with
+\"Continue:\") and can be picked up by a fresh agent with clean context.
+The user can edit the new heading to add notes before triggering it.
+
+Works from both base org buffers and agent indirect buffers."
+  (interactive)
+  (unless (derived-mode-p 'org-mode)
+    (user-error "Not in an org-mode buffer"))
+  (let* ((base-buf (or (buffer-base-buffer (current-buffer))
+                       (current-buffer)))
+         (task-marker (gptel-org-agent--find-user-task-at-point)))
+    (unless task-marker
+      (user-error "No task heading found at or above point"))
+    ;; Abort any running requests in the base buffer
+    (when (fboundp 'gptel-abort)
+      (condition-case nil
+          (gptel-abort base-buf)
+        (error nil)))
+    ;; Create the handoff heading
+    (with-current-buffer base-buf
+      (save-excursion
+        (goto-char task-marker)
+        (let* ((task-title (org-get-heading t t t t))
+               (task-level (org-current-level))
+               (inhibit-read-only t)
+               (stars (make-string task-level ?*))
+               (todo-keyword (gptel-org-agent--status-to-keyword "pending"))
+               (new-title (format "Continue: %s" task-title))
+               (heading-text (format "%s %s %s" stars todo-keyword new-title)))
+          ;; Go to end of current task subtree
+          (org-end-of-subtree t)
+          (unless (bolp) (insert "\n"))
+          ;; Insert the new heading
+          (insert heading-text "\n")
+          (message "Created handoff heading: %s" new-title))))
+    ;; Switch to base buffer if in indirect buffer
+    (when (buffer-base-buffer (current-buffer))
+      (let ((pos (marker-position task-marker)))
+        (switch-to-buffer base-buf)
+        (goto-char pos)
+        (org-end-of-subtree t)
+        (recenter)))))
 
 (provide 'gptel-org-agent)
 ;;; gptel-org-agent.el ends here
