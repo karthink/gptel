@@ -2633,6 +2633,7 @@ features.  Enabling it activates:
 - `gptel-org-use-todo-keywords' (AI/HI keyword-based role detection)
 - `gptel-org-tasks-mode' (AI-DO/DOING/DONE state machine)
 - `gptel-highlight-mode' (visual response highlighting)
+- `gptel-org-dashboard' registration (AI task dashboard)
 
 Use this instead of manually configuring individual org-mode
 settings.  All features can still be customized via their
@@ -2657,12 +2658,18 @@ This mode is only intended for `org-mode' buffers."
           (gptel-org-tasks-mode 1))
         ;; Visual highlighting
         (when (fboundp 'gptel-highlight-mode)
-          (gptel-highlight-mode 1)))
+          (gptel-highlight-mode 1))
+        ;; Dashboard registration
+        (require 'gptel-org-dashboard nil t)
+        (when (fboundp 'gptel-org-dashboard-register)
+          (gptel-org-dashboard-register)))
     ;; Disable chain
     (when (fboundp 'gptel-org-tasks-mode)
       (gptel-org-tasks-mode -1))
     (when (fboundp 'gptel-highlight-mode)
       (gptel-highlight-mode -1))
+    (when (fboundp 'gptel-org-dashboard-unregister)
+      (gptel-org-dashboard-unregister))
     (kill-local-variable 'gptel-org-subtree-context)
     (kill-local-variable 'gptel-org-use-todo-keywords)))
 
