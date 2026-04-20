@@ -2410,7 +2410,19 @@ TOOL-CALLS."
 
 ;;; Presets
 ;;;; Presets implementation
-(defvar gptel--known-presets nil
+(defvar gptel--known-presets
+  '((gptel-default
+     :description "Use gptel's default configuration."
+     :context nil :tools nil
+     :temperature nil :max-tokens nil
+     :num-messages-to-send nil
+     :request-params nil
+     :org-convert-response t
+     :track-media nil
+     :track-response t
+     :system nil
+     :stream t
+     :cache nil))
   "Alist of presets for gptel.
 
 Each entry maps a preset name (a symbol) to a plist of

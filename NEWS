@@ -83,6 +83,26 @@
   ~gptel-menu~ now uses this command instead of a transient menu for
   applying presets.
 
+- gptel now ships with a pre-defined preset named =gptel-default=.  This
+  preset "resets" most gptel settings to the default values that gptel
+  ships with.  This means no system prompt or tools, no additional
+  context sources, no request temperature or max token limits and more.
+  It does not change the active ~gptel-model~ or ~gptel-backend~.  This
+  has at least two uses:
+
+  1. By applying the preset interactively, you can use it to quickly
+     reset most of gptel's configuration back to the default (excepting
+     the model and backend, which are =nil= by default).
+
+  2. When using ~gptel-request~ for scripting purposes, you can fully
+     isolate the call from the effects of gptel's environment with
+     #+begin_src emacs-lisp
+     (gptel-with-preset 'gptel-backend
+       (gptel-request prompt ...))
+     #+end_src
+     Presets can also inherit from =gptel-default= to build a bespoke
+     gptel configuration.  (See ~gptel-make-preset~ for details.)
+
 - The UI indicators in chat buffers that report status changes (such as
   =Waiting=, =Ready= etc) now show the names of tools being called.  The
   mode-line indicator display (see ~gptel-use-header-line~) has been
