@@ -176,19 +176,14 @@ Removes the file from the dashboard and cleans up buffer-local hooks."
 (defun gptel-org-dashboard-refresh ()
   "Refresh the dashboard if it is visible in some window.
 Does nothing if the dashboard buffer does not exist or is not
-currently displayed."
+currently displayed.  Can be called interactively (bound to `g'
+in the dashboard) or from the auto-refresh timer."
+  (interactive)
   (when-let* ((buf (get-buffer gptel-org-dashboard-buffer-name)))
     (when (get-buffer-window buf 'visible)
       (with-current-buffer buf
         (let ((inhibit-message t))
-          ;; Catch `exit' thrown by `org-agenda-prepare' when it detects a
-          ;; sticky agenda buffer during redo.  The dashboard command spec
-          ;; includes (org-agenda-sticky t) which `org-agenda-run-series'
-          ;; re-binds via `cl-progv', overriding `org-agenda-redo's local
-          ;; nil binding.  Without this catch the throw propagates into the
-          ;; idle timer and becomes a no-catch error.
-          (catch 'exit
-            (org-agenda-redo-all)))))))
+          (org-agenda-redo-all))))))
 
 (defun gptel-org-dashboard--schedule-refresh ()
   "Schedule a debounced dashboard refresh.
@@ -222,9 +217,15 @@ Added buffer-locally to `after-save-hook'."
       (gptel-org-dashboard--schedule-refresh))))
 
 (defun gptel-org-dashboard--on-kill ()
-  "Unregister the file when its buffer is killed.
-Added buffer-locally to `kill-buffer-hook'."
-  (gptel-org-dashboard-unregister))
+  "Unregister the file when its base buffer is killed.
+Added buffer-locally to `kill-buffer-hook'.
+Only unregisters when the base buffer itself is being killed, not
+when indirect buffers (e.g., gptel agent task buffers) derived
+from it are killed.  Indirect buffers inherit buffer-local hooks
+from their base buffer, so this guard prevents spurious
+unregistration during normal task execution."
+  (unless (buffer-base-buffer)
+    (gptel-org-dashboard-unregister)))
 
 ;;; Dashboard actions
 
@@ -277,6 +278,7 @@ Added to `org-agenda-finalize-hook'."
       (define-key map "a" #'gptel-org-dashboard-allow)
       (define-key map "d" #'gptel-org-dashboard-deny)
       (define-key map "k" #'gptel-org-dashboard-kill)
+      (define-key map "g" #'gptel-org-dashboard-refresh)
       (use-local-map map))))
 
 ;;; Agenda command construction
@@ -314,12 +316,17 @@ variable directly so it is evaluated when the agenda is built."
                ,(format "📋 Queued [%s]\n" todo-kw))
               (org-agenda-sorting-strategy '(priority-down))
               (org-agenda-prefix-format "  %-20:c "))))
-      ;; Global settings for all blocks
+      ;; Global settings for all blocks.
+      ;; NOTE: org-agenda-sticky is intentionally NOT set here.
+      ;; When present in command spec gprops, org-agenda-run-series
+      ;; re-binds it via cl-progv during redo, which causes
+      ;; org-agenda-prepare to throw 'exit (sticky buffer detected),
+      ;; silently aborting the refresh.  Sticky is set only at the
+      ;; entry point via a let-binding around org-agenda.
       ((org-agenda-files gptel-org-dashboard--registered-files)
        (org-agenda-compact-blocks nil)
        (org-agenda-block-separator ?─)
        (org-agenda-buffer-name ,gptel-org-dashboard-buffer-name)
-       (org-agenda-sticky t)
        (org-agenda-window-setup 'current-window)))))
 
 (defun gptel-org-dashboard--install-agenda-command ()
@@ -362,7 +369,11 @@ are saved.  Use \\`g' to force a manual refresh."
   (add-hook 'org-agenda-finalize-hook #'gptel-org-dashboard--setup-keys)
   ;; Rebuild the agenda command to pick up current state
   (gptel-org-dashboard--install-agenda-command)
-  (org-agenda nil gptel-org-dashboard-key))
+  ;; Bind sticky only for initial display.  This is NOT stored in the
+  ;; command spec's gprops, so org-agenda-run-series won't re-enable
+  ;; it during redo — allowing org-agenda-redo-all to work correctly.
+  (let ((org-agenda-sticky t))
+    (org-agenda nil gptel-org-dashboard-key)))
 
 (provide 'gptel-org-dashboard)
 ;;; gptel-org-dashboard.el ends here

@@ -39,7 +39,13 @@ Files register with the dashboard when =gptel-org-mode= is enabled:
         - kill-buffer-hook → unregister
 #+end_example
 
-Unregistration happens on =gptel-org-mode= OFF or buffer kill.
+Unregistration happens on =gptel-org-mode= OFF or base buffer kill.
+
+*Indirect buffer safety*: The =kill-buffer-hook= handler checks
+=(buffer-base-buffer)= and only unregisters when the base buffer itself
+is being killed.  gptel creates indirect buffers for task execution that
+inherit buffer-local hooks; without this guard, killing an indirect
+buffer would spuriously unregister the base file from the dashboard.
 
 ** Agenda Integration
 
@@ -47,6 +53,16 @@ The dashboard is a composite =org-agenda-custom-commands= entry with
 key ="D"= (customizable via =gptel-org-dashboard-key=).  It dynamically
 builds the command each time =gptel-org-dashboard= is called, binding
 =org-agenda-files= to the registered file list.
+
+*Sticky agenda handling*: The =org-agenda-sticky= flag is bound only at
+the entry point (=gptel-org-dashboard=) via a =let=-binding around
+=org-agenda=, NOT stored in the command spec's global properties.  This
+is critical: when =org-agenda-run-series= processes a redo, it re-binds
+all gprops via =cl-progv=, which would override =org-agenda-redo='s
+careful =nil= binding of =org-agenda-sticky=.  The re-enabled sticky
+flag causes =org-agenda-prepare= to throw ='exit= ("Sticky Agenda
+buffer"), silently aborting the refresh or causing a no-catch error on
+manual =g= presses.
 
 Four blocks, one per state category:
 
@@ -104,7 +120,7 @@ Or via the org-agenda dispatcher: =C-c a D=
 | =a=   | =gptel-org-dashboard-allow=     | Allow pending tool call (→ ALLOWED)                   |
 | =d=   | =gptel-org-dashboard-deny=      | Deny pending tool call (→ DENIED, prompts for reason) |
 | =k=   | =gptel-org-dashboard-kill=      | Abort AI task (calls =gptel-abort=)                   |
-| =g=   | =org-agenda-redo-all=           | Force refresh all blocks                              |
+| =g=   | =gptel-org-dashboard-refresh=   | Force refresh all blocks                              |
 | =q=   | =org-agenda-quit=               | Quit (bury dashboard)                                 |
 
 ** Workflow Example
