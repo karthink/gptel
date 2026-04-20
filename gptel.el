@@ -2702,7 +2702,7 @@ example) apply the preset buffer-locally."
                  (not (stringp (symbol-value sym)))
                  (user-error "Composing non-string system messages is not implemented"))
             (setq val (gptel--modify-value (symbol-value sym) val)))
-          (if (and (symbolp val) (not (functionp val)))
+          (if (and val (symbolp val) (not (functionp val)))
               (if-let* ((directive (alist-get val gptel-directives)))
                   (funcall setter sym directive)
                 (user-error "gptel preset: Cannot find directive %s" val))
