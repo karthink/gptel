@@ -57,6 +57,21 @@ mode (=gptel-org-reasoning-display= set to ='indirect-buffer=):
   retained as a fast reference, but the module's registry is the source
   of truth for marker tracking
 
+*** gptel-org.el (TOOL heading display)
+
+=gptel-org.el= also uses the module to isolate =* TOOL ...= heading body
+insertion (plist call + =#+begin_tool … #+end_tool=) emitted by
+=gptel--display-tool-results= in =gptel.el=:
+
+- =gptel-org--tool-create-indirect-buffer= → delegates to
+  =gptel-org-ib-create= with buffer name =*gptel-tool:BASE*=, narrowed
+  to the freshly inserted TOOL subtree.  Unlike the reasoning IB, the
+  TOOL IB is not read-only and the subtree is not unfolded.
+- =gptel-org--tool-close-indirect-buffer= → delegates cleanup to
+  =gptel-org-ib-close=
+- The =gptel-org--tool-indirect-buffer= buffer-local variable tracks the
+  active TOOL IB (transient — lives only during the body insertion)
+
 *** Module capabilities
 
 The module provides the foundational capabilities used by both consumers:
@@ -286,6 +301,124 @@ The reasoning IB is simpler than agent IBs:
 - Not displayed in any window (same as agent IBs — exists only as an
   isolated write target for streaming content)
 - Short-lived (exists only during streaming, closed on completion or error)
+
+** Integration with gptel-org.el (TOOL heading display)
+
+This section documents how =gptel-org.el= uses the module to isolate
+=* TOOL ...= heading body insertion in the org-mode branch of
+=gptel--display-tool-results= (in =gptel.el=).
+
+*** Motivation
+
+When a tool call result arrives, =gptel--display-tool-results= needs to
+insert two pieces of content at the current tracking marker:
+
+1. A =* TOOL (name args)= heading at the correct depth
+2. A body containing the call plist and a =#+begin_tool … #+end_tool=
+   block with the escaped result
+
+Previously the body was inserted directly at the tracking marker and the
+heading was always written at level 1, relying on
+=gptel-org--auto-correct-on-change= (an =after-change-functions= hook
+that only runs in agent indirect buffers) to re-level the heading after
+the fact.  When the insertion target resolved to the base buffer — for
+example, after a sub-agent IB was closed before its tool result arrived
+— the hook never fired and the heading landed at root level instead of
+nested under the agent subtree.
+
+The fix is two-fold:
+
+1. Compute the correct heading depth /up front/ before inserting the
+   heading (see [[*Ref-level computation]] below).
+2. Route the body insertion through a dedicated transient TOOL IB so
+   writes happen in indirect-buffer context regardless of where the
+   target buffer actually resolves.  This keeps the "indirect buffer
+   rule" (every AI-emitted block gets its own IB scope) uniform.
+
+*** tool-create → gptel-org-ib-create
+
+=gptel-org--tool-create-indirect-buffer= delegates creation to
+=gptel-org-ib-create= with a custom buffer name =*gptel-tool:BASE*=.
+The module handles:
+- Indirect buffer creation with =make-indirect-buffer=
+- Fold state decoupling
+- Narrowing to the freshly inserted TOOL subtree
+- End-marker with insertion-type t for auto-expansion during body insertion
+- Registry tracking
+
+After =gptel-org-ib-create= returns, the tool wrapper applies:
+- =kill-buffer-hook= to clear =gptel-org--tool-indirect-buffer= if the
+  user kills the buffer externally
+- Stores the IB reference in =gptel-org--tool-indirect-buffer= (both in
+  the current buffer and in the base buffer) for close-time lookup
+- The buffer is *not displayed* in any window — it exists only as an
+  isolated write target
+
+*** tool-close → gptel-org-ib-close
+
+=gptel-org--tool-close-indirect-buffer= delegates cleanup to
+=gptel-org-ib-close= (registry unregister, marker cleanup, buffer kill)
+and clears =gptel-org--tool-indirect-buffer= in both the current buffer
+and the base buffer.  Safe to call when no TOOL IB exists.
+
+*** Ref-level computation
+
+=gptel--tool-heading-ref-level= (in =gptel.el=) picks the correct heading
+depth up front using a 4-priority fallback chain:
+
+1. =gptel-org--ref-level= in =target-buffer= (the buffer actually being
+   written to; covers the normal agent-IB case).
+2. =gptel-org--ref-level= in =(plist-get info :buffer)= (agent IB
+   recorded at request time by =transform-redirect=, even if the
+   current target-buffer is the base).
+3. Look up registered agent IBs on the same base via
+   =gptel-org-ib-all-for-base= and pick the /deepest/ one whose
+   narrowing contains =tracking-marker= (or =start-marker= as fallback).
+   This covers the case where the original IB was closed but markers
+   still point into the agent subtree range.
+4. Fall back to 1.
+
+The heading line is then written as =(make-string ref-level ?*)= stars
+via the normal callback path, so =:tracking-marker= is advanced
+correctly.
+
+*** Body insertion through the TOOL IB
+
+After the heading is in place, =gptel--display-tool-results= locates
+it in =target-buffer= (=re-search-backward= for =^\\*+ TOOL =) and opens
+a TOOL IB narrowed to that subtree.  The body text (plist call +
+=#+begin_tool … #+end_tool=) is inserted at =point-max= in the IB,
+which — because IB and base share underlying storage — advances the
+insertion-type-t =:tracking-marker= in =target-buffer= as a side
+effect.  The IB is closed in an =unwind-protect=.
+
+If either the heading can't be located or the TOOL IB creation fails,
+the code falls back to direct insertion at the tracking marker.
+
+*** Differences from Reasoning Integration
+
+The TOOL IB differs from the reasoning IB in several ways:
+- *Not read-only* — the whole point is that the caller inserts the
+  tool body into it.
+- *Single atomic body insertion*, not streamed.  The IB lives only
+  long enough to insert the plist + =#+begin_tool … #+end_tool= block
+  and is torn down immediately (=unwind-protect=).
+- *Subtree is not unfolded* — the result block is folded afterwards by
+  =gptel--display-tool-results=' drawer-fold step.
+- *Not displayed anywhere* (same as reasoning and agent IBs — write
+  target only).
+- *Transient lifetime* — create and close happen within a single
+  =gptel--display-tool-results= call per tool result.
+
+*** Relationship to the auto-correct hook
+
+=gptel-org--auto-correct-on-change= is retained as a safety net for any
+heading written inside an agent IB whose level is still wrong, but it
+is no longer the primary mechanism for TOOL heading levelling.  The
+primary mechanism is =gptel--tool-heading-ref-level= writing the
+correct level directly up front.  The hook remains in place so
+previously correct behaviour in agent IBs is preserved and as
+defence-in-depth.
 
 * Emacs Indirect Buffer Internals
 

@@ -1793,22 +1793,24 @@ and auto-correct fires via `after-change-functions'."
             (kill-buffer coord-indirect)))))))
 
 (ert-deftest gptel-org-agent-test-tool-heading-at-root-when-inserted-in-base-buffer ()
-  "TOOL heading lands at root level when inserted in base buffer.
-This reproduces the bug where `display-tool-results' inserts TOOL
-content in the base buffer instead of the agent indirect buffer.
-In the base buffer, ref-level is nil and auto-correct is not active,
-resulting in a root-level `* TOOL' heading.
+  "TOOL heading inserted in base buffer is placed at correct ref-level.
 
-The bug occurs in this sequence:
+Verifies the fix for a bug where `display-tool-results' inserted a
+root-level `* TOOL' heading when its start-marker resolved to the base
+buffer (e.g., after a sub-agent IB was closed before the result
+arrived).  `gptel--display-tool-results' now computes the correct
+heading level up front from an agent IB registered on the same base
+buffer, so the TOOL heading is written at the right depth directly.
+
+The sequence the fix must handle:
 1. Coordinator runs in indirect buffer (ref-level=4)
 2. Coordinator calls sub-agent tool (gatherer)
-3. Gatherer completes → its indirect buffer is closed
-4. display-tool-results ends up inserting in the base buffer
-   (because its start-marker resolves to the base buffer)
-5. No auto-correct fires → heading stays at level 1
-
-This test simulates step 4-5 by directly inserting in the base
-buffer where no auto-corrector is running."
+3. Gatherer completes → its indirect buffer may be closed
+4. display-tool-results inserts in the base buffer because the
+   start-marker resolves to the base buffer
+5. With the fix, the TOOL heading level is computed from the
+   still-live coordinator IB's ref-level (=4) via the IB registry,
+   so the heading is written directly as `**** TOOL ...'."
   (let ((org-inhibit-startup t)
         (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
                                        "|" "AI-DONE" "DONE")))
@@ -1834,25 +1836,55 @@ buffer where no auto-corrector is running."
               ;; Verify that ref-level is NOT set in base buffer
               (with-current-buffer base-buf
                 (should-not (bound-and-true-p gptel-org--ref-level)))
-              ;; Simulate the bug: insert TOOL heading in the BASE buffer
-              ;; (as happens when display-tool-results uses a marker that
-              ;; resolves to the base buffer instead of the indirect buffer)
-              (with-current-buffer base-buf
-                (goto-char (point-max))
-                (let ((tool-heading "* TOOL (Agent :subagent_type \"gatherer\")\n")
-                      (tool-body "(:name \"Agent\" :args (:subagent_type \"gatherer\"))\n#+begin_tool\nGatherer result\n#+end_tool\n"))
-                  (add-text-properties
-                   0 (length tool-heading)
-                   '(gptel ignore front-sticky (gptel)) tool-heading)
-                  (insert tool-heading tool-body)))
-              ;; BUG MANIFESTATION: TOOL heading is at level 1 in base buffer
-              ;; because there's no auto-corrector running there
+              ;; Exercise the real code path: call
+              ;; `gptel--display-tool-results' with an `info' plist whose
+              ;; :buffer and :position resolve to the BASE buffer (as if
+              ;; the sub-agent IB was closed and the marker association
+              ;; staled to the base).  The coordinator IB remains open
+              ;; and registered on base-buf, so the fix's priority-3
+              ;; lookup should find ref-level=4.
+              (let* ((tool-spec (gptel-make-tool
+                                 :name "Agent"
+                                 :function #'ignore
+                                 :description "Delegate"
+                                 :args '((:name "subagent_type"
+                                          :type "string"
+                                          :description "t"))
+                                 :include t))
+                     (tool-results
+                      (list (list tool-spec
+                                  '(:subagent_type "gatherer")
+                                  "Gatherer result")))
+                     ;; Position inside the coordinator subtree (same
+                     ;; position the agent IB is narrowed to).  In the
+                     ;; real bug, the tool result is written inside the
+                     ;; agent subtree via a marker whose buffer resolved
+                     ;; to the base (not the IB).
+                     (position-in-subtree
+                      (with-current-buffer coord-indirect
+                        (save-excursion
+                          (goto-char (point-max))
+                          (point))))
+                     (position-marker
+                      (with-current-buffer base-buf
+                        (copy-marker position-in-subtree nil)))
+                     (info (list :buffer base-buf
+                                 :position position-marker
+                                 :callback #'gptel--insert-response
+                                 :tools (list tool-spec)
+                                 :tool-use (list (list :name "Agent"
+                                                       :id "call_1"))))
+                     ;; display-tool-results honors gptel-include-tool-results
+                     (gptel-include-tool-results t))
+                (gptel--display-tool-results tool-results info))
+              ;; With the fix: TOOL heading is at level 4 in base buffer,
+              ;; inferred from the registered coordinator IB.
               (with-current-buffer base-buf
                 (goto-char (point-min))
                 (should (re-search-forward "^\\(\\*+\\) TOOL " nil t))
-                ;; Documents the bug: heading at level 1 instead of level 4
-                (should (= 1 (length (match-string 1)))))
-              ;; CONTRAST: the same insertion in the indirect buffer gets rebased
+                (should (= 4 (length (match-string 1)))))
+              ;; CONTRAST: direct insertion in the indirect buffer also yields
+              ;; level 4 (via auto-correct rebasing — unchanged path)
               (with-current-buffer coord-indirect
                 (goto-char (point-max))
                 (let ((tool-heading "* TOOL (Bash :command \"echo hi\")\n")
@@ -1865,6 +1897,85 @@ buffer where no auto-corrector is running."
                 (goto-char (point-min))
                 (should (re-search-forward "^\\(\\*+\\) TOOL (Bash" nil t))
                 ;; Correctly rebased to level 4 in indirect buffer
+                (should (= 4 (length (match-string 1))))))
+          (when (and coord-indirect (buffer-live-p coord-indirect))
+            (kill-buffer coord-indirect)))))))
+
+(ert-deftest gptel-org-agent-test-tool-heading-uses-indirect-buffer ()
+  "TOOL body insertion goes through a transient indirect buffer.
+Verifies that `gptel--display-tool-results' creates a TOOL IB via
+`gptel-org--tool-create-indirect-buffer' and closes it afterwards
+(i.e., `gptel-org--tool-indirect-buffer' is set transiently during
+insertion and nil after)."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING" "FEEDBACK"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Run a tool\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (base-buf (current-buffer))
+             (coord-marker (gptel-org-agent--create-subtree "coordinator"))
+             (coord-indirect nil)
+             (ib-seen nil))
+        (unwind-protect
+            (progn
+              (setq coord-indirect
+                    (gptel-org-agent--open-indirect-buffer base-buf coord-marker))
+              ;; Spy on tool IB creation: advice around
+              ;; `gptel-org--tool-create-indirect-buffer' captures the
+              ;; buffer created during the call.
+              (let ((spy (lambda (orig &rest args)
+                           (let ((ib (apply orig args)))
+                             (when ib (setq ib-seen ib))
+                             ib))))
+                (advice-add 'gptel-org--tool-create-indirect-buffer
+                            :around spy)
+                (unwind-protect
+                    (let* ((tool-spec (gptel-make-tool
+                                       :name "Bash"
+                                       :function #'ignore
+                                       :description "Run"
+                                       :args '((:name "command"
+                                                :type "string"
+                                                :description "c"))
+                                       :include t))
+                           (tool-results
+                            (list (list tool-spec
+                                        '(:command "date")
+                                        "Thu Apr 16 19:01:57 EEST 2026")))
+                           (position-marker
+                            (with-current-buffer coord-indirect
+                              (save-excursion
+                                (goto-char (point-max))
+                                (copy-marker (point) nil))))
+                           (info (list :buffer coord-indirect
+                                       :position position-marker
+                                       :callback #'gptel--insert-response
+                                       :tools (list tool-spec)
+                                       :tool-use (list (list :name "Bash"
+                                                             :id "call_b1"))))
+                           (gptel-include-tool-results t))
+                      (gptel--display-tool-results tool-results info))
+                  (advice-remove 'gptel-org--tool-create-indirect-buffer spy)))
+              ;; An IB was created during the insertion
+              (should ib-seen)
+              ;; And it was closed afterwards
+              (should-not (buffer-live-p ib-seen))
+              ;; Tracking vars are cleared in both IB and base
+              (with-current-buffer coord-indirect
+                (should-not gptel-org--tool-indirect-buffer))
+              (with-current-buffer base-buf
+                (should-not gptel-org--tool-indirect-buffer))
+              ;; TOOL heading landed at ref-level=4 inside coord-indirect
+              (with-current-buffer coord-indirect
+                (goto-char (point-min))
+                (should (re-search-forward "^\\(\\*+\\) TOOL (Bash" nil t))
                 (should (= 4 (length (match-string 1))))))
           (when (and coord-indirect (buffer-live-p coord-indirect))
             (kill-buffer coord-indirect)))))))

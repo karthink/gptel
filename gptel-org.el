@@ -98,6 +98,10 @@ tag is removed (e.g. by `gptel-org-agent--insert-user-heading').")
   "The indirect buffer currently showing reasoning content, if any.
 Used to track and clean up the reasoning display buffer.")
 
+(defvar-local gptel-org--tool-indirect-buffer nil
+  "The indirect buffer currently used for TOOL heading body insertion, if any.
+Used to track and clean up the TOOL display buffer.")
+
 ;; Debug support
 (defvar gptel-org-debug nil
   "When non-nil, output debug messages for subtree context operations.
@@ -2525,6 +2529,99 @@ Safe to call even if no reasoning buffer exists."
   (when-let* ((base (buffer-base-buffer (current-buffer))))
     (with-current-buffer base
       (setq gptel-org--reasoning-indirect-buffer nil))))
+
+
+;;; TOOL indirect buffer display
+
+(defun gptel-org--tool-create-indirect-buffer (tool-heading-pos)
+  "Create an indirect buffer for the TOOL heading at TOOL-HEADING-POS.
+
+Creates an indirect buffer narrowed to the TOOL subtree.  The buffer
+auto-expands as body content is inserted.  The buffer is not displayed
+in any window — it exists only as an isolated write target for TOOL
+body content, providing the indirect-buffer context needed for
+auto-correct hooks and ref-level handling.
+
+Modeled after `gptel-org--reasoning-create-indirect-buffer'.  Unlike
+the reasoning buffer, the TOOL IB is not set read-only (callers insert
+body content into it) and the subtree is not unfolded.
+
+Delegates buffer creation to `gptel-org-ib-create' for consistent
+indirect buffer management (fold decoupling, end-marker, registry
+tracking).
+
+Returns the indirect buffer, or nil if creation failed."
+  (gptel-org--debug
+   "tool IB create: pos=%S cur-buf=%S base=%S"
+   tool-heading-pos (buffer-name)
+   (when (buffer-base-buffer) (buffer-name (buffer-base-buffer))))
+  (condition-case err
+      (let* ((base-buf (or (buffer-base-buffer (current-buffer))
+                           (current-buffer)))
+             (buf-name (format "*gptel-tool:%s*"
+                               (buffer-name (current-buffer))))
+             indirect-buf)
+        (gptel-org--debug
+         "tool IB create: base-buf=%S buf-name=%S"
+         (buffer-name base-buf) buf-name)
+        ;; Delegate creation to the indirect buffer module
+        (setq indirect-buf (gptel-org-ib-create
+                            base-buf tool-heading-pos buf-name))
+        (gptel-org--debug
+         "tool IB create: gptel-org-ib-create returned %S (live=%S)"
+         (when indirect-buf (buffer-name indirect-buf))
+         (when indirect-buf (buffer-live-p indirect-buf)))
+        (with-current-buffer indirect-buf
+          ;; Clean up tracking var if user kills the buffer externally
+          (add-hook 'kill-buffer-hook
+                    (lambda ()
+                      (let ((this-buf (current-buffer)))
+                        (when-let* ((base (buffer-base-buffer this-buf)))
+                          (with-current-buffer base
+                            (when (eq gptel-org--tool-indirect-buffer
+                                      this-buf)
+                              (setq gptel-org--tool-indirect-buffer nil))))))
+                    nil t))
+        ;; Store reference in base buffer
+        (with-current-buffer base-buf
+          (setq gptel-org--tool-indirect-buffer indirect-buf))
+        ;; Also store in the current buffer if it's an IB itself
+        (unless (eq (current-buffer) base-buf)
+          (setq gptel-org--tool-indirect-buffer indirect-buf))
+        (gptel-org--debug
+         "tool IB create: success, buffer=%S" (buffer-name indirect-buf))
+        indirect-buf)
+    (error
+     (gptel-org--debug "tool IB: creation failed: %S" err)
+     nil)))
+
+(defun gptel-org--tool-close-indirect-buffer ()
+  "Close the TOOL indirect buffer if one exists.
+
+Delegates cleanup to `gptel-org-ib-close' for consistent marker and
+registry cleanup.  Clears the tracking variable in both current and
+base buffers.
+
+Safe to call even if no TOOL buffer exists."
+  (gptel-org--debug
+   "tool IB close: cur-buf=%S ib-var=%S ib-live=%S"
+   (buffer-name)
+   (when gptel-org--tool-indirect-buffer
+     (buffer-name gptel-org--tool-indirect-buffer))
+   (when gptel-org--tool-indirect-buffer
+     (buffer-live-p gptel-org--tool-indirect-buffer)))
+  (when-let* ((ib gptel-org--tool-indirect-buffer)
+              ((buffer-live-p ib)))
+    (gptel-org--debug
+     "tool IB close: closing %S" (buffer-name ib))
+    ;; Delegate cleanup to the indirect buffer module
+    ;; (handles unregister, marker cleanup, kill)
+    (gptel-org-ib-close ib))
+  (setq gptel-org--tool-indirect-buffer nil)
+  ;; Also clear in base buffer
+  (when-let* ((base (buffer-base-buffer (current-buffer))))
+    (with-current-buffer base
+      (setq gptel-org--tool-indirect-buffer nil))))
 
 ;;; Post-response block folding
 

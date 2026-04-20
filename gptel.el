@@ -2434,7 +2434,8 @@ for tool call results.  INFO contains the state of the request."
          (target-buffer (let ((info-buf (plist-get info :buffer)))
                           (if (and info-buf (buffer-live-p info-buf))
                               info-buf
-                            (marker-buffer start-marker)))))
+                            (marker-buffer start-marker))))
+         (info-buf (plist-get info :buffer)))
     ;; Insert tool results
     (with-current-buffer target-buffer
       (when gptel-include-tool-results
@@ -2445,61 +2446,119 @@ for tool call results.  INFO contains the state of the request."
                  (cl-remove-if-not #'gptel-tool-include (plist-get info :tools)))
          if (or (eq gptel-include-tool-results t)
                 (member (gptel-tool-name tool) include-names))
-         do (funcall
-             (plist-get info :callback)
-             (let* ((name (gptel-tool-name tool))
-                    (separator        ;Separate from response prefix if required
-                     (cond ((not tracking-marker)
-                            (and gptel-mode
-                                 (not (string-suffix-p
-                                       "\n" (gptel-response-prefix-string)))
-                                 "\n"))           ;start of response
-                           ((not (and tool-marker ;not consecutive tool result blocks
-                                      (= tracking-marker tool-marker)))
-                            gptel-response-separator)))
-                    (tool-use
-                     ;; TODO(tool) also check args since there may be more than
-                     ;; one call/result for the same tool
-                     (cl-find-if
-                      (lambda (tu) (equal (plist-get tu :name) name))
-                      (plist-get info :tool-use)))
-                    (id (plist-get tool-use :id))
-                    (display-call (format "(%s %s)" name
-                                          (string-trim (prin1-to-string args) "(" ")")))
-                    (call (prin1-to-string `(:name ,name :args ,args)))
-                    (truncated-call
-                     (string-replace "\n" " "
-                                     (truncate-string-to-width
-                                      display-call
-                                      (floor (* (window-width) 0.6)) 0 nil " ...)"))))
-               (if (derived-mode-p 'org-mode)
-                   ;; Org-mode: insert TOOL heading with result in
-                   ;; special block to protect org formatting
-                   (let* ((heading-line (concat "* TOOL " truncated-call "\n"))
-                          (_ (when (eq gptel-log-level 'debug)
-                               (gptel--log
-                                (format "display-tool-results: creating heading=\"* TOOL\" ref-level=%S in-agent-indirect=%S start-marker=%S tracking-marker=%S buffer=%S inhibit-mod-hooks=%S"
-                                        (bound-and-true-p gptel-org--ref-level)
-                                        (and (fboundp 'gptel-org--in-agent-indirect-buffer-p)
-                                             (gptel-org--in-agent-indirect-buffer-p))
-                                        start-marker tracking-marker
-                                        (current-buffer) inhibit-modification-hooks)
-                                "tool-heading-debug" 'no-json)))
-                          (escaped-result
-                           (org-escape-code-in-string
-                            (if (stringp result) result
-                              (format "%S" result))))
-                          (body-text (concat call "\n"
+         do (let* ((name (gptel-tool-name tool))
+                   (separator     ;Separate from response prefix if required
+                    (cond ((not tracking-marker)
+                           (and gptel-mode
+                                (not (string-suffix-p
+                                      "\n" (gptel-response-prefix-string)))
+                                "\n"))      ;start of response
+                          ((not (and tool-marker ;not consecutive tool result blocks
+                                     (= tracking-marker tool-marker)))
+                           gptel-response-separator)))
+                   (tool-use
+                    ;; TODO(tool) also check args since there may be more than
+                    ;; one call/result for the same tool
+                    (cl-find-if
+                     (lambda (tu) (equal (plist-get tu :name) name))
+                     (plist-get info :tool-use)))
+                   (id (plist-get tool-use :id))
+                   (display-call (format "(%s %s)" name
+                                         (string-trim (prin1-to-string args) "(" ")")))
+                   (call (prin1-to-string `(:name ,name :args ,args)))
+                   (truncated-call
+                    (string-replace "\n" " "
+                                    (truncate-string-to-width
+                                     display-call
+                                     (floor (* (window-width) 0.6)) 0 nil " ...)"))))
+              (if (derived-mode-p 'org-mode)
+                  ;; Org-mode: insert TOOL heading with result in
+                  ;; special block to protect org formatting.
+                  ;;
+                  ;; Compute the correct heading level up front so the
+                  ;; heading is written at the right depth directly in
+                  ;; the base buffer, rather than relying on the
+                  ;; auto-correct hook (which only fires in agent
+                  ;; indirect buffers).  Priority:
+                  ;;   1. target-buffer's own ref-level (if it's an IB)
+                  ;;   2. info :buffer's ref-level (agent IB from redirect)
+                  ;;   3. ref-level from a registered agent IB on this base
+                  ;;   4. fall back to 1 (original behavior)
+                  (let* ((ref-level
+                          (gptel--tool-heading-ref-level
+                           target-buffer info-buf start-marker tracking-marker))
+                         (stars (make-string ref-level ?*))
+                         (heading-line (concat stars " TOOL " truncated-call "\n"))
+                         (_ (when (eq gptel-log-level 'debug)
+                              (gptel--log
+                               (format "display-tool-results: creating heading=\"%s TOOL\" ref-level=%S in-agent-indirect=%S start-marker=%S tracking-marker=%S buffer=%S inhibit-mod-hooks=%S"
+                                       stars ref-level
+                                       (and (fboundp 'gptel-org--in-agent-indirect-buffer-p)
+                                            (gptel-org--in-agent-indirect-buffer-p))
+                                       start-marker tracking-marker
+                                       (current-buffer) inhibit-modification-hooks)
+                               "tool-heading-debug" 'no-json)))
+                         (escaped-result
+                          (org-escape-code-in-string
+                           (if (stringp result) result
+                             (format "%S" result))))
+                         (body-text (concat call "\n"
                                             "#+begin_tool\n"
                                             escaped-result "\n"
                                             "#+end_tool\n"))
-                          (prop-body (propertize body-text 'gptel `(tool . ,id))))
-                     (add-text-properties
-                      0 (length heading-line)
-                      '(gptel ignore front-sticky (gptel)) heading-line)
-                     (concat separator heading-line prop-body))
-                 ;; TODO(tool) else branch is handling all front-ends as markdown.
-                 ;; At least escape markdown.
+                         (prop-body (propertize body-text 'gptel `(tool . ,id))))
+                    (add-text-properties
+                     0 (length heading-line)
+                     '(gptel ignore front-sticky (gptel)) heading-line)
+                    ;; Step 1: insert separator + heading via the normal
+                    ;; callback path (at tracking-marker in target-buffer).
+                    ;; The callback updates :tracking-marker on info.
+                    (funcall (plist-get info :callback)
+                             (concat separator heading-line)
+                             info 'raw)
+                    ;; Step 2: body goes through a TOOL indirect buffer
+                    ;; so tool body writes are isolated from the agent IB
+                    ;; (per the "indirect buffer rule" — each AI-emitted
+                    ;; block gets its own IB scope).  Locate the heading
+                    ;; we just inserted in target-buffer, open a TOOL IB
+                    ;; narrowed to that subtree, insert the body there,
+                    ;; and close the IB.  Because IB and base share the
+                    ;; same underlying storage, the tracking-marker in
+                    ;; target-buffer (insertion-type t) is advanced by
+                    ;; the body insertion.
+                    (let ((new-tm (plist-get info :tracking-marker)))
+                      (with-current-buffer target-buffer
+                        (save-excursion
+                          (when new-tm (goto-char new-tm))
+                          (let ((heading-pos
+                                 (save-excursion
+                                   (when (re-search-backward "^\\*+ TOOL " nil t)
+                                     (line-beginning-position)))))
+                            (if heading-pos
+                                (let ((tool-ib
+                                       (gptel-org--tool-create-indirect-buffer
+                                        heading-pos)))
+                                  (unwind-protect
+                                      (if (and tool-ib (buffer-live-p tool-ib))
+                                          (with-current-buffer tool-ib
+                                            (save-excursion
+                                              (goto-char (point-max))
+                                              (insert prop-body)))
+                                        ;; IB creation failed — fall back to
+                                        ;; direct insertion at new-tm
+                                        (save-excursion
+                                          (when new-tm (goto-char new-tm))
+                                          (insert prop-body)))
+                                    (gptel-org--tool-close-indirect-buffer)))
+                              ;; Heading not found (shouldn't happen) —
+                              ;; fall back to direct insertion.
+                              (save-excursion
+                                (when new-tm (goto-char new-tm))
+                                (insert prop-body))))))))
+                ;; TODO(tool) else branch is handling all front-ends as markdown.
+                ;; At least escape markdown.
+                (funcall
+                 (plist-get info :callback)
                  (concat
                   separator
                   ;; TODO(tool) remove properties and strip instead of ignoring
@@ -2511,9 +2570,9 @@ for tool call results.  INFO contains the state of the request."
                    'gptel `(tool . ,id))
                   ;; TODO(tool) remove properties and strip instead of ignoring
                   (propertize "\n```\n" 'gptel 'ignore
-                              'keymap gptel--markdown-block-map))))
-             info
-             'raw)
+                              'keymap gptel--markdown-block-map))
+                 info
+                 'raw)))
          ;; tool-result insertion has updated the tracking marker
          (unless tracking-marker
            (setq tracking-marker (plist-get info :tracking-marker)))
@@ -2522,13 +2581,60 @@ for tool call results.  INFO contains the state of the request."
            (setq tool-marker (copy-marker tracking-marker nil))
            (plist-put info :tool-marker tool-marker))
          (ignore-errors                 ;fold drawer
-           (save-excursion
-             (goto-char tracking-marker)
-             (if (derived-mode-p 'org-mode)
-                 (when (re-search-backward "^\\*+ TOOL " nil t)
-                   (org-fold-subtree t))
-               (forward-line -1)
-               (when (looking-at-p "^```") (gptel-markdown-cycle-block))))))))))
+           (with-current-buffer target-buffer
+             (save-excursion
+               (goto-char tracking-marker)
+               (if (derived-mode-p 'org-mode)
+                   (when (re-search-backward "^\\*+ TOOL " nil t)
+                     (org-fold-subtree t))
+                 (forward-line -1)
+                 (when (looking-at-p "^```") (gptel-markdown-cycle-block)))))))))))
+
+(defun gptel--tool-heading-ref-level (target-buffer info-buf start-marker tracking-marker)
+  "Compute the correct heading level for a TOOL heading.
+
+Tries in priority order:
+  1. `gptel-org--ref-level' in TARGET-BUFFER.
+  2. `gptel-org--ref-level' in INFO-BUF (info :buffer).
+  3. `gptel-org--ref-level' from any registered agent indirect buffer on
+     the same base as TARGET-BUFFER whose narrowing contains
+     TRACKING-MARKER or START-MARKER.
+  4. Fallback to 1.
+
+Returns an integer >= 1."
+  (or
+   ;; 1. target-buffer's local ref-level (covers the normal IB case)
+   (and (buffer-live-p target-buffer)
+        (buffer-local-value 'gptel-org--ref-level target-buffer))
+   ;; 2. info :buffer's local ref-level
+   (and info-buf (buffer-live-p info-buf)
+        (buffer-local-value 'gptel-org--ref-level info-buf))
+   ;; 3. look up a registered agent IB for this base buffer
+   ;; whose narrowed region contains the relevant marker position
+   (and (fboundp 'gptel-org-ib-all-for-base)
+        (let* ((base (or (and (buffer-live-p target-buffer)
+                              (buffer-base-buffer target-buffer))
+                         target-buffer))
+               (pos (or (and (markerp tracking-marker)
+                             (marker-position tracking-marker))
+                        (and (markerp start-marker)
+                             (marker-position start-marker))))
+               (names (when (and base (buffer-live-p base))
+                        (gptel-org-ib-all-for-base base)))
+               (best nil))
+          (when (and pos names)
+            (dolist (name names)
+              (when-let* ((ib (get-buffer name))
+                          ((buffer-live-p ib))
+                          (rl (buffer-local-value 'gptel-org--ref-level ib)))
+                (with-current-buffer ib
+                  (when (and (<= (point-min) pos) (<= pos (point-max)))
+                    ;; Prefer the deepest (highest ref-level) match
+                    (when (or (null best) (> rl best))
+                      (setq best rl)))))))
+          best))
+   ;; 4. fallback
+   1))
 
 (defun gptel--format-tool-call (name arg-values)
   "Format a tool call for display in the buffer.

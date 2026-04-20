@@ -292,7 +292,7 @@ Presets bundle configuration into named, reusable profiles.
 4. Confirmation if =:confirm t= (via =gptel-confirm-tool-calls=)
 5. Call function with args
 6. Inject tool_call + result back into messages (via =gptel--inject-prompt=)
-7. Display tool results in buffer (TOOL/REASONING headings in org-mode)
+7. Display tool results in buffer (TOOL/REASONING headings in org-mode).  In org-mode, =gptel--display-tool-results= computes the correct TOOL heading depth up front via =gptel--tool-heading-ref-level= and inserts the body (plist + =#+begin_tool … #+end_tool=) through a transient TOOL indirect buffer for proper IB isolation — see [[file:gptel-indirect-buffer-ai.org::*Integration with gptel-org.el (TOOL heading display)]]
 8. TRET→WAIT transition: =gptel--handle-wait= resets per-turn state (=:tracking-marker=, =:tool-marker=, etc.) so the next LLM response starts fresh (see [[*Turn Isolation]])
 9. Re-request LLM with function results
 10. Loop: WAIT→TYPE→TPRE→TOOL→TRET→WAIT until no more tool calls
@@ -340,7 +340,7 @@ See feature-specific documents for details:
 - *Context caching*: hash-based invalidation, tags =:cache_files:=, =:cache_summary:=
 - *Markdown→Org conversion*: streaming and non-streaming
 - *Agent subtrees*: per-agent indirect buffers, recursive delegation, context stripping
-- *Indirect buffer isolation*: terminator heading pattern prevents sibling task merging; tracking registry, safe insertion before terminators, recreation after reorder.  See [[file:gptel-indirect-buffer-ai.org]]
+- *Indirect buffer isolation*: terminator heading pattern prevents sibling task merging; tracking registry, safe insertion before terminators, recreation after reorder.  Also used for reasoning display (=gptel-org--reasoning-indirect-buffer=) and for isolating =* TOOL= body insertion (=gptel-org--tool-indirect-buffer=) emitted by =gptel--display-tool-results=.  See [[file:gptel-indirect-buffer-ai.org]]
 - *Handover mechanism*: sub-agent can create a new =AI-DO= heading at user task level instead of returning text, enabling triage→specialist escalation workflows.  Uses =gptel-org-ib-find-user-task-heading= to navigate past all agent headings.  =gptel-org-handoff= command provides user-initiated handoff for context optimization.  See [[file:gptel-org-agent-ai.org::*Handover Mechanism]]
 - *Org format instructions*: dynamic prompt injection telling LLM to use org-mode formatting with correct heading levels, examples, and #+SEQ_TODO keywords.  See [[file:gptel-org-agent-ai.org::*Org Format Instructions]]
 - *AI/FEEDBACK TODO keywords*: role-based conversation structure using TODO keywords instead of tags.  The =FEEDBACK= keyword also drives the iterative task cycle (AI finishes → FEEDBACK → user sends → AI-DOING → ...).  See [[*Discussion Structure: AI/FEEDBACK Keywords]]
