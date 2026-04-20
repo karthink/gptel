@@ -181,7 +181,14 @@ currently displayed."
     (when (get-buffer-window buf 'visible)
       (with-current-buffer buf
         (let ((inhibit-message t))
-          (org-agenda-redo-all))))))
+          ;; Catch `exit' thrown by `org-agenda-prepare' when it detects a
+          ;; sticky agenda buffer during redo.  The dashboard command spec
+          ;; includes (org-agenda-sticky t) which `org-agenda-run-series'
+          ;; re-binds via `cl-progv', overriding `org-agenda-redo's local
+          ;; nil binding.  Without this catch the throw propagates into the
+          ;; idle timer and becomes a no-catch error.
+          (catch 'exit
+            (org-agenda-redo-all)))))))
 
 (defun gptel-org-dashboard--schedule-refresh ()
   "Schedule a debounced dashboard refresh.
