@@ -266,6 +266,19 @@ Mutate state INFO with response metadata."
                   (plist-get prompts-plist :tools)))
       (plist-put prompts-plist :tool_choice
                  `(:type "tool" :name ,gptel--ersatz-json-tool)))
+    ;; Reasoning effort: inject output_config for Anthropic
+    (when gptel-reasoning-effort
+      (plist-put prompts-plist :output_config
+                 `(:effort ,gptel-reasoning-effort)))
+    ;; Thinking: auto-enable based on model capability and user preference
+    (when (and gptel-include-reasoning
+              (gptel--model-capable-p 'thinking)
+              ;; Don't inject if user already set :thinking in request-params
+              (not (plist-get gptel--request-params :thinking)))
+      (plist-put prompts-plist :thinking
+                 (if (gptel--model-capable-p 'adaptive-thinking)
+                     '(:type "adaptive")
+                   '(:type "enabled" :budget_tokens 10240))))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
      prompts-plist
@@ -571,23 +584,25 @@ Media files, if present, are placed in `gptel-context'."
 (defconst gptel--anthropic-models
   '((claude-opus-4-7
      :description "Most capable model for complex reasoning and agentic coding"
-     :capabilities (media tool-use cache)
+     :capabilities (media tool-use cache thinking adaptive-thinking)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 1000
      :input-cost 5
      :output-cost 25
-     :cutoff-date "2026-01")
+     :cutoff-date "2026-01"
+     :request-params (:thinking (:type "adaptive")))
     (claude-sonnet-4-6
      :description "The best combination of speed and intelligence"
-     :capabilities (media tool-use cache)
+     :capabilities (media tool-use cache thinking adaptive-thinking)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 1000
      :input-cost 3
      :output-cost 15
-     :cutoff-date "2025-08")
+     :cutoff-date "2025-08"
+     :request-params (:thinking (:type "adaptive")))
     (claude-sonnet-4-5-20250929
      :description "High-performance model with exceptional reasoning and efficiency"
-     :capabilities (media tool-use cache)
+     :capabilities (media tool-use cache thinking)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
      :input-cost 3
@@ -595,7 +610,7 @@ Media files, if present, are placed in `gptel-context'."
      :cutoff-date "2025-07")
     (claude-haiku-4-5-20251001
      :description "Near-frontier intelligence at blazing speeds with extended thinking"
-     :capabilities (media tool-use cache)
+     :capabilities (media tool-use cache thinking)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
      :input-cost 1
@@ -603,15 +618,16 @@ Media files, if present, are placed in `gptel-context'."
      :cutoff-date "2025-02")
     (claude-opus-4-6
      :description "Most capable model for complex reasoning and advanced coding"
-     :capabilities (media tool-use cache)
+     :capabilities (media tool-use cache thinking adaptive-thinking)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 1000
      :input-cost 5
      :output-cost 25
-     :cutoff-date "2025-08")
+     :cutoff-date "2025-08"
+     :request-params (:thinking (:type "adaptive")))
     (claude-opus-4-5-20251101
      :description "Most capable model for complex reasoning and advanced coding"
-     :capabilities (media tool-use cache)
+     :capabilities (media tool-use cache thinking)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
      :input-cost 5
@@ -619,7 +635,7 @@ Media files, if present, are placed in `gptel-context'."
      :cutoff-date "2025-03")
     (claude-opus-4-1-20250805
      :description "Most capable model for complex reasoning and advanced coding"
-     :capabilities (media tool-use cache)
+     :capabilities (media tool-use cache thinking)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 200
      :input-cost 15

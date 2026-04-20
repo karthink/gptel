@@ -826,6 +826,7 @@ Also format the value of OBJ in the transient menu."
     (gptel--infix-temperature :if (lambda () gptel-expert-commands))
     (gptel--infix-use-context)
     (gptel--infix-include-reasoning)
+    (gptel--infix-reasoning-effort)
     (gptel--infix-use-tools)
     (gptel--infix-track-response
      :if (lambda () (and gptel-expert-commands (not gptel-mode))))
@@ -1500,6 +1501,40 @@ Available behaviors are
                   (read-buffer "Append reasoning to buffer: ")
                 (cdr (assoc destination choices))))))
 
+
+;; ** Infix for reasoning effort level
+
+(transient-define-infix gptel--infix-reasoning-effort ()
+  "Set the reasoning effort level for the LLM.
+
+Controls how much computational effort the LLM puts into
+reasoning.  Higher effort levels produce better results for
+complex tasks but increase latency and cost.
+
+Available effort levels:
+- default: Let the backend decide (nil)
+- low: Efficient; may skip thinking for simple tasks
+- medium: Balanced
+- high: Standard reasoning depth
+- xhigh: Extended depth (Opus 4.7 only)
+- max: Maximum capability"
+  :description "Reasoning effort"
+  :class 'gptel-lisp-variable
+  :variable 'gptel-reasoning-effort
+  :format " %k %d %v"
+  :set-value #'gptel--set-with-scope
+  :display-nil "default"
+  :key "-V"
+  :prompt "Reasoning effort: "
+  :reader (lambda (prompt &rest _)
+            (let* ((choices '(("default" . nil)
+                              ("low"     . "low")
+                              ("medium"  . "medium")
+                              ("high"    . "high")
+                              ("xhigh"   . "xhigh")
+                              ("max"     . "max")))
+                   (choice (completing-read prompt choices nil t)))
+              (cdr (assoc choice choices)))))
 ;; ** Infixes for tool use
 
 (transient-define-infix gptel--infix-use-tools ()

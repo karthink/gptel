@@ -622,6 +622,37 @@ reasoning text will be inserted at the end of that buffer."
           (const :tag "Include but ignore" ignore)
           (string :tag "Include in buffer")))
 
+(defcustom gptel-reasoning-effort nil
+  "Effort level for LLM reasoning/thinking.
+
+This controls how much computational effort the LLM puts into
+reasoning before responding.  Higher effort levels produce better
+results for complex tasks but increase latency and cost.
+
+Supported values depend on the backend/model:
+
+For Anthropic Claude (4.5+):
+  \"low\"    - Efficient; may skip thinking for simple tasks
+  \"medium\" - Balanced; may skip thinking for simple queries
+  \"high\"   - Default behavior (same as nil)
+  \"xhigh\"  - Extended depth; always thinks (Opus 4.7 only)
+  \"max\"    - Maximum capability; no token constraints
+
+For OpenAI (o1/o3/o4-mini):
+  \"low\"    - Least reasoning
+  \"medium\" - Moderate reasoning
+  \"high\"   - Default behavior
+
+When nil, the backend default is used.
+
+To set this per-subtree in Org mode, use the GPTEL_REASONING_EFFORT
+property."
+  :group 'gptel
+  :safe #'stringp
+  :type '(choice
+          (const :tag "Default (backend decides)" nil)
+          (string :tag "Effort level")))
+
 (define-obsolete-variable-alias 'gptel-context--alist 'gptel-context
   "0.9.9.3")
 
@@ -1071,7 +1102,8 @@ For BUF, START, END and BODY-THUNK see `gptel--with-buffer-copy'."
                        gptel-mode gptel-track-response gptel-track-media
                        gptel-use-tools gptel-tools gptel-use-curl gptel--schema
                        gptel-use-context gptel-context gptel--num-messages-to-send
-                       gptel-stream gptel-include-reasoning gptel--request-params
+                       gptel-stream gptel-include-reasoning gptel-reasoning-effort
+                       gptel--request-params
                        gptel-temperature gptel-max-tokens gptel-cache))
          ;; Capture the caller's dynamic values BEFORE switching buffers.
          ;; When gptel-with-preset let-binds gptel-model etc., symbol-value
@@ -2696,6 +2728,8 @@ Initiate the request when done."
            "preset-debug" t))
         (when gptel-include-reasoning   ;Required for next-request-only scope
           (plist-put info :include-reasoning gptel-include-reasoning))
+        (when gptel-reasoning-effort
+          (plist-put info :reasoning-effort gptel-reasoning-effort))
         (when (and gptel-use-tools gptel-tools)
           (plist-put info :tools gptel-tools))
         (plist-put info :data
