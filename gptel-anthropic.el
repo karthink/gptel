@@ -569,11 +569,19 @@ Media files, if present, are placed in `gptel-context'."
 ;;         (plist-get (car (last prompts)) :content)))
 
 (defconst gptel--anthropic-models
-  '((claude-sonnet-4-6
+  '((claude-opus-4-7
+     :description "Most capable model for complex reasoning and agentic coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 1000
+     :input-cost 5
+     :output-cost 25
+     :cutoff-date "2026-01")
+    (claude-sonnet-4-6
      :description "The best combination of speed and intelligence"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
+     :context-window 1000
      :input-cost 3
      :output-cost 15
      :cutoff-date "2025-08")
@@ -593,19 +601,11 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 1
      :output-cost 5
      :cutoff-date "2025-02")
-    (claude-sonnet-4-20250514
-     :description "High-performance model with exceptional reasoning and efficiency"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2025-03")
     (claude-opus-4-6
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
+     :context-window 1000
      :input-cost 5
      :output-cost 25
      :cutoff-date "2025-08")
@@ -624,61 +624,7 @@ Media files, if present, are placed in `gptel-context'."
      :context-window 200
      :input-cost 15
      :output-cost 75
-     :cutoff-date "2025-03")
-    (claude-opus-4-20250514
-     :description "Anthropic's previous flagship model"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 15
-     :output-cost 75
-     :cutoff-date "2025-03")
-    (claude-3-7-sonnet-20250219
-     :description "Hybrid model capable of standard thinking and extended thinking modes"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2025-02")
-    (claude-3-5-sonnet-20241022
-     :description "Highest level of intelligence and capability"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2024-04")
-    (claude-3-5-sonnet-20240620
-     :description "Highest level of intelligence and capability (earlier version)"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 200
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2024-04")
-    (claude-3-5-haiku-20241022
-     :description "Intelligence at blazing speeds"
-     :capabilities (tool-use cache)
-     :context-window 200
-     :input-cost 1.00
-     :output-cost 5.00
-     :cutoff-date "2024-07")
-    (claude-3-opus-20240229
-     :description "Top-level performance, intelligence, fluency, and understanding"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 200
-     :input-cost 15
-     :output-cost 75
-     :cutoff-date "2023-08")
-    (claude-3-haiku-20240307
-     :description "Fast and most compact model for near-instant responsiveness"
-     :capabilities (tool-use cache)
-     :context-window 200
-     :input-cost 0.25
-     :output-cost 1.25
-     :cutoff-date "2023-08"))
+     :cutoff-date "2025-03"))
   "List of available Anthropic models and associated properties.
 Keys:
 
@@ -718,15 +664,15 @@ URL `https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-tab
      :model-id "claude-sonnet-4-6"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
+     :context-window 1000
      :input-cost 3
      :output-cost 15)
     (opus
      :description "Alias for latest Opus model"
-     :model-id "claude-opus-4-6"
+     :model-id "claude-opus-4-7"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
+     :context-window 1000
      :input-cost 5
      :output-cost 25))
   "Model aliases that map simple names to the latest model versions.
