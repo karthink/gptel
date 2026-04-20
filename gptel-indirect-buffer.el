@@ -565,14 +565,18 @@ and kills the buffer."
 
 Checks:
   - Buffer is live (not killed).
-  - Buffer is narrowed (point-min > 1 or point-max < buffer size).
-  - Buffer has content (point-min < point-max).
-  - First line is an org heading."
+  - Buffer has content, i.e. narrowing has not collapsed
+    (point-min < point-max).
+  - First line is an org heading.
+
+Note: we intentionally do NOT check whether narrowing spans less
+than the entire buffer.  A subtree may legitimately cover the full
+base buffer, and after `narrow-to-region' with identical bounds
+`point-min'/`point-max' match the base-buffer extents — but the IB
+is still functionally valid."
   (and (buffer-live-p indirect-buffer)
        (with-current-buffer indirect-buffer
-         (and (or (/= (point-min) 1)
-                  (/= (point-max) (1+ (buffer-size))))
-              (< (point-min) (point-max))
+         (and (< (point-min) (point-max))
               (save-excursion
                 (goto-char (point-min))
                 (org-at-heading-p))))))
@@ -617,7 +621,7 @@ the expected format."
     (cons (match-string 1 buf-name)
           (match-string 2 buf-name))))
 
-(defun gptel-org-ib-recreate (indirect-buffer)
+(cl-defun gptel-org-ib-recreate (indirect-buffer)
   "Recreate INDIRECT-BUFFER after its heading has been moved.
 
 When a subtree is reordered (e.g., by `org-move-subtree-up/down'),
@@ -666,7 +670,7 @@ found (e.g., it was deleted rather than moved)."
 
 ;;; ---- Auto-correction ------------------------------------------------------
 
-(defun gptel-org-ib-validate-and-fix (indirect-buffer)
+(cl-defun gptel-org-ib-validate-and-fix (indirect-buffer)
   "Validate an indirect buffer and attempt auto-correction.
 
 Checks:
