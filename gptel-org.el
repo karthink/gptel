@@ -1010,15 +1010,19 @@ ARGS are the original function call arguments."
     (let ((gptel-org--in-send-with-props t))
       (if (derived-mode-p 'org-mode)
           (pcase-let* ((`(,org-preset ,org-system ,org-backend ,org-model
-                          ,org-temperature ,org-tokens ,org-num ,org-tools)
+                          ,org-temperature ,org-tokens ,org-num ,org-tools
+                          ,org-include-reasoning ,org-reasoning-effort)
                         (gptel-org--entry-properties))
                        ;; When a preset is found in org properties, apply it to
                        ;; expand its settings into individual variables.  Then
                        ;; overlay any explicitly-set org properties on top.
                        (`(,preset-system ,preset-backend ,preset-model
-                          ,preset-temperature ,preset-tokens ,preset-num ,preset-tools)
+                          ,preset-temperature ,preset-tokens ,preset-num ,preset-tools
+                          ,preset-include-reasoning ,preset-reasoning-effort)
                         (if org-preset
-                            (let (p-system p-backend p-model p-temperature p-tokens p-num p-tools)
+                            (let (p-system p-backend p-model p-temperature
+                                  p-tokens p-num p-tools
+                                  p-include-reasoning p-reasoning-effort)
                               (gptel--apply-preset
                                org-preset
                                (lambda (sym val)
@@ -1030,10 +1034,13 @@ ARGS are the original function call arguments."
                                    ('gptel-max-tokens (setq p-tokens val))
                                    ('gptel--num-messages-to-send (setq p-num val))
                                    ('gptel-tools (setq p-tools val))
+                                   ('gptel-include-reasoning (setq p-include-reasoning val))
+                                   ('gptel-reasoning-effort (setq p-reasoning-effort val))
                                    ('gptel--preset nil)))) ;ignore, already have it
                               (list p-system p-backend p-model
-                                    p-temperature p-tokens p-num p-tools))
-                          (list nil nil nil nil nil nil nil)))
+                                    p-temperature p-tokens p-num p-tools
+                                    p-include-reasoning p-reasoning-effort))
+                          (list nil nil nil nil nil nil nil nil nil)))
                        ;; Priority: org explicit properties > preset values > buffer defaults
                        (gptel--preset (or org-preset gptel--preset))
                        (gptel--system-message (or org-system preset-system gptel--system-message))
@@ -1043,6 +1050,13 @@ ARGS are the original function call arguments."
                        (gptel-max-tokens (or org-tokens preset-tokens gptel-max-tokens))
                        (gptel--num-messages-to-send (or org-num preset-num gptel--num-messages-to-send))
                        (gptel-tools (or org-tools preset-tools gptel-tools))
+                       (gptel-include-reasoning
+                        (let ((val (or org-include-reasoning preset-include-reasoning)))
+                          (if val
+                              (if (eq val :gptel-nil) nil val)
+                            gptel-include-reasoning)))
+                       (gptel-reasoning-effort
+                        (or org-reasoning-effort preset-reasoning-effort gptel-reasoning-effort))
                        ;; Check for model tag on user heading (takes precedence)
                        (user-heading-model (gptel-org--get-user-heading-model))
                        ;; Check for model tag on TODO heading (also takes precedence)
@@ -1083,12 +1097,14 @@ ARGS are the original function call arguments."
 (defun gptel-org--entry-properties (&optional pt)
   "Find gptel configuration properties stored at PT."
   (pcase-let
-      ((`(,preset ,system ,backend ,model ,temperature ,tokens ,num ,tools)
+      ((`(,preset ,system ,backend ,model ,temperature ,tokens ,num ,tools
+          ,include-reasoning ,reasoning-effort)
          (mapcar
           (lambda (prop) (org-entry-get (or pt (point)) prop 'selective))
           '("GPTEL_PRESET" "GPTEL_SYSTEM" "GPTEL_BACKEND"
             "GPTEL_MODEL" "GPTEL_TEMPERATURE" "GPTEL_MAX_TOKENS"
-            "GPTEL_NUM_MESSAGES_TO_SEND" "GPTEL_TOOLS"))))
+            "GPTEL_NUM_MESSAGES_TO_SEND" "GPTEL_TOOLS"
+            "GPTEL_INCLUDE_REASONING" "GPTEL_REASONING_EFFORT"))))
     (when preset (setq preset (gptel--intern preset)))
     (when system
       (setq system (string-replace "\\n" "\n" system)))
@@ -1122,7 +1138,15 @@ ARGS are the original function call arguments."
                    (display-warning
                     '(gptel org tools)
                     (format "Tool %s not found, ignoring" tname)))))
-    (list preset system backend model temperature tokens num tools)))
+    (when include-reasoning
+      (setq include-reasoning
+            (pcase include-reasoning
+              ("t" t)
+              ("nil" :gptel-nil)
+              ("ignore" 'ignore)
+              (_ include-reasoning))))
+    (list preset system backend model temperature tokens num tools
+          include-reasoning reasoning-effort)))
 
 (defun gptel-org--heading-has-tag-p (tag)
   "Check if current heading has TAG (case-insensitive)."
@@ -1399,7 +1423,8 @@ GPTEL_BOUNDS since the bounds are determined by heading tags.")
               (setq gptel-org--bounds-from-tags nil)
               (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
                 (gptel--restore-props (read bounds))))
-            (pcase-let ((`(,preset ,system ,backend ,model ,temperature ,tokens ,num ,tools)
+            (pcase-let ((`(,preset ,system ,backend ,model ,temperature ,tokens ,num ,tools
+                          ,include-reasoning ,reasoning-effort)
                          (gptel-org--entry-properties (point-min))))
               (when preset
                 (if (gptel-get-preset preset)
@@ -1423,7 +1448,11 @@ GPTEL_BOUNDS since the bounds are determined by heading tags.")
               (when temperature (setq-local gptel-temperature temperature))
               (when tokens (setq-local gptel-max-tokens tokens))
               (when num (setq-local gptel--num-messages-to-send num))
-              (when tools (setq-local gptel-tools tools))))
+              (when tools (setq-local gptel-tools tools))
+              (when include-reasoning
+                (setq-local gptel-include-reasoning
+                            (if (eq include-reasoning :gptel-nil) nil include-reasoning)))
+              (when reasoning-effort (setq-local gptel-reasoning-effort reasoning-effort))))
         (:success (message "gptel chat restored."))
         (error (message "Could not restore gptel state, sorry! Error: %s" status)))
       (set-buffer-modified-p modified)))
@@ -1485,7 +1514,22 @@ send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
              (natnump gptel--num-messages-to-send))
         (org-entry-put pt "GPTEL_NUM_MESSAGES_TO_SEND"
                        (number-to-string gptel--num-messages-to-send))
-      (org-entry-delete pt "GPTEL_NUM_MESSAGES_TO_SEND")))
+      (org-entry-delete pt "GPTEL_NUM_MESSAGES_TO_SEND"))
+    ;; Include reasoning
+    (if (and (gptel--preset-mismatch-value preset-spec :include-reasoning gptel-include-reasoning)
+             (not (equal (default-value 'gptel-include-reasoning) gptel-include-reasoning)))
+        (org-entry-put pt "GPTEL_INCLUDE_REASONING"
+                       (pcase gptel-include-reasoning
+                         ('t "t")
+                         ('nil "nil")
+                         ('ignore "ignore")
+                         (_ gptel-include-reasoning)))
+      (org-entry-delete pt "GPTEL_INCLUDE_REASONING"))
+    ;; Reasoning effort
+    (if (and (gptel--preset-mismatch-value preset-spec :reasoning-effort gptel-reasoning-effort)
+             gptel-reasoning-effort)
+        (org-entry-put pt "GPTEL_REASONING_EFFORT" gptel-reasoning-effort)
+      (org-entry-delete pt "GPTEL_REASONING_EFFORT")))
   (when msg
     (message "Added gptel configuration to current headline.")))
 
