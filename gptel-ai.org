@@ -125,7 +125,7 @@ Handlers: =gptel-send--handlers= (state→function alist).
 | File | Lines | Backend | Notes |
 |------+-------+---------+-------|
 | =gptel-openai.el= | ~740 | OpenAI/ChatGPT | 20+ models, reasoning (o1/o3) |
-| =gptel-anthropic.el= | ~770 | Anthropic/Claude | Thinking blocks, prompt caching |
+| =gptel-anthropic.el= | ~800 | Anthropic/Claude | Thinking blocks, adaptive thinking, reasoning effort, prompt caching |
 | =gptel-gemini.el= | ~650 | Google Gemini | Tool calling integration |
 | =gptel-ollama.el= | ~360 | Ollama (local) | Token counting |
 | =gptel-bedrock.el= | ~660 | AWS Bedrock | Multi-modal, document handling |
@@ -248,6 +248,8 @@ Tool/function-call specification.
 | =gptel-use-curl= | t | Prefer Curl over url.el |
 | =gptel-temperature= | 1.0 | Response randomness (0.0–2.0) |
 | =gptel-max-tokens= | nil | Max response length |
+| =gptel-include-reasoning= | t | How to handle LLM thinking blocks (t/nil/ignore/buffer) |
+| =gptel-reasoning-effort= | nil | Reasoning effort level (nil/"low"/"medium"/"high"/"xhigh"/"max") |
 | =gptel-directives= | (alist) | System prompt templates |
 | =gptel-prompt-transform-functions= | (list) | Pre-send prompt hooks |
 | =gptel-post-response-functions= | (list) | Post-response insertion hooks |
@@ -331,7 +333,7 @@ See feature-specific documents for details:
 
 - *Subtree context*: limit conversation to current heading
 - *Branching context*: separate conversation per outline path
-- *Property-based config*: =:gptel_backend:=, =:gptel_model:=, etc. (inherited)
+- *Property-based config*: =GPTEL_BACKEND=, =GPTEL_MODEL=, =GPTEL_TEMPERATURE=, =GPTEL_INCLUDE_REASONING=, =GPTEL_REASONING_EFFORT=, etc. (inherited via Org property inheritance)
 - *Link validation*: auto-detect file/attachment links, validate MIME support
 - *Context caching*: hash-based invalidation, tags =:cache_files:=, =:cache_summary:=
 - *Markdown→Org conversion*: streaming and non-streaming
@@ -342,6 +344,53 @@ See feature-specific documents for details:
 - *AI/FEEDBACK TODO keywords*: role-based conversation structure using TODO keywords instead of tags.  The =FEEDBACK= keyword also drives the iterative task cycle (AI finishes → FEEDBACK → user sends → AI-DOING → ...).  See [[*Discussion Structure: AI/FEEDBACK Keywords]]
 - *Unified org mode*: =gptel-org-mode= provides a single entry point that enables all org features (subtree context, TODO keywords, task workflow, highlighting)
 
+
+*** Thinking and Reasoning Effort
+
+gptel supports LLM thinking/reasoning features across backends:
+
+**** Model Capabilities
+
+Model definitions include thinking-related capabilities:
+- =thinking= — model supports extended thinking (thinking blocks in response)
+- =adaptive-thinking= — model supports adaptive thinking mode (model decides when/how much to think)
+
+Models with =adaptive-thinking= capability (Claude 4.6+, Opus 4.7) have =:request-params (:thinking (:type "adaptive"))= set by default.
+
+**** Reasoning Effort (=gptel-reasoning-effort=)
+
+Controls how much computational effort the LLM puts into reasoning:
+- =nil= — backend default
+- ="low"=, ="medium"=, ="high"= — standard levels
+- ="xhigh"= — extended depth (Opus 4.7 only)
+- ="max"= — maximum capability
+
+For Anthropic, this maps to the =output_config.effort= API parameter.
+
+Can be set:
+- Globally via =gptel-reasoning-effort= variable
+- Per-subtree via =GPTEL_REASONING_EFFORT= org property
+- Per-request via the transient menu (=-V=)
+- Per-agent via agent org file =:reasoning-effort:= property
+
+**** Thinking Auto-Injection
+
+When =gptel-include-reasoning= is non-nil and the model has =thinking= capability:
+- For =adaptive-thinking= models: =(:type "adaptive")= is used
+- For older thinking models: =(:type "enabled" :budget_tokens 10240)= is used
+- User can override via =:request-params= at backend or model level
+
+The auto-injection is lowest priority — model-level =:request-params= override it via =gptel--merge-plists=.
+
+**** Include Reasoning (=gptel-include-reasoning=)
+
+Controls display of thinking blocks:
+- =t= — include with response (default)
+- =nil= — discard thinking blocks
+- =ignore= — include but exclude from follow-up turns
+- buffer name string — append to named buffer
+
+Can be set per-subtree via =GPTEL_INCLUDE_REASONING= org property.
 ** Discussion Structure: AI/FEEDBACK Keywords
 
 /New approach/ — replaces the classical =:assistant:= / =:user:= tag-based subtree mode.
