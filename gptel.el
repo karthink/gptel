@@ -2413,7 +2413,8 @@ TOOL-CALLS."
 (defvar gptel--known-presets
   '((gptel-default
      :description "Use gptel's default configuration."
-     :context nil :tools nil
+     :context nil :use-context system
+     :tools nil :use-tools t
      :temperature nil :max-tokens nil
      :num-messages-to-send nil
      :request-params nil
