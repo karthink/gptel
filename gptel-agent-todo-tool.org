@@ -1,0 +1,376 @@
+#+title: gptel Agent TODO Tool Specification
+#+date: [2025-01-25]
+#+seq_todo: TODO(t) AI-DO(a) AI-DOING(i) | AI-DONE(d) DONE(D)
+
+* Overview
+
+The Agent TODO Tool enables AI agents to create, search, update, and remove TODO tasks across multiple org documents. This provides cross-document task visibility and allows agents (especially handoff agents) to create work items in external project documents.
+
+*Key Distinction*: This tool manages user-facing TODO tasks (plain TODO/DOING/FEEDBACK/DONE states), not AI execution states (AI-DO/AI-DOING/AI-DONE). It complements =TodoWrite= which creates subtasks in the current document.
+
+* Design Philosophy
+
+1. *Reuse existing patterns*: Indirect buffers, auto-corrector, cache invalidation (from agent subtree architecture)
+2. *Atomic operations*: Each tool call is independent, no chained dependencies
+3. *Project-aware*: Respects project root for relative path resolution
+4. *Explicit confirmation*: All write operations require user confirmation
+5. *Plain TODO semantics*: No AI-state leakage; works with standard org keywords
+
+* Tool Specification: TodoTask
+
+=TodoTask= is a single tool with five sub-commands, following the design of Bash/Read tools.
+
+** Signature
+
+#+begin_src elisp
+(gptel-make-tool
+ :name "TodoTask"
+ :description "Search, create, update, or remove TODO tasks across org documents"
+ :function #'gptel-agent-task-todo
+ :args '((:name "command" :type string
+                 :description "Operation: search | create | update | remove | launch")
+         (:name "file" :type string :optional t
+                :description "Target org file (relative to project root, absolute, or omit for current)")
+         (:name "title" :type string :optional t
+                :description "Task heading text (for create/launch)")
+         (:name "state" :type string :optional t
+                :description "Task state: TODO | DOING | FEEDBACK | DONE (for create/update) or filter (for search)")
+         (:name "line" :type integer :optional t
+                :description "Line number of heading (for update/remove, from search results)")
+         (:name "query" :type string :optional t
+                :description "Search terms (keyword/tag/state filter for search command)")
+         (:name "properties" :type object :optional t
+                :description "Task metadata: deadline, effort, tags, assigned-to, notes, etc.")
+         (:name "section" :type string :optional t
+                :description "Target section/heading for task (for create/launch)"))
+ :category "gptel-agent"
+ :confirm t
+ :async t)
+#+end_src
+
+** Commands
+
+*** search — Find tasks across documents
+
+*Args*:
+- =command= :: "search"
+- =file= :: (optional) Single file to search, or omit for project-wide search
+- =query= :: (optional) Keyword filter (substring match on title)
+- =state= :: (optional) Filter by TODO state (TODO|DOING|FEEDBACK|DONE)
+
+*Returns*:
+#+begin_example
+Search results:
+[
+  {
+    "file": "docs/tasks.org",
+    "line": 42,
+    "title": "Implement feature X",
+    "state": "TODO",
+    "tags": ["feature", "high-priority"],
+    "deadline": "2025-02-15",
+    "effort": "3h",
+    "preview": "Core implementation task for new search API"
+  },
+  ...
+]
+#+end_example
+
+*Behavior*:
+- If =file= omitted: search all .org files under project root
+- If =state= omitted: return tasks in all states
+- If =query= omitted: return all tasks matching file/state filters
+- Results include line number (for update/remove operations)
+- Preview shows first line of task content (if any)
+
+*Async*: No (read-only)
+
+*** create — Create new task in document
+
+*Args*:
+- =command= :: "create"
+- =file= :: Target org file
+- =title= :: Task heading text
+- =state= :: (optional, default "TODO") Initial state
+- =properties= :: (optional) Metadata dict with deadline, effort, tags, notes
+- =section= :: (optional) Parent section to nest under (creates if missing)
+
+*Returns*:
+#+begin_example
+{
+  "success": true,
+  "file": "docs/tasks.org",
+  "line": 127,
+  "title": "Implement feature X",
+  "state": "TODO",
+  "message": "Task created at line 127"
+}
+#+end_example
+
+*Behavior*:
+- Open external file in indirect buffer
+- Create heading with specified state and title
+- Set properties (DEADLINE, EFFORT, CUSTOM_ID, tags)
+- If =section= provided: nest under matching section heading (create section if missing)
+- If =section= omitted: append at end of file
+- Return file location and line number
+- Close indirect buffer after creation
+- Trigger =org-element-cache-reset= in external file buffer
+
+*Async*: Yes (file I/O)
+*Confirm*: Yes (preview file + insertion point)
+
+*** update — Change task state or properties
+
+*Args*:
+- =command= :: "update"
+- =file= :: Target org file
+- =line= :: Heading line number (from search results)
+- =state= :: (optional) New TODO state
+- =properties= :: (optional) Properties to update/merge
+
+*Returns*:
+#+begin_example
+{
+  "success": true,
+  "file": "docs/tasks.org",
+  "line": 127,
+  "title": "Implement feature X",
+  "state": "FEEDBACK",
+  "message": "Task updated: state=FEEDBACK, effort=5h"
+}
+#+end_example
+
+*Behavior*:
+- Find heading at specified line in file
+- If =state=: cycle to new TODO state via org API
+- If =properties=: merge into existing properties (preserve unknown props)
+- Return updated heading with all properties
+- Do NOT modify task title or content
+
+*Async*: Yes (file I/O)
+*Confirm*: Yes (show before/after state)
+
+*** remove — Delete completed or invalid tasks
+
+*Args*:
+- =command= :: "remove"
+- =file= :: Target org file
+- =line= :: Heading line number (from search results)
+
+*Returns*:
+#+begin_example
+{
+  "success": true,
+  "file": "docs/tasks.org",
+  "removed_title": "Implement feature X",
+  "removed_line": 127,
+  "message": "Task deleted"
+}
+#+end_example
+
+*Behavior*:
+- Find heading at specified line
+- Delete entire subtree (heading + content + children)
+- Trigger cache reset in external file
+- Return confirmation with deleted heading title
+
+*Async*: Yes (file I/O)
+*Confirm*: Yes (show task before deletion)
+
+*** launch — Create task + hand off to user
+
+*Args*:
+- =command= :: "launch"
+- =file= :: Target org file
+- =title= :: Task heading text
+- =state= :: (optional, default "TODO")
+- =properties= :: (optional) Metadata
+- =section= :: (optional) Parent section
+
+*Returns*:
+Same as =create=, plus:
+#+begin_example
+{
+  ...(create response),
+  "handoff": true,
+  "message": "Task created and opened for editing"
+}
+#+end_example
+
+*Behavior*:
+- Same as =create= (file + heading + properties)
+- After creation, open file in current window
+- Position cursor at the new heading
+- Indicate to user that buffer is ready for input
+- Return control to user (AI steps back)
+- Unlike =create=, this transitions AI from =in_progress= → ready for user input
+
+*Async*: Yes
+*Confirm*: Yes
+
+* Implementation Notes
+
+** File Resolution
+
+Three resolution strategies:
+
+1. *Absolute paths*: =/home/user/project/docs/tasks.org= → use as-is
+2. *Project-relative paths*: =docs/tasks.org= → resolve relative to project root (detected via .git, .hg, project.el)
+3. *Bare filenames*: =tasks.org= → search project for first matching .org file
+4. *Current buffer*: =file= omitted → use current buffer
+
+** Indirect Buffer Pattern
+
+Reuse architecture from =gptel-org-agent--open-indirect-buffer=:
+
+1. Find or create buffer for external file
+2. Open indirect buffer narrowed to edit region
+3. Auto-corrector runs (same =after-change-functions= hook)
+4. Cache invalidation on completion (=org-element-cache-reset=)
+5. Callback on completion, then close indirect buffer
+
+This ensures:
+- Changes are isolated to one buffer at a time
+- Org cache stays consistent
+- Future edits see corrected state
+
+** Search Implementation
+
+#+begin_src elisp
+(defun gptel-agent-task-todo--search (file query state)
+  "Return list of matching tasks as plists."
+  ;; Gather results: iterate org-files or single file
+  ;; For each heading with TODO state:
+  ;;   - Extract heading text, level, state, properties, tags
+  ;;   - Check filters: query (substring on title), state (exact match)
+  ;;   - Build result plist with file, line, title, state, properties, preview
+  ;; Return sorted by file + line
+)
+#+end_src
+
+Key functions:
+- =org-map-entries= with predicate (filtered TODO, file scope)
+- =org-entry-get= for DEADLINE, EFFORT, CUSTOM_ID, tags
+- =org-element-at-point= for heading level and content
+- First line of content via =org-element-contents= + text before first newline
+
+** Property Merging
+
+When updating properties:
+- Extract existing properties as plist via =org-entry-properties=
+- Merge with input properties (input wins on conflict)
+- Write back via =org-set-property=
+- Do NOT overwrite unknown properties
+
+** Error Handling
+
+- File not found → suggest "create file?" vs. error
+- Invalid line number → return error with "try search to verify line"
+- Malformed properties dict → return validation error with example
+- Org parse error → log and retry with =org-element-cache-reset=
+
+* Integration with gptel-agent
+
+** Tool Registration
+
+Add to =gptel-agent-tools.el=:
+
+#+begin_src elisp
+(gptel-make-tool
+ :name "TodoTask"
+ ...see specification above...)
+#+end_src
+
+** Preview System
+
+Register preview function in =gptel--tool-preview-alist=:
+
+#+begin_src elisp
+(pushnew '(TodoTask . gptel-agent-task-todo--preview)
+         gptel--tool-preview-alist)
+#+end_src
+
+Preview shows:
+- Command + file target
+- For create/launch: heading text + properties summary
+- For update: before/after state
+- For remove: heading to be deleted
+
+** Agent Definitions
+
+Add =TodoTask= to agents that need cross-document task creation:
+- =gptel-agent.org= (main agent)
+- =gptel-plan.org= (planning agent)
+- =handover.org= (handoff agent — critical for "create task on separate doc" use case)
+
+** Subtree Context Integration
+
+If =gptel-org-subtree-context= enabled:
+- Default =file= to current buffer file (unless specified)
+- Use project root from context for relative path resolution
+- Track which document owns each task (backlinks?)
+
+* File Organization
+
+** Implementation Files
+
+- =quelpa/build/gptel-agent/gptel-agent-tools-todo.el= (new)
+  - Core implementation: =gptel-agent-task-todo= dispatcher
+  - Sub-functions: =--search=, =--create=, =--update=, =--remove=, =--launch=
+  - Preview: =--preview= function
+
+- =quelpa/build/gptel-agent/gptel-agent-tools.el= (update)
+  - Register =TodoTask= tool with =gptel-make-tool=
+
+- =quelpa/build/gptel-agent/test-gptel-agent-task-todo.el= (new)
+  - Test each command with sample org files
+  - Test search filters, property merging, cache invalidation
+  - Test error conditions (missing file, invalid line)
+
+** Documentation Updates
+
+- =quelpa/build/gptel-agent/gptel-agent-ai.org=
+  - Update Tool System section
+  - Add =TodoTask= entry to tool table
+  - Link to this specification
+
+- =quelpa/build/gptel-agent/agents/gptel-agent.org=
+  - Add =TodoTask= to tools list if not already included
+
+- =quelpa/build/gptel-agent/agents/handover.org=
+  - Explicitly document =TodoTask= availability for cross-doc task creation
+
+* Questions for User
+
+1. **Task section strategy**: When creating tasks in external files without a =* Tasks= section, should we:
+   - Always append at file end? (simplest)
+   - Create =* Tasks= section if missing? (organized)
+   - Allow user to specify =section= parameter? (explicit)
+
+2. **Property merging semantics**: When updating task properties, should =properties= arg:
+   - Merge with existing (my recommendation)?
+   - Replace entire property set?
+   - Only update specified keys, leave others untouched?
+
+3. **Cross-document backlinks**: Should created tasks include a reference back to the AI discussion that created them?
+   - As a custom property (=CREATED-BY=)?
+   - As a link in task content?
+   - Not tracked at all?
+
+4. **Launch semantics**: When =launch= hands off to user, should AI also:
+   - Transition its own state (e.g., AI-DOING → FEEDBACK)?
+   - Create a subtask in current doc linking to external task?
+   - Just create the external task and stop?
+
+5. **Search scope defaults**: For agent operations, should search:
+   - Always be project-wide (unless file specified)?
+   - Default to current document?
+   - Infer scope based on context (e.g., search files mentioned in discussion)?
+
+* Related Documents
+
+- [[file:quelpa/build/gptel/gptel-ai.org::*Tool System][gptel Tool System Architecture]]
+- [[file:quelpa/build/gptel-agent/gptel-agent-ai.org::*Tool System][gptel-agent Tool System]]
+- [[file:quelpa/build/gptel/gptel-ai.org::*Discussion Structure: AI/FEEDBACK Keywords][TODO Keyword System]]
+- [[file:quelpa/build/gptel-agent/agents/handover.org][Handover Agent Definition]]
