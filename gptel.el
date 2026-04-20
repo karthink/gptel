@@ -1312,6 +1312,12 @@ See `gptel-request--handlers' for details.")
 (defvar-local gptel--fsm-last nil
   "State machine for latest request in the buffer.")
 
+(defvar-local gptel--last-error nil
+  "Error data from the last request, if any.
+Set by `gptel--handle-error' before running post-response hooks,
+so that hook consumers can detect and handle errors.
+Cleared by the next successful request.")
+
 (defun gptel--fsm-last (fsm)
     "Capture the latest request state FSM for introspection."
     (let ((info (gptel-fsm-info fsm)))
@@ -1466,6 +1472,9 @@ No state transition here since that's handled by the process sentinels."
                          (if (and info-buf (buffer-live-p info-buf))
                              info-buf
                            (marker-buffer start-marker)))))
+    ;; Clear any previous error state
+    (with-current-buffer gptel-buffer
+      (setq gptel--last-error nil))
     (with-current-buffer gptel-buffer
       (if (not tracking-marker)         ;Empty response
           (when gptel-mode (gptel--update-status " Empty response" 'success))
@@ -1514,6 +1523,9 @@ Perform UI updates and run post-response hooks."
         (when-let* ((error-msg (plist-get error-data :message)))
           (message "%s error: (%s) %s" backend-name status
                    (string-trim (gptel--to-string error-msg)))))
+      ;; Store error data for hook consumers (e.g., gptel-org-tasks)
+      (with-current-buffer gptel-buffer
+        (setq gptel--last-error error-data))
       (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
           (with-selected-window gptel-window
             (mapc (lambda (f) (funcall f info)) (plist-get info :post))

@@ -366,62 +366,110 @@ BUF is the buffer where the request was aborted."
         (with-current-buffer buf
           (setq gptel-org-tasks--active-task-marker nil))))))
 
+(defun gptel-org-tasks--inject-error-details (error-data)
+  "Inject error details under the current org heading.
+ERROR-DATA is the error information from the request - either a
+string or a plist with :type and :message keys.
+Point should be at the heading where the error occurred.
+Replaces any existing error line from a previous failed attempt."
+  (let ((error-msg (cond
+                    ((stringp error-data)
+                     error-data)
+                    ((plist-get error-data :message)
+                     (format "%s: %s"
+                             (or (plist-get error-data :type) "Error")
+                             (plist-get error-data :message)))
+                    (t (format "%S" error-data)))))
+    (org-end-of-meta-data t)
+    ;; Remove any previous error line to avoid accumulation on retries
+    (when (looking-at "\n=ERROR=:[^\n]*\n")
+      (delete-region (point) (match-end 0)))
+    (insert (format "\n=ERROR=: %s\n" (string-trim error-msg)))
+    (gptel-org--debug "tasks inject-error-details: injected error at heading")))
+
 (defun gptel-org-tasks--clear-active-task (_start _end)
   "Transition active task on AI response completion and clear the marker.
 In keyword mode, transitions AI-DOING to FEEDBACK (the user keyword).
 Otherwise, transitions AI-DOING to AI-DONE.
+When an error occurred (detected via `gptel--last-error'), always
+transitions to FEEDBACK and injects error details under the heading.
 Added to `gptel-post-response-functions'."
-  (gptel-org--debug "tasks clear-active-task: marker=%S marker-buffer=%S"
+  (gptel-org--debug "tasks clear-active-task: marker=%S marker-buffer=%S error=%S"
                     gptel-org-tasks--active-task-marker
                     (when gptel-org-tasks--active-task-marker
-                      (marker-buffer gptel-org-tasks--active-task-marker)))
+                      (marker-buffer gptel-org-tasks--active-task-marker))
+                    (bound-and-true-p gptel--last-error))
   (if (not gptel-org-tasks--active-task-marker)
       (gptel-org--debug "tasks clear-active-task: SKIPPED - no active task marker")
     (if (not (marker-buffer gptel-org-tasks--active-task-marker))
         (gptel-org--debug "tasks clear-active-task: SKIPPED - marker has no buffer")
-      (let ((marker gptel-org-tasks--active-task-marker))
+      (let ((marker gptel-org-tasks--active-task-marker)
+            (has-error (bound-and-true-p gptel--last-error)))
         (with-current-buffer (marker-buffer marker)
           (save-excursion
             (goto-char marker)
             (let ((task-info (ignore-errors (gptel-org-tasks--get-task-info))))
-              (gptel-org--debug "tasks clear-active-task: at marker pos=%d heading=%S todo-state=%S doing-keyword=%S"
+              (gptel-org--debug "tasks clear-active-task: at marker pos=%d heading=%S todo-state=%S doing-keyword=%S has-error=%S"
                                 (marker-position marker)
                                 (when task-info (plist-get task-info :heading))
                                 (when task-info (plist-get task-info :todo-state))
-                                gptel-org-tasks-doing-keyword)
+                                gptel-org-tasks-doing-keyword
+                                has-error)
               (if (not task-info)
                   (gptel-org--debug "tasks clear-active-task: SKIPPED - get-task-info returned nil")
                 (let ((todo-state (plist-get task-info :todo-state)))
                   (cond
-                   ;; AI-DOING -> FEEDBACK (keyword mode) or AI-DONE (legacy)
+                   ;; AI-DOING -> FEEDBACK on error, or normal transition
                    ((equal todo-state gptel-org-tasks-doing-keyword)
                     (let ((target-state
-                           (if (and (boundp 'gptel-org-use-todo-keywords)
-                                    gptel-org-use-todo-keywords
-                                    (boundp 'gptel-org-user-keyword)
-                                    gptel-org-user-keyword)
-                               gptel-org-user-keyword
-                             gptel-org-tasks-done-keyword)))
+                           (if has-error
+                               ;; On error, always transition to FEEDBACK
+                               (or (and (boundp 'gptel-org-user-keyword)
+                                        gptel-org-user-keyword)
+                                   "FEEDBACK")
+                             ;; Normal completion
+                             (if (and (boundp 'gptel-org-use-todo-keywords)
+                                      gptel-org-use-todo-keywords
+                                      (boundp 'gptel-org-user-keyword)
+                                      gptel-org-user-keyword)
+                                 gptel-org-user-keyword
+                               gptel-org-tasks-done-keyword))))
                       (gptel-org-tasks--change-todo-state target-state)
-                      (gptel-org--debug "tasks clear-active-task: transitioned to %s"
-                                        target-state)
-                      (message "gptel: Task state changed to %s"
-                               target-state)))
-                   ;; DOING (user task) -> FEEDBACK (keyword mode) or AI-DONE (legacy)
+                      ;; Inject error details under heading if error occurred
+                      (when has-error
+                        (gptel-org-tasks--inject-error-details has-error))
+                      (gptel-org--debug "tasks clear-active-task: transitioned to %s%s"
+                                        target-state
+                                        (if has-error " (ERROR)" ""))
+                      (message "gptel: Task state changed to %s%s"
+                               target-state
+                               (if has-error " (error occurred)" ""))))
+                   ;; DOING (user task) -> FEEDBACK on error, or normal transition
                    ((and gptel-org-tasks-user-doing-keyword
                          (equal todo-state gptel-org-tasks-user-doing-keyword))
                     (let ((target-state
-                           (if (and (boundp 'gptel-org-use-todo-keywords)
-                                    gptel-org-use-todo-keywords
-                                    (boundp 'gptel-org-user-keyword)
-                                    gptel-org-user-keyword)
-                               gptel-org-user-keyword
-                             gptel-org-tasks-done-keyword)))
+                           (if has-error
+                               ;; On error, always transition to FEEDBACK
+                               (or (and (boundp 'gptel-org-user-keyword)
+                                        gptel-org-user-keyword)
+                                   "FEEDBACK")
+                             ;; Normal completion
+                             (if (and (boundp 'gptel-org-use-todo-keywords)
+                                      gptel-org-use-todo-keywords
+                                      (boundp 'gptel-org-user-keyword)
+                                      gptel-org-user-keyword)
+                                 gptel-org-user-keyword
+                               gptel-org-tasks-done-keyword))))
                       (gptel-org-tasks--change-todo-state target-state)
-                      (gptel-org--debug "tasks clear-active-task: user task transitioned to %s"
-                                        target-state)
-                      (message "gptel: User task state changed to %s"
-                               target-state)))
+                      ;; Inject error details under heading if error occurred
+                      (when has-error
+                        (gptel-org-tasks--inject-error-details has-error))
+                      (gptel-org--debug "tasks clear-active-task: user task transitioned to %s%s"
+                                        target-state
+                                        (if has-error " (ERROR)" ""))
+                      (message "gptel: User task state changed to %s%s"
+                               target-state
+                               (if has-error " (error occurred)" ""))))
                    (t
                     (gptel-org--debug "tasks clear-active-task: SKIPPED - todo-state %S not in (%S %S)"
                                       todo-state
