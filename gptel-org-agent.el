@@ -1103,15 +1103,18 @@ in the conversation."
                            user-tag user-level (marker-position subtree-end)))))
                     ;; Clean up marker
                     (set-marker subtree-end nil))))))))
-      ;; Close the indirect buffer now that the response is complete.
-      ;; Use run-at-time to defer cleanup until after all
-      ;; post-response processing (prompt prefix insertion, etc.)
-      ;; has finished — killing the buffer mid-hook would break
-      ;; code that still references it via (plist-get info :buffer).
+      ;; Close the indirect buffer after all DONE processing completes.
+      ;; Register on `gptel--done-cleanup-functions' so the closure runs
+      ;; after post-response hooks, prompt prefix insertion, and
+      ;; `gptel--fsm-last' — i.e. only when no code still references
+      ;; the buffer via (plist-get info :buffer).  Using `run-at-time'
+      ;; here is unreliable: timer dispatch can interleave with queued
+      ;; request dispatch (`gptel--host-queue-dispatch'), which may
+      ;; re-create or kill the buffer before the timer fires.
       (let ((buf (current-buffer)))
-        (run-at-time 0 nil
-                     #'gptel-org-agent--close-indirect-buffer
-                     buf 'fold))))))
+        (push (lambda ()
+                (gptel-org-agent--close-indirect-buffer buf 'fold))
+              gptel--done-cleanup-functions))))))
 
 (defun gptel-org-agent--enable ()
   "Enable agent subtree integration for `gptel-send'.

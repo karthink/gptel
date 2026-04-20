@@ -1318,6 +1318,33 @@ Set by `gptel--handle-error' before running post-response hooks,
 so that hook consumers can detect and handle errors.
 Cleared by the next successful request.")
 
+(defvar-local gptel--done-cleanup-functions nil
+  "List of zero-arg functions to run after all post-response processing.
+
+Called at the very end of `gptel--handle-post-insert',
+`gptel--handle-error', and `gptel--handle-abort' — after hooks,
+prompt prefix insertion, and all other DONE/ERRS/ABRT work.
+
+This is the correct place for buffer-lifetime-sensitive cleanup
+such as killing indirect buffers.  Using `run-at-time' for such
+cleanup is unreliable because timer dispatch can interleave with
+queued request dispatch.
+
+Functions are called in order, then the list is cleared.  Each
+function is wrapped in `with-demoted-errors' so one failure does
+not prevent subsequent cleanups.")
+
+(defun gptel--run-done-cleanup (buffer)
+  "Run and clear `gptel--done-cleanup-functions' in BUFFER."
+  (when (buffer-live-p buffer)
+    (let ((fns (buffer-local-value 'gptel--done-cleanup-functions buffer)))
+      (when fns
+        (with-current-buffer buffer
+          (setq gptel--done-cleanup-functions nil)
+          (dolist (fn fns)
+            (with-demoted-errors "gptel done-cleanup error: %S"
+              (funcall fn))))))))
+
 (defun gptel--fsm-last (fsm)
     "Capture the latest request state FSM for introspection."
     (let ((info (gptel-fsm-info fsm)))
@@ -1499,7 +1526,10 @@ No state transition here since that's handled by the process sentinels."
       (with-current-buffer gptel-buffer
         (save-excursion (goto-char tracking-marker)
                         (insert gptel-response-separator
-                                (gptel-prompt-prefix-string)))))))
+                                (gptel-prompt-prefix-string)))))
+    ;; Run done-cleanup functions LAST, after all hooks and prompt prefix
+    ;; insertion.  This is where indirect buffers can be safely killed.
+    (gptel--run-done-cleanup gptel-buffer)))
 
 (defun gptel--handle-error (fsm)
   "Check for errors in request state FSM.
@@ -1540,7 +1570,9 @@ Perform UI updates and run post-response hooks."
       (with-current-buffer gptel-buffer
         (when gptel-mode
           (gptel--update-status
-           (format " Error: %s" status) 'error))))))
+           (format " Error: %s" status) 'error)))
+      ;; Run done-cleanup after all error handling and hooks
+      (gptel--run-done-cleanup gptel-buffer))))
 
 (defun gptel--handle-abort (fsm)
   "Perform UI update on `gptel-abort' for FSM."
@@ -1571,7 +1603,9 @@ Perform UI updates and run post-response hooks."
                                 (gptel-prompt-prefix-string)))))
     (with-current-buffer gptel-buffer
       (when gptel-mode (gptel--update-status  " Abort" 'error))
-      (run-hooks 'gptel-abort-hook))))
+      (run-hooks 'gptel-abort-hook))
+    ;; Run done-cleanup after all abort handling and hooks
+    (gptel--run-done-cleanup gptel-buffer)))
 
 (defun gptel--handle-pre-tool (fsm)
   "Run `gptel-pre-tool-call-functions' for FSM."
