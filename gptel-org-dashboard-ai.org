@@ -1,0 +1,172 @@
+#+TITLE: gptel-org-dashboard — AI Task Dashboard
+#+PROPERTY: header-args :eval no
+
+* Overview
+
+=gptel-org-dashboard.el= provides an org-agenda-based dashboard for monitoring
+and managing gptel AI task states across multiple live AI documents.
+
+Source: [[file:gptel-org-dashboard.el]]
+
+** Purpose
+
+When working with multiple AI task documents simultaneously, it becomes
+difficult to track which tasks are in progress, which need feedback, and which
+tool calls are pending approval.  The dashboard provides a single unified view
+of all active AI work.
+
+** Design Principles
+
+- *Registration-based*: Only live AI documents appear (no stale files)
+- *Dynamic keywords*: Reads gptel's customization variables at runtime
+- *Non-invasive*: Uses standard org-agenda infrastructure, no custom UI
+- *Auto-refreshing*: Debounced updates on state changes and file saves
+
+* Architecture
+
+** Registration Model
+
+Files register with the dashboard when =gptel-org-mode= is enabled:
+
+#+begin_example
+  gptel-org-mode ON
+    → (require 'gptel-org-dashboard)
+    → (gptel-org-dashboard-register)
+      → adds file to gptel-org-dashboard--registered-files
+      → adds buffer-local hooks:
+        - org-after-todo-state-change-hook → schedule refresh
+        - after-save-hook → schedule refresh
+        - kill-buffer-hook → unregister
+#+end_example
+
+Unregistration happens on =gptel-org-mode= OFF or buffer kill.
+
+** Agenda Integration
+
+The dashboard is a composite =org-agenda-custom-commands= entry with
+key ="D"= (customizable via =gptel-org-dashboard-key=).  It dynamically
+builds the command each time =gptel-org-dashboard= is called, binding
+=org-agenda-files= to the registered file list.
+
+Four blocks, one per state category:
+
+| Block | Keyword    | Icon | Purpose                             |
+|-------+------------+------+-------------------------------------|
+|     1 | =AI-DOING= | 🔥  | Tasks the AI is actively working on |
+|     2 | =PENDING=  | ⏳  | Tool calls awaiting user approval   |
+|     3 | =FEEDBACK= | 💬  | AI done, awaiting user review       |
+|     4 | =AI-DO=    | 📋  | Tasks queued for AI processing      |
+
+** Auto-Refresh
+
+Two triggers:
+1. =org-after-todo-state-change-hook= — fires on every =org-todo= call
+   (gptel uses =org-todo= for all state transitions)
+2. =after-save-hook= — fires when registered files are saved
+
+Both schedule a debounced refresh via =run-with-idle-timer= (default 0.5s).
+This prevents flickering during rapid TodoWrite batch updates where multiple
+headings change state in quick succession.
+
+** Keymap
+
+The dashboard overlays a sparse keymap on =org-agenda-mode-map= using
+=org-agenda-finalize-hook=.  The overlay only activates when the buffer
+name matches =gptel-org-dashboard-buffer-name=, so normal agenda views
+are unaffected.
+
+* Usage
+
+** Setup
+
+The dashboard activates automatically with =gptel-org-mode=.  No additional
+configuration is needed.  AI documents typically enable the mode via a
+file-local variable:
+
+#+begin_example
+# eval: (gptel-org-mode 1)
+#+end_example
+
+** Opening the Dashboard
+
+#+begin_src elisp
+  M-x gptel-org-dashboard
+#+end_src
+
+Or via the org-agenda dispatcher: =C-c a D=
+
+** Keybindings
+
+| Key   | Command                         | Action                                                |
+|-------+---------------------------------+-------------------------------------------------------|
+| =SPC= | =org-agenda-show-and-scroll-up= | Preview task in other window                          |
+| =RET= | =org-agenda-switch-to=          | Jump to task in source buffer                         |
+| =a=   | =gptel-org-dashboard-allow=     | Allow pending tool call (→ ALLOWED)                   |
+| =d=   | =gptel-org-dashboard-deny=      | Deny pending tool call (→ DENIED, prompts for reason) |
+| =k=   | =gptel-org-dashboard-kill=      | Abort AI task (calls =gptel-abort=)                   |
+| =g=   | =org-agenda-redo-all=           | Force refresh all blocks                              |
+| =q=   | =org-agenda-quit=               | Quit (bury dashboard)                                 |
+
+** Workflow Example
+
+#+begin_example
+  1. Open AI document → gptel-org-mode activates → file registered
+  2. Create AI-DO task → appears in "📋 Queued" section
+  3. gptel-send → task moves to "🔥 In Progress"
+  4. AI requests tool → heading appears in "⏳ Pending Approval"
+  5. Press 'a' in dashboard → tool runs, task continues
+  6. AI completes → task moves to "💬 Needs Feedback"
+  7. Navigate with RET, add feedback, gptel-send to continue
+#+end_example
+
+* Customization
+
+| Variable                               | Default               | Purpose                             |
+|----------------------------------------+-----------------------+-------------------------------------|
+| =gptel-org-dashboard-key=              | ="D"=                 | Key in =org-agenda-custom-commands= |
+| =gptel-org-dashboard-debounce-seconds= | =0.5=                 | Idle delay before auto-refresh      |
+| =gptel-org-dashboard-buffer-name=      | ="*gptel-dashboard*"= | Dashboard buffer name               |
+
+The dashboard reads these gptel variables at runtime (with fallbacks):
+
+| gptel Variable                          | Fallback                         | Dashboard Section |
+|-----------------------------------------+----------------------------------+-------------------|
+| =gptel-org-tasks-doing-keyword=         | ="AI-DOING"=                     | In Progress       |
+| =gptel-org-tasks-todo-keyword=          | ="AI-DO"=                        | Queued            |
+| =gptel-org-user-keyword=                | ="FEEDBACK"=                     | Needs Feedback    |
+| =gptel-org-agent-tool-confirm-keywords= | =("PENDING" "ALLOWED" "DENIED")= | Pending Approval  |
+
+* Implementation Details
+
+** Keyword Accessor Functions
+
+Six accessor functions (=gptel-org-dashboard--doing-keyword=, etc.) read
+gptel's customization variables via =bound-and-true-p= with hardcoded
+fallbacks.  This allows the dashboard to work even if =gptel-org-tasks=
+or =gptel-org-agent= are not yet loaded.
+
+** Dead File Pruning
+
+On each =gptel-org-dashboard= call, the registered file list is pruned
+to remove files whose buffers no longer exist.  This handles edge cases
+where =kill-buffer-hook= didn't fire (e.g., =kill-matching-buffers=).
+
+** The Kill Action
+
+=gptel-org-dashboard-kill= calls =gptel-abort= on the marker's buffer.
+The abort advice in =gptel-org-tasks= handles the state transition
+(normally to =CANCELED=, but the abort hook infrastructure manages this).
+
+* Dependencies
+
+- =org=, =org-agenda= — standard org-mode
+- =cl-lib= — for =cl-pushnew=, =cl-remove-if-not=
+- =gptel-request= — for =gptel-abort= (declare-function, runtime only)
+- =gptel-org-tasks= — keyword variables (read via =bound-and-true-p=, no hard dependency)
+- =gptel-org-agent= — tool confirm keywords (read via =bound-and-true-p=, no hard dependency)
+
+* Related Documents
+
+- [[file:gptel-ai.org]] — gptel main architecture
+- [[file:gptel-org-tasks-ai.org]] — AI task workflow (TODO transitions)
+- [[file:gptel-org-agent-ai.org]] — Agent subtrees (tool confirmation flow)

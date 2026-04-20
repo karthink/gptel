@@ -143,6 +143,7 @@ Handlers: =gptel-send--handlers= (state→function alist).
 | =gptel-org-archive.el= | ~590 | Archive with AI summaries: git tracking, two-phase workflow |
 | =gptel-org-agent.el= | ~1340 | Agent subtrees: indirect buffers, sub-agent delegation, format instructions, TodoWrite with FSM marker redirection |
 | =gptel-indirect-buffer.el= | ~740 | Indirect buffer management: terminator headings, safe sibling insertion, IB tracking registry, recreation after reorder |
+| =gptel-org-dashboard.el= | ~280 | Org-agenda dashboard: registration-based task monitoring, auto-refresh, allow/deny/kill actions |
 
 ** Other
 
@@ -328,6 +329,7 @@ See feature-specific documents for details:
 - [[file:gptel-org-tasks-ai.org]] — AI task workflow (TODO transitions, model profiles)
 - [[file:gptel-archive-ai.org]] — Archive with AI summaries
 - [[file:gptel-org-agent-ai.org]] — Agent subtrees (indirect buffers, sub-agent delegation)
+- [[file:gptel-org-dashboard-ai.org]] — Org-agenda dashboard for AI task monitoring
 
 ** Key Org Features (brief)
 
@@ -617,6 +619,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 | [[file:gptel-org-tasks-ai.org]] | Org tasks workflow | exists |
 | [[file:gptel-org-agent-ai.org]] | Agent subtrees (org indirect buffers) | exists |
 | [[file:gptel-indirect-buffer-ai.org]] | Indirect buffer management (terminator pattern, introspection) | exists |
+| [[file:gptel-org-dashboard-ai.org]] | Org-agenda dashboard for AI task monitoring | exists |
 | [[file:emacs-example-ai.org]] | Example AI task workflow | exists |
 
 * TODOs
