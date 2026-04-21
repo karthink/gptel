@@ -12,7 +12,7 @@ each task is properly isolated in its own indirect buffer.  Sibling tasks get
 merged because indirect buffers aren't properly isolating content boundaries.
 
 The solution is the "terminator heading" pattern: each active task's subtree
-is bounded by a terminator child heading (FEEDBACK for AI-DOING, Results for
+is bounded by a terminator child heading (FEEDBACK for AI-DOING, RESULTS for
 AI-DO).  New sibling tasks are inserted BEFORE the terminator so existing
 indirect buffers are never disturbed.
 
@@ -114,7 +114,7 @@ sibling tasks) observed in =test_todo-ai.org=.
 
 The terminator pattern makes new-sibling insertion safe:
 
-- The terminator (FEEDBACK at the agent level, Results at the task
+- The terminator (FEEDBACK at the agent level, RESULTS at the task
   level) is a stable sentinel child of the parent subtree.
 - New siblings are inserted on the line BEFORE the terminator.
 - Each existing sibling IB's end-marker is inside its own subtree,
@@ -146,16 +146,16 @@ Rules:
 #+begin_example
 ,**** AI-DOING Study feasibility ...  :main@agent:   <- Indirect-buffer 1
 ,***** AI-DO Subtask 1                               <- Indirect-buffer 2
-,****** Results                                      <- Terminator for Subtask 1
+,****** RESULTS                                      <- Terminator for Subtask 1
 ,***** AI-DO Subtask 2                               <- Indirect-buffer 3
-,****** Results                                      <- Terminator for Subtask 2
+,****** RESULTS                                      <- Terminator for Subtask 2
 ,***** FEEDBACK                                      <- Terminator for AI-DOING
 #+end_example
 
 Key observations:
 - The =FEEDBACK= heading is the terminator for the AI-DOING parent task.
   It is always the LAST child.
-- Each =AI-DO= subtask has its own =Results= terminator as a child.
+- Each =AI-DO= subtask has its own =RESULTS= terminator as a child.
 - When a new =AI-DO Subtask 3= needs to be created, it is inserted on the
   line BEFORE the =FEEDBACK= heading — so Subtask 1 and Subtask 2's
   indirect buffers (narrowed to their subtrees) are not affected.
@@ -310,9 +310,9 @@ Structure:
 #+begin_example
 ,**** AI-DOING Agent subtree           <- Agent IB
 ,***** AI-DO Task A                    <- Task A IB  (one per task)
-,****** Results                        <- Task A's Results terminator
+,****** RESULTS                        <- Task A's RESULTS terminator
 ,***** AI-DO Task B                    <- Task B IB
-,****** Results                        <- Task B's Results terminator
+,****** RESULTS                        <- Task B's RESULTS terminator
 ,***** FEEDBACK                        <- Agent-level terminator
 #+end_example
 
@@ -322,11 +322,11 @@ Bookkeeping:
   IB, mapping task content string → task indirect buffer.
 - =gptel-org-agent--create-todo-heading (content keyword parent-pos terminator-keyword)=:
   creates the new task heading via =gptel-org-ib-safe-insert-sibling=
-  under the agent subtree's terminator, and ensures a =Results=
+  under the agent subtree's terminator, and ensures a =RESULTS=
   child terminator inside the task IB so subsequent TOOL / REASONING
   / sub-agent headings obey the rule too.  Returns the task IB.
 - =gptel-org-agent--write-todo-org=: picks the right agent-level
-  terminator (=FEEDBACK= for top-level, =Results= for sub-agents)
+  terminator (=FEEDBACK= for top-level, =RESULTS= for sub-agents)
   via =gptel-org-agent--agent-terminator-keyword=; tracks every
   created task IB in the alist; closes task IBs whose task has
   been removed from the TodoWrite list.
@@ -334,7 +334,7 @@ Bookkeeping:
   pre-created task IB from the alist instead of spawning a fresh
   one every time a task transitions to =in_progress=.  The FSM
   =:position= marker is computed via =gptel-org-ib-streaming-marker
-  "Results"= so content streams BEFORE the task's Results
+  "RESULTS"= so content streams BEFORE the task's RESULTS
   terminator.
 - =gptel-org-agent--restore-from-subtask-buffer=: switches the FSM
   back to the parent agent IB WITHOUT killing the task IB.  Task

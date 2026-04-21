@@ -517,9 +517,9 @@ associated IB is closed when the agent IB itself is closed.")
 Delegates to `gptel-org-ib-streaming-marker' to choose a
 terminator-aware position:
 
-1. If BUFFER's narrowed subtree has a \"Results\" child terminator,
-   the marker is at the start of Results with insertion-type nil
-   (streaming stays BEFORE Results).
+1. If BUFFER's narrowed subtree has a \"RESULTS\" child terminator,
+   the marker is at the start of RESULTS with insertion-type nil
+   (streaming stays BEFORE RESULTS).
 2. Else if BUFFER has a \"FEEDBACK\" (or `gptel-org-user-keyword')
    child terminator, the marker is at the start of FEEDBACK with
    insertion-type nil.
@@ -534,11 +534,11 @@ earlier subtrees are not disturbed."
       (let ((user-kw (or (bound-and-true-p gptel-org-user-keyword)
                          "FEEDBACK")))
         (cond
-         ;; Try Results first (task / sub-agent IBs).
+         ;; Try RESULTS first (task / sub-agent IBs).
          ((and (org-at-heading-p)
                (save-excursion
-                 (gptel-org-ib-find-terminator "Results")))
-          (gptel-org-ib-streaming-marker "Results"))
+                 (gptel-org-ib-find-terminator "RESULTS")))
+          (gptel-org-ib-streaming-marker "RESULTS"))
          ;; Then user FEEDBACK keyword (top-level agent IBs).
          ((and (org-at-heading-p)
                (save-excursion
@@ -1296,13 +1296,13 @@ org-mode, or we can't find a heading context to create the subtree."
                          base-buffer heading-marker)))
               ;; Create new subtree using terminator-aware insertion.
               ;; This ensures the heading is placed BEFORE the terminator
-              ;; (e.g., FEEDBACK or Results), so existing sibling indirect
+              ;; (e.g., FEEDBACK or RESULTS), so existing sibling indirect
               ;; buffers are not disturbed.
-              ;; Sub-agents (parent-tag non-nil) use "Results" terminator;
+              ;; Sub-agents (parent-tag non-nil) use "RESULTS" terminator;
               ;; top-level agents use FEEDBACK (or user's custom keyword).
               (let ((terminator-keyword
                      (if parent-tag
-                         "Results"
+                         "RESULTS"
                        (or (bound-and-true-p gptel-org-user-keyword)
                            "FEEDBACK"))))
                 (gptel-org--debug
@@ -1543,7 +1543,7 @@ current buffer, which is assumed to be the agent's indirect buffer
 or narrowed region containing the agent subtree).
 TERMINATOR-KEYWORD is the terminator under the parent subtree that
 new task headings must be inserted BEFORE (e.g., \"FEEDBACK\" for
-top-level agents, \"Results\" for sub-agents).
+top-level agents, \"RESULTS\" for sub-agents).
 
 Uses `gptel-org-ib-safe-insert-sibling' to:
   1. Ensure the parent's TERMINATOR-KEYWORD exists.
@@ -1551,7 +1551,7 @@ Uses `gptel-org-ib-safe-insert-sibling' to:
      sibling IBs narrowed to earlier tasks are not disturbed).
   3. Create an indirect buffer narrowed to the new task's subtree.
 
-Inside the new task IB, ensure a \"Results\" child terminator so
+Inside the new task IB, ensure a \"RESULTS\" child terminator so
 that subsequent heading creation inside the task (tool confirmations,
 reasoning headings, sub-task delegations) also respects the rule.
 
@@ -1564,7 +1564,7 @@ Returns the newly created task indirect buffer."
       (setq task-ib
             (gptel-org-ib-safe-insert-sibling
              keyword content nil terminator-keyword)))
-    ;; Inside the task IB, ensure a Results terminator so subsequent
+    ;; Inside the task IB, ensure a RESULTS terminator so subsequent
     ;; child headings (TOOL / REASONING / sub-agents) are inserted
     ;; before it.
     (when (buffer-live-p task-ib)
@@ -1572,7 +1572,7 @@ Returns the newly created task indirect buffer."
         (save-excursion
           (goto-char (point-min))
           (when (org-at-heading-p)
-            (gptel-org-ib-ensure-terminator "Results")))))
+            (gptel-org-ib-ensure-terminator "RESULTS")))))
     task-ib))
 
 (defun gptel-org-agent--remove-todo-heading (pos)
@@ -1591,7 +1591,7 @@ Returns the newly created task indirect buffer."
 (defun gptel-org-agent--agent-terminator-keyword (&optional agent-buffer)
   "Return the terminator keyword used under the agent in AGENT-BUFFER.
 
-Returns \"Results\" for sub-agent buffers (tag contains two
+Returns \"RESULTS\" for sub-agent buffers (tag contains two
 @-separated components, e.g. \"researcher@triage@agent\"), and
 \"FEEDBACK\" (or `gptel-org-user-keyword') for top-level agents.
 
@@ -1602,7 +1602,7 @@ AGENT-BUFFER defaults to the current buffer."
     (if (and (stringp tag)
              ;; Sub-agent tags look like "foo@bar@agent" — at least two @s.
              (>= (cl-count ?@ tag) 2))
-        "Results"
+        "RESULTS"
       (or (bound-and-true-p gptel-org-user-keyword)
           "FEEDBACK"))))
 
@@ -1641,7 +1641,7 @@ heading cases not originating from TodoWrite.
 
 Updates the FSM's `:buffer' and `:position' so streaming inserts
 into the task buffer.  Streaming uses `gptel-org-ib-streaming-marker'
-with the \"Results\" terminator so content lands BEFORE Results
+with the \"RESULTS\" terminator so content lands BEFORE RESULTS
 inside the task IB.  The parent indirect buffer is saved as
 `gptel-org-agent--parent-indirect-buffer' for later restoration.
 
@@ -1665,13 +1665,13 @@ Accesses the FSM via `gptel--fsm-last' which is buffer-local."
        (buffer-local-value 'gptel-org--ref-level parent-buffer)
        (buffer-name base-buffer) (and reused t))
       ;; Create terminator-aware position marker inside the task IB.
-      ;; Try "Results" first (task IBs should have one created by
+      ;; Try "RESULTS" first (task IBs should have one created by
       ;; `create-todo-heading'), then fall back to end-of-buffer.
       (let ((pos-marker
              (with-current-buffer sub-indirect-buf
                (save-excursion
                  (goto-char (point-min))
-                 (gptel-org-ib-streaming-marker "Results")))))
+                 (gptel-org-ib-streaming-marker "RESULTS")))))
         ;; Save parent buffer reference for restoration
         (with-current-buffer sub-indirect-buf
           (setq-local gptel-org-agent--parent-indirect-buffer parent-buffer))
@@ -1780,7 +1780,7 @@ the active task heading."
         (gptel-org--debug "write-todo-org: agent-level=%d todo-level=%d agent-pos=%d"
                           agent-level todo-level agent-pos)
         ;; Determine terminator keyword for the agent subtree.  Top-level
-        ;; agents use FEEDBACK; sub-agents use Results.  This is what
+        ;; agents use FEEDBACK; sub-agents use RESULTS.  This is what
         ;; new task headings must be inserted BEFORE.
         (let* ((terminator-keyword
                 (gptel-org-agent--agent-terminator-keyword agent-buf))
@@ -2048,10 +2048,10 @@ INFO is the FSM info plist."
       ;; indirect buffer and its base buffer so that the user can
       ;; change PENDING→ALLOWED from either buffer.
       (gptel-org-agent--ensure-tool-confirm-hook buf)
-      ;; Ensure the current subtree has a "Results" terminator so that
+      ;; Ensure the current subtree has a "RESULTS" terminator so that
       ;; the FSM :position marker (placed by
       ;; `gptel-org-ib-streaming-marker' with insertion-type nil) stays
-      ;; pinned BEFORE Results, and any PENDING heading inserted at
+      ;; pinned BEFORE RESULTS, and any PENDING heading inserted at
       ;; start-marker lands before it — preserving sibling-IB
       ;; isolation.  Only do this if point-min is on a heading (i.e.
       ;; we are in a task or agent IB).
@@ -2059,7 +2059,7 @@ INFO is the FSM info plist."
         (goto-char (point-min))
         (when (org-at-heading-p)
           (ignore-errors
-            (gptel-org-ib-ensure-terminator "Results"))))
+            (gptel-org-ib-ensure-terminator "RESULTS"))))
       (save-excursion
         ;; Compute the PENDING heading level.  Use `gptel-org--ref-level'
         ;; when available — it tracks the current response level and is

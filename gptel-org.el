@@ -1166,16 +1166,17 @@ otherwise falls back to tag detection.
 
 In keyword mode, a heading is assistant when its TODO state has the
 \"AI-\" prefix (AI-DO, AI-DOING, AI-DONE, etc.) or is one of the
-special gptel states: REASONING, TOOL, PENDING, ALLOWED, DENIED.
-All these states contain AI-authored or AI-system content.  Headings
-without a TODO state (plain headings) return nil here and inherit
-from their parent via `gptel-org--restore-bounds-from-tags'."
+special gptel states: REASONING, TOOL, RESULTS, PENDING, ALLOWED,
+DENIED.  All these states contain AI-authored or AI-system content.
+Headings without a TODO state (plain headings) return nil here and
+inherit from their parent via `gptel-org--restore-bounds-from-tags'."
   (if gptel-org-use-todo-keywords
       (when (org-at-heading-p)
         (let ((todo (org-get-todo-state)))
           (and todo
                (or (string-prefix-p "AI-" todo)
-                   (member todo '("REASONING" "TOOL" "PENDING" "ALLOWED" "DENIED"))))))
+                   (member todo '("REASONING" "TOOL" "RESULTS"
+                                  "PENDING" "ALLOWED" "DENIED"))))))
     (gptel-org--heading-has-tag-p gptel-org-assistant-tag)))
 
 (defun gptel-org--heading-is-user-p ()
@@ -2709,6 +2710,18 @@ is enabled."
   :type '(plist)
   :group 'gptel)
 
+(defconst gptel-org--tool-state-face
+  '(:foreground "#A3BE8C" :weight bold)
+  "Default face for tool-like TODO keywords (BASH, EVAL, GREP, ...).")
+
+(defconst gptel-org--agent-state-face
+  '(:foreground "#81A1C1" :weight bold)
+  "Default face for agent-like TODO keywords (GATHERER, EXECUTOR, ...).")
+
+(defconst gptel-org--result-state-face
+  '(:foreground "#B48EAD" :weight bold)
+  "Default face for result-like TODO keywords (RESULTS, ...).")
+
 (defun gptel-org--register-todo-keywords ()
   "Register AI/HI/REASONING/TOOL TODO keywords and their faces if needed.
 
@@ -2731,12 +2744,12 @@ in `org-todo-keyword-faces'."
                               org-todo-keywords))
           (push (list 'sequence ai-kw hi-kw) org-todo-keywords)
           (setq changed t))
-        ;; Register REASONING and TOOL as done-state keywords if missing
+        ;; Register REASONING, TOOL and RESULTS as done-state keywords if missing
         (unless (cl-some (lambda (seq)
                            (and (listp seq)
                                 (member "REASONING" (cl-remove-if-not #'stringp seq))))
                          org-todo-keywords)
-          (push '(sequence "|" "REASONING" "TOOL") org-todo-keywords)
+          (push '(sequence "|" "REASONING" "TOOL" "RESULTS") org-todo-keywords)
           (setq changed t))
         ;; Register faces in org-todo-keyword-faces if missing
         (unless (assoc ai-kw org-todo-keyword-faces)
@@ -2757,21 +2770,14 @@ in `org-todo-keyword-faces'."
           (push '("TOOL" . (:foreground "#A3BE8C" :weight bold))
                 org-todo-keyword-faces)
           (setq changed t))
+        ;; RESULTS face: distinct color for task-level result terminator
+        (unless (assoc "RESULTS" org-todo-keyword-faces)
+          (push (cons "RESULTS" gptel-org--result-state-face)
+                org-todo-keyword-faces)
+          (setq changed t))
         ;; Refresh org to pick up changes
         (when (and changed (derived-mode-p 'org-mode))
           (org-mode-restart))))))
-
-(defconst gptel-org--tool-state-face
-  '(:foreground "#A3BE8C" :weight bold)
-  "Default face for tool-like TODO keywords (BASH, EVAL, GREP, ...).")
-
-(defconst gptel-org--agent-state-face
-  '(:foreground "#81A1C1" :weight bold)
-  "Default face for agent-like TODO keywords (GATHERER, EXECUTOR, ...).")
-
-(defconst gptel-org--result-state-face
-  '(:foreground "#B48EAD" :weight bold)
-  "Default face for result-like TODO keywords (RESULTS, ...).")
 
 (defun gptel-org--ensure-todo-state-1 (state face done-state)
   "Register STATE with FACE in org-todo machinery; return non-nil if changed.

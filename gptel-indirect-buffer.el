@@ -29,14 +29,14 @@
 ;;
 ;; SOLUTION: The "terminator heading" pattern.  Each active task's
 ;; subtree is bounded by a terminator child heading (e.g., FEEDBACK for
-;; AI-DOING, Results for AI-DO).  New sibling tasks are inserted BEFORE
+;; AI-DOING, RESULTS for AI-DO).  New sibling tasks are inserted BEFORE
 ;; the terminator so existing indirect buffers are never disturbed.
 ;;
 ;; Example org structure:
 ;;
 ;;   **** AI-DOING Study feasibility ...  :main@agent:   <- IB 1
 ;;   ***** AI-DO Subtask 1                               <- IB 2
-;;   ****** Results                                      <- Terminator for Subtask 1
+;;   ****** RESULTS                                      <- Terminator for Subtask 1
 ;;   ***** AI-DO Subtask 2                               <- IB 3
 ;;   ***** FEEDBACK                                      <- Terminator for AI-DOING
 ;;
@@ -294,7 +294,7 @@ or nil if not found."
   "Return a marker safe for FSM streaming into the current indirect buffer.
 
 If TERMINATOR-KEYWORD names a child terminator heading of the
-current subtree (e.g., \"FEEDBACK\" or \"Results\"), position the
+current subtree (e.g., \"FEEDBACK\" or \"RESULTS\"), position the
 marker at the beginning of that terminator's heading line with
 insertion-type nil.  Text inserted at this marker is placed BEFORE
 the terminator, and the marker stays pinned to the terminator line
@@ -389,7 +389,7 @@ Returns a marker to the terminator heading."
 (defun gptel-org-ib-create-terminator (heading-keyword &optional level)
   "Create a terminator child heading under the current heading.
 
-HEADING-KEYWORD is the heading text (e.g., \"FEEDBACK\", \"Results\").
+HEADING-KEYWORD is the heading text (e.g., \"FEEDBACK\", \"RESULTS\").
 LEVEL is the heading level; if nil, uses current-level + 1.
 
 The terminator heading is inserted at the end of the current subtree,

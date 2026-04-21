@@ -131,12 +131,12 @@ Sets up org-mode with AI-DO/AI-DOING/AI-DONE keywords."
 
 (ert-deftest gptel-org-todo-test-markers-redirected-to-in-progress ()
   "FSM position markers should move to the start of the in_progress
-heading's \"Results\" terminator.
+heading's \"RESULTS\" terminator.
 After write-todo-org, the FSM is redirected to an indirect buffer
-narrowed to the in_progress heading.  That IB has a \"Results\"
+narrowed to the in_progress heading.  That IB has a \"RESULTS\"
 child terminator; the FSM's :position marker lands at the start of
-the Results heading (insertion-type nil) so streaming inserts BEFORE
-Results, preserving isolation for sibling task IBs."
+the RESULTS heading (insertion-type nil) so streaming inserts BEFORE
+RESULTS, preserving isolation for sibling task IBs."
   (gptel-org-todo-test-with-buffer
       "** AI-DOING My task :main@agent:\n"
     ;; Simulate FSM markers like gptel-org-agent--transform-redirect does
@@ -160,15 +160,15 @@ Results, preserving isolation for sibling task IBs."
         ;; The FSM buffer should be an indirect buffer
         (should (buffer-base-buffer fsm-buf))
         ;; The position marker should NOT have insertion-type t: it is
-        ;; pinned to the Results terminator and content inserted at the
+        ;; pinned to the RESULTS terminator and content inserted at the
         ;; marker lands BEFORE it.
         (should-not (marker-insertion-type fsm-pos))
-        ;; The marker should point at the Results terminator heading.
+        ;; The marker should point at the RESULTS terminator heading.
         (with-current-buffer fsm-buf
           (save-excursion
             (goto-char fsm-pos)
             (should (org-at-heading-p))
-            (should (equal "Results" (org-get-heading t t t t)))))
+            (should (equal "RESULTS" (org-get-heading t t t t)))))
         ;; tracking-marker should be nil (reset for fresh streaming)
         (should (null (plist-get info :tracking-marker)))))))
 
@@ -198,7 +198,7 @@ Results, preserving isolation for sibling task IBs."
       (gptel-org-agent--write-todo-org
        '((:content "Step one" :status "completed" :activeForm "Doing one")
          (:content "Step two" :status "in_progress" :activeForm "Doing two")))
-      ;; FSM position should now point at the Results terminator inside
+      ;; FSM position should now point at the RESULTS terminator inside
       ;; "Step two"'s task IB.
       (let ((fsm-pos (plist-get info :position))
             (fsm-buf (plist-get info :buffer)))
@@ -208,7 +208,7 @@ Results, preserving isolation for sibling task IBs."
           (save-excursion
             (goto-char fsm-pos)
             (should (org-at-heading-p))
-            (should (equal "Results" (org-get-heading t t t t)))))))))
+            (should (equal "RESULTS" (org-get-heading t t t t)))))))))
 
 ;;; ---- Simulated tool execution under todo headings -------------------------
 
