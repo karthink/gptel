@@ -1705,9 +1705,16 @@ Accesses the FSM via `gptel--fsm-last' which is buffer-local."
 (defun gptel-org-agent--restore-from-subtask-buffer ()
   "Restore FSM from a sub-task indirect buffer back to the parent buffer.
 
-If the current FSM buffer is a sub-task buffer (has
-`gptel-org-agent--parent-indirect-buffer' set), switches the FSM's
-`:buffer' and `:position' back to the parent.
+A \"sub-task buffer\" is any buffer (typically `(current-buffer)' or
+the FSM's `:buffer') with `gptel-org-agent--parent-indirect-buffer'
+set.  When found, switch the FSM's `:buffer', `:position' and
+`:tracking-marker' back to the parent agent IB.
+
+The FSM is located in this order of preference:
+1. `gptel--fsm-last' in the current buffer.
+2. `gptel--fsm-last' in the resolved parent buffer (important when
+   tools execute inside a task IB that has no FSM of its own but
+   whose parent does).
 
 Does NOT kill the sub-task buffer: task IBs are now long-lived and
 tracked by `gptel-org-agent--todo-task-ibs' on the parent.  The
@@ -1715,31 +1722,56 @@ task IB is killed either when the task is removed by
 `write-todo-org' or when the parent agent IB is closed (see
 `gptel-org-agent--close-indirect-buffer' which cascades).
 
-Returns the parent buffer if a restore was performed, nil otherwise."
-  (when (and (boundp 'gptel--fsm-last) gptel--fsm-last)
-    (let* ((info (gptel-fsm-info gptel--fsm-last))
-           (current-buf (plist-get info :buffer)))
-      (when (and current-buf (buffer-live-p current-buf))
-        (let ((parent-buf (buffer-local-value
-                           'gptel-org-agent--parent-indirect-buffer
-                           current-buf)))
-          (when (and parent-buf (buffer-live-p parent-buf))
-            (gptel-org--debug
-             "restore-from-subtask: %S (ref-level=%S) -> %S (ref-level=%S)"
-             (buffer-name current-buf)
-             (buffer-local-value 'gptel-org--ref-level current-buf)
-             (buffer-name parent-buf)
-             (buffer-local-value 'gptel-org--ref-level parent-buf))
-            ;; Create new position marker in parent buffer at end of content
-            (let ((pos-marker
-                   (gptel-org-agent--make-insertion-marker parent-buf)))
-              ;; Restore FSM to parent buffer
-              (plist-put info :buffer parent-buf)
-              (plist-put info :position pos-marker)
-              (plist-put info :tracking-marker nil)
-              ;; Task IB remains alive — it's owned by parent's
-              ;; `gptel-org-agent--todo-task-ibs' and cleaned up there.
-              parent-buf)))))))
+Returns the parent buffer when the current buffer is identified as a
+task IB (regardless of whether an FSM was found and mutated), so
+callers can switch context.  Returns nil when no parent-IB signal is
+present on the current buffer or on the FSM's :buffer."
+  ;; First, try to resolve a parent buffer from the current buffer
+  ;; directly — this works even when `gptel--fsm-last' is not bound in
+  ;; the current buffer (task IBs typically don't have it set).
+  (let* ((cur (current-buffer))
+         (parent-from-current
+          (and (buffer-live-p cur)
+               (buffer-local-value
+                'gptel-org-agent--parent-indirect-buffer cur)))
+         ;; Fall back to whatever the FSM thinks is its buffer.
+         (fsm-here (and (boundp 'gptel--fsm-last) gptel--fsm-last))
+         (info-here (and fsm-here (gptel-fsm-info fsm-here)))
+         (fsm-buf (and info-here (plist-get info-here :buffer)))
+         (parent-from-fsm
+          (and fsm-buf (buffer-live-p fsm-buf)
+               (buffer-local-value
+                'gptel-org-agent--parent-indirect-buffer fsm-buf)))
+         (parent-buf (or (and (buffer-live-p parent-from-current)
+                              parent-from-current)
+                         (and (buffer-live-p parent-from-fsm)
+                              parent-from-fsm))))
+    (when parent-buf
+      ;; Locate the FSM to mutate.  Prefer the one bound in the current
+      ;; buffer; otherwise look in the parent (which is where TodoWrite-
+      ;; invoked chains typically keep it).
+      (let* ((fsm (or fsm-here
+                      (buffer-local-value 'gptel--fsm-last parent-buf)))
+             (info (and fsm (gptel-fsm-info fsm))))
+        (gptel-org--debug
+         "restore-from-subtask: current=%S parent=%S fsm-found=%S (from %s)"
+         (buffer-name cur) (buffer-name parent-buf) (and fsm t)
+         (cond ((and fsm-here (eq fsm fsm-here)) "current-buffer")
+               (fsm "parent-buffer")
+               (t "none")))
+        (when info
+          (gptel-org--debug
+           "restore-from-subtask: mutating FSM :buffer %S -> %S"
+           (buffer-name (plist-get info :buffer))
+           (buffer-name parent-buf))
+          (let ((pos-marker
+                 (gptel-org-agent--make-insertion-marker parent-buf)))
+            (plist-put info :buffer parent-buf)
+            (plist-put info :position pos-marker)
+            (plist-put info :tracking-marker nil))))
+      ;; Task IB remains alive — it's owned by parent's
+      ;; `gptel-org-agent--todo-task-ibs' and cleaned up there.
+      parent-buf)))
 
 (defun gptel-org-agent--write-todo-org (todos)
   "Display TODOS as org TODO headings in the agent subtree.
@@ -1763,18 +1795,33 @@ the active task heading."
   ;; restore back to the parent agent buffer first.  write-todo-org
   ;; needs the full agent subtree visible (point-min = agent heading)
   ;; to create/update todo headings.  The restore returns the parent
-  ;; buffer so we can switch context.
-  (let ((parent-buf (gptel-org-agent--restore-from-subtask-buffer)))
-    (when parent-buf
+  ;; buffer whenever the current buffer is a task IB.
+  (let* ((restored-parent (gptel-org-agent--restore-from-subtask-buffer))
+         ;; Resolve the agent buffer robustly.  Priority:
+         ;;   1. The parent IB returned by restore — this is a direct
+         ;;      signal that `(current-buffer)' is a task IB regardless
+         ;;      of whether `gptel--fsm-last' was bound here.
+         ;;   2. The FSM's :buffer (post-restore), if an FSM is bound
+         ;;      in this buffer.
+         ;;   3. `(current-buffer)' as a last resort.
+         (agent-buf
+          (or (and (buffer-live-p restored-parent) restored-parent)
+              (and (boundp 'gptel--fsm-last) gptel--fsm-last
+                   (let ((b (plist-get (gptel-fsm-info gptel--fsm-last)
+                                       :buffer)))
+                     (and (buffer-live-p b) b)))
+              (current-buffer))))
+    (when restored-parent
       (gptel-org--debug "write-todo-org: switched to parent buffer %S"
-                        (buffer-name parent-buf))))
-  ;; Determine the correct buffer: use FSM :buffer (which is the
-  ;; parent agent buffer after restore, or the current agent buffer
-  ;; if no restore was needed).
-  (let ((agent-buf (if (and (boundp 'gptel--fsm-last) gptel--fsm-last)
-                       (or (plist-get (gptel-fsm-info gptel--fsm-last) :buffer)
-                           (current-buffer))
-                     (current-buffer))))
+                        (buffer-name restored-parent)))
+    ;; Sanity check: the resolved agent-buf should be an agent IB.  Don't
+    ;; bail — just log prominently so future breakage is visible.
+    (unless (buffer-local-value 'gptel-org--agent-indirect-buffer-p agent-buf)
+      (gptel-org--debug
+       "write-todo-org: WARNING - agent-buf %S is not flagged as agent IB (base: %S)"
+       (buffer-name agent-buf)
+       (and (buffer-base-buffer agent-buf)
+            (buffer-name (buffer-base-buffer agent-buf)))))
     (with-current-buffer agent-buf
       (gptel-org--debug "write-todo-org: called with %d todos in buffer %S (base: %S)"
                         (length todos) (buffer-name) (buffer-name (buffer-base-buffer)))

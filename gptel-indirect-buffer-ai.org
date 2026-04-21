@@ -368,6 +368,26 @@ Ref-level on task IBs:
   to =task-level + 1= (= child of task) regardless of whether the
   PENDING-matching fast path succeeds.
 
+*** Fix: TodoWrite from inside a task IB (robust parent resolution)
+
+Previously =gptel-org-agent--write-todo-org= relied on =gptel--fsm-last=
+being bound in =(current-buffer)= to locate the parent agent IB.  When
+=TodoWrite= was invoked while the FSM had already been redirected into a
+task IB, =gptel--fsm-last= was often nil in that task IB (it's
+=defvar-local= and not inherited by indirect buffers), so the restore
+path was skipped and =agent-buf= fell through to the narrowed task IB.
+The result was that new task headings were created at the wrong level
+/inside/ Task A's subtree instead of updating the existing sibling
+headings under the agent.
+
+The fix uses =gptel-org-agent--parent-indirect-buffer= (set on every task
+IB by =redirect-markers-to-heading=) as a direct buffer-local signal.
+=restore-from-subtask-buffer= now checks both =(current-buffer)= and the
+FSM's =:buffer= for this pointer, and looks up the FSM in the parent
+buffer when it is not bound locally.  =write-todo-org= then prefers the
+restored parent over any FSM-derived buffer, guaranteeing that todo
+headings are always managed at the agent level.
+
 ** Integration with gptel-org.el (Reasoning Display)
 
 This section documents how =gptel-org.el= uses the module for the reasoning
