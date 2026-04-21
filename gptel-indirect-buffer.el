@@ -290,6 +290,102 @@ or nil if not found."
               (forward-line 1)))))
       found)))
 
+(defun gptel-org-ib-streaming-marker (&optional terminator-keyword)
+  "Return a marker safe for FSM streaming into the current indirect buffer.
+
+If TERMINATOR-KEYWORD names a child terminator heading of the
+current subtree (e.g., \"FEEDBACK\" or \"Results\"), position the
+marker at the beginning of that terminator's heading line with
+insertion-type nil.  Text inserted at this marker is placed BEFORE
+the terminator, and the marker stays pinned to the terminator line
+as content accumulates.
+
+If no terminator exists, place the marker at `point-max' with
+insertion-type t (advances with appended text).
+
+Typically called with the current buffer narrowed to an agent or
+task subtree, point on the narrowed-to heading.  When point is not
+on a heading, only the `point-max' fallback is used."
+  (let ((term-pos (and terminator-keyword
+                       (save-excursion
+                         (goto-char (point-min))
+                         (when (org-at-heading-p)
+                           (gptel-org-ib-find-terminator terminator-keyword))))))
+    (if term-pos
+        (let ((m (make-marker)))
+          (set-marker m term-pos)
+          (set-marker-insertion-type m nil)
+          m)
+      (save-excursion
+        (goto-char (point-max))
+        (skip-chars-backward "\n")
+        (end-of-line)
+        (let ((m (point-marker)))
+          (set-marker-insertion-type m t)
+          m)))))
+
+(defun gptel-org-ib-ensure-sibling-terminator (terminator-keyword level)
+  "Ensure a sibling terminator heading exists at LEVEL after current subtree.
+
+Unlike `gptel-org-ib-ensure-terminator' which manages a CHILD
+terminator heading, this variant manages a SIBLING terminator at
+the same LEVEL as the heading at point.  This is used for
+sibling-level FEEDBACK markers (e.g., when the agent heading and
+FEEDBACK heading share a parent).
+
+TERMINATOR-KEYWORD is the heading text (e.g., \"FEEDBACK\").
+LEVEL is the heading level (number of stars) for the terminator.
+
+Point must be on a heading.  Searches forward from the end of the
+current subtree for an existing sibling at LEVEL with matching
+heading keyword/title before the next heading of a shallower level
+or end of accessible portion of buffer.  If found, returns a marker
+to it.  Otherwise inserts a new one at the end of the current
+subtree and returns a marker to it.
+
+Returns a marker to the terminator heading."
+  (save-excursion
+    (unless (org-at-heading-p)
+      (ignore-errors (org-back-to-heading t)))
+    (let* ((inhibit-read-only t)
+           (current-level (org-current-level))
+           (subtree-end (save-excursion
+                          (org-end-of-subtree t t)
+                          (point)))
+           (regexp (gptel-org-ib--terminator-regexp terminator-keyword level))
+           (found nil))
+      (save-excursion
+        (goto-char subtree-end)
+        ;; Search forward for sibling terminator.  Stop at a heading of
+        ;; lower (shallower) level than LEVEL, which indicates we've
+        ;; left the parent's scope.
+        (let ((stop-regexp (format "^\\*\\{1,%d\\} " (1- level)))
+              (limit nil))
+          (save-excursion
+            (when (re-search-forward stop-regexp nil t)
+              (setq limit (match-beginning 0))))
+          (when (re-search-forward regexp limit t)
+            (beginning-of-line)
+            (when (= (org-current-level) level)
+              (setq found (point))))))
+      (if found
+          (let ((m (make-marker)))
+            (set-marker m found)
+            m)
+        ;; Not found: insert new sibling at end of subtree
+        (goto-char subtree-end)
+        (unless (bolp) (insert "\n"))
+        (let* ((stars (make-string level ?*))
+               (heading-text (format "%s %s" stars terminator-keyword))
+               (start (point)))
+          (insert heading-text "\n")
+          (gptel-org--debug
+           "org-ib ensure-sibling-terminator: %S at level %d, line %d"
+           terminator-keyword level (line-number-at-pos start))
+          (let ((m (make-marker)))
+            (set-marker m start)
+            m))))))
+
 (defun gptel-org-ib-create-terminator (heading-keyword &optional level)
   "Create a terminator child heading under the current heading.
 

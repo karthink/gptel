@@ -265,6 +265,133 @@ Protects tests against leaks from registered IBs they created."
         (should (= 1 (how-many "^\\*+ FEEDBACK\\b" (point-min) (point-max))))))))
 
 
+;;; ---- Streaming Marker ----------------------------------------------------
+
+(ert-deftest gptel-org-ib-test-streaming-marker-with-terminator ()
+  "With a FEEDBACK terminator, marker lands at start of FEEDBACK line."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n** Child\nbody\n** FEEDBACK\n"
+    (goto-char (point-min))
+    (org-back-to-heading t)
+    (let ((m (gptel-org-ib-streaming-marker "FEEDBACK")))
+      (should (markerp m))
+      (should-not (marker-insertion-type m))
+      (save-excursion
+        (goto-char m)
+        (should (bolp))
+        (should (org-at-heading-p))
+        (should (equal "FEEDBACK" (org-get-todo-state)))))))
+
+(ert-deftest gptel-org-ib-test-streaming-marker-without-terminator ()
+  "Without terminator, marker is at point-max with insertion-type t."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\nbody\n"
+    (goto-char (point-min))
+    (org-back-to-heading t)
+    (let ((m (gptel-org-ib-streaming-marker "FEEDBACK")))
+      (should (markerp m))
+      (should (marker-insertion-type m))
+      ;; Marker at end-of-buffer (modulo trailing newline handling).
+      (should (= (marker-position m)
+                 (save-excursion
+                   (goto-char (point-max))
+                   (skip-chars-backward "\n")
+                   (end-of-line)
+                   (point)))))))
+
+(ert-deftest gptel-org-ib-test-streaming-marker-insertion-before-terminator ()
+  "Inserting at the streaming marker places content BEFORE the terminator."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n** Child\nbody\n** FEEDBACK\n"
+    (goto-char (point-min))
+    (org-back-to-heading t)
+    (let ((m (gptel-org-ib-streaming-marker "FEEDBACK")))
+      (save-excursion
+        (goto-char m)
+        (insert "*** TOOL streamed\n"))
+      ;; FEEDBACK should still exist and be after the inserted heading.
+      (goto-char (point-min))
+      (let (order)
+        (while (re-search-forward org-heading-regexp nil t)
+          (push (or (org-get-todo-state)
+                    (org-get-heading t t t t))
+                order))
+        (setq order (nreverse order))
+        (should (equal "Parent" (nth 0 order)))
+        (should (equal "Child" (nth 1 order)))
+        (should (equal "TOOL streamed" (nth 2 order)))
+        (should (equal "FEEDBACK" (nth 3 order)))))))
+
+(ert-deftest gptel-org-ib-test-streaming-marker-no-terminator-arg ()
+  "Passing nil for terminator falls back to point-max with insertion-type t."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n** Child\n** FEEDBACK\n"
+    (goto-char (point-min))
+    (org-back-to-heading t)
+    (let ((m (gptel-org-ib-streaming-marker nil)))
+      (should (markerp m))
+      (should (marker-insertion-type m)))))
+
+
+;;; ---- Sibling Terminator --------------------------------------------------
+
+(ert-deftest gptel-org-ib-test-ensure-sibling-terminator-creates-new ()
+  "`ensure-sibling-terminator' creates a sibling heading at LEVEL when missing."
+  (gptel-org-ib-test-with-buffer
+      "* Top\n** Agent\nbody\n"
+    (goto-char (point-min))
+    (re-search-forward "^\\*\\* Agent")
+    (beginning-of-line)
+    (let ((m (gptel-org-ib-ensure-sibling-terminator "FEEDBACK" 2)))
+      (should (markerp m))
+      (save-excursion
+        (goto-char m)
+        (should (org-at-heading-p))
+        (should (= 2 (org-current-level)))
+        (should (equal "FEEDBACK" (org-get-todo-state)))))))
+
+(ert-deftest gptel-org-ib-test-ensure-sibling-terminator-reuses-existing ()
+  "`ensure-sibling-terminator' returns an existing sibling without duplicating."
+  (gptel-org-ib-test-with-buffer
+      "* Top\n** Agent\nbody\n** FEEDBACK\n"
+    (goto-char (point-min))
+    (re-search-forward "^\\*\\* Agent")
+    (beginning-of-line)
+    (let ((m1 (gptel-org-ib-ensure-sibling-terminator "FEEDBACK" 2)))
+      (goto-char (point-min))
+      (re-search-forward "^\\*\\* Agent")
+      (beginning-of-line)
+      (let ((m2 (gptel-org-ib-ensure-sibling-terminator "FEEDBACK" 2)))
+        (should (= (marker-position m1) (marker-position m2)))
+        (goto-char (point-min))
+        (should (= 1 (how-many "^\\*+ FEEDBACK\\b" (point-min) (point-max))))))))
+
+(ert-deftest gptel-org-ib-test-ensure-sibling-terminator-stops-at-parent-boundary ()
+  "Sibling search stops at a heading of shallower level (leaves parent scope)."
+  (gptel-org-ib-test-with-buffer
+      "* Top\n** Agent\nbody\n* Other Top\n** FEEDBACK\n"
+    (goto-char (point-min))
+    (re-search-forward "^\\*\\* Agent")
+    (beginning-of-line)
+    (let ((m (gptel-org-ib-ensure-sibling-terminator "FEEDBACK" 2)))
+      (should (markerp m))
+      ;; Should have created a NEW feedback heading inside Top, not reused
+      ;; the one inside Other Top.
+      (goto-char (point-min))
+      (should (= 2 (how-many "^\\*+ FEEDBACK\\b" (point-min) (point-max))))
+      ;; The returned marker must point to the new FEEDBACK inside Top.
+      (save-excursion
+        (goto-char m)
+        (should (org-at-heading-p))
+        (should (equal "FEEDBACK" (org-get-todo-state)))
+        ;; It must be BEFORE "Other Top".
+        (should (< (point)
+                   (save-excursion
+                     (goto-char (point-min))
+                     (re-search-forward "^\\* Other Top")
+                     (match-beginning 0))))))))
+
+
 ;;; ---- Safe Heading Creation (Insert Before Terminator) --------------------
 
 (ert-deftest gptel-org-ib-test-create-heading-before-terminator ()
