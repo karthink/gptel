@@ -201,57 +201,47 @@ DESCRIPTION is an optional string to use as the heading title.
 When nil, the parent heading's text is used instead.
 
 Point must be on the parent heading (the TODO heading or another agent
-heading).  The new heading is inserted at the end of the parent's
-subtree content, before any sibling heading.
+heading).
 
-The child heading uses DESCRIPTION (or the parent heading's text) and
-includes the AI-DOING keyword (from `gptel-org-tasks-doing-keyword').
+Uses `gptel-org-ib-create-heading' (after ensuring the terminator)
+so that the new heading is inserted BEFORE any existing sibling
+terminator (e.g. FEEDBACK) and therefore does not disturb existing
+sibling indirect buffers narrowed to earlier subtrees.  When no
+terminator is appropriate or present, create-heading falls back to
+`org-end-of-subtree' (preserving prior behaviour for fresh trees).
 
 Return a marker to the newly created heading."
   (save-excursion
     (unless (org-at-heading-p)
       (error "gptel-org-agent--create-subtree: point is not on a heading"))
     ;; Tool call confirmation text in the buffer may be marked read-only
-    ;; (by `gptel--display-tool-calls').  The overlay cleanup happens
-    ;; after tool functions run, so we must bypass read-only here.
+    ;; (by `gptel--display-tool-calls').  Bypass read-only here.
     (let* ((inhibit-read-only t)
            (parent-level (org-current-level))
            (child-level (1+ parent-level))
            (tag (gptel-org-agent--construct-tag agent-type parent-tag))
-           (heading-title (or description
-                              (org-element-property :raw-value (org-element-at-point))))
-           (doing-keyword (or (bound-and-true-p gptel-org-tasks-doing-keyword) "AI-DOING"))
-           (stars (make-string child-level ?*))
-           (heading-text (if heading-title
-                             (format "%s %s %s :%s:" stars doing-keyword heading-title tag)
-                           (format "%s :%s:" stars tag)))
-           marker)
-      (gptel-org--debug "org-agent create-subtree: creating %S at level %d under level %d"
-                        tag child-level parent-level)
-      ;; Move to the end of the parent subtree's content.
-      ;; `org-end-of-subtree' goes to the end of the whole subtree including
-      ;; children, so we need to position before the next sibling or at end
-      ;; of subtree.  For inserting a new last child, we go to end of subtree.
-      (org-end-of-subtree t)
-      ;; Ensure we're at the beginning of a line for clean insertion
-      (unless (bolp) (insert "\n"))
-      ;; Insert the new heading
-      (insert heading-text "\n")
-      ;; Move back to the heading we just inserted
-      (forward-line -1)
-      (beginning-of-line)
-      ;; Use org-set-tags to properly format the tag on the heading
-      ;; (aligns tag column, runs org-after-tags-change-hook, etc.)
-      (org-set-tags (list tag))
-      ;; Create the marker before inserting the body newline
-      (setq marker (point-marker))
-      ;; Move to end of heading line and insert a newline so the agent
-      ;; has somewhere to write its response
-      (end-of-line)
-      (insert "\n")
-      (gptel-org--debug "org-agent create-subtree: created heading at line %d, marker at %d"
-                        (line-number-at-pos marker) (marker-position marker))
-      marker)))
+           (heading-title
+            (or description
+                (org-element-property :raw-value (org-element-at-point))))
+           (doing-keyword
+            (or (bound-and-true-p gptel-org-tasks-doing-keyword) "AI-DOING"))
+           ;; Terminator at parent level.  If a FEEDBACK (or custom user
+           ;; keyword) child exists already, insert before it; otherwise
+           ;; create-heading appends at end-of-subtree.
+           (terminator-keyword
+            (or (bound-and-true-p gptel-org-user-keyword) "FEEDBACK")))
+      (gptel-org--debug
+       "org-agent create-subtree: creating %S at level %d under level %d (terminator=%S)"
+       tag child-level parent-level terminator-keyword)
+      (let ((marker (gptel-org-ib-create-heading
+                     (if heading-title doing-keyword nil)
+                     (or heading-title "")
+                     (list tag)
+                     terminator-keyword)))
+        (gptel-org--debug
+         "org-agent create-subtree: created heading at line %d, marker at %d"
+         (line-number-at-pos marker) (marker-position marker))
+        marker))))
 
 
 (defun gptel-org-agent--create-handover-heading (body description)
