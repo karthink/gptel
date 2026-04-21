@@ -1110,23 +1110,27 @@ in the conversation."
                                        "insert-user-heading: tool confirm heading transitioned from %s to %s"
                                        state done-kw))))))))))
                     (unless has-user
-                      ;; Create the user/feedback heading
-                      (goto-char subtree-end)
-                      (unless (bolp) (insert "\n"))
-                      (let ((stars (make-string user-level ?*)))
+                      ;; Create the user/feedback heading via
+                      ;; terminator-aware helpers so concurrent sibling
+                      ;; IBs are not disturbed.
+                      (save-excursion
+                        (goto-char agent-heading-pos)
                         (if keyword-mode
+                            ;; Sibling FEEDBACK at agent-level.
                             (let ((kw (or (bound-and-true-p gptel-org-user-keyword) "FEEDBACK")))
-                              (insert (format "%s %s \n" stars kw))
+                              (gptel-org-ib-ensure-sibling-terminator kw user-level)
                               (gptel-org--debug
-                               "insert-user-heading: created %s sibling heading at level %d after pos %d"
-                               kw user-level (marker-position subtree-end)))
-                          (insert (format "%s \n" stars))
-                          (forward-line -1)
-                          (beginning-of-line)
-                          (org-set-tags (list user-tag))
-                          (gptel-org--debug
-                           "insert-user-heading: created :%s: heading at level %d after pos %d"
-                           user-tag user-level (marker-position subtree-end)))))
+                               "insert-user-heading: ensured %s sibling at level %d"
+                               kw user-level))
+                          ;; Tag mode: CHILD :user: heading via
+                          ;; terminator-aware create-heading.  We insert
+                          ;; at end of the agent subtree (no sub-terminator
+                          ;; for the user heading itself).
+                          (let ((m (gptel-org-ib-create-heading
+                                    nil "" (list user-tag) nil)))
+                            (gptel-org--debug
+                             "insert-user-heading: created :%s: child heading at level %d (marker %S)"
+                             user-tag user-level m)))))
                     ;; Clean up marker
                     (set-marker subtree-end nil))))))))
       ;; Close the indirect buffer after all DONE processing completes.
