@@ -607,6 +607,7 @@ gptel model and backend names, the system message, active tools, the
 response temperature, max tokens and number of conversation turns to
 send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
   (interactive (list (point) t))
+  (require 'gptel)
   (let ((preset-spec (and gptel--preset (gptel-get-preset gptel--preset))))
     (if preset-spec
         (org-entry-put pt "GPTEL_PRESET" (gptel--to-string gptel--preset))
