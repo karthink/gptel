@@ -2760,6 +2760,88 @@ in `org-todo-keyword-faces'."
         ;; Refresh org to pick up changes
         (when (and changed (derived-mode-p 'org-mode))
           (org-mode-restart))))))
+
+(defconst gptel-org--tool-state-face
+  '(:foreground "#A3BE8C" :weight bold)
+  "Default face for tool-like TODO keywords (BASH, EVAL, GREP, ...).")
+
+(defconst gptel-org--agent-state-face
+  '(:foreground "#81A1C1" :weight bold)
+  "Default face for agent-like TODO keywords (GATHERER, EXECUTOR, ...).")
+
+(defconst gptel-org--result-state-face
+  '(:foreground "#B48EAD" :weight bold)
+  "Default face for result-like TODO keywords (RESULTS, ...).")
+
+(defun gptel-org--ensure-todo-state-1 (state face done-state)
+  "Register STATE with FACE in org-todo machinery; return non-nil if changed.
+DONE-STATE non-nil means add STATE to the done-state half of a sequence.
+This helper does not call `org-mode-restart'."
+  (let ((changed nil))
+    ;; Register keyword in org-todo-keywords if missing
+    (unless (cl-some (lambda (seq)
+                       (and (listp seq)
+                            (member state (cl-remove-if-not #'stringp seq))))
+                     org-todo-keywords)
+      (if done-state
+          (push (list 'sequence "|" state) org-todo-keywords)
+        (push (list 'sequence state) org-todo-keywords))
+      (setq changed t))
+    ;; Register face if missing or different
+    (let ((existing (assoc state org-todo-keyword-faces)))
+      (cond
+       ((null existing)
+        (push (cons state face) org-todo-keyword-faces)
+        (setq changed t))
+       ((not (equal (cdr existing) face))
+        (setcdr existing face)
+        (setq changed t))))
+    changed))
+
+(defun gptel-org--ensure-todo-state (state &optional face done-state)
+  "Ensure STATE is registered as an org TODO keyword in the current buffer.
+
+STATE is a string keyword name (e.g. \"BASH\", \"GATHERER\", \"RESULTS\").
+FACE is an optional plist face spec for `org-todo-keyword-faces'.
+  If nil, a sensible default face is used.
+DONE-STATE (default t) means register in the done-state half of the
+  sequence (after \"|\"), mirroring how REASONING/TOOL are registered.
+  If nil, the state is registered as an open/todo state.
+
+When `gptel-org-use-todo-keywords' is nil, does nothing.
+
+When a refresh is required, calls `org-mode-restart' so the new
+keyword takes effect immediately.  Idempotent: no restart if STATE is
+already registered with the same face."
+  (when gptel-org-use-todo-keywords
+    (let* ((face (or face gptel-org--tool-state-face))
+           (done-state (if (eq done-state nil) t done-state))
+           (changed (gptel-org--ensure-todo-state-1 state face done-state)))
+      (when (and changed (derived-mode-p 'org-mode))
+        (org-mode-restart))
+      changed)))
+
+(defun gptel-org--ensure-todo-states (specs)
+  "Register multiple states from SPECS.
+SPECS is a list of (STATE FACE &optional OPEN-P) entries, where:
+  STATE is the keyword string.
+  FACE is a face plist (nil for the default tool-like face).
+  OPEN-P non-nil means register as an open/todo state (before \"|\");
+    otherwise register as a done-state keyword.
+Performs a single `org-mode-restart' if any state is new or changed."
+  (when gptel-org-use-todo-keywords
+    (let ((any-changed nil))
+      (dolist (spec specs)
+        (let* ((state (nth 0 spec))
+               (face (or (nth 1 spec) gptel-org--tool-state-face))
+               (open-p (nth 2 spec))
+               (done-state (not open-p)))
+          (when (gptel-org--ensure-todo-state-1 state face done-state)
+            (setq any-changed t))))
+      (when (and any-changed (derived-mode-p 'org-mode))
+        (org-mode-restart))
+      any-changed)))
+
 ;;; Unified Org Mode
 
 ;;;###autoload
