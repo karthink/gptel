@@ -51,7 +51,7 @@
 ;;   The dashboard refreshes automatically when TODO states change in
 ;;   registered files and when registered files are saved.  Refreshes
 ;;   are debounced with `run-with-idle-timer' to avoid thrashing during
-;;   rapid updates (e.g., TodoWrite batch operations).
+;;   rapid updates.
 
 ;;; Code:
 

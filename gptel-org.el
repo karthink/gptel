@@ -78,11 +78,6 @@ already at or above ref-level are left untouched, making the
 correction idempotent.")
 
 
-(defvar-local gptel-org--base-ref-level nil
-  "Original `gptel-org--ref-level' before TodoWrite sub-task redirect.
-Saved by `gptel-org-agent--redirect-markers-to-heading' when it updates
-`gptel-org--ref-level' for a sub-task.  Restored by
-`gptel-org-agent--write-todo-org' when no sub-task is in_progress.")
 (defvar-local gptel-org--auto-correcting nil
   "Non-nil while the auto-corrector is modifying the buffer.
 Used as a re-entrancy guard to prevent the auto-corrector from
@@ -2744,9 +2739,8 @@ state is registered up front, before any indirect buffer is created.
 That way later tool calls never need to restart org-mode inside an
 indirect buffer — which would call `kill-all-local-variables' and
 destroy buffer-local IB state (e.g.
-`gptel-org--agent-indirect-buffer-p',
-`gptel-org-agent--todo-task-ibs', FSM references, ...), corrupting
-subsequent heading updates."
+`gptel-org--agent-indirect-buffer-p', FSM references, ...),
+corrupting subsequent heading updates."
   (when gptel-org-use-todo-keywords
     (let ((ai-kw gptel-org-assistant-keyword)
           (hi-kw gptel-org-user-keyword)
@@ -2859,8 +2853,8 @@ is already registered with the same face.
 In an indirect buffer, `org-set-regexps-and-options' is used instead
 of `org-mode-restart' because the latter calls
 `kill-all-local-variables' and destroys gptel buffer-local IB state
-(e.g. `gptel-org--agent-indirect-buffer-p',
-`gptel-org-agent--todo-task-ibs', FSM references, ...).  In practice
+(e.g. `gptel-org--agent-indirect-buffer-p', FSM references, ...).
+In practice
 this path should rarely fire during a request because
 `gptel-org--register-todo-keywords' pre-registers every known tool
 state at `gptel-mode' setup time."

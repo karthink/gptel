@@ -84,8 +84,8 @@ The module provides the foundational capabilities used by both consumers:
 * Heading Creation Rule
 
 This is a HARD INVARIANT of the gptel agent system.  Every heading
-created by AI-driven code paths — agent subtrees, TodoWrite tasks,
-tool confirmation (PENDING), reasoning, and user FEEDBACK — MUST be
+created by AI-driven code paths — agent subtrees, tool confirmation
+(PENDING), reasoning, and user FEEDBACK — MUST be
 inserted via one of the following terminator-aware APIs:
 
 - =gptel-org-ib-safe-insert-sibling= (ensure terminator + create
@@ -297,96 +297,6 @@ applies concerns that are outside the module's scope:
 3. *End-marker compat*: Sets up an expanding end-marker (insertion-type=t)
    at the end of the narrowed region so streaming LLM responses push the
    boundary forward rather than overflowing
-
-*** Per-task Indirect Buffers for TodoWrite
-
-As of the terminator-safe refactor, each TodoWrite task heading gets
-its OWN long-lived indirect buffer, created at task creation time
-(not just when it transitions to =in_progress=).  This eliminates
-streamed-content contamination between sibling tasks.
-
-Structure:
-
-#+begin_example
-,**** AI-DOING Agent subtree           <- Agent IB
-,***** AI-DO Task A                    <- Task A IB  (one per task)
-,****** RESULTS                        <- Task A's RESULTS terminator
-,***** AI-DO Task B                    <- Task B IB
-,****** RESULTS                        <- Task B's RESULTS terminator
-,***** FEEDBACK                        <- Agent-level terminator
-#+end_example
-
-Bookkeeping:
-
-- =gptel-org-agent--todo-task-ibs=: buffer-local alist on the AGENT
-  IB, mapping task content string → task indirect buffer.
-- =gptel-org-agent--create-todo-heading (content keyword parent-pos terminator-keyword)=:
-  creates the new task heading via =gptel-org-ib-safe-insert-sibling=
-  under the agent subtree's terminator, and ensures a =RESULTS=
-  child terminator inside the task IB so subsequent TOOL / REASONING
-  / sub-agent headings obey the rule too.  Returns the task IB.
-- =gptel-org-agent--write-todo-org=: picks the right agent-level
-  terminator (=FEEDBACK= for top-level, =RESULTS= for sub-agents)
-  via =gptel-org-agent--agent-terminator-keyword=; tracks every
-  created task IB in the alist; closes task IBs whose task has
-  been removed from the TodoWrite list.
-- =gptel-org-agent--redirect-markers-to-heading=: reuses the
-  pre-created task IB from the alist instead of spawning a fresh
-  one every time a task transitions to =in_progress=.  The FSM
-  =:position= marker is computed via =gptel-org-ib-streaming-marker
-  "RESULTS"= so content streams BEFORE the task's RESULTS
-  terminator.
-- =gptel-org-agent--restore-from-subtask-buffer=: switches the FSM
-  back to the parent agent IB WITHOUT killing the task IB.  Task
-  IBs are killed only when (a) the task is removed by
-  =write-todo-org=, or (b) the agent IB itself is closed.
-- =gptel-org-agent--close-indirect-buffer=: cascades — before
-  closing the agent IB, closes every task IB in its
-  =--todo-task-ibs= alist.
-
-Ref-level on task IBs:
-
-- Each task IB carries its OWN buffer-local =gptel-org--ref-level= set
-  to =(1+ task-heading-level)=.  This is set at two points:
-  - =gptel-org-agent--create-todo-heading= sets it immediately after
-    creating the task IB (inside the =when (org-at-heading-p)= block
-    that also ensures the =RESULTS= terminator).
-  - =gptel-org-agent--redirect-markers-to-heading= sets it too, as a
-    safety net for task IBs that may have been created without it
-    (belt-and-suspenders, since the task IB is reused across
-    redirects).
-- Why this matters: when a tool call is auto-approved, no PENDING
-  heading is created, so =gptel-org-agent--display-tool-results-advice=
-  finds nothing to update and falls through to =gptel--display-tool-results=,
-  which in turn calls =gptel--tool-heading-ref-level=.  Step 1 of
-  that helper reads =gptel-org--ref-level= from the current buffer.
-  Without this setup, step 1 returned nil in task IBs and step 3's
-  registry lookup would match the AGENT IB (ref-level = task-level),
-  placing the TOOL / BASH heading as a =sibling= of the task rather
-  than its child.
-- With the ref-level set on the task IB, tool-result headings resolve
-  to =task-level + 1= (= child of task) regardless of whether the
-  PENDING-matching fast path succeeds.
-
-*** Fix: TodoWrite from inside a task IB (robust parent resolution)
-
-Previously =gptel-org-agent--write-todo-org= relied on =gptel--fsm-last=
-being bound in =(current-buffer)= to locate the parent agent IB.  When
-=TodoWrite= was invoked while the FSM had already been redirected into a
-task IB, =gptel--fsm-last= was often nil in that task IB (it's
-=defvar-local= and not inherited by indirect buffers), so the restore
-path was skipped and =agent-buf= fell through to the narrowed task IB.
-The result was that new task headings were created at the wrong level
-/inside/ Task A's subtree instead of updating the existing sibling
-headings under the agent.
-
-The fix uses =gptel-org-agent--parent-indirect-buffer= (set on every task
-IB by =redirect-markers-to-heading=) as a direct buffer-local signal.
-=restore-from-subtask-buffer= now checks both =(current-buffer)= and the
-FSM's =:buffer= for this pointer, and looks up the FSM in the parent
-buffer when it is not bound locally.  =write-todo-org= then prefers the
-restored parent over any FSM-derived buffer, guaranteeing that todo
-headings are always managed at the agent level.
 
 ** Integration with gptel-org.el (Reasoning Display)
 
@@ -799,7 +709,7 @@ This is the scenario that motivates =gptel-org-ib-recreate=:
     every gptel buffer-local variable the module and its consumers rely
     on — for example =gptel-org--agent-indirect-buffer-p=,
     =gptel-org--ref-level=, =gptel-org-agent--narrow-end-marker=,
-    =gptel-org-agent--todo-task-ibs=, FSM references, and entries in the
+    FSM references, and entries in the
     global IB tracking registry linked through buffer-locals.  Destroying
     these mid-request corrupts subsequent heading updates in the very
     first =gptel-send= after startup (the only time a new TODO keyword
@@ -825,8 +735,6 @@ This is the scenario that motivates =gptel-org-ib-recreate=:
 
        =org-set-regexps-and-options= refreshes the TODO keyword machinery
        and fontification rules without touching buffer-local variables.
-       This same lighter pattern is already used by
-       =gptel-org-agent--ensure-todo-keywords=.
 
 * Usage Examples
 
@@ -931,7 +839,6 @@ boundary tracking:
 | =gptel--stream-convert-markdown->org= | gptel-org.el | Streaming parse cursor in temp buffer (state machine) |
 | =gptel-org--auto-correct-on-change= end-marker | gptel-org.el | Safe iteration marker (tracks insertions during correction) |
 | =gptel-org--fold-special-blocks= | gptel-org.el | Forward scan of =(beg end)= response region (parameter-driven) |
-| =gptel-org-agent--collect-todo-headings= copy-marker | gptel-org-agent.el | Position collection that must survive buffer mods |
 | =gptel-org-agent--insert-user-heading= subtree-end | gptel-org-agent.el | Base-buffer marker tracking drift during keyword transition |
 | =gptel-org-agent--update-tool-heading= backward search | gptel-org-agent.el | Bounded search within IB for PENDING heading pairing |
 

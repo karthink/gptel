@@ -278,7 +278,7 @@ Returns the heading text of the created heading, or nil on failure."
                    (parent-level (org-current-level))
                    (child-level (1+ parent-level))
                    (stars (make-string child-level ?*))
-                   (todo-keyword (gptel-org-agent--status-to-keyword "pending"))
+                   (todo-keyword "AI-DO")
                    (heading-text (format "%s %s %s" stars todo-keyword description)))
               ;; Go to end of parent subtree to insert as last child
               (org-end-of-subtree t)
@@ -502,21 +502,6 @@ Return the indirect buffer."
 This marker has insertion-type t so the region grows as text is appended.
 Stored for cleanup in `gptel-org-agent--close-indirect-buffer'.")
 
-(defvar-local gptel-org-agent--parent-indirect-buffer nil
-  "Parent indirect buffer when this is a TodoWrite sub-task buffer.
-Set by `gptel-org-agent--redirect-markers-to-heading' so the FSM can
-be restored to the parent buffer when the sub-task completes.")
-
-(defvar-local gptel-org-agent--todo-task-ibs nil
-  "Alist mapping TODO task content string to its indirect buffer.
-Populated by `gptel-org-agent--write-todo-org' when new task
-headings are created.  Consulted by
-`gptel-org-agent--redirect-markers-to-heading' to reuse per-task IBs
-instead of creating new ones.  Entries are removed when the task
-heading is removed by `write-todo-org' idempotent cleanup, and the
-associated IB is closed when the agent IB itself is closed.")
-
-
 (defun gptel-org-agent--make-insertion-marker (buffer)
   "Create an FSM-position marker for BUFFER.
 
@@ -577,23 +562,6 @@ headings when FOLD is requested."
       (gptel-org--debug
        "org-agent close-indirect-buffer: CLOSING %S base=%S fold=%s"
        buf-name (and base-buf (buffer-name base-buf)) fold)
-      ;; Cascade-close any task IBs owned by this agent IB.  This
-      ;; happens BEFORE the agent IB itself is closed so the task IB
-      ;; cleanup can still resolve base buffers / registry entries.
-      (let ((task-ibs (buffer-local-value
-                       'gptel-org-agent--todo-task-ibs
-                       indirect-buffer)))
-        (when task-ibs
-          (gptel-org--debug
-           "org-agent close-indirect-buffer: cascading close of %d task IB(s)"
-           (length task-ibs))
-          (dolist (pair task-ibs)
-            (let ((task-ib (cdr pair)))
-              (when (and (buffer-live-p task-ib)
-                         (not (eq task-ib indirect-buffer)))
-                (gptel-org-ib-close task-ib nil))))
-          (with-current-buffer indirect-buffer
-            (setq gptel-org-agent--todo-task-ibs nil))))
       ;; When folding, first fold individual TOOL/REASONING headings so
       ;; they remain folded when user unfolds the agent subtree
       (when (and fold (buffer-live-p base-buf))
@@ -1398,123 +1366,10 @@ Returns nil if INDIRECT-BUFFER is not live or contains no text."
               nil)))))))
 
 
-;;; ---- TodoWrite org integration (Phase 4) ----------------------------------
-
-(defcustom gptel-org-agent-todo-keywords nil
-  "TODO keyword sequence for agent task headings.
-When non-nil, added to `org-todo-keywords' to ensure required
-keywords are available.  When nil (the default), the buffer's
-existing TODO keywords are used as-is.
-
-The mapping from TodoWrite statuses to org keywords is controlled by
-`gptel-org-agent-status-keyword-map'."
-  :type '(choice (const :tag "Use buffer keywords" nil)
-                 (sexp :tag "Custom keyword sequence"))
-  :group 'gptel)
-
-(defcustom gptel-org-agent-status-keyword-map
-  '(("pending"     . "AI-DO")
-    ("in_progress" . "AI-DOING")
-    ("completed"   . "AI-DONE"))
-  "Alist mapping TodoWrite status strings to org TODO keywords.
-Each entry is (STATUS . KEYWORD) where STATUS is one of the strings
-the LLM sends (\"pending\", \"in_progress\", \"completed\") and
-KEYWORD is the org TODO keyword to use.
-
-The keywords should match keywords defined in the buffer's
-`#+SEQ_TODO' line or `org-todo-keywords'.  Defaults align with
-the `gptel-org-tasks' workflow (AI-DO/AI-DOING/AI-DONE)."
-  :type '(alist :key-type string :value-type string)
-  :group 'gptel)
-
-(defun gptel-org-agent--ensure-todo-keywords ()
-  "Ensure agent TODO keywords are available in the current buffer.
-When `gptel-org-agent-todo-keywords' is non-nil, adds its entries
-to `org-todo-keywords' if not already present, then refreshes org's
-TODO keyword parsing.  When nil, assumes the buffer already defines
-the required keywords (e.g. via #+SEQ_TODO)."
-  (when gptel-org-agent-todo-keywords
-    (let ((needs-refresh nil))
-      (dolist (kw-seq gptel-org-agent-todo-keywords)
-        (unless (member kw-seq org-todo-keywords)
-          (push kw-seq org-todo-keywords)
-          (setq needs-refresh t)))
-      (when needs-refresh
-        ;; Make the change buffer-local so we don't pollute other buffers
-        (setq-local org-todo-keywords org-todo-keywords)
-        (org-set-regexps-and-options)))))
-
-(defun gptel-org-agent--status-to-keyword (status)
-  "Map a TodoWrite STATUS string to an org TODO keyword.
-Uses `gptel-org-agent-status-keyword-map' for the mapping.
-Falls back to the uppercased STATUS if no mapping is found."
-  (or (alist-get status gptel-org-agent-status-keyword-map nil nil #'equal)
-      (upcase (or status "AI-DO"))))
-
-(defun gptel-org-agent--find-or-create-tasks-heading (level)
-  "Find or create a \"Tasks\" heading at LEVEL under the current heading.
-Point should be on the agent heading.  Returns the position of the
-Tasks heading."
-  (let ((agent-end (save-excursion (org-end-of-subtree t) (point)))
-        (child-re (format "^\\*\\{%d\\} +Tasks\\b" level))
-        found)
-    ;; Search for existing Tasks heading among direct children
-    (save-excursion
-      (org-end-of-meta-data t)
-      (while (and (not found)
-                  (< (point) agent-end)
-                  (re-search-forward org-heading-regexp agent-end t))
-        (beginning-of-line)
-        (when (and (= (org-current-level) level)
-                   (looking-at child-re))
-          (setq found (point)))
-        (unless found
-          (forward-line 1))))
-    (or found
-        ;; Create the Tasks heading at the end of the agent subtree
-        (save-excursion
-          (org-end-of-subtree t)
-          (unless (bolp) (insert "\n"))
-          (let ((stars (make-string level ?*))
-                (pos (point)))
-            (insert stars " Tasks\n")
-            pos)))))
-
-(defun gptel-org-agent--collect-todo-headings (level parent-pos)
-  "Collect existing todo headings at LEVEL under PARENT-POS.
-Only headings with a TODO keyword from `gptel-org-agent-status-keyword-map'
-are collected.  Returns an alist of (CONTENT . MARKER) where CONTENT
-is the heading text stripped of the TODO keyword and MARKER is a marker
-at the beginning of the heading line.  Markers are used instead of
-positions to survive subsequent buffer modifications (e.g. keyword
-changes that shift text)."
-  (let ((todo-keywords (mapcar #'cdr gptel-org-agent-status-keyword-map))
-        result)
-    (save-excursion
-      (goto-char parent-pos)
-      (let ((parent-end (save-excursion (org-end-of-subtree t) (point))))
-        (forward-line 1)
-        (while (and (< (point) parent-end)
-                    (re-search-forward org-heading-regexp parent-end t))
-          (beginning-of-line)
-          (when (= (org-current-level) level)
-            (let* ((components (org-heading-components))
-                   ;; org-heading-components returns:
-                   ;; (level reduced-level todo priority heading tags)
-                   (todo-kw (nth 2 components))
-                   (heading-text (nth 4 components)))
-              (when (and heading-text
-                         (member todo-kw todo-keywords))
-                (push (cons (org-trim heading-text)
-                            (copy-marker (point)))
-                      result))))
-          (forward-line 1))))
-    (nreverse result)))
-
 (defun gptel-org-agent--set-todo-keyword (keyword)
   "Set the TODO keyword of the heading at point to KEYWORD.
-Uses `org-todo' for proper state tracking, but falls back to direct
-text replacement if the keyword is not in org's known set."
+Uses `org-todo' for proper state tracking.  Idempotent: a no-op if
+the heading already has KEYWORD."
   (when (org-at-heading-p)
     (let* ((current (org-get-todo-state))
            (level-before (org-current-level))
@@ -1525,7 +1380,6 @@ text replacement if the keyword is not in org's known set."
        "set-todo-keyword: BEFORE org-todo: keyword=%s current=%s level=%d heading=%S"
        keyword current level-before heading-before)
       (unless (equal current keyword)
-        ;; org-todo with a specific keyword argument sets it directly
         (org-todo keyword)
         (let ((level-after (org-current-level))
               (heading-after (buffer-substring-no-properties
@@ -1538,398 +1392,6 @@ text replacement if the keyword is not in org's known set."
             (gptel-org--debug
              "set-todo-keyword: WARNING level changed! %d -> %d"
              level-before level-after)))))))
-
-(defun gptel-org-agent--create-todo-heading (content keyword parent-pos terminator-keyword)
-  "Create a TODO heading and its indirect buffer for a TodoWrite task.
-
-CONTENT is the task description text.
-KEYWORD is the TODO keyword (e.g., \"AI-DO\", \"AI-DOING\").
-PARENT-POS is the position of the parent agent heading (in the
-current buffer, which is assumed to be the agent's indirect buffer
-or narrowed region containing the agent subtree).
-TERMINATOR-KEYWORD is the terminator under the parent subtree that
-new task headings must be inserted BEFORE (e.g., \"FEEDBACK\" for
-top-level agents, \"RESULTS\" for sub-agents).
-
-Uses `gptel-org-ib-safe-insert-sibling' to:
-  1. Ensure the parent's TERMINATOR-KEYWORD exists.
-  2. Insert the new task heading BEFORE the terminator (so existing
-     sibling IBs narrowed to earlier tasks are not disturbed).
-  3. Create an indirect buffer narrowed to the new task's subtree.
-
-Inside the new task IB, ensure a \"RESULTS\" child terminator so
-that subsequent heading creation inside the task (tool confirmations,
-reasoning headings, sub-task delegations) also respects the rule.
-
-Returns the newly created task indirect buffer."
-  (let (task-ib)
-    (save-excursion
-      (goto-char parent-pos)
-      (unless (org-at-heading-p)
-        (ignore-errors (org-back-to-heading t)))
-      (setq task-ib
-            (gptel-org-ib-safe-insert-sibling
-             keyword content nil terminator-keyword)))
-    ;; Inside the task IB, ensure a RESULTS terminator so subsequent
-    ;; child headings (TOOL / REASONING / sub-agents) are inserted
-    ;; before it.
-    (when (buffer-live-p task-ib)
-      (with-current-buffer task-ib
-        (save-excursion
-          (goto-char (point-min))
-          (when (org-at-heading-p)
-            (setq-local gptel-org--ref-level (1+ (org-current-level)))
-            (gptel-org-ib-ensure-terminator "RESULTS")))))
-    task-ib))
-
-(defun gptel-org-agent--remove-todo-heading (pos)
-  "Remove the heading at POS and its entire subtree."
-  (save-excursion
-    (goto-char pos)
-    (when (org-at-heading-p)
-      (let ((beg (point))
-            (end (save-excursion (org-end-of-subtree t)
-                                (if (and (bolp) (not (eobp)))
-                                    (point)
-                                  (min (1+ (point)) (point-max))))))
-        (delete-region beg end)))))
-
-
-(defun gptel-org-agent--agent-terminator-keyword (&optional agent-buffer)
-  "Return the terminator keyword used under the agent in AGENT-BUFFER.
-
-Returns \"RESULTS\" for sub-agent buffers (tag contains two
-@-separated components, e.g. \"researcher@triage@agent\"), and
-\"FEEDBACK\" (or `gptel-org-user-keyword') for top-level agents.
-
-AGENT-BUFFER defaults to the current buffer."
-  (let* ((buf (or agent-buffer (current-buffer)))
-         (entry (gptel-org-ib-get (buffer-name buf)))
-         (tag (and entry (plist-get entry :tag))))
-    (if (and (stringp tag)
-             ;; Sub-agent tags look like "foo@bar@agent" — at least two @s.
-             (>= (cl-count ?@ tag) 2))
-        "RESULTS"
-      (or (bound-and-true-p gptel-org-user-keyword)
-          "FEEDBACK"))))
-
-(defun gptel-org-agent--find-task-ib-for-heading (heading-pos)
-  "Return the task IB from `gptel-org-agent--todo-task-ibs' for HEADING-POS.
-
-Looks up the alist entry whose IB's registered heading-marker points
-to HEADING-POS (in the parent/base buffer).  Returns the IB on match,
-or nil if no match is found.
-
-Called from the PARENT agent indirect buffer."
-  (let ((ibs gptel-org-agent--todo-task-ibs)
-        (match nil))
-    (while (and ibs (not match))
-      (let* ((pair (car ibs))
-             (ib (cdr pair))
-             (entry (and (buffer-live-p ib)
-                         (gptel-org-ib-get (buffer-name ib))))
-             (hm (and entry (plist-get entry :heading-marker))))
-        (when (and (markerp hm)
-                   (= (marker-position hm) heading-pos))
-          (setq match ib)))
-      (setq ibs (cdr ibs)))
-    match))
-
-(defun gptel-org-agent--redirect-markers-to-heading (heading-pos)
-  "Redirect FSM streaming to the sub-task heading at HEADING-POS.
-
-Preferred path: if `gptel-org-agent--todo-task-ibs' contains a
-pre-created IB for the task whose heading is at HEADING-POS,
-REUSE that IB (created by `gptel-org-agent--write-todo-org').
-
-Fallback: if no pre-existing IB is found, create one via
-`gptel-org-agent--open-indirect-buffer'.  This handles sub-task
-heading cases not originating from TodoWrite.
-
-Updates the FSM's `:buffer' and `:position' so streaming inserts
-into the task buffer.  Streaming uses `gptel-org-ib-streaming-marker'
-with the \"RESULTS\" terminator so content lands BEFORE RESULTS
-inside the task IB.  The parent indirect buffer is saved as
-`gptel-org-agent--parent-indirect-buffer' for later restoration.
-
-Accesses the FSM via `gptel--fsm-last' which is buffer-local."
-  (when (and (boundp 'gptel--fsm-last) gptel--fsm-last)
-    (let* ((info (gptel-fsm-info gptel--fsm-last))
-           (base-buffer (or (buffer-base-buffer (current-buffer))
-                            (current-buffer)))
-           (parent-buffer (current-buffer))
-           (reused (gptel-org-agent--find-task-ib-for-heading heading-pos))
-           (sub-indirect-buf
-            (or reused
-                (let ((heading-marker (save-excursion
-                                        (goto-char heading-pos)
-                                        (point-marker))))
-                  (gptel-org-agent--open-indirect-buffer
-                   base-buffer heading-marker)))))
-      (gptel-org--debug
-       "redirect-markers: heading-pos=%S parent=%S (ref-level=%S) base=%S reused=%s"
-       heading-pos (buffer-name parent-buffer)
-       (buffer-local-value 'gptel-org--ref-level parent-buffer)
-       (buffer-name base-buffer) (and reused t))
-      ;; Create terminator-aware position marker inside the task IB.
-      ;; Try "RESULTS" first (task IBs should have one created by
-      ;; `create-todo-heading'), then fall back to end-of-buffer.
-      (let ((pos-marker
-             (with-current-buffer sub-indirect-buf
-               (save-excursion
-                 (goto-char (point-min))
-                 (gptel-org-ib-streaming-marker "RESULTS")))))
-        ;; Save parent buffer reference for restoration
-        (with-current-buffer sub-indirect-buf
-          (setq-local gptel-org-agent--parent-indirect-buffer parent-buffer)
-          ;; Ensure task IB carries its own ref-level (= task-heading-level+1)
-          ;; so auto-approved tool results resolve to the correct level even
-          ;; when PENDING matching is skipped.  Task IBs created elsewhere
-          ;; (or reused across redirects) may not have this set yet.
-          (unless (bound-and-true-p gptel-org--ref-level)
-            (save-excursion
-              (goto-char (point-min))
-              (when (org-at-heading-p)
-                (setq-local gptel-org--ref-level (1+ (org-current-level)))))))
-        ;; Redirect FSM to the sub-task buffer
-        (plist-put info :buffer sub-indirect-buf)
-        (plist-put info :position pos-marker)
-        ;; Reset tracking-marker so next streaming turn starts fresh
-        (plist-put info :tracking-marker nil)
-        (gptel-org--debug
-         "redirect-markers: task buffer %S pos=%S ref-level=%S"
-         (buffer-name sub-indirect-buf)
-         (marker-position pos-marker)
-         (buffer-local-value 'gptel-org--ref-level sub-indirect-buf))))))
-
-(defun gptel-org-agent--restore-from-subtask-buffer ()
-  "Restore FSM from a sub-task indirect buffer back to the parent buffer.
-
-A \"sub-task buffer\" is any buffer (typically `(current-buffer)' or
-the FSM's `:buffer') with `gptel-org-agent--parent-indirect-buffer'
-set.  When found, switch the FSM's `:buffer', `:position' and
-`:tracking-marker' back to the parent agent IB.
-
-The FSM is located in this order of preference:
-1. `gptel--fsm-last' in the current buffer.
-2. `gptel--fsm-last' in the resolved parent buffer (important when
-   tools execute inside a task IB that has no FSM of its own but
-   whose parent does).
-
-Does NOT kill the sub-task buffer: task IBs are now long-lived and
-tracked by `gptel-org-agent--todo-task-ibs' on the parent.  The
-task IB is killed either when the task is removed by
-`write-todo-org' or when the parent agent IB is closed (see
-`gptel-org-agent--close-indirect-buffer' which cascades).
-
-Returns the parent buffer when the current buffer is identified as a
-task IB (regardless of whether an FSM was found and mutated), so
-callers can switch context.  Returns nil when no parent-IB signal is
-present on the current buffer or on the FSM's :buffer."
-  ;; First, try to resolve a parent buffer from the current buffer
-  ;; directly — this works even when `gptel--fsm-last' is not bound in
-  ;; the current buffer (task IBs typically don't have it set).
-  (let* ((cur (current-buffer))
-         (parent-from-current
-          (and (buffer-live-p cur)
-               (buffer-local-value
-                'gptel-org-agent--parent-indirect-buffer cur)))
-         ;; Fall back to whatever the FSM thinks is its buffer.
-         (fsm-here (and (boundp 'gptel--fsm-last) gptel--fsm-last))
-         (info-here (and fsm-here (gptel-fsm-info fsm-here)))
-         (fsm-buf (and info-here (plist-get info-here :buffer)))
-         (parent-from-fsm
-          (and fsm-buf (buffer-live-p fsm-buf)
-               (buffer-local-value
-                'gptel-org-agent--parent-indirect-buffer fsm-buf)))
-         (parent-buf (or (and (buffer-live-p parent-from-current)
-                              parent-from-current)
-                         (and (buffer-live-p parent-from-fsm)
-                              parent-from-fsm))))
-    (when parent-buf
-      ;; Locate the FSM to mutate.  Prefer the one bound in the current
-      ;; buffer; otherwise look in the parent (which is where TodoWrite-
-      ;; invoked chains typically keep it).
-      (let* ((fsm (or fsm-here
-                      (buffer-local-value 'gptel--fsm-last parent-buf)))
-             (info (and fsm (gptel-fsm-info fsm))))
-        (gptel-org--debug
-         "restore-from-subtask: current=%S parent=%S fsm-found=%S (from %s)"
-         (buffer-name cur) (buffer-name parent-buf) (and fsm t)
-         (cond ((and fsm-here (eq fsm fsm-here)) "current-buffer")
-               (fsm "parent-buffer")
-               (t "none")))
-        (when info
-          (gptel-org--debug
-           "restore-from-subtask: mutating FSM :buffer %S -> %S"
-           (buffer-name (plist-get info :buffer))
-           (buffer-name parent-buf))
-          (let ((pos-marker
-                 (gptel-org-agent--make-insertion-marker parent-buf)))
-            (plist-put info :buffer parent-buf)
-            (plist-put info :position pos-marker)
-            (plist-put info :tracking-marker nil))))
-      ;; Task IB remains alive — it's owned by parent's
-      ;; `gptel-org-agent--todo-task-ibs' and cleaned up there.
-      parent-buf)))
-
-(defun gptel-org-agent--write-todo-org (todos)
-  "Display TODOS as org TODO headings in the agent subtree.
-
-Each todo becomes a heading at the appropriate level with a TODO keyword
-mapped via `gptel-org-agent-status-keyword-map' (default: AI-DO/AI-DOING/AI-DONE).
-
-TODOS is a list of plists with :content, :activeForm, and :status.
-This function is idempotent: calling it multiple times with the same
-data produces the same result.  It handles adding new tasks, updating
-existing task states, and removing tasks that are no longer in the list.
-
-Todo headings are created directly under the agent heading (no
-intermediate \"Tasks\" container).  When a todo transitions to
-in_progress, the FSM's position and tracking markers are moved to the
-end of that heading's subtree so subsequent AI responses stream under
-the active task heading."
-  (gptel-org-agent--ensure-todo-keywords)
-  (when (vectorp todos) (setq todos (append todos nil)))
-  ;; If the FSM was previously redirected into a sub-task buffer,
-  ;; restore back to the parent agent buffer first.  write-todo-org
-  ;; needs the full agent subtree visible (point-min = agent heading)
-  ;; to create/update todo headings.  The restore returns the parent
-  ;; buffer whenever the current buffer is a task IB.
-  (let* ((restored-parent (gptel-org-agent--restore-from-subtask-buffer))
-         ;; Resolve the agent buffer robustly.  Priority:
-         ;;   1. The parent IB returned by restore — this is a direct
-         ;;      signal that `(current-buffer)' is a task IB regardless
-         ;;      of whether `gptel--fsm-last' was bound here.
-         ;;   2. The FSM's :buffer (post-restore), if an FSM is bound
-         ;;      in this buffer.
-         ;;   3. `(current-buffer)' as a last resort.
-         (agent-buf
-          (or (and (buffer-live-p restored-parent) restored-parent)
-              (and (boundp 'gptel--fsm-last) gptel--fsm-last
-                   (let ((b (plist-get (gptel-fsm-info gptel--fsm-last)
-                                       :buffer)))
-                     (and (buffer-live-p b) b)))
-              (current-buffer))))
-    (when restored-parent
-      (gptel-org--debug "write-todo-org: switched to parent buffer %S"
-                        (buffer-name restored-parent)))
-    ;; Sanity check: the resolved agent-buf should be an agent IB.  Don't
-    ;; bail — just log prominently so future breakage is visible.
-    (unless (buffer-local-value 'gptel-org--agent-indirect-buffer-p agent-buf)
-      (gptel-org--debug
-       "write-todo-org: WARNING - agent-buf %S is not flagged as agent IB (base: %S)"
-       (buffer-name agent-buf)
-       (and (buffer-base-buffer agent-buf)
-            (buffer-name (buffer-base-buffer agent-buf)))))
-    (with-current-buffer agent-buf
-      (gptel-org--debug "write-todo-org: called with %d todos in buffer %S (base: %S)"
-                        (length todos) (buffer-name) (buffer-name (buffer-base-buffer)))
-      (gptel-org--debug "write-todo-org: narrowed=%S point-min=%d point-max=%d"
-                        (buffer-narrowed-p) (point-min) (point-max))
-      (save-excursion
-        (goto-char (point-min))             ;agent heading in narrowed buffer
-    (gptel-org--debug "write-todo-org: at point-min, org-at-heading-p=%S line=%S"
-                      (org-at-heading-p)
-                      (buffer-substring-no-properties
-                       (point) (min (+ (point) 80) (point-max))))
-    (unless (org-at-heading-p)
-      (condition-case nil (org-back-to-heading t) (error nil)))
-    (if (not (org-at-heading-p))
-        (gptel-org--debug "write-todo-org: BAILING - no heading context at point %d" (point))
-      (let* ((agent-level (org-current-level))
-             (todo-level  (1+ agent-level))
-             (agent-pos   (point)))
-        (gptel-org--debug "write-todo-org: agent-level=%d todo-level=%d agent-pos=%d"
-                          agent-level todo-level agent-pos)
-        ;; Determine terminator keyword for the agent subtree.  Top-level
-        ;; agents use FEEDBACK; sub-agents use RESULTS.  This is what
-        ;; new task headings must be inserted BEFORE.
-        (let* ((terminator-keyword
-                (gptel-org-agent--agent-terminator-keyword agent-buf))
-               ;; Collect existing todo headings directly under the agent heading
-               (existing-headings
-                (gptel-org-agent--collect-todo-headings todo-level agent-pos))
-               (seen-contents (make-hash-table :test 'equal))
-               in-progress-pos)
-          (gptel-org--debug
-           "write-todo-org: %d existing headings found (terminator=%S)"
-           (length existing-headings) terminator-keyword)
-          ;; Update or create todo headings
-          (dolist (todo todos)
-            (let* ((content (plist-get todo :content))
-                   (status  (plist-get todo :status))
-                   (keyword (gptel-org-agent--status-to-keyword status))
-                   (existing (assoc content existing-headings)))
-              (puthash content t seen-contents)
-              (if existing
-                  ;; Update existing heading's TODO keyword
-                  (progn
-                    (gptel-org--debug "write-todo-org: updating %S -> %S at %S"
-                                      content keyword (cdr existing))
-                    (save-excursion
-                      (goto-char (cdr existing))
-                      (gptel-org-agent--set-todo-keyword keyword))
-                    (when (equal status "in_progress")
-                      (setq in-progress-pos (cdr existing))))
-                ;; Create new heading under agent as its own task IB.
-                ;; create-todo-heading returns the new task IB; track it
-                ;; in `gptel-org-agent--todo-task-ibs' so redirect and
-                ;; cleanup can find it by task content.
-                (gptel-org--debug
-                 "write-todo-org: creating %S %S at agent-pos=%d (terminator=%S)"
-                 keyword content agent-pos terminator-keyword)
-                (let ((task-ib
-                       (gptel-org-agent--create-todo-heading
-                        content keyword agent-pos terminator-keyword)))
-                  (when (buffer-live-p task-ib)
-                    (setq gptel-org-agent--todo-task-ibs
-                          (cons (cons content task-ib)
-                                (assoc-delete-all
-                                 content gptel-org-agent--todo-task-ibs))))
-                  (when (equal status "in_progress")
-                    ;; Find the just-created heading position in the
-                    ;; agent buffer (for redirect's heading-pos lookup).
-                    (setq in-progress-pos
-                          (save-excursion
-                            (goto-char agent-pos)
-                            (let ((end (save-excursion
-                                         (org-end-of-subtree t) (point))))
-                              (catch 'found
-                                (while (re-search-forward
-                                        org-heading-regexp end t)
-                                  (beginning-of-line)
-                                  (when (and (= (org-current-level) todo-level)
-                                             (let ((h (nth 4 (org-heading-components))))
-                                               (equal (and h (org-trim h)) content)))
-                                    (throw 'found (point)))
-                                  (forward-line 1)))))))))))
-          ;; Remove headings not in the current todo list.
-          ;; Process in reverse order to avoid position shifts.
-          (dolist (existing (reverse existing-headings))
-            (unless (gethash (car existing) seen-contents)
-              (gptel-org--debug "write-todo-org: removing %S" (car existing))
-              ;; Close the task's indirect buffer first (if any).
-              (let ((pair (assoc (car existing)
-                                 gptel-org-agent--todo-task-ibs)))
-                (when (and pair (buffer-live-p (cdr pair)))
-                  (gptel-org--debug
-                   "write-todo-org: closing task IB %S for removed task"
-                   (buffer-name (cdr pair)))
-                  (gptel-org-agent--close-indirect-buffer (cdr pair)))
-                (when pair
-                  (setq gptel-org-agent--todo-task-ibs
-                        (assoc-delete-all
-                         (car existing)
-                         gptel-org-agent--todo-task-ibs))))
-              (gptel-org-agent--remove-todo-heading (cdr existing))))
-          ;; Redirect FSM into a sub-task indirect buffer so subsequent
-          ;; AI text streams under the in_progress heading with its own
-          ;; auto-corrector at the correct ref-level.
-          (when in-progress-pos
-            (gptel-org-agent--redirect-markers-to-heading in-progress-pos)))))))
-  (gptel-org--debug "write-todo-org: done, buffer size now %d" (buffer-size))
-  t))
 
 
 ;;; ---- Advisor agent integration (Phase 5) ----------------------------------
@@ -2125,12 +1587,7 @@ INFO is the FSM info plist."
             (gptel-org-ib-ensure-terminator "RESULTS"))))
       (save-excursion
         ;; Compute the PENDING heading level.  Use `gptel-org--ref-level'
-        ;; when available — it tracks the current response level and is
-        ;; updated by `gptel-org-agent--redirect-markers-to-heading'
-        ;; when TodoWrite redirects streaming into a sub-task.  This
-        ;; ensures PENDING headings are created at the correct depth
-        ;; (e.g. agent-level+2 inside a sub-task, not agent-level+1).
-        ;;
+        ;; when available — it tracks the current response level.
         ;; Falls back to `gptel-org--compute-response-level' (which
         ;; always returns agent-level+1 from point-min) when ref-level
         ;; is not set, and finally to point-min (the agent heading in IB).
@@ -2969,7 +2426,7 @@ Works from both base org buffers and agent indirect buffers."
                (task-level (org-current-level))
                (inhibit-read-only t)
                (stars (make-string task-level ?*))
-               (todo-keyword (gptel-org-agent--status-to-keyword "pending"))
+               (todo-keyword "AI-DO")
                (new-title (format "Continue: %s" task-title))
                (heading-text (format "%s %s %s" stars todo-keyword new-title)))
           ;; Go to end of current task subtree

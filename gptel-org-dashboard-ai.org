@@ -81,7 +81,7 @@ Two triggers:
 2. =after-save-hook= — fires when registered files are saved
 
 Both schedule a debounced refresh via =run-with-idle-timer= (default 0.5s).
-This prevents flickering during rapid TodoWrite batch updates where multiple
+This prevents flickering during rapid batch updates where multiple
 headings change state in quick succession.
 
 ** Keymap

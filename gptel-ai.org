@@ -141,7 +141,7 @@ Handlers: =gptel-send--handlers= (state→function alist).
 | =gptel-org-cache.el= | ~870 | Context caching: hash-based invalidation, tag-based auto-caching |
 | =gptel-org-tasks.el= | ~390 | AI task workflow: TODO transitions, model profiles via tags |
 | =gptel-org-archive.el= | ~590 | Archive with AI summaries: git tracking, two-phase workflow |
-| =gptel-org-agent.el= | ~1340 | Agent subtrees: indirect buffers, sub-agent delegation, format instructions, TodoWrite with FSM marker redirection |
+| =gptel-org-agent.el= | ~1340 | Agent subtrees: indirect buffers, sub-agent delegation, format instructions |
 | =gptel-indirect-buffer.el= | ~740 | Indirect buffer management: terminator headings, safe sibling insertion, IB tracking registry, recreation after reorder |
 | =gptel-org-dashboard.el= | ~280 | Org-agenda dashboard: registration-based task monitoring, auto-refresh, allow/deny/kill actions |
 
@@ -524,7 +524,6 @@ The corrector runs as a buffer-local =after-change-functions= hook (=gptel-org--
 
 The design is stateless and idempotent:
 - =gptel-org--ref-level= (buffer-local integer) is initially computed when the indirect buffer is created as =agent-level + 1=
-- When TodoWrite redirects FSM markers into a sub-task, =gptel-org-agent--redirect-markers-to-heading= temporarily updates =ref-level= to =sub-task-level + 1= (saving the original in =gptel-org--base-ref-level=).  This ensures AI headings inside sub-tasks are rebased to the correct nesting depth.  The original is restored by =gptel-org-agent--write-todo-org= when no sub-task is =in_progress=
 - Headings with level < ref-level are rebased by adding =(ref-level - 1)= stars
 - Headings already at or above ref-level are skipped — no double-correction possible
 - Block context is checked per-heading via =gptel-org--in-example-block-p= (point-based backward search)
@@ -641,7 +640,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 - Move =gptel-org-tasks.el= TODO state machine into =gptel-org-agent.el=
 - Both currently handle the same AI-DO/AI-DOING/AI-DONE keywords:
   - =gptel-org-tasks.el=: user-triggered transitions on =gptel-send=
-  - =gptel-org-agent.el=: LLM-triggered transitions via TodoWrite
+  - =gptel-org-agent.el=: agent subtree keyword transitions on completion
 - Unify into one state transition system in =gptel-org-agent.el=
 - Remove =gptel-org-tasks-mode= as a separate mode
 - Profile system (tag→model mapping) moves into =gptel-org-agent.el=
