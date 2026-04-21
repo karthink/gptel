@@ -512,17 +512,40 @@ associated IB is closed when the agent IB itself is closed.")
 
 
 (defun gptel-org-agent--make-insertion-marker (buffer)
-  "Create an insertion-type marker at the end of BUFFER's content.
-Position at end of the last non-empty line in BUFFER, create a marker
-with insertion-type t so it advances as text is appended.  This is the
-standard way to set up the FSM's `:position' marker in an indirect buffer."
+  "Create an FSM-position marker for BUFFER.
+
+Delegates to `gptel-org-ib-streaming-marker' to choose a
+terminator-aware position:
+
+1. If BUFFER's narrowed subtree has a \"Results\" child terminator,
+   the marker is at the start of Results with insertion-type nil
+   (streaming stays BEFORE Results).
+2. Else if BUFFER has a \"FEEDBACK\" (or `gptel-org-user-keyword')
+   child terminator, the marker is at the start of FEEDBACK with
+   insertion-type nil.
+3. Otherwise the marker is at `point-max' with insertion-type t.
+
+This preserves the contract that streamed text always lands before
+any terminator heading, so sibling indirect buffers narrowed to
+earlier subtrees are not disturbed."
   (with-current-buffer buffer
-    (goto-char (point-max))
-    (skip-chars-backward "\n")
-    (end-of-line)
-    (let ((m (point-marker)))
-      (set-marker-insertion-type m t)
-      m)))
+    (save-excursion
+      (goto-char (point-min))
+      (let ((user-kw (or (bound-and-true-p gptel-org-user-keyword)
+                         "FEEDBACK")))
+        (cond
+         ;; Try Results first (task / sub-agent IBs).
+         ((and (org-at-heading-p)
+               (save-excursion
+                 (gptel-org-ib-find-terminator "Results")))
+          (gptel-org-ib-streaming-marker "Results"))
+         ;; Then user FEEDBACK keyword (top-level agent IBs).
+         ((and (org-at-heading-p)
+               (save-excursion
+                 (gptel-org-ib-find-terminator user-kw)))
+          (gptel-org-ib-streaming-marker user-kw))
+         ;; Fallback: end-of-buffer with insertion-type t.
+         (t (gptel-org-ib-streaming-marker nil)))))))
 
 (defun gptel-org-agent--close-indirect-buffer (indirect-buffer &optional fold)
   "Close INDIRECT-BUFFER and clean up associated resources.
@@ -2025,6 +2048,18 @@ INFO is the FSM info plist."
       ;; indirect buffer and its base buffer so that the user can
       ;; change PENDING→ALLOWED from either buffer.
       (gptel-org-agent--ensure-tool-confirm-hook buf)
+      ;; Ensure the current subtree has a "Results" terminator so that
+      ;; the FSM :position marker (placed by
+      ;; `gptel-org-ib-streaming-marker' with insertion-type nil) stays
+      ;; pinned BEFORE Results, and any PENDING heading inserted at
+      ;; start-marker lands before it — preserving sibling-IB
+      ;; isolation.  Only do this if point-min is on a heading (i.e.
+      ;; we are in a task or agent IB).
+      (save-excursion
+        (goto-char (point-min))
+        (when (org-at-heading-p)
+          (ignore-errors
+            (gptel-org-ib-ensure-terminator "Results"))))
       (save-excursion
         ;; Compute the PENDING heading level.  Use `gptel-org--ref-level'
         ;; when available — it tracks the current response level and is
