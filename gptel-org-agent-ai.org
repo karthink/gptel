@@ -249,8 +249,40 @@ When a sub-agent completes, =gptel-agent-subtree--cleanup= (in gptel-agent) adva
 |----------+---------|
 | =gptel-org-agent--ensure-todo-keywords= () | When =gptel-org-agent-todo-keywords= is non-nil, ensures they are in =org-todo-keywords=. When nil, assumes buffer already defines required keywords |
 | =gptel-org-agent--status-to-keyword= (status) | Maps TodoWrite status via =gptel-org-agent-status-keyword-map= (default: pending→AI-DO, in_progress→AI-DOING, completed→AI-DONE) |
-| =gptel-org-agent--write-todo-org= (todos) | Idempotent: creates/updates/removes TODO headings under agent heading. Restores =gptel-org--base-ref-level= when no sub-task is in_progress |
-| =gptel-org-agent--redirect-markers-to-heading= (heading-pos) | Moves FSM =:position= and =:tracking-marker= to end of heading subtree. Updates =gptel-org--ref-level= to sub-task-level+1 and saves original in =gptel-org--base-ref-level= |
+| =gptel-org-agent--write-todo-org= (todos) | Idempotent: creates/updates/removes TODO headings under agent heading.  Creates one LONG-LIVED indirect buffer per task at creation time (see [[*Per-task Indirect Buffers][below]]).  Closes a task IB when its task is removed from the list. |
+| =gptel-org-agent--create-todo-heading= (content keyword parent-pos terminator-keyword) | Creates a new task heading via =gptel-org-ib-safe-insert-sibling= under the parent's terminator, then ensures a =Results= child terminator inside the task IB.  Returns the task indirect buffer. |
+| =gptel-org-agent--agent-terminator-keyword= (&optional agent-buffer) | Return =Results= when AGENT-BUFFER is a sub-agent IB (tag contains ≥ 2 =@=), else =FEEDBACK= (or =gptel-org-user-keyword=). |
+| =gptel-org-agent--todo-task-ibs= (buffer-local) | Alist mapping TODO task content string → task indirect buffer.  Stored on the parent agent IB.  Consulted by =redirect-markers-to-heading=; cleaned up by =write-todo-org= on task removal and by =close-indirect-buffer= on agent close. |
+| =gptel-org-agent--redirect-markers-to-heading= (heading-pos) | Reuses the pre-created task IB from =--todo-task-ibs= when available (otherwise falls back to =open-indirect-buffer=).  FSM =:position= is computed via =gptel-org-ib-streaming-marker "Results"= so streamed content lands BEFORE the task's Results terminator. |
+| =gptel-org-agent--restore-from-subtask-buffer= () | Switches FSM back to parent agent IB.  DOES NOT kill the task IB — task IBs are long-lived. |
+
+*** Heading creation safety
+
+All TODO / task / tool / reasoning / FEEDBACK headings in the agent
+flow are created via terminator-aware APIs.  See
+[[file:gptel-indirect-buffer-ai.org::*Heading Creation Rule][gptel-indirect-buffer-ai.org → Heading Creation Rule]] for the
+invariant, the rationale, and the approved APIs
+(=gptel-org-ib-safe-insert-sibling=, =gptel-org-ib-create-heading=,
+=gptel-org-ib-ensure-terminator=, =gptel-org-ib-ensure-sibling-terminator=,
+=gptel-org-ib-streaming-marker=).
+
+*** Per-task Indirect Buffers
+
+Each TodoWrite task heading owns its own indirect buffer, created
+at task-creation time and kept alive until the task is removed from
+the list or the parent agent IB is closed.  Every task IB has a
+=Results= child terminator so that subsequent TOOL, REASONING, and
+sub-agent headings inserted into the task IB respect the
+sibling-isolation rule.
+
+The alist =gptel-org-agent--todo-task-ibs= (buffer-local on the
+parent agent IB) tracks them.  This replaces the previous design
+where only the =in_progress= task had an IB and sibling tasks
+shared the agent buffer (which caused streamed content to leak
+into sibling task regions).
+
+See =gptel-indirect-buffer-ai.org= for the structural diagram and
+the full lifecycle documentation.
 
 ** Advisor Agent Integration (Phase 5)
 

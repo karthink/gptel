@@ -81,6 +81,51 @@ The module provides the foundational capabilities used by both consumers:
 - Recreation after heading reorder
 - Auto-correction and validation
 
+* Heading Creation Rule
+
+This is a HARD INVARIANT of the gptel agent system.  Every heading
+created by AI-driven code paths — agent subtrees, TodoWrite tasks,
+tool confirmation (PENDING), reasoning, and user FEEDBACK — MUST be
+inserted via one of the following terminator-aware APIs:
+
+- =gptel-org-ib-safe-insert-sibling= (ensure terminator + create
+  heading + open IB in one shot)
+- =gptel-org-ib-create-heading= (insert before terminator; fallback
+  to =org-end-of-subtree= only when no terminator keyword is
+  specified)
+- =gptel-org-ib-ensure-terminator= / =gptel-org-ib-ensure-sibling-terminator=
+  (find-or-create a child / sibling terminator)
+- =gptel-org-ib-streaming-marker= (return an FSM :position marker
+  that is pinned before the terminator, insertion-type nil)
+
+NEVER use raw =org-end-of-subtree= + =insert= patterns.  The
+canonical structure to target is documented in
+~/.emacs.d/example-ai-structure.org.
+
+Why: existing sibling indirect buffers have narrowing ranges bounded
+by markers that were computed from subtree boundaries at IB-creation
+time.  If a new heading is appended AT =org-end-of-subtree=, it
+lands inside or past the last sibling's narrowed region, expanding
+that IB's view and causing content streamed into a NEW task to
+appear inside the OLD task's narrowed buffer.  This is what
+produced the cross-task contamination symptoms (stuck AI-DOING
+transitions, orphaned TOOL headings, blank-line corruption between
+sibling tasks) observed in =test_todo-ai.org=.
+
+The terminator pattern makes new-sibling insertion safe:
+
+- The terminator (FEEDBACK at the agent level, Results at the task
+  level) is a stable sentinel child of the parent subtree.
+- New siblings are inserted on the line BEFORE the terminator.
+- Each existing sibling IB's end-marker is inside its own subtree,
+  which ends BEFORE the new sibling was inserted.
+- Inserting text at =gptel-org-ib-streaming-marker= (insertion-type
+  nil at the terminator line) keeps streamed content BEFORE the
+  terminator as the marker itself does not advance past it.
+
+See [[*Integration with gptel-org-agent.el][Integration with gptel-org-agent.el]] for per-call-site details
+and [[*Functions Reference][Functions Reference]] for the full API.
+
 * Architecture
 
 ** The Terminator Heading Pattern
@@ -252,6 +297,52 @@ applies concerns that are outside the module's scope:
 3. *End-marker compat*: Sets up an expanding end-marker (insertion-type=t)
    at the end of the narrowed region so streaming LLM responses push the
    boundary forward rather than overflowing
+
+*** Per-task Indirect Buffers for TodoWrite
+
+As of the terminator-safe refactor, each TodoWrite task heading gets
+its OWN long-lived indirect buffer, created at task creation time
+(not just when it transitions to =in_progress=).  This eliminates
+streamed-content contamination between sibling tasks.
+
+Structure:
+
+#+begin_example
+,**** AI-DOING Agent subtree           <- Agent IB
+,***** AI-DO Task A                    <- Task A IB  (one per task)
+,****** Results                        <- Task A's Results terminator
+,***** AI-DO Task B                    <- Task B IB
+,****** Results                        <- Task B's Results terminator
+,***** FEEDBACK                        <- Agent-level terminator
+#+end_example
+
+Bookkeeping:
+
+- =gptel-org-agent--todo-task-ibs=: buffer-local alist on the AGENT
+  IB, mapping task content string → task indirect buffer.
+- =gptel-org-agent--create-todo-heading (content keyword parent-pos terminator-keyword)=:
+  creates the new task heading via =gptel-org-ib-safe-insert-sibling=
+  under the agent subtree's terminator, and ensures a =Results=
+  child terminator inside the task IB so subsequent TOOL / REASONING
+  / sub-agent headings obey the rule too.  Returns the task IB.
+- =gptel-org-agent--write-todo-org=: picks the right agent-level
+  terminator (=FEEDBACK= for top-level, =Results= for sub-agents)
+  via =gptel-org-agent--agent-terminator-keyword=; tracks every
+  created task IB in the alist; closes task IBs whose task has
+  been removed from the TodoWrite list.
+- =gptel-org-agent--redirect-markers-to-heading=: reuses the
+  pre-created task IB from the alist instead of spawning a fresh
+  one every time a task transitions to =in_progress=.  The FSM
+  =:position= marker is computed via =gptel-org-ib-streaming-marker
+  "Results"= so content streams BEFORE the task's Results
+  terminator.
+- =gptel-org-agent--restore-from-subtask-buffer=: switches the FSM
+  back to the parent agent IB WITHOUT killing the task IB.  Task
+  IBs are killed only when (a) the task is removed by
+  =write-todo-org=, or (b) the agent IB itself is closed.
+- =gptel-org-agent--close-indirect-buffer=: cascades — before
+  closing the agent IB, closes every task IB in its
+  =--todo-task-ibs= alist.
 
 ** Integration with gptel-org.el (Reasoning Display)
 
@@ -566,7 +657,9 @@ This is the scenario that motivates =gptel-org-ib-recreate=:
 |----------+---------|
 | =gptel-org-ib-find-terminator= (keyword &optional bound) | Find terminator child heading matching KEYWORD in current subtree; returns position or nil |
 | =gptel-org-ib-create-terminator= (keyword &optional level) | Create terminator child heading at end of current subtree; returns marker |
-| =gptel-org-ib-ensure-terminator= (keyword) | Idempotent: find existing or create new terminator; returns marker |
+| =gptel-org-ib-ensure-terminator= (keyword) | Idempotent: find existing or create new CHILD terminator; returns marker |
+| =gptel-org-ib-ensure-sibling-terminator= (keyword level) | Idempotent: find existing or create new SIBLING terminator at LEVEL (same level as heading at point).  Search stops at any heading of shallower level to stay within parent scope.  Used for sibling-level FEEDBACK in keyword mode. |
+| =gptel-org-ib-streaming-marker= (&optional terminator-keyword) | Return a marker safe for FSM streaming.  When TERMINATOR-KEYWORD names an existing child terminator, marker is at start of terminator line with insertion-type nil (streamed text lands BEFORE terminator).  Otherwise marker is at =point-max= with insertion-type t (advances as text is appended). |
 
 ** Safe Heading Creation
 

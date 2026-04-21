@@ -618,7 +618,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 | [[file:gptel-remote-ai.org]] | Remote server tools (gptel-agent) | exists |
 | [[file:gptel-org-tasks-ai.org]] | Org tasks workflow | exists |
 | [[file:gptel-org-agent-ai.org]] | Agent subtrees (org indirect buffers) | exists |
-| [[file:gptel-indirect-buffer-ai.org]] | Indirect buffer management (terminator pattern, introspection) | exists |
+| [[file:gptel-indirect-buffer-ai.org]] | Indirect buffer management (terminator pattern, [[file:gptel-indirect-buffer-ai.org::*Heading Creation Rule][Heading Creation Rule]]) | exists |
 | [[file:gptel-org-dashboard-ai.org]] | Org-agenda dashboard for AI task monitoring | exists |
 | [[file:emacs-example-ai.org]] | Example AI task workflow | exists |
 
