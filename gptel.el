@@ -2480,11 +2480,14 @@ for tool call results.  INFO contains the state of the request."
                    ;; in a ``` tool ... ``` fence.
                    (tool-state
                     (if (fboundp 'gptel-org--tool-state-keyword)
-                        (gptel-org--tool-state-keyword name)
+                        (gptel-org--tool-state-keyword name args)
                       (upcase name)))
                    (args-title
                     (if (fboundp 'gptel-org--format-tool-args-title)
-                        (gptel-org--format-tool-args-title args)
+                        (gptel-org--format-tool-args-title
+                         args
+                         (and (fboundp 'gptel-org--tool-args-title-excludes)
+                              (gptel-org--tool-args-title-excludes name)))
                       "")))
               (if (derived-mode-p 'org-mode)
                   ;; Org-mode: insert a heading whose TODO keyword is

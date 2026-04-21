@@ -1877,12 +1877,15 @@ The sequence the fix must handle:
                      ;; display-tool-results honors gptel-include-tool-results
                      (gptel-include-tool-results t))
                 (gptel--display-tool-results tool-results info))
-              ;; With the fix: the per-tool-name state (AGENT) heading
-              ;; is at level 4 in base buffer, inferred from the
-              ;; registered coordinator IB.
+              ;; With the fix: the per-tool-name state (derived from
+              ;; :subagent_type, so GATHERER, not AGENT) heading is at
+              ;; level 4 in base buffer, inferred from the registered
+              ;; coordinator IB.  The :subagent_type key is excluded
+              ;; from the args-title, so with no other args the title
+              ;; is just "GATHERER" with no trailing args.
               (with-current-buffer base-buf
                 (goto-char (point-min))
-                (should (re-search-forward "^\\(\\*+\\) AGENT " nil t))
+                (should (re-search-forward "^\\(\\*+\\) GATHERER\\(?:[ \t]\\|$\\)" nil t))
                 (should (= 4 (length (match-string 1)))))
               ;; CONTRAST: direct insertion in the indirect buffer also yields
               ;; level 4 (via auto-correct rebasing — unchanged path)

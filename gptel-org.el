@@ -2896,30 +2896,51 @@ state via `kill-all-local-variables'."
           (org-mode-restart)))
       any-changed)))
 
-(defun gptel-org--tool-state-keyword (tool-name)
+(defun gptel-org--tool-state-keyword (tool-name &optional args)
   "Return TOOL-NAME uppercased and sanitized for use as an org TODO keyword.
 
 Keeps ASCII letters, digits, underscore, and dash.  Any other
 character (whitespace, punctuation, ...) is replaced with an
 underscore.  The final result is uppercased.
 
+When TOOL-NAME is \"Agent\" and ARGS (a plist) contains a
+non-empty `:subagent_type', the keyword is derived from that
+value instead — e.g. \"EXECUTOR\" or \"RESEARCHER\".  This
+surfaces the specific sub-agent kind on the org heading rather
+than the generic dispatcher name \"AGENT\".
+
 Examples:
   \"Bash\"        → \"BASH\"
   \"python_exec\" → \"PYTHON_EXEC\"
   \"my tool\"     → \"MY_TOOL\"
-  \"foo.bar\"     → \"FOO_BAR\""
-  (let* ((sanitized
+  \"foo.bar\"     → \"FOO_BAR\"
+  \"Agent\" with args (:subagent_type \"executor\") → \"EXECUTOR\""
+  (let* ((effective-name
+          (if (and (stringp tool-name)
+                   (string= tool-name "Agent")
+                   (listp args)
+                   (let ((st (plist-get args :subagent_type)))
+                     (and (stringp st) (not (string-empty-p st)))))
+              (plist-get args :subagent_type)
+            tool-name))
+         (sanitized
           (replace-regexp-in-string "[^A-Za-z0-9_-]" "_"
-                                    (or tool-name ""))))
+                                    (or effective-name ""))))
     (upcase sanitized)))
 
-(defun gptel-org--format-tool-args-title (arg-plist)
+(defun gptel-org--format-tool-args-title (arg-plist &optional exclude-keys)
   "Format ARG-PLIST as a heading title suffix.
 
 Returns a string of the form \":key1 VALUE1 :key2 VALUE2\".  Each
 key is emitted literally (it is expected to be a keyword symbol)
 and each value is rendered with `prin1-to-string' so strings keep
 their surrounding quotes, numbers print as themselves, etc.
+
+EXCLUDE-KEYS, if non-nil, is a list of keyword symbols to omit
+from the output.  This is useful for avoiding redundancy when the
+heading's TODO keyword already conveys one of the args (e.g.
+the :subagent_type for Agent tool calls is also reflected in the
+heading's TODO keyword, so it can be dropped from the title).
 
 Returns an empty string for a nil or empty plist.  No leading or
 trailing whitespace."
@@ -2930,12 +2951,22 @@ trailing whitespace."
       (while rest
         (let ((k (car rest))
               (v (cadr rest)))
-          (push (format "%s %s"
-                        (if (keywordp k) (symbol-name k) (format "%s" k))
-                        (prin1-to-string v))
-                parts))
+          (unless (and exclude-keys (memq k exclude-keys))
+            (push (format "%s %s"
+                          (if (keywordp k) (symbol-name k) (format "%s" k))
+                          (prin1-to-string v))
+                  parts)))
         (setq rest (cddr rest)))
       (mapconcat #'identity (nreverse parts) " "))))
+
+(defun gptel-org--tool-args-title-excludes (tool-name)
+  "Return a list of keys to exclude from the args-title for TOOL-NAME.
+
+For the \"Agent\" tool, `:subagent_type' is dropped because it is
+already encoded into the heading's TODO keyword (e.g. EXECUTOR).
+For other tools, no keys are excluded."
+  (when (and (stringp tool-name) (string= tool-name "Agent"))
+    '(:subagent_type)))
 
 ;;; Unified Org Mode
 

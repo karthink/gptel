@@ -795,5 +795,69 @@ A string like \"hello\" should be JSON-encoded, not passed through."
       (when (get-buffer gptel--log-buffer-name)
         (kill-buffer gptel--log-buffer-name)))))
 
+;;; Tool heading keyword and args-title helpers
+
+(ert-deftest gptel-test-tool-state-keyword-plain-tool ()
+  "`gptel-org--tool-state-keyword' uppercases and sanitizes TOOL-NAME."
+  (should (equal "BASH" (gptel-org--tool-state-keyword "Bash")))
+  (should (equal "PYTHON_EXEC" (gptel-org--tool-state-keyword "python_exec")))
+  (should (equal "MY_TOOL" (gptel-org--tool-state-keyword "my tool")))
+  (should (equal "FOO_BAR" (gptel-org--tool-state-keyword "foo.bar"))))
+
+(ert-deftest gptel-test-tool-state-keyword-agent-uses-subagent-type ()
+  "For the Agent tool, TODO keyword is derived from :subagent_type."
+  (should (equal "EXECUTOR"
+                 (gptel-org--tool-state-keyword
+                  "Agent" '(:subagent_type "executor"
+                            :description "d" :prompt "p"))))
+  (should (equal "RESEARCHER"
+                 (gptel-org--tool-state-keyword
+                  "Agent" '(:subagent_type "researcher"))))
+  (should (equal "GATHERER"
+                 (gptel-org--tool-state-keyword
+                  "Agent" '(:subagent_type "gatherer")))))
+
+(ert-deftest gptel-test-tool-state-keyword-agent-missing-subagent-falls-back ()
+  "Without :subagent_type the Agent tool falls back to \"AGENT\"."
+  (should (equal "AGENT"
+                 (gptel-org--tool-state-keyword "Agent" nil)))
+  (should (equal "AGENT"
+                 (gptel-org--tool-state-keyword "Agent" '(:description "d"))))
+  ;; Empty :subagent_type also falls back
+  (should (equal "AGENT"
+                 (gptel-org--tool-state-keyword
+                  "Agent" '(:subagent_type "")))))
+
+(ert-deftest gptel-test-tool-state-keyword-non-agent-ignores-args ()
+  "Non-Agent tools don't look at args."
+  (should (equal "BASH"
+                 (gptel-org--tool-state-keyword
+                  "Bash" '(:subagent_type "executor")))))
+
+(ert-deftest gptel-test-format-tool-args-title-basic ()
+  "`gptel-org--format-tool-args-title' formats plists."
+  (should (equal "" (gptel-org--format-tool-args-title nil)))
+  (should (equal ":command \"date\""
+                 (gptel-org--format-tool-args-title '(:command "date")))))
+
+(ert-deftest gptel-test-format-tool-args-title-excludes ()
+  "Excluded keys are omitted from the args-title."
+  (should (equal ":description \"d\" :prompt \"p\""
+                 (gptel-org--format-tool-args-title
+                  '(:subagent_type "executor" :description "d" :prompt "p")
+                  '(:subagent_type))))
+  ;; Without exclusion, the key is present
+  (should (string-match-p
+           ":subagent_type \"executor\""
+           (gptel-org--format-tool-args-title
+            '(:subagent_type "executor" :description "d")))))
+
+(ert-deftest gptel-test-tool-args-title-excludes-agent ()
+  "The Agent tool excludes :subagent_type from its args-title."
+  (should (equal '(:subagent_type)
+                 (gptel-org--tool-args-title-excludes "Agent")))
+  (should (null (gptel-org--tool-args-title-excludes "Bash")))
+  (should (null (gptel-org--tool-args-title-excludes nil))))
+
 (provide 'gptel-unit-tests)
 ;;; gptel-unit-tests.el ends here

@@ -51,6 +51,7 @@
 (declare-function gptel-org--ensure-todo-state "gptel-org")
 (declare-function gptel-org--tool-state-keyword "gptel-org")
 (declare-function gptel-org--format-tool-args-title "gptel-org")
+(declare-function gptel-org--tool-args-title-excludes "gptel-org")
 (declare-function gptel-org--compute-response-level "gptel-org")
 (declare-function gptel-org--in-agent-indirect-buffer-p "gptel-org")
 
@@ -1635,8 +1636,10 @@ INFO is the FSM info plist."
                    ;; so PENDING → TOOLSTATE is a pure keyword change
                    ;; with no title rewriting needed.  Example:
                    ;;   "PENDING BASH :command \"date\""
-                   (tool-state (gptel-org--tool-state-keyword tool-name))
-                   (args-title (gptel-org--format-tool-args-title arg-plist))
+                   (tool-state (gptel-org--tool-state-keyword tool-name arg-plist))
+                   (args-title (gptel-org--format-tool-args-title
+                                arg-plist
+                                (gptel-org--tool-args-title-excludes tool-name)))
                    (full-title (if (string-empty-p args-title)
                                    tool-state
                                  (concat tool-state " " args-title)))
@@ -1966,7 +1969,7 @@ Returns non-nil if a heading was found and updated, nil otherwise."
       ;; begins with this tool's state keyword — the format created by
       ;; gptel-org-agent--display-tool-calls is
       ;; "PENDING TOOLSTATE :arg val ..." (e.g. "PENDING BASH :command ...").
-      (let ((tool-state (gptel-org--tool-state-keyword tool-name)))
+      (let ((tool-state (gptel-org--tool-state-keyword tool-name args)))
         (when (re-search-backward
                (format "^\\(\\*+\\) \\(?:%s\\|%s\\) %s\\(?:[ \t]\\|$\\)"
                        (regexp-quote pending-kw)
@@ -2000,13 +2003,15 @@ Returns non-nil if a heading was found and updated, nil otherwise."
             ;; keyword.
             (when (fboundp 'gptel-org--ensure-todo-state)
               (gptel-org--ensure-todo-state
-               (gptel-org--tool-state-keyword tool-name)
+               (gptel-org--tool-state-keyword tool-name args)
                (and (boundp 'gptel-org--tool-state-face)
                     gptel-org--tool-state-face)
                t))
             (goto-char heading-pos)
-            (let* ((tool-state (gptel-org--tool-state-keyword tool-name))
-                   (args-title (gptel-org--format-tool-args-title args))
+            (let* ((tool-state (gptel-org--tool-state-keyword tool-name args))
+                   (args-title (gptel-org--format-tool-args-title
+                                args
+                                (gptel-org--tool-args-title-excludes tool-name)))
                    (full-title (if (string-empty-p args-title)
                                    tool-state
                                  (concat tool-state " " args-title)))
