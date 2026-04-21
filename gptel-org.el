@@ -2731,60 +2731,88 @@ is enabled."
   "Default face for result-like TODO keywords (RESULTS, ...).")
 
 (defun gptel-org--register-todo-keywords ()
-  "Register AI/HI/REASONING/TOOL TODO keywords and their faces if needed.
+  "Register all gptel TODO keywords and their faces if needed.
 
 When `gptel-org-use-todo-keywords' is enabled, ensures that
 `gptel-org-assistant-keyword', `gptel-org-user-keyword', REASONING,
-and TOOL are present in `org-todo-keywords' and have faces registered
-in `org-todo-keyword-faces'."
+TOOL, RESULTS, and one state keyword per registered gptel tool
+(e.g. BASH, EVAL, GREP) are present in `org-todo-keywords' and have
+faces registered in `org-todo-keyword-faces'.
+
+This is called once during `gptel-mode' setup so that every known
+state is registered up front, before any indirect buffer is created.
+That way later tool calls never need to restart org-mode inside an
+indirect buffer — which would call `kill-all-local-variables' and
+destroy buffer-local IB state (e.g.
+`gptel-org--agent-indirect-buffer-p',
+`gptel-org-agent--todo-task-ibs', FSM references, ...), corrupting
+subsequent heading updates."
   (when gptel-org-use-todo-keywords
     (let ((ai-kw gptel-org-assistant-keyword)
-          (hi-kw gptel-org-user-keyword))
-      (let ((changed nil))
-        ;; Register AI/HI keywords in org-todo-keywords if missing
-        (unless (and (cl-some (lambda (seq)
-                                (and (listp seq)
-                                     (member ai-kw (cl-remove-if-not #'stringp seq))))
-                              org-todo-keywords)
-                     (cl-some (lambda (seq)
-                                (and (listp seq)
-                                     (member hi-kw (cl-remove-if-not #'stringp seq))))
-                              org-todo-keywords))
-          (push (list 'sequence ai-kw hi-kw) org-todo-keywords)
-          (setq changed t))
-        ;; Register REASONING, TOOL and RESULTS as done-state keywords if missing
-        (unless (cl-some (lambda (seq)
-                           (and (listp seq)
-                                (member "REASONING" (cl-remove-if-not #'stringp seq))))
-                         org-todo-keywords)
-          (push '(sequence "|" "REASONING" "TOOL" "RESULTS") org-todo-keywords)
-          (setq changed t))
-        ;; Register faces in org-todo-keyword-faces if missing
-        (unless (assoc ai-kw org-todo-keyword-faces)
-          (push (cons ai-kw gptel-org-assistant-keyword-face)
-                org-todo-keyword-faces)
-          (setq changed t))
-        (unless (assoc hi-kw org-todo-keyword-faces)
-          (push (cons hi-kw gptel-org-user-keyword-face)
-                org-todo-keyword-faces)
-          (setq changed t))
-        ;; REASONING face: dimmed/italic to de-emphasize thinking
-        (unless (assoc "REASONING" org-todo-keyword-faces)
-          (push '("REASONING" . (:foreground "#8FBCBB" :weight light :slant italic))
-                org-todo-keyword-faces)
-          (setq changed t))
-        ;; TOOL face: distinct color for tool execution state
-        (unless (assoc "TOOL" org-todo-keyword-faces)
-          (push '("TOOL" . (:foreground "#A3BE8C" :weight bold))
-                org-todo-keyword-faces)
-          (setq changed t))
-        ;; RESULTS face: distinct color for task-level result terminator
-        (unless (assoc "RESULTS" org-todo-keyword-faces)
-          (push (cons "RESULTS" gptel-org--result-state-face)
-                org-todo-keyword-faces)
-          (setq changed t))
-        ;; Refresh org to pick up changes
-        (when (and changed (derived-mode-p 'org-mode))
+          (hi-kw gptel-org-user-keyword)
+          (changed nil))
+      ;; Register AI/HI keywords in org-todo-keywords if missing
+      (unless (and (cl-some (lambda (seq)
+                              (and (listp seq)
+                                   (member ai-kw (cl-remove-if-not #'stringp seq))))
+                            org-todo-keywords)
+                   (cl-some (lambda (seq)
+                              (and (listp seq)
+                                   (member hi-kw (cl-remove-if-not #'stringp seq))))
+                            org-todo-keywords))
+        (push (list 'sequence ai-kw hi-kw) org-todo-keywords)
+        (setq changed t))
+      ;; Register REASONING, TOOL and RESULTS as done-state keywords if missing
+      (unless (cl-some (lambda (seq)
+                         (and (listp seq)
+                              (member "REASONING" (cl-remove-if-not #'stringp seq))))
+                       org-todo-keywords)
+        (push '(sequence "|" "REASONING" "TOOL" "RESULTS") org-todo-keywords)
+        (setq changed t))
+      ;; Register faces in org-todo-keyword-faces if missing
+      (unless (assoc ai-kw org-todo-keyword-faces)
+        (push (cons ai-kw gptel-org-assistant-keyword-face)
+              org-todo-keyword-faces)
+        (setq changed t))
+      (unless (assoc hi-kw org-todo-keyword-faces)
+        (push (cons hi-kw gptel-org-user-keyword-face)
+              org-todo-keyword-faces)
+        (setq changed t))
+      ;; REASONING face: dimmed/italic to de-emphasize thinking
+      (unless (assoc "REASONING" org-todo-keyword-faces)
+        (push '("REASONING" . (:foreground "#8FBCBB" :weight light :slant italic))
+              org-todo-keyword-faces)
+        (setq changed t))
+      ;; TOOL face: distinct color for tool execution state
+      (unless (assoc "TOOL" org-todo-keyword-faces)
+        (push '("TOOL" . (:foreground "#A3BE8C" :weight bold))
+              org-todo-keyword-faces)
+        (setq changed t))
+      ;; RESULTS face: distinct color for task-level result terminator
+      (unless (assoc "RESULTS" org-todo-keyword-faces)
+        (push (cons "RESULTS" gptel-org--result-state-face)
+              org-todo-keyword-faces)
+        (setq changed t))
+      ;; Pre-register every currently known gptel tool's state keyword
+      ;; (BASH, EVAL, GREP, ...) so that tool calls at runtime do not
+      ;; trigger an `org-mode-restart' inside an indirect buffer.  Uses
+      ;; the silent helper `gptel-org--ensure-todo-state-1' which does
+      ;; not restart; we do a single restart below if anything changed.
+      (when (boundp 'gptel--known-tools)
+        (dolist (cat gptel--known-tools)
+          (dolist (tool-entry (cdr cat))
+            (let* ((tool-name (car tool-entry))
+                   (state (gptel-org--tool-state-keyword tool-name)))
+              (cl-pushnew state gptel-org--ai-state-keywords :test #'equal)
+              (when (gptel-org--ensure-todo-state-1
+                     state gptel-org--tool-state-face t)
+                (setq changed t))))))
+      ;; Refresh org to pick up changes.  Guarded for indirect buffers
+      ;; (in practice this runs in the base buffer during `gptel-mode'
+      ;; setup, before any IB exists — but be defensive).
+      (when (and changed (derived-mode-p 'org-mode))
+        (if (buffer-base-buffer)
+            (org-set-regexps-and-options)
           (org-mode-restart))))))
 
 (defun gptel-org--ensure-todo-state-1 (state face done-state)
@@ -2824,16 +2852,27 @@ DONE-STATE (default t) means register in the done-state half of the
 
 When `gptel-org-use-todo-keywords' is nil, does nothing.
 
-When a refresh is required, calls `org-mode-restart' so the new
-keyword takes effect immediately.  Idempotent: no restart if STATE is
-already registered with the same face."
+When a refresh is required, refreshes the org TODO machinery so the
+new keyword takes effect immediately.  Idempotent: no refresh if STATE
+is already registered with the same face.
+
+In an indirect buffer, `org-set-regexps-and-options' is used instead
+of `org-mode-restart' because the latter calls
+`kill-all-local-variables' and destroys gptel buffer-local IB state
+(e.g. `gptel-org--agent-indirect-buffer-p',
+`gptel-org-agent--todo-task-ibs', FSM references, ...).  In practice
+this path should rarely fire during a request because
+`gptel-org--register-todo-keywords' pre-registers every known tool
+state at `gptel-mode' setup time."
   (when gptel-org-use-todo-keywords
     (let* ((face (or face gptel-org--tool-state-face))
            (done-state (if (eq done-state nil) t done-state))
            (changed (gptel-org--ensure-todo-state-1 state face done-state)))
       (cl-pushnew state gptel-org--ai-state-keywords :test #'equal)
       (when (and changed (derived-mode-p 'org-mode))
-        (org-mode-restart))
+        (if (buffer-base-buffer)
+            (org-set-regexps-and-options)
+          (org-mode-restart)))
       changed)))
 
 (defun gptel-org--ensure-todo-states (specs)
@@ -2843,7 +2882,10 @@ SPECS is a list of (STATE FACE &optional OPEN-P) entries, where:
   FACE is a face plist (nil for the default tool-like face).
   OPEN-P non-nil means register as an open/todo state (before \"|\");
     otherwise register as a done-state keyword.
-Performs a single `org-mode-restart' if any state is new or changed."
+Performs a single refresh of the org TODO machinery if any state is
+new or changed.  In an indirect buffer, uses `org-set-regexps-and-options'
+instead of `org-mode-restart' to avoid destroying buffer-local IB
+state via `kill-all-local-variables'."
   (when gptel-org-use-todo-keywords
     (let ((any-changed nil))
       (dolist (spec specs)
@@ -2855,7 +2897,9 @@ Performs a single `org-mode-restart' if any state is new or changed."
           (when (gptel-org--ensure-todo-state-1 state face done-state)
             (setq any-changed t))))
       (when (and any-changed (derived-mode-p 'org-mode))
-        (org-mode-restart))
+        (if (buffer-base-buffer)
+            (org-set-regexps-and-options)
+          (org-mode-restart)))
       any-changed)))
 
 (defun gptel-org--tool-state-keyword (tool-name)

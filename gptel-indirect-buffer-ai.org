@@ -794,6 +794,40 @@ This is the scenario that motivates =gptel-org-ib-recreate=:
    the org tree with sentinel headings that may never be needed, while
    guaranteeing correct boundaries when indirect buffers are actually used.
 
+10. *Never call =org-mode-restart= inside an indirect buffer*:
+    =org-mode-restart= invokes =kill-all-local-variables=, which wipes
+    every gptel buffer-local variable the module and its consumers rely
+    on — for example =gptel-org--agent-indirect-buffer-p=,
+    =gptel-org--ref-level=, =gptel-org-agent--narrow-end-marker=,
+    =gptel-org-agent--todo-task-ibs=, FSM references, and entries in the
+    global IB tracking registry linked through buffer-locals.  Destroying
+    these mid-request corrupts subsequent heading updates in the very
+    first =gptel-send= after startup (the only time a new TODO keyword
+    like "BASH" is registered).  Two rules follow:
+
+    a) =gptel-org--register-todo-keywords= pre-registers every
+       =gptel--known-tools= state keyword (BASH, EVAL, GREP, ...) at
+       =gptel-mode= setup time in the base buffer, so no new keyword
+       needs to be registered during a request.
+
+    b) The guarded pattern at the three restart call sites in
+       =gptel-org.el=
+       (=gptel-org--register-todo-keywords=,
+       =gptel-org--ensure-todo-state=,
+       =gptel-org--ensure-todo-states=) is:
+
+       #+begin_src elisp
+         (when (and changed (derived-mode-p 'org-mode))
+           (if (buffer-base-buffer)              ; in indirect buffer?
+               (org-set-regexps-and-options)     ; lighter — no kill-all-local-variables
+             (org-mode-restart)))                 ; full restart only in base buffer
+       #+end_src
+
+       =org-set-regexps-and-options= refreshes the TODO keyword machinery
+       and fontification rules without touching buffer-local variables.
+       This same lighter pattern is already used by
+       =gptel-org-agent--ensure-todo-keywords=.
+
 * Usage Examples
 
 ** Creating a Safe Sibling Task

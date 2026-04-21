@@ -515,7 +515,8 @@ Enable =gptel-org-mode= (which sets this automatically), or set
 | =gptel-org--heading-is-user-p= | =t= when TODO state exists and has no =AI-= prefix |
 | =gptel-org--auto-correct-on-change= | Idempotent corrector on =after-change-functions= (buffer-local) |
 | =gptel-org--enable-auto-correct= | Set up ref-level and register the corrector hook |
-| =gptel-org--register-todo-keywords= | Register AI/FEEDBACK keywords + faces on mode activation |
+| =gptel-org--register-todo-keywords= | Register AI/FEEDBACK + REASONING/TOOL/RESULTS + all known tool-state keywords (BASH, EVAL, ...) on mode activation; one restart in the base buffer |
+| =gptel-org--ensure-todo-state= | Late-bind a TODO keyword during a request; uses =org-set-regexps-and-options= (not =org-mode-restart=) inside indirect buffers to avoid wiping buffer-local IB state |
 
 *** Idempotent Auto-Corrector
 
