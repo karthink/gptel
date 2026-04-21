@@ -348,7 +348,7 @@ Returns a marker to the terminator heading."
     (unless (org-at-heading-p)
       (ignore-errors (org-back-to-heading t)))
     (let* ((inhibit-read-only t)
-           (current-level (org-current-level))
+           (_current-level (org-current-level))
            (subtree-end (save-excursion
                           (org-end-of-subtree t t)
                           (point)))

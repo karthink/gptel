@@ -211,6 +211,8 @@
 (defvar gptel-org--in-prefix-advice)
 (declare-function gptel-org--reasoning-create-indirect-buffer "gptel-org")
 (declare-function gptel-org--reasoning-close-indirect-buffer "gptel-org")
+(declare-function gptel-org--tool-create-indirect-buffer "gptel-org")
+(declare-function gptel-org--tool-close-indirect-buffer "gptel-org")
 (declare-function org-at-heading-p "org")
 (declare-function org-get-tags "org")
 (declare-function org-end-of-subtree "org")

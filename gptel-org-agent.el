@@ -51,12 +51,16 @@
 (declare-function gptel-org--ensure-todo-state "gptel-org")
 (declare-function gptel-org--tool-state-keyword "gptel-org")
 (declare-function gptel-org--format-tool-args-title "gptel-org")
+(declare-function gptel-org--compute-response-level "gptel-org")
+(declare-function gptel-org--in-agent-indirect-buffer-p "gptel-org")
 
 ;; Forward declarations for variables defined in gptel-org.el
 (defvar gptel-org-todo-keywords)
 (defvar gptel-org-infer-bounds-from-tags)
 (defvar gptel-org-subtree-context)
 (defvar gptel-org--org-format-response)
+(defvar gptel-org--ref-level)
+(defvar gptel-org--auto-correcting)
 
 ;; Forward declarations for variables defined in org.el
 ;; org-state is dynamically bound by org-todo for hook functions
@@ -374,7 +378,7 @@ Returns nil if the context cannot be extracted."
                   ;; Walk through child headings, extracting only
                   ;; response-propertied text
                   (goto-char task-beg)
-                  (let ((task-level (org-current-level)))
+                  (let ((_task-level (org-current-level)))
                     (while (and (outline-next-heading)
                                 (< (point) task-end))
                       ;; Include every heading line for structure
@@ -2345,7 +2349,7 @@ This function is added to `org-after-todo-state-change-hook'."
                               (buffer-name (plist-get info :buffer))))
                  "tool-call-debug" 'no-json)
                 ;; Log each tool-call closure for debugging
-                (cl-loop for (ts ap ptr) in tool-calls
+                (cl-loop for (ts _ap ptr) in tool-calls
                          for i from 0
                          do (gptel--log
                              (format "on-todo-change: tool-call[%d] tool=%s process-tool-result=%s"
@@ -2801,7 +2805,7 @@ executes them."
                       pending-id heading))
         (let ((tool-calls (plist-get entry :tool-calls))
               (info (plist-get entry :info))
-              (stored-buf (plist-get entry :buffer)))
+              (_stored-buf (plist-get entry :buffer)))
           (gptel-org--debug
            "org-agent run-pending: manually running id=%s, %d tool calls"
            pending-id (length tool-calls))
