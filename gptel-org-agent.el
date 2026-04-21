@@ -71,7 +71,6 @@
 ;; Forward declarations for functions defined in gptel.el
 (declare-function gptel--display-tool-calls "gptel")
 (declare-function gptel--display-tool-results "gptel")
-(declare-function gptel--format-tool-call "gptel")
 (declare-function gptel--map-tool-args "gptel-request")
 (declare-function gptel--update-status "gptel")
 (declare-function gptel--to-string "gptel")
@@ -2111,16 +2110,37 @@ INFO is the FSM info plist."
           (dolist (tc tool-calls)
             (let* ((tool-spec (car tc))
                    (arg-plist (cadr tc))
-                   (arg-values (gptel--map-tool-args tool-spec arg-plist))
                    (tool-name (gptel-tool-name tool-spec))
                    (pending-id (gptel-org-agent--generate-pending-id))
-                   (formatted-call (gptel--format-tool-call tool-name arg-values))
-                   ;; Build heading title from the formatted call,
-                   ;; e.g. "PENDING (Eval \"(* 7 10)\")"
-                   (call-title (string-trim-right formatted-call)))
+                   ;; Build heading title in the same format used when
+                   ;; the heading later transitions to the TOOL state,
+                   ;; so PENDING → TOOLSTATE is a pure keyword change
+                   ;; with no title rewriting needed.  Example:
+                   ;;   "PENDING BASH :command \"date\""
+                   (tool-state (gptel-org--tool-state-keyword tool-name))
+                   (args-title (gptel-org--format-tool-args-title arg-plist))
+                   (full-title (if (string-empty-p args-title)
+                                   tool-state
+                                 (concat tool-state " " args-title)))
+                   (truncated-title
+                    (string-replace
+                     "\n" " "
+                     (truncate-string-to-width
+                      full-title
+                      (max 60 (floor (* (window-width) 0.6)))
+                      0 nil " ..."))))
+              ;; Register the per-tool state eagerly so the later
+              ;; PENDING → TOOLSTATE transition can switch to a
+              ;; recognised org-todo keyword.
+              (when (fboundp 'gptel-org--ensure-todo-state)
+                (gptel-org--ensure-todo-state
+                 tool-state
+                 (and (boundp 'gptel-org--tool-state-face)
+                      gptel-org--tool-state-face)
+                 t))
               (let ((heading-pos (point)))
                 ;; Insert the PENDING heading
-                (insert (format "%s %s %s\n" stars pending-kw call-title))
+                (insert (format "%s %s %s\n" stars pending-kw truncated-title))
                 ;; Insert tool call details as body
                 (insert (format "(:name %S :args %S)\n\n"
                                 tool-name arg-plist))
@@ -2425,14 +2445,16 @@ Returns non-nil if a heading was found and updated, nil otherwise."
          (found nil))
     (save-excursion
       ;; Search backward for a PENDING or ALLOWED heading whose title
-      ;; contains this tool name in parentheses — the format created by
-      ;; gptel-org-agent--display-tool-calls is "PENDING (ToolName ...)"
-      (when (re-search-backward
-             (format "^\\(\\*+\\) \\(?:%s\\|%s\\) .*(\\(?:%s\\)[ \t\"]"
-                     (regexp-quote pending-kw)
-                     (regexp-quote allowed-kw)
-                     (regexp-quote tool-name))
-             nil t)
+      ;; begins with this tool's state keyword — the format created by
+      ;; gptel-org-agent--display-tool-calls is
+      ;; "PENDING TOOLSTATE :arg val ..." (e.g. "PENDING BASH :command ...").
+      (let ((tool-state (gptel-org--tool-state-keyword tool-name)))
+        (when (re-search-backward
+               (format "^\\(\\*+\\) \\(?:%s\\|%s\\) %s\\(?:[ \t]\\|$\\)"
+                       (regexp-quote pending-kw)
+                       (regexp-quote allowed-kw)
+                       (regexp-quote tool-state))
+               nil t)
         (let* ((heading-pos (line-beginning-position))
                (stars (match-string 1))
                (level (length stars))
@@ -2517,7 +2539,7 @@ Returns non-nil if a heading was found and updated, nil otherwise."
         ;; subsequent inserts (e.g. streaming tool results via orig-fn
         ;; fallback) trigger org-element--cache-after-change.
         (when found
-          (org-element-cache-reset))))
+          (org-element-cache-reset)))))
     found))
 
 (defun gptel-org-agent--display-tool-results-advice (orig-fn tool-results info)
