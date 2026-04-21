@@ -130,10 +130,13 @@ Sets up org-mode with AI-DO/AI-DOING/AI-DONE keywords."
 ;;; ---- FSM marker redirection -----------------------------------------------
 
 (ert-deftest gptel-org-todo-test-markers-redirected-to-in-progress ()
-  "FSM position markers should move to end of in_progress heading subtree.
-After write-todo-org, the FSM is redirected to an indirect buffer narrowed
-to the in_progress heading.  The FSM's :position marker lives in the
-indirect buffer but shares the same absolute position as the base buffer."
+  "FSM position markers should move to the start of the in_progress
+heading's \"Results\" terminator.
+After write-todo-org, the FSM is redirected to an indirect buffer
+narrowed to the in_progress heading.  That IB has a \"Results\"
+child terminator; the FSM's :position marker lands at the start of
+the Results heading (insertion-type nil) so streaming inserts BEFORE
+Results, preserving isolation for sibling task IBs."
   (gptel-org-todo-test-with-buffer
       "** AI-DOING My task :main@agent:\n"
     ;; Simulate FSM markers like gptel-org-agent--transform-redirect does
@@ -156,12 +159,16 @@ indirect buffer but shares the same absolute position as the base buffer."
             (fsm-buf (plist-get info :buffer)))
         ;; The FSM buffer should be an indirect buffer
         (should (buffer-base-buffer fsm-buf))
-        ;; Verify the marker is at the end of "Step one" subtree
-        (goto-char (point-min))
-        (should (re-search-forward "^\\*\\*\\* AI-DOING Step one$" nil t))
-        (beginning-of-line)
-        (let ((heading-end (save-excursion (org-end-of-subtree t) (point))))
-          (should (= (marker-position fsm-pos) heading-end)))
+        ;; The position marker should NOT have insertion-type t: it is
+        ;; pinned to the Results terminator and content inserted at the
+        ;; marker lands BEFORE it.
+        (should-not (marker-insertion-type fsm-pos))
+        ;; The marker should point at the Results terminator heading.
+        (with-current-buffer fsm-buf
+          (save-excursion
+            (goto-char fsm-pos)
+            (should (org-at-heading-p))
+            (should (equal "Results" (org-get-heading t t t t)))))
         ;; tracking-marker should be nil (reset for fresh streaming)
         (should (null (plist-get info :tracking-marker)))))))
 
@@ -191,13 +198,17 @@ indirect buffer but shares the same absolute position as the base buffer."
       (gptel-org-agent--write-todo-org
        '((:content "Step one" :status "completed" :activeForm "Doing one")
          (:content "Step two" :status "in_progress" :activeForm "Doing two")))
-      ;; FSM position should now point to end of "Step two" subtree
-      (let ((fsm-pos (plist-get info :position)))
-        (goto-char (point-min))
-        (should (re-search-forward "^\\*\\*\\* AI-DOING Step two$" nil t))
-        (beginning-of-line)
-        (let ((heading-end (save-excursion (org-end-of-subtree t) (point))))
-          (should (= (marker-position fsm-pos) heading-end)))))))
+      ;; FSM position should now point at the Results terminator inside
+      ;; "Step two"'s task IB.
+      (let ((fsm-pos (plist-get info :position))
+            (fsm-buf (plist-get info :buffer)))
+        (should (buffer-base-buffer fsm-buf))
+        (should-not (marker-insertion-type fsm-pos))
+        (with-current-buffer fsm-buf
+          (save-excursion
+            (goto-char fsm-pos)
+            (should (org-at-heading-p))
+            (should (equal "Results" (org-get-heading t t t t)))))))))
 
 ;;; ---- Simulated tool execution under todo headings -------------------------
 
