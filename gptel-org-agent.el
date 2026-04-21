@@ -48,6 +48,9 @@
 (declare-function gptel-org--heading-has-tag-p "gptel-org")
 (declare-function gptel-org--heading-has-todo-keyword-p "gptel-org")
 (declare-function gptel-org--enable-auto-correct "gptel-org")
+(declare-function gptel-org--ensure-todo-state "gptel-org")
+(declare-function gptel-org--tool-state-keyword "gptel-org")
+(declare-function gptel-org--format-tool-args-title "gptel-org")
 
 ;; Forward declarations for variables defined in gptel-org.el
 (defvar gptel-org-todo-keywords)
@@ -2450,27 +2453,39 @@ Returns non-nil if a heading was found and updated, nil otherwise."
               (goto-char heading-pos)
               (forward-line 1)
               (delete-region (point) subtree-end))
-            ;; Replace the heading line: change keyword to TOOL and
-            ;; update the title to match the standard TOOL heading format
+            ;; Replace the heading line: change keyword from PENDING/
+            ;; ALLOWED to the per-tool state (e.g. BASH) and update
+            ;; the title to the plist-style args form.  Register the
+            ;; state first so org fontifies and cycles the new
+            ;; keyword.
+            (when (fboundp 'gptel-org--ensure-todo-state)
+              (gptel-org--ensure-todo-state
+               (gptel-org--tool-state-keyword tool-name)
+               (and (boundp 'gptel-org--tool-state-face)
+                    gptel-org--tool-state-face)
+               t))
             (goto-char heading-pos)
-            (let* ((display-call (format "(%s %s)" tool-name
-                                         (string-trim
-                                          (prin1-to-string args) "(" ")")))
-                   (truncated-call
+            (let* ((tool-state (gptel-org--tool-state-keyword tool-name))
+                   (args-title (gptel-org--format-tool-args-title args))
+                   (full-title (if (string-empty-p args-title)
+                                   tool-state
+                                 (concat tool-state " " args-title)))
+                   (truncated-title
                     (string-replace
                      "\n" " "
                      (truncate-string-to-width
-                      display-call
+                      full-title
                       (max 60 (floor (* (window-width) 0.6)))
-                      0 nil " ...)")))
+                      0 nil " ...")))
                    (call (prin1-to-string `(:name ,tool-name :args ,args)))
                    (result-str (if (stringp result) result
                                  (format "%S" result)))
                    ;; Escape result to protect org formatting inside
                    ;; the #+begin_tool special block
                    (escaped-result (org-escape-code-in-string result-str))
-                   ;; Build the new heading line with TOOL keyword
-                   (new-heading (concat stars " TOOL " truncated-call "\n"))
+                   ;; Build the new heading line using the tool-name
+                   ;; state as the TODO keyword
+                   (new-heading (concat stars " " truncated-title "\n"))
                    ;; Build the body with plist and result wrapped in
                    ;; special block
                    (body-text (concat call "\n"

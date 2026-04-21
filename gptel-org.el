@@ -102,6 +102,13 @@ Used to track and clean up the reasoning display buffer.")
   "The indirect buffer currently used for TOOL heading body insertion, if any.
 Used to track and clean up the TOOL display buffer.")
 
+(defvar-local gptel-org--ai-state-keywords nil
+  "List of buffer-local TODO keywords registered by gptel for AI content.
+Populated by `gptel-org--ensure-todo-state' each time it registers a
+new state for a tool name or agent role.  Consulted by
+`gptel-org--heading-is-assistant-p' to classify a heading as
+assistant-authored without hard-coding the set of known states.")
+
 ;; Debug support
 (defvar gptel-org-debug nil
   "When non-nil, output debug messages for subtree context operations.
@@ -1176,7 +1183,8 @@ inherit from their parent via `gptel-org--restore-bounds-from-tags'."
           (and todo
                (or (string-prefix-p "AI-" todo)
                    (member todo '("REASONING" "TOOL" "RESULTS"
-                                  "PENDING" "ALLOWED" "DENIED"))))))
+                                  "PENDING" "ALLOWED" "DENIED"))
+                   (member todo gptel-org--ai-state-keywords)))))
     (gptel-org--heading-has-tag-p gptel-org-assistant-tag)))
 
 (defun gptel-org--heading-is-user-p ()
@@ -2823,6 +2831,7 @@ already registered with the same face."
     (let* ((face (or face gptel-org--tool-state-face))
            (done-state (if (eq done-state nil) t done-state))
            (changed (gptel-org--ensure-todo-state-1 state face done-state)))
+      (cl-pushnew state gptel-org--ai-state-keywords :test #'equal)
       (when (and changed (derived-mode-p 'org-mode))
         (org-mode-restart))
       changed)))
@@ -2842,11 +2851,53 @@ Performs a single `org-mode-restart' if any state is new or changed."
                (face (or (nth 1 spec) gptel-org--tool-state-face))
                (open-p (nth 2 spec))
                (done-state (not open-p)))
+          (cl-pushnew state gptel-org--ai-state-keywords :test #'equal)
           (when (gptel-org--ensure-todo-state-1 state face done-state)
             (setq any-changed t))))
       (when (and any-changed (derived-mode-p 'org-mode))
         (org-mode-restart))
       any-changed)))
+
+(defun gptel-org--tool-state-keyword (tool-name)
+  "Return TOOL-NAME uppercased and sanitized for use as an org TODO keyword.
+
+Keeps ASCII letters, digits, underscore, and dash.  Any other
+character (whitespace, punctuation, ...) is replaced with an
+underscore.  The final result is uppercased.
+
+Examples:
+  \"Bash\"        → \"BASH\"
+  \"python_exec\" → \"PYTHON_EXEC\"
+  \"my tool\"     → \"MY_TOOL\"
+  \"foo.bar\"     → \"FOO_BAR\""
+  (let* ((sanitized
+          (replace-regexp-in-string "[^A-Za-z0-9_-]" "_"
+                                    (or tool-name ""))))
+    (upcase sanitized)))
+
+(defun gptel-org--format-tool-args-title (arg-plist)
+  "Format ARG-PLIST as a heading title suffix.
+
+Returns a string of the form \":key1 VALUE1 :key2 VALUE2\".  Each
+key is emitted literally (it is expected to be a keyword symbol)
+and each value is rendered with `prin1-to-string' so strings keep
+their surrounding quotes, numbers print as themselves, etc.
+
+Returns an empty string for a nil or empty plist.  No leading or
+trailing whitespace."
+  (if (null arg-plist)
+      ""
+    (let ((parts nil)
+          (rest arg-plist))
+      (while rest
+        (let ((k (car rest))
+              (v (cadr rest)))
+          (push (format "%s %s"
+                        (if (keywordp k) (symbol-name k) (format "%s" k))
+                        (prin1-to-string v))
+                parts))
+        (setq rest (cddr rest)))
+      (mapconcat #'identity (nreverse parts) " "))))
 
 ;;; Unified Org Mode
 

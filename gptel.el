@@ -2470,9 +2470,25 @@ for tool call results.  INFO contains the state of the request."
                     (string-replace "\n" " "
                                     (truncate-string-to-width
                                      display-call
-                                     (floor (* (window-width) 0.6)) 0 nil " ...)"))))
+                                     (floor (* (window-width) 0.6)) 0 nil " ...)")))
+                   ;; Org heading uses the tool name as its own TODO
+                   ;; keyword and a plist-style args title suffix.  The
+                   ;; markdown branch below still uses the old
+                   ;; function-call style (display-call) since it lives
+                   ;; in a ``` tool ... ``` fence.
+                   (tool-state
+                    (if (fboundp 'gptel-org--tool-state-keyword)
+                        (gptel-org--tool-state-keyword name)
+                      (upcase name)))
+                   (args-title
+                    (if (fboundp 'gptel-org--format-tool-args-title)
+                        (gptel-org--format-tool-args-title args)
+                      "")))
               (if (derived-mode-p 'org-mode)
-                  ;; Org-mode: insert TOOL heading with result in
+                  ;; Org-mode: insert a heading whose TODO keyword is
+                  ;; the uppercased tool name (e.g. BASH, EVAL, GREP)
+                  ;; and whose title is a plist-style args display.
+                  ;; The result body is wrapped in a #+begin_tool
                   ;; special block to protect org formatting.
                   ;;
                   ;; Compute the correct heading level up front so the
@@ -2488,11 +2504,20 @@ for tool call results.  INFO contains the state of the request."
                           (gptel--tool-heading-ref-level
                            target-buffer info-buf start-marker tracking-marker))
                          (stars (make-string ref-level ?*))
-                         (heading-line (concat stars " TOOL " truncated-call "\n"))
+                         (full-title (if (string-empty-p args-title)
+                                         tool-state
+                                       (concat tool-state " " args-title)))
+                         (truncated-title
+                          (string-replace
+                           "\n" " "
+                           (truncate-string-to-width
+                            full-title
+                            (floor (* (window-width) 0.6)) 0 nil " ...")))
+                         (heading-line (concat stars " " truncated-title "\n"))
                          (_ (when (eq gptel-log-level 'debug)
                               (gptel--log
-                               (format "display-tool-results: creating heading=\"%s TOOL\" ref-level=%S in-agent-indirect=%S start-marker=%S tracking-marker=%S buffer=%S inhibit-mod-hooks=%S"
-                                       stars ref-level
+                               (format "display-tool-results: creating heading=\"%s %s\" ref-level=%S in-agent-indirect=%S start-marker=%S tracking-marker=%S buffer=%S inhibit-mod-hooks=%S"
+                                       stars tool-state ref-level
                                        (and (fboundp 'gptel-org--in-agent-indirect-buffer-p)
                                             (gptel-org--in-agent-indirect-buffer-p))
                                        start-marker tracking-marker
@@ -2510,34 +2535,65 @@ for tool call results.  INFO contains the state of the request."
                     (add-text-properties
                      0 (length heading-line)
                      '(gptel ignore front-sticky (gptel)) heading-line)
+                    ;; Register the dynamic per-tool-name state (e.g.
+                    ;; BASH, EVAL) in the target buffer so org fontifies
+                    ;; it and cycling works.  Guarded with fboundp since
+                    ;; gptel.el may be loaded without gptel-org.el.
+                    (when (fboundp 'gptel-org--ensure-todo-state)
+                      (with-current-buffer target-buffer
+                        (when (derived-mode-p 'org-mode)
+                          (gptel-org--ensure-todo-state
+                           tool-state
+                           (and (boundp 'gptel-org--tool-state-face)
+                                gptel-org--tool-state-face)
+                           t))))
                     ;; Step 1: insert separator + heading via the normal
                     ;; callback path (at tracking-marker in target-buffer).
                     ;; The callback updates :tracking-marker on info.
-                    (funcall (plist-get info :callback)
-                             (concat separator heading-line)
-                             info 'raw)
-                    ;; Step 2: body goes through a TOOL indirect buffer
-                    ;; so tool body writes are isolated from the agent IB
-                    ;; (per the "indirect buffer rule" — each AI-emitted
-                    ;; block gets its own IB scope).  Locate the heading
-                    ;; we just inserted in target-buffer, open a TOOL IB
-                    ;; narrowed to that subtree, insert the body there,
-                    ;; and close the IB.  Because IB and base share the
-                    ;; same underlying storage, the tracking-marker in
-                    ;; target-buffer (insertion-type t) is advanced by
-                    ;; the body insertion.
-                    (let ((new-tm (plist-get info :tracking-marker)))
-                      (with-current-buffer target-buffer
-                        (save-excursion
-                          (when new-tm (goto-char new-tm))
-                          (let ((heading-pos
-                                 (save-excursion
-                                   (when (re-search-backward "^\\*+ TOOL " nil t)
-                                     (line-beginning-position)))))
-                            (if heading-pos
+                    ;; Remember the heading's starting position via a
+                    ;; marker so body insertion and fold can locate it
+                    ;; without relying on a state-keyword regex (the
+                    ;; keyword varies per tool name now).
+                    (let* ((pre-tm (plist-get info :tracking-marker))
+                           (pre-pos (and (markerp pre-tm)
+                                         (marker-position pre-tm)))
+                           (separator-len (length (or separator ""))))
+                      (funcall (plist-get info :callback)
+                               (concat separator heading-line)
+                               info 'raw)
+                      (let* ((new-tm (plist-get info :tracking-marker))
+                             ;; Heading started right after separator.
+                             (heading-start-pos
+                              (cond
+                               (pre-pos (+ pre-pos separator-len))
+                               ((markerp new-tm)
+                                (- (marker-position new-tm)
+                                   (length heading-line)))))
+                             (heading-marker
+                              (and heading-start-pos
+                                   (with-current-buffer target-buffer
+                                     (copy-marker heading-start-pos nil)))))
+                        ;; Stash on info so the fold step below can
+                        ;; reuse it without another regex search.
+                        (plist-put info :tool-heading-marker heading-marker)
+                        ;; Step 2: body goes through a TOOL indirect
+                        ;; buffer so tool body writes are isolated from
+                        ;; the agent IB (per the "indirect buffer rule"
+                        ;; — each AI-emitted block gets its own IB
+                        ;; scope).  Open a TOOL IB narrowed to the
+                        ;; subtree at heading-marker, insert the body
+                        ;; there, and close the IB.  Because IB and
+                        ;; base share the same underlying storage, the
+                        ;; tracking-marker in target-buffer
+                        ;; (insertion-type t) is advanced by the body
+                        ;; insertion.
+                        (with-current-buffer target-buffer
+                          (save-excursion
+                            (if (and heading-marker
+                                     (marker-position heading-marker))
                                 (let ((tool-ib
                                        (gptel-org--tool-create-indirect-buffer
-                                        heading-pos)))
+                                        (marker-position heading-marker))))
                                   (unwind-protect
                                       (if (and tool-ib (buffer-live-p tool-ib))
                                           (with-current-buffer tool-ib
@@ -2550,7 +2606,7 @@ for tool call results.  INFO contains the state of the request."
                                           (when new-tm (goto-char new-tm))
                                           (insert prop-body)))
                                     (gptel-org--tool-close-indirect-buffer)))
-                              ;; Heading not found (shouldn't happen) —
+                              ;; No heading position (shouldn't happen) —
                               ;; fall back to direct insertion.
                               (save-excursion
                                 (when new-tm (goto-char new-tm))
@@ -2585,8 +2641,21 @@ for tool call results.  INFO contains the state of the request."
              (save-excursion
                (goto-char tracking-marker)
                (if (derived-mode-p 'org-mode)
-                   (when (re-search-backward "^\\*+ TOOL " nil t)
-                     (org-fold-subtree t))
+                   ;; Locate the heading we just inserted via the
+                   ;; marker stashed during insertion.  The heading's
+                   ;; TODO keyword varies per tool name, so a regex
+                   ;; match would need to know every possible keyword;
+                   ;; using the marker sidesteps that entirely.
+                   (let ((hm (plist-get info :tool-heading-marker)))
+                     (when (and hm (marker-position hm)
+                                (eq (marker-buffer hm) (current-buffer)))
+                       (goto-char hm)
+                       (when (org-at-heading-p)
+                         (org-fold-subtree t)))
+                     ;; Clear the stashed marker so it doesn't leak to
+                     ;; the next tool-result insertion.
+                     (when hm (set-marker hm nil))
+                     (plist-put info :tool-heading-marker nil))
                  (forward-line -1)
                  (when (looking-at-p "^```") (gptel-markdown-cycle-block)))))))))))
 

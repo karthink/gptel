@@ -1877,17 +1877,18 @@ The sequence the fix must handle:
                      ;; display-tool-results honors gptel-include-tool-results
                      (gptel-include-tool-results t))
                 (gptel--display-tool-results tool-results info))
-              ;; With the fix: TOOL heading is at level 4 in base buffer,
-              ;; inferred from the registered coordinator IB.
+              ;; With the fix: the per-tool-name state (AGENT) heading
+              ;; is at level 4 in base buffer, inferred from the
+              ;; registered coordinator IB.
               (with-current-buffer base-buf
                 (goto-char (point-min))
-                (should (re-search-forward "^\\(\\*+\\) TOOL " nil t))
+                (should (re-search-forward "^\\(\\*+\\) AGENT " nil t))
                 (should (= 4 (length (match-string 1)))))
               ;; CONTRAST: direct insertion in the indirect buffer also yields
               ;; level 4 (via auto-correct rebasing — unchanged path)
               (with-current-buffer coord-indirect
                 (goto-char (point-max))
-                (let ((tool-heading "* TOOL (Bash :command \"echo hi\")\n")
+                (let ((tool-heading "* BASH :command \"echo hi\"\n")
                       (tool-body "(:name \"Bash\" :args (:command \"echo hi\"))\n#+begin_tool\nhi\n#+end_tool\n"))
                   (add-text-properties
                    0 (length tool-heading)
@@ -1895,7 +1896,7 @@ The sequence the fix must handle:
                   (insert tool-heading tool-body)))
               (with-current-buffer coord-indirect
                 (goto-char (point-min))
-                (should (re-search-forward "^\\(\\*+\\) TOOL (Bash" nil t))
+                (should (re-search-forward "^\\(\\*+\\) BASH " nil t))
                 ;; Correctly rebased to level 4 in indirect buffer
                 (should (= 4 (length (match-string 1))))))
           (when (and coord-indirect (buffer-live-p coord-indirect))
@@ -1972,10 +1973,11 @@ insertion and nil after)."
                 (should-not gptel-org--tool-indirect-buffer))
               (with-current-buffer base-buf
                 (should-not gptel-org--tool-indirect-buffer))
-              ;; TOOL heading landed at ref-level=4 inside coord-indirect
+              ;; The BASH (per-tool-name) heading landed at
+              ;; ref-level=4 inside coord-indirect
               (with-current-buffer coord-indirect
                 (goto-char (point-min))
-                (should (re-search-forward "^\\(\\*+\\) TOOL (Bash" nil t))
+                (should (re-search-forward "^\\(\\*+\\) BASH " nil t))
                 (should (= 4 (length (match-string 1))))))
           (when (and coord-indirect (buffer-live-p coord-indirect))
             (kill-buffer coord-indirect)))))))
