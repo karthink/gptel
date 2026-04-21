@@ -344,6 +344,30 @@ Bookkeeping:
   closing the agent IB, closes every task IB in its
   =--todo-task-ibs= alist.
 
+Ref-level on task IBs:
+
+- Each task IB carries its OWN buffer-local =gptel-org--ref-level= set
+  to =(1+ task-heading-level)=.  This is set at two points:
+  - =gptel-org-agent--create-todo-heading= sets it immediately after
+    creating the task IB (inside the =when (org-at-heading-p)= block
+    that also ensures the =RESULTS= terminator).
+  - =gptel-org-agent--redirect-markers-to-heading= sets it too, as a
+    safety net for task IBs that may have been created without it
+    (belt-and-suspenders, since the task IB is reused across
+    redirects).
+- Why this matters: when a tool call is auto-approved, no PENDING
+  heading is created, so =gptel-org-agent--display-tool-results-advice=
+  finds nothing to update and falls through to =gptel--display-tool-results=,
+  which in turn calls =gptel--tool-heading-ref-level=.  Step 1 of
+  that helper reads =gptel-org--ref-level= from the current buffer.
+  Without this setup, step 1 returned nil in task IBs and step 3's
+  registry lookup would match the AGENT IB (ref-level = task-level),
+  placing the TOOL / BASH heading as a =sibling= of the task rather
+  than its child.
+- With the ref-level set on the task IB, tool-result headings resolve
+  to =task-level + 1= (= child of task) regardless of whether the
+  PENDING-matching fast path succeeds.
+
 ** Integration with gptel-org.el (Reasoning Display)
 
 This section documents how =gptel-org.el= uses the module for the reasoning

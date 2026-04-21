@@ -1574,6 +1574,7 @@ Returns the newly created task indirect buffer."
         (save-excursion
           (goto-char (point-min))
           (when (org-at-heading-p)
+            (setq-local gptel-org--ref-level (1+ (org-current-level)))
             (gptel-org-ib-ensure-terminator "RESULTS")))))
     task-ib))
 
@@ -1676,7 +1677,16 @@ Accesses the FSM via `gptel--fsm-last' which is buffer-local."
                  (gptel-org-ib-streaming-marker "RESULTS")))))
         ;; Save parent buffer reference for restoration
         (with-current-buffer sub-indirect-buf
-          (setq-local gptel-org-agent--parent-indirect-buffer parent-buffer))
+          (setq-local gptel-org-agent--parent-indirect-buffer parent-buffer)
+          ;; Ensure task IB carries its own ref-level (= task-heading-level+1)
+          ;; so auto-approved tool results resolve to the correct level even
+          ;; when PENDING matching is skipped.  Task IBs created elsewhere
+          ;; (or reused across redirects) may not have this set yet.
+          (unless (bound-and-true-p gptel-org--ref-level)
+            (save-excursion
+              (goto-char (point-min))
+              (when (org-at-heading-p)
+                (setq-local gptel-org--ref-level (1+ (org-current-level)))))))
         ;; Redirect FSM to the sub-task buffer
         (plist-put info :buffer sub-indirect-buf)
         (plist-put info :position pos-marker)
