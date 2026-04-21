@@ -52,6 +52,8 @@
 (declare-function gptel-org--tool-state-keyword "gptel-org")
 (declare-function gptel-org--format-tool-args-title "gptel-org")
 (declare-function gptel-org--tool-args-title-excludes "gptel-org")
+(declare-function gptel-org--tool-result-as-org-p "gptel-org")
+(declare-function gptel-org--tool-body-text "gptel-org")
 (declare-function gptel-org--compute-response-level "gptel-org")
 (declare-function gptel-org--in-agent-indirect-buffer-p "gptel-org")
 
@@ -2025,18 +2027,31 @@ Returns non-nil if a heading was found and updated, nil otherwise."
                    (call (prin1-to-string `(:name ,tool-name :args ,args)))
                    (result-str (if (stringp result) result
                                  (format "%S" result)))
-                   ;; Escape result to protect org formatting inside
-                   ;; the #+begin_tool special block
-                   (escaped-result (org-escape-code-in-string result-str))
+                   ;; For most tools the result is opaque and must be
+                   ;; protected inside a #+begin_tool block; for tools
+                   ;; whose result is already org prose (currently the
+                   ;; Agent dispatcher) we emit it verbatim under a
+                   ;; RESULTS child heading instead.  See
+                   ;; `gptel-org--tool-result-as-org-p'.
+                   (as-org
+                    (and (fboundp 'gptel-org--tool-result-as-org-p)
+                         (gptel-org--tool-result-as-org-p tool-name)))
+                   (escaped-result
+                    (if as-org result-str
+                      (org-escape-code-in-string result-str)))
                    ;; Build the new heading line using the tool-name
                    ;; state as the TODO keyword
                    (new-heading (concat stars " " truncated-title "\n"))
-                   ;; Build the body with plist and result wrapped in
-                   ;; special block
-                   (body-text (concat call "\n"
-                                      "#+begin_tool\n"
-                                      escaped-result "\n"
-                                      "#+end_tool\n")))
+                   ;; Build the body with plist and either a
+                   ;; #+begin_tool block or a RESULTS child heading.
+                   (body-text
+                    (if (fboundp 'gptel-org--tool-body-text)
+                        (gptel-org--tool-body-text
+                         tool-name call escaped-result stars)
+                      (concat call "\n"
+                              "#+begin_tool\n"
+                              escaped-result "\n"
+                              "#+end_tool\n"))))
               ;; Delete the old heading line
               (let ((line-end (min (1+ (line-end-position)) (point-max))))
                 (delete-region heading-pos line-end))

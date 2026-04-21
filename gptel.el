@@ -2528,14 +2528,29 @@ for tool call results.  INFO contains the state of the request."
                                        start-marker tracking-marker
                                        (current-buffer) inhibit-modification-hooks)
                                "tool-heading-debug" 'no-json)))
-                         (escaped-result
-                          (org-escape-code-in-string
-                           (if (stringp result) result
-                             (format "%S" result))))
-                         (body-text (concat call "\n"
-                                            "#+begin_tool\n"
-                                            escaped-result "\n"
-                                            "#+end_tool\n"))
+                         (result-str (if (stringp result) result
+                                       (format "%S" result)))
+                         ;; For most tools the result is opaque text
+                         ;; that must be protected inside a
+                         ;; #+begin_tool block; for tools whose result
+                         ;; is already org-mode prose (see
+                         ;; `gptel-org--tool-result-as-org-p', currently
+                         ;; the Agent dispatcher) we emit it verbatim
+                         ;; under a RESULTS child heading instead.
+                         (as-org
+                          (and (fboundp 'gptel-org--tool-result-as-org-p)
+                               (gptel-org--tool-result-as-org-p name)))
+                         (body-result
+                          (if as-org result-str
+                            (org-escape-code-in-string result-str)))
+                         (body-text
+                          (if (fboundp 'gptel-org--tool-body-text)
+                              (gptel-org--tool-body-text
+                               name call body-result stars)
+                            (concat call "\n"
+                                    "#+begin_tool\n"
+                                    body-result "\n"
+                                    "#+end_tool\n")))
                          (prop-body (propertize body-text 'gptel `(tool . ,id))))
                     (add-text-properties
                      0 (length heading-line)

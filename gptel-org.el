@@ -2968,6 +2968,48 @@ For other tools, no keys are excluded."
   (when (and (stringp tool-name) (string= tool-name "Agent"))
     '(:subagent_type)))
 
+(defun gptel-org--tool-result-as-org-p (tool-name)
+  "Return non-nil if TOOL-NAME's result should be rendered as plain org.
+
+Most tools emit opaque text that must be wrapped in a
+`#+begin_tool' special block to protect org syntax (headings,
+blocks, links) from being interpreted.  Some tools, however,
+emit content that IS already org-mode prose — in particular the
+Agent dispatcher, whose result is a sub-agent's extracted final
+text (often containing its own headings).  For those tools, the
+result should be placed directly as org content (inside a
+`RESULTS' child heading), not wrapped in a literal block that
+would escape the sub-agent's org structure."
+  (and (stringp tool-name) (string= tool-name "Agent")))
+
+(defun gptel-org--tool-body-text (tool-name call escaped-result stars)
+  "Build the body to insert after a TOOL heading.
+
+CALL is a one-line string of the form \"(:name ... :args ...)\".
+ESCAPED-RESULT is the tool's result, already sanitized for
+embedding in org when applicable.  STARS is the stars string of
+the TOOL heading itself (e.g. \"*****\"); the RESULTS child
+heading is written one level deeper.
+
+For most tools, wraps the result in a `#+begin_tool' special
+block.  For tools whose result is already org prose (see
+`gptel-org--tool-result-as-org-p'), emits a `RESULTS' child
+heading containing the result verbatim so the sub-content's own
+org structure is preserved."
+  (if (gptel-org--tool-result-as-org-p tool-name)
+      (concat call "\n\n"
+              stars "* RESULTS\n"
+              escaped-result
+              (if (and (> (length escaped-result) 0)
+                       (not (eq ?\n (aref escaped-result
+                                          (1- (length escaped-result))))))
+                  "\n" "")
+              "\n")
+    (concat call "\n"
+            "#+begin_tool\n"
+            escaped-result "\n"
+            "#+end_tool\n")))
+
 ;;; Unified Org Mode
 
 ;;;###autoload

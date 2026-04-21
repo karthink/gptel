@@ -859,5 +859,41 @@ A string like \"hello\" should be JSON-encoded, not passed through."
   (should (null (gptel-org--tool-args-title-excludes "Bash")))
   (should (null (gptel-org--tool-args-title-excludes nil))))
 
+(ert-deftest gptel-test-tool-result-as-org-p ()
+  "Agent tool is rendered as plain org; others are not."
+  (should (gptel-org--tool-result-as-org-p "Agent"))
+  (should-not (gptel-org--tool-result-as-org-p "Bash"))
+  (should-not (gptel-org--tool-result-as-org-p "Edit"))
+  (should-not (gptel-org--tool-result-as-org-p nil)))
+
+(ert-deftest gptel-test-tool-body-text-default-wraps-in-block ()
+  "Non-Agent tools get a #+begin_tool...#+end_tool body."
+  (let ((body (gptel-org--tool-body-text
+               "Bash"
+               "(:name \"Bash\" :args (:command \"date\"))"
+               "Tue Apr 21 21:17:07 EEST 2026"
+               "*****")))
+    (should (string-match-p "#\\+begin_tool" body))
+    (should (string-match-p "#\\+end_tool" body))
+    (should (string-match-p "Tue Apr 21" body))
+    (should-not (string-match-p "^\\*+ RESULTS" body))))
+
+(ert-deftest gptel-test-tool-body-text-agent-uses-results-child-heading ()
+  "Agent tool body emits a RESULTS child heading, not a #+begin_tool block.
+The RESULTS heading is one level deeper than the tool heading's STARS."
+  (let* ((stars "*****")
+         (body (gptel-org--tool-body-text
+                "Agent"
+                "(:name \"Agent\" :args (:subagent_type \"executor\"))"
+                "Executor result for task: Run sleep 60 then date\n..."
+                stars)))
+    (should-not (string-match-p "#\\+begin_tool" body))
+    (should-not (string-match-p "#\\+end_tool" body))
+    ;; RESULTS heading is one level deeper than the tool heading (6 stars)
+    (should (string-match-p "^\\*\\*\\*\\*\\*\\* RESULTS$" body))
+    (should (string-match-p "Executor result for task:" body))
+    ;; The call line still appears
+    (should (string-match-p "(:name \"Agent\"" body))))
+
 (provide 'gptel-unit-tests)
 ;;; gptel-unit-tests.el ends here
