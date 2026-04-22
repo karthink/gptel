@@ -814,6 +814,45 @@ Assertions on close (of B):
        (should-error (gptel-org-ib-parent "*nonexistent-gptel-ib*")
                      :type 'user-error)))))
 
+(ert-deftest ib-children-returns-registered-list ()
+  "`gptel-org-ib-children' returns the list of child nodes of IB.
+
+- Top-level IB with no children returns nil.
+- After nesting an IB beneath it, the child node appears in the list.
+- After closing the child, the list is emptied again.
+- Accepts a buffer-name string as well as a buffer object.
+- Unregistered buffers raise `user-error'."
+  (gptel-org-ib-test-with-buffer
+      "* A  :main@agent:\n** B  :researcher@main@agent:\nb body\n"
+    (gptel-org-ib-test-with-cleanup
+     (let* ((base (current-buffer))
+            (pos-a (progn (goto-char (point-min))
+                          (re-search-forward "^\\* A")
+                          (beginning-of-line)
+                          (point)))
+            (pos-b (progn (goto-char (point-min))
+                          (re-search-forward "^\\*\\* B")
+                          (beginning-of-line)
+                          (point)))
+            (ib-a (gptel-org-ib-create base pos-a)))
+       ;; No children registered yet.
+       (should (null (gptel-org-ib-children ib-a)))
+       ;; Create nested IB B under A.
+       (let* ((ib-b (with-current-buffer ib-a
+                      (gptel-org-ib-create base pos-b)))
+              (node-b (gptel-org-ib--get-node (buffer-name ib-b)))
+              (children (gptel-org-ib-children ib-a)))
+         (should (listp children))
+         (should (memq node-b children))
+         ;; Accepts a buffer-name string.
+         (should (memq node-b (gptel-org-ib-children (buffer-name ib-a))))
+         ;; Closing the child splices it out of the list.
+         (gptel-org-ib-close ib-b)
+         (should (null (gptel-org-ib-children ib-a))))
+       ;; Unregistered buffer → user-error.
+       (should-error (gptel-org-ib-children "*nonexistent-gptel-ib*")
+                     :type 'user-error)))))
+
 
 ;;; ---- Heading Navigation ---------------------------------------------------
 
