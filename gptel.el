@@ -1281,7 +1281,7 @@ the request succeeded)."
          (start-marker (plist-get info :position)))
     (when (memq (plist-get info :callback)
                 '(gptel--insert-response gptel-curl--stream-insert-response))
-      (with-current-buffer (plist-get info :buffer)
+      (with-current-buffer (marker-buffer start-marker)
         (when (or buffer-read-only (get-char-property start-marker 'read-only))
           (cond
            ((derived-mode-p 'vterm-mode)
@@ -1958,7 +1958,7 @@ USE-MINIBUFFER is non-nil)."
   (let* ((start-marker (plist-get info :position))
          (tracking-marker (plist-get info :tracking-marker)))
     ;; pending tool calls look like ((tool callback args) ...)
-    (with-current-buffer (plist-get info :buffer)
+    (with-current-buffer (marker-buffer start-marker)
       (if (or use-minibuffer   ;prompt for confirmation from the minibuffer
               buffer-read-only ;TEMP(tool-preview) Handle read-only buffers better
               (get-char-property
@@ -1980,8 +1980,10 @@ USE-MINIBUFFER is non-nil)."
             (pcase (car choice)
               (?y (gptel--accept-tool-calls tool-calls))
               (?n (gptel--reject-tool-calls))
-              (?i (gptel--inspect-tool-calls tool-calls (plist-get info :buffer)))))
-        ;; Prompt for confirmation from the chat buffer
+              (?i (gptel--inspect-tool-calls
+                   ;; TODO Verify that the query buffer is the correct source to send
+                   tool-calls (plist-get info :buffer)))))
+        ;; Prompt for confirmation from the response buffer
         (let* ((backend-name (gptel-backend-name (plist-get info :backend)))
                (actions-string
                 (concat (propertize "Run tools: " 'face 'font-lock-string-face)
@@ -2026,13 +2028,14 @@ USE-MINIBUFFER is non-nil)."
             (setq prompt-ov (make-overlay (overlay-end ov) (point) nil t))
             (overlay-put
              prompt-ov 'before-string
-             (concat "\n"
-                     (propertize " " 'display `(space :align-to (- right ,(length actions-string) 2))
-                                 'face '(:inherit font-lock-string-face :underline t :extend t))
-                     actions-string
-                     (format (propertize "\n%s wants to run:\n\n"
-                                         'face 'font-lock-string-face)
-                             backend-name)))
+             (concat
+              "\n"
+              (propertize " " 'display `(space :align-to (- right ,(length actions-string) 2))
+                          'face '(:inherit font-lock-string-face :underline t :extend t))
+              actions-string
+              (format (propertize "\n%s wants to run:\n\n"
+                                  'face 'font-lock-string-face)
+                      backend-name)))
             (overlay-put
              prompt-ov 'after-string
              (concat (propertize "\n" 'face
