@@ -72,8 +72,6 @@
 (declare-function gptel-org--debug "gptel-org" (format-string &rest args))
 
 ;; External functions from gptel-org-agent.el
-(declare-function gptel-org-agent--indirect-buffer-name "gptel-org-agent"
-                  (base-buffer heading-pos tag))
 (declare-function gptel-org-agent--agent-tag-p "gptel-org-agent" (tag))
 
 ;; External variables
@@ -574,6 +572,28 @@ Returns a marker to the newly created heading."
       marker)))
 
 
+;;; ---- Buffer Name Generator ------------------------------------------------
+
+(defun gptel-org-ib-compute-name (base-buffer heading-pos tag)
+  "Compute a unique indirect buffer name for a subtree at HEADING-POS.
+
+Uses TAG as the kind string and a short hash derived from the outline
+path (parent headings) at HEADING-POS in BASE-BUFFER.  Format is
+*gptel:TAG-HASH* where HASH is a 6-character hex string derived from
+the base buffer name and full outline path.  The hash survives heading
+reorder because it is path-based, not position-based."
+  (let* ((path-str
+          (with-current-buffer base-buffer
+            (save-excursion
+              (goto-char heading-pos)
+              (let ((path (org-get-outline-path t)))
+                (mapconcat #'identity path "/")))))
+         (hash (substring
+                (md5 (concat (buffer-name base-buffer) ":" path-str))
+                0 6)))
+    (format "*gptel:%s-%s*" tag hash)))
+
+
 ;;; ---- Indirect Buffer Lifecycle --------------------------------------------
 
 (defun gptel-org-ib--compute-subtree-region (base-buffer heading-pos)
@@ -645,7 +665,7 @@ Returns the indirect buffer."
                          (gptel-org-ib--extract-tag-at root-buf pos)))
          ;; Compute buffer name
          (buf-name (or name
-                       (gptel-org-agent--indirect-buffer-name
+                       (gptel-org-ib-compute-name
                         root-buf pos resolved-tag)))
          ;; Compute subtree region
          (region (gptel-org-ib--compute-subtree-region root-buf pos))
@@ -789,7 +809,7 @@ matching heading, or nil."
                            tags)))
             (when has-tag
               (let ((computed-name
-                     (gptel-org-agent--indirect-buffer-name base-buffer pos tag)))
+                     (gptel-org-ib-compute-name base-buffer pos tag)))
                 (when (string= computed-name target-name)
                   (setq found pos)))))
           (unless found

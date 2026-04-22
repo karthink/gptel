@@ -104,6 +104,37 @@ non-nodes."
       (when (buffer-live-p base-buf) (kill-buffer base-buf)))))
 
 
+;;; ---- Buffer Name Generator ------------------------------------------------
+
+(ert-deftest ib-compute-name-unique ()
+  "`gptel-org-ib-compute-name' yields unique names for 100 distinct headings.
+
+Inserts 100 sibling headings into a temp org buffer, then computes a
+name for each heading position.  The resulting list of names must
+contain 100 unique strings (no collisions from the 6-char hash prefix
+for this small distinct input)."
+  (gptel-org-ib-test-with-buffer
+      ""
+    (let ((base (current-buffer))
+          (positions nil))
+      (dotimes (i 100)
+        (goto-char (point-max))
+        (unless (bolp) (insert "\n"))
+        (let ((start (point)))
+          (insert (format "* Heading %d\nbody %d\n" i i))
+          (push start positions)))
+      (setq positions (nreverse positions))
+      (let ((names (mapcar (lambda (pos)
+                             (gptel-org-ib-compute-name base pos "main@agent"))
+                           positions)))
+        (should (= (length names) 100))
+        (should (= (length (delete-dups (copy-sequence names))) 100))
+        ;; Every name should match the expected format.
+        (dolist (n names)
+          (should (string-match-p "\\`\\*gptel:main@agent-[0-9a-f]\\{6\\}\\*\\'"
+                                  n)))))))
+
+
 ;;; ---- Tracking Registry ----------------------------------------------------
 
 (ert-deftest gptel-org-ib-test-registry-register-and-get ()
@@ -816,7 +847,7 @@ Assertions on close (of B):
                          (re-search-forward "^\\*\\* Heading B")
                          (beginning-of-line)
                          (point)))
-           (name-b (gptel-org-agent--indirect-buffer-name
+           (name-b (gptel-org-ib-compute-name
                     base pos-b "main@agent"))
            (parsed (gptel-org-ib--parse-buffer-name name-b))
            (tag (car parsed))

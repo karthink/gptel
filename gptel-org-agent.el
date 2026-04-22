@@ -442,23 +442,10 @@ description or notes."
 
 (defun gptel-org-agent--indirect-buffer-name (base-buffer heading-pos tag)
   "Compute a unique indirect buffer name for an agent subtree.
-
-Uses TAG for the agent type and a short hash derived from the
-outline path (parent headings) at HEADING-POS in BASE-BUFFER.
-This ensures each agent subtree gets a distinct buffer name even
-when multiple TODO headings spawn agents with the same tag.
-
-The format is *gptel:TAG-HASH* where HASH is a 6-character hex
-string."
-  (let* ((path-str
-          (with-current-buffer base-buffer
-            (save-excursion
-              (goto-char heading-pos)
-              (let ((path (org-get-outline-path t)))
-                (mapconcat #'identity path "/")))))
-         (hash (substring (md5 (concat (buffer-name base-buffer) ":" path-str))
-                          0 6)))
-    (format "*gptel:%s-%s*" tag hash)))
+Deprecated shim — delegates to `gptel-org-ib-compute-name' in the
+`gptel-indirect-buffer' module, which is the canonical generator
+for agent, reasoning, and tool indirect buffer names."
+  (gptel-org-ib-compute-name base-buffer heading-pos tag))
 
 (defun gptel-org-agent--open-indirect-buffer (base-buffer heading-marker)
   "Open an indirect buffer narrowed to the agent subtree.
@@ -2182,7 +2169,7 @@ buffer, or nil if none found."
           (let ((tag (cl-find-if #'gptel-org-agent--agent-tag-p
                                  (org-get-tags nil t))))
             (when tag
-              (let* ((buf-name (gptel-org-agent--indirect-buffer-name
+              (let* ((buf-name (gptel-org-ib-compute-name
                                 base-buffer (point) tag))
                      (buf (get-buffer buf-name)))
                 (when (and buf (buffer-live-p buf))
@@ -2218,7 +2205,7 @@ level."
                           (re-search-forward org-heading-regexp nil t))
                 (beginning-of-line)
                 (when (member parent-tag (org-get-tags nil t))
-                  (let* ((buf-name (gptel-org-agent--indirect-buffer-name
+                  (let* ((buf-name (gptel-org-ib-compute-name
                                     base (point) parent-tag))
                          (buf (get-buffer buf-name)))
                     (when (and buf (buffer-live-p buf))

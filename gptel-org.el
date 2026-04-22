@@ -154,6 +154,7 @@ FORMAT-STRING and ARGS are passed to `format'."
 (declare-function org-end-of-subtree "org")
 (declare-function gptel-org-ib-create "gptel-indirect-buffer")
 (declare-function gptel-org-ib-close "gptel-indirect-buffer")
+(declare-function gptel-org-ib-compute-name "gptel-indirect-buffer")
 
 ;; Bundle `org-element-lineage-map' if it's not available (for Org 9.67 or older)
 (eval-and-compile
@@ -2464,8 +2465,8 @@ Returns the indirect buffer, or nil if creation failed."
   (condition-case err
       (let* ((base-buf (or (buffer-base-buffer (current-buffer))
                            (current-buffer)))
-             (buf-name (format "*gptel-reasoning:%s*"
-                               (buffer-name (current-buffer))))
+             (buf-name (gptel-org-ib-compute-name
+                        base-buf reasoning-heading-pos "reasoning"))
              indirect-buf)
         (gptel-org--debug
          "reasoning IB create: base-buf=%S buf-name=%S"
@@ -2562,8 +2563,8 @@ Returns the indirect buffer, or nil if creation failed."
   (condition-case err
       (let* ((base-buf (or (buffer-base-buffer (current-buffer))
                            (current-buffer)))
-             (buf-name (format "*gptel-tool:%s*"
-                               (buffer-name (current-buffer))))
+             (buf-name (gptel-org-ib-compute-name
+                        base-buf tool-heading-pos "tool"))
              indirect-buf)
         (gptel-org--debug
          "tool IB create: base-buf=%S buf-name=%S"
