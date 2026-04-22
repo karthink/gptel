@@ -221,6 +221,29 @@ longer live.  Returns the number of entries removed."
     (length dead-names)))
 
 
+;;; ---- Canonical Resolvers -------------------------------------------------
+
+(defun gptel-org-ib-parent (ib)
+  "Return the logical parent of indirect buffer IB.
+
+If IB's node has a parent node, return that node.  Otherwise, return
+the base buffer object (IB is a top-level task whose logical parent is
+the base buffer itself).
+
+Signals a `user-error' if IB is not a registered gptel indirect buffer,
+since the canonical resolver API forbids silent fallbacks.
+
+IB may be a buffer object or a buffer name string."
+  (let* ((name (cond ((bufferp ib) (buffer-name ib))
+                     ((stringp ib) ib)
+                     (t (user-error "gptel-org-ib-parent: invalid IB: %S" ib))))
+         (node (gptel-org-ib--get-node name)))
+    (unless node
+      (user-error "gptel-org-ib-parent: not a registered gptel IB: %s" name))
+    (or (gptel-org-ib-node-parent node)
+        (gptel-org-ib-node-base node))))
+
+
 ;;; ---- Utility Functions ----------------------------------------------------
 
 (defun gptel-org-ib-base-buffer (indirect-buffer)

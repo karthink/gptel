@@ -783,6 +783,38 @@ Assertions on close (of B):
        (should-not (memq node-b (gptel-org-ib-node-children node-a)))))))
 
 
+(ert-deftest ib-parent-returns-node-or-base ()
+  "`gptel-org-ib-parent' returns parent node, or base buffer when parent is nil.
+
+- For a top-level IB (node.parent is nil) it returns the base buffer.
+- For a nested IB it returns the parent node struct."
+  (gptel-org-ib-test-with-buffer
+      "* A  :main@agent:\n** B  :researcher@main@agent:\nb body\n"
+    (gptel-org-ib-test-with-cleanup
+     (let* ((base (current-buffer))
+            (pos-a (progn (goto-char (point-min))
+                          (re-search-forward "^\\* A")
+                          (beginning-of-line)
+                          (point)))
+            (pos-b (progn (goto-char (point-min))
+                          (re-search-forward "^\\*\\* B")
+                          (beginning-of-line)
+                          (point)))
+            (ib-a (gptel-org-ib-create base pos-a))
+            (ib-b (with-current-buffer ib-a
+                    (gptel-org-ib-create base pos-b)))
+            (node-a (gptel-org-ib--get-node (buffer-name ib-a))))
+       ;; Top-level IB: parent-slot is nil, resolver returns BASE buffer.
+       (should (eq (gptel-org-ib-parent ib-a) base))
+       ;; Nested IB: resolver returns the parent node struct.
+       (should (eq (gptel-org-ib-parent ib-b) node-a))
+       ;; Accepts a buffer-name string too.
+       (should (eq (gptel-org-ib-parent (buffer-name ib-a)) base))
+       ;; Unregistered buffer → user-error.
+       (should-error (gptel-org-ib-parent "*nonexistent-gptel-ib*")
+                     :type 'user-error)))))
+
+
 ;;; ---- Heading Navigation ---------------------------------------------------
 
 (ert-deftest gptel-org-ib-test-find-user-task-heading-walks-up ()

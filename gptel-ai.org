@@ -711,7 +711,7 @@ pure refactor with passthrough shims for existing callers.
 Expose a closed set of resolver functions; forbid direct access
 elsewhere.  Each API function is one line of responsibility.
 
-**** TODO IB-2.1 =gptel-org-ib-parent (ib)= → node-or-base-buffer
+**** DONE IB-2.1 =gptel-org-ib-parent (ib)= → node-or-base-buffer
 - return: parent node, or base buffer object when parent is nil.
 - test: =ib-parent-returns-node-or-base=.
 
