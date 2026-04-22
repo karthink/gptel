@@ -666,7 +666,7 @@ Foundation. Replace plist registry entries with a typed struct that
 carries explicit parent/children links. No behavioral change yet —
 pure refactor with passthrough shims for existing callers.
 
-**** TODO IB-1.1 Define =cl-defstruct gptel-org-ib-node=
+**** DONE IB-1.1 Define =cl-defstruct gptel-org-ib-node=
 - files: =gptel-indirect-buffer.el= (new defstruct near top, ~L80)
 - change: slots =buffer= =base= =parent= =children= =heading-marker=
   =end-marker= =tag= =hash=.  =parent= is another node or nil (nil ⇒
