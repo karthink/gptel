@@ -81,6 +81,47 @@
 (defvar gptel-org-agent--narrow-end-marker)
 
 
+;;; ---- Canonical Node Struct ------------------------------------------------
+
+(cl-defstruct gptel-org-ib-node
+  "Canonical record for a tracked gptel indirect-buffer node.
+
+A node represents one AI task's indirect buffer along with the
+information needed to re-narrow, re-create, and reason about its
+position within an org tree.
+
+Slots:
+  BUFFER         The indirect buffer object (or nil if not yet
+                 created / already killed).
+  BASE           The base (root) org buffer that BUFFER is indirect of.
+                 For the tree root node this is the org file buffer
+                 itself.
+  PARENT         Another `gptel-org-ib-node' that owns this node in
+                 the task hierarchy, or nil.  A nil PARENT means the
+                 parent is the BASE buffer directly (i.e. this node
+                 is a top-level task in the file).
+  CHILDREN       List of child `gptel-org-ib-node' instances whose
+                 PARENT is this node.  May be nil.
+  HEADING-MARKER Marker at the start of this node's org heading in
+                 BASE.  Shared with BUFFER because indirect buffers
+                 share markers with their base.
+  END-MARKER     Marker at the end of this node's subtree in BASE,
+                 typically created with insertion-type t so it
+                 auto-expands as content is appended.
+  TAG            Agent tag string for this node (e.g. \"main@agent\"),
+                 used to build the indirect buffer name and to
+                 recognize agent-owned headings.
+  HASH           Opaque content/identity hash for integrity checks
+                 and fast equality comparisons; may be nil when not
+                 yet computed.
+
+This struct is the target representation for the indirect-buffer
+canonical refactor.  During the migration it coexists with the
+plist-based `gptel-org-ib--registry' entries; later phases will
+replace the plists with these nodes."
+  buffer base parent children heading-marker end-marker tag hash)
+
+
 ;;; ---- Tracking Registry ----------------------------------------------------
 
 (defvar gptel-org-ib--registry (make-hash-table :test 'equal)

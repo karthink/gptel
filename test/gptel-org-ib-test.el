@@ -50,6 +50,60 @@ Protects tests against leaks from registered IBs they created."
          (when (buffer-live-p buf) (kill-buffer buf))))))
 
 
+;;; ---- Canonical Node Struct ------------------------------------------------
+
+(ert-deftest ib-node-struct-roundtrip ()
+  "Construct a `gptel-org-ib-node' and read each slot back.
+Also verify the type predicate accepts the instance and rejects
+non-nodes."
+  (let* ((base-buf    (generate-new-buffer " *ib-node-rt-base*"))
+         (ind-buf     (generate-new-buffer " *ib-node-rt-ind*"))
+         (parent-node (make-gptel-org-ib-node :tag "parent@agent"))
+         (child-a     (make-gptel-org-ib-node :tag "child-a@agent"))
+         (child-b     (make-gptel-org-ib-node :tag "child-b@agent"))
+         (hm          (with-current-buffer base-buf
+                        (copy-marker (point-min))))
+         (em          (with-current-buffer base-buf
+                        (let ((m (copy-marker (point-max))))
+                          (set-marker-insertion-type m t)
+                          m)))
+         (node (make-gptel-org-ib-node
+                :buffer         ind-buf
+                :base           base-buf
+                :parent         parent-node
+                :children       (list child-a child-b)
+                :heading-marker hm
+                :end-marker     em
+                :tag            "main@agent"
+                :hash           "deadbeef")))
+    (unwind-protect
+        (progn
+          ;; Predicate
+          (should (gptel-org-ib-node-p node))
+          (should (gptel-org-ib-node-p parent-node))
+          (should-not (gptel-org-ib-node-p nil))
+          (should-not (gptel-org-ib-node-p '(:buffer foo)))
+          (should-not (gptel-org-ib-node-p "not-a-node"))
+          ;; Accessors
+          (should (eq  (gptel-org-ib-node-buffer         node) ind-buf))
+          (should (eq  (gptel-org-ib-node-base           node) base-buf))
+          (should (eq  (gptel-org-ib-node-parent         node) parent-node))
+          (should (equal (gptel-org-ib-node-children     node)
+                         (list child-a child-b)))
+          (should (eq  (gptel-org-ib-node-heading-marker node) hm))
+          (should (eq  (gptel-org-ib-node-end-marker     node) em))
+          (should (equal (gptel-org-ib-node-tag          node) "main@agent"))
+          (should (equal (gptel-org-ib-node-hash         node) "deadbeef"))
+          ;; parent=nil convention: a freshly-constructed node with no
+          ;; :parent has nil parent, meaning "parent is the base buffer".
+          (should-not (gptel-org-ib-node-parent
+                       (make-gptel-org-ib-node :tag "top"))))
+      (when (marker-buffer hm) (set-marker hm nil))
+      (when (marker-buffer em) (set-marker em nil))
+      (when (buffer-live-p ind-buf)  (kill-buffer ind-buf))
+      (when (buffer-live-p base-buf) (kill-buffer base-buf)))))
+
+
 ;;; ---- Tracking Registry ----------------------------------------------------
 
 (ert-deftest gptel-org-ib-test-registry-register-and-get ()
