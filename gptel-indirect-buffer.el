@@ -261,6 +261,80 @@ IB may be a buffer object or a buffer name string."
       (user-error "gptel-org-ib-children: not a registered gptel IB: %s" name))
     (gptel-org-ib-node-children node)))
 
+(defun gptel-org-ib-base (ib)
+  "Return the base buffer of indirect buffer IB.
+
+Walks the registry's parent chain — never calls `buffer-base-buffer'
+directly.  Starting from IB's node, follows each node's `:parent' link
+until a nil parent is found; the resulting node's `:base' slot is the
+base buffer object.  For nested IB-of-IB, this yields the same base
+buffer for every node in the chain (the parent pointer chain always
+terminates at a top-level node whose `:base' is the real file buffer).
+
+Includes a cycle guard that signals `error' if the parent chain
+exceeds a fixed iteration limit, defending against corrupt registry
+state that would otherwise loop forever.
+
+Signals a `user-error' if IB is not a registered gptel indirect buffer,
+since the canonical resolver API forbids silent fallbacks.
+
+IB may be a buffer object or a buffer name string."
+  (let* ((name (cond ((bufferp ib) (buffer-name ib))
+                     ((stringp ib) ib)
+                     (t (user-error "gptel-org-ib-base: invalid IB: %S" ib))))
+         (node (gptel-org-ib--get-node name)))
+    (unless node
+      (user-error "gptel-org-ib-base: not a registered gptel IB: %s" name))
+    ;; Walk node.parent chain; cap iterations to detect cycles.
+    (let ((cur node)
+          (guard 0)
+          (limit 1024))
+      (while (let ((parent (gptel-org-ib-node-parent cur)))
+               (and (gptel-org-ib-node-p parent)
+                    (progn (setq cur parent) t)))
+        (setq guard (1+ guard))
+        (when (> guard limit)
+          (error "gptel-org-ib-base: parent chain exceeds %d nodes \
+(corrupt registry or cycle at %s)" limit name)))
+      (gptel-org-ib-node-base cur))))
+
+(defun gptel-org-ib-bounds (ib)
+  "Return the bounds of indirect buffer IB as a cons (START . END).
+
+START and END are integer positions in IB's parent buffer — the
+buffer returned by `gptel-org-ib-parent' — taken directly from the
+node's `:heading-marker' and `:end-marker' slots.  This resolver
+never consults IB's narrowing (`point-min'/`point-max') nor calls
+`buffer-base-buffer'; the registry markers are the single source of
+truth for the subtree region.
+
+For a top-level IB the parent buffer is the base file buffer, so
+the positions are absolute positions in that file.  For a nested
+IB-of-IB the positions are still valid in the shared base buffer
+(markers are shared across indirect buffers), which is the same
+buffer that holds the parent IB's text — see `gptel-org-ib-parent'.
+
+Signals a `user-error' if IB is not a registered gptel indirect
+buffer, or if either marker is missing or has been cleared (for
+example, after `gptel-org-ib-unregister' ran).  The canonical
+resolver API forbids silent fallbacks, so callers must handle the
+error rather than receive stale bounds.
+
+IB may be a buffer object or a buffer name string."
+  (let* ((name (cond ((bufferp ib) (buffer-name ib))
+                     ((stringp ib) ib)
+                     (t (user-error "gptel-org-ib-bounds: invalid IB: %S" ib))))
+         (node (gptel-org-ib--get-node name)))
+    (unless node
+      (user-error "gptel-org-ib-bounds: not a registered gptel IB: %s" name))
+    (let ((hm (gptel-org-ib-node-heading-marker node))
+          (em (gptel-org-ib-node-end-marker node)))
+      (unless (and (markerp hm) (marker-position hm))
+        (user-error "gptel-org-ib-bounds: missing heading-marker for %s" name))
+      (unless (and (markerp em) (marker-position em))
+        (user-error "gptel-org-ib-bounds: missing end-marker for %s" name))
+      (cons (marker-position hm) (marker-position em)))))
+
 
 ;;; ---- Utility Functions ----------------------------------------------------
 

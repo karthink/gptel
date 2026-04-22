@@ -718,11 +718,11 @@ elsewhere.  Each API function is one line of responsibility.
 **** DONE IB-2.2 =gptel-org-ib-children (ib)= → list of nodes
 - test: =ib-children-returns-registered-list=.
 
-**** TODO IB-2.3 =gptel-org-ib-base (ib)= → base buffer
+**** DONE IB-2.3 =gptel-org-ib-base (ib)= → base buffer
 - change: walk parent chain, never call =buffer-base-buffer= directly.
 - test: =ib-base-walks-chain= for nested IB of IB.
 
-**** TODO IB-2.4 =gptel-org-ib-bounds (ib)= → (start . end) in parent
+**** DONE IB-2.4 =gptel-org-ib-bounds (ib)= → (start . end) in parent
 - change: read from node's heading-marker and end-marker only.
 - test: =ib-bounds-matches-narrowing=.
 

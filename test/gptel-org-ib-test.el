@@ -853,6 +853,162 @@ Assertions on close (of B):
        (should-error (gptel-org-ib-children "*nonexistent-gptel-ib*")
                      :type 'user-error)))))
 
+(ert-deftest ib-base-walks-chain ()
+  "`gptel-org-ib-base' walks the registry parent chain to the base buffer.
+
+Creates a nested IB-of-IB (B inside A, both backed by the same base
+file buffer) and verifies that `gptel-org-ib-base' returns the base
+buffer for both the outer IB and the nested IB — by traversing the
+node.parent chain in the registry, not by calling `buffer-base-buffer'
+on the indirect buffer.
+
+Also verifies:
+- Accepts both a buffer object and a buffer-name string.
+- Signals `user-error' for buffers that are not registered gptel IBs."
+  (gptel-org-ib-test-with-buffer
+      "* A  :main@agent:\n** B  :researcher@main@agent:\nb body\n"
+    (gptel-org-ib-test-with-cleanup
+     (let* ((base (current-buffer))
+            (pos-a (progn (goto-char (point-min))
+                          (re-search-forward "^\\* A")
+                          (beginning-of-line)
+                          (point)))
+            (pos-b (progn (goto-char (point-min))
+                          (re-search-forward "^\\*\\* B")
+                          (beginning-of-line)
+                          (point)))
+            (ib-a (gptel-org-ib-create base pos-a))
+            (ib-b (with-current-buffer ib-a
+                    (gptel-org-ib-create base pos-b))))
+       ;; Sanity check: nested IB's node.parent points at the outer
+       ;; node (not at the base buffer), so the resolver must walk up.
+       (let ((node-a (gptel-org-ib--get-node (buffer-name ib-a)))
+             (node-b (gptel-org-ib--get-node (buffer-name ib-b))))
+         (should (eq (gptel-org-ib-node-parent node-b) node-a))
+         (should (null (gptel-org-ib-node-parent node-a))))
+       ;; Top-level IB resolves to base directly.
+       (should (eq base (gptel-org-ib-base ib-a)))
+       ;; Nested IB walks the chain to the same base.
+       (should (eq base (gptel-org-ib-base ib-b)))
+       ;; Accepts a buffer-name string.
+       (should (eq base (gptel-org-ib-base (buffer-name ib-b))))
+       ;; The resolver must NOT rely on `buffer-base-buffer' — shadow
+       ;; it with a signalling stub and confirm the result is unchanged.
+       (cl-letf (((symbol-function 'buffer-base-buffer)
+                  (lambda (&rest _)
+                    (error "buffer-base-buffer must not be called"))))
+         (should (eq base (gptel-org-ib-base ib-b)))
+         (should (eq base (gptel-org-ib-base ib-a))))
+       ;; Unregistered buffer → user-error.
+       (should-error (gptel-org-ib-base "*nonexistent-gptel-ib*")
+                     :type 'user-error)
+       ;; Invalid IB argument → user-error.
+       (should-error (gptel-org-ib-base 42) :type 'user-error)))))
+
+
+(ert-deftest ib-bounds-matches-narrowing ()
+  "`gptel-org-ib-bounds' reads only from the node's heading/end markers.
+
+For every registered IB the returned (START . END) must equal the
+IB's current narrowing — i.e. `point-min' and `point-max' observed
+inside the indirect buffer — and the positions must be expressed in
+the IB's parent buffer (the base file buffer for a top-level IB, the
+same base buffer for a nested IB).
+
+Also verifies:
+- Accepts both a buffer object and a buffer-name string.
+- The resolver reads from the node's `:heading-marker'/`:end-marker'
+  slots only: shadowing `buffer-base-buffer', `point-min' and
+  `point-max' with signalling stubs must not change the result.
+- Works for nested IB-of-IB (both bounds resolvable, independent).
+- Expanding the `:end-marker' (insertion-type=t behaviour) is
+  reflected in the bounds, matching the updated narrowing.
+- Signals `user-error' for unregistered buffers, invalid arguments,
+  and for nodes whose markers have been cleared."
+  (gptel-org-ib-test-with-buffer
+      "* A  :main@agent:\nA body\n** B  :researcher@main@agent:\nb body\n* C\nc body\n"
+    (gptel-org-ib-test-with-cleanup
+     (let* ((base (current-buffer))
+            (pos-a (progn (goto-char (point-min))
+                          (re-search-forward "^\\* A")
+                          (beginning-of-line)
+                          (point)))
+            (pos-b (progn (goto-char (point-min))
+                          (re-search-forward "^\\*\\* B")
+                          (beginning-of-line)
+                          (point)))
+            (ib-a (gptel-org-ib-create base pos-a))
+            (ib-b (with-current-buffer ib-a
+                    (gptel-org-ib-create base pos-b))))
+       ;; --- Top-level IB: bounds match its narrowing in the base buffer.
+       (let ((bounds (gptel-org-ib-bounds ib-a)))
+         (should (consp bounds))
+         (should (integerp (car bounds)))
+         (should (integerp (cdr bounds)))
+         (should (= (car bounds)
+                    (with-current-buffer ib-a (point-min))))
+         (should (= (cdr bounds)
+                    (with-current-buffer ib-a (point-max))))
+         ;; START is the heading position in the parent (= base) buffer.
+         (should (= (car bounds) pos-a)))
+       ;; --- Nested IB: same bounds convention; positions are in the
+       ;; shared base buffer (which is ib-b's parent buffer in the
+       ;; Emacs sense — indirect-of-indirect is flattened to root).
+       (let ((bounds (gptel-org-ib-bounds ib-b)))
+         (should (= (car bounds)
+                    (with-current-buffer ib-b (point-min))))
+         (should (= (cdr bounds)
+                    (with-current-buffer ib-b (point-max))))
+         (should (= (car bounds) pos-b)))
+       ;; --- Accepts a buffer-name string.
+       (should (equal (gptel-org-ib-bounds ib-a)
+                      (gptel-org-ib-bounds (buffer-name ib-a))))
+       ;; --- Resolver must read markers ONLY.  Shadow
+       ;; `buffer-base-buffer' with a signalling stub and confirm the
+       ;; result is unchanged — the resolver cannot be consulting the
+       ;; indirect buffer's base chain to reconstruct bounds.
+       (let ((expected-a (gptel-org-ib-bounds ib-a))
+             (expected-b (gptel-org-ib-bounds ib-b)))
+         (cl-letf (((symbol-function 'buffer-base-buffer)
+                    (lambda (&rest _)
+                      (error "buffer-base-buffer must not be called"))))
+           (should (equal expected-a (gptel-org-ib-bounds ib-a)))
+           (should (equal expected-b (gptel-org-ib-bounds ib-b)))))
+       ;; --- Resolver must read the registry markers directly.
+       ;; Mutating the IB's narrowing (widen) must NOT change the
+       ;; bounds, since bounds come from `:heading-marker'/`:end-marker'
+       ;; and not from `point-min'/`point-max' of the indirect buffer.
+       (let ((expected (gptel-org-ib-bounds ib-a)))
+         (with-current-buffer ib-a
+           (save-restriction
+             (widen)
+             (should (equal expected (gptel-org-ib-bounds ib-a))))))
+       ;; --- Expanding end-marker: inserting text inside the IB (at
+       ;; its point-max) advances the end-marker (insertion-type=t),
+       ;; and the bounds reflect that, continuing to match narrowing.
+       (let ((before (gptel-org-ib-bounds ib-a)))
+         (with-current-buffer ib-a
+           (goto-char (point-max))
+           (insert "extra streamed text\n"))
+         (let ((after (gptel-org-ib-bounds ib-a)))
+           (should (= (car after) (car before)))
+           (should (> (cdr after) (cdr before)))
+           (should (= (car after)
+                      (with-current-buffer ib-a (point-min))))
+           (should (= (cdr after)
+                      (with-current-buffer ib-a (point-max))))))
+       ;; --- Cleared markers: unregister ib-b and confirm a lookup
+       ;; by its (now stale) buffer name signals a user-error rather
+       ;; than returning silently stale bounds.
+       (let ((name-b (buffer-name ib-b)))
+         (gptel-org-ib-unregister name-b)
+         (should-error (gptel-org-ib-bounds name-b) :type 'user-error))
+       ;; --- Unregistered buffer → user-error.
+       (should-error (gptel-org-ib-bounds "*nonexistent-gptel-ib*")
+                     :type 'user-error)
+       ;; --- Invalid IB argument → user-error.
+       (should-error (gptel-org-ib-bounds 42) :type 'user-error)))))
+
 
 ;;; ---- Heading Navigation ---------------------------------------------------
 
