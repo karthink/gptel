@@ -125,14 +125,16 @@ replace the plists with these nodes."
 ;;; ---- Tracking Registry ----------------------------------------------------
 
 (defvar gptel-org-ib--registry (make-hash-table :test 'equal)
-  "Hash table mapping buffer-name -> plist of indirect buffer metadata.
+  "Hash table mapping buffer-name -> `gptel-org-ib-node' struct.
 
-Each entry stores:
-  :buffer          - the indirect buffer object
-  :base            - the base (root) org buffer
-  :heading-marker  - marker at the start of the heading in the base buffer
-  :end-marker      - marker at the end of the subtree (insertion-type t)
-  :tag             - the agent tag string (e.g., \"main@agent\")")
+Each entry is a `gptel-org-ib-node' carrying the node's indirect
+buffer, base buffer, parent/children links in the task hierarchy,
+heading and end markers in the base buffer, and agent tag.  See the
+`gptel-org-ib-node' defstruct for slot documentation.
+
+The public `gptel-org-ib-get' accessor returns a plist-shaped view
+for backward compatibility; internal callers that need the node
+should use `gptel-org-ib--get-node'.")
 
 (defun gptel-org-ib-register (name indirect-buffer base-buffer
                                    heading-marker end-marker tag)
@@ -143,42 +145,63 @@ INDIRECT-BUFFER is the indirect buffer object.
 BASE-BUFFER is the root org buffer.
 HEADING-MARKER is a marker at the heading start in the base buffer.
 END-MARKER is the end-of-subtree marker (insertion-type t).
-TAG is the agent tag string."
-  (puthash name
-           (list :buffer indirect-buffer
-                 :base base-buffer
-                 :heading-marker heading-marker
-                 :end-marker end-marker
-                 :tag tag)
-           gptel-org-ib--registry)
-  (gptel-org--debug "org-ib register: %S (tag=%S)" name tag))
+TAG is the agent tag string.
+
+Constructs a fresh `gptel-org-ib-node' with no parent/children links
+and stores it under NAME.  Callers that need parent/children links
+should construct and register the node directly (see
+`gptel-org-ib-create')."
+  (let ((node (make-gptel-org-ib-node
+               :buffer indirect-buffer
+               :base base-buffer
+               :heading-marker heading-marker
+               :end-marker end-marker
+               :tag tag)))
+    (puthash name node gptel-org-ib--registry)
+    (gptel-org--debug "org-ib register: %S (tag=%S)" name tag)))
 
 (defun gptel-org-ib-unregister (name)
   "Remove an indirect buffer entry from the registry and clean up markers.
 
-NAME is the buffer name (string).  Cleans up heading-marker and
-end-marker by setting them to nil before removing the entry."
-  (let ((entry (gethash name gptel-org-ib--registry)))
-    (when entry
-      (let ((hm (plist-get entry :heading-marker))
-            (em (plist-get entry :end-marker)))
-        (when (markerp hm) (set-marker hm nil))
-        (when (markerp em) (set-marker em nil)))
-      (remhash name gptel-org-ib--registry)
-      (gptel-org--debug "org-ib unregister: %S" name))))
+NAME is the buffer name (string).  Clears heading-marker and
+end-marker (sets them to nil), splices this node out of its parent's
+children list (if any), and removes the entry from the registry."
+  (when-let* ((node (gethash name gptel-org-ib--registry)))
+    (when-let* ((parent (gptel-org-ib-node-parent node)))
+      (setf (gptel-org-ib-node-children parent)
+            (delq node (gptel-org-ib-node-children parent))))
+    (let ((hm (gptel-org-ib-node-heading-marker node))
+          (em (gptel-org-ib-node-end-marker node)))
+      (when (markerp hm) (set-marker hm nil))
+      (when (markerp em) (set-marker em nil)))
+    (remhash name gptel-org-ib--registry)
+    (gptel-org--debug "org-ib unregister: %S" name)))
 
 (defun gptel-org-ib-get (name)
-  "Get the registry entry for NAME.
+  "Get the registry entry for NAME as a plist.
 
-Returns the plist (:buffer :base :heading-marker :end-marker :tag)
-or nil if NAME is not registered."
+Returns a plist with keys :buffer :base :heading-marker :end-marker
+:tag constructed from the underlying `gptel-org-ib-node', or nil if
+NAME is not registered.
+
+This is a backward-compatibility shim.  New code should use
+`gptel-org-ib--get-node' to access the node struct directly."
+  (when-let* ((node (gethash name gptel-org-ib--registry)))
+    (list :buffer         (gptel-org-ib-node-buffer node)
+          :base           (gptel-org-ib-node-base node)
+          :heading-marker (gptel-org-ib-node-heading-marker node)
+          :end-marker     (gptel-org-ib-node-end-marker node)
+          :tag            (gptel-org-ib-node-tag node))))
+
+(defun gptel-org-ib--get-node (name)
+  "Return the `gptel-org-ib-node' registered under NAME, or nil."
   (gethash name gptel-org-ib--registry))
 
 (defun gptel-org-ib-all-for-base (base-buffer)
   "Return list of all registered indirect buffer names for BASE-BUFFER."
   (let (result)
-    (maphash (lambda (name entry)
-               (when (eq (plist-get entry :base) base-buffer)
+    (maphash (lambda (name node)
+               (when (eq (gptel-org-ib-node-base node) base-buffer)
                  (push name result)))
              gptel-org-ib--registry)
     (nreverse result)))
@@ -186,11 +209,11 @@ or nil if NAME is not registered."
 (defun gptel-org-ib-cleanup-dead ()
   "Remove registry entries for dead (killed) buffers.
 
-Iterates the registry and unregisters any entry whose :buffer is no
+Iterates the registry and unregisters any entry whose buffer is no
 longer live.  Returns the number of entries removed."
   (let ((dead-names nil))
-    (maphash (lambda (name entry)
-               (unless (buffer-live-p (plist-get entry :buffer))
+    (maphash (lambda (name node)
+               (unless (buffer-live-p (gptel-org-ib-node-buffer node))
                  (push name dead-names)))
              gptel-org-ib--registry)
     (dolist (name dead-names)
