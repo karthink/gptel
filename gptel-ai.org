@@ -661,7 +661,7 @@ Target design: [[file:gptel-indirect-buffer-ai.org::#target-design][gptel-indire
 Work bottom-up: complete each leaf (⇒ has test), then its parent phase.
 Each leaf lists /files/, /change/, /accept/ (acceptance), /test/.
 
-*** TODO Phase IB-1: Canonical IB node and registry
+*** DONE Phase IB-1: Canonical IB node and registry
 Foundation. Replace plist registry entries with a typed struct that
 carries explicit parent/children links. No behavioral change yet —
 pure refactor with passthrough shims for existing callers.
@@ -676,7 +676,7 @@ pure refactor with passthrough shims for existing callers.
 - test: =test/gptel-org-ib-test.el= — new =ert-deftest
   ib-node-struct-roundtrip= creating a node and reading each slot.
 
-**** TODO IB-1.2 Migrate registry to store nodes
+**** DONE IB-1.2 Migrate registry to store nodes
 - files: =gptel-indirect-buffer.el= L86-142 (=gptel-org-ib-register=,
   =-unregister=, =-get=, =-all-for-base=).
 - change: registry hash table maps buffer-name → node struct.  Keep
@@ -685,7 +685,7 @@ pure refactor with passthrough shims for existing callers.
 - accept: all existing callers still work unchanged.
 - test: existing tests in =gptel-org-ib-test.el= pass unmodified.
 
-**** TODO IB-1.3 Maintain parent/children links on create/close
+**** DONE IB-1.3 Maintain parent/children links on create/close
 - files: =gptel-indirect-buffer.el= L549-660.
 - change: on create, determine parent by walking enclosing IBs from
   =current-buffer= at call time; push new node onto parent.children.
@@ -696,7 +696,7 @@ pure refactor with passthrough shims for existing callers.
 - test: new =ert-deftest ib-parent-child-links= in
   =gptel-org-ib-test.el= exercising create/close sequences.
 
-**** TODO IB-1.4 Unify hashed buffer-name generator
+**** DONE IB-1.4 Unify hashed buffer-name generator
 - files: move =gptel-org-agent--indirect-buffer-name= from
   =gptel-org-agent.el= L443-461 into =gptel-indirect-buffer.el= as
   =gptel-org-ib-compute-name= (public).
