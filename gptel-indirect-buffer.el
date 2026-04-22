@@ -633,13 +633,20 @@ Returns the indirect buffer."
                 heading-pos))
          ;; Resolve to the root base buffer (handles indirect-of-indirect)
          (root-buf (gptel-org-ib-base-buffer base-buffer))
+         ;; Capture the parent node BEFORE creating the indirect buffer.
+         ;; `current-buffer' at call time is the enclosing indirect buffer
+         ;; if registered; a nil parent-node means the parent is the base
+         ;; buffer directly (top-level task in the file).
+         (parent-node (gptel-org-ib--get-node
+                       (buffer-name (current-buffer))))
          ;; Extract tag for naming (skip when name is provided —
          ;; avoids dependency on gptel-org-agent for non-agent callers)
-         (tag (unless name
-                (gptel-org-ib--extract-tag-at root-buf pos)))
+         (resolved-tag (unless name
+                         (gptel-org-ib--extract-tag-at root-buf pos)))
          ;; Compute buffer name
          (buf-name (or name
-                       (gptel-org-agent--indirect-buffer-name root-buf pos tag)))
+                       (gptel-org-agent--indirect-buffer-name
+                        root-buf pos resolved-tag)))
          ;; Compute subtree region
          (region (gptel-org-ib--compute-subtree-region root-buf pos))
          (beg (car region))
@@ -656,7 +663,7 @@ Returns the indirect buffer."
                            (copy-marker beg)))
          indirect-buf)
     (gptel-org--debug "org-ib create: tag=%S region=[%d,%d] name=%S"
-                      tag beg end buf-name)
+                      resolved-tag beg end buf-name)
     ;; Kill any existing buffer with this name (same heading re-sent)
     (when-let* ((existing (get-buffer buf-name)))
       (gptel-org-ib-unregister buf-name)
@@ -670,9 +677,26 @@ Returns the indirect buffer."
       ;; Narrow to the subtree
       (narrow-to-region beg end-marker)
       (goto-char (point-min)))
-    ;; Register in the tracking table
-    (gptel-org-ib-register buf-name indirect-buf root-buf
-                           heading-marker end-marker tag)
+    ;; Register in the tracking table with parent/children links wired up.
+    ;; We construct the node directly (rather than calling
+    ;; `gptel-org-ib-register') so that the parent slot is populated
+    ;; atomically with insertion and we can push onto the parent's
+    ;; children list.
+    (let ((node (make-gptel-org-ib-node
+                 :buffer indirect-buf
+                 :base root-buf
+                 :parent parent-node
+                 :heading-marker heading-marker
+                 :end-marker end-marker
+                 :tag resolved-tag)))
+      (when parent-node
+        (push node (gptel-org-ib-node-children parent-node)))
+      (puthash buf-name node gptel-org-ib--registry)
+      (gptel-org--debug
+       "org-ib register: %S (tag=%S parent=%S)"
+       buf-name resolved-tag
+       (when parent-node
+         (buffer-name (gptel-org-ib-node-buffer parent-node)))))
     (gptel-org--debug "org-ib create: created buffer %S" buf-name)
     indirect-buf))
 

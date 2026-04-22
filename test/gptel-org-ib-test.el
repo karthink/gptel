@@ -704,6 +704,54 @@ Order of headings: parent, existing child, new heading, FEEDBACK."
        (should-not (gptel-org-ib-valid-p ib))))))
 
 
+(ert-deftest ib-parent-child-links ()
+  "Creating nested IBs wires parent/children; closing child unwires them.
+
+Scenario:
+  - Base buffer with nested headings A (outer) and B (inner, under A).
+  - Create IB A from the base buffer (parent-node is nil, since the
+    current buffer at call time is the base).
+  - Switch INTO IB A and create IB B from there (parent-node is node-A).
+
+Assertions on create:
+  - node-A has nil parent (top-level).
+  - node-B has parent eq node-A.
+  - node-A.children contains node-B.
+
+Assertions on close (of B):
+  - node-A.children no longer contains node-B.
+  - node-B is no longer in the registry."
+  (gptel-org-ib-test-with-buffer
+      "* A  :main@agent:\n** B  :researcher@main@agent:\nb body\n"
+    (gptel-org-ib-test-with-cleanup
+     (let* ((base (current-buffer))
+            (pos-a (progn (goto-char (point-min))
+                          (re-search-forward "^\\* A")
+                          (beginning-of-line)
+                          (point)))
+            (pos-b (progn (goto-char (point-min))
+                          (re-search-forward "^\\*\\* B")
+                          (beginning-of-line)
+                          (point)))
+            (ib-a (gptel-org-ib-create base pos-a))
+            ;; Create IB B from inside IB A so parent-node is node-A.
+            (ib-b (with-current-buffer ib-a
+                    (gptel-org-ib-create base pos-b)))
+            (node-a (gptel-org-ib--get-node (buffer-name ib-a)))
+            (node-b (gptel-org-ib--get-node (buffer-name ib-b))))
+       ;; Sanity
+       (should (gptel-org-ib-node-p node-a))
+       (should (gptel-org-ib-node-p node-b))
+       ;; Parent/children wiring
+       (should (null  (gptel-org-ib-node-parent node-a)))
+       (should (eq    (gptel-org-ib-node-parent node-b) node-a))
+       (should (memq  node-b (gptel-org-ib-node-children node-a)))
+       ;; Close B — it should splice itself out of A's children.
+       (gptel-org-ib-close ib-b)
+       (should-not (gptel-org-ib--get-node (buffer-name ib-b)))
+       (should-not (memq node-b (gptel-org-ib-node-children node-a)))))))
+
+
 ;;; ---- Heading Navigation ---------------------------------------------------
 
 (ert-deftest gptel-org-ib-test-find-user-task-heading-walks-up ()
