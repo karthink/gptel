@@ -931,3 +931,100 @@ than hidden behind defensive code that "works but is wrong."
 - =gptel-org-agent--find-parent-indirect-buffer= forward-scans the
   base buffer for a parent tag.  This could use the IB registry
   instead but is low priority (interactive utility).
+
+* Target design (WIP refactor)
+:PROPERTIES:
+:CUSTOM_ID: target-design
+:END:
+
+This section defines the invariants the indirect-buffer (IB) subsystem is
+migrating toward.  Where it conflicts with earlier sections of this
+document, those earlier sections describe the /current/ state and this
+section describes the /target/ state.  Migration TODOs live in
+[[file:gptel-ai.org::*TODOs][gptel-ai.org::*TODOs]] under
+"Indirect-buffer canonical refactor".
+
+** Hard rules
+
+1. Every IB has exactly one /parent/: another IB, or the base buffer.
+2. Every IB tracks its /children/ IBs explicitly (a list in its registry
+   node).  Children links are created/removed transactionally with
+   IB create/close.
+3. Every IB has a unique hashed buffer name of the form
+   =*gptel:<tag>-<hash>*=.  The hash is derived from base buffer name
+   plus full outline path; it survives heading reorder.
+4. The canonical resolution API (=gptel-org-ib-*=) is the ONLY way to
+   resolve:
+   - the parent IB (or base buffer) of an IB,
+   - the location of an IB inside its parent,
+   - the children IBs of an IB,
+   - the =start=, =end=, and current =point= of an IB,
+   - the absolute location of an IB in its base buffer
+     (computed by walking parent links).
+   Direct calls to =buffer-base-buffer=, marker arithmetic, or
+   buffer-local marker variables outside the API are forbidden.
+5. No fallback. Any inconsistency (dead buffer, stale registry entry,
+   missing parent/child link, heading not found at expected position)
+   calls =gptel-org-ib-fatal= which signals =user-error= and aborts
+   the current FSM run.  =ignore-errors= wrappers are not allowed
+   inside the IB module or its callers' IB-related code paths.
+
+** Heading state grammar
+
+The set of TODO-like state keywords that may appear on headings
+inside an agent subtree is closed.  Every heading created by
+gptel falls into exactly one of the categories below.
+
+*** AI-DO family (task state)
+- Only directly under a user-owned =TODO= heading.  AI-DO MUST NOT
+  appear at any deeper level.
+- Lifecycle keywords: =AI-DO=, =AI-DOING=, =AI-DONE= (plus existing
+  =DENIED=/=PENDING=/=ALLOWED= as applicable).
+
+*** REASONING
+- Heading form: =* REASONING <one-line summary>=.
+- The first line of the reasoning body MUST be the heading itself.
+- If the model emits a leading =*= at the start of the body (yielding
+  =** <heading>=), the redundant =*= is stripped so the structure
+  stays single-heading.
+
+*** RESPOND
+- Same rules as REASONING but keyword is =RESPOND=.
+- Example: =* RESPOND Creating new file...=.
+
+*** TERMINE
+- Single empty heading used as a terminator for a subtree.
+- Replaces previous =RESULTS= and =FEEDBACK= terminators.
+- Body must be empty.
+- Removed when the owning task, tool, or agent run completes.
+
+*** Agent tool
+- Heading form: =* <AGENT-STATE> <summary>=, optionally with request
+  prefix: =* <REQ> <AGENT-STATE> <summary>=.
+- =<AGENT-STATE>= is drawn from a triad declared by the agent
+  document itself (see
+  [[file:../gptel-agent/gptel-agent-ai.org][gptel-agent-ai.org]]),
+  e.g. =GATHER= / =GATHERING= / =GATHERED= for the gatherer.
+- =<REQ>= is one of =PENDING=, =ALLOWED=, =DENIED= and is required
+  before execution, dropped after.
+
+*** Other tools
+- Heading form: =* <TOOL-NAME> <args-summary>= (uppercased tool
+  name), optionally prefixed with request state.
+- Example: =* PENDING BASH find . -name ...=.
+
+** Invariants for insertion
+
+- A new AI-DO child is inserted directly under the user's =TODO=,
+  before any existing =TERMINE= sibling.
+- A new REASONING / RESPOND / tool heading is inserted inside the
+  active agent IB, before the subtree's =TERMINE=.
+- Insertion that would place an =AI-DO= deeper than one level under
+  =TODO= is a fatal error.
+
+** Removal rules
+
+- =TERMINE= is removed when its owning subtree reaches a terminal
+  state (=AI-DONE=, tool executed, agent completed).
+- Removing =TERMINE= MUST also close any IBs whose narrowing
+  included it, via the canonical close API.

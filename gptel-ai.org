@@ -652,3 +652,227 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 - Remove =gptel-org-infer-bounds-from-tags= and related code
 - Provide migration guide or automated conversion tool
 
+** Indirect-buffer canonical refactor
+:PROPERTIES:
+:CUSTOM_ID: ib-canonical-refactor
+:END:
+
+Target design: [[file:gptel-indirect-buffer-ai.org::#target-design][gptel-indirect-buffer-ai.org::#target-design]].
+Work bottom-up: complete each leaf (⇒ has test), then its parent phase.
+Each leaf lists /files/, /change/, /accept/ (acceptance), /test/.
+
+*** TODO Phase IB-1: Canonical IB node and registry
+Foundation. Replace plist registry entries with a typed struct that
+carries explicit parent/children links. No behavioral change yet —
+pure refactor with passthrough shims for existing callers.
+
+**** TODO IB-1.1 Define =cl-defstruct gptel-org-ib-node=
+- files: =gptel-indirect-buffer.el= (new defstruct near top, ~L80)
+- change: slots =buffer= =base= =parent= =children= =heading-marker=
+  =end-marker= =tag= =hash=.  =parent= is another node or nil (nil ⇒
+  parent is base).  =children= is a list of nodes.
+- accept: struct constructor, accessors, and predicate compile; all
+  existing fields of the current plist entry map 1:1 to slots.
+- test: =test/gptel-org-ib-test.el= — new =ert-deftest
+  ib-node-struct-roundtrip= creating a node and reading each slot.
+
+**** TODO IB-1.2 Migrate registry to store nodes
+- files: =gptel-indirect-buffer.el= L86-142 (=gptel-org-ib-register=,
+  =-unregister=, =-get=, =-all-for-base=).
+- change: registry hash table maps buffer-name → node struct.  Keep
+  returning plist-shaped data from public API via a shim so callers
+  outside the module don't break yet.
+- accept: all existing callers still work unchanged.
+- test: existing tests in =gptel-org-ib-test.el= pass unmodified.
+
+**** TODO IB-1.3 Maintain parent/children links on create/close
+- files: =gptel-indirect-buffer.el= L549-660.
+- change: on create, determine parent by walking enclosing IBs from
+  =current-buffer= at call time; push new node onto parent.children.
+  On close, splice node out of parent.children.
+- accept: for a base buffer with IB =A= and nested IB =B= under =A=,
+  =A.children= contains =B=; =B.parent= is =A=; after closing =B=,
+  =A.children= no longer contains =B=.
+- test: new =ert-deftest ib-parent-child-links= in
+  =gptel-org-ib-test.el= exercising create/close sequences.
+
+**** TODO IB-1.4 Unify hashed buffer-name generator
+- files: move =gptel-org-agent--indirect-buffer-name= from
+  =gptel-org-agent.el= L443-461 into =gptel-indirect-buffer.el= as
+  =gptel-org-ib-compute-name= (public).
+- change: accept =(base-buffer heading-pos tag)=, return hashed name.
+  Replace all 3 call sites (agent IB, reasoning IB, tool IB).
+- accept: reasoning and tool IBs now have names of the form
+  =*gptel:reasoning-<hash>*= and =*gptel:tool-<hash>*=.
+- test: =ib-compute-name-unique= — 100 different heading-pos values
+  yield 100 distinct names.
+
+*** TODO Phase IB-2: Canonical resolution API
+Expose a closed set of resolver functions; forbid direct access
+elsewhere.  Each API function is one line of responsibility.
+
+**** TODO IB-2.1 =gptel-org-ib-parent (ib)= → node-or-base-buffer
+- return: parent node, or base buffer object when parent is nil.
+- test: =ib-parent-returns-node-or-base=.
+
+**** TODO IB-2.2 =gptel-org-ib-children (ib)= → list of nodes
+- test: =ib-children-returns-registered-list=.
+
+**** TODO IB-2.3 =gptel-org-ib-base (ib)= → base buffer
+- change: walk parent chain, never call =buffer-base-buffer= directly.
+- test: =ib-base-walks-chain= for nested IB of IB.
+
+**** TODO IB-2.4 =gptel-org-ib-bounds (ib)= → (start . end) in parent
+- change: read from node's heading-marker and end-marker only.
+- test: =ib-bounds-matches-narrowing=.
+
+**** TODO IB-2.5 =gptel-org-ib-point (ib)= → current point in IB
+- test: =ib-point-respects-narrowing=.
+
+**** TODO IB-2.6 =gptel-org-ib-absolute-position (ib)= → (buffer . pos)
+- change: walk parent chain, accumulating offsets.
+- test: =ib-absolute-position-nested= with 3-level chain.
+
+**** TODO IB-2.7 Forbid direct access outside API
+- files: =gptel-org.el= (reasoning/tool IB), =gptel-org-agent.el=
+  (agent subtree ops).
+- change: replace every =buffer-base-buffer=, direct marker
+  dereference, or buffer-local IB marker lookup with a call to the
+  corresponding =gptel-org-ib-*= resolver.  Audit L69-98 in
+  =gptel-org.el= (buffer-locals) and L2150-2290 (auto-corrector).
+- accept: =grep -n 'buffer-base-buffer' gptel-org*.el= shows zero
+  matches in indirect-buffer-handling code paths.
+- test: existing test suite passes; add
+  =ib-api-is-exclusive-resolver= that patches
+  =buffer-base-buffer= to error and confirms IB ops still succeed.
+
+*** TODO Phase IB-3: Hard-fail policy (no fallbacks)
+Callers must fail loudly on IB inconsistency.
+
+**** TODO IB-3.1 =gptel-org-ib-fatal (fmt &rest args)=
+- files: =gptel-indirect-buffer.el=.
+- change: new function: logs to =*gptel-log*=, aborts active
+  =gptel-fsm= via =gptel-abort=, signals =user-error=.
+- test: =ib-fatal-signals-user-error=.
+
+**** TODO IB-3.2 Remove =ignore-errors= and nil-returns
+- files: =gptel-indirect-buffer.el= L270-271, L432-433, L647-650,
+  L737-745, L785+.
+- change: replace each with =gptel-org-ib-fatal= call citing the
+  precondition that failed (dead buffer, missing marker, etc.).
+- accept: =grep -n ignore-errors gptel-indirect-buffer.el= → 0.
+- test: =ib-stale-registry-aborts-run= injects a stale node and
+  confirms next op aborts with =user-error=.
+
+**** TODO IB-3.3 FSM hook
+- files: =gptel-org-agent.el= FSM transition handlers.
+- change: on =user-error= from IB API during a transition,
+  transition to terminal state =DENIED= on the user's =TODO= and
+  insert a =TERMINE= heading with the error message in a code block.
+- test: =ib-fatal-during-fsm-aborts-cleanly=.
+
+*** TODO Phase IB-4: Heading state grammar
+Enforce the closed vocabulary described in target design.
+
+**** TODO IB-4.1 Introduce =TERMINE= keyword
+- files: =gptel-org.el= (=gptel-org-todo-keywords= list, L~1169),
+  =gptel-indirect-buffer.el= (terminator funcs L257-510).
+- change: add =TERMINE= to the AI-authored keyword set.  Keep
+  =RESULTS=/=FEEDBACK= recognised during transition window.
+- test: =terminator-recognises-termine=.
+
+**** TODO IB-4.2 Create =TERMINE= instead of =RESULTS=/=FEEDBACK=
+- files: =gptel-indirect-buffer.el= L389 (=create-terminator=), L424
+  (=ensure-terminator=).
+- change: insertion always writes =TERMINE= with empty body.
+- accept: new agent subtrees use =TERMINE=; old ones still parse.
+- test: update =gptel-org-ib-test.el= fixtures.
+
+**** TODO IB-4.3 Remove =TERMINE= on subtree completion
+- files: =gptel-org-agent.el= task-complete handler (~L1889).
+- change: when a subtree reaches =AI-DONE= / tool success / agent
+  completion, delete its =TERMINE= child heading (use canonical API).
+- test: =termine-removed-on-ai-done=.
+
+**** TODO IB-4.4 Migration: rewrite =RESULTS=/=FEEDBACK= → =TERMINE=
+- files: new =gptel-org-migrate-terminators= interactive command in
+  =gptel-org.el=.
+- change: command rewrites existing buffers in place.
+- test: =migrate-terminators-rewrites-headings=.
+
+**** TODO IB-4.5 REASONING first-line rule + leading =*= strip
+- files: =gptel-org.el= reasoning insertion (~L2444-2536).
+- change: when inserting reasoning content, guarantee first line is
+  =* REASONING <title>=.  If streamed content starts with =*=
+  (would yield =** <title>=), drop one leading =*=.
+- test: =reasoning-first-line-is-heading=,
+  =reasoning-strips-redundant-star=.
+
+**** TODO IB-4.6 RESPOND first-line rule + leading =*= strip
+- files: =gptel-org.el= response insertion.
+- change: same rules as IB-4.5, keyword =RESPOND=.
+- test: =respond-first-line-is-heading=,
+  =respond-strips-redundant-star=.
+
+**** TODO IB-4.7 AI-DO depth validator
+- files: =gptel-org-agent.el= (new =gptel-org-agent--validate-ai-do-depth=).
+- change: on any AI-DO insertion or transition, verify the heading's
+  parent is a user-owned =TODO=.  Fatal otherwise.
+- test: =ai-do-rejects-nesting= asserts that inserting AI-DO two
+  levels deep raises =user-error=.
+
+**** TODO IB-4.8 Universal request prefix for tool headings
+- files: =gptel-org.el= =gptel-org--tool-state-keyword= (L~2899),
+  =gptel-org-agent.el= confirmation flow L1492-1939.
+- change: every tool/agent heading is written as
+  =<REQ> <STATE> <summary>= during request phase and transitions to
+  bare =<STATE> <summary>= after execution.
+- test: =tool-heading-keeps-req-prefix-until-run=.
+
+*** TODO Phase IB-5: Per-agent state triads
+Let each agent declare its own TODO/DOING/DONE-style state triad.
+
+**** TODO IB-5.1 Add =:state-words= property to agent org docs
+- files: =quelpa/build/gptel-agent/agents/*.org=.
+- change: each agent file gets a top-level property
+  =:STATE_WORDS: REQUEST DOING DONE=, e.g.
+  =:STATE_WORDS: GATHER GATHERING GATHERED= for the gatherer.
+- accept: every agent doc has the property.
+- test: =agents-declare-state-words= iterates files in =agents/=.
+
+**** TODO IB-5.2 Loader exposes state words on agent plist
+- files: =gptel-agent.el= agent loader.
+- change: parse =STATE_WORDS= and store in agent plist as
+  =:state-words=.  Default to =(PENDING RUNNING DONE)= if missing.
+- test: =agent-plist-includes-state-words=.
+
+**** TODO IB-5.3 Confirmation flow uses agent triad
+- files: =gptel-org-agent.el= confirmation flow L1492-1939.
+- change: PENDING/ALLOWED/DENIED request prefix unchanged; the
+  STATE token is drawn from the target agent's =:state-words=,
+  transitioning request→doing on execution, doing→done on completion.
+- test: =gatherer-transitions-gather-gathering-gathered=.
+
+**** TODO IB-5.4 Agent doc template generator
+- files: =gptel-agent.el= helper.
+- change: =gptel-agent-scaffold-agent= inserts =:STATE_WORDS:=
+  property automatically.
+- test: =scaffold-includes-state-words=.
+
+*** TODO Phase IB-6: Documentation
+Update AI docs to reflect the finished refactor.  Do last so the
+docs describe present state, not aspiration.
+
+**** TODO IB-6.1 Rewrite =gptel-indirect-buffer-ai.org=
+- Remove "current state" sections rendered obsolete by IB-1..IB-4.
+- Promote the "Target design (WIP refactor)" section to the main
+  design section.
+
+**** TODO IB-6.2 Update =gptel-org-agent-ai.org=
+- Sections on indirect buffer model (L153-205) to reference the
+  canonical API only.
+- Document state triads for each built-in agent.
+
+**** TODO IB-6.3 Update =gptel-ai.org= feature list
+- Mark this refactor DONE in the index.
+- Update source-file line counts if they drift significantly.
