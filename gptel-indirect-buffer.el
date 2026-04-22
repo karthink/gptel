@@ -243,6 +243,24 @@ IB may be a buffer object or a buffer name string."
     (or (gptel-org-ib-node-parent node)
         (gptel-org-ib-node-base node))))
 
+(defun gptel-org-ib-children (ib)
+  "Return the list of child `gptel-org-ib-node' instances of IB.
+
+Returns the registered children of IB's node directly — a list of
+nodes whose parent is IB, or nil when IB has no children.
+
+Signals a `user-error' if IB is not a registered gptel indirect buffer,
+since the canonical resolver API forbids silent fallbacks.
+
+IB may be a buffer object or a buffer name string."
+  (let* ((name (cond ((bufferp ib) (buffer-name ib))
+                     ((stringp ib) ib)
+                     (t (user-error "gptel-org-ib-children: invalid IB: %S" ib))))
+         (node (gptel-org-ib--get-node name)))
+    (unless node
+      (user-error "gptel-org-ib-children: not a registered gptel IB: %s" name))
+    (gptel-org-ib-node-children node)))
+
 
 ;;; ---- Utility Functions ----------------------------------------------------
 

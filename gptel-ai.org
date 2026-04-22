@@ -715,7 +715,7 @@ elsewhere.  Each API function is one line of responsibility.
 - return: parent node, or base buffer object when parent is nil.
 - test: =ib-parent-returns-node-or-base=.
 
-**** TODO IB-2.2 =gptel-org-ib-children (ib)= → list of nodes
+**** DONE IB-2.2 =gptel-org-ib-children (ib)= → list of nodes
 - test: =ib-children-returns-registered-list=.
 
 **** TODO IB-2.3 =gptel-org-ib-base (ib)= → base buffer
