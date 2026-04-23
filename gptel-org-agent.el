@@ -738,6 +738,62 @@ with its normal behavior."
 
 (defvar gptel-prompt-transform-functions)
 
+(defun gptel-org-agent--recover-from-ib-fatal (err fsm)
+  "Annotate user task with DENIED + TERMINE on an IB fatal error.
+
+ERR is the signalled error condition (a cons `(user-error . MSG-PARTS)').
+FSM is the active `gptel-fsm'.  By the time this runs, the FSM has
+already been aborted by `gptel-org-ib-fatal'; this helper only
+performs the UI annotation on the user-level task heading.
+
+Locates the user task TODO via the FSM's `:buffer' (walking to the
+base buffer when the redirect has already populated it with an agent
+indirect buffer), sets its TODO keyword to DENIED, and inserts a
+TERMINE child heading whose body is an example block containing the
+error message.
+
+Degraded recovery: if point cannot be located on a heading, or no
+user task is found, this returns without annotation.  The caller is
+expected to re-signal the original `user-error' so the user sees it
+through normal channels."
+  (let* ((msg (error-message-string err))
+         (info (gptel-fsm-info fsm))
+         (target-buf (plist-get info :buffer))
+         (base-buf (cond
+                    ((not (buffer-live-p target-buf)) nil)
+                    ((gptel-org-ib-registered-p target-buf)
+                     (gptel-org-ib-base target-buf))
+                    (t target-buf))))
+    (gptel-org--debug
+     "org-agent ib-fatal-recover: msg=%S target=%S base=%S"
+     msg (and (buffer-live-p target-buf) (buffer-name target-buf))
+     (and (buffer-live-p base-buf) (buffer-name base-buf)))
+    (when (and (buffer-live-p base-buf)
+               (with-current-buffer base-buf (derived-mode-p 'org-mode)))
+      (with-current-buffer base-buf
+        (save-excursion
+          (save-restriction
+            (widen)
+            (let ((pos (or (plist-get info :position) (point))))
+              (goto-char (if (markerp pos) (marker-position pos) pos)))
+            ;; Position at the nearest heading if not already there.
+            (unless (org-at-heading-p)
+              (when (re-search-backward org-heading-regexp nil t)
+                (beginning-of-line)))
+            (when (org-at-heading-p)
+              (let ((user-pos (gptel-org-ib-find-user-task-heading)))
+                (when user-pos
+                  (goto-char user-pos)
+                  (gptel-org-agent--set-todo-keyword "DENIED")
+                  ;; Insert TERMINE child with error as example block.
+                  (let ((term-marker
+                         (gptel-org-ib-create-terminator "TERMINE")))
+                    (when (markerp term-marker)
+                      (goto-char term-marker)
+                      (end-of-line)
+                      (insert "\n#+begin_example\n" msg
+                              "\n#+end_example"))))))))))))
+
 (defun gptel-org-agent--transform-redirect (fsm)
   "Prompt transform: redirect response to an agent indirect buffer.
 
@@ -753,37 +809,47 @@ point the prompt has already been built from the original buffer, so
 this only affects where the response is inserted.
 
 Skips redirection when the request already originates from an agent
-indirect buffer (identified by `gptel-org-ib-registered-p' returning non-nil)."
-  (let* ((info (gptel-fsm-info fsm))
-         (orig-buffer (plist-get info :buffer))
-         (preset (plist-get info :preset)))
-    (when (and gptel-org-subtree-context
-               (buffer-live-p orig-buffer)
-               ;; Only redirect from a base org buffer, not from an
-               ;; indirect buffer (which is already an agent subtree)
-               (not (gptel-org-ib-registered-p orig-buffer))
-               (with-current-buffer orig-buffer
-                 (derived-mode-p 'org-mode)))
-      (when-let* ((indirect-buf
+indirect buffer (identified by `gptel-org-ib-registered-p' returning non-nil).
+
+On `user-error' signalled from the IB API (via `gptel-org-ib-fatal'),
+invoke `gptel-org-agent--recover-from-ib-fatal' to annotate the user
+task with DENIED + TERMINE, then re-signal the error so the user
+sees it through normal channels.  The FSM has already been aborted
+by `gptel-org-ib-fatal' before this handler runs."
+  (condition-case err
+      (let* ((info (gptel-fsm-info fsm))
+             (orig-buffer (plist-get info :buffer))
+             (preset (plist-get info :preset)))
+        (when (and gptel-org-subtree-context
+                   (buffer-live-p orig-buffer)
+                   ;; Only redirect from a base org buffer, not from an
+                   ;; indirect buffer (which is already an agent subtree)
+                   (not (gptel-org-ib-registered-p orig-buffer))
                    (with-current-buffer orig-buffer
-                     (gptel-org-agent--maybe-setup-subtree preset))))
-        (let ((pos-marker (gptel-org-agent--make-insertion-marker indirect-buf)))
-          (with-current-buffer indirect-buf
-            ;; Ensure gptel-mode is active for proper response formatting
-            (unless (bound-and-true-p gptel-mode)
-              (setq-local gptel-mode t))
-            ;; Redirect the FSM's response target
-            (plist-put info :buffer indirect-buf)
-            (plist-put info :position pos-marker)
-            ;; Store reference for potential cleanup
-            (plist-put info :agent-indirect-buffer indirect-buf)
-            (gptel-org--debug
-             "org-agent transform-redirect: REDIRECTED orig=%S -> indirect=%S pos=%d preset=%S ref-level=%S base=%S"
-             (buffer-name orig-buffer) (buffer-name indirect-buf)
-             (marker-position pos-marker) preset
-             (buffer-local-value 'gptel-org--ref-level indirect-buf)
-             (and (gptel-org-ib-registered-p indirect-buf)
-                  (buffer-name (gptel-org-ib-base indirect-buf))))))))))
+                     (derived-mode-p 'org-mode)))
+          (when-let* ((indirect-buf
+                       (with-current-buffer orig-buffer
+                         (gptel-org-agent--maybe-setup-subtree preset))))
+            (let ((pos-marker (gptel-org-agent--make-insertion-marker indirect-buf)))
+              (with-current-buffer indirect-buf
+                ;; Ensure gptel-mode is active for proper response formatting
+                (unless (bound-and-true-p gptel-mode)
+                  (setq-local gptel-mode t))
+                ;; Redirect the FSM's response target
+                (plist-put info :buffer indirect-buf)
+                (plist-put info :position pos-marker)
+                ;; Store reference for potential cleanup
+                (plist-put info :agent-indirect-buffer indirect-buf)
+                (gptel-org--debug
+                 "org-agent transform-redirect: REDIRECTED orig=%S -> indirect=%S pos=%d preset=%S ref-level=%S base=%S"
+                 (buffer-name orig-buffer) (buffer-name indirect-buf)
+                 (marker-position pos-marker) preset
+                 (buffer-local-value 'gptel-org--ref-level indirect-buf)
+                 (and (gptel-org-ib-registered-p indirect-buf)
+                      (buffer-name (gptel-org-ib-base indirect-buf)))))))))
+    (user-error
+     (gptel-org-agent--recover-from-ib-fatal err fsm)
+     (signal (car err) (cdr err)))))
 
 
 ;;; ---- Org format instructions for system message ----------------------------
@@ -926,35 +992,43 @@ This transform must run AFTER `gptel-org-agent--transform-redirect'
 so that `:buffer' in the FSM info points to the final response buffer
 \(which may be an agent indirect buffer after redirection).
 
-FSM is the request state machine."
-  (when gptel-org-agent-format-instructions
-    (let* ((info (gptel-fsm-info fsm))
-           (response-buffer (plist-get info :buffer))
-           (response-level
-            (gptel-org-agent--response-heading-level response-buffer)))
-      (when response-level
-        (let* ((seq-todo (gptel-org-agent--seq-todo-line response-buffer))
-               (instructions
-                (gptel-org-agent--format-instructions response-level seq-todo)))
-          (gptel-org--debug
-           "org-agent transform-org-instructions: level=%d seq-todo=%S buffer=%S"
-           response-level seq-todo (buffer-name response-buffer))
-          ;; Signal that the response will be in org format, so the
-          ;; markdown-to-org converter should be skipped.
-          (with-current-buffer response-buffer
-            (setq gptel-org--org-format-response t))
-          ;; Append instructions to the system message in the prompt buffer.
-          ;; We're already executing in the prompt buffer context (via
-          ;; run-hook-wrapped in gptel-request.el).
-          (setq gptel--system-message
-                (if (stringp gptel--system-message)
-                    (concat gptel--system-message instructions)
-                  ;; Multi-part directive: append to the first element (system part)
-                  (if (consp gptel--system-message)
-                      (cons (concat (car gptel--system-message) instructions)
-                            (cdr gptel--system-message))
-                    ;; No system message at all, just use instructions
-                    instructions))))))))
+FSM is the request state machine.
+
+On `user-error' signalled from the IB API (via `gptel-org-ib-fatal'),
+invoke `gptel-org-agent--recover-from-ib-fatal' to annotate the user
+task with DENIED + TERMINE, then re-signal the error."
+  (condition-case err
+      (when gptel-org-agent-format-instructions
+        (let* ((info (gptel-fsm-info fsm))
+               (response-buffer (plist-get info :buffer))
+               (response-level
+                (gptel-org-agent--response-heading-level response-buffer)))
+          (when response-level
+            (let* ((seq-todo (gptel-org-agent--seq-todo-line response-buffer))
+                   (instructions
+                    (gptel-org-agent--format-instructions response-level seq-todo)))
+              (gptel-org--debug
+               "org-agent transform-org-instructions: level=%d seq-todo=%S buffer=%S"
+               response-level seq-todo (buffer-name response-buffer))
+              ;; Signal that the response will be in org format, so the
+              ;; markdown-to-org converter should be skipped.
+              (with-current-buffer response-buffer
+                (setq gptel-org--org-format-response t))
+              ;; Append instructions to the system message in the prompt buffer.
+              ;; We're already executing in the prompt buffer context (via
+              ;; run-hook-wrapped in gptel-request.el).
+              (setq gptel--system-message
+                    (if (stringp gptel--system-message)
+                        (concat gptel--system-message instructions)
+                      ;; Multi-part directive: append to the first element (system part)
+                      (if (consp gptel--system-message)
+                          (cons (concat (car gptel--system-message) instructions)
+                                (cdr gptel--system-message))
+                        ;; No system message at all, just use instructions
+                        instructions)))))))
+    (user-error
+     (gptel-org-agent--recover-from-ib-fatal err fsm)
+     (signal (car err) (cdr err)))))
 
 (defun gptel-org-agent--insert-user-heading (_beg _end)
   "Insert a user/feedback heading after the agent subtree when response completes.

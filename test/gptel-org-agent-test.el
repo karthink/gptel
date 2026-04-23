@@ -923,6 +923,53 @@ Final thoughts
          (when (buffer-live-p indirect)
            (kill-buffer indirect)))))))
 
+(ert-deftest ib-fatal-during-fsm-aborts-cleanly ()
+  "On user-error from the IB API during an FSM transition, the
+transform wrapper must transition the user's TODO to DENIED and
+insert a TERMINE child heading whose body is an example block
+containing the error message, then re-signal the user-error.
+
+This exercises the IB-3.3 recovery hook installed on
+`gptel-org-agent--transform-redirect'."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords
+         '((sequence "AI-DO" "AI-DOING" "|" "AI-DONE" "DENIED")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING"))
+        (test-buf (generate-new-buffer "*ib-fatal-test*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer test-buf
+            (delay-mode-hooks (org-mode))
+            (insert "* AI-DO User task\nbody\n")
+            (goto-char (point-min))
+            (org-back-to-heading t)
+            (cl-letf (((symbol-function 'gptel-org-agent--maybe-setup-subtree)
+                       (lambda (&rest _)
+                         (gptel-org-ib-fatal "test fatal %s" "boom"))))
+              (let* ((gptel-org-subtree-context t)
+                     (pos (point))
+                     (info (list :buffer test-buf
+                                 :position (copy-marker pos)))
+                     (fsm (gptel-make-fsm)))
+                (setf (gptel-fsm-info fsm) info)
+                (should-error
+                 (gptel-org-agent--transform-redirect fsm)
+                 :type 'user-error))))
+          ;; Verify DENIED keyword and TERMINE heading with error body.
+          (with-current-buffer test-buf
+            (goto-char (point-min))
+            (should (re-search-forward "^\\* DENIED User task" nil t))
+            (goto-char (point-min))
+            (should (re-search-forward "^\\*\\* TERMINE\\b" nil t))
+            (goto-char (point-min))
+            (should (re-search-forward "^#\\+begin_example$" nil t))
+            (goto-char (point-min))
+            (should (re-search-forward "test fatal boom" nil t))
+            (goto-char (point-min))
+            (should (re-search-forward "^#\\+end_example$" nil t))))
+      (when (buffer-live-p test-buf)
+        (kill-buffer test-buf)))))
+
 (ert-deftest gptel-org-agent-test-enable-disable ()
   "Test that enable/disable add/remove the transform from the hook."
   (let ((gptel-prompt-transform-functions '()))
