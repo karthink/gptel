@@ -2092,28 +2092,35 @@ INTERACTIVEP is t when gptel is called interactively."
 
 ;;; Reasoning content UI
 
-(defun gptel--reasoning-strip-leading-star (body)
+(defun gptel--strip-leading-star (body)
   "Strip exactly one leading `*' from BODY's first character, if present.
-Prevents reasoning body content from accidentally becoming a sibling
-org heading when the model emits a leading `*' at column 0.
-BODY is returned unchanged if it is nil, empty, or does not begin
-with `*'."
+Prevents streamed body content (REASONING, RESPOND, ...) from
+accidentally becoming a sibling org heading when the model emits a
+leading `*' at column 0.  BODY is returned unchanged if it is nil,
+empty, or does not begin with `*'."
   (if (and (stringp body)
            (not (string-empty-p body))
            (eq (aref body 0) ?*))
       (substring body 1)
     body))
 
-(defun gptel--reasoning-format-org (text)
-  "Split reasoning TEXT into (HEADING-TEXT . BODY-TEXT).
-HEADING-TEXT is \"* REASONING <title>\\n\" where <title> is the
+;; Backward-compat alias: nothing external calls this, but the old
+;; name is used in tests and one existing call site.  Provide an
+;; obsolete alias so the rename is observable without breaking either.
+(define-obsolete-function-alias 'gptel--reasoning-strip-leading-star
+  #'gptel--strip-leading-star "gptel 0.9 (IB-4.6)")
+
+(defun gptel--format-keyword-heading-org (keyword text)
+  "Split TEXT into (HEADING-TEXT . BODY-TEXT) under a KEYWORD heading.
+HEADING-TEXT is \"* KEYWORD <title>\\n\" where <title> is the
 first non-empty line of TEXT (or \"...\" if TEXT has none).
 BODY-TEXT is the remaining content with a single leading `*'
-stripped (see `gptel--reasoning-strip-leading-star'), followed by
-a trailing newline.  BODY-TEXT is nil when the remainder is blank.
+stripped (see `gptel--strip-leading-star'), followed by a trailing
+newline.  BODY-TEXT is nil when the remainder is blank.
 
-Enforces two invariants for org-mode REASONING insertion:
-- The first line of the inserted content is the REASONING heading.
+Enforces two invariants for org-mode KEYWORD insertion (e.g.
+REASONING, RESPOND):
+- The first line of the inserted content is the KEYWORD heading.
 - A leading `*' at column 0 of the body is stripped so the body
   cannot accidentally be parsed as a sibling org heading."
   (let* ((lines (split-string text "\n"))
@@ -2124,12 +2131,19 @@ Enforces two invariants for org-mode REASONING insertion:
          (rest-lines (if (string= first-line "...")
                          lines
                        (cdr (member first-line lines))))
-         (rest-text (gptel--reasoning-strip-leading-star
+         (rest-text (gptel--strip-leading-star
                      (string-join rest-lines "\n")))
-         (heading-text (concat "* REASONING " first-line "\n"))
+         (heading-text (concat "* " keyword " " first-line "\n"))
          (body-text (unless (string-empty-p (string-trim rest-text))
                       (concat rest-text "\n"))))
     (cons heading-text body-text)))
+
+(defun gptel--reasoning-format-org (text)
+  "Split reasoning TEXT into (HEADING-TEXT . BODY-TEXT).
+Thin wrapper over `gptel--format-keyword-heading-org' that passes
+the REASONING keyword.  Kept for call-site continuity after the
+IB-4.6 generalisation.  Full docstring in the generalised helper."
+  (gptel--format-keyword-heading-org "REASONING" text))
 
 (defun gptel--display-reasoning-stream (text info)
   "Show reasoning TEXT in an appropriate location.
@@ -2266,7 +2280,7 @@ for streaming responses only."
                               (if (string-empty-p rest)
                                   (plist-put info :reasoning-rest-starting t)
                                 (let ((prop-rest (copy-sequence
-                                                  (gptel--reasoning-strip-leading-star
+                                                  (gptel--strip-leading-star
                                                    rest))))
                                   (if (eq include 'ignore)
                                       (add-text-properties
@@ -2284,7 +2298,7 @@ for streaming responses only."
                     ;; spurious org heading.
                     (let ((body-text
                            (if (plist-get info :reasoning-rest-starting)
-                               (prog1 (gptel--reasoning-strip-leading-star text)
+                               (prog1 (gptel--strip-leading-star text)
                                  (plist-put info :reasoning-rest-starting nil))
                              text)))
                       (if (eq include 'ignore)

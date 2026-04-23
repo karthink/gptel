@@ -932,5 +932,38 @@ that follows (e.g. a space) is preserved."
     ;; And no `*' at column 0 in the body (would create a spurious heading).
     (should-not (string-match-p "^\\*" (or (cdr pair) "")))))
 
+
+;;; Tests for generalised keyword heading/body shaping (IB-4.6)
+
+(ert-deftest gptel-test-respond-first-line-is-heading ()
+  "First non-empty line of RESPOND TEXT becomes the heading title.
+The remaining lines are preserved verbatim as body.  Together they
+form the buffer region `* RESPOND <first-line>\\n<body>\\n'.
+
+This exercises the generalised helper introduced in IB-4.6
+(`gptel--format-keyword-heading-org') for the RESPOND keyword.
+Mirrors `gptel-test-reasoning-first-line-is-heading'."
+  (let* ((text "first line\nbody\n")
+         (pair (gptel--format-keyword-heading-org "RESPOND" text))
+         (region (concat (car pair) (cdr pair))))
+    (should (equal "* RESPOND first line\n" (car pair)))
+    (should (string-prefix-p "* RESPOND first line\nbody\n" region))))
+
+(ert-deftest gptel-test-respond-strips-redundant-star ()
+  "A leading `*' on the body's first character is stripped exactly once.
+Prevents the RESPOND body from accidentally forming a sibling org
+heading.  Mirrors `gptel-test-reasoning-strips-redundant-star' using
+the generalised IB-4.6 helper."
+  (let* ((text "summary\n* star-starting\n")
+         (pair (gptel--format-keyword-heading-org "RESPOND" text))
+         (region (concat (car pair) (cdr pair))))
+    (should (equal "* RESPOND summary\n" (car pair)))
+    ;; Body: leading `*' stripped (single strip, space preserved).
+    (should (string-prefix-p " star-starting\n" (cdr pair)))
+    ;; And no `*' at column 0 in the body (would create a spurious heading).
+    (should-not (string-match-p "^\\*" (or (cdr pair) "")))
+    ;; Sanity: the full region begins with the RESPOND heading + stripped body.
+    (should (string-prefix-p "* RESPOND summary\n star-starting\n" region))))
+
 (provide 'gptel-unit-tests)
 ;;; gptel-unit-tests.el ends here

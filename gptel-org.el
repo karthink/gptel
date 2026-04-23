@@ -1169,10 +1169,14 @@ otherwise falls back to tag detection.
 
 In keyword mode, a heading is assistant when its TODO state has the
 \"AI-\" prefix (AI-DO, AI-DOING, AI-DONE, etc.) or is one of the
-special gptel states: REASONING, TOOL, RESULTS, TERMINE, PENDING,
-ALLOWED, DENIED.  All these states contain AI-authored or AI-system
-content.  TERMINE is the generic closed-vocabulary subtree terminator
-that will eventually replace RESULTS/FEEDBACK terminator headings.
+special gptel states: REASONING, RESPOND, TOOL, RESULTS, TERMINE,
+PENDING, ALLOWED, DENIED.  All these states contain AI-authored or
+AI-system content.  TERMINE is the generic closed-vocabulary subtree
+terminator that will eventually replace RESULTS/FEEDBACK terminator
+headings.  RESPOND is the assistant response keyword; it is
+pre-registered here so future RESPOND-wrapped response subtrees
+(IB-4.6b) are correctly recognised even before the streaming
+pipeline is wired to emit them.
 Headings without a TODO state (plain headings) return nil here and
 inherit from their parent via `gptel-org--restore-bounds-from-tags'."
   (if gptel-org-use-todo-keywords
@@ -1180,8 +1184,8 @@ inherit from their parent via `gptel-org--restore-bounds-from-tags'."
         (let ((todo (org-get-todo-state)))
           (and todo
                (or (string-prefix-p "AI-" todo)
-                   (member todo '("REASONING" "TOOL" "RESULTS" "TERMINE"
-                                  "PENDING" "ALLOWED" "DENIED"))
+                   (member todo '("REASONING" "RESPOND" "TOOL" "RESULTS"
+                                  "TERMINE" "PENDING" "ALLOWED" "DENIED"))
                    (member todo gptel-org--ai-state-keywords)))))
     (gptel-org--heading-has-tag-p gptel-org-assistant-tag)))
 
@@ -2285,6 +2289,37 @@ This should be called once when an agent indirect buffer is created."
 
 ;;; Response heading title generation
 
+;; RESPOND heading scaffolding (IB-4.6).
+;;
+;; IB-4.6 registers the RESPOND keyword and shipped the shaping
+;; helper below, but does NOT wire RESPOND into the response
+;; streaming pipeline.  Wrapping all assistant response content in a
+;; =* RESPOND <title>= heading inserted inside the active agent IB
+;; (before the subtree's TERMINE) is a wider architectural change
+;; affecting streaming insertion, response-title application,
+;; auto-corrector, role detection and the agent-pipeline tests.
+;; That full wiring is tracked as IB-4.6b in =gptel-ai.org=.
+;;
+;; This helper is scaffolding — nothing in the current response
+;; pipeline calls it.  It exists so IB-4.6b can reuse the exact same
+;; shaping logic that IB-4.5 established for REASONING, and so
+;; ad-hoc callers (tests, one-off consumers) have a stable entry
+;; point to build a well-formed RESPOND subtree string.
+
+(defun gptel-org--insert-respond-heading (text)
+  "Return a `* RESPOND <title>\\n<body>\\n' string built from TEXT.
+Thin wrapper over `gptel--format-keyword-heading-org' that uses the
+RESPOND keyword and concatenates the returned (HEADING . BODY)
+pair into a single insertable string.  BODY is empty when TEXT has
+no content past its first line.
+
+Scaffolding for IB-4.6b; not yet called by the response streaming
+pipeline.  See the commentary block above for the scope decision."
+  (let* ((pair (gptel--format-keyword-heading-org "RESPOND" text))
+         (heading (car pair))
+         (body (or (cdr pair) "")))
+    (concat heading body)))
+
 (defun gptel-org-response-title-from-first-line (beg end _heading-pos)
   "Generate a response heading title from the first line of response.
 BEG and END delimit the response region.  Returns the first
@@ -2745,9 +2780,11 @@ rather than primary content.")
 
 When `gptel-org-use-todo-keywords' is enabled, ensures that
 `gptel-org-assistant-keyword', `gptel-org-user-keyword', REASONING,
-TOOL, RESULTS, TERMINE, and one state keyword per registered gptel
-tool (e.g. BASH, EVAL, GREP) are present in `org-todo-keywords' and
-have faces registered in `org-todo-keyword-faces'.
+RESPOND, TOOL, RESULTS, TERMINE, and one state keyword per registered
+gptel tool (e.g. BASH, EVAL, GREP) are present in `org-todo-keywords'
+and have faces registered in `org-todo-keyword-faces'.  RESPOND is
+pre-registered for IB-4.6b; the streaming pipeline does not yet emit
+RESPOND headings.
 
 This is called once during `gptel-mode' setup so that every known
 state is registered up front, before any indirect buffer is created.
@@ -2790,6 +2827,19 @@ corrupting subsequent heading updates."
                        org-todo-keywords)
         (push '(sequence "|" "TERMINE") org-todo-keywords)
         (setq changed t))
+      ;; Idempotent upgrade path: splice RESPOND into the keyword
+      ;; sequence if missing.  RESPOND wraps assistant response
+      ;; content (Phase IB-4.6 / IB-4.6b).  The streaming pipeline
+      ;; does not yet emit RESPOND headings, but the keyword is
+      ;; registered up front so that (a) future RESPOND-authored
+      ;; headings fontify correctly and (b) `gptel-org--heading-is-
+      ;; assistant-p' can rely on the state being recognised.
+      (unless (cl-some (lambda (seq)
+                         (and (listp seq)
+                              (member "RESPOND" (cl-remove-if-not #'stringp seq))))
+                       org-todo-keywords)
+        (push '(sequence "|" "RESPOND") org-todo-keywords)
+        (setq changed t))
       ;; Register faces in org-todo-keyword-faces if missing
       (unless (assoc ai-kw org-todo-keyword-faces)
         (push (cons ai-kw gptel-org-assistant-keyword-face)
@@ -2802,6 +2852,13 @@ corrupting subsequent heading updates."
       ;; REASONING face: dimmed/italic to de-emphasize thinking
       (unless (assoc "REASONING" org-todo-keyword-faces)
         (push '("REASONING" . (:foreground "#8FBCBB" :weight light :slant italic))
+              org-todo-keyword-faces)
+        (setq changed t))
+      ;; RESPOND face: bold blue — assistant response content.  Reuses
+      ;; the agent-state colour so RESPOND reads as "assistant output"
+      ;; at a glance.  Pre-registered for IB-4.6b (not yet wired).
+      (unless (assoc "RESPOND" org-todo-keyword-faces)
+        (push (cons "RESPOND" gptel-org--agent-state-face)
               org-todo-keyword-faces)
         (setq changed t))
       ;; TOOL face: distinct color for tool execution state

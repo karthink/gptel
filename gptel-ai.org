@@ -827,11 +827,57 @@ Enforce the closed vocabulary described in target design.
 - test: =reasoning-first-line-is-heading=,
   =reasoning-strips-redundant-star=.
 
-**** TODO IB-4.6 RESPOND first-line rule + leading =*= strip
-- files: =gptel-org.el= response insertion.
-- change: same rules as IB-4.5, keyword =RESPOND=.
+**** DONE IB-4.6 RESPOND first-line rule + leading =*= strip
+- files: =gptel.el= (helper rename/generalisation),
+  =gptel-org.el= (RESPOND keyword + face registration + scaffolding
+  helper =gptel-org--insert-respond-heading=),
+  =test/gptel-unit-tests.el= (two new tests).
+- change: narrower forward-compatible scope.  Generalised the IB-4.5
+  helpers: =gptel--reasoning-strip-leading-star= →
+  =gptel--strip-leading-star= (obsolete alias kept) and
+  =gptel--reasoning-format-org= → =gptel--format-keyword-heading-org=
+  taking a =keyword= argument (thin REASONING wrapper retained for
+  call-site continuity).  Pre-registered =RESPOND= as a TODO keyword
+  with a sensible face in =gptel-org--register-todo-keywords= and in
+  =gptel-org--heading-is-assistant-p='s keyword set.  Added
+  =gptel-org--insert-respond-heading= scaffolding helper that builds
+  a =* RESPOND <title>\n<body>\n= string from response text — not yet
+  wired into the streaming pipeline (see IB-4.6b below).
 - test: =respond-first-line-is-heading=,
-  =respond-strips-redundant-star=.
+  =respond-strips-redundant-star= (both green).
+- scope decision: full wrapping of streamed assistant response
+  content under a =RESPOND= heading touches the streaming insertion
+  marker, response-title application, auto-corrector, role-tracking
+  and all agent-pipeline tests — deferred to IB-4.6b below.
+
+**** TODO IB-4.6b Wire RESPOND heading into response insertion
+Pipeline-level change.  Wrap streaming assistant response content in
+a =* RESPOND <title>= heading inserted inside the active agent IB,
+before the subtree's TERMINE.  Depends on:
+- Extending =gptel-curl--stream-insert-response= to emit the heading
+  (title from first line once known).
+- Updating =gptel-org--heading-is-assistant-p= to recognise RESPOND
+  (already listed in the Phase IB-4 grammar — trivial; IB-4.6 did
+  this pre-registration).
+- Updating response title application
+  (=gptel-org--apply-response-title=) to no-op in keyword mode where
+  RESPOND owns its heading.
+- Role-detection / prompt reconstruction so RESPOND subtrees are
+  treated as assistant content.
+- Registering =RESPOND= in =org-todo-keywords= via
+  =gptel-org--register-todo-keywords= with a sensible face (done in
+  IB-4.6).
+Acceptance: ~5–10 new integration tests covering:
+- New streaming response produces =* RESPOND <title>= heading.
+- Existing conversations without RESPOND headings still parse.
+- Prompt reconstruction includes RESPOND body as assistant text.
+- Title extraction handles title-crossing-chunk-boundary in the
+  streaming case (reuse =:reasoning-title-*= pattern).
+Roughly 30–40 lines of new streaming-FSM code plus test updates
+across =gptel-org-agent-test.el= and =gptel-org-bounds-test.el=.
+Can be deferred until the classical response-title path is retired.
+The scaffolding helper =gptel-org--insert-respond-heading= shipped
+in IB-4.6 is the intended entry point for the shaping logic.
 
 **** TODO IB-4.7 AI-DO depth validator
 - files: =gptel-org-agent.el= (new =gptel-org-agent--validate-ai-do-depth=).
