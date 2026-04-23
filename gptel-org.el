@@ -1169,8 +1169,10 @@ otherwise falls back to tag detection.
 
 In keyword mode, a heading is assistant when its TODO state has the
 \"AI-\" prefix (AI-DO, AI-DOING, AI-DONE, etc.) or is one of the
-special gptel states: REASONING, TOOL, RESULTS, PENDING, ALLOWED,
-DENIED.  All these states contain AI-authored or AI-system content.
+special gptel states: REASONING, TOOL, RESULTS, TERMINE, PENDING,
+ALLOWED, DENIED.  All these states contain AI-authored or AI-system
+content.  TERMINE is the generic closed-vocabulary subtree terminator
+that will eventually replace RESULTS/FEEDBACK terminator headings.
 Headings without a TODO state (plain headings) return nil here and
 inherit from their parent via `gptel-org--restore-bounds-from-tags'."
   (if gptel-org-use-todo-keywords
@@ -1178,7 +1180,7 @@ inherit from their parent via `gptel-org--restore-bounds-from-tags'."
         (let ((todo (org-get-todo-state)))
           (and todo
                (or (string-prefix-p "AI-" todo)
-                   (member todo '("REASONING" "TOOL" "RESULTS"
+                   (member todo '("REASONING" "TOOL" "RESULTS" "TERMINE"
                                   "PENDING" "ALLOWED" "DENIED"))
                    (member todo gptel-org--ai-state-keywords)))))
     (gptel-org--heading-has-tag-p gptel-org-assistant-tag)))
@@ -2732,14 +2734,20 @@ is enabled."
   '(:foreground "#B48EAD" :weight bold)
   "Default face for result-like TODO keywords (RESULTS, ...).")
 
+(defconst gptel-org--termine-state-face
+  '(:foreground "#4C566A" :weight normal)
+  "Default face for the generic TERMINE terminator keyword.
+Dim, non-bold to signal that TERMINE is a terminator placeholder
+rather than primary content.")
+
 (defun gptel-org--register-todo-keywords ()
   "Register all gptel TODO keywords and their faces if needed.
 
 When `gptel-org-use-todo-keywords' is enabled, ensures that
 `gptel-org-assistant-keyword', `gptel-org-user-keyword', REASONING,
-TOOL, RESULTS, and one state keyword per registered gptel tool
-(e.g. BASH, EVAL, GREP) are present in `org-todo-keywords' and have
-faces registered in `org-todo-keyword-faces'.
+TOOL, RESULTS, TERMINE, and one state keyword per registered gptel
+tool (e.g. BASH, EVAL, GREP) are present in `org-todo-keywords' and
+have faces registered in `org-todo-keyword-faces'.
 
 This is called once during `gptel-mode' setup so that every known
 state is registered up front, before any indirect buffer is created.
@@ -2763,12 +2771,24 @@ corrupting subsequent heading updates."
                             org-todo-keywords))
         (push (list 'sequence ai-kw hi-kw) org-todo-keywords)
         (setq changed t))
-      ;; Register REASONING, TOOL and RESULTS as done-state keywords if missing
+      ;; Register REASONING, TOOL, RESULTS and TERMINE as done-state
+      ;; keywords if missing.  TERMINE is the generic subtree
+      ;; terminator (IB-4) that will eventually replace
+      ;; RESULTS/FEEDBACK terminator headings.
       (unless (cl-some (lambda (seq)
                          (and (listp seq)
                               (member "REASONING" (cl-remove-if-not #'stringp seq))))
                        org-todo-keywords)
-        (push '(sequence "|" "REASONING" "TOOL" "RESULTS") org-todo-keywords)
+        (push '(sequence "|" "REASONING" "TOOL" "RESULTS" "TERMINE") org-todo-keywords)
+        (setq changed t))
+      ;; Idempotent upgrade path: if REASONING was registered before
+      ;; TERMINE existed, splice TERMINE into that sequence.  Keeps
+      ;; this function safe to call multiple times and across upgrades.
+      (unless (cl-some (lambda (seq)
+                         (and (listp seq)
+                              (member "TERMINE" (cl-remove-if-not #'stringp seq))))
+                       org-todo-keywords)
+        (push '(sequence "|" "TERMINE") org-todo-keywords)
         (setq changed t))
       ;; Register faces in org-todo-keyword-faces if missing
       (unless (assoc ai-kw org-todo-keyword-faces)
@@ -2792,6 +2812,12 @@ corrupting subsequent heading updates."
       ;; RESULTS face: distinct color for task-level result terminator
       (unless (assoc "RESULTS" org-todo-keyword-faces)
         (push (cons "RESULTS" gptel-org--result-state-face)
+              org-todo-keyword-faces)
+        (setq changed t))
+      ;; TERMINE face: dim, non-bold — signals a terminator placeholder
+      ;; rather than primary content.
+      (unless (assoc "TERMINE" org-todo-keyword-faces)
+        (push (cons "TERMINE" gptel-org--termine-state-face)
               org-todo-keyword-faces)
         (setq changed t))
       ;; Pre-register every currently known gptel tool's state keyword

@@ -350,6 +350,49 @@ for this small distinct input)."
         (should (= 1 (how-many "^\\*+ FEEDBACK\\b" (point-min) (point-max))))))))
 
 
+(ert-deftest gptel-org-ib-test-terminator-recognises-termine ()
+  "TERMINE is recognised by the heading-state grammar (IB-4.1).
+
+Two assertions:
+- `gptel-org--heading-is-assistant-p' returns non-nil for a
+  heading whose TODO state is TERMINE (with
+  `gptel-org-use-todo-keywords' enabled).
+- A heading with keyword TERMINE at the child level is found via
+  `gptel-org-ib-find-terminator' (round-trip recognition).
+
+RESULTS/FEEDBACK recognition is NOT altered by IB-4.1; those will
+be removed in later sub-phases."
+  (let ((org-inhibit-startup t)
+        (inhibit-message t)
+        (gptel-org-debug nil)
+        (gptel-org-ib--registry (make-hash-table :test 'equal))
+        (gptel-org-use-todo-keywords t)
+        (org-todo-keywords
+         '((sequence "AI-DO" "AI-DOING" "FEEDBACK"
+                     "|" "AI-DONE" "TERMINE"))))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (org-set-regexps-and-options)
+      (insert "* Parent\n** Child\n** TERMINE\n")
+      ;; (1) heading-is-assistant-p recognises TERMINE.
+      (goto-char (point-min))
+      (re-search-forward "^\\*\\* TERMINE")
+      (beginning-of-line)
+      (should (org-at-heading-p))
+      (should (equal "TERMINE" (org-get-todo-state)))
+      (should (gptel-org--heading-is-assistant-p))
+      ;; (2) find-terminator locates the TERMINE heading at child
+      ;; level via basic round-trip.
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let ((pos (gptel-org-ib-find-terminator "TERMINE")))
+        (should pos)
+        (save-excursion
+          (goto-char pos)
+          (should (org-at-heading-p))
+          (should (= 2 (org-current-level)))
+          (should (equal "TERMINE" (org-get-todo-state))))))))
+
 ;;; ---- Streaming Marker ----------------------------------------------------
 
 (ert-deftest gptel-org-ib-test-streaming-marker-with-terminator ()
