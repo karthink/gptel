@@ -500,13 +500,17 @@ Stored for cleanup in `gptel-org-agent--close-indirect-buffer'.")
 Delegates to `gptel-org-ib-streaming-marker' to choose a
 terminator-aware position:
 
-1. If BUFFER's narrowed subtree has a \"RESULTS\" child terminator,
-   the marker is at the start of RESULTS with insertion-type nil
-   (streaming stays BEFORE RESULTS).
-2. Else if BUFFER has a \"FEEDBACK\" (or `gptel-org-user-keyword')
-   child terminator, the marker is at the start of FEEDBACK with
-   insertion-type nil.
-3. Otherwise the marker is at `point-max' with insertion-type t.
+1. If BUFFER's narrowed subtree has a \"TERMINE\" child terminator
+   (IB-4.2 unified terminator), the marker is at the start of
+   TERMINE with insertion-type nil (streaming stays BEFORE it).
+2. Else if BUFFER has a legacy \"RESULTS\" child terminator (pre
+   IB-4.2 task / sub-agent IBs), the marker is at the start of
+   RESULTS with insertion-type nil.
+3. Else if BUFFER has a legacy \"FEEDBACK\" (or
+   `gptel-org-user-keyword') child terminator (pre IB-4.2
+   top-level agent IBs), the marker is at the start of FEEDBACK
+   with insertion-type nil.
+4. Otherwise the marker is at `point-max' with insertion-type t.
 
 This preserves the contract that streamed text always lands before
 any terminator heading, so sibling indirect buffers narrowed to
@@ -517,12 +521,17 @@ earlier subtrees are not disturbed."
       (let ((user-kw (or (bound-and-true-p gptel-org-user-keyword)
                          "FEEDBACK")))
         (cond
-         ;; Try RESULTS first (task / sub-agent IBs).
+         ;; Try TERMINE first (IB-4.2 unified terminator).
+         ((and (org-at-heading-p)
+               (save-excursion
+                 (gptel-org-ib-find-terminator "TERMINE")))
+          (gptel-org-ib-streaming-marker "TERMINE"))
+         ;; Legacy, pre-IB-4.2: RESULTS terminator (task / sub-agent IBs).
          ((and (org-at-heading-p)
                (save-excursion
                  (gptel-org-ib-find-terminator "RESULTS")))
           (gptel-org-ib-streaming-marker "RESULTS"))
-         ;; Then user FEEDBACK keyword (top-level agent IBs).
+         ;; Legacy, pre-IB-4.2: user FEEDBACK terminator (top-level agent IBs).
          ((and (org-at-heading-p)
                (save-excursion
                  (gptel-org-ib-find-terminator user-kw)))
@@ -1340,15 +1349,15 @@ org-mode, or we can't find a heading context to create the subtree."
                          base-buffer heading-marker)))
               ;; Create new subtree using terminator-aware insertion.
               ;; This ensures the heading is placed BEFORE the terminator
-              ;; (e.g., FEEDBACK or RESULTS), so existing sibling indirect
-              ;; buffers are not disturbed.
-              ;; Sub-agents (parent-tag non-nil) use "RESULTS" terminator;
-              ;; top-level agents use FEEDBACK (or user's custom keyword).
-              (let ((terminator-keyword
-                     (if parent-tag
-                         "RESULTS"
-                       (or (bound-and-true-p gptel-org-user-keyword)
-                           "FEEDBACK"))))
+              ;; (TERMINE), so existing sibling indirect buffers are not
+              ;; disturbed.
+              ;; IB-4.2: sub-agents and top-level agents both use the
+              ;; unified TERMINE terminator (previously RESULTS for
+              ;; sub-agents and FEEDBACK/user-keyword for top-level).
+              ;; Recognition of legacy RESULTS/FEEDBACK terminators is
+              ;; preserved elsewhere (e.g. `make-insertion-marker') for
+              ;; the transition window.
+              (let ((terminator-keyword "TERMINE"))
                 (gptel-org--debug
                  "org-agent setup-task-subtree: creating new subtree via safe-insert-sibling (terminator=%S)"
                  terminator-keyword)
@@ -1644,18 +1653,20 @@ INFO is the FSM info plist."
       ;; indirect buffer and its base buffer so that the user can
       ;; change PENDING→ALLOWED from either buffer.
       (gptel-org-agent--ensure-tool-confirm-hook buf)
-      ;; Ensure the current subtree has a "RESULTS" terminator so that
+      ;; Ensure the current subtree has a "TERMINE" terminator so that
       ;; the FSM :position marker (placed by
       ;; `gptel-org-ib-streaming-marker' with insertion-type nil) stays
-      ;; pinned BEFORE RESULTS, and any PENDING heading inserted at
+      ;; pinned BEFORE TERMINE, and any PENDING heading inserted at
       ;; start-marker lands before it — preserving sibling-IB
       ;; isolation.  Only do this if point-min is on a heading (i.e.
-      ;; we are in a task or agent IB).
+      ;; we are in a task or agent IB).  IB-4.2: TERMINE replaces the
+      ;; previous RESULTS terminator; legacy RESULTS terminators still
+      ;; parse via `gptel-org-ib-find-terminator' elsewhere.
       (save-excursion
         (goto-char (point-min))
         (when (org-at-heading-p)
           (ignore-errors
-            (gptel-org-ib-ensure-terminator "RESULTS"))))
+            (gptel-org-ib-ensure-terminator "TERMINE"))))
       (save-excursion
         ;; Compute the PENDING heading level.  Use `gptel-org--ref-level'
         ;; when available — it tracks the current response level.

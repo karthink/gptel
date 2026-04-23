@@ -24,16 +24,18 @@
 
 (defmacro gptel-org-ib-test-with-buffer (content &rest body)
   "Create a temp org buffer with CONTENT and execute BODY.
-Sets up org-mode with AI-DO/AI-DOING/FEEDBACK/AI-DONE keywords,
-unsets `gptel-org-debug', and binds `gptel-org-ib--registry' to a
-fresh hash table so tests never contaminate one another."
+Sets up org-mode with AI-DO/AI-DOING/FEEDBACK/AI-DONE/TERMINE
+keywords (TERMINE added in IB-4.2 so tests can exercise the new
+unified terminator without per-test override), unsets
+`gptel-org-debug', and binds `gptel-org-ib--registry' to a fresh
+hash table so tests never contaminate one another."
   (declare (indent 1))
   `(let ((org-inhibit-startup t)
          (inhibit-message t)
          (gptel-org-debug nil)
          (gptel-org-ib--registry (make-hash-table :test 'equal))
          (org-todo-keywords
-          '((sequence "AI-DO" "AI-DOING" "FEEDBACK" "|" "AI-DONE"))))
+          '((sequence "AI-DO" "AI-DOING" "FEEDBACK" "|" "AI-DONE" "TERMINE"))))
      (with-temp-buffer
        (delay-mode-hooks (org-mode))
        (org-set-regexps-and-options)
