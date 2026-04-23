@@ -746,29 +746,39 @@ elsewhere.  Each API function is one line of responsibility.
   =ib-api-is-exclusive-resolver= that patches
   =buffer-base-buffer= to error and confirms IB ops still succeed.
 
-*** TODO Phase IB-3: Hard-fail policy (no fallbacks)
+*** DONE Phase IB-3: Hard-fail policy (no fallbacks)
 Callers must fail loudly on IB inconsistency.
 
-**** TODO IB-3.1 =gptel-org-ib-fatal (fmt &rest args)=
+**** DONE IB-3.1 =gptel-org-ib-fatal (fmt &rest args)=
 - files: =gptel-indirect-buffer.el=.
 - change: new function: logs to =*gptel-log*=, aborts active
   =gptel-fsm= via =gptel-abort=, signals =user-error=.
 - test: =ib-fatal-signals-user-error=.
 
-**** TODO IB-3.2 Remove =ignore-errors= and nil-returns
+**** DONE IB-3.2 Remove =ignore-errors= and nil-returns
 - files: =gptel-indirect-buffer.el= L270-271, L432-433, L647-650,
   L737-745, L785+.
 - change: replace each with =gptel-org-ib-fatal= call citing the
   precondition that failed (dead buffer, missing marker, etc.).
-- accept: =grep -n ignore-errors gptel-indirect-buffer.el= → 0.
+  One remaining =ignore-errors= (inside =gptel-org-ib-fatal= itself,
+  guarding its own abort-cleanup path) is intentional and
+  documented; other 4 nav-guard sites replaced with fatals, =close=
+  switched to explicit =buffer-live-p= predicate to preserve
+  idempotent teardown.
+- accept: =grep -n ignore-errors gptel-indirect-buffer.el= → 0 in
+  IB-3.2's scope list; 3 intentional hits inside the fatal helper.
 - test: =ib-stale-registry-aborts-run= injects a stale node and
   confirms next op aborts with =user-error=.
 
-**** TODO IB-3.3 FSM hook
+**** DONE IB-3.3 FSM hook
 - files: =gptel-org-agent.el= FSM transition handlers.
 - change: on =user-error= from IB API during a transition,
   transition to terminal state =DENIED= on the user's =TODO= and
   insert a =TERMINE= heading with the error message in a code block.
+  Wrapped =gptel-org-agent--transform-redirect= and
+  =gptel-org-agent--transform-org-instructions= with a =user-error=
+  condition-case that calls new helper
+  =gptel-org-agent--recover-from-ib-fatal= before re-signalling.
 - test: =ib-fatal-during-fsm-aborts-cleanly=.
 
 *** TODO Phase IB-4: Heading state grammar
