@@ -115,35 +115,36 @@ Handlers: =gptel-send--handlers= (state→function alist).
 
 | File | Lines | Purpose |
 |------+-------+---------|
-| =gptel.el= | ~2700 | Main entry point: chat buffers, UI, keybindings, presets, highlighting |
-| =gptel-request.el= | ~2900 | Request library: FSM, prompt construction, generic backend interface |
-| =gptel-transient.el= | ~2000 | Transient menu UI for model/backend/context/tools configuration |
+| =gptel.el= | ~3650 | Main entry point: chat buffers, UI, keybindings, presets, highlighting |
+| =gptel-request.el= | ~3620 | Request library: FSM, prompt construction, generic backend interface |
+| =gptel-transient.el= | ~2030 | Transient menu UI for model/backend/context/tools configuration |
 | =gptel-context.el= | ~850 | Context aggregation: add/remove buffers/files/regions |
 
 ** Backends
 
 | File | Lines | Backend | Notes |
 |------+-------+---------+-------|
-| =gptel-openai.el= | ~740 | OpenAI/ChatGPT | 20+ models, reasoning (o1/o3) |
-| =gptel-anthropic.el= | ~800 | Anthropic/Claude | Thinking blocks, adaptive thinking, reasoning effort, prompt caching |
-| =gptel-gemini.el= | ~650 | Google Gemini | Tool calling integration |
-| =gptel-ollama.el= | ~360 | Ollama (local) | Token counting |
-| =gptel-bedrock.el= | ~660 | AWS Bedrock | Multi-modal, document handling |
-| =gptel-gh.el= | ~450 | GitHub Copilot | Citation handling |
-| =gptel-kagi.el= | ~180 | Kagi FastGPT | Summarizer, references |
-| =gptel-openai-extras.el= | ~430 | PrivateGPT, Perplexity | Source citations |
+| =gptel-openai.el= | ~890 | OpenAI/ChatGPT | 20+ models, reasoning (o1/o3) |
+| =gptel-anthropic.el= | ~790 | Anthropic/Claude | Thinking blocks, adaptive thinking, reasoning effort, prompt caching |
+| =gptel-gemini.el= | ~720 | Google Gemini | Tool calling integration |
+| =gptel-ollama.el= | ~420 | Ollama (local) | Token counting |
+| =gptel-bedrock.el= | ~720 | AWS Bedrock | Multi-modal, document handling |
+| =gptel-gh.el= | ~470 | GitHub Copilot | Citation handling |
+| =gptel-kagi.el= | ~190 | Kagi FastGPT | Summarizer, references |
+| =gptel-mistral.el= | ~160 | Mistral AI | OpenAI-compatible backend; hosted model lineup with context/pricing metadata |
+| =gptel-openai-extras.el= | ~450 | PrivateGPT, Perplexity | Source citations |
 
 ** Org Integration
 
 | File | Lines | Purpose |
 |------+-------+---------|
-| =gptel-org.el= | ~2350 | Org mode support: subtree context, properties, branching, links, Markdown→Org, AI/FEEDBACK keywords |
+| =gptel-org.el= | ~3340 | Org mode support: subtree context, properties, branching, links, Markdown→Org, AI/FEEDBACK keywords |
 | =gptel-org-cache.el= | ~870 | Context caching: hash-based invalidation, tag-based auto-caching |
-| =gptel-org-tasks.el= | ~390 | AI task workflow: TODO transitions, model profiles via tags |
-| =gptel-org-archive.el= | ~590 | Archive with AI summaries: git tracking, two-phase workflow |
-| =gptel-org-agent.el= | ~1340 | Agent subtrees: indirect buffers, sub-agent delegation, format instructions |
-| =gptel-indirect-buffer.el= | ~740 | Indirect buffer management: terminator headings, safe sibling insertion, IB tracking registry, recreation after reorder |
-| =gptel-org-dashboard.el= | ~280 | Org-agenda dashboard: registration-based task monitoring, auto-refresh, allow/deny/kill actions |
+| =gptel-org-tasks.el= | ~590 | AI task workflow: TODO transitions, model profiles via tags |
+| =gptel-org-archive.el= | ~820 | Archive with AI summaries: git tracking, two-phase workflow |
+| =gptel-org-agent.el= | ~2800 | Agent subtrees: indirect buffers, sub-agent delegation, format instructions |
+| =gptel-indirect-buffer.el= | ~1380 | Indirect buffer management: canonical IB API, TERMINE terminator, per-agent state triads, tracking registry, recreation after reorder |
+| =gptel-org-dashboard.el= | ~380 | Org-agenda dashboard: registration-based task monitoring, auto-refresh, allow/deny/kill actions |
 
 ** Other
 
@@ -618,7 +619,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 | [[file:gptel-remote-ai.org]] | Remote server tools (gptel-agent) | exists |
 | [[file:gptel-org-tasks-ai.org]] | Org tasks workflow | exists |
 | [[file:gptel-org-agent-ai.org]] | Agent subtrees (org indirect buffers) | exists |
-| [[file:gptel-indirect-buffer-ai.org]] | Indirect buffer management (terminator pattern, [[file:gptel-indirect-buffer-ai.org::*Heading Creation Rule][Heading Creation Rule]]) | exists |
+| [[file:gptel-indirect-buffer-ai.org]] | Indirect buffer management (canonical IB API, TERMINE, state triads, [[file:gptel-indirect-buffer-ai.org::*Heading Creation Rule][Heading Creation Rule]]) | post-refactor (IB-1..IB-6 DONE; follow-ups IB-4.6b/4.8b/5.5/5.6/5.7 tracked) |
 | [[file:gptel-org-dashboard-ai.org]] | Org-agenda dashboard for AI task monitoring | exists |
 | [[file:emacs-example-ai.org]] | Example AI task workflow | exists |
 
@@ -1116,23 +1117,36 @@ per-site registration having fired.
 Low priority — the per-site fallback works today; this is purely a
 refactor.
 
-**** TODO Phase IB-6: Documentation
+**** DONE Phase IB-6: Documentation
+CLOSED: [2026-04-23]
 Update AI docs to reflect the finished refactor.  Do last so the
 docs describe present state, not aspiration.
 
-***** TODO IB-6.1 Rewrite =gptel-indirect-buffer-ai.org=
-- Remove "current state" sections rendered obsolete by IB-1..IB-4.
-- Promote the "Target design (WIP refactor)" section to the main
+***** DONE IB-6.1 Rewrite =gptel-indirect-buffer-ai.org=
+CLOSED: [2026-04-23]
+Shipped in gptel commit =d82efab= (docs(ai): IB-6.1 rewrite
+gptel-indirect-buffer-ai.org for post-refactor state).
+- Removed "current state" sections rendered obsolete by IB-1..IB-4.
+- Promoted the "Target design (WIP refactor)" section to the main
   design section.
 
-***** TODO IB-6.2 Update =gptel-org-agent-ai.org=
-- Sections on indirect buffer model (L153-205) to reference the
-  canonical API only.
-- Document state triads for each built-in agent.
+***** DONE IB-6.2 Update =gptel-org-agent-ai.org=
+CLOSED: [2026-04-23]
+Shipped in gptel-agent commit =ad2cf076= (documented canonical IB
+API references and per-agent state triads).
+- Sections on indirect buffer model now reference the canonical API
+  only.
+- State triads for each built-in agent are documented.
 
-***** TODO IB-6.3 Update =gptel-ai.org= feature list
-- Mark this refactor DONE in the index.
-- Update source-file line counts if they drift significantly.
+***** DONE IB-6.3 Update =gptel-ai.org= feature list
+CLOSED: [2026-04-23]
+Shipped in the current gptel commit (this change): marked Phase IB-6
+DONE in the index, refreshed source-file line counts in the Source
+Files tables, added a row for =gptel-mistral.el=, and updated the
+feature-list row for =gptel-indirect-buffer-ai.org= to the
+post-refactor label.  Top-level =Indirect-buffer canonical refactor=
+heading remains TODO because follow-ups IB-4.6b, IB-4.8b, IB-5.5,
+IB-5.6, IB-5.7 are still open.
 ** Improvement TODOs
 *** AI-DONE Consolidate gptel-agent test layout under =test/= with Makefile
 CLOSED: [2026-04-23]
