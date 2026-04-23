@@ -2929,6 +2929,147 @@ state via `kill-all-local-variables'."
           (org-mode-restart)))
       any-changed)))
 
+
+;;; Legacy terminator migration (IB-4.4)
+
+(defconst gptel-org--legacy-terminator-heading-regexp
+  "^\\(\\*+\\) +\\(RESULTS\\|FEEDBACK\\)\\(\\s-\\|$\\)"
+  "Regexp matching a legacy RESULTS/FEEDBACK terminator heading line.
+
+Group 1 captures the stars, group 2 captures the legacy keyword,
+group 3 is the trailing whitespace or end of line that separates
+the keyword from the rest of the heading (tags, title fragment,
+...).  Only the keyword group is rewritten during migration.")
+
+;;;###autoload
+(defun gptel-org-migrate-terminators (&optional apply)
+  "Migrate legacy RESULTS/FEEDBACK terminator headings to TERMINE.
+
+A terminator is an *empty-body* heading whose TODO keyword is
+RESULTS or FEEDBACK and that serves as a subtree placeholder for
+the FSM to stream into.  Non-empty occurrences are content
+containers (for example the RESULTS heading produced by
+`gptel-org--tool-body-text' for Agent tool output, or a
+user-FEEDBACK prompt heading that already has content) and MUST
+NOT be migrated.  This command inspects the body of each
+candidate and skips non-empty ones.
+
+Without a prefix argument, runs in DRY-RUN mode: candidate
+headings are listed in the \"*gptel-org-migrate*\" buffer with
+their line numbers and the current buffer is left untouched.
+This is deliberately the default, because a user-FEEDBACK heading
+that the user is about to type into is *transiently* empty and
+must not be rewritten without confirmation.
+
+With a prefix argument APPLY, rewrites the TODO keyword of each
+empty-body RESULTS/FEEDBACK heading to TERMINE.  Heading stars,
+tags, priority cookies and title fragments are preserved; only
+the keyword portion changes.  The rewrite is idempotent: running
+twice on an already-migrated buffer reports 0 candidates.
+
+The rewrite is performed with a direct regex replacement rather
+than `org-todo' so that `org-after-todo-state-change-hook' (which
+includes `gptel-org-agent--on-todo-state-change') does not fire —
+migration is an administrative action, not a user state change.
+
+Signals `user-error' if the current buffer is not org-mode
+derived, or if TERMINE is not registered as an org TODO keyword
+in this buffer (enable `gptel-org-mode' or call
+`gptel-org--register-todo-keywords' first).
+
+Returns the number of candidates found (0 when already migrated)."
+  (interactive "P")
+  (unless (derived-mode-p 'org-mode)
+    (user-error "gptel-org-migrate-terminators: buffer is not org-mode"))
+  (unless (member "TERMINE" (bound-and-true-p org-todo-keywords-1))
+    (user-error
+     "gptel-org-migrate-terminators: TERMINE is not a registered \
+org TODO keyword; enable `gptel-org-mode' or call \
+`gptel-org--register-todo-keywords' first"))
+  (let ((candidates nil)
+        (n-results 0)
+        (n-feedback 0))
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (point-min))
+        (while (re-search-forward
+                gptel-org--legacy-terminator-heading-regexp nil t)
+          (let* ((match-beg (match-beginning 0))
+                 (kw (match-string-no-properties 2))
+                 (line (line-number-at-pos match-beg))
+                 (heading-text
+                  (buffer-substring-no-properties
+                   (line-beginning-position) (line-end-position)))
+                 (empty-body-p
+                  (save-excursion
+                    (goto-char match-beg)
+                    (let* ((entry-end (save-excursion
+                                        (org-end-of-subtree t)
+                                        (point)))
+                           (content-start (save-excursion
+                                            (org-end-of-meta-data t)
+                                            (point)))
+                           (body (if (> entry-end content-start)
+                                     (buffer-substring-no-properties
+                                      content-start entry-end)
+                                   "")))
+                      (string-match-p "\\`[[:space:]\n]*\\'" body)))))
+            (when empty-body-p
+              (push (list line kw heading-text) candidates)
+              (if (equal kw "RESULTS")
+                  (cl-incf n-results)
+                (cl-incf n-feedback)))))))
+    (setq candidates (nreverse candidates))
+    (cond
+     ((null candidates)
+      (message "gptel-org-migrate-terminators: no candidates \
+(buffer already migrated or contains no legacy terminators)")
+      0)
+     (apply
+      (save-excursion
+        (save-restriction
+          (widen)
+          ;; Rewrite in reverse line order so line numbers stay
+          ;; valid as the buffer shrinks/grows — the rewrite is
+          ;; same-length so this is defensive only.
+          (dolist (cand (reverse candidates))
+            (goto-char (point-min))
+            (forward-line (1- (nth 0 cand)))
+            (beginning-of-line)
+            (when (looking-at
+                   gptel-org--legacy-terminator-heading-regexp)
+              (replace-match "TERMINE" t t nil 2)))))
+      (message
+       "gptel-org-migrate-terminators: migrated %d RESULTS and \
+%d FEEDBACK terminators to TERMINE.  Done."
+       n-results n-feedback)
+      (length candidates))
+     (t
+      (let ((report-buf (get-buffer-create "*gptel-org-migrate*"))
+            (src-buf (current-buffer)))
+        (with-current-buffer report-buf
+          (let ((inhibit-read-only t))
+            (erase-buffer)
+            (insert
+             (format "gptel-org-migrate-terminators DRY RUN for %s\n"
+                     (buffer-name src-buf)))
+            (insert
+             (format "Would rewrite %d heading(s): %d RESULTS, %d FEEDBACK.\n"
+                     (length candidates) n-results n-feedback))
+            (insert "Re-run with a prefix argument (C-u) to apply.\n\n")
+            (dolist (cand candidates)
+              (insert (format "  line %d  %s\n"
+                              (nth 0 cand) (nth 2 cand))))
+            (goto-char (point-min))))
+        (display-buffer report-buf))
+      (message
+       "gptel-org-migrate-terminators: would migrate %d RESULTS and \
+%d FEEDBACK terminators to TERMINE (dry-run).  Pass C-u to apply."
+       n-results n-feedback)
+      (length candidates)))))
+
+
 (defun gptel-org--tool-state-keyword (tool-name &optional args)
   "Return TOOL-NAME uppercased and sanitized for use as an org TODO keyword.
 

@@ -804,11 +804,20 @@ Enforce the closed vocabulary described in target design.
   completion, delete its =TERMINE= child heading (use canonical API).
 - test: =termine-removed-on-ai-done=.
 
-**** TODO IB-4.4 Migration: rewrite =RESULTS=/=FEEDBACK= → =TERMINE=
+**** DONE IB-4.4 Migration: rewrite =RESULTS=/=FEEDBACK= → =TERMINE=
 - files: new =gptel-org-migrate-terminators= interactive command in
-  =gptel-org.el=.
-- change: command rewrites existing buffers in place.
-- test: =migrate-terminators-rewrites-headings=.
+  =gptel-org.el=; tests in =test/gptel-org-migrate-test.el=.
+- change: dry-run by default (lists candidates in
+  =*gptel-org-migrate*=); with prefix arg (=C-u=), rewrites in place
+  using a direct regex replacement on the heading line (group 2 of
+  =gptel-org--legacy-terminator-heading-regexp=) so
+  =org-after-todo-state-change-hook= does not fire.  Only empty-body
+  =RESULTS=/=FEEDBACK= headings are rewritten; non-empty content
+  containers (Agent =RESULTS= block, user =FEEDBACK= with content)
+  are skipped.  Idempotent.  Preflight errors when buffer is not
+  org-mode or when =TERMINE= is not registered as an org TODO keyword.
+- test: =gptel-org-migrate-terminators-rewrites-headings=,
+  =gptel-org-migrate-terminators-preserves-tags-and-level=.
 
 **** TODO IB-4.5 REASONING first-line rule + leading =*= strip
 - files: =gptel-org.el= reasoning insertion (~L2444-2536).
