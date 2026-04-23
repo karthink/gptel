@@ -1523,5 +1523,44 @@ Covers `gptel-org-ib-registered-p', `gptel-org-ib-parent',
     (should (string-match-p "boom x 42" (error-message-string err)))))
 
 
+(ert-deftest ib-stale-registry-aborts-run ()
+  "Canonical ops hard-fail with `user-error' on IB inconsistency.
+
+Simulates a broken/collapsed IB state: an indirect buffer is
+registered in the registry, but its visible region has been narrowed
+such that `point-min' is no longer at a heading.  A canonical op
+\(`gptel-org-ib-ensure-terminator') called on that buffer must abort
+via `gptel-org-ib-fatal' (→ `user-error') rather than silently
+coerce point via the old `ignore-errors'/`org-back-to-heading'
+fallback.  This locks in the IB-3.2 hard-fail policy."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\nbody line\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (org-back-to-heading t)
+     (let ((ib (gptel-org-ib-safe-insert-sibling
+                "AI-DO" "Task" nil "FEEDBACK")))
+       (should (buffer-live-p ib))
+       (should (gptel-org-ib-get (buffer-name ib)))
+       ;; Inject staleness: narrow the IB so point-min is no longer
+       ;; anchored at a heading.  The registry still references this
+       ;; IB, but its visible region is broken.
+       (with-current-buffer ib
+         (widen)
+         (goto-char (point-max))
+         (insert "free text line\n")
+         (let ((body-start (save-excursion
+                             (goto-char (point-min))
+                             (forward-line 1)
+                             (point))))
+           (narrow-to-region body-start (point-max)))
+         (goto-char (point-min))
+         (should-not (org-at-heading-p))
+         ;; Canonical op must hard-fail with `user-error', not silently
+         ;; back-to-heading.
+         (should-error (gptel-org-ib-ensure-terminator "FEEDBACK")
+                       :type 'user-error))))))
+
+
 (provide 'gptel-org-ib-test)
 ;;; gptel-org-ib-test.el ends here

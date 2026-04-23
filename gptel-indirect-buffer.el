@@ -577,7 +577,9 @@ Returns the position (beginning of line) of the terminator heading,
 or nil if not found."
   (save-excursion
     (unless (org-at-heading-p)
-      (ignore-errors (org-back-to-heading t)))
+      (gptel-org-ib-fatal
+       "find-terminator: point %d not at heading in buffer %s"
+       (point) (buffer-name)))
     (let* ((parent-level (org-current-level))
            (child-level (1+ parent-level))
            (search-bound (or bound
@@ -655,7 +657,9 @@ subtree and returns a marker to it.
 Returns a marker to the terminator heading."
   (save-excursion
     (unless (org-at-heading-p)
-      (ignore-errors (org-back-to-heading t)))
+      (gptel-org-ib-fatal
+       "ensure-sibling-terminator: point %d not at heading in buffer %s"
+       (point) (buffer-name)))
     (let* ((inhibit-read-only t)
            (_current-level (org-current-level))
            (subtree-end (save-excursion
@@ -738,7 +742,9 @@ marker to it.  Otherwise, create one and return a marker to it.
 Point must be on the parent heading."
   (save-excursion
     (unless (org-at-heading-p)
-      (ignore-errors (org-back-to-heading t)))
+      (gptel-org-ib-fatal
+       "ensure-terminator: point %d not at heading in buffer %s"
+       (point) (buffer-name)))
     (let ((existing (gptel-org-ib-find-terminator terminator-keyword)))
       (if existing
           (progn
@@ -999,12 +1005,14 @@ and kills the buffer."
         (gptel-org-ib-unregister buf-name))
       ;; If there's a buffer-local end-marker not tracked in registry,
       ;; clean that up too (for buffers created by the old code path).
-      ;; Use ignore-errors since the variable might not be bound in all
-      ;; indirect buffers.
+      ;; Guard with an explicit liveness check: close is the graceful
+      ;; teardown path and must remain idempotent even when the
+      ;; indirect buffer has already been killed.  Registry-consistency
+      ;; fatals live on the create/op paths, not here.
       (let ((local-end-marker
-             (ignore-errors
-               (buffer-local-value 'gptel-org-agent--narrow-end-marker
-                                   indirect-buffer))))
+             (and (buffer-live-p indirect-buffer)
+                  (buffer-local-value 'gptel-org-agent--narrow-end-marker
+                                      indirect-buffer))))
         (when (and (markerp local-end-marker)
                    (marker-buffer local-end-marker))
           (set-marker local-end-marker nil)))
@@ -1246,7 +1254,9 @@ Point must be on the parent heading.
 Returns the indirect buffer for the newly created heading."
   (save-excursion
     (unless (org-at-heading-p)
-      (ignore-errors (org-back-to-heading t)))
+      (gptel-org-ib-fatal
+       "safe-insert-sibling: point %d not at heading in buffer %s"
+       (point) (buffer-name)))
     ;; Ensure the terminator exists
     (gptel-org-ib-ensure-terminator terminator-keyword)
     ;; Create the new heading before the terminator
