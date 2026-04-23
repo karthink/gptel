@@ -784,21 +784,21 @@ Callers must fail loudly on IB inconsistency.
 *** TODO Phase IB-4: Heading state grammar
 Enforce the closed vocabulary described in target design.
 
-**** TODO IB-4.1 Introduce =TERMINE= keyword
+**** DONE IB-4.1 Introduce =TERMINE= keyword
 - files: =gptel-org.el= (=gptel-org-todo-keywords= list, L~1169),
   =gptel-indirect-buffer.el= (terminator funcs L257-510).
 - change: add =TERMINE= to the AI-authored keyword set.  Keep
   =RESULTS=/=FEEDBACK= recognised during transition window.
 - test: =terminator-recognises-termine=.
 
-**** TODO IB-4.2 Create =TERMINE= instead of =RESULTS=/=FEEDBACK=
+**** DONE IB-4.2 Create =TERMINE= instead of =RESULTS=/=FEEDBACK=
 - files: =gptel-indirect-buffer.el= L389 (=create-terminator=), L424
   (=ensure-terminator=).
 - change: insertion always writes =TERMINE= with empty body.
 - accept: new agent subtrees use =TERMINE=; old ones still parse.
 - test: update =gptel-org-ib-test.el= fixtures.
 
-**** TODO IB-4.3 Remove =TERMINE= on subtree completion
+**** DONE IB-4.3 Remove =TERMINE= on subtree completion
 - files: =gptel-org-agent.el= task-complete handler (~L1889).
 - change: when a subtree reaches =AI-DONE= / tool success / agent
   completion, delete its =TERMINE= child heading (use canonical API).

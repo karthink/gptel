@@ -66,6 +66,7 @@
 (require 'gptel)
 
 (declare-function gptel-org--debug "gptel-org")
+(declare-function gptel-org-ib-remove-terminator "gptel-indirect-buffer")
 
 ;;; Customization
 
@@ -387,6 +388,33 @@ Replaces any existing error line from a previous failed attempt."
     (insert (format "\n=ERROR=: %s\n" (string-trim error-msg)))
     (gptel-org--debug "tasks inject-error-details: injected error at heading")))
 
+(defun gptel-org-tasks--remove-terminators-at-point ()
+  "Remove TERMINE and legacy RESULTS/FEEDBACK terminators of heading at point.
+
+Point must be on a heading.  Calls
+`gptel-org-ib-remove-terminator' for \"TERMINE\"; then opportunistically
+sweeps legacy \"RESULTS\" and \"FEEDBACK\" empty-body terminators,
+downgrading any failures to debug logs so a corrupted legacy
+subtree does not break the normal completion path."
+  (save-excursion
+    (org-back-to-heading t)
+    (when (gptel-org-ib-remove-terminator "TERMINE")
+      (gptel-org--debug
+       "tasks remove-terminators: removed TERMINE child at %d"
+       (point)))
+    (dolist (legacy-kw '("RESULTS" "FEEDBACK"))
+      (condition-case err
+          (save-excursion
+            (org-back-to-heading t)
+            (when (gptel-org-ib-remove-terminator legacy-kw)
+              (gptel-org--debug
+               "tasks remove-terminators: removed legacy %s terminator"
+               legacy-kw)))
+        (error
+         (gptel-org--debug
+          "tasks remove-terminators: legacy %s sweep failed: %S (ignored)"
+          legacy-kw err))))))
+
 (defun gptel-org-tasks--clear-active-task (_start _end)
   "Transition active task on AI response completion and clear the marker.
 In keyword mode, transitions AI-DOING to FEEDBACK (the user keyword).
@@ -438,6 +466,10 @@ Added to `gptel-post-response-functions'."
                       ;; Inject error details under heading if error occurred
                       (when has-error
                         (gptel-org-tasks--inject-error-details has-error))
+                      ;; IB-4.3: remove the TERMINE placeholder child (and
+                      ;; legacy RESULTS/FEEDBACK terminators) under the
+                      ;; completing task subtree.
+                      (gptel-org-tasks--remove-terminators-at-point)
                       (gptel-org--debug "tasks clear-active-task: transitioned to %s%s"
                                         target-state
                                         (if has-error " (ERROR)" ""))
@@ -464,6 +496,9 @@ Added to `gptel-post-response-functions'."
                       ;; Inject error details under heading if error occurred
                       (when has-error
                         (gptel-org-tasks--inject-error-details has-error))
+                      ;; IB-4.3: remove TERMINE placeholder under the
+                      ;; completing user task subtree.
+                      (gptel-org-tasks--remove-terminators-at-point)
                       (gptel-org--debug "tasks clear-active-task: user task transitioned to %s%s"
                                         target-state
                                         (if has-error " (ERROR)" ""))

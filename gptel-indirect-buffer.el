@@ -753,6 +753,113 @@ Point must be on the parent heading."
             (copy-marker existing))
         (gptel-org-ib-create-terminator terminator-keyword)))))
 
+(defun gptel-org-ib-remove-terminator (heading-keyword)
+  "Remove the terminator child heading matching HEADING-KEYWORD.
+Point must be on the parent heading.
+
+HEADING-KEYWORD is the terminator state (e.g., \"TERMINE\").
+Verifies the terminator body is empty before deletion; fatal if not.
+Idempotent: if no matching terminator is found, does nothing.
+Returns t if a terminator was removed, nil otherwise.
+
+If multiple child headings match HEADING-KEYWORD (should not happen in
+valid data), all are removed.
+
+Before deleting a terminator, any registered indirect buffer whose
+narrowing (`:end-marker' position) falls inside or past the terminator
+heading's region is closed via `gptel-org-ib-close'.  If close fails
+for any reason, the error is logged and the removal proceeds."
+  (save-excursion
+    (unless (org-at-heading-p)
+      (gptel-org-ib-fatal
+       "remove-terminator: point %d not at heading in buffer %s"
+       (point) (buffer-name)))
+    (let ((removed 0)
+          (parent-pos (point))
+          (parent-level (org-current-level))
+          (base-buffer (current-buffer)))
+      ;; Loop because there may (invalidly) be more than one terminator.
+      ;; `find-terminator' returns the first match; after deleting, search again.
+      (catch 'done
+        (while t
+          (save-excursion
+            (goto-char parent-pos)
+            (let ((term-pos (gptel-org-ib-find-terminator heading-keyword)))
+              (unless term-pos
+                (throw 'done nil))
+              ;; Compute the region to delete: from the terminator's
+              ;; line start to the next heading at same-or-shallower
+              ;; level (or point-max).
+              (goto-char term-pos)
+              (beginning-of-line)
+              (let* ((del-start (point))
+                     (term-level (org-current-level))
+                     (del-end
+                      (save-excursion
+                        (forward-line 1)
+                        (let ((found nil)
+                              (limit (save-excursion
+                                       (goto-char parent-pos)
+                                       (org-end-of-subtree t)
+                                       (point))))
+                          (while (and (not found)
+                                      (< (point) limit)
+                                      (re-search-forward org-heading-regexp limit t))
+                            (beginning-of-line)
+                            (if (<= (org-current-level) term-level)
+                                (setq found (point))
+                              (forward-line 1)))
+                          (or found limit))))
+                     ;; Body: everything between the terminator heading
+                     ;; line (exclusive) and del-end.
+                     (body-start (save-excursion
+                                   (goto-char del-start)
+                                   (forward-line 1)
+                                   (point)))
+                     (body (buffer-substring-no-properties
+                            body-start del-end)))
+                ;; Verify body is empty (only whitespace).
+                (unless (string-match-p "\\`[ \t\n]*\\'" body)
+                  (gptel-org-ib-fatal
+                   "remove-terminator: %S has non-empty body (preview: %S)"
+                   heading-keyword
+                   (substring body 0 (min 80 (length body)))))
+                ;; Before deleting: close any IBs whose narrowing
+                ;; covers the terminator region.  Be conservative: log
+                ;; and skip on error rather than crashing.
+                (let ((victims nil))
+                  (maphash
+                   (lambda (name node)
+                     (when (eq (gptel-org-ib-node-base node) base-buffer)
+                       (let ((em (gptel-org-ib-node-end-marker node)))
+                         (when (and (markerp em)
+                                    (marker-position em)
+                                    (>= (marker-position em) del-start))
+                           (push (cons name node) victims)))))
+                   gptel-org-ib--registry)
+                  (dolist (v victims)
+                    (let* ((name (car v))
+                           (node (cdr v))
+                           (ib (gptel-org-ib-node-buffer node)))
+                      (gptel-org--debug
+                       "org-ib remove-terminator: closing IB %S whose narrowing covers %S at %d"
+                       name heading-keyword del-start)
+                      (condition-case err
+                          (when (buffer-live-p ib)
+                            (gptel-org-ib-close ib nil))
+                        (error
+                         (gptel-org--debug
+                          "org-ib remove-terminator: close %S failed: %S (continuing)"
+                          name err))))))
+                ;; Delete the terminator region.
+                (let ((inhibit-read-only t))
+                  (delete-region del-start del-end))
+                (gptel-org--debug
+                 "org-ib remove-terminator: removed %S at level %d (parent level %d)"
+                 heading-keyword term-level parent-level)
+                (setq removed (1+ removed)))))))
+      (> removed 0))))
+
 
 ;;; ---- Safe Heading Creation (Insert Before Terminator) ---------------------
 

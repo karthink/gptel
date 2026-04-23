@@ -1568,10 +1568,14 @@ The bug: coordinator heading ends up at level 6 (3 + offset 3)."
                 (gptel-org-agent--close-indirect-buffer gatherer-indirect t)
                 (setq gatherer-indirect nil))
 
-              ;; Step 7: Simulate researcher writing its final response
+              ;; Step 7: Simulate researcher writing its final response.
+              ;; IB-4.3: must stream BEFORE the TERMINE terminator so it
+              ;; remains empty-body and eligible for removal at AI-DONE.
               (with-current-buffer researcher-indirect
-                (goto-char (point-max))
-                (insert "* AI Gatherer Output\nThe date is Tue Apr 14.\n"))
+                (save-excursion
+                  (goto-char (point-min))
+                  (goto-char (gptel-org-ib-streaming-marker "TERMINE"))
+                  (insert "* AI Gatherer Output\nThe date is Tue Apr 14.\n")))
 
               ;; Verify coordinator heading STILL at level 3
               (with-current-buffer coord-indirect
@@ -1583,10 +1587,14 @@ The bug: coordinator heading ends up at level 6 (3 + offset 3)."
                 (gptel-org-agent--close-indirect-buffer researcher-indirect t)
                 (setq researcher-indirect nil))
 
-              ;; Step 9: Simulate coordinator writing final response
+              ;; Step 9: Simulate coordinator writing final response.
+              ;; IB-4.3: stream BEFORE the TERMINE so the placeholder
+              ;; can be removed when the agent completes.
               (with-current-buffer coord-indirect
-                (goto-char (point-max))
-                (insert "The chain worked: coordinator -> researcher -> gatherer.\nResult: Tue Apr 14 13:06:37 EEST 2026\n"))
+                (save-excursion
+                  (goto-char (point-min))
+                  (goto-char (gptel-org-ib-streaming-marker "TERMINE"))
+                  (insert "The chain worked: coordinator -> researcher -> gatherer.\nResult: Tue Apr 14 13:06:37 EEST 2026\n")))
 
               ;; Step 10: Verify the coordinator heading is STILL level 3
               (with-current-buffer coord-indirect

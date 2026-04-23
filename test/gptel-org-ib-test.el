@@ -395,6 +395,129 @@ be removed in later sub-phases."
           (should (= 2 (org-current-level)))
           (should (equal "TERMINE" (org-get-todo-state))))))))
 
+;;; ---- Remove Terminator (IB-4.3) ------------------------------------------
+
+(ert-deftest gptel-org-ib-test-remove-terminator-removes-existing ()
+  "`remove-terminator' deletes an existing TERMINE child and returns t."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n** Child\nbody\n** TERMINE\n"
+    (goto-char (point-min))
+    (org-back-to-heading t)
+    ;; Sanity: TERMINE present before removal.
+    (should (gptel-org-ib-find-terminator "TERMINE"))
+    (let ((result (gptel-org-ib-remove-terminator "TERMINE")))
+      (should (eq result t)))
+    ;; TERMINE gone; Parent and Child still present.
+    (goto-char (point-min))
+    (org-back-to-heading t)
+    (should-not (gptel-org-ib-find-terminator "TERMINE"))
+    (should (= 0 (how-many "^\\*+ TERMINE\\b" (point-min) (point-max))))
+    (should (= 1 (how-many "^\\* Parent" (point-min) (point-max))))
+    (should (= 1 (how-many "^\\*\\* Child" (point-min) (point-max))))))
+
+(ert-deftest gptel-org-ib-test-remove-terminator-idempotent ()
+  "`remove-terminator' is a no-op when no terminator exists; returns nil."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n** Child\nbody\n"
+    (goto-char (point-min))
+    (org-back-to-heading t)
+    (let ((before (buffer-string))
+          (result (gptel-org-ib-remove-terminator "TERMINE")))
+      (should (null result))
+      ;; Buffer content unchanged.
+      (should (equal before (buffer-string))))))
+
+(ert-deftest gptel-org-ib-test-remove-terminator-fatal-on-non-empty-body ()
+  "`remove-terminator' raises `user-error' when the terminator has body content."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n** Child\n** TERMINE\ngarbage\n"
+    (goto-char (point-min))
+    (org-back-to-heading t)
+    (should-error (gptel-org-ib-remove-terminator "TERMINE")
+                  :type 'user-error)
+    ;; TERMINE should still be present since removal aborted.
+    (goto-char (point-min))
+    (org-back-to-heading t)
+    (should (gptel-org-ib-find-terminator "TERMINE"))))
+
+(ert-deftest gptel-org-ib-test-remove-terminator-removes-duplicates ()
+  "`remove-terminator' removes all TERMINE siblings when multiple exist.
+This shouldn't happen in valid data but the API defends against it."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n** Child\n** TERMINE\n** TERMINE\n"
+    (goto-char (point-min))
+    (org-back-to-heading t)
+    (let ((result (gptel-org-ib-remove-terminator "TERMINE")))
+      (should (eq result t)))
+    (goto-char (point-min))
+    (should (= 0 (how-many "^\\*+ TERMINE\\b" (point-min) (point-max))))))
+
+(ert-deftest gptel-org-ib-test-remove-terminator-legacy-keywords ()
+  "`remove-terminator' works for legacy RESULTS/FEEDBACK empty terminators."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n** Child\n** RESULTS\n"
+    (goto-char (point-min))
+    (org-back-to-heading t)
+    (should (eq t (gptel-org-ib-remove-terminator "RESULTS")))
+    (should (= 0 (how-many "^\\*+ RESULTS\\b" (point-min) (point-max)))))
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n** Child\n** FEEDBACK\n"
+    (goto-char (point-min))
+    (org-back-to-heading t)
+    (should (eq t (gptel-org-ib-remove-terminator "FEEDBACK")))
+    (should (= 0 (how-many "^\\*+ FEEDBACK\\b" (point-min) (point-max))))))
+
+(ert-deftest gptel-org-ib-test-remove-terminator-fatal-when-not-at-heading ()
+  "`remove-terminator' is fatal when point is not on a heading."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\nbody line\n** Child\n** TERMINE\n"
+    ;; Move into Parent's body text (line 2), not on a heading.
+    (goto-char (point-min))
+    (forward-line 1)
+    (should-not (org-at-heading-p))
+    (should-error (gptel-org-ib-remove-terminator "TERMINE")
+                  :type 'user-error)))
+
+(ert-deftest gptel-org-ib-test-termine-removed-on-ai-done ()
+  "After simulating agent completion (AI-DONE transition), TERMINE is gone.
+
+Integration-flavoured test covering the IB-4.3 acceptance criterion:
+when an agent subtree transitions to a terminal state, the TERMINE
+placeholder child is removed from the subtree.
+
+Since `gptel-org-agent--insert-user-heading' is tightly coupled to
+FSM/hook state that is hard to reproduce in isolation, this test
+exercises the primitive directly (the code path in
+`gptel-org-agent--insert-user-heading' after the agent heading
+transitions to AI-DONE) and asserts the observable effect."
+  (gptel-org-ib-test-with-buffer
+      "* AI-DOING Task\n** AI-DOING Agent :main@agent:\n*** CONTENT\nbody\n*** TERMINE\n"
+    (goto-char (point-min))
+    (re-search-forward "^\\*\\* AI-DOING Agent")
+    (beginning-of-line)
+    ;; Sanity: TERMINE exists under the agent subtree.
+    (should (gptel-org-ib-find-terminator "TERMINE"))
+    ;; Simulate the agent-completion transition: AI-DOING -> AI-DONE
+    ;; plus tag removal (mirrors the code in
+    ;; gptel-org-agent--insert-user-heading).
+    (let ((inhibit-message t))
+      (org-todo "AI-DONE"))
+    (org-set-tags nil)
+    ;; Now remove the TERMINE child, as IB-4.3 does.
+    (org-back-to-heading t)
+    (should (eq t (gptel-org-ib-remove-terminator "TERMINE")))
+    ;; TERMINE is gone; CONTENT child remains.
+    (goto-char (point-min))
+    (should (= 0 (how-many "^\\*+ TERMINE\\b" (point-min) (point-max))))
+    (should (= 1 (how-many "^\\*\\*\\* CONTENT\\b" (point-min) (point-max))))
+    ;; Agent heading is AI-DONE with no tags.
+    (goto-char (point-min))
+    (re-search-forward "^\\*\\* AI-DONE Agent")
+    (beginning-of-line)
+    (should (org-at-heading-p))
+    (should (equal "AI-DONE" (org-get-todo-state)))
+    (should (null (org-get-tags nil t)))))
+
 ;;; ---- Streaming Marker ----------------------------------------------------
 
 (ert-deftest gptel-org-ib-test-streaming-marker-with-terminator ()

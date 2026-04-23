@@ -1173,7 +1173,40 @@ in the conversation."
                                       (gptel-org-agent--set-todo-keyword done-kw)
                                       (gptel-org--debug
                                        "insert-user-heading: tool confirm heading transitioned from %s to %s"
-                                       state done-kw))))))))))
+                                       state done-kw))))))))
+                        ;; IB-4.3: remove the TERMINE child (if any) under
+                        ;; the completing agent subtree.  TERMINE is a
+                        ;; placeholder that keeps sibling IBs safe during
+                        ;; concurrent streaming; once the agent has
+                        ;; transitioned to AI-DONE, no more content will
+                        ;; flow into this subtree, so the placeholder is
+                        ;; redundant.  Also opportunistically sweep
+                        ;; legacy RESULTS/FEEDBACK empty-body terminators
+                        ;; — but don't let legacy data corruption break
+                        ;; the normal completion path.
+                        (save-excursion
+                          (goto-char agent-heading-pos)
+                          (when (org-at-heading-p)
+                            (let ((removed
+                                   (gptel-org-ib-remove-terminator "TERMINE")))
+                              (when removed
+                                (gptel-org--debug
+                                 "insert-user-heading: removed TERMINE child of agent at %d"
+                                 agent-heading-pos)))
+                            (dolist (legacy-kw '("RESULTS" "FEEDBACK"))
+                              (condition-case err
+                                  (save-excursion
+                                    (goto-char agent-heading-pos)
+                                    (when (org-at-heading-p)
+                                      (when (gptel-org-ib-remove-terminator
+                                             legacy-kw)
+                                        (gptel-org--debug
+                                         "insert-user-heading: removed legacy %s terminator"
+                                         legacy-kw))))
+                                (error
+                                 (gptel-org--debug
+                                  "insert-user-heading: legacy %s sweep failed: %S (ignored)"
+                                  legacy-kw err))))))))
                     (unless has-user
                       ;; Create the user/feedback heading via
                       ;; terminator-aware helpers so concurrent sibling
