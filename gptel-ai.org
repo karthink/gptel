@@ -726,10 +726,10 @@ elsewhere.  Each API function is one line of responsibility.
 - change: read from node's heading-marker and end-marker only.
 - test: =ib-bounds-matches-narrowing=.
 
-**** TODO IB-2.5 =gptel-org-ib-point (ib)= → current point in IB
+**** DONE IB-2.5 =gptel-org-ib-point (ib)= → current point in IB
 - test: =ib-point-respects-narrowing=.
 
-**** TODO IB-2.6 =gptel-org-ib-absolute-position (ib)= → (buffer . pos)
+**** DONE IB-2.6 =gptel-org-ib-absolute-position (ib)= → (buffer . pos)
 - change: walk parent chain, accumulating offsets.
 - test: =ib-absolute-position-nested= with 3-level chain.
 
