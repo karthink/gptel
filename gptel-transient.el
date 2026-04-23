@@ -1055,7 +1055,9 @@ existing preset, as well."
                                         gptel--known-presets nil t)))))))
   (gptel--apply-preset preset
                        (or setter (lambda (sym val) (gptel--set-with-scope
-                                                sym val gptel--set-buffer-locally)))))
+                                                     sym val gptel--set-buffer-locally))))
+  (when transient--prefix
+    (transient-setup 'gptel-menu)))
 
 ;; ** Prefix for selecting tools
 
