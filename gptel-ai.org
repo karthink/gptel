@@ -967,35 +967,152 @@ Depends on IB-5 (per-agent state triads) for the agent tool case.
 Acceptance: uniform heading format for all tool executions, OR
 explicit documentation of the exception.
 
-*** TODO Phase IB-5: Per-agent state triads
-Let each agent declare its own TODO/DOING/DONE-style state triad.
+*** DONE Phase IB-5: Per-agent state triads
+Each agent now declares its own (REQUEST DOING DONE) state triad via
+a =:state-words:= property in its org doc.  The triad flows through
+the loader to the Agent-tool confirmation flow and the sub-agent
+subtree setup/cleanup, so a gatherer dispatch produces the sequence
+=PENDING GATHER …= → =ALLOWED GATHER …= → =GATHERING …= → =GATHERED=
+across both the tool-call heading and the sub-agent heading.
+Non-Agent tools (Bash, Grep, …) collapse to three copies of the
+existing state keyword, preserving historical behaviour.
 
-**** TODO IB-5.1 Add =:state-words= property to agent org docs
+Implementation: gptel commit =549684a= + gptel-agent commits
+=040134c=, =aeef41c=, =8010ace=, =73f5ccf=.  Spans both submodules;
+variable spelling normalised to lowercase-hyphenated =:state-words:=
+(not the upper-snake =STATE_WORDS:= in the original spec) to match
+the rest of the agent property drawer convention.
+
+Discrepancies with the original task spec (resolved, not regressions):
+- Property key spelling: =:state-words:= (not =STATE_WORDS:=).
+- Default triad on missing property: =("PENDING" "RUNNING" "DONE")=
+  (as specified).  Exposed via
+  =gptel-agent-state-words= accessor in gptel-agent.
+- Scaffold command resolves its directory from =gptel-agent-dirs=
+  (the actual defcustom; the spec referred to the never-existing
+  =gptel-agent-directories=).
+
+**** DONE IB-5.1 Add =:state-words= property to agent org docs
 - files: =quelpa/build/gptel-agent/agents/*.org=.
-- change: each agent file gets a top-level property
-  =:STATE_WORDS: REQUEST DOING DONE=, e.g.
-  =:STATE_WORDS: GATHER GATHERING GATHERED= for the gatherer.
-- accept: every agent doc has the property.
-- test: =agents-declare-state-words= iterates files in =agents/=.
+- change: each of the 15 agent files gained a top-level
+  =:state-words: REQUEST DOING DONE= line directly after
+  =:description:=, e.g. =:state-words: GATHER GATHERING GATHERED=
+  for the gatherer.
+- commit: gptel-agent =040134c=.
+- note: adopted lowercase-hyphenated spelling to match the existing
+  property-drawer convention (=:subagent-models:=, =:include-reasoning:=,
+  =:tools:= …) rather than the upper-snake spelling in the original spec.
 
-**** TODO IB-5.2 Loader exposes state words on agent plist
-- files: =gptel-agent.el= agent loader.
-- change: parse =STATE_WORDS= and store in agent plist as
-  =:state-words=.  Default to =(PENDING RUNNING DONE)= if missing.
-- test: =agent-plist-includes-state-words=.
+**** DONE IB-5.2 Loader exposes state words on agent plist
+- files: =quelpa/build/gptel-agent/gptel-agent.el= (=gptel-agent-parse-org-properties=).
+- change: parses =:state-words:= by splitting on whitespace, upper-casing,
+  validating exactly three tokens (signals =user-error= naming the file
+  otherwise), stores on the agent plist as =:state-words=.  Defaults to
+  =("PENDING" "RUNNING" "DONE")= when the property is absent.
+- test: =agent-plist-includes-state-words= in
+  =quelpa/build/gptel-agent/test/gptel-agent-test.el= (new test file).
+- commit: gptel-agent =aeef41c=.
 
-**** TODO IB-5.3 Confirmation flow uses agent triad
-- files: =gptel-org-agent.el= confirmation flow L1492-1939.
-- change: PENDING/ALLOWED/DENIED request prefix unchanged; the
-  STATE token is drawn from the target agent's =:state-words=,
-  transitioning request→doing on execution, doing→done on completion.
-- test: =gatherer-transitions-gather-gathering-gathered=.
+**** DONE IB-5.3 Confirmation flow uses agent triad
+- files: =quelpa/build/gptel/gptel-org-agent.el= (triad helper;
+  =--display-tool-calls=, =--update-tool-heading=, =--setup-task-subtree=);
+  =quelpa/build/gptel/gptel-org.el= (=--register-todo-keywords= pre-registers
+  all loaded agents' triads); =quelpa/build/gptel-agent/gptel-agent-tools.el=
+  (=gptel-agent-subtree--cleanup= success path);
+  =quelpa/build/gptel-agent/gptel-agent.el= (=gptel-agent-state-words= accessor).
+- change: PENDING/ALLOWED/DENIED REQ prefix unchanged; STATE token is
+  drawn from the target agent's =:state-words= via new
+  =gptel-org-agent--tool-state-triad= helper.  Lifecycle:
+  =<REQ> triad[0]= during request, =triad[1]= during execution (rewrite
+  in =--update-tool-heading=), =triad[2]= on sub-agent completion
+  (rewrite in =gptel-agent-subtree--cleanup=).  Sub-agent subtree
+  heading uses =triad[1]= in place of hardcoded =AI-DOING=.  Non-Agent
+  tools collapse to =(BASH BASH BASH)= etc. so behaviour is unchanged.
+- tests: =gatherer-transitions-gather-gathering-gathered= and
+  =non-agent-tool-triad-collapses= (gptel);
+  =state-words-fallback-returns-default= (gptel-agent).
+- commits: gptel =549684a=, gptel-agent =8010ace=.
 
-**** TODO IB-5.4 Agent doc template generator
-- files: =gptel-agent.el= helper.
-- change: =gptel-agent-scaffold-agent= inserts =:STATE_WORDS:=
-  property automatically.
-- test: =scaffold-includes-state-words=.
+**** DONE IB-5.4 Agent doc template generator
+- files: =quelpa/build/gptel-agent/gptel-agent.el= (new
+  =gptel-agent-scaffold-agent= interactive command + helper
+  =gptel-agent--scaffold-triad=).
+- change: autoloaded interactive command creates a starter agent org
+  file under the chosen =gptel-agent-dirs= entry with a canonical
+  property drawer (=:name:=, =:description:=, =:state-words:=,
+  =:tools:=, =:pre:=) and a placeholder system-prompt body.  The
+  =:state-words:= triad is auto-derived from the agent name via a
+  naive =STEM / STEMING / STEMED= rule (strips a trailing =E= from the
+  stem).  The generated file carries an inline comment warning users
+  to edit the triad for anything beyond simple verbs — the rule only
+  guarantees the property exists.
+- tests: =scaffold-includes-state-words= and
+  =scaffold-rejects-bad-name-and-existing-file=.
+- commit: gptel-agent =73f5ccf=.
+
+**** TODO IB-5.5 Smarter triad derivation in scaffold
+Optional follow-up.  The current =gptel-agent--scaffold-triad= helper
+applies a single =STEM / STEMING / STEMED= suffix rule (strip trailing
+=E=), which works for simple verbs (=gather / gathering / gathered=,
+=execute / executing / executed=) but produces awkward results for
+composite names (=archive-searcher= → =ARCHIVE-SEARCHERING=,
+=handover= → =HANDOVERING=, =remote-server= → =REMOTE-SERVERING=).
+Every shipped agent has its triad hand-tuned, so the current
+generator is just a "don't forget the property" guardrail.
+
+Options if/when this becomes annoying:
+- Tokenise on =-= and inflect only the LAST word
+  (=archive-searcher= → =ARCHIVE-SEARCH / ARCHIVE-SEARCHING /
+  ARCHIVE-SEARCHED=).
+- Small irregular table for known bases (=HANDOVER=,
+  =REMOTE-SERVER=, …).
+- Prompt the user to edit the triad interactively in =M-x
+  gptel-agent-scaffold-agent= before writing the file.
+
+Low priority — only create a task if users start complaining about
+the generated triads.
+
+**** TODO IB-5.6 Wire AI-DO depth validator into --set-todo-keyword
+Follow-up from IB-4.7 that Phase IB-5 enables.  IB-4.7 noted the
+=gptel-org-agent--validate-ai-do-depth= validator is currently wired
+only into AI-DO /creation/ sites (=--create-handover-heading=,
+=gptel-org-handoff=) and NOT into the transition choke point
+=gptel-org-agent--set-todo-keyword=, because sub-agent subtrees
+used =AI-DOING= under another =AI-DOING= and would trip the
+validator on every sub-agent setup.
+
+With IB-5.3 now using per-agent triads for sub-agent subtrees, the
+grammar violation is gone and the validator can be extended to the
+transition choke point as well.  Doing so would catch any future
+code path that accidentally re-introduces =AI-DOING= under an
+=AI-DOING= heading.
+
+Acceptance: =--set-todo-keyword= refuses to set an AI-DO-family
+keyword when the heading's ancestor chain already contains an
+AI-DO-family heading, with a clear =user-error=.  Test:
+=set-todo-keyword-rejects-ai-do-nesting=.
+
+**** TODO IB-5.7 Load-order safety for agent triad registration
+Defensive follow-up.  =gptel-org--register-todo-keywords= now
+iterates =gptel-agent--agents= to pre-register all agents' triads.
+When =gptel-mode= initialises before gptel-agent has loaded its
+agent files (order depends on =(require 'gptel-agent)= timing), the
+alist is empty and the per-site =gptel-org--ensure-todo-state= calls
+in =--display-tool-calls= / =--update-tool-heading= /
+=--setup-task-subtree= paper over the gap on demand.  The per-site
+registration path calls =org-mode-restart= / =org-set-regexps-and-options=
+as a side effect, which is a little heavier than the batch path.
+
+Fix: call =gptel-org--register-todo-keywords= from
+=gptel-agent-update= after agents are loaded, so all triads register
+in one pass.  Needs to be idempotent (the function already is).
+
+Acceptance: after =gptel-agent-update= runs, every loaded agent's
+triad is in the base buffer's =org-todo-keywords= without any
+per-site registration having fired.
+
+Low priority — the per-site fallback works today; this is purely a
+refactor.
 
 *** TODO Phase IB-6: Documentation
 Update AI docs to reflect the finished refactor.  Do last so the
