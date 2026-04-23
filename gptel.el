@@ -1925,18 +1925,9 @@ Optional RAW disables text properties and transformation."
                          "\n")))
                (if (derived-mode-p 'org-mode)
                    ;; Org-mode: use REASONING heading
-                   (let* ((lines (split-string text "\n"))
-                          (first-line (or (cl-find-if
-                                          (lambda (l) (not (string-empty-p (string-trim l))))
-                                          lines)
-                                         "..."))
-                          (rest-lines (if (string= first-line "...")
-                                         lines
-                                       (cdr (member first-line lines))))
-                          (rest-text (string-join rest-lines "\n"))
-                          (heading-text (concat "* REASONING " first-line "\n"))
-                          (body-text (unless (string-empty-p (string-trim rest-text))
-                                      (concat rest-text "\n")))
+                   (let* ((heading+body (gptel--reasoning-format-org text))
+                          (heading-text (car heading+body))
+                          (body-text (cdr heading+body))
                           (tail gptel-response-separator))
                      ;; Heading line: always ignored (never sent to LLM)
                      (add-text-properties
@@ -2100,6 +2091,46 @@ INTERACTIVEP is t when gptel is called interactively."
 
 
 ;;; Reasoning content UI
+
+(defun gptel--reasoning-strip-leading-star (body)
+  "Strip exactly one leading `*' from BODY's first character, if present.
+Prevents reasoning body content from accidentally becoming a sibling
+org heading when the model emits a leading `*' at column 0.
+BODY is returned unchanged if it is nil, empty, or does not begin
+with `*'."
+  (if (and (stringp body)
+           (not (string-empty-p body))
+           (eq (aref body 0) ?*))
+      (substring body 1)
+    body))
+
+(defun gptel--reasoning-format-org (text)
+  "Split reasoning TEXT into (HEADING-TEXT . BODY-TEXT).
+HEADING-TEXT is \"* REASONING <title>\\n\" where <title> is the
+first non-empty line of TEXT (or \"...\" if TEXT has none).
+BODY-TEXT is the remaining content with a single leading `*'
+stripped (see `gptel--reasoning-strip-leading-star'), followed by
+a trailing newline.  BODY-TEXT is nil when the remainder is blank.
+
+Enforces two invariants for org-mode REASONING insertion:
+- The first line of the inserted content is the REASONING heading.
+- A leading `*' at column 0 of the body is stripped so the body
+  cannot accidentally be parsed as a sibling org heading."
+  (let* ((lines (split-string text "\n"))
+         (first-line (or (cl-find-if
+                          (lambda (l) (not (string-empty-p (string-trim l))))
+                          lines)
+                         "..."))
+         (rest-lines (if (string= first-line "...")
+                         lines
+                       (cdr (member first-line lines))))
+         (rest-text (gptel--reasoning-strip-leading-star
+                     (string-join rest-lines "\n")))
+         (heading-text (concat "* REASONING " first-line "\n"))
+         (body-text (unless (string-empty-p (string-trim rest-text))
+                      (concat rest-text "\n"))))
+    (cons heading-text body-text)))
+
 (defun gptel--display-reasoning-stream (text info)
   "Show reasoning TEXT in an appropriate location.
 
@@ -2227,9 +2258,16 @@ for streaming responses only."
                                           (inhibit-modification-hooks t))
                                       (replace-match (concat (match-string 1) " " title))))))
                               (plist-put info :reasoning-title-pending nil)
-                              ;; Insert remaining text as body
-                              (unless (string-empty-p rest)
-                                (let ((prop-rest (copy-sequence rest)))
+                              ;; Insert remaining text as body.  Strip a single
+                              ;; leading `*' so the body cannot masquerade as a
+                              ;; sibling org heading.  If `rest' is empty here,
+                              ;; defer the strip to the next chunk via the
+                              ;; `:reasoning-rest-starting' flag.
+                              (if (string-empty-p rest)
+                                  (plist-put info :reasoning-rest-starting t)
+                                (let ((prop-rest (copy-sequence
+                                                  (gptel--reasoning-strip-leading-star
+                                                   rest))))
                                   (if (eq include 'ignore)
                                       (add-text-properties
                                        0 (length prop-rest)
@@ -2240,13 +2278,21 @@ for streaming responses only."
                                   (gptel-curl--stream-insert-response prop-rest info))))
                           ;; No newline yet — keep accumulating
                           (plist-put info :reasoning-title-buffer buf)))
-                    ;; Title already set — stream body text normally
-                    (if (eq include 'ignore)
-                        (let ((prop-text (copy-sequence text)))
-                          (add-text-properties
-                           0 (length prop-text) '(gptel ignore front-sticky (gptel)) prop-text)
-                          (gptel-curl--stream-insert-response prop-text info t))
-                      (gptel-curl--stream-insert-response text info))))
+                    ;; Title already set — stream body text normally.  If this
+                    ;; is the first chunk after title extraction, strip a single
+                    ;; leading `*' from its first character to prevent a
+                    ;; spurious org heading.
+                    (let ((body-text
+                           (if (plist-get info :reasoning-rest-starting)
+                               (prog1 (gptel--reasoning-strip-leading-star text)
+                                 (plist-put info :reasoning-rest-starting nil))
+                             text)))
+                      (if (eq include 'ignore)
+                          (let ((prop-text (copy-sequence body-text)))
+                            (add-text-properties
+                             0 (length prop-text) '(gptel ignore front-sticky (gptel)) prop-text)
+                            (gptel-curl--stream-insert-response prop-text info t))
+                        (gptel-curl--stream-insert-response body-text info)))))
               ;; Markdown: keep existing behavior
               (unless (and reasoning-marker tracking-marker
                            (= reasoning-marker tracking-marker))

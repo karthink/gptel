@@ -895,5 +895,42 @@ The RESULTS heading is one level deeper than the tool heading's STARS."
     ;; The call line still appears
     (should (string-match-p "(:name \"Agent\"" body))))
 
+
+;;; Tests for REASONING heading/body shaping helpers (IB-4.5)
+
+(ert-deftest gptel-test-reasoning-first-line-is-heading ()
+  "First non-empty line of reasoning TEXT becomes the heading title.
+The remaining lines are preserved verbatim as body.  Together they
+form the buffer region `* REASONING <first-line>\\n<body>\\n'."
+  (let* ((text "first summary line\nbody line 1\nbody line 2\n")
+         (pair (gptel--reasoning-format-org text))
+         (region (concat (car pair) (cdr pair))))
+    (should (string-prefix-p
+             "* REASONING first summary line\nbody line 1\nbody line 2\n"
+             region))))
+
+(ert-deftest gptel-test-reasoning-strips-redundant-star ()
+  "A leading `*' on the body's first character is stripped exactly once.
+The strip prevents the reasoning body from accidentally forming a
+sibling org heading.  Only the single `*' is removed; any character
+that follows (e.g. a space) is preserved."
+  ;; Test the pure helper directly.
+  (should (equal " nested list item\n"
+                 (gptel--reasoning-strip-leading-star "* nested list item\n")))
+  (should (equal "* nested list item\n"
+                 (gptel--reasoning-strip-leading-star "** nested list item\n")))
+  (should (equal "no star here" (gptel--reasoning-strip-leading-star "no star here")))
+  (should (equal "" (gptel--reasoning-strip-leading-star "")))
+  (should (equal nil (gptel--reasoning-strip-leading-star nil)))
+  ;; Test the composed helper: the body's leading `*' must be stripped.
+  (let* ((text "summary\n* nested list item\n")
+         (pair (gptel--reasoning-format-org text))
+         (region (concat (car pair) (cdr pair))))
+    (should (string-prefix-p
+             "* REASONING summary\n nested list item\n"
+             region))
+    ;; And no `*' at column 0 in the body (would create a spurious heading).
+    (should-not (string-match-p "^\\*" (or (cdr pair) "")))))
+
 (provide 'gptel-unit-tests)
 ;;; gptel-unit-tests.el ends here
