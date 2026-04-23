@@ -781,8 +781,24 @@ Callers must fail loudly on IB inconsistency.
   =gptel-org-agent--recover-from-ib-fatal= before re-signalling.
 - test: =ib-fatal-during-fsm-aborts-cleanly=.
 
-*** TODO Phase IB-4: Heading state grammar
+*** DONE Phase IB-4: Heading state grammar
 Enforce the closed vocabulary described in target design.
+
+All eight sub-tasks IB-4.1–IB-4.8 completed in commits =a57cba1= →
+=c62b490=.  Two explicit follow-ups logged as children:
+- IB-4.6b: wire =RESPOND= heading into response insertion (pipeline
+  work deferred from IB-4.6 — scaffolding helper shipped, streaming
+  FSM wiring pending).
+- IB-4.8b: universal REQ prefix for auto-run tools (=:confirm nil=
+  tools bypass heading creation today).
+
+Related discovery from IB-4.7: sub-agent subtrees currently use
+=AI-DOING= as their TODO state rather than the per-agent state triad
+(=GATHER=/=GATHERING=/=GATHERED= etc.) described in the grammar.
+Phase IB-5 is the planned refactor for this.  The AI-DO depth
+validator is wired only into AI-DO /creation/ sites and not into the
+=gptel-org-agent--set-todo-keyword= transition choke point for this
+reason.
 
 **** DONE IB-4.1 Introduce =TERMINE= keyword
 - files: =gptel-org.el= (=gptel-org-todo-keywords= list, L~1169),
