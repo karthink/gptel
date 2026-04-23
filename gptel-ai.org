@@ -819,7 +819,7 @@ Enforce the closed vocabulary described in target design.
 - test: =gptel-org-migrate-terminators-rewrites-headings=,
   =gptel-org-migrate-terminators-preserves-tags-and-level=.
 
-**** TODO IB-4.5 REASONING first-line rule + leading =*= strip
+**** DONE IB-4.5 REASONING first-line rule + leading =*= strip
 - files: =gptel-org.el= reasoning insertion (~L2444-2536).
 - change: when inserting reasoning content, guarantee first line is
   =* REASONING <title>=.  If streamed content starts with =*=
@@ -879,12 +879,36 @@ Can be deferred until the classical response-title path is retired.
 The scaffolding helper =gptel-org--insert-respond-heading= shipped
 in IB-4.6 is the intended entry point for the shaping logic.
 
-**** TODO IB-4.7 AI-DO depth validator
-- files: =gptel-org-agent.el= (new =gptel-org-agent--validate-ai-do-depth=).
-- change: on any AI-DO insertion or transition, verify the heading's
-  parent is a user-owned =TODO=.  Fatal otherwise.
-- test: =ai-do-rejects-nesting= asserts that inserting AI-DO two
-  levels deep raises =user-error=.
+**** DONE IB-4.7 AI-DO depth validator
+- files: =gptel-org-agent.el= (new defconst
+  =gptel-org-agent--ai-do-family-keywords=, new defuns
+  =gptel-org-agent--validate-ai-do-depth= and
+  =gptel-org-agent--validate-ai-do-parent=),
+  =test/gptel-org-agent-test.el= (four new tests).
+- change: validator walks the heading chain from POS upward and
+  signals =user-error= on any AI-DO-family ancestor
+  (AI-DO/AI-DOING/AI-DONE).  Companion
+  =--validate-ai-do-parent= additionally rejects an
+  AI-DO-family parent.  Wired into creation sites:
+  =gptel-org-agent--create-handover-heading= (validates the user
+  task heading before inserting the AI-DO child) and
+  =gptel-org-handoff= (validates the current-task position before
+  inserting the AI-DO sibling, and also rejects handoff from an
+  AI-DO-family task).
+- tests: =ai-do-rejects-nesting=,
+  =ai-do-accepts-top-level-task=,
+  =ai-do-parent-rejects-ai-do-family=,
+  =ai-do-parent-accepts-top-level= (all green).
+- design discrepancy (follow-up for Phase IB-5): sub-agent
+  subtrees created by =gptel-org-agent--setup-task-subtree=
+  currently reuse =AI-DOING= as their TODO keyword (line ~1349),
+  which nests =AI-DOING= under another =AI-DOING= and violates
+  the grammar.  The validator is therefore NOT wired into
+  =gptel-org-agent--set-todo-keyword= — doing so would cause
+  spurious failures on every sub-agent setup.  Phase IB-5.1/IB-5.2
+  will resolve this by introducing per-agent state triads
+  (e.g. =GATHER/GATHERING/GATHERED=); at that point the validator
+  can be extended to the transition choke point as well.
 
 **** TODO IB-4.8 Universal request prefix for tool headings
 - files: =gptel-org.el= =gptel-org--tool-state-keyword= (L~2899),

@@ -2128,5 +2128,60 @@ in the coordinator's indirect buffer."
           (when (and coord-indirect (buffer-live-p coord-indirect))
             (kill-buffer coord-indirect)))))))
 
+;;; ---- IB-4.7: AI-DO depth validator ---------------------------------------
+
+(ert-deftest gptel-org-agent-test-ai-do-rejects-nesting ()
+  "Validator signals `user-error' when an AI-DO-family ancestor exists.
+Attempting to place an AI-DO heading two levels under an existing
+AI-DOING heading violates the Phase IB-4 heading-state grammar."
+  (gptel-org-agent-test-with-buffer
+      "* User Task          :user-task:
+** AI-DOING Existing Agent   :main@agent:
+Agent body.
+*** Nested child
+body
+"
+    (goto-char (point-min))
+    (should (search-forward "Nested child" nil t))
+    (should-error (gptel-org-agent--validate-ai-do-depth)
+                  :type 'user-error)))
+
+(ert-deftest gptel-org-agent-test-ai-do-accepts-top-level-task ()
+  "Validator returns t when the ancestor is a plain user TODO.
+An AI-DO heading placed directly under a non-AI-DO parent
+satisfies the Phase IB-4 heading-state grammar."
+  (gptel-org-agent-test-with-buffer
+      "* User Task          :user-task:
+** AI-DO New Task
+"
+    (goto-char (point-min))
+    (should (search-forward "AI-DO New Task" nil t))
+    (should (eq t (gptel-org-agent--validate-ai-do-depth)))))
+
+(ert-deftest gptel-org-agent-test-ai-do-parent-rejects-ai-do-family ()
+  "`gptel-org-agent--validate-ai-do-parent' rejects AI-DO-family parents.
+Simulates the pre-insertion check done by
+`gptel-org-agent--create-handover-heading' and `gptel-org-handoff'."
+  (gptel-org-agent-test-with-buffer
+      "* AI-DOING Mistaken user task   :user-task:
+body
+"
+    (goto-char (point-min))
+    (should (search-forward "Mistaken user task" nil t))
+    (org-back-to-heading t)
+    (should-error (gptel-org-agent--validate-ai-do-parent)
+                  :type 'user-error)))
+
+(ert-deftest gptel-org-agent-test-ai-do-parent-accepts-top-level ()
+  "`gptel-org-agent--validate-ai-do-parent' accepts a plain user heading."
+  (gptel-org-agent-test-with-buffer
+      "* User Task          :user-task:
+body
+"
+    (goto-char (point-min))
+    (should (search-forward "User Task" nil t))
+    (org-back-to-heading t)
+    (should (eq t (gptel-org-agent--validate-ai-do-parent)))))
+
 (provide 'gptel-org-agent-test)
 ;;; gptel-org-agent-test.el ends here

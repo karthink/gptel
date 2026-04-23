@@ -253,6 +253,75 @@ Return a marker to the newly created heading."
         marker))))
 
 
+(defconst gptel-org-agent--ai-do-family-keywords
+  '("AI-DO" "AI-DOING" "AI-DONE")
+  "TODO keywords that form the AI-DO task lifecycle.
+Per the Phase IB-4 heading-state grammar (see
+`gptel-indirect-buffer-ai.org'), these keywords may appear only
+directly under a user-owned TODO heading.  Nesting an AI-DO-family
+heading under another AI-DO-family heading is a structural
+violation and is rejected by
+`gptel-org-agent--validate-ai-do-depth'.
+
+Note: sub-agent subtrees currently reuse AI-DOING as their TODO
+keyword (see `gptel-org-agent--setup-task-subtree').  This is a
+known discrepancy between the grammar and the implementation that
+Phase IB-5 will resolve by introducing per-agent state triads
+(e.g. GATHER/GATHERING/GATHERED).  Until then the validator is
+wired only into AI-DO-heading *creation* entry points
+(`gptel-org-agent--create-handover-heading' and
+`gptel-org-handoff'), not into the generic todo-keyword choke
+point `gptel-org-agent--set-todo-keyword', to avoid spurious
+failures during sub-agent setup.")
+
+(defun gptel-org-agent--validate-ai-do-depth (&optional pos)
+  "Validate that the heading at POS (default point) has no AI-DO ancestor.
+
+AI-DO, AI-DOING, and AI-DONE may appear only directly under a
+user-owned TODO heading.  Walks the heading chain from POS upward
+and signals `user-error' if any ancestor has an AI-DO-family TODO
+state.  Returns t on success.
+
+The heading *at* POS is not flagged — only ancestors are checked.
+To validate a would-be-child insertion, call this with point at the
+prospective parent heading and additionally confirm the parent's
+own TODO state is not in `gptel-org-agent--ai-do-family-keywords'
+(the creation sites do this explicitly).
+
+Failure is a fatal `user-error' per the IB-3 hard-fail policy."
+  (save-excursion
+    (when pos (goto-char pos))
+    (unless (org-at-heading-p)
+      (org-back-to-heading t))
+    (let ((current-state (org-get-todo-state)))
+      ;; Don't flag the heading itself; only ancestors.
+      (while (org-up-heading-safe)
+        (let ((state (org-get-todo-state)))
+          (when (member state gptel-org-agent--ai-do-family-keywords)
+            (user-error
+             "AI-DO depth violation: %S nested under %S ancestor (line %d).  AI-DO may appear only directly under a user TODO"
+             (or current-state "<new>")
+             state
+             (line-number-at-pos))))))
+    t))
+
+(defun gptel-org-agent--validate-ai-do-parent ()
+  "Validate that point's heading is a legal parent for an AI-DO child.
+Signals `user-error' if the heading at point is itself an
+AI-DO-family heading or has an AI-DO-family ancestor.  Returns t on
+success.  Used by AI-DO creation sites before insertion."
+  (save-excursion
+    (unless (org-at-heading-p)
+      (org-back-to-heading t))
+    (let ((parent-state (org-get-todo-state)))
+      (when (member parent-state gptel-org-agent--ai-do-family-keywords)
+        (user-error
+         "AI-DO depth violation: cannot insert AI-DO child under %S heading (line %d).  AI-DO may appear only directly under a user TODO"
+         parent-state
+         (line-number-at-pos))))
+    (gptel-org-agent--validate-ai-do-depth))
+  t)
+
 (defun gptel-org-agent--create-handover-heading (body description)
   "Create a new AI-DO heading at user task level for a handover task.
 
@@ -266,6 +335,11 @@ subtree).
 BODY is inserted as the heading content.  DESCRIPTION becomes the
 heading title with TODO keyword AI-DO.
 
+Signals `user-error' via `gptel-org-agent--validate-ai-do-parent'
+if the user-level task heading is itself an AI-DO-family heading
+or has an AI-DO ancestor (grammar violation, see
+`gptel-org-agent--ai-do-family-keywords').
+
 Returns the heading text of the created heading, or nil on failure."
   (let* ((base-buf (and (gptel-org-ib-registered-p (current-buffer))
                         (gptel-org-ib-base (current-buffer))))
@@ -277,6 +351,10 @@ Returns the heading text of the created heading, or nil on failure."
           (goto-char agent-heading-pos)
           ;; Navigate up past all agent headings to the user task
           (when (gptel-org-ib-find-user-task-heading)
+            ;; IB-4.7: validate grammar *before* insertion.  The user
+            ;; task heading must not be AI-DO-family and must have no
+            ;; AI-DO ancestor.  Fatal user-error on violation.
+            (gptel-org-agent--validate-ai-do-parent)
             (let* ((inhibit-read-only t)
                    (parent-level (org-current-level))
                    (child-level (1+ parent-level))
@@ -2560,6 +2638,20 @@ Works from both base org buffers and agent indirect buffers."
     (with-current-buffer base-buf
       (save-excursion
         (goto-char task-marker)
+        ;; IB-4.7: the handoff heading is inserted as a SIBLING of the
+        ;; current task, so its parent is the task's parent.  Validate
+        ;; that the parent chain contains no AI-DO-family heading.
+        ;; `gptel-org-agent--validate-ai-do-depth' walks from point
+        ;; upward past the task heading itself, which is exactly the
+        ;; chain we need to check.  Additionally reject the case where
+        ;; the current task is itself AI-DO-family (a handoff from
+        ;; within an AI-DO subtree would nest).
+        (let ((task-state (org-get-todo-state)))
+          (when (member task-state gptel-org-agent--ai-do-family-keywords)
+            (user-error
+             "AI-DO depth violation: cannot handoff from %S heading (line %d).  AI-DO may appear only directly under a user TODO"
+             task-state (line-number-at-pos))))
+        (gptel-org-agent--validate-ai-do-depth)
         (let* ((task-title (org-get-heading t t t t))
                (task-level (org-current-level))
                (inhibit-read-only t)
