@@ -74,6 +74,9 @@
 ;; External functions from gptel-org-agent.el
 (declare-function gptel-org-agent--agent-tag-p "gptel-org-agent" (tag))
 
+;; External function from gptel.el (main file) - may not be loaded yet.
+(declare-function gptel-abort "gptel" (buf))
+
 ;; External variables
 (defvar gptel-org-debug)
 (defvar gptel-org-agent--narrow-end-marker)
@@ -133,6 +136,29 @@ heading and end markers in the base buffer, and agent tag.  See the
 The public `gptel-org-ib-get' accessor returns a plist-shaped view
 for backward compatibility; internal callers that need the node
 should use `gptel-org-ib--get-node'.")
+
+(defun gptel-org-ib-fatal (fmt &rest args)
+  "Signal a fatal indirect-buffer inconsistency.
+
+Log FMT/ARGS to the gptel log, abort the active FSM in the current
+base buffer if any, then signal `user-error' with the same message.
+
+Callers must not wrap this in `ignore-errors' or `condition-case';
+IB invariants are hard preconditions, not recoverable conditions.
+
+The internal `ignore-errors'/`condition-case' here guard only the
+abort-cleanup path: the function must always reach the final
+`user-error' signal regardless of abort outcome."
+  (let ((msg (apply #'format fmt args)))
+    (apply #'gptel-org--debug (concat "org-ib FATAL: " fmt) args)
+    (when (fboundp 'gptel-abort)
+      (let ((base (ignore-errors
+                    (gptel-org-ib-base-buffer (current-buffer)))))
+        (when (buffer-live-p base)
+          (condition-case _err
+              (with-current-buffer base (gptel-abort base))
+            (error nil)))))
+    (user-error "%s" msg)))
 
 (defun gptel-org-ib-register (name indirect-buffer base-buffer
                                    heading-marker end-marker tag)

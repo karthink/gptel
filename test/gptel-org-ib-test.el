@@ -1516,5 +1516,12 @@ Covers `gptel-org-ib-registered-p', `gptel-org-ib-parent',
                (should (< t3p fbp))))))))))
 
 
+(ert-deftest ib-fatal-signals-user-error ()
+  "`gptel-org-ib-fatal' signals `user-error' with the formatted message."
+  (let ((err (should-error (gptel-org-ib-fatal "boom %s %d" "x" 42)
+                           :type 'user-error)))
+    (should (string-match-p "boom x 42" (error-message-string err)))))
+
+
 (provide 'gptel-org-ib-test)
 ;;; gptel-org-ib-test.el ends here
