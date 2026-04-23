@@ -2183,5 +2183,172 @@ body
     (org-back-to-heading t)
     (should (eq t (gptel-org-agent--validate-ai-do-parent)))))
 
+
+;;; ---- IB-4.8: REQ-prefix invariant for tool headings ---------------------
+
+(ert-deftest gptel-org-agent-test-tool-heading-req-prefix-p ()
+  "Pure helper recognises `<REQ> <STATE> <summary>' form."
+  (let ((gptel-org-agent-tool-confirm-keywords '("PENDING" "ALLOWED" "DENIED")))
+    ;; With stars
+    (should (equal "PENDING"
+                   (gptel-org-agent--tool-heading-req-prefix-p
+                    "*** PENDING BASH :command \"date\"")))
+    (should (equal "ALLOWED"
+                   (gptel-org-agent--tool-heading-req-prefix-p
+                    "**** ALLOWED EVAL :expression \"(+ 2 3)\"")))
+    (should (equal "DENIED"
+                   (gptel-org-agent--tool-heading-req-prefix-p
+                    "** DENIED BASH :command \"rm -rf /\"")))
+    ;; Without stars (still a single heading line)
+    (should (equal "PENDING"
+                   (gptel-org-agent--tool-heading-req-prefix-p
+                    "PENDING BASH :command \"date\"")))
+    ;; No REQ prefix — bare STATE
+    (should-not (gptel-org-agent--tool-heading-req-prefix-p
+                 "*** BASH :command \"date\""))
+    (should-not (gptel-org-agent--tool-heading-req-prefix-p
+                 "*** AI-DOING main agent"))
+    ;; REQ word alone (no STATE) is not a valid prefix
+    (should-not (gptel-org-agent--tool-heading-req-prefix-p "*** PENDING"))
+    ;; Non-REQ first word
+    (should-not (gptel-org-agent--tool-heading-req-prefix-p
+                 "*** TODO something"))
+    ;; nil / empty
+    (should-not (gptel-org-agent--tool-heading-req-prefix-p nil))
+    (should-not (gptel-org-agent--tool-heading-req-prefix-p ""))))
+
+(ert-deftest gptel-org-agent-test-tool-heading-strip-req-prefix ()
+  "Pure helper removes a REQ prefix while preserving stars."
+  (let ((gptel-org-agent-tool-confirm-keywords '("PENDING" "ALLOWED" "DENIED")))
+    (should (equal "*** BASH :command \"date\""
+                   (gptel-org-agent--tool-heading-strip-req-prefix
+                    "*** PENDING BASH :command \"date\"")))
+    (should (equal "**** EVAL :expression \"(+ 2 3)\""
+                   (gptel-org-agent--tool-heading-strip-req-prefix
+                    "**** ALLOWED EVAL :expression \"(+ 2 3)\"")))
+    (should (equal "** BASH :command \"rm -rf /\""
+                   (gptel-org-agent--tool-heading-strip-req-prefix
+                    "** DENIED BASH :command \"rm -rf /\"")))
+    ;; Already bare — unchanged
+    (should (equal "*** BASH :command \"date\""
+                   (gptel-org-agent--tool-heading-strip-req-prefix
+                    "*** BASH :command \"date\"")))
+    ;; Without stars
+    (should (equal "BASH :command \"date\""
+                   (gptel-org-agent--tool-heading-strip-req-prefix
+                    "PENDING BASH :command \"date\"")))))
+
+(ert-deftest gptel-org-agent-test-tool-heading-keeps-req-prefix-until-run ()
+  "REQ prefix survives until `--update-tool-heading' runs.
+
+Codifies the IB-4.8 invariant: a tool heading is written as
+`<REQ> <STATE> <summary>' during the request phase (REQ ∈ PENDING /
+ALLOWED / DENIED) and transitions to bare `<STATE> <summary>' only
+after execution.
+
+Flow:
+  1. `--display-tool-calls' creates a PENDING heading  → REQ prefix present.
+  2. Swap PENDING → ALLOWED via a raw heading rewrite (simulates the
+     hook firing without the tool actually running yet) → REQ prefix
+     still present (now \"ALLOWED\").
+  3. `--update-tool-heading' runs with the tool result → REQ prefix
+     gone."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING"
+                                       "PENDING" "ALLOWED" "BASH"
+                                       "FEEDBACK"
+                                       "|" "AI-DONE" "DENIED")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Run a tool\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (gptel-org-agent-tool-confirm-keywords
+              '("PENDING" "ALLOWED" "DENIED"))
+             (base-buf (current-buffer))
+             (marker (gptel-org-agent--create-subtree "main"))
+             (indirect-buf nil))
+        (unwind-protect
+            (progn
+              (setq indirect-buf
+                    (gptel-org-agent--open-indirect-buffer base-buf marker))
+              (let* ((tool-spec (gptel-make-tool
+                                 :name "Bash"
+                                 :function #'ignore
+                                 :description "Run shell"
+                                 :args '((:name "command"
+                                          :type "string"
+                                          :description "cmd"))
+                                 :confirm t
+                                 :include t))
+                     (arg-plist '(:command "date"))
+                     (tool-calls (list (list tool-spec arg-plist #'ignore)))
+                     (position-marker
+                      (with-current-buffer indirect-buf
+                        (save-excursion
+                          (goto-char (point-max))
+                          (copy-marker (point) nil))))
+                     (info (list :buffer indirect-buf
+                                 :position position-marker
+                                 :tracking-marker position-marker
+                                 :callback #'gptel--insert-response
+                                 :tools (list tool-spec))))
+                ;; 1. Request phase: PENDING heading is created.
+                (with-current-buffer indirect-buf
+                  (gptel-org-agent--display-tool-calls tool-calls info))
+                ;; Assert: heading has `<REQ=PENDING> <STATE=BASH> <summary>'.
+                (with-current-buffer base-buf
+                  (goto-char (point-min))
+                  (should (re-search-forward
+                           "^\\(\\*+ \\(?:PENDING\\) \\(?:BASH\\) .*\\)$"
+                           nil t))
+                  (let ((heading-line (match-string 1)))
+                    (should (equal "PENDING"
+                                   (gptel-org-agent--tool-heading-req-prefix-p
+                                    heading-line)))
+                    ;; Strip returns bare STATE form.
+                    (should (string-match-p
+                             "\\`\\*+ BASH "
+                             (gptel-org-agent--tool-heading-strip-req-prefix
+                              heading-line)))))
+                ;; 2. Transition PENDING → ALLOWED at the raw heading
+                ;;    level (no tool execution).  The REQ prefix must
+                ;;    remain — just with a different REQ keyword.
+                (with-current-buffer base-buf
+                  (goto-char (point-min))
+                  (should (re-search-forward "^\\(\\*+\\) PENDING " nil t))
+                  (let ((inhibit-read-only t))
+                    (replace-match (concat (match-string 1) " ALLOWED ")
+                                   t t))
+                  (goto-char (point-min))
+                  (should (re-search-forward
+                           "^\\(\\*+ ALLOWED BASH .*\\)$" nil t))
+                  (let ((heading-line (match-string 1)))
+                    (should (equal "ALLOWED"
+                                   (gptel-org-agent--tool-heading-req-prefix-p
+                                    heading-line)))))
+                ;; 3. Execution: `--update-tool-heading' drops REQ.
+                (with-current-buffer indirect-buf
+                  (goto-char (point-max))
+                  (should (gptel-org-agent--update-tool-heading
+                           tool-spec arg-plist "Thu Apr 16 2026" "call_b1")))
+                ;; Assert: heading is now bare `<STATE=BASH> <summary>'.
+                (with-current-buffer base-buf
+                  (goto-char (point-min))
+                  ;; No PENDING/ALLOWED/DENIED prefix for this tool heading.
+                  (should (= 0 (how-many "^\\*+ \\(?:PENDING\\|ALLOWED\\|DENIED\\) BASH "
+                                         (point-min) (point-max))))
+                  (goto-char (point-min))
+                  (should (re-search-forward "^\\(\\*+ BASH .*\\)$" nil t))
+                  (let ((heading-line (match-string 1)))
+                    (should-not (gptel-org-agent--tool-heading-req-prefix-p
+                                 heading-line))))))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
 (provide 'gptel-org-agent-test)
 ;;; gptel-org-agent-test.el ends here

@@ -1689,6 +1689,48 @@ DENIED: User denies the tool call."
   :type '(list string string string)
   :group 'gptel)
 
+;; IB-4.8: Universal request-prefix invariant for tool headings.
+;; Every tool/agent heading is written as `<REQ> <STATE> <summary>'
+;; during the request phase and transitions to bare `<STATE> <summary>'
+;; after execution.  These pure helpers codify parsing of that form so
+;; call sites and tests can agree on the grammar.
+;;
+;; Currently this invariant is enforced only along the confirmation
+;; path — tools with `:confirm nil' bypass heading creation entirely.
+;; See IB-4.8b for the follow-up that would extend the grammar to
+;; auto-run tools.
+
+(defun gptel-org-agent--tool-heading-req-prefix-p (heading-line)
+  "Return the REQ keyword if HEADING-LINE has a request prefix.
+HEADING-LINE is a single org heading string (with or without leading
+stars).  REQ must be one of `gptel-org-agent-tool-confirm-keywords'
+and must appear as the first word after the stars, followed by at
+least one more word (the tool STATE).
+
+Returns the matched REQ keyword as a string, or nil if no prefix."
+  (when (and heading-line (stringp heading-line))
+    (let* ((stripped (replace-regexp-in-string "^\\*+ +" "" heading-line))
+           (tokens (split-string stripped " +" t))
+           (first-word (car tokens)))
+      (and first-word
+           (cdr tokens)
+           (member first-word gptel-org-agent-tool-confirm-keywords)
+           first-word))))
+
+(defun gptel-org-agent--tool-heading-strip-req-prefix (heading-line)
+  "Remove the REQ prefix from HEADING-LINE if present.
+Returns the modified string, or HEADING-LINE unchanged if no REQ
+prefix is found.  Preserves leading stars."
+  (if-let* ((req (gptel-org-agent--tool-heading-req-prefix-p heading-line)))
+      (let* ((stars (if (string-match "^\\*+ +" heading-line)
+                        (match-string 0 heading-line)
+                      ""))
+             (rest (substring heading-line (length stars)))
+             (without-req (replace-regexp-in-string
+                           (format "\\`%s +" (regexp-quote req)) "" rest)))
+        (concat stars without-req))
+    heading-line))
+
 (defmacro gptel-org-agent--with-info-buffer (buf &rest body)
   "Execute BODY in BUF if it is a live buffer, otherwise in current buffer.
 
@@ -1852,7 +1894,15 @@ INFO is the FSM info plist."
                       gptel-org--tool-state-face)
                  t))
               (let ((heading-pos (point)))
-                ;; Insert the PENDING heading
+                ;; Insert the PENDING heading.
+                ;; IB-4.8 invariant: the request phase writes
+                ;; `<REQ> <STATE> <summary>'.  PENDING-KW is the REQ
+                ;; keyword from `gptel-org-agent-tool-confirm-keywords';
+                ;; TRUNCATED-TITLE already begins with TOOL-STATE (the
+                ;; STATE keyword).  The REQ prefix is dropped by
+                ;; `gptel-org-agent--update-tool-heading' once the tool
+                ;; runs.  See `gptel-org-agent--tool-heading-req-prefix-p'
+                ;; for the pure parser used by tests.
                 (insert (format "%s %s %s\n" stars pending-kw truncated-title))
                 ;; Insert tool call details as body
                 (insert (format "(:name %S :args %S)\n\n"
@@ -2195,6 +2245,12 @@ Returns non-nil if a heading was found and updated, nil otherwise."
             ;; the title to the plist-style args form.  Register the
             ;; state first so org fontifies and cycles the new
             ;; keyword.
+            ;;
+            ;; IB-4.8 invariant: this is the REQ-dropping site.  The
+            ;; new-heading built below has NO REQ prefix, satisfying
+            ;; the bare `<STATE> <summary>' form after execution.
+            ;; `gptel-org-agent--tool-heading-req-prefix-p' returns
+            ;; nil on the rewritten heading.
             (when (fboundp 'gptel-org--ensure-todo-state)
               (gptel-org--ensure-todo-state
                (gptel-org--tool-state-keyword tool-name args)

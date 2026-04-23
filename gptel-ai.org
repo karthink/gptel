@@ -910,13 +910,46 @@ in IB-4.6 is the intended entry point for the shaping logic.
   (e.g. =GATHER/GATHERING/GATHERED=); at that point the validator
   can be extended to the transition choke point as well.
 
-**** TODO IB-4.8 Universal request prefix for tool headings
-- files: =gptel-org.el= =gptel-org--tool-state-keyword= (L~2899),
-  =gptel-org-agent.el= confirmation flow L1492-1939.
-- change: every tool/agent heading is written as
-  =<REQ> <STATE> <summary>= during request phase and transitions to
-  bare =<STATE> <summary>= after execution.
-- test: =tool-heading-keeps-req-prefix-until-run=.
+**** DONE IB-4.8 Universal request prefix for tool headings
+- files: =gptel-org-agent.el= (new pure helpers
+  =gptel-org-agent--tool-heading-req-prefix-p= and
+  =gptel-org-agent--tool-heading-strip-req-prefix= near the
+  =gptel-org-agent-tool-confirm-keywords= defcustom; invariant
+  comments at the REQ-adding site in
+  =gptel-org-agent--display-tool-calls= and the REQ-dropping site
+  in =gptel-org-agent--update-tool-heading=),
+  =test/gptel-org-agent-test.el= (three new tests).
+- change: codifies the invariant on the existing confirmation path
+  (which already implements it).  Every tool heading is written as
+  =<REQ> <STATE> <summary>= during the request phase (REQ ∈
+  =gptel-org-agent-tool-confirm-keywords=) and transitions to bare
+  =<STATE> <summary>= after execution.  The REQ keyword may change
+  across the request phase (PENDING → ALLOWED/DENIED) without
+  dropping the prefix; only =--update-tool-heading= drops it.
+- tests:
+  - =gptel-org-agent-test-tool-heading-req-prefix-p= — pure parser.
+  - =gptel-org-agent-test-tool-heading-strip-req-prefix= — pure stripper.
+  - =gptel-org-agent-test-tool-heading-keeps-req-prefix-until-run=
+    — end-to-end: =--display-tool-calls= emits PENDING; a raw
+    PENDING→ALLOWED rewrite keeps the prefix; =--update-tool-heading=
+    drops it.  All green.
+- scope note: tools with =:confirm nil= bypass heading creation
+  entirely (=gptel-request.el= L~2333-2345) and therefore sit
+  outside this invariant today.  Unifying them under the same
+  grammar is deferred to IB-4.8b (see below).
+
+**** TODO IB-4.8b Universal REQ prefix for auto-run tools
+Extend IB-4.8 to tools that execute without user confirmation.
+Currently, tools with =:confirm nil= bypass heading creation
+entirely (gptel-request.el ~L2333-2345).  Options:
+(a) Auto-create a PENDING heading and immediately transition to
+    ALLOWED/<TOOL-STATE>, emitting the heading history to the org
+    buffer for consistency with confirmed tools.
+(b) Leave auto-run tools headless and document that behaviour as
+    an explicit exception to the universal grammar.
+Depends on IB-5 (per-agent state triads) for the agent tool case.
+Acceptance: uniform heading format for all tool executions, OR
+explicit documentation of the exception.
 
 *** TODO Phase IB-5: Per-agent state triads
 Let each agent declare its own TODO/DOING/DONE-style state triad.
