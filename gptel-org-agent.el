@@ -267,8 +267,8 @@ BODY is inserted as the heading content.  DESCRIPTION becomes the
 heading title with TODO keyword AI-DO.
 
 Returns the heading text of the created heading, or nil on failure."
-  (let* ((base-buf (or (buffer-base-buffer (current-buffer))
-                       (current-buffer)))
+  (let* ((base-buf (and (gptel-org-ib-registered-p (current-buffer))
+                        (gptel-org-ib-base (current-buffer))))
          (agent-heading-pos
           (gptel-org-ib-resolve-agent-heading (current-buffer))))
     (when agent-heading-pos
@@ -307,7 +307,8 @@ This is used by the handover mechanism: the handover agent needs to
 read all context accumulated under the user task heading, including
 any triage agent findings.  Returns nil if the context cannot be
 extracted."
-  (let ((base-buf (buffer-base-buffer (current-buffer))))
+  (let ((base-buf (and (gptel-org-ib-registered-p (current-buffer))
+                       (gptel-org-ib-base (current-buffer)))))
     (when (and base-buf (buffer-live-p base-buf))
       (let ((agent-heading-pos
              (gptel-org-ib-resolve-agent-heading (current-buffer))))
@@ -343,7 +344,8 @@ bulk of raw tool call results, suitable for passing to the
 handover agent.
 
 Returns nil if the context cannot be extracted."
-  (let ((base-buf (buffer-base-buffer (current-buffer))))
+  (let ((base-buf (and (gptel-org-ib-registered-p (current-buffer))
+                       (gptel-org-ib-base (current-buffer)))))
     (when (and base-buf (buffer-live-p base-buf))
       (let ((agent-heading-pos
              (gptel-org-ib-resolve-agent-heading (current-buffer))))
@@ -751,7 +753,7 @@ point the prompt has already been built from the original buffer, so
 this only affects where the response is inserted.
 
 Skips redirection when the request already originates from an agent
-indirect buffer (identified by `buffer-base-buffer' returning non-nil)."
+indirect buffer (identified by `gptel-org-ib-registered-p' returning non-nil)."
   (let* ((info (gptel-fsm-info fsm))
          (orig-buffer (plist-get info :buffer))
          (preset (plist-get info :preset)))
@@ -759,7 +761,7 @@ indirect buffer (identified by `buffer-base-buffer' returning non-nil)."
                (buffer-live-p orig-buffer)
                ;; Only redirect from a base org buffer, not from an
                ;; indirect buffer (which is already an agent subtree)
-               (not (buffer-base-buffer orig-buffer))
+               (not (gptel-org-ib-registered-p orig-buffer))
                (with-current-buffer orig-buffer
                  (derived-mode-p 'org-mode)))
       (when-let* ((indirect-buf
@@ -780,8 +782,8 @@ indirect buffer (identified by `buffer-base-buffer' returning non-nil)."
              (buffer-name orig-buffer) (buffer-name indirect-buf)
              (marker-position pos-marker) preset
              (buffer-local-value 'gptel-org--ref-level indirect-buf)
-             (and (buffer-base-buffer indirect-buf)
-                  (buffer-name (buffer-base-buffer indirect-buf))))))))))
+             (and (gptel-org-ib-registered-p indirect-buf)
+                  (buffer-name (gptel-org-ib-base indirect-buf))))))))))
 
 
 ;;; ---- Org format instructions for system message ----------------------------
@@ -812,7 +814,7 @@ heading (the first heading in the narrowed buffer)."
       (cond
        ;; Agent indirect buffer: response goes under the @agent heading
        ((and (bound-and-true-p gptel-org-subtree-context)
-             (buffer-base-buffer buffer))
+             (gptel-org-ib-registered-p buffer))
         (save-excursion
           (goto-char (point-min))
           (when (org-at-heading-p)
@@ -822,7 +824,9 @@ heading (the first heading in the narrowed buffer)."
   "Return the #+SEQ_TODO line from BUFFER, or nil if none found.
 
 Searches the base buffer (for indirect buffers) or BUFFER directly."
-  (let ((search-buffer (or (buffer-base-buffer buffer) buffer)))
+  (let ((search-buffer (if (gptel-org-ib-registered-p buffer)
+                           (gptel-org-ib-base buffer)
+                         buffer)))
     (when (buffer-live-p search-buffer)
       (with-current-buffer search-buffer
         (save-excursion
@@ -968,7 +972,7 @@ This heading serves as the prompt location for the user's next message
 in the conversation."
   (gptel-org--debug "insert-user-heading: buf=%S indirect=%s"
                     (buffer-name)
-                    (if (buffer-base-buffer) "yes" "no"))
+                    (if (gptel-org-ib-registered-p (current-buffer)) "yes" "no"))
   (let ((in-agent (gptel-org--in-agent-indirect-buffer-p)))
     (gptel-org--debug "insert-user-heading: in-agent-indirect=%s" in-agent)
     (when-let* ((in-agent)
@@ -979,7 +983,8 @@ in the conversation."
                 ;; '@' signs (e.g. "researcher@main@agent"), main agent
                 ;; tags have exactly 1 (e.g. "main@agent").
                 (agent-tag (gptel-org-agent--current-agent-tag))
-                (base-buffer (buffer-base-buffer (current-buffer)))
+                (base-buffer (and (gptel-org-ib-registered-p (current-buffer))
+                                  (gptel-org-ib-base (current-buffer))))
                 (user-tag (if (boundp 'gptel-org-user-tag)
                               gptel-org-user-tag
                             "user")))
@@ -1194,7 +1199,7 @@ the first heading's tags.  The agent tag is identified by matching
 
 Returns nil if the current buffer is not an indirect buffer, not in
 org-mode, or has no agent tag on its first heading."
-  (when (and (buffer-base-buffer (current-buffer))
+  (when (and (gptel-org-ib-registered-p (current-buffer))
              (derived-mode-p 'org-mode))
     (save-excursion
       (goto-char (point-min))
@@ -1227,8 +1232,9 @@ org-mode, or we can't find a heading context to create the subtree."
            (tag (gptel-org-agent--construct-tag agent-type parent-tag))
            (doing-keyword (or (bound-and-true-p gptel-org-tasks-doing-keyword) "AI-DOING"))
            ;; Determine the base buffer (for indirect buffers, go to the base)
-           (base-buffer (or (buffer-base-buffer (current-buffer))
-                            (current-buffer))))
+           (base-buffer (if (gptel-org-ib-registered-p (current-buffer))
+                            (gptel-org-ib-base (current-buffer))
+                          (current-buffer))))
       (gptel-org--debug
        "org-agent setup-task-subtree: agent-type=%S parent-tag=%S tag=%S"
        agent-type parent-tag tag)
@@ -1526,7 +1532,7 @@ org-mode."
          (and buf (buffer-live-p buf)
               (with-current-buffer buf
                 (and (derived-mode-p 'org-mode)
-                     (buffer-base-buffer buf)))))))
+                     (gptel-org-ib-registered-p buf)))))))
 
 (defun gptel-org-agent--ensure-tool-confirm-hook (buf)
   "Ensure the tool confirmation hook is registered on BUF and its base buffer.
@@ -1535,7 +1541,8 @@ The PENDING heading is created in an indirect buffer, but users
 typically change the TODO state from the base buffer.  This
 ensures the `org-after-todo-state-change-hook' handler is
 registered on both buffers so the state change is always caught."
-  (dolist (b (delq nil (list buf (buffer-base-buffer buf))))
+  (dolist (b (delq nil (list buf (and (gptel-org-ib-registered-p buf)
+                                      (gptel-org-ib-base buf)))))
     (when (buffer-live-p b)
       (with-current-buffer b
         (unless (memq #'gptel-org-agent--on-todo-state-change
@@ -1718,7 +1725,8 @@ tool functions like `gptel-agent--task'."
     (when (eq gptel-log-level 'debug)
       (gptel--log
        (format "accept-tool-calls ENTRY: buffer=%s base-buffer=%s info-buffer=%s buf-live=%s num-tools=%d"
-               (buffer-name) (and (buffer-base-buffer) (buffer-name (buffer-base-buffer)))
+               (buffer-name) (and (gptel-org-ib-registered-p (current-buffer))
+                                  (buffer-name (gptel-org-ib-base (current-buffer))))
                (and buf (buffer-name buf)) (and buf (buffer-live-p buf))
                (length tool-calls))
        "tool-call-debug" 'no-json)
@@ -1881,7 +1889,8 @@ This function is added to `org-after-todo-state-change-hook'."
                   (gptel--log
                    (format "debug-state-change: ALLOWED in buffer=%s base-buffer=%s stored-buf=%s stored-buf-live=%s info-buffer=%s info-buffer-live=%s fsm-last=%s"
                            (buffer-name)
-                           (and (buffer-base-buffer) (buffer-name (buffer-base-buffer)))
+                           (and (gptel-org-ib-registered-p (current-buffer))
+                                (buffer-name (gptel-org-ib-base (current-buffer))))
                            (and stored-buf (buffer-name stored-buf))
                            (and stored-buf (buffer-live-p stored-buf))
                            (and info (plist-get info :buffer)
@@ -2162,8 +2171,9 @@ buffer, or nil if none found."
   (save-excursion
     (when (or (org-at-heading-p)
               (ignore-errors (org-back-to-heading t)))
-      (let ((base-buffer (or (buffer-base-buffer (current-buffer))
-                             (current-buffer)))
+      (let ((base-buffer (if (gptel-org-ib-registered-p (current-buffer))
+                             (gptel-org-ib-base (current-buffer))
+                           (current-buffer)))
             result)
         (while (and (not result) (org-at-heading-p))
           (let ((tag (cl-find-if #'gptel-org-agent--agent-tag-p
@@ -2188,7 +2198,8 @@ agent subtree (e.g., researcher@main@agent), find the indirect
 buffer for the parent agent (e.g., main@agent).  Returns nil if
 no parent indirect buffer exists or we're already at the top
 level."
-  (when-let* ((base (buffer-base-buffer (current-buffer)))
+  (when-let* ((base (and (gptel-org-ib-registered-p (current-buffer))
+                         (gptel-org-ib-base (current-buffer))))
               (tag (gptel-org-agent--current-agent-tag)))
     ;; Strip the first component to get parent tag:
     ;; "researcher@main@agent" -> "main@agent"
@@ -2229,9 +2240,9 @@ position of the agent subtree.
   (interactive)
   (cond
    ;; In an indirect buffer: jump to parent or base
-   ((buffer-base-buffer (current-buffer))
+   ((gptel-org-ib-registered-p (current-buffer))
     (let ((parent (gptel-org-agent--find-parent-indirect-buffer))
-          (base (buffer-base-buffer (current-buffer)))
+          (base (gptel-org-ib-base (current-buffer)))
           (pos (+ (point-min)
                   (- (point) (point-min)))))
       (if parent
@@ -2373,9 +2384,10 @@ If in a base org buffer, walk up from point to find the nearest heading
 without an agent tag.
 
 Returns a marker to the user task heading, or nil if not found."
-  (let ((base-buf (or (buffer-base-buffer (current-buffer))
-                      (current-buffer))))
-    (if (buffer-base-buffer (current-buffer))
+  (let ((base-buf (if (gptel-org-ib-registered-p (current-buffer))
+                      (gptel-org-ib-base (current-buffer))
+                    (current-buffer))))
+    (if (gptel-org-ib-registered-p (current-buffer))
         ;; In an indirect buffer
         (let ((agent-pos (gptel-org-ib-resolve-agent-heading
                           (current-buffer))))
@@ -2415,8 +2427,9 @@ Works from both base org buffers and agent indirect buffers."
   (interactive)
   (unless (derived-mode-p 'org-mode)
     (user-error "Not in an org-mode buffer"))
-  (let* ((base-buf (or (buffer-base-buffer (current-buffer))
-                       (current-buffer)))
+  (let* ((base-buf (if (gptel-org-ib-registered-p (current-buffer))
+                       (gptel-org-ib-base (current-buffer))
+                     (current-buffer)))
          (task-marker (gptel-org-agent--find-user-task-at-point)))
     (unless task-marker
       (user-error "No task heading found at or above point"))
@@ -2443,7 +2456,7 @@ Works from both base org buffers and agent indirect buffers."
           (insert heading-text "\n")
           (message "Created handoff heading: %s" new-title))))
     ;; Switch to base buffer if in indirect buffer
-    (when (buffer-base-buffer (current-buffer))
+    (when (gptel-org-ib-registered-p (current-buffer))
       (let ((pos (marker-position task-marker)))
         (switch-to-buffer base-buf)
         (goto-char pos)
