@@ -526,7 +526,7 @@ ARGS are the original function call arguments."
 (defun gptel-org--entry-properties (&optional pt)
   "Find gptel configuration properties stored at PT."
   (pcase-let
-      ((`(,preset ,system ,backend ,model ,temperature ,tokens ,num ,tools)
+      ((`(,preset ,system ,backend ,model ,temperature ,effort ,tokens ,num ,tools)
          (mapcar
           (lambda (prop) (org-entry-get (or pt (point)) prop 'selective))
           '("GPTEL_PRESET" "GPTEL_SYSTEM" "GPTEL_BACKEND"
@@ -541,6 +541,7 @@ ARGS are the original function call arguments."
     (when model (setq model (gptel--intern model)))
     (when temperature
       (setq temperature (gptel--to-number temperature)))
+    (when effort (setq effort (gptel--intern effort)))
     (when tokens (setq tokens (gptel--to-number tokens)))
     (when num (setq num (gptel--to-number num)))
     (when tools
@@ -552,7 +553,7 @@ ARGS are the original function call arguments."
                    (display-warning
                     '(gptel org tools)
                     (format "Tool %s not found, ignoring" tname)))))
-    (list preset system backend model temperature tokens num tools)))
+    (list preset system backend model temperature effort tokens num tools)))
 
 (defun gptel-org--restore-state ()
   "Restore gptel state for Org buffers when turning on `gptel-mode'."
