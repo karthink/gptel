@@ -335,6 +335,95 @@ IB may be a buffer object or a buffer name string."
         (user-error "gptel-org-ib-bounds: missing end-marker for %s" name))
       (cons (marker-position hm) (marker-position em)))))
 
+(defun gptel-org-ib-point (ib)
+  "Return the current point position as observed inside IB.
+
+Each indirect buffer maintains its own `point' independent of its
+base buffer (though text and markers are shared).  This resolver
+returns that per-IB point by switching into IB's buffer and calling
+`point' — it never consults the registry's markers, and it never
+falls back to the base buffer's point.
+
+The returned integer always satisfies `point-min' ≤ value ≤ `point-max'
+of IB (i.e. it respects IB's current narrowing), because `point' in
+Emacs is always clamped to the accessible region of the current
+buffer.  Callers may rely on this invariant.
+
+Signals a `user-error' if IB is not a registered gptel indirect
+buffer, or if its node's `:buffer' slot is missing or not live.
+The canonical resolver API forbids silent fallbacks, so callers
+must handle the error rather than receive a stale or nil position.
+
+IB may be a buffer object or a buffer name string."
+  (let* ((name (cond ((bufferp ib) (buffer-name ib))
+                     ((stringp ib) ib)
+                     (t (user-error "gptel-org-ib-point: invalid IB: %S" ib))))
+         (node (gptel-org-ib--get-node name)))
+    (unless node
+      (user-error "gptel-org-ib-point: not a registered gptel IB: %s" name))
+    (let ((buf (gptel-org-ib-node-buffer node)))
+      (unless (buffer-live-p buf)
+        (user-error "gptel-org-ib-point: IB buffer is not live: %s" name))
+      (with-current-buffer buf (point)))))
+
+(defun gptel-org-ib-absolute-position (ib)
+  "Return IB's current point as an absolute position in its base buffer.
+
+Returns a cons (BUFFER . POS):
+  BUFFER  The base (file) buffer — the terminal buffer found by
+          walking IB's logical parent chain through the registry.
+          Never retrieved via `buffer-base-buffer'.
+  POS     IB's current point expressed as an absolute position in
+          BUFFER.
+
+In this codebase indirect-of-indirect buffers are flattened at the
+Emacs level: every IB in a chain shares the same base file buffer,
+and markers (including `point') are expressed directly in that
+shared base buffer.  IB's point is therefore already an absolute
+position in the base buffer; this resolver's job is to return that
+position together with the base buffer that the logical parent
+chain terminates at, without ever consulting `buffer-base-buffer'.
+
+The walk follows `gptel-org-ib-node-parent' links until a nil parent
+is found, mirroring `gptel-org-ib-base'.  It includes a cycle guard
+that signals `error' if the parent chain exceeds a fixed iteration
+limit, defending against corrupt registry state.
+
+Signals a `user-error' if IB is not a registered gptel indirect
+buffer, or if its node's `:buffer' slot is missing or not live.
+The canonical resolver API forbids silent fallbacks.
+
+IB may be a buffer object or a buffer name string."
+  (let* ((name (cond ((bufferp ib) (buffer-name ib))
+                     ((stringp ib) ib)
+                     (t (user-error
+                         "gptel-org-ib-absolute-position: invalid IB: %S"
+                         ib))))
+         (node (gptel-org-ib--get-node name)))
+    (unless node
+      (user-error
+       "gptel-org-ib-absolute-position: not a registered gptel IB: %s"
+       name))
+    (let ((buf (gptel-org-ib-node-buffer node)))
+      (unless (buffer-live-p buf)
+        (user-error
+         "gptel-org-ib-absolute-position: IB buffer is not live: %s"
+         name))
+      ;; Walk node.parent chain; cap iterations to detect cycles.
+      ;; The terminal node's :base slot is the base file buffer.
+      (let ((cur node)
+            (guard 0)
+            (limit 1024))
+        (while (let ((parent (gptel-org-ib-node-parent cur)))
+                 (and (gptel-org-ib-node-p parent)
+                      (progn (setq cur parent) t)))
+          (setq guard (1+ guard))
+          (when (> guard limit)
+            (error "gptel-org-ib-absolute-position: parent chain exceeds \
+%d nodes (corrupt registry or cycle at %s)" limit name)))
+        (cons (gptel-org-ib-node-base cur)
+              (with-current-buffer buf (point)))))))
+
 
 ;;; ---- Utility Functions ----------------------------------------------------
 

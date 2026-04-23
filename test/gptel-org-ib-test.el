@@ -1010,6 +1010,147 @@ Also verifies:
        (should-error (gptel-org-ib-bounds 42) :type 'user-error)))))
 
 
+(ert-deftest ib-point-respects-narrowing ()
+  "`gptel-org-ib-point' returns the IB's own `point', clamped to its narrowing.
+
+Each indirect buffer has an independent `point' from its base buffer.
+The resolver must return that per-IB point, and the value must always
+lie within the IB's accessible region (`point-min' .. `point-max').
+
+Also verifies:
+- Returns an integer that equals `(with-current-buffer ib (point))'.
+- Moving point inside the IB is reflected on the next call.
+- Accepts both a buffer object and a buffer-name string.
+- Signals `user-error' for unregistered buffers and invalid arguments."
+  (gptel-org-ib-test-with-buffer
+      "* A  :main@agent:\nA body line 1\nA body line 2\n** B  :researcher@main@agent:\nb body\n* C\n"
+    (gptel-org-ib-test-with-cleanup
+     (let* ((base (current-buffer))
+            (pos-a (progn (goto-char (point-min))
+                          (re-search-forward "^\\* A")
+                          (beginning-of-line)
+                          (point)))
+            (pos-b (progn (goto-char (point-min))
+                          (re-search-forward "^\\*\\* B")
+                          (beginning-of-line)
+                          (point)))
+            (ib-a (gptel-org-ib-create base pos-a))
+            (ib-b (with-current-buffer ib-a
+                    (gptel-org-ib-create base pos-b))))
+       (dolist (ib (list ib-a ib-b))
+         ;; Returns an integer.
+         (should (integerp (gptel-org-ib-point ib)))
+         ;; Value equals IB's own point.
+         (should (= (gptel-org-ib-point ib)
+                    (with-current-buffer ib (point))))
+         ;; Value lies within IB's narrowing.
+         (let ((p (gptel-org-ib-point ib)))
+           (should (<= (with-current-buffer ib (point-min)) p))
+           (should (<= p (with-current-buffer ib (point-max)))))
+         ;; Moving point inside the IB is reflected on the next call.
+         (let ((new-pos (with-current-buffer ib
+                          (goto-char (point-min))
+                          (forward-line 1)
+                          (point))))
+           (should (= new-pos (gptel-org-ib-point ib)))
+           ;; Still within narrowing.
+           (should (<= (with-current-buffer ib (point-min)) new-pos))
+           (should (<= new-pos (with-current-buffer ib (point-max)))))
+         ;; Accepts a buffer-name string.
+         (should (= (gptel-org-ib-point ib)
+                    (gptel-org-ib-point (buffer-name ib)))))
+       ;; Unregistered buffer → user-error.
+       (should-error (gptel-org-ib-point "*nonexistent-gptel-ib*")
+                     :type 'user-error)
+       ;; Invalid IB argument → user-error.
+       (should-error (gptel-org-ib-point 42) :type 'user-error)))))
+
+
+(ert-deftest ib-absolute-position-nested ()
+  "`gptel-org-ib-absolute-position' returns (BASE . POS) via the logical chain.
+
+Builds a 3-level chain of indirect buffers (A ⊃ B ⊃ C) all backed by
+the same base file buffer, and verifies that the resolver returns the
+base buffer and IB's current point (already an absolute position in
+the shared base buffer) at every level.
+
+Also verifies:
+- The parent chain in the registry is logical (node.parent links), so
+  node-c's parent is node-b, node-b's parent is node-a, node-a's
+  parent is nil.
+- The result's car is the base file buffer.
+- The result's cdr is an integer equal to `(with-current-buffer ib (point))'.
+- Moving point inside an IB is reflected on the next call.
+- Accepts both a buffer object and a buffer-name string.
+- The resolver walks the registry, not Emacs's indirect chain:
+  shadowing `buffer-base-buffer' with a signalling stub does not
+  change the result for any level.
+- Signals `user-error' for unregistered buffers and invalid arguments."
+  (gptel-org-ib-test-with-buffer
+      "* A  :main@agent:\nA body\n** B  :researcher@main@agent:\nb body\n*** C  :nested@researcher@main@agent:\nc body\n"
+    (gptel-org-ib-test-with-cleanup
+     (let* ((base (current-buffer))
+            (pos-a (progn (goto-char (point-min))
+                          (re-search-forward "^\\* A")
+                          (beginning-of-line)
+                          (point)))
+            (pos-b (progn (goto-char (point-min))
+                          (re-search-forward "^\\*\\* B")
+                          (beginning-of-line)
+                          (point)))
+            (pos-c (progn (goto-char (point-min))
+                          (re-search-forward "^\\*\\*\\* C")
+                          (beginning-of-line)
+                          (point)))
+            (ib-a (gptel-org-ib-create base pos-a))
+            (ib-b (with-current-buffer ib-a
+                    (gptel-org-ib-create base pos-b)))
+            (ib-c (with-current-buffer ib-b
+                    (gptel-org-ib-create base pos-c))))
+       ;; --- Sanity: logical parent chain in the registry is 3 levels.
+       (let ((node-a (gptel-org-ib--get-node (buffer-name ib-a)))
+             (node-b (gptel-org-ib--get-node (buffer-name ib-b)))
+             (node-c (gptel-org-ib--get-node (buffer-name ib-c))))
+         (should (eq (gptel-org-ib-node-parent node-c) node-b))
+         (should (eq (gptel-org-ib-node-parent node-b) node-a))
+         (should (null (gptel-org-ib-node-parent node-a))))
+       ;; --- Per-IB: result is a cons (base . point-in-ib).
+       (dolist (ib (list ib-a ib-b ib-c))
+         (let ((result (gptel-org-ib-absolute-position ib)))
+           (should (consp result))
+           (should (eq base (car result)))
+           (should (integerp (cdr result)))
+           (should (= (cdr result) (with-current-buffer ib (point)))))
+         ;; --- Accepts a buffer-name string.
+         (should (equal (gptel-org-ib-absolute-position ib)
+                        (gptel-org-ib-absolute-position (buffer-name ib)))))
+       ;; --- Moving point inside an IB is reflected on the next call.
+       (let ((new-pos (with-current-buffer ib-b
+                        (goto-char (point-min))
+                        (forward-line 1)
+                        (point))))
+         (let ((result (gptel-org-ib-absolute-position ib-b)))
+           (should (eq base (car result)))
+           (should (= new-pos (cdr result)))))
+       ;; --- Resolver must NOT rely on `buffer-base-buffer' — shadow
+       ;; it with a signalling stub and confirm results are unchanged
+       ;; for every level of the chain.
+       (let ((expected-a (gptel-org-ib-absolute-position ib-a))
+             (expected-b (gptel-org-ib-absolute-position ib-b))
+             (expected-c (gptel-org-ib-absolute-position ib-c)))
+         (cl-letf (((symbol-function 'buffer-base-buffer)
+                    (lambda (&rest _)
+                      (error "buffer-base-buffer must not be called"))))
+           (should (equal expected-a (gptel-org-ib-absolute-position ib-a)))
+           (should (equal expected-b (gptel-org-ib-absolute-position ib-b)))
+           (should (equal expected-c (gptel-org-ib-absolute-position ib-c)))))
+       ;; --- Unregistered buffer → user-error.
+       (should-error (gptel-org-ib-absolute-position "*nonexistent-gptel-ib*")
+                     :type 'user-error)
+       ;; --- Invalid IB argument → user-error.
+       (should-error (gptel-org-ib-absolute-position 42) :type 'user-error)))))
+
+
 ;;; ---- Heading Navigation ---------------------------------------------------
 
 (ert-deftest gptel-org-ib-test-find-user-task-heading-walks-up ()
