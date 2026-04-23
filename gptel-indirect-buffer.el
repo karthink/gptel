@@ -425,6 +425,23 @@ IB may be a buffer object or a buffer name string."
               (with-current-buffer buf (point)))))))
 
 
+(defun gptel-org-ib-registered-p (buf)
+  "Return non-nil if BUF is a registered gptel indirect buffer.
+
+BUF may be a buffer object or a buffer-name string.  The check
+consults only the IB registry — it never calls `buffer-base-buffer'
+or otherwise inspects Emacs's low-level indirect-buffer relationship.
+This predicate is the canonical way for gptel code to ask \"am I
+inside a gptel-managed indirect buffer?\".
+
+Returns nil for buffer objects and names that are not in the registry,
+including live buffers that happen to be Emacs indirect buffers but
+were not created by `gptel-org-ib-create'."
+  (let ((name (cond ((bufferp buf) (and (buffer-live-p buf) (buffer-name buf)))
+                    ((stringp buf) buf)
+                    (t nil))))
+    (and name (gptel-org-ib--get-node name) t)))
+
 ;;; ---- Utility Functions ----------------------------------------------------
 
 (defun gptel-org-ib-base-buffer (indirect-buffer)

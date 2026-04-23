@@ -1972,7 +1972,7 @@ position of the #+end_ line, or nil if no match."
 An agent indirect buffer is an indirect buffer whose first heading
 has a tag matching the `*@agent' pattern, or has been marked with
 the buffer-local flag `gptel-org--agent-indirect-buffer-p'."
-  (and (buffer-base-buffer (current-buffer))
+  (and (gptel-org-ib-registered-p (current-buffer))
        (derived-mode-p 'org-mode)
        (or (bound-and-true-p gptel-org--agent-indirect-buffer-p)
            (save-excursion
@@ -2352,7 +2352,7 @@ markers like \"@assistant\"."
     ;; Go to beginning of line to handle being at end of heading line
     (beginning-of-line)
     (gptel-org--debug "find-response-heading: pos=%d buf=%S indirect=%s at-heading=%s"
-                      pos (buffer-name) (if (buffer-base-buffer) "yes" "no")
+                      pos (buffer-name) (if (gptel-org-ib-registered-p (current-buffer)) "yes" "no")
                       (org-at-heading-p))
     (if (and (org-at-heading-p)
              (or (gptel-org--heading-is-assistant-p)
@@ -2461,10 +2461,11 @@ Returns the indirect buffer, or nil if creation failed."
   (gptel-org--debug
    "reasoning IB create: pos=%S cur-buf=%S base=%S"
    reasoning-heading-pos (buffer-name)
-   (when (buffer-base-buffer) (buffer-name (buffer-base-buffer))))
+   (when (gptel-org-ib-registered-p (current-buffer)) (buffer-name (gptel-org-ib-base (current-buffer)))))
   (condition-case err
-      (let* ((base-buf (or (buffer-base-buffer (current-buffer))
-                           (current-buffer)))
+      (let* ((base-buf (if (gptel-org-ib-registered-p (current-buffer))
+                           (gptel-org-ib-base (current-buffer))
+                         (current-buffer)))
              (buf-name (gptel-org-ib-compute-name
                         base-buf reasoning-heading-pos "reasoning"))
              indirect-buf)
@@ -2489,7 +2490,8 @@ Returns the indirect buffer, or nil if creation failed."
           (add-hook 'kill-buffer-hook
                     (lambda ()
                       (let ((this-buf (current-buffer)))
-                        (when-let* ((base (buffer-base-buffer this-buf)))
+                        (when-let* ((base (and (gptel-org-ib-registered-p this-buf)
+                                               (gptel-org-ib-base this-buf))))
                           (with-current-buffer base
                             (when (eq gptel-org--reasoning-indirect-buffer
                                       this-buf)
@@ -2531,7 +2533,8 @@ Safe to call even if no reasoning buffer exists."
     (gptel-org-ib-close ib))
   (setq gptel-org--reasoning-indirect-buffer nil)
   ;; Also clear in base buffer
-  (when-let* ((base (buffer-base-buffer (current-buffer))))
+  (when-let* ((base (and (gptel-org-ib-registered-p (current-buffer))
+                         (gptel-org-ib-base (current-buffer)))))
     (with-current-buffer base
       (setq gptel-org--reasoning-indirect-buffer nil))))
 
@@ -2559,10 +2562,11 @@ Returns the indirect buffer, or nil if creation failed."
   (gptel-org--debug
    "tool IB create: pos=%S cur-buf=%S base=%S"
    tool-heading-pos (buffer-name)
-   (when (buffer-base-buffer) (buffer-name (buffer-base-buffer))))
+   (when (gptel-org-ib-registered-p (current-buffer)) (buffer-name (gptel-org-ib-base (current-buffer)))))
   (condition-case err
-      (let* ((base-buf (or (buffer-base-buffer (current-buffer))
-                           (current-buffer)))
+      (let* ((base-buf (if (gptel-org-ib-registered-p (current-buffer))
+                           (gptel-org-ib-base (current-buffer))
+                         (current-buffer)))
              (buf-name (gptel-org-ib-compute-name
                         base-buf tool-heading-pos "tool"))
              indirect-buf)
@@ -2581,7 +2585,8 @@ Returns the indirect buffer, or nil if creation failed."
           (add-hook 'kill-buffer-hook
                     (lambda ()
                       (let ((this-buf (current-buffer)))
-                        (when-let* ((base (buffer-base-buffer this-buf)))
+                        (when-let* ((base (and (gptel-org-ib-registered-p this-buf)
+                                               (gptel-org-ib-base this-buf))))
                           (with-current-buffer base
                             (when (eq gptel-org--tool-indirect-buffer
                                       this-buf)
@@ -2624,7 +2629,8 @@ Safe to call even if no TOOL buffer exists."
     (gptel-org-ib-close ib))
   (setq gptel-org--tool-indirect-buffer nil)
   ;; Also clear in base buffer
-  (when-let* ((base (buffer-base-buffer (current-buffer))))
+  (when-let* ((base (and (gptel-org-ib-registered-p (current-buffer))
+                         (gptel-org-ib-base (current-buffer)))))
     (with-current-buffer base
       (setq gptel-org--tool-indirect-buffer nil))))
 
@@ -2806,7 +2812,7 @@ corrupting subsequent heading updates."
       ;; (in practice this runs in the base buffer during `gptel-mode'
       ;; setup, before any IB exists — but be defensive).
       (when (and changed (derived-mode-p 'org-mode))
-        (if (buffer-base-buffer)
+        (if (gptel-org-ib-registered-p (current-buffer))
             (org-set-regexps-and-options)
           (org-mode-restart))))))
 
@@ -2865,7 +2871,7 @@ state at `gptel-mode' setup time."
            (changed (gptel-org--ensure-todo-state-1 state face done-state)))
       (cl-pushnew state gptel-org--ai-state-keywords :test #'equal)
       (when (and changed (derived-mode-p 'org-mode))
-        (if (buffer-base-buffer)
+        (if (gptel-org-ib-registered-p (current-buffer))
             (org-set-regexps-and-options)
           (org-mode-restart)))
       changed)))
@@ -2892,7 +2898,7 @@ state via `kill-all-local-variables'."
           (when (gptel-org--ensure-todo-state-1 state face done-state)
             (setq any-changed t))))
       (when (and any-changed (derived-mode-p 'org-mode))
-        (if (buffer-base-buffer)
+        (if (gptel-org-ib-registered-p (current-buffer))
             (org-set-regexps-and-options)
           (org-mode-restart)))
       any-changed)))

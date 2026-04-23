@@ -171,18 +171,34 @@ BODY receives `beg' bound to the position of BEG-MARKER."
          ;; of buffer.  This simulates the real scenario where the
          ;; narrowing end-marker has insertion-type t and expands as
          ;; the AI streams incorrectly-leveled headings into the buffer.
-         (let* ((indirect-buf (make-indirect-buffer (current-buffer)
-                                                     " *gptel-test-agent*" t)))
-           (with-current-buffer indirect-buf
-             (delay-mode-hooks (org-mode))
-             (narrow-to-region agent-start (point-max))
-             ;; Find beg marker
-             (goto-char (point-min))
-             (search-forward ,beg-marker)
-             (beginning-of-line)
-             (let ((beg (point)))
-               ,@body))
-           (kill-buffer indirect-buf))))))
+         (let* ((base-buf (current-buffer))
+                (ib-name " *gptel-test-agent*")
+                (heading-marker (copy-marker agent-start))
+                (end-marker (let ((m (make-marker)))
+                              (set-marker m (point-max))
+                              (set-marker-insertion-type m t)
+                              m))
+                (indirect-buf (make-indirect-buffer base-buf ib-name t)))
+           ;; Register in the canonical gptel IB registry so that
+           ;; `gptel-org-ib-registered-p' (used by
+           ;; `gptel-org--in-agent-indirect-buffer-p') returns non-nil.
+           ;; Production indirect buffers are created via
+           ;; `gptel-org-ib-create' which registers automatically; this
+           ;; test bypasses that to control the exact narrowing region.
+           (gptel-org-ib-register ib-name indirect-buf base-buf
+                                  heading-marker end-marker "agent")
+           (unwind-protect
+               (with-current-buffer indirect-buf
+                 (delay-mode-hooks (org-mode))
+                 (narrow-to-region agent-start (point-max))
+                 ;; Find beg marker
+                 (goto-char (point-min))
+                 (search-forward ,beg-marker)
+                 (beginning-of-line)
+                 (let ((beg (point)))
+                   ,@body))
+             (gptel-org-ib-unregister ib-name)
+             (kill-buffer indirect-buf)))))))
 
 (ert-deftest gptel-org-subtree-test-adjust-headings-agent-indirect-basic ()
   "Test heading demotion in agent indirect buffer.
