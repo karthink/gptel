@@ -2350,5 +2350,152 @@ Flow:
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
+(ert-deftest gptel-org-agent-test-non-agent-tool-triad-collapses ()
+  "Non-Agent tools collapse their triad to three copies of the state keyword.
+Codifies the IB-5.3 backward-compat invariant: only the Agent tool
+resolves per-agent triads; every other tool keeps its single state
+keyword so existing behaviour is unchanged."
+  (should (equal '("BASH" "BASH" "BASH")
+                 (gptel-org-agent--tool-state-triad "Bash" '(:command "date"))))
+  (should (equal '("GREP" "GREP" "GREP")
+                 (gptel-org-agent--tool-state-triad "Grep" '(:pattern "foo"))))
+  ;; No args plist: still collapses.
+  (should (equal '("EVAL" "EVAL" "EVAL")
+                 (gptel-org-agent--tool-state-triad "Eval" nil)))
+  ;; Agent tool without resolvable :subagent_type: collapses to
+  ;; three copies of "AGENT" (the uppercased fallback).
+  (should (equal '("AGENT" "AGENT" "AGENT")
+                 (gptel-org-agent--tool-state-triad "Agent" nil))))
+
+(ert-deftest gptel-org-agent-test-gatherer-transitions-gather-gathering-gathered ()
+  "Agent-tool heading for the gatherer progresses GATHER → GATHERING → GATHERED.
+
+Codifies the IB-5.3 invariant: when the `Agent' tool is dispatched
+to an agent with a :state-words triad, the heading lifecycle uses
+the triad words instead of the generic subagent_type:
+
+  1. `--display-tool-calls' creates `PENDING GATHER ...'
+  2. User flips PENDING → ALLOWED   → `ALLOWED GATHER ...'
+  3. `--update-tool-heading' drops REQ and rewrites STATE to
+     `GATHERING'
+  4. Sub-agent cleanup transitions the heading to `GATHERED'
+     (simulated by `gptel-org-agent--set-todo-keyword')."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING"
+                                       "PENDING" "ALLOWED"
+                                       "GATHER" "GATHERING"
+                                       "FEEDBACK"
+                                       "|" "AI-DONE" "DENIED"
+                                       "GATHERED")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Dispatch sub-agent\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (gptel-org-tasks-done-keyword "AI-DONE")
+             (gptel-org-agent-tool-confirm-keywords
+              '("PENDING" "ALLOWED" "DENIED"))
+             (base-buf (current-buffer))
+             (marker (gptel-org-agent--create-subtree "main"))
+             (indirect-buf nil))
+        (unwind-protect
+            ;; Stub `gptel-agent-state-words' to return a fixed triad
+            ;; for "gatherer" so this test does not require
+            ;; gptel-agent to be loaded.
+            (cl-letf (((symbol-function 'gptel-agent-state-words)
+                       (lambda (agent-name)
+                         (if (equal agent-name "gatherer")
+                             '("GATHER" "GATHERING" "GATHERED")
+                           '("PENDING" "RUNNING" "DONE")))))
+              (setq indirect-buf
+                    (gptel-org-agent--open-indirect-buffer base-buf marker))
+              (let* ((tool-spec (gptel-make-tool
+                                 :name "Agent"
+                                 :function #'ignore
+                                 :description "Dispatch sub-agent"
+                                 :args '((:name "subagent_type"
+                                          :type "string"
+                                          :description "agent")
+                                         (:name "prompt"
+                                          :type "string"
+                                          :description "prompt"))
+                                 :confirm t
+                                 :include t))
+                     (arg-plist '(:subagent_type "gatherer"
+                                  :prompt "Find the thing"))
+                     (tool-calls (list (list tool-spec arg-plist #'ignore)))
+                     (position-marker
+                      (with-current-buffer indirect-buf
+                        (save-excursion
+                          (goto-char (point-max))
+                          (copy-marker (point) nil))))
+                     (info (list :buffer indirect-buf
+                                 :position position-marker
+                                 :tracking-marker position-marker
+                                 :callback #'gptel--insert-response
+                                 :tools (list tool-spec))))
+                ;; 1. Request phase: heading is `PENDING GATHER ...'.
+                (with-current-buffer indirect-buf
+                  (gptel-org-agent--display-tool-calls tool-calls info))
+                (with-current-buffer base-buf
+                  (goto-char (point-min))
+                  (should (re-search-forward
+                           "^\\*+ PENDING GATHER " nil t))
+                  ;; Not GATHERER (the uppercased subagent_type) —
+                  ;; triad[0] is GATHER.
+                  (goto-char (point-min))
+                  (should-not (re-search-forward
+                               "^\\*+ PENDING GATHERER\\b" nil t)))
+                ;; 2. User flips PENDING → ALLOWED.
+                (with-current-buffer base-buf
+                  (goto-char (point-min))
+                  (should (re-search-forward "^\\(\\*+\\) PENDING " nil t))
+                  (let ((inhibit-read-only t))
+                    (replace-match (concat (match-string 1) " ALLOWED ")
+                                   t t))
+                  (goto-char (point-min))
+                  (should (re-search-forward
+                           "^\\*+ ALLOWED GATHER " nil t)))
+                ;; 3. Execution: `--update-tool-heading' drops REQ and
+                ;;    rewrites STATE to `GATHERING' (triad[1]).
+                (with-current-buffer indirect-buf
+                  (goto-char (point-max))
+                  (should (gptel-org-agent--update-tool-heading
+                           tool-spec arg-plist "sub-agent result" "call_g1")))
+                (with-current-buffer base-buf
+                  (goto-char (point-min))
+                  ;; REQ dropped.
+                  (should (= 0 (how-many
+                                "^\\*+ \\(?:PENDING\\|ALLOWED\\|DENIED\\) GATHER "
+                                (point-min) (point-max))))
+                  ;; State is GATHERING.
+                  (should (re-search-forward "^\\*+ GATHERING " nil t))
+                  ;; Not plain GATHER (request word) anymore.
+                  (goto-char (point-min))
+                  (should (= 0 (how-many "^\\*+ GATHER " (point-min) (point-max)))))
+                ;; 4. Sub-agent cleanup: triad[2] is `GATHERED'.
+                ;;    Simulate by calling --set-todo-keyword on the
+                ;;    heading directly (mirrors what
+                ;;    `gptel-agent-subtree--cleanup' does on DONE).
+                (with-current-buffer base-buf
+                  (goto-char (point-min))
+                  (should (re-search-forward "^\\*+ GATHERING " nil t))
+                  (beginning-of-line)
+                  ;; Register the DONE word so --set-todo-keyword
+                  ;; accepts it.
+                  (gptel-org--ensure-todo-state
+                   "GATHERED" gptel-org--agent-state-face t)
+                  (gptel-org-agent--set-todo-keyword "GATHERED")
+                  (goto-char (point-min))
+                  (should (re-search-forward "^\\*+ GATHERED " nil t))
+                  (should (= 0 (how-many "^\\*+ GATHERING "
+                                         (point-min) (point-max)))))))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
 (provide 'gptel-org-agent-test)
 ;;; gptel-org-agent-test.el ends here

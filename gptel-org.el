@@ -2891,6 +2891,37 @@ corrupting subsequent heading updates."
               (when (gptel-org--ensure-todo-state-1
                      state gptel-org--tool-state-face t)
                 (setq changed t))))))
+      ;; IB-5.3: pre-register every loaded gptel-agent's three-word
+      ;; state triad (REQUEST DOING DONE — e.g. GATHER, GATHERING,
+      ;; GATHERED) so Agent-tool headings can transition through
+      ;; their lifecycle without an org-mode-restart inside an IB.
+      ;; REQUEST and DONE are registered as done-state keywords (they
+      ;; terminate a phase); DOING is registered as an open/todo
+      ;; state (it signals in-progress work).  Guarded for
+      ;; load-order: `gptel-agent--agents' is populated by
+      ;; `gptel-agent-update' which may run after `gptel-mode' setup.
+      ;; Missing triads are papered over by the per-site
+      ;; `gptel-org--ensure-todo-state' calls at tool-heading
+      ;; creation/update time.
+      (when (and (boundp 'gptel-agent--agents) gptel-agent--agents)
+        (dolist (agent-entry gptel-agent--agents)
+          (let ((triad (plist-get (cdr agent-entry) :state-words)))
+            (when (and (listp triad) (= (length triad) 3))
+              (let ((req (nth 0 triad))
+                    (doing (nth 1 triad))
+                    (done (nth 2 triad)))
+                (cl-pushnew req gptel-org--ai-state-keywords :test #'equal)
+                (cl-pushnew doing gptel-org--ai-state-keywords :test #'equal)
+                (cl-pushnew done gptel-org--ai-state-keywords :test #'equal)
+                (when (gptel-org--ensure-todo-state-1
+                       req gptel-org--agent-state-face t)
+                  (setq changed t))
+                (when (gptel-org--ensure-todo-state-1
+                       doing gptel-org--agent-state-face nil)
+                  (setq changed t))
+                (when (gptel-org--ensure-todo-state-1
+                       done gptel-org--agent-state-face t)
+                  (setq changed t)))))))
       ;; Refresh org to pick up changes.  Guarded for indirect buffers
       ;; (in practice this runs in the base buffer during `gptel-mode'
       ;; setup, before any IB exists — but be defensive).

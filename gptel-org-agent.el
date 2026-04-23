@@ -1424,7 +1424,17 @@ org-mode, or we can't find a heading context to create the subtree."
              (derived-mode-p 'org-mode))
     (let* ((parent-tag (gptel-org-agent--current-agent-tag))
            (tag (gptel-org-agent--construct-tag agent-type parent-tag))
-           (doing-keyword (or (bound-and-true-p gptel-org-tasks-doing-keyword) "AI-DOING"))
+           ;; IB-5.3: derive the DOING keyword from the agent's
+           ;; :state-words triad (e.g. "GATHERING" for the gatherer
+           ;; agent) so sub-agent subtrees don't nest an AI-DOING
+           ;; under an AI-DOING (IB-4 grammar violation).  Falls back
+           ;; to the legacy gptel-org-tasks-doing-keyword when
+           ;; gptel-agent is not loaded.
+           (doing-keyword
+            (or (and (fboundp 'gptel-agent-state-words)
+                     (nth 1 (gptel-agent-state-words agent-type)))
+                (bound-and-true-p gptel-org-tasks-doing-keyword)
+                "AI-DOING"))
            ;; Determine the base buffer (for indirect buffers, go to the base)
            (base-buffer (if (gptel-org-ib-registered-p (current-buffer))
                             (gptel-org-ib-base (current-buffer))
@@ -1468,6 +1478,17 @@ org-mode, or we can't find a heading context to create the subtree."
               ;; Recognition of legacy RESULTS/FEEDBACK terminators is
               ;; preserved elsewhere (e.g. `make-insertion-marker') for
               ;; the transition window.
+              ;; IB-5.3: ensure the per-agent DOING keyword (e.g.
+              ;; GATHERING) is registered as an open/todo state in the
+              ;; base buffer so `gptel-org-ib-safe-insert-sibling'
+              ;; accepts it.  Uses done-state=nil to mirror how
+              ;; AI-DOING is registered as an open state.
+              (when (fboundp 'gptel-org--ensure-todo-state)
+                (gptel-org--ensure-todo-state
+                 doing-keyword
+                 (and (boundp 'gptel-org--agent-state-face)
+                      gptel-org--agent-state-face)
+                 nil))
               (let ((terminator-keyword "TERMINE"))
                 (gptel-org--debug
                  "org-agent setup-task-subtree: creating new subtree via safe-insert-sibling (terminator=%S)"
@@ -1731,6 +1752,35 @@ prefix is found.  Preserves leading stars."
         (concat stars without-req))
     heading-line))
 
+(defun gptel-org-agent--tool-state-triad (tool-name &optional args)
+  "Return the three-state triad for a tool-call heading.
+
+Returns (REQUEST DOING DONE) — three strings used for the PENDING
+phase heading, the execution phase heading, and the completion phase
+heading respectively.
+
+For the Agent tool with a resolvable :subagent_type in ARGS, the
+triad is taken from the target agent's :state-words property
+\(see `gptel-agent-state-words').  For all other tools, the triad
+collapses to three copies of the tool's state keyword
+\(e.g. (\"BASH\" \"BASH\" \"BASH\")), preserving historical behaviour.
+
+When the agent's state-words cannot be resolved (e.g. gptel-agent
+not yet loaded), falls back to the triad derived from the
+uppercased subagent_type so the existing PENDING→TOOLSTATE
+transition continues to work."
+  (let ((default-state (gptel-org--tool-state-keyword tool-name args)))
+    (if (and (stringp tool-name)
+             (string= tool-name "Agent")
+             (listp args))
+        (let ((st (plist-get args :subagent_type)))
+          (cond
+           ((and (stringp st) (not (string-empty-p st))
+                 (fboundp 'gptel-agent-state-words))
+            (gptel-agent-state-words st))
+           (t (list default-state default-state default-state))))
+      (list default-state default-state default-state))))
+
 (defmacro gptel-org-agent--with-info-buffer (buf &rest body)
   "Execute BODY in BUF if it is a live buffer, otherwise in current buffer.
 
@@ -1869,8 +1919,14 @@ INFO is the FSM info plist."
                    ;; the heading later transitions to the TOOL state,
                    ;; so PENDING → TOOLSTATE is a pure keyword change
                    ;; with no title rewriting needed.  Example:
-                   ;;   "PENDING BASH :command \"date\""
-                   (tool-state (gptel-org--tool-state-keyword tool-name arg-plist))
+                   ;;   "PENDING GATHER :subagent_type \"gatherer\""
+                   ;; IB-5.3: the STATE word is the REQUEST token of
+                   ;; the (REQUEST DOING DONE) triad.  For non-Agent
+                   ;; tools the triad collapses to three copies of
+                   ;; the state keyword, so behaviour is unchanged.
+                   (triad (gptel-org-agent--tool-state-triad
+                           tool-name arg-plist))
+                   (tool-state (nth 0 triad))
                    (args-title (gptel-org--format-tool-args-title
                                 arg-plist
                                 (gptel-org--tool-args-title-excludes tool-name)))
@@ -1884,15 +1940,17 @@ INFO is the FSM info plist."
                       full-title
                       (max 60 (floor (* (window-width) 0.6)))
                       0 nil " ..."))))
-              ;; Register the per-tool state eagerly so the later
-              ;; PENDING → TOOLSTATE transition can switch to a
-              ;; recognised org-todo keyword.
+              ;; Register ALL THREE triad words eagerly so the later
+              ;; REQUEST → DOING → DONE transitions can switch to
+              ;; recognised org-todo keywords without an org-mode
+              ;; restart.
               (when (fboundp 'gptel-org--ensure-todo-state)
-                (gptel-org--ensure-todo-state
-                 tool-state
-                 (and (boundp 'gptel-org--tool-state-face)
-                      gptel-org--tool-state-face)
-                 t))
+                (dolist (state triad)
+                  (gptel-org--ensure-todo-state
+                   state
+                   (and (boundp 'gptel-org--tool-state-face)
+                        gptel-org--tool-state-face)
+                   t)))
               (let ((heading-pos (point)))
                 ;; Insert the PENDING heading.
                 ;; IB-4.8 invariant: the request phase writes
@@ -2210,15 +2268,21 @@ Returns non-nil if a heading was found and updated, nil otherwise."
          (found nil))
     (save-excursion
       ;; Search backward for a PENDING or ALLOWED heading whose title
-      ;; begins with this tool's state keyword — the format created by
-      ;; gptel-org-agent--display-tool-calls is
-      ;; "PENDING TOOLSTATE :arg val ..." (e.g. "PENDING BASH :command ...").
-      (let ((tool-state (gptel-org--tool-state-keyword tool-name args)))
+      ;; begins with this tool's REQUEST state keyword — the format
+      ;; created by gptel-org-agent--display-tool-calls is
+      ;; "PENDING <REQUEST> :arg val ..." (e.g. "PENDING BASH :command ..."
+      ;; or "PENDING GATHER :subagent_type ...").  IB-5.3: for the
+      ;; Agent tool, triad[0] differs from triad[1]; for other tools
+      ;; the triad collapses, so triad[0] = triad[1] and behaviour is
+      ;; unchanged.
+      (let* ((triad (gptel-org-agent--tool-state-triad tool-name args))
+             (request-state (nth 0 triad))
+             (doing-state (nth 1 triad)))
         (when (re-search-backward
                (format "^\\(\\*+\\) \\(?:%s\\|%s\\) %s\\(?:[ \t]\\|$\\)"
                        (regexp-quote pending-kw)
                        (regexp-quote allowed-kw)
-                       (regexp-quote tool-state))
+                       (regexp-quote request-state))
                nil t)
         (let* ((heading-pos (line-beginning-position))
                (stars (match-string 1))
@@ -2253,12 +2317,12 @@ Returns non-nil if a heading was found and updated, nil otherwise."
             ;; nil on the rewritten heading.
             (when (fboundp 'gptel-org--ensure-todo-state)
               (gptel-org--ensure-todo-state
-               (gptel-org--tool-state-keyword tool-name args)
+               doing-state
                (and (boundp 'gptel-org--tool-state-face)
                     gptel-org--tool-state-face)
                t))
             (goto-char heading-pos)
-            (let* ((tool-state (gptel-org--tool-state-keyword tool-name args))
+            (let* ((tool-state doing-state)
                    (args-title (gptel-org--format-tool-args-title
                                 args
                                 (gptel-org--tool-args-title-excludes tool-name)))
