@@ -1151,6 +1151,93 @@ Also verifies:
        (should-error (gptel-org-ib-absolute-position 42) :type 'user-error)))))
 
 
+(ert-deftest ib-api-is-exclusive-resolver ()
+  "The canonical resolver API must never call `buffer-base-buffer'.
+
+Phase IB-2.7: shadow `buffer-base-buffer' with a signalling stub and
+confirm every public `gptel-org-ib-*' resolver still succeeds.  Any
+silent fallback to Emacs's low-level indirect-buffer relationship
+would surface as the stub's error and fail the test.
+
+Covers `gptel-org-ib-registered-p', `gptel-org-ib-parent',
+`gptel-org-ib-base', `gptel-org-ib-bounds', `gptel-org-ib-children',
+`gptel-org-ib-point', and `gptel-org-ib-absolute-position' over a
+2-level IB chain (base -> ib-a -> ib-b)."
+  (gptel-org-ib-test-with-buffer
+      "* A  :main@agent:\nA body\n** B  :researcher@main@agent:\nb body\n"
+    (gptel-org-ib-test-with-cleanup
+     (let* ((base (current-buffer))
+            (pos-a (progn (goto-char (point-min))
+                          (re-search-forward "^\\* A")
+                          (beginning-of-line)
+                          (point)))
+            (pos-b (progn (goto-char (point-min))
+                          (re-search-forward "^\\*\\* B")
+                          (beginning-of-line)
+                          (point)))
+            (ib-a (gptel-org-ib-create base pos-a))
+            (ib-b (with-current-buffer ib-a
+                    (gptel-org-ib-create base pos-b)))
+            (node-b (gptel-org-ib--get-node (buffer-name ib-b)))
+            (node-a (gptel-org-ib--get-node (buffer-name ib-a))))
+       ;; Sanity: both IBs created.
+       (should (bufferp ib-a))
+       (should (bufferp ib-b))
+       ;; --- Shadow `buffer-base-buffer' with a signalling stub and
+       ;; exercise every resolver.  Any silent fallback to Emacs's
+       ;; low-level indirect-buffer chain would trigger the error.
+       (cl-letf* (((symbol-function 'buffer-base-buffer)
+                   (lambda (&rest args)
+                     (error
+                      "buffer-base-buffer called inside exclusive-resolver test: args=%S"
+                      args))))
+         ;; registered-p
+         (should (gptel-org-ib-registered-p ib-a))
+         (should (gptel-org-ib-registered-p ib-b))
+         (should (gptel-org-ib-registered-p (buffer-name ib-a)))
+         (should-not (gptel-org-ib-registered-p base))
+         (should-not (gptel-org-ib-registered-p "*no-such-gptel-ib*"))
+         ;; parent: top-level IB's parent is the base buffer object;
+         ;; nested IB's parent is the outer node.
+         (should (eq base (gptel-org-ib-parent ib-a)))
+         (should (eq node-a (gptel-org-ib-parent ib-b)))
+         ;; base: walks the logical registry chain to the file buffer.
+         (should (eq base (gptel-org-ib-base ib-a)))
+         (should (eq base (gptel-org-ib-base ib-b)))
+         ;; bounds: (START . END) integers in the parent buffer.
+         (let ((bounds-a (gptel-org-ib-bounds ib-a)))
+           (should (consp bounds-a))
+           (should (integerp (car bounds-a)))
+           (should (integerp (cdr bounds-a)))
+           (should (= (car bounds-a) pos-a)))
+         (let ((bounds-b (gptel-org-ib-bounds ib-b)))
+           (should (consp bounds-b))
+           (should (integerp (car bounds-b)))
+           (should (integerp (cdr bounds-b)))
+           (should (= (car bounds-b) pos-b)))
+         ;; children: ib-a has ib-b as its registered child; ib-b has none.
+         (let ((kids-a (gptel-org-ib-children ib-a)))
+           (should (listp kids-a))
+           (should (memq node-b kids-a)))
+         (should (null (gptel-org-ib-children ib-b)))
+         ;; point: per-IB integer.
+         (should (integerp (gptel-org-ib-point ib-a)))
+         (should (integerp (gptel-org-ib-point ib-b)))
+         ;; absolute-position: (BASE . INT) with BASE = file buffer.
+         (let ((ap-a (gptel-org-ib-absolute-position ib-a)))
+           (should (consp ap-a))
+           (should (eq base (car ap-a)))
+           (should (integerp (cdr ap-a))))
+         (let ((ap-b (gptel-org-ib-absolute-position ib-b)))
+           (should (consp ap-b))
+           (should (eq base (car ap-b)))
+           (should (integerp (cdr ap-b)))))
+       ;; --- Cleanup outside the letf* block: teardown may legitimately
+       ;; call `buffer-base-buffer' while killing indirect buffers.
+       (when (buffer-live-p ib-b) (gptel-org-ib-close ib-b))
+       (when (buffer-live-p ib-a) (gptel-org-ib-close ib-a))))))
+
+
 ;;; ---- Heading Navigation ---------------------------------------------------
 
 (ert-deftest gptel-org-ib-test-find-user-task-heading-walks-up ()

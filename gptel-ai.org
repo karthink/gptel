@@ -707,7 +707,7 @@ pure refactor with passthrough shims for existing callers.
 - test: =ib-compute-name-unique= — 100 different heading-pos values
   yield 100 distinct names.
 
-*** TODO Phase IB-2: Canonical resolution API
+*** DONE Phase IB-2: Canonical resolution API
 Expose a closed set of resolver functions; forbid direct access
 elsewhere.  Each API function is one line of responsibility.
 
@@ -733,7 +733,7 @@ elsewhere.  Each API function is one line of responsibility.
 - change: walk parent chain, accumulating offsets.
 - test: =ib-absolute-position-nested= with 3-level chain.
 
-**** TODO IB-2.7 Forbid direct access outside API
+**** DONE IB-2.7 Forbid direct access outside API
 - files: =gptel-org.el= (reasoning/tool IB), =gptel-org-agent.el=
   (agent subtree ops).
 - change: replace every =buffer-base-buffer=, direct marker
