@@ -422,7 +422,6 @@ SWITCHES are diff arguments."
         (setq-local diff-jump-to-old-file t))
       (display-buffer diff-buf))))
 
-
 (defun gptel--rewrite-ediff (&optional ovs)
   "Ediff pending LLM responses in OVS or at point.
 
@@ -460,9 +459,32 @@ buffer B (the edited LLM response)."
                 (when (window-configuration-p cwc)
                   (set-window-configuration cwc))
                 (funcall hideshow 'restore)
-                (remove-hook 'ediff-quit-hook gptel--ediff-restore))))
+                (remove-hook 'ediff-quit-hook gptel--ediff-restore)
+                (remove-hook 'ediff-startup-hook gptel--ediff-setup)))
+             (gptel--ediff-accept-A
+              (lambda ()
+                (interactive)
+                ;; Pass the `current-prefix-arg' so as to mimic the behavior of
+                ;; `ediff-quit'.
+                (ediff-really-quit current-prefix-arg)
+                (gptel--rewrite-reject ovs)))
+             (gptel--ediff-accept-B
+              (lambda ()
+                (interactive)
+                (ediff-really-quit current-prefix-arg)
+                (gptel--rewrite-accept ovs)))
+             (gptel--ediff-setup
+              (lambda ()
+                (use-local-map (make-composed-keymap
+                                (define-keymap
+                                  "C-c C-a" gptel--ediff-accept-A
+                                  "C-c C-b" gptel--ediff-accept-B)
+                                (current-local-map))))))
       (funcall hideshow)
       (add-hook 'ediff-quit-hook gptel--ediff-restore 50)
+      (add-hook 'ediff-startup-hook gptel--ediff-setup)
+      (setq gptel--rewrite-ediff-accept-A-internal gptel--ediff-accept-A
+            gptel--rewrite-ediff-accept-B-internal gptel--ediff-accept-B)
       (let ((ediff-window-setup-function #'ediff-setup-windows-plain)
             (ediff-split-window-function #'split-window-horizontally))
         (ediff-buffers ov-buf newbuf)))))
