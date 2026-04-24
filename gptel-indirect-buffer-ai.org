@@ -167,6 +167,14 @@ falls into exactly one of the categories below.
 - Single empty heading used as the unified terminator for a subtree.
 - Replaces the pre-IB-4 two-keyword =RESULTS= / =FEEDBACK= scheme.
 - Body MUST be empty.
+- *Seeded eagerly at indirect-buffer creation time* by
+  =gptel-org-ib-create=, NOT lazily on first streamed content.  This
+  guarantees that the FSM insertion marker returned by
+  =gptel-org-ib-streaming-marker= is always pinned BEFORE TERMINE
+  with =insertion-type=nil= from the moment the IB exists, avoiding
+  the marker-drift-past-terminator bug that would otherwise occur
+  when the first output in a fresh IB is a tool call (see
+  [[*Heading Creation Rule][Heading Creation Rule]]).
 - Removed when the owning task / tool / agent run reaches a terminal
   state.
 
@@ -825,7 +833,7 @@ The registry =gptel-org-ib--registry= maps buffer-name → =gptel-org-ib-node=.
 
 | Function | Purpose |
 |----------+---------|
-| =gptel-org-ib-create= (base-buffer heading-pos &optional name) | Central entry point: creates IB with clone=t, narrows to subtree, constructs node, splices into parent's children list.  Handles indirect-of-indirect (resolves to root), creates expanding end-marker, decouples fold state |
+| =gptel-org-ib-create= (base-buffer heading-pos &optional name) | Central entry point: creates IB with clone=t, narrows to subtree, constructs node, splices into parent's children list.  Handles indirect-of-indirect (resolves to root), creates expanding end-marker, decouples fold state.  *Eagerly seeds a =TERMINE= child terminator* in the narrowed subtree if one is not already present, so that `gptel-org-ib-streaming-marker' always returns an insertion-type=nil marker pinned before TERMINE |
 | =gptel-org-ib-close= (indirect-buffer &optional fold) | Close IB: optionally fold subtree in base, unregister (splice out of parent's children, clear markers), kill buffer.  Also cleans up legacy =gptel-org-agent--narrow-end-marker= |
 | =gptel-org-ib-valid-p= (indirect-buffer) | Returns non-nil if IB is live, narrowed, has content, and starts with an org heading |
 | =gptel-org-ib-compute-name= (base-buffer heading-pos tag) | Compute the hashed name =*gptel:<tag>-<hash>*= for the heading at HEADING-POS.  The hash is derived from the outline path and survives reorder |

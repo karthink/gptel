@@ -1864,15 +1864,22 @@ INFO is the FSM info plist."
       ;; indirect buffer and its base buffer so that the user can
       ;; change PENDING→ALLOWED from either buffer.
       (gptel-org-agent--ensure-tool-confirm-hook buf)
-      ;; Ensure the current subtree has a "TERMINE" terminator so that
-      ;; the FSM :position marker (placed by
-      ;; `gptel-org-ib-streaming-marker' with insertion-type nil) stays
-      ;; pinned BEFORE TERMINE, and any PENDING heading inserted at
-      ;; start-marker lands before it — preserving sibling-IB
-      ;; isolation.  Only do this if point-min is on a heading (i.e.
-      ;; we are in a task or agent IB).  IB-4.2: TERMINE replaces the
-      ;; previous RESULTS terminator; legacy RESULTS terminators still
-      ;; parse via `gptel-org-ib-find-terminator' elsewhere.
+      ;; Invariant: TERMINE is guaranteed to already exist in this
+      ;; subtree because `gptel-org-ib-create' eagerly seeds it at IB
+      ;; creation time.  That in turn guarantees the FSM :position
+      ;; marker (placed by `gptel-org-ib-streaming-marker' with
+      ;; insertion-type nil) is pinned BEFORE TERMINE, so a PENDING
+      ;; heading inserted at start-marker lands before TERMINE —
+      ;; preserving sibling-IB isolation.
+      ;;
+      ;; The `ensure-terminator' call below is a cheap idempotent
+      ;; safety net: it protects any legacy IB that pre-dates the
+      ;; eager-seeding change, or a future code path that could
+      ;; introduce a TERMINE-less IB.  On a correctly-seeded IB it is
+      ;; a no-op (returns a marker to the existing TERMINE).
+      ;; IB-4.2: TERMINE replaces the previous RESULTS terminator;
+      ;; legacy RESULTS terminators still parse via
+      ;; `gptel-org-ib-find-terminator' elsewhere.
       (save-excursion
         (goto-char (point-min))
         (when (org-at-heading-p)
