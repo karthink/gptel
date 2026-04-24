@@ -203,6 +203,38 @@ Verify the child heading exists at the correct level with the right tag."
        (when (and indirect-buf (buffer-live-p indirect-buf))
          (kill-buffer indirect-buf))))))
 
+(ert-deftest gptel-org-agent-test-open-indirect-buffer-seeds-termine ()
+  "`gptel-org-agent--open-indirect-buffer' seeds a TERMINE child.
+
+TERMINE seeding is an agent-layer responsibility (the generic
+`gptel-org-ib-create' factory is neutral so it can also serve
+tool/reasoning IBs).  Agent IBs must have TERMINE pre-seeded so
+streaming insertion lands BEFORE it, preserving the
+\"TERMINE is last child\" invariant and sibling-IB isolation."
+  (gptel-org-agent-test-with-buffer
+   "* AI-DO Task\nDescription\n"
+   (goto-char (point-min))
+   (org-back-to-heading t)
+   (let* ((base-buf (current-buffer))
+          (marker (gptel-org-agent--create-subtree "main"))
+          (indirect-buf nil))
+     (unwind-protect
+         (progn
+           (setq indirect-buf
+                 (gptel-org-agent--open-indirect-buffer base-buf marker))
+           (should (buffer-live-p indirect-buf))
+           (with-current-buffer indirect-buf
+             ;; TERMINE must exist — seeded by the agent factory.
+             (should (gptel-org-ib-find-terminator "TERMINE"))
+             ;; Streaming marker must take the TERMINE branch:
+             ;; insertion-type=nil pinned at TERMINE line start.
+             (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
+               (should (markerp m))
+               (should-not (marker-insertion-type m)))))
+       ;; Cleanup
+       (when (and indirect-buf (buffer-live-p indirect-buf))
+         (kill-buffer indirect-buf))))))
+
 (ert-deftest gptel-org-agent-test-indirect-buffer-grows ()
   "Insert text at end of indirect buffer and verify narrow region expands."
   (gptel-org-agent-test-with-buffer

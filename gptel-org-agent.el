@@ -545,6 +545,21 @@ Return the indirect buffer."
          (indirect-buf (gptel-org-ib-create base-buffer heading-pos)))
     ;; Apply agent-specific setup that gptel-org-ib-create doesn't do
     (with-current-buffer indirect-buf
+      ;; Seed the TERMINE terminator child inside the freshly narrowed
+      ;; agent subtree.  This is an agent-layer responsibility (NOT done
+      ;; by `gptel-org-ib-create', which is also used for tool/reasoning
+      ;; IBs that must NOT have TERMINE).  Without this, the first
+      ;; streamed content or tool call would trigger lazy TERMINE
+      ;; creation in `gptel-org-agent--display-tool-calls' (or similar)
+      ;; via `org-end-of-subtree', drifting the FSM `:tracking-marker'
+      ;; past TERMINE and causing subsequent PENDING tool headings to
+      ;; land AFTER TERMINE.  Pre-seeding pins
+      ;; `gptel-org-ib-streaming-marker' to the TERMINE line start with
+      ;; insertion-type=nil — no drift.
+      (save-excursion
+        (goto-char (point-min))
+        (when (org-at-heading-p)
+          (gptel-org-ib-ensure-terminator "TERMINE")))
       ;; Mark this buffer as an agent indirect buffer.  This flag persists
       ;; even after the agent tag is removed from the heading (e.g. by
       ;; `gptel-org-agent--insert-user-heading'), ensuring that
@@ -1864,19 +1879,14 @@ INFO is the FSM info plist."
       ;; indirect buffer and its base buffer so that the user can
       ;; change PENDING→ALLOWED from either buffer.
       (gptel-org-agent--ensure-tool-confirm-hook buf)
-      ;; Invariant: TERMINE is guaranteed to already exist in this
-      ;; subtree because `gptel-org-ib-create' eagerly seeds it at IB
-      ;; creation time.  That in turn guarantees the FSM :position
-      ;; marker (placed by `gptel-org-ib-streaming-marker' with
-      ;; insertion-type nil) is pinned BEFORE TERMINE, so a PENDING
-      ;; heading inserted at start-marker lands before TERMINE —
-      ;; preserving sibling-IB isolation.
-      ;;
       ;; The `ensure-terminator' call below is a cheap idempotent
-      ;; safety net: it protects any legacy IB that pre-dates the
-      ;; eager-seeding change, or a future code path that could
-      ;; introduce a TERMINE-less IB.  On a correctly-seeded IB it is
-      ;; a no-op (returns a marker to the existing TERMINE).
+      ;; safety net.  TERMINE seeding is the responsibility of the
+      ;; agent IB factory call sites (see
+      ;; `gptel-org-agent--open-indirect-buffer' and
+      ;; `gptel-org-ib-safe-insert-sibling').  On a correctly-seeded
+      ;; agent IB this is a no-op (returns a marker to the existing
+      ;; TERMINE).  On a hypothetical mis-constructed IB it
+      ;; restores the invariant before tool-call insertion.
       ;; IB-4.2: TERMINE replaces the previous RESULTS terminator;
       ;; legacy RESULTS terminators still parse via
       ;; `gptel-org-ib-find-terminator' elsewhere.
