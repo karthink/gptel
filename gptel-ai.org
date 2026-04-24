@@ -868,6 +868,228 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
      after TERMINE creation" (Option A defensive fix).
 7. Update this TODO status to =AI-DONE= when all checks pass.
 
+*** AI-DO Eager TERMINE seeding leaks into non-agent IBs (tool/reasoning), breaking tool body insertion
+**** Origin
+- Follow-up to [[*Tool-call PENDING heading inserted AFTER TERMINE on first tool call in agent IB][Tool-call PENDING heading inserted AFTER TERMINE on first tool call in agent IB]]
+  (commits =c99eccb=, =16c5808=, =57a8f1f=).
+- User tested the Option B fix in a fresh agent run and observed a
+  *regression* at the tool-heading level.  Reproduction: playground task
+  [[file:../siro-ai/playground-ws.org::*Complete \[\[file:playground-ai.org::*Calculate 2 + 2\]\[Calculate 2 + 2\]\]][Complete Calculate 2 + 2]]
+  produced this subtree after the LLM response:
+  #+begin_src org
+    ,**** EVAL :expression "(+ 2 2)"
+    ,***** TERMINE
+
+    (:name "Eval" :args (:expression "(+ 2 2)"))
+    ,#+begin_tool
+    Result:
+    4
+    ,#+end_tool
+
+    ,**** Result of Calculation
+    The result of =2 + 2= is **4**.**** ALLOWED EVAL :expression "(+ 2 2)"
+    (:name "Eval" :args (:expression "(+ 2 2)"))
+  #+end_src
+- Two anomalies visible:
+  1. A =***** TERMINE= child has appeared /inside/ the =**** EVAL= tool
+     heading, with the tool-call body (=(:name ...)=, =#+begin_tool= block)
+     inserted *after* TERMINE.  This is the same class of drift-past-TERMINE
+     bug the prior fix was supposed to eliminate — but one level deeper
+     (on the tool heading, not the agent heading).
+  2. The final RESPOND text (=The result of =2 + 2= is **4**.=) has no
+     trailing newline and runs directly into the next sibling heading
+     =**** ALLOWED EVAL …=.  This may be a separate bug but likely shares
+     a root cause with the marker drift.
+
+**** Discussion highlights
+- *Root cause hypothesis*: Commit =c99eccb= placed the eager TERMINE
+  seeding unconditionally inside =gptel-org-ib-create= in
+  =quelpa/build/gptel/gptel-indirect-buffer.el= (the tail of the function,
+  around lines 1076–1080).  =gptel-org-ib-create= is the /generic/ IB
+  factory and is called from at least three callers with very different
+  TERMINE ownership semantics:
+
+  | Caller (file / function) | IB role | TERMINE appropriate? |
+  |--------------------------+---------+----------------------|
+  | =gptel-org-agent.el= → =gptel-org-agent--open-indirect-buffer= (≈540) | Agent subtree IB | YES — agent code manages TERMINE lifecycle |
+  | =gptel-indirect-buffer.el= → =gptel-org-ib-safe-insert-sibling= (1395) | Child agent subtree IB | YES — same agent lifecycle |
+  | =gptel-org.el= → =gptel-org--tool-create-indirect-buffer= (2581) | Tool heading IB (single tool) | *NO* — tool body goes directly under the heading |
+  | =gptel-org.el= → =gptel-org--reasoning-create-indirect-buffer= (2485) | REASONING heading IB (read-only) | *NO* — read-only wrapper, no tool/sub-task lifecycle |
+
+  For the Tool IB case the sequence is:
+  1. =update-tool-heading= transitions =**** PENDING EVAL …= → =**** EVAL …=
+     and calls =gptel-org--tool-create-indirect-buffer= with the tool
+     heading position.
+  2. =gptel-org-ib-create= narrows an IB to =**** EVAL …='s subtree and
+     — thanks to commit c99eccb — calls
+     =gptel-org-ib-ensure-terminator "TERMINE"= which inserts
+     =***** TERMINE= as the first (and only) child of the EVAL heading.
+  3. The caller then inserts the tool body (=(:name ...)=, =#+begin_tool=
+     block) into the IB.  The insertion point is either =point-max= or
+     a marker that was captured *before* TERMINE was seeded — either way
+     the body lands AFTER =***** TERMINE=, producing the observed buffer
+     state.
+
+- *Why the user's earlier feedback predicted this*:
+  #+begin_quote
+  The option A is not needed. The TERMINE is there until the parent
+  heading is completed.
+  #+end_quote
+  TERMINE lifecycle is a property of *agent* subtrees (the ones that
+  accumulate streaming content and child tool/user/respond headings)
+  — not of tool-result subtrees or reasoning subtrees.  Putting the
+  eager-seed in the generic =gptel-org-ib-create= layer violates that
+  ownership boundary.
+
+- *Scope of layering violation*: =gptel-indirect-buffer.el= is the
+  generic indirect-buffer module (see =gptel-indirect-buffer-ai.org=).
+  TERMINE is a /convention of the agent layer/; the IB module should
+  not implicitly create it for all IBs.  The proper layering puts
+  TERMINE seeding at the agent callsite.
+
+- *Second anomaly (missing newline before =**** ALLOWED EVAL=)*:
+  likely caused by the streaming =:tracking-marker= / =:position=
+  drifting past the end of the agent subtree (possibly due to the
+  same class of marker-placement issue the eager-TERMINE was supposed
+  to prevent, but now expressed when the parent agent subtree lacks
+  a clean pinning point).  Needs verification — could also be an
+  independent issue in RESPOND content finalisation (post-response
+  function).  Investigation deferred until the primary TERMINE-layering
+  fix is in place and the reproduction is re-run.
+
+- *Relevant source locations* (paths relative to =quelpa/build/gptel/=):
+  | File / symbol | Lines | Current behaviour |
+  |---------------+-------+--------------------|
+  | =gptel-indirect-buffer.el= — =gptel-org-ib-create= tail | 1063–1080 | Unconditionally seeds TERMINE on EVERY IB |
+  | =gptel-indirect-buffer.el= — =gptel-org-ib-safe-insert-sibling= | 1373–1399 | Already ensures TERMINE on parent before create; does NOT need separate seeding of child |
+  | =gptel-org-agent.el= — =gptel-org-agent--open-indirect-buffer= | 534–570 | Agent IB callsite; currently inherits the eager-seed implicitly |
+  | =gptel-org.el= — =gptel-org--tool-create-indirect-buffer= | 2581–2643 | Tool IB callsite; *wrongly* inherits the eager-seed — root of the regression |
+  | =gptel-org.el= — =gptel-org--reasoning-create-indirect-buffer= | 2485–2555 | Reasoning IB callsite; also wrongly inherits the seed (no visible user-facing bug yet, but violates layering) |
+  | =test/gptel-org-ib-test.el= — =…seeds-termine-eagerly= | 831–857 | Test asserts the unconditional behaviour — will need to be rewritten to test the agent-IB-only behaviour |
+
+**** Decisions
+- Fix approach: *move the TERMINE seeding out of =gptel-org-ib-create= and
+  into the agent-layer callsites that own the TERMINE lifecycle*.  Keep
+  the IB module layering clean: it creates narrowed buffers, nothing more.
+- Specifically:
+  - Agent IBs created by =gptel-org-agent--open-indirect-buffer= get
+    TERMINE seeded explicitly in that function (after
+    =gptel-org-ib-create= returns).
+  - Sibling agent IBs created by =gptel-org-ib-safe-insert-sibling= get
+    TERMINE seeded explicitly in that function as well (in the newly
+    created child IB — the helper already ensures TERMINE on the parent).
+  - Tool and reasoning IB callsites do *not* seed TERMINE.  Their
+    subtrees are terminated naturally by the next sibling heading / end
+    of parent narrowing.
+- Keep the idempotent =ensure-terminator= safety-net call inside
+  =gptel-org-agent--display-tool-calls= — it becomes a true defensive
+  no-op on well-formed agent IBs and still catches any legacy / edge
+  case where the agent callsite didn't seed.
+- Alternatives considered and rejected:
+  - *Parameterise =gptel-org-ib-create= with a =seed-terminator= keyword
+    arg*: pushes agent-layer policy into the IB module's API surface.
+    Rejected for the same layering reason as the current bug.
+  - *Detect "tool/reasoning" vs "agent" heuristically inside =ib-create=*
+    (e.g. by inspecting the heading text): fragile and magical.
+    Rejected.
+
+**** Mission
+1. *Revert the eager-seed from the IB module.* In
+   =quelpa/build/gptel/gptel-indirect-buffer.el=, inside
+   =gptel-org-ib-create= (around lines 1063–1080), remove the
+   =(with-current-buffer indirect-buf (save-excursion (goto-char (point-min)) (when (org-at-heading-p) (gptel-org-ib-ensure-terminator "TERMINE"))))=
+   block and the associated big comment.  Replace the comment with a
+   short note stating that TERMINE seeding is the /caller's/
+   responsibility (agent IBs only).
+
+2. *Seed TERMINE at the agent IB callsites.*
+   - In =gptel-org-agent.el= =gptel-org-agent--open-indirect-buffer=
+     (around line 545), after the =gptel-org-ib-create= call and inside
+     the existing =(with-current-buffer indirect-buf …)= block, add:
+     #+begin_src emacs-lisp
+       (save-excursion
+         (goto-char (point-min))
+         (when (org-at-heading-p)
+           (gptel-org-ib-ensure-terminator "TERMINE")))
+     #+end_src
+   - In =gptel-indirect-buffer.el= =gptel-org-ib-safe-insert-sibling=
+     (around line 1399, just before returning the indirect buffer),
+     seed TERMINE in the *newly created child IB* (not the parent — the
+     parent's TERMINE is already ensured earlier in the function).
+     Sketch:
+     #+begin_src emacs-lisp
+       (let ((ib (gptel-org-ib-create base-buffer heading-marker)))
+         (with-current-buffer ib
+           (save-excursion
+             (goto-char (point-min))
+             (when (org-at-heading-p)
+               (gptel-org-ib-ensure-terminator "TERMINE"))))
+         ib)
+     #+end_src
+
+3. *Leave tool and reasoning IBs alone.* Confirm that
+   =gptel-org--tool-create-indirect-buffer= and
+   =gptel-org--reasoning-create-indirect-buffer= do NOT seed TERMINE.
+   Their IBs should contain only the heading and its body, with no
+   terminator child.
+
+4. *Update the regression test* at
+   =quelpa/build/gptel/test/gptel-org-ib-test.el= =…seeds-termine-eagerly=
+   (around lines 831–857):
+   - Rename to =…does-not-seed-termine= and invert the assertion:
+     =gptel-org-ib-create= must NOT create a TERMINE child.
+   - Add a companion test =gptel-org-agent-open-indirect-buffer-seeds-termine=
+     that exercises =gptel-org-agent--open-indirect-buffer= and asserts
+     that TERMINE is present.
+   - Add a test that =gptel-org-ib-safe-insert-sibling= produces a child
+     IB whose subtree contains a TERMINE.
+
+5. *Add a regression test for the tool-body-after-TERMINE scenario*:
+   simulate =update-tool-heading= writing a tool body via the Tool IB
+   path and assert that the resulting subtree is
+   =**** EVAL → body → (no TERMINE child)= — not
+   =**** EVAL → TERMINE → body=.
+
+6. *Run the test suite*:
+   =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
+   All tests must pass.
+
+7. *Re-test the reproduction*: run the playground task
+   =Calculate 2 + 2= (or any agent task whose first action is a tool
+   call) and verify that the resulting buffer has the expected order
+   =**** EVAL → (:name ...) → #+begin_tool … #+end_tool= with no
+   intervening TERMINE, and that the agent subtree still contains the
+   correct single TERMINE at the agent-level as its last child.
+
+8. *Investigate the missing-newline anomaly separately.* The
+   =**** Result of Calculation= body running into =**** ALLOWED EVAL=
+   without a newline may be an independent bug; after the primary fix
+   is in place, re-run the reproduction and if the anomaly persists,
+   create a follow-up TODO with a fresh analysis.
+
+9. *Documentation updates*:
+   - Revise =quelpa/build/gptel/gptel-indirect-buffer-ai.org= to clarify
+     that =gptel-org-ib-create= does NOT seed TERMINE; TERMINE is an
+     agent-layer convention seeded by agent callsites.
+   - Revise the invariant comment inside
+     =gptel-org-agent--display-tool-calls= (around lines 1867–1877) to
+     reflect that the invariant is established by
+     =gptel-org-agent--open-indirect-buffer= (and
+     =gptel-org-ib-safe-insert-sibling=), not by =gptel-org-ib-create=.
+
+10. *Commit atomically* in =quelpa/build/gptel/= (submodule).  Suggested
+    commit sequence:
+    - Commit 1: "gptel-org-ib-create: revert eager TERMINE seeding"
+      (removes the block; updates/renames the test).
+    - Commit 2: "gptel-org-agent: seed TERMINE at agent IB callsites"
+      (adds seeding to =--open-indirect-buffer= and
+      =safe-insert-sibling=; adds new tests).
+    - Commit 3: "docs(ai): correct TERMINE ownership layering"
+      (documentation updates).
+
+11. Update this TODO to =AI-DONE= when all tests pass and the
+    reproduction produces the expected buffer state.
+
 ** Researched TODOs
 *** Unified gptel-org-mode Refactoring
 **** Phase 1: Fix variable rename — DONE
