@@ -1,6 +1,8 @@
 #+TITLE: gptel — AI Development Context
 #+DESCRIPTION: Reference document for AI-assisted development of gptel
 
+#+SEQ_TODO: TODO(t) AI-DO(a) AI-DOING(i) DOING FEEDBACK(f) | AI-DONE(d) DONE(D) ARCHIVED(r) CANCELED(c)
+
 * Overview
 
 gptel is an asynchronous LLM request library and chat UI for Emacs. It supports
@@ -1148,6 +1150,60 @@ post-refactor label.  Top-level =Indirect-buffer canonical refactor=
 heading remains TODO because follow-ups IB-4.6b, IB-4.8b, IB-5.5,
 IB-5.6, IB-5.7 are still open.
 ** Improvement TODOs
+*** DONE AI-DONE Clean up byte-compile warnings surfaced on fresh install
+CLOSED: [2026-04-23]
+Fixed in commit =34c5a01= ("fix: byte-compile warnings on fresh
+install, bump Emacs to 30.1"). All three target warnings are gone
+after byte-compile; =make test= still green (451 tests, 0 unexpected).
+
+Additional change: bumped =Package-Requires= minimum Emacs from 27.1
+→ 30.1 so the Emacs 30 =provided-mode-derived-p= list-arg convention
+is guaranteed available.
+
+Original task notes follow for reference:
+
+Observed when =elpa/gptel*= is deleted and Emacs relaunches (quelpa
+rebuild). =gptel= itself compiles successfully, but emits several
+warnings. See [[file:~/.emacs.d/debug-emacs-launch-error.org]] for the
+full log. The blocking errors are all in =gptel-agent= (tracked
+separately in that repo); items below are =gptel=-only warnings.
+
+**** =provided-mode-derived-p= old 4-arg convention
+- File: =gptel-request.el=, line 1038
+- Call:
+  #+begin_src elisp
+  (provided-mode-derived-p mode-sym 'prog-mode 'text-mode 'tex-mode)
+  #+end_src
+- Warning: =called with 4 arguments, but accepts only 2=
+- The file already carries a =NOTE= comment flagging this as tech debt.
+- Fix (Emacs 30 convention):
+  #+begin_src elisp
+  (provided-mode-derived-p mode-sym '(prog-mode text-mode tex-mode))
+  #+end_src
+
+**** =_is-ai= flagged as "not left unused"
+- File: =gptel-org-archive.el=, line 761
+- Used as a =when-let*= predicate binding but never referenced in body.
+- Fix: rename to plain =_=, or restructure:
+  #+begin_src elisp
+  (when (string-suffix-p "-ai" base) ...)
+  #+end_src
+
+**** =backtrace-get-frames= / =backtrace-to-string= not declared
+- File: =gptel-request.el=, lines 2191–2193
+- Both are Emacs 27+ internals; warnings are benign but noisy.
+- Fix: add at top of file (or near usage):
+  #+begin_src elisp
+  (declare-function backtrace-get-frames "backtrace")
+  (declare-function backtrace-to-string "backtrace")
+  #+end_src
+
+**** Verification
+After fixes: =rm -rf ~/.emacs.d/elpa/gptel-*= → relaunch → =*Warnings*=
+buffer should be clean of these three items. =cd test && make test=
+still passes. One atomic commit per fix (or a single grouped commit
+"Fix byte-compile warnings on fresh install").
+
 *** AI-DONE Consolidate gptel-agent test layout under =test/= with Makefile
 CLOSED: [2026-04-23]
 Both implementer reports flagged that the submodules had inconsistent
