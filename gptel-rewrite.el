@@ -431,11 +431,10 @@ ends, the contents of buffer A are preserved and the overlay in
 buffer is updated to show the contents of buffer B.
 
 Therefore, after exiting the ediff session rejecting with
-\\<gptel-rewrite-actions-map>\\[gptel--rewrite-reject] will
-result in the what was contained in buffer A at the end of the
-ediff session (the edited original buffer). Accepting with
-\\[gptel--rewrite-accept] will result in the final contents of
-buffer B (the edited LLM response)."
+\\[gptel--rewrite-reject] will result in the what was contained
+in buffer A at the end of the ediff session (the edited original
+buffer). Accepting with \\[gptel--rewrite-accept] will result in
+the final contents of buffer B (the edited LLM response)."
   (interactive (list (gptel--rewrite-overlay-at)))
   (setq ovs (ensure-list ovs))
   (when-let* ((ov-buf (overlay-buffer (car ovs)))
@@ -479,7 +478,8 @@ buffer B (the edited LLM response)."
                                 (define-keymap
                                   "C-c C-a" gptel--ediff-accept-A
                                   "C-c C-b" gptel--ediff-accept-B)
-                                (current-local-map))))))
+                                (current-local-map)))
+                (message "Use C-c C-a and C-c C-b to quit ediff and immediately accept buffer A or B"))))
       (funcall hideshow)
       (add-hook 'ediff-quit-hook gptel--ediff-restore 50)
       (add-hook 'ediff-startup-hook gptel--ediff-setup)
