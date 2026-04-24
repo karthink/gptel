@@ -692,7 +692,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
    Commit body should mention the magit file-local-variables scenario.
 5. Update this TODO status to AI-DONE.
 
-*** TODO Tool-call PENDING heading inserted AFTER TERMINE on first tool call in agent IB
+*** AI-DONE Tool-call PENDING heading inserted AFTER TERMINE on first tool call in agent IB
 **** Origin
 - User reported buffer showing a PENDING tool-call heading appearing /after/
   the =TERMINE= sentinel inside a fresh agent subtree, e.g.:
