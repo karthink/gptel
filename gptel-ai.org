@@ -692,6 +692,182 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
    Commit body should mention the magit file-local-variables scenario.
 5. Update this TODO status to AI-DONE.
 
+*** TODO Tool-call PENDING heading inserted AFTER TERMINE on first tool call in agent IB
+**** Origin
+- User reported buffer showing a PENDING tool-call heading appearing /after/
+  the =TERMINE= sentinel inside a fresh agent subtree, e.g.:
+  #+begin_src org
+    * Playground project tasks
+    ** TODO Complete [[file:playground-ai.org::*Calculate 2 + 2][Calculate 2 + 2]]
+    *** AI-DOING Complete [[file:playground-ai.org::*Calculate 2 + 2][Calculate 2 + 2]] :dummy@agent:
+    **** TERMINE
+    **** PENDING EVAL :expression "(+ 2 2)"
+
+    (:name "Eval" :args (:expression "(+ 2 2)"))
+  #+end_src
+- The =(:name ...)= text is the body of the =PENDING EVAL= heading; the real
+  bug is that the entire =**** PENDING EVAL= sibling (with its body) landed
+  /after/ =**** TERMINE= instead of before it.  TERMINE is supposed to be
+  the last child of the subtree.
+- User's initial hypothesis: "IB end is after TERMINE although it should be
+  before when inserting the heading".  Deep analysis confirms this is exactly
+  the underlying cause — the FSM insertion marker has drifted past TERMINE.
+
+**** Discussion highlights
+- *Trigger scenario*: the first thing the LLM emits inside a freshly-created
+  sub-agent IB is a tool call (no prior streamed text).  Reproduces cleanly
+  in the user's playground with the =dummy@agent= test agent.
+- *Root cause chain*:
+  1. =gptel-org-agent--setup-task-subtree= creates the new AI-DOING heading via
+     =gptel-org-ib-safe-insert-sibling= (see
+     [[file:gptel-indirect-buffer.el::gptel-org-ib-safe-insert-sibling]]).
+     That helper only ensures a =TERMINE= on the *parent* subtree, not on
+     the new child subtree.  So the new AI-DOING subtree contains only the
+     heading line — no TERMINE.
+  2. [[file:gptel-org-agent.el::gptel-org-agent--make-insertion-marker]] is
+     called on the new IB.  Because no TERMINE exists, it falls through to
+     =(gptel-org-ib-streaming-marker nil)=, which in
+     [[file:gptel-indirect-buffer.el::gptel-org-ib-streaming-marker]] takes
+     the "no-terminator" branch and returns a marker at =point-max= with
+     =insertion-type = t= (advances with inserts at its position).
+  3. Tool call arrives.
+     [[file:gptel-org-agent.el::gptel-org-agent--display-tool-calls]] is
+     invoked.  It first calls =gptel-org-ib-ensure-terminator "TERMINE"=.
+  4. [[file:gptel-indirect-buffer.el::gptel-org-ib-create-terminator]]
+     executes =(org-end-of-subtree t)= then =(unless (bolp) (insert "\n"))=
+     then =(insert "**** TERMINE\n")= at a position that coincides with the
+     FSM =:position= / =:tracking-marker=.  Because those markers have
+     =insertion-type=t=, they are pushed *past* the newly written TERMINE
+     line.
+  5. =display-tool-calls= then does
+     =(goto-char (or (plist-get info :tracking-marker) start-marker))= and
+     inserts the PENDING heading there — which is now after TERMINE.
+- *Empirical verification*: a reproduction with =Eval= showed a marker with
+  =insertion-type=t= at position 18 (end of =*** AI-DOING test=) advances
+  to position 32 (end of buffer, past =**** TERMINE=) when
+  =create-terminator= inserts the TERMINE line at =(org-end-of-subtree t)=.
+- *Code comment at the bug site is aspirational*:
+  [[file:gptel-org-agent.el::gptel-org-agent--display-tool-calls]] (around
+  lines 1859–1866) says "the FSM :position marker ... stays pinned BEFORE
+  TERMINE" — but that invariant is never established, because when
+  =make-insertion-marker= ran there /was no TERMINE/, so =:position= was
+  never pinned before it.
+- *Scope*: the bug occurs whenever TERMINE is created lazily by
+  =display-tool-calls= in a fresh subtree.  The user's "immediate tool call"
+  scenario is the cleanest repro; the same drift occurs after any
+  streamed text in a fresh subtree too, because =:tracking-marker= is also
+  =insertion-type=t= and =(org-end-of-subtree t)= always lands at or past
+  it.
+- *Relevant source file locations* (paths relative to =quelpa/build/gptel/=):
+  | File / symbol | Lines | Role |
+  |---------------+-------+------|
+  | =gptel-org-agent.el= — =--make-insertion-marker= | 575–618 | Creates marker with insertion-type=t when no TERMINE |
+  | =gptel-org-agent.el= — =--display-tool-calls= | 1842–1915 | Lazily creates TERMINE and then inserts PENDING at drifted marker |
+  | =gptel-indirect-buffer.el= — =gptel-org-ib-create-terminator= | 702–732 | Inserts TERMINE at =org-end-of-subtree= where the insertion-type=t marker lives |
+  | =gptel-indirect-buffer.el= — =gptel-org-ib-create= | 993–1080 | Creates IB; does NOT eagerly create TERMINE (candidate for Option B fix) |
+  | =gptel-indirect-buffer.el= — =gptel-org-ib-safe-insert-sibling= | 1347–1375 | Only ensures parent's TERMINE, not the new child's |
+  | =gptel-org-agent.el= — =--setup-task-subtree= | 1492–1503 | Calls safe-insert-sibling then make-insertion-marker while child has no TERMINE |
+
+**** Decisions
+- Fix approach: *Option B (eager TERMINE creation)* as the primary fix,
+  with *Option A (defensive re-pin)* as a belt-and-suspenders safeguard.
+  Rationale:
+  - Option B aligns with the invariant already documented in
+    =gptel-indirect-buffer-ai.org= and in the code comments at
+    =--display-tool-calls=: TERMINE is a stable sentinel; the insertion
+    marker is pinned before it.
+  - Pre-creating TERMINE in every gptel-managed subtree makes the invariant
+    true from the start and removes any dependency on lazy creation timing.
+  - Option A is cheap and localized; adding it keeps the subsystem robust
+    against any future lazy-terminator code path (e.g. parallel tool calls,
+    alternative insertion sites).
+- Alternatives considered and rejected:
+  - Option C (demote =insertion-type=t= markers temporarily during
+    =create-terminator=): fragile, library-local magic.  Rejected.
+  - Using =insert-before-markers= in =create-terminator=: pushes /all/
+    markers past the insertion including =insertion-type=nil= ones, breaking
+    other invariants.  Rejected.
+
+***** FEEDBACK The option B is the way to go                      :petri:
+- The option A is not needed. The TERMINE is there until the parent
+  heading is completed.
+
+**** Mission
+1. *Primary fix (Option B): eager TERMINE at IB creation time.*
+   In =quelpa/build/gptel/gptel-indirect-buffer.el=, inside
+   =gptel-org-ib-create= (around the point where the indirect buffer has
+   been created and narrowed to the subtree, before it is returned), add:
+   #+begin_src emacs-lisp
+     (with-current-buffer indirect-buf
+       (save-excursion
+         (goto-char (point-min))
+         (when (org-at-heading-p)
+           (gptel-org-ib-ensure-terminator "TERMINE"))))
+   #+end_src
+   Verify that =gptel-org-ib-create= is called for every agent-subtree IB
+   (including the one created by =gptel-org-agent--setup-task-subtree= via
+   =gptel-org-ib-safe-insert-sibling=).  If there are IB creation paths that
+   should NOT have a TERMINE pre-seeded (e.g. read-only views), gate the
+   eager creation appropriately.
+2. *Defensive fix (Option A): re-pin the insertion marker after any
+   terminator mutation inside =--display-tool-calls=.*
+   In =quelpa/build/gptel/gptel-org-agent.el=,
+   =gptel-org-agent--display-tool-calls=, after the
+   =(gptel-org-ib-ensure-terminator "TERMINE")= call (around line 1872),
+   re-pin =:position= and =:tracking-marker= to a fresh streaming-marker
+   with =insertion-type=nil= pointing at the start of the TERMINE line.
+   Sketch:
+   #+begin_src emacs-lisp
+     (save-excursion
+       (goto-char (point-min))
+       (when (org-at-heading-p)
+         (let ((term-marker (ignore-errors
+                              (gptel-org-ib-ensure-terminator "TERMINE"))))
+           (when term-marker
+             (let* ((info-pos (plist-get info :position))
+                    (info-tm  (plist-get info :tracking-marker))
+                    (new-pos  (gptel-org-ib-streaming-marker "TERMINE")))
+               (when (markerp info-pos)
+                 (set-marker info-pos (marker-position new-pos)
+                             (marker-buffer new-pos))
+                 (set-marker-insertion-type info-pos nil))
+               (when (markerp info-tm)
+                 (set-marker info-tm (marker-position new-pos)
+                             (marker-buffer new-pos))
+                 (set-marker-insertion-type info-tm nil)))))))
+   #+end_src
+   This step makes the code robust even if some future path creates IBs
+   without pre-seeded TERMINE.
+3. *Add a regression test* in =quelpa/build/gptel/test=:
+   - New test file (or add to existing indirect-buffer / tool-call test):
+     simulate a fresh agent subtree with only its heading, set up a FSM
+     info plist with =:position= at =point-max= with =insertion-type=t=
+     (mirroring =make-insertion-marker='s no-TERMINE branch), then call
+     =gptel-org-agent--display-tool-calls= with a single tool call.
+     Assert that the resulting buffer order is
+     =AI-DOING → PENDING … → TERMINE= (TERMINE last), not
+     =AI-DOING → TERMINE → PENDING …=.
+   - Also add a positive assertion that with Option B applied, the marker
+     has =insertion-type=nil= after IB creation.
+4. *Run the test suite*:
+   =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
+   Confirm no regressions and the new test passes.
+5. *Documentation*:
+   - Update =quelpa/build/gptel/gptel-indirect-buffer-ai.org= to state
+     clearly that =gptel-org-ib-create= pre-seeds TERMINE, and that the
+     FSM insertion marker is always pinned before TERMINE with
+     =insertion-type=nil=.
+   - Remove or revise the "we assume TERMINE exists and marker is pinned
+     before it" comment in =gptel-org-agent.el= =--display-tool-calls=
+     so that it documents the now-enforced invariant rather than an
+     aspiration.
+6. *Commit atomically* in =quelpa/build/gptel/= (submodule):
+   - Commit 1: "gptel-org-ib-create: eagerly create TERMINE terminator"
+     (Option B + doc update + test).
+   - Commit 2: "gptel-org-agent--display-tool-calls: re-pin insertion marker
+     after TERMINE creation" (Option A defensive fix).
+7. Update this TODO status to =AI-DONE= when all checks pass.
+
 ** Researched TODOs
 *** Unified gptel-org-mode Refactoring
 **** Phase 1: Fix variable rename — DONE
