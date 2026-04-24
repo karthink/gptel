@@ -627,7 +627,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 
 * TODOs
 ** Adhoc TODOs
-*** AI-DO Fix user-error during file-local-variables in unsupported major mode
+*** AI-DONE Fix user-error during file-local-variables in unsupported major mode
 **** Origin
 - User reports: when committing an org document via magit, magit loads the
   org file in =fundamental-mode= (e.g. for diff/revision preview via
