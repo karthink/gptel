@@ -424,7 +424,12 @@ SWITCHES are diff arguments."
 
 (defcustom gptel-rewrite-ediff-extra-bindings '(("C-c C-a". accept-a)
                                                 ("C-c C-b". accept-b))
-  "An alist of extra bindings to use in gptel ediff buffers."
+  "An alist of extra bindings to use in gptel ediff buffers.
+
+The symbols `accept-a' and `accept-b' are special and mean to
+quit the ediff session and accept buffer A or B. Any other
+mappings in the alist are treated as ordinary bindings to
+commands."
   :type '(alist :key-type string :value-type symbol))
 
 (defun gptel--rewrite-ediff (&optional ovs)
