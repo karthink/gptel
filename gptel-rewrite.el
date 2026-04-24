@@ -422,22 +422,39 @@ SWITCHES are diff arguments."
         (setq-local diff-jump-to-old-file t))
       (display-buffer diff-buf))))
 
+
 (defun gptel--rewrite-ediff (&optional ovs)
-  "Ediff pending LLM responses in OVS or at point."
+  "Ediff pending LLM responses in OVS or at point.
+
+During the ediff session, the original text is shown in buffer A
+and the LLM's response is shown in buffer B. When the session
+ends, the contents of buffer A are preserved and the overlay in
+buffer is updated to show the contents of buffer B.
+
+Therefore, after exiting the ediff session rejecting with
+\\<gptel-rewrite-actions-map>\\[gptel--rewrite-reject] will
+result in the what was contained in buffer A at the end of the
+ediff session (the edited original buffer). Accepting with
+\\[gptel--rewrite-accept] will result in the final contents of
+buffer B (the edited LLM response)."
   (interactive (list (gptel--rewrite-overlay-at)))
-  (when-let* ((ov-buf (overlay-buffer (or (car-safe ovs) ovs)))
+  (setq ovs (ensure-list ovs))
+  (when-let* ((ov-buf (overlay-buffer (car ovs)))
               ((buffer-live-p ov-buf)))
     (letrec ((newbuf (gptel--rewrite-prepare-buffer ovs))
              (cwc (current-window-configuration))
              (hideshow
               (lambda (&optional restore)
-                (dolist (ov (ensure-list ovs))
+                (dolist (ov ovs)
                   (when-let* ((overlay-buffer ov))
                     (let ((disp (overlay-get ov 'display))
-                          (stored (overlay-get ov 'gptel--ediff)))
+                          (response (and restore
+                                         (with-current-buffer newbuf
+                                           (buffer-string)))))
                       (overlay-put ov 'face (and restore 'gptel-rewrite-highlight-face))
-                      (overlay-put ov 'display (and restore stored))
-                      (overlay-put ov 'gptel--ediff (unless restore disp)))))))
+                      (overlay-put ov 'display response)
+                      (when restore
+                        (overlay-put ov 'gptel-rewrite response)))))))
              (gptel--ediff-restore
               (lambda ()
                 (when (window-configuration-p cwc)
