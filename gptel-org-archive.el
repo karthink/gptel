@@ -757,12 +757,12 @@ the *-ai.org pattern.  Must be autoloaded so it runs on
   (when (and (buffer-file-name)
              (derived-mode-p 'org-mode))
     (when-let* ((file (buffer-file-name))
-                (base (file-name-sans-extension file))
-                (_is-ai (string-suffix-p "-ai" base))
-                (archive-loc (concat base "-archive."
-                                     (file-name-extension file))))
-      (setq-local org-archive-location
-                  (concat archive-loc "::* Archived Tasks")))))
+                (base (file-name-sans-extension file)))
+      (when (string-suffix-p "-ai" base)
+        (let ((archive-loc (concat base "-archive."
+                                   (file-name-extension file))))
+          (setq-local org-archive-location
+                      (concat archive-loc "::* Archived Tasks")))))))
 
 ;; Automatically set archive location for AI documents
 ;;;###autoload

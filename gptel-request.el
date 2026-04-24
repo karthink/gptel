@@ -52,6 +52,8 @@
 (require 'mailcap)                    ;FIXME Avoid this somehow
 
 (declare-function json-read "json" ())
+(declare-function backtrace-get-frames "backtrace")
+(declare-function backtrace-to-string "backtrace")
 (defvar json-object-type)
 
 (defvar gptel-org--org-format-response)
@@ -1033,10 +1035,8 @@ MODE-SYM is typically a major-mode symbol."
                          (symbol-name mode-sym)
                          (string-remove-suffix "-mode")
                          (string-remove-suffix "-ts"))))
-        ;; NOTE: The advertised calling convention of provided-mode-derived-p
-        ;; has changed in Emacs 30, this needs to be updated eventually
         (if (provided-mode-derived-p
-             mode-sym 'prog-mode 'text-mode 'tex-mode)
+             mode-sym '(prog-mode text-mode tex-mode))
             mode-name ""))))
 
 (defvar url-http-end-of-headers)
