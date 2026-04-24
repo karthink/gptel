@@ -1078,6 +1078,31 @@ Returns the indirect buffer."
        (when parent-node
          (buffer-name (gptel-org-ib-node-buffer parent-node)))))
     (gptel-org--debug "org-ib create: created buffer %S" buf-name)
+    ;; Eagerly seed a TERMINE terminator child inside the freshly
+    ;; narrowed subtree.  Without this, the first streamed content or
+    ;; tool call would trigger lazy TERMINE creation in
+    ;; `gptel-org-agent--display-tool-calls' (or similar), which
+    ;; inserts at `org-end-of-subtree' — exactly where the FSM
+    ;; `:position' / `:tracking-marker' sits with insertion-type=t
+    ;; (the "no-terminator" branch of `gptel-org-ib-streaming-marker').
+    ;; Those markers would then drift PAST the new TERMINE line, and
+    ;; the subsequent insertion (e.g. a PENDING tool-call heading)
+    ;; would land after TERMINE, violating the "TERMINE is last child"
+    ;; invariant and breaking sibling-IB isolation.
+    ;;
+    ;; Pre-seeding TERMINE means:
+    ;;   - `gptel-org-ib-streaming-marker' takes its TERMINE branch and
+    ;;     returns a marker pinned AT the TERMINE line start with
+    ;;     insertion-type=nil — no drift.
+    ;;   - `gptel-org-ib-ensure-terminator' is idempotent, so any later
+    ;;     safety-net calls are no-ops.
+    ;;   - `end-marker' above has insertion-type=t, so narrowing
+    ;;     naturally extends to include the inserted TERMINE line.
+    (with-current-buffer indirect-buf
+      (save-excursion
+        (goto-char (point-min))
+        (when (org-at-heading-p)
+          (gptel-org-ib-ensure-terminator "TERMINE"))))
     indirect-buf))
 
 (defun gptel-org-ib-close (indirect-buffer &optional fold)

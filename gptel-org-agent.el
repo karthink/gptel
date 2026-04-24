@@ -1563,15 +1563,23 @@ Returns nil if INDIRECT-BUFFER is not live or contains no text."
                 (setq result (string-trim
                               (buffer-substring-no-properties
                                last-start last-end)))))
-            ;; Strategy 2: Fallback - get all body text after first heading.
+            ;; Strategy 2: Fallback - get all body text after first heading,
+            ;; stopping at a TERMINE terminator child if one exists (TERMINE
+            ;; is pre-seeded by `gptel-org-ib-create' and is not response
+            ;; content).
             (unless (and result (not (string-empty-p result)))
               (goto-char (point-min))
               (when (org-at-heading-p)
                 (forward-line 1))       ;skip the heading line
-              (let ((body-start (point)))
+              (let* ((body-start (point))
+                     (term-pos (save-excursion
+                                 (goto-char (point-min))
+                                 (when (org-at-heading-p)
+                                   (gptel-org-ib-find-terminator "TERMINE"))))
+                     (body-end (or term-pos (point-max))))
                 (setq result (string-trim
                               (buffer-substring-no-properties
-                               body-start (point-max))))))
+                               body-start body-end)))))
             (if (and result (not (string-empty-p result)))
                 result
               nil)))))))

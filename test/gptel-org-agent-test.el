@@ -619,7 +619,10 @@ verify the base buffer shows the full tree structure."
            (setq indirect-buf
                  (gptel-org-agent--open-indirect-buffer base-buf marker))
            (with-current-buffer indirect-buf
-             (goto-char (point-max))
+             ;; Insert before the pre-seeded TERMINE terminator so
+             ;; the fallback strategy picks up the body text (it stops
+             ;; at TERMINE, which is not response content).
+             (goto-char (gptel-org-ib-streaming-marker "TERMINE"))
              ;; Insert a newline to start body text on a new line after
              ;; the heading, then insert plain text without gptel properties
              (insert "\nSome fallback text without properties\n"))
@@ -1105,9 +1108,12 @@ to AI-DONE with its tag removed."
             (progn
               (setq indirect-buf
                     (gptel-org-agent--open-indirect-buffer base-buf marker))
-              ;; Simulate AI response
+              ;; Simulate AI response.  Insert at the streaming marker
+              ;; (before the pre-seeded TERMINE child) so TERMINE's body
+              ;; stays empty — matching the real code path that uses
+              ;; `gptel-org-ib-streaming-marker' with insertion-type=nil.
               (with-current-buffer indirect-buf
-                (goto-char (point-max))
+                (goto-char (gptel-org-ib-streaming-marker "TERMINE"))
                 (insert "Answer\n"))
               ;; Call insert-user-heading twice
               (with-current-buffer indirect-buf
