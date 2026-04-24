@@ -46,7 +46,7 @@
      :context-window 256
      :input-cost 0.5
      :output-cost 1.5)
-  '(mistral-large-latest
+    (mistral-large-latest
      :description "Flagship large model for training"
      :capabilities (tool-use json)
      :context-window 128
