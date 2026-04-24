@@ -868,7 +868,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
      after TERMINE creation" (Option A defensive fix).
 7. Update this TODO status to =AI-DONE= when all checks pass.
 
-*** AI-DO Eager TERMINE seeding leaks into non-agent IBs (tool/reasoning), breaking tool body insertion
+*** AI-DONE Eager TERMINE seeding leaks into non-agent IBs (tool/reasoning), breaking tool body insertion
 **** Origin
 - Follow-up to [[*Tool-call PENDING heading inserted AFTER TERMINE on first tool call in agent IB][Tool-call PENDING heading inserted AFTER TERMINE on first tool call in agent IB]]
   (commits =c99eccb=, =16c5808=, =57a8f1f=).
