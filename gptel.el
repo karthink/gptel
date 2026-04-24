@@ -967,10 +967,10 @@ context, tools, system prompt, model and more."
     (define-key map (kbd "C-c RET") #'gptel-send)
     map)
   (if gptel-mode
-      (progn
-        (unless (derived-mode-p 'org-mode 'markdown-mode 'text-mode)
-          (gptel-mode -1)
-          (user-error (format "`gptel-mode' is not supported in `%s'." major-mode)))
+      (if (not (derived-mode-p 'org-mode 'markdown-mode 'text-mode))
+          (progn
+            (setq gptel-mode nil)
+            (message "`gptel-mode' is not supported in `%s'." major-mode))
         (add-hook 'before-save-hook #'gptel--save-state nil t)
         (add-hook 'after-change-functions 'gptel--inherit-stickiness nil t)
         (gptel--prettify-preset)

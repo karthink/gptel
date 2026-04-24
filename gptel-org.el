@@ -3296,10 +3296,10 @@ This mode is only intended for `org-mode' buffers."
   :lighter " GPT-Org"
   :group 'gptel
   (if gptel-org-mode
-      (progn
-        (unless (derived-mode-p 'org-mode)
-          (setq gptel-org-mode nil)
-          (user-error "`gptel-org-mode' can only be used in org-mode buffers"))
+      (if (not (derived-mode-p 'org-mode))
+          (progn
+            (setq gptel-org-mode nil)
+            (message "`gptel-org-mode' can only be used in org-mode buffers"))
         ;; Core chat mode
         (unless gptel-mode (gptel-mode 1))
         ;; Org-specific settings
