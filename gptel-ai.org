@@ -627,6 +627,71 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 
 * TODOs
 ** Adhoc TODOs
+*** AI-DO Fix user-error during file-local-variables in unsupported major mode
+**** Origin
+- User reports: when committing an org document via magit, magit loads the
+  org file in =fundamental-mode= (e.g. for diff/revision preview via
+  =find-file-noselect= without a visit), and =hack-local-variables= processes
+  the file-local =gptel-mode=/=gptel-org-mode= directives.  Both modes
+  signal =user-error= on the wrong major mode, which Emacs surfaces as:
+  #+begin_example
+  File local-variables error: (user-error ‘gptel-mode’ is not supported in ‘fundamental-mode’.)
+  ‘gptel-org-mode’ can only be used in org-mode buffers
+  #+end_example
+- The =user-error= aborts the local-variables pass and bubbles up into magit.
+
+**** Discussion highlights
+- Error sites:
+  - [[file:gptel.el::973]] — =gptel-mode= rejects non org/markdown/text with
+    =user-error=.
+  - [[file:gptel-org.el::3302]] — =gptel-org-mode= rejects non org-mode with
+    =user-error=.
+- Both checks already self-disable the minor mode (=gptel-mode -1= /
+  =(setq gptel-org-mode nil)=) before signaling.  The =user-error= is only
+  useful for interactive misuse; in the file-local-variables code path it is
+  harmful because it stops processing the rest of the local variables.
+- The safe pattern used elsewhere in Emacs (cf. built-in minor modes) is to
+  =message= a warning and silently no-op when activated in an unsupported
+  buffer.  This keeps interactive feedback (the user still sees the message)
+  while making the modes robust against incidental activation via
+  =hack-local-variables=, =desktop-save-mode=, =revert-buffer= in derived
+  transient buffers, etc.
+
+**** Decisions
+- Replace the two =user-error= calls with =message= + silent no-op.
+- Keep the self-disable already in place.
+- Keep the message text essentially the same so existing user-facing
+  guidance is preserved.
+- No test changes expected; no existing test asserts on the =user-error=.
+
+**** Mission
+1. In =quelpa/build/gptel/gptel.el= (around line 971-973), change:
+   #+begin_src emacs-lisp
+     (unless (derived-mode-p 'org-mode 'markdown-mode 'text-mode)
+       (gptel-mode -1)
+       (user-error (format "`gptel-mode' is not supported in `%s'." major-mode)))
+   #+end_src
+   to a variant that logs via =message= and =cl-return-from= / early-exits
+   the activation branch without signaling, e.g.:
+   #+begin_src emacs-lisp
+     (if (not (derived-mode-p 'org-mode 'markdown-mode 'text-mode))
+         (progn (setq gptel-mode nil)
+                (message "`gptel-mode' is not supported in `%s'." major-mode))
+       ;; ...existing activation body...
+       )
+   #+end_src
+   Preserve the existing =(if gptel-mode ...)= top-level shape; the simplest
+   edit is to early-return from the activation branch when the major mode
+   check fails.
+2. In =quelpa/build/gptel/gptel-org.el= (around line 3300-3302), apply the
+   analogous change to =gptel-org-mode=: on non org-mode, set
+   =gptel-org-mode= to nil and =message= instead of =user-error=.
+3. Run the test suite: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
+4. Commit atomically in =quelpa/build/gptel/= with a message like:
+   =gptel-mode, gptel-org-mode: don't error in unsupported major-mode=.
+   Commit body should mention the magit file-local-variables scenario.
+5. Update this TODO status to AI-DONE.
+
 ** Researched TODOs
 *** Unified gptel-org-mode Refactoring
 **** Phase 1: Fix variable rename — DONE
