@@ -422,6 +422,11 @@ SWITCHES are diff arguments."
         (setq-local diff-jump-to-old-file t))
       (display-buffer diff-buf))))
 
+(defcustom gptel-rewrite-ediff-extra-bindings '(("C-c C-a". accept-a)
+                                                ("C-c C-b". accept-b))
+  "An alist of extra bindings to use in gptel ediff buffers."
+  :type '(alist :key-type string :value-type symbol))
+
 (defun gptel--rewrite-ediff (&optional ovs)
   "Ediff pending LLM responses in OVS or at point.
 
@@ -474,12 +479,17 @@ the final contents of buffer B (the edited LLM response)."
                 (gptel--rewrite-accept ovs)))
              (gptel--ediff-setup
               (lambda ()
-                (use-local-map (make-composed-keymap
-                                (define-keymap
-                                  "C-c C-a" gptel--ediff-accept-A
-                                  "C-c C-b" gptel--ediff-accept-B)
-                                (current-local-map)))
-                (message "Use C-c C-a and C-c C-b to quit ediff and immediately accept buffer A or B"))))
+                (let* ((bindings gptel-rewrite-ediff-extra-bindings)
+                       (accept-a-keys (car (rassoc 'accept-a bindings)))
+                       (accept-b-keys (car (rassoc 'accept-b bindings))))
+                  (use-local-map (make-composed-keymap
+                                  (define-keymap
+                                    accept-a-keys gptel--ediff-accept-A
+                                    accept-b-keys gptel--ediff-accept-B)
+                                  (current-local-map)))
+                  (message "Use %s and %s to quit ediff and immediately accept buffer A or B"
+                           accept-a-keys
+                           accept-b-keys)))))
       (funcall hideshow)
       (add-hook 'ediff-quit-hook gptel--ediff-restore 50)
       (add-hook 'ediff-startup-hook gptel--ediff-setup)
