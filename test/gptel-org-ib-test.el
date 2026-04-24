@@ -828,59 +828,59 @@ Order of headings: parent, existing child, new heading, FEEDBACK."
          (kill-buffer intermediate))))))
 
 
-(ert-deftest gptel-org-ib-test-create-seeds-termine-eagerly ()
-  "`gptel-org-ib-create' pre-seeds a TERMINE child in the narrowed subtree.
+(ert-deftest gptel-org-ib-test-create-does-not-seed-termine ()
+  "`gptel-org-ib-create' does NOT pre-seed a TERMINE child.
 
-Regression test for the bug where a freshly-created sub-agent IB with
-no TERMINE caused `gptel-org-ib-streaming-marker' to fall through to
-its no-terminator branch (returning a marker with insertion-type=t at
-point-max).  The first subsequent tool call triggered lazy TERMINE
-creation at `org-end-of-subtree', which drifted the insertion marker
-PAST TERMINE and caused the PENDING heading to land after TERMINE
-instead of before it.
+TERMINE is an agent-layer concern, not an IB-module concern.  The
+generic factory must remain neutral so it can serve agent, tool, and
+reasoning IBs uniformly — tool and reasoning IBs must NOT have a
+TERMINE child (the tool body / reasoning content goes directly under
+the heading).
 
-The fix: `gptel-org-ib-create' now eagerly seeds TERMINE so that
-`gptel-org-ib-streaming-marker' always takes the TERMINE branch and
-returns a stable insertion-type=nil marker."
+Agent-layer callers (`gptel-org-agent--open-indirect-buffer',
+`gptel-org-ib-safe-insert-sibling') seed TERMINE explicitly after
+calling this factory."
   (gptel-org-ib-test-with-buffer
       "* TASK\n** AI-DOING Sub-task :dummy@agent:\n"
     (gptel-org-ib-test-with-cleanup
-     ;; Position on the child heading (the fresh sub-agent subtree
-     ;; with no TERMINE yet).
      (goto-char (point-min))
      (re-search-forward "^\\*\\* AI-DOING ")
      (beginning-of-line)
      (let ((ib (gptel-org-ib-create (current-buffer) (point))))
        (should (buffer-live-p ib))
        (with-current-buffer ib
-         ;; TERMINE must be findable by the terminator API.
-         (should (gptel-org-ib-find-terminator "TERMINE"))
-         ;; TERMINE must be the last child: the narrowed buffer ends
-         ;; just after the "**** TERMINE" line.
+         ;; TERMINE must NOT exist — the factory is neutral.
+         (should-not (gptel-org-ib-find-terminator "TERMINE"))
+         ;; The narrowed buffer should contain only the heading and
+         ;; whatever body the source had — no synthesized TERMINE.
          (let ((content (buffer-substring-no-properties
                          (point-min) (point-max))))
            (should (string-match-p "^\\*\\* AI-DOING Sub-task" content))
-           (should (string-match-p "^\\*\\*\\* TERMINE$" content))
-           ;; No other heading comes after TERMINE.
-           (goto-char (point-min))
-           (re-search-forward "^\\*\\*\\* TERMINE$")
-           (forward-line 1)
-           (should-not (re-search-forward "^\\*+ " nil t)))
-         ;; The streaming-marker must now take the TERMINE branch:
-         ;; insertion-type=nil and pointing at the TERMINE line start.
-         (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
-           (should (markerp m))
-           (should-not (marker-insertion-type m))
-           (save-excursion
-             (goto-char (marker-position m))
-             (should (org-at-heading-p))
-             (should (string-match-p
-                      "TERMINE"
-                      (buffer-substring-no-properties
-                       (line-beginning-position)
-                       (line-end-position)))))))
+           (should-not (string-match-p "TERMINE" content))))
        (gptel-org-ib-close ib)
        (should-not (buffer-live-p ib))))))
+
+(ert-deftest gptel-org-ib-test-safe-insert-sibling-seeds-termine ()
+  "`gptel-org-ib-safe-insert-sibling' seeds TERMINE in the new child IB.
+
+Sibling-creation goes through the agent-layer convenience helper, so
+the resulting IB must have a TERMINE child (the agent layer owns
+TERMINE lifecycle)."
+  (gptel-org-ib-test-with-buffer
+      "* TASK\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (org-back-to-heading t)
+     (let ((ib (gptel-org-ib-safe-insert-sibling
+                "AI-DOING" "Child" '("dummy@agent") "FEEDBACK")))
+       (should (buffer-live-p ib))
+       (with-current-buffer ib
+         (should (gptel-org-ib-find-terminator "TERMINE"))
+         ;; Streaming marker must take the TERMINE branch:
+         ;; insertion-type=nil pinned at TERMINE line start.
+         (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
+           (should (markerp m))
+           (should-not (marker-insertion-type m))))))))
 (ert-deftest gptel-org-ib-test-close-kills-and-unregisters ()
   "`close' kills the IB and removes it from the registry."
   (gptel-org-ib-test-with-buffer

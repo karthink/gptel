@@ -1078,31 +1078,14 @@ Returns the indirect buffer."
        (when parent-node
          (buffer-name (gptel-org-ib-node-buffer parent-node)))))
     (gptel-org--debug "org-ib create: created buffer %S" buf-name)
-    ;; Eagerly seed a TERMINE terminator child inside the freshly
-    ;; narrowed subtree.  Without this, the first streamed content or
-    ;; tool call would trigger lazy TERMINE creation in
-    ;; `gptel-org-agent--display-tool-calls' (or similar), which
-    ;; inserts at `org-end-of-subtree' — exactly where the FSM
-    ;; `:position' / `:tracking-marker' sits with insertion-type=t
-    ;; (the "no-terminator" branch of `gptel-org-ib-streaming-marker').
-    ;; Those markers would then drift PAST the new TERMINE line, and
-    ;; the subsequent insertion (e.g. a PENDING tool-call heading)
-    ;; would land after TERMINE, violating the "TERMINE is last child"
-    ;; invariant and breaking sibling-IB isolation.
-    ;;
-    ;; Pre-seeding TERMINE means:
-    ;;   - `gptel-org-ib-streaming-marker' takes its TERMINE branch and
-    ;;     returns a marker pinned AT the TERMINE line start with
-    ;;     insertion-type=nil — no drift.
-    ;;   - `gptel-org-ib-ensure-terminator' is idempotent, so any later
-    ;;     safety-net calls are no-ops.
-    ;;   - `end-marker' above has insertion-type=t, so narrowing
-    ;;     naturally extends to include the inserted TERMINE line.
-    (with-current-buffer indirect-buf
-      (save-excursion
-        (goto-char (point-min))
-        (when (org-at-heading-p)
-          (gptel-org-ib-ensure-terminator "TERMINE"))))
+    ;; NOTE: TERMINE seeding is intentionally NOT done here.  TERMINE
+    ;; is an agent-layer convention and this factory is also used to
+    ;; construct tool and reasoning IBs, which must NOT have a TERMINE
+    ;; child (their body/content goes directly under the heading).
+    ;; Agent-layer callers own the TERMINE lifecycle and seed it
+    ;; explicitly after calling this factory — see
+    ;; `gptel-org-agent--open-indirect-buffer' and
+    ;; `gptel-org-ib-safe-insert-sibling'.
     indirect-buf))
 
 (defun gptel-org-ib-close (indirect-buffer &optional fold)
@@ -1394,9 +1377,19 @@ Returns the indirect buffer for the newly created heading."
     ;; Create the new heading before the terminator
     (let* ((heading-marker (gptel-org-ib-create-heading
                             todo-keyword title tags terminator-keyword))
-           (base-buffer (current-buffer)))
-      ;; Create and return the indirect buffer
-      (gptel-org-ib-create base-buffer heading-marker))))
+           (base-buffer (current-buffer))
+           (indirect-buf (gptel-org-ib-create base-buffer heading-marker)))
+      ;; Seed the TERMINE terminator inside the new child IB.  This
+      ;; is an agent-layer concern (child agent subtrees own TERMINE
+      ;; lifecycle); `gptel-org-ib-create' deliberately does not seed
+      ;; it because tool/reasoning IBs must NOT have a TERMINE child.
+      ;; See the seeding rationale in `gptel-org-agent--open-indirect-buffer'.
+      (with-current-buffer indirect-buf
+        (save-excursion
+          (goto-char (point-min))
+          (when (org-at-heading-p)
+            (gptel-org-ib-ensure-terminator "TERMINE"))))
+      indirect-buf)))
 
 
 (provide 'gptel-indirect-buffer)
