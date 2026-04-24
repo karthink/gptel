@@ -481,11 +481,15 @@ the final contents of buffer B (the edited LLM response)."
               (lambda ()
                 (let* ((bindings gptel-rewrite-ediff-extra-bindings)
                        (accept-a-keys (car (rassoc 'accept-a bindings)))
-                       (accept-b-keys (car (rassoc 'accept-b bindings))))
+                       (accept-b-keys (car (rassoc 'accept-b bindings)))
+                       (other-bindings (cl-remove-if (lambda (cell)
+                                                       (memq (cdr cell) '(accept-a accept-b)))
+                                                     bindings)))
                   (use-local-map (make-composed-keymap
-                                  (define-keymap
-                                    accept-a-keys gptel--ediff-accept-A
-                                    accept-b-keys gptel--ediff-accept-B)
+                                  (apply #'define-keymap
+                                         accept-a-keys gptel--ediff-accept-A
+                                         accept-b-keys gptel--ediff-accept-B
+                                         other-bindings)
                                   (current-local-map)))
                   (message "Use %s and %s to quit ediff and immediately accept buffer A or B"
                            accept-a-keys
