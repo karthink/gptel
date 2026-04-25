@@ -512,6 +512,7 @@ Media files, if present, are placed in `gptel-context'."
     (gpt-5.5
      :description "The best model for coding and agentic tasks"
      :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member none low medium high xhigh)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 1050
      :input-cost 5
@@ -520,6 +521,7 @@ Media files, if present, are placed in `gptel-context'."
     (gpt-5.5-pro
      :description "Maximum performance model for reasoning tasks"
      :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member none low medium high xhigh)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 1050
      :input-cost 30
