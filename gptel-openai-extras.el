@@ -303,6 +303,28 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
               (setcdr index (cdr rest))))
           (setq index (cdr index)))))))
 
+(cl-defmethod gptel--request-data ((_backend gptel-deepseek) _prompts)
+  "Handle reasoning effort using Deepseek's special conventions.
+
+The Deepseek API handles reasoning effort differently than
+OpenAI. Instead of using a single reasoning_effort parameter,
+there is a thinking parameter that can be used to disable or
+enable thinking. When it is enabled, reasoning_effort can be set
+to either \"high\" or \"max\"."
+  ;; Disable reasoning effort when calling the gptel-openai backend's version of
+  ;; this method. It uses OpenAI conventions for the reasoning effort which are
+  ;; different than what Deepseek accepts
+  (let ((plist (let ((gptel-reasoning-effort nil))
+                 (cl-call-next-method))))
+    (when gptel-reasoning-effort
+      (plist-put plist
+                 :thinking (list :type
+                                 (if (eq gptel-reasoning-effort 'disabled)
+                                     "disabled"
+                                   "enabled")))
+      (plist-put plist :reasoning_effort gptel-reasoning-effort))
+    plist))
+
 ;;;###autoload
 (cl-defun gptel-make-deepseek
     (name &key curl-args stream key request-params
