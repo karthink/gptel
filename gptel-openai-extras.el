@@ -191,7 +191,7 @@ for."
 
 (cl-defmethod gptel--parse-response ((_backend gptel-perplexity) response _info)
   "Parse Perplexity response RESPONSE."
-  (let ((response-string (map-nested-elt response '(:choices 0 :message :content)))
+  (let ((response-string (cl-call-next-method))
         (citations-string (when-let* ((citations (map-elt response :citations)))
 			    (gptel--perplexity-parse-citations citations))))
     (concat response-string citations-string)))

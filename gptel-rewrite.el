@@ -445,7 +445,7 @@ SWITCHES are diff arguments."
                 (funcall hideshow 'restore)
                 (remove-hook 'ediff-quit-hook gptel--ediff-restore))))
       (funcall hideshow)
-      (add-hook 'ediff-quit-hook gptel--ediff-restore)
+      (add-hook 'ediff-quit-hook gptel--ediff-restore 50)
       (let ((ediff-window-setup-function #'ediff-setup-windows-plain)
             (ediff-split-window-function #'split-window-horizontally))
         (ediff-buffers ov-buf newbuf)))))
@@ -655,7 +655,8 @@ By default, gptel uses the directive associated with the `rewrite'
      (gptel--describe-directive
       gptel--rewrite-directive (max (- (window-width) 14) 20) " "))
    [""
-    (gptel--preset
+    (gptel-preset
+     :transient t
      :if (lambda () (or (get-char-property (point) 'gptel-rewrite)
                    (use-region-p)))
      :key "@" :format "%d"

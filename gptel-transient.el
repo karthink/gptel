@@ -1056,7 +1056,9 @@ existing preset, as well."
                                         gptel--known-presets nil t)))))))
   (gptel--apply-preset preset
                        (or setter (lambda (sym val) (gptel--set-with-scope
-                                                sym val gptel--set-buffer-locally)))))
+                                                     sym val gptel--set-buffer-locally))))
+  (when transient--prefix
+    (transient-setup 'gptel-menu)))
 
 ;; ** Prefix for selecting tools
 
@@ -1648,7 +1650,7 @@ This sets the variable `gptel-include-tool-results', which see."
 ;; ** Suffix to send prompt
 
 (transient-define-suffix gptel--suffix-send (args)
-  "Send ARGS."
+  "Call `gptel-send' with ARGS."
   :key "RET"
   :description #'gptel--describe-suffix-send
   (interactive (list (transient-args
@@ -1676,7 +1678,7 @@ This sets the variable `gptel-include-tool-results', which see."
 
     ;; Output redirection: Send response elsewhere?
     (cond
-     ((member "e" args)
+     ((member "e" args)                 ;Send to echo-area
       (setq redirect-output t)
       (setq stream nil)
       (setq callback
@@ -1687,7 +1689,7 @@ This sets the variable `gptel-include-tool-results', which see."
                 (_ (when (and (null resp) (plist-get info :error))
                      (message "%s response error: %s"
                               backend-name (plist-get info :status))))))))
-     ((member "k" args)
+     ((member "k" args)                 ;Send to kill-ring
       (setq redirect-output t)
       (setq stream nil)
       (setq callback
@@ -1706,7 +1708,7 @@ This sets the variable `gptel-include-tool-results', which see."
                         (concat "%s response error: %s."
                                 (and accum "  Partial response copied to kill-ring."))
                                 backend-name (plist-get info :status)))))))))
-     ((setq gptel-buffer-name
+     ((setq gptel-buffer-name           ;Send to gptel buffer
             (cl-some (lambda (s) (and (stringp s) (string-prefix-p "g" s)
                                  (substring s 1)))
                      args))
@@ -1764,7 +1766,7 @@ This sets the variable `gptel-include-tool-results', which see."
                         (get-char-property (point) 'read-only))
               (unless (bolp) (insert "\n"))
               (insert reduced-prompt))
-            (setq position (point))
+            (setq position (point-marker))
             (when (and gptel-mode (not dry-run))
               (gptel--update-status " Waiting..." 'warning))))
          ;; Insert into new gptel session
@@ -1785,21 +1787,20 @@ This sets the variable `gptel-include-tool-results', which see."
               (setq gptel-model model)
               (unless dry-run
                 (gptel--update-status " Waiting..." 'warning))
-              (setq position (point)))))))
-     ((setq gptel-buffer-name
+              (setq position (point-marker)))))))
+     ((setq gptel-buffer-name           ;Send to specified buffer
             (cl-some (lambda (s) (and (stringp s) (string-prefix-p "b" s)
                                  (substring s 1)))
                      args))
       (setq redirect-output t)
       (setq buffer (get-buffer-create gptel-buffer-name))
-      (with-current-buffer buffer (setq position (point)))))
+      (with-current-buffer buffer (setq position (point-marker)))))
 
     ;; MAYBE: This is no a good way to handle two-part (region + instruction) prompts
     ;; If the prompt is a cons (region-text . instructions), collapse it
     (when (consp prompt) (setq prompt (concat (car prompt) "\n\n" (cdr prompt))))
 
     (prog1 (gptel-request prompt
-             :buffer (or buffer (current-buffer))
              :position position
              :in-place in-place
              :stream stream

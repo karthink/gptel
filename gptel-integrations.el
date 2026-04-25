@@ -160,10 +160,10 @@ not a function and non-nil, start SERVERS synchronously."
                   (lambda (&optional server-names)
                     "Register and add tools from servers.  Report failures."
                     (let ((tools (gptel-mcp--get-tools
-                                  (or server-names (mapcar #'car inactive-servers))))
+                                  (or server-names (mapcar #'car servers))))
                           (now-active (cl-remove-if-not server-active-p mcp-hub-servers)))
                       (mapc (lambda (tool) (apply #'gptel-make-tool tool)) tools)
-                      (gptel-mcp--activate-tools tools)
+                      (when tools (gptel-mcp--activate-tools tools))
                       (if-let* ((failed (cl-set-difference inactive-servers now-active
                                                            :test #'equal)))
                           (progn

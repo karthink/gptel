@@ -742,11 +742,16 @@ See `gptel-backend'."
   :type '(repeat string))
 
 (defconst gptel-curl--common-args
-  (if (memq system-type '(windows-nt ms-dos))
-      '("--disable" "--location" "--silent" "-XPOST"
-        "-y7200" "-Y1" "-D-")
+  (cond
+   ((memq system-type '(windows-nt ms-dos))
+    '("--disable" "--location" "--silent" "-XPOST"
+      "-y7200" "-Y1" "-N" "-D-"))
+   ((eq system-type 'darwin)
     '("--disable" "--location" "--silent" "--compressed"
-      "-XPOST" "-y7200" "-Y1" "-D-"))
+      "-XPOST" "-y7200" "-Y1" "-N" "-D-"))
+   (t
+    '("--disable" "--location" "--silent" "--compressed"
+      "-XPOST" "-y7200" "-Y1" "-N" "-D-")))
   "Arguments always passed to Curl for gptel queries.")
 
 (defvar gptel--link-type-cache nil
@@ -845,9 +850,11 @@ Otherwise, evaluate it as a variable."
          (wrong-number-of-arguments
           (message "Displaying warning")
           (display-warning
-           'gptel (format "%s should accept %d arguments, but accepts %d"
+           'gptel (format "%s calling convention has changed: \
+Called with %d arguments but accept %d.  \
+Please update them, and see NEWS (0.9.9.5) for details."
                           (if (symbolp ,func-or-sym) (format "Function %s" ,func-or-sym)
-                            "gptel backend function")
+                            "gptel-backend-header/gptel-backend-url function")
                           (length ',args) (car (func-arity ,func-or-sym))))
           (funcall ,func-or-sym)))
      ,func-or-sym))
