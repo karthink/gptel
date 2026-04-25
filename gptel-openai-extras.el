@@ -321,7 +321,17 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
                      :capabilities (tool)
                      :context-window 128
                      :input-cost 0.28
-                     :output-cost 0.42))))
+                     :output-cost 0.42)
+		    (deepseek-v4-flash
+                     :capabilities (tool reasoning)
+                     :context-window 1000
+                     :input-cost 0.14
+                     :output-cost 0.28)
+                    (deepseek-v4-pro
+                     :capabilities (tool reasoning)
+                     :context-window 1000
+                     :input-cost 1.74
+                     :output-cost 3.48))))
   "Register a DeepSeek backend for gptel with NAME.
 
 For the meanings of the keyword arguments, see `gptel-make-openai'."
