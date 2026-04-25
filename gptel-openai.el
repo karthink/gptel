@@ -230,6 +230,9 @@ Mutate state INFO with response metadata."
       (plist-put prompts-plist :stream_options '(:include_usage t)))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
+    (when gptel-reasoning-effort
+      (plist-put prompts-plist (list :reasoning_effort
+                                     (symbol-name gptel-reasoning-effort))))
     (when gptel-use-tools
       (when (eq gptel-use-tools 'force)
         (plist-put prompts-plist :tool_choice "required"))
