@@ -57,6 +57,9 @@
 
 ** New models and backends
 
+- Deepseek backend: Add support for =deepseek-v4-flash=,
+  =deepseek-v4-pro=.
+
 - Anthropic backend: Add support for =claude-opus-4.7=.
 
 - xAI backend: Add support for =grok-4-1-fast-reasoning=,
