@@ -1516,8 +1516,9 @@ Perform UI updates and run post-response hooks."
                          (plist-put info :status "Stopped by hook")
                          (plist-put info :error reason))
                      ;; if hook-func returns :confirm, add the check
-                     (when (plist-get hook-func-result :confirm)
-                       (plist-put tool-call :confirm t))
+                     (when-let* ((confirm-tail
+                                  (plist-member hook-func-result :confirm)))
+                       (plist-put tool-call :confirm (cadr confirm-tail)))
                      ;; if hook-func returns :args or :name, replace in the call
                      (when (or (plist-get hook-func-result :args)
                                (plist-get hook-func-result :name))
