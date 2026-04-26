@@ -671,7 +671,8 @@ export-credentials.  BEARER-TOKEN is the token used for authentication."
 
 (defun gptel-bedrock--curl-version ()
   "Check Curl version required for gptel-bedrock."
-  (let* ((output (shell-command-to-string "curl --version"))
+  (let* ((output (shell-command-to-string
+                  (concat (gptel--curl-path) " --version")))
          (version (and (string-match "^curl \\([0-9.]+\\)" output)
                        (match-string 1 output))))
     version))
