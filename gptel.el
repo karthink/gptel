@@ -1546,8 +1546,11 @@ Perform UI updates and run post-response hooks."
   "Update gptel's status in FSM when there are pending tool-calls."
   (when (plist-get (gptel-fsm-info fsm) :tool-pending)
     (plist-put (gptel-fsm-info fsm) :tool-pending nil)
-    (when gptel-mode
-      (gptel--update-status " Run tools?" 'mode-line-emphasis))))
+    (let* ((info (gptel-fsm-info fsm))
+           (buf (plist-get info :buffer)))
+      (with-current-buffer buf
+        (when gptel-mode
+          (gptel--update-status " Run tools?" 'mode-line-emphasis))))))
 
 
 ;;; Send queries, handle responses
