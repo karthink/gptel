@@ -77,6 +77,17 @@
 
 ** New features and UI changes
 
+- gptel now displays token usage in the header-line when using
+  gptel-mode.  This includes the tokens sent, cached tokens sent (if
+  any) and tokens received.  The displayed totals are per-request or per
+  session/buffer, and you can switch between the two by clicking the
+  display.  Hovering the mouse over the display will show both in a
+  tooltip.
+
+  Displaying costs in currency instead of tokens is not yet supported
+  because many backends do not return the required information (cache
+  creation details, etc).
+
 - New command ~gptel-preset~ to choose a gptel preset to apply, or save
   gptel's current settings as a preset.
 
