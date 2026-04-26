@@ -946,6 +946,22 @@ Later plists in the sequence take precedence over earlier ones."
         (setq rtn (plist-put rtn p v))))
     rtn))
 
+;; MAYBE: Can be generalized to gptel--combine-plists, taking a "combiner"
+;; function and default-value as arguments.
+(defun gptel--sum-plists (&rest plists)
+  "Sum the values of keys across PLISTS.
+
+All values must be numeric or nil.  Returns a new plist."
+  (let ((rtn (copy-sequence (pop plists)))
+        k v ls)
+    (while plists
+      (setq ls (pop plists))
+      (while ls
+        (setq k (pop ls) v (pop ls))
+        (setq rtn (plist-put rtn k (+ (or (plist-get rtn k) 0)
+                                      (or v 0))))))
+    rtn))
+
 (defun gptel--file-binary-p (path)
   "Check if file at PATH is readable and binary."
   ;; HACK Image files with ICC color profiles are characterized as ASCII
