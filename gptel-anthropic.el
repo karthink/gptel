@@ -44,17 +44,18 @@
   "Update token usage information from USAGE.
 USAGE is part of the response, INFO is the request plist."
   (when usage
-    (let* ((tokens (plist-get info :tokens))
-           (input (+ (or (plist-get usage :input_tokens) 0)
-                     (or (plist-get tokens :input) 0)))
-           (output (+ (or (plist-get usage :output_tokens) 0)
-                      (or (plist-get tokens :output) 0)))
-           (cached (+ (or (plist-get usage :cache_read_input_tokens) 0)
-                      (or (plist-get tokens :cached) 0)))
-           (cache (+ (or (plist-get usage :cache_creation_input_tokens) 0)
-                     (or (plist-get tokens :cache) 0))))
-      (list :input input :output output
-            :cache cache :cached cached))))
+    (let ((input  (or (plist-get usage :input_tokens) 0))
+          (output (or (plist-get usage :output_tokens) 0))
+          (cached (or (plist-get usage :cache_read_input_tokens) 0))
+          (cache  (or (plist-get usage :cache_creation_input_tokens) 0)))
+      ;; Total input is input + cache (creation) + cached.  We combine input and
+      ;; cache (not cached!) because gptel's UI doesn't distinguish between them.
+      (let ((tokens (list :input (+ input cache) :output output
+                          :cached cached :cache cache)))
+        (plist-put info :tokens tokens) ;Tokens for this turn
+        (plist-put info :tokens-full    ;Tokens for full request
+                   (gptel--sum-plists (plist-get info :tokens-full)
+                                      tokens))))))
 
 ;; NOTE the crucial difference between
 ;; - (push val (plist-get info :key)) and
@@ -137,37 +138,36 @@ information if the stream contains it.  Not my best work, I know."
            ((looking-at "message_delta")
             ;; collect stop_reason, usage_tokens and prepare tools
             (forward-line 1) (forward-char 5)
-            (when-let* ((tool-use (plist-get info :tool-use))
-                        (response (gptel--json-read)))
-              (let* ((data (plist-get info :data))
-                     (prompts (plist-get data :messages)))
-                (plist-put ; Append a COPY of response text + tool-use to the prompts list
-                 data :messages
-                 (vconcat
-                  prompts
-                  `((:role "assistant"
-                     :content ,(vconcat ;Insert any LLM text and thinking text
-                                (and-let* ((reasoning (plist-get info :partial_reasoning)))
-                                 `((:type "thinking" :thinking ,reasoning
-                                    :signature ,(plist-get info :signature))))
-                                (and-let* ((strs (plist-get info :partial_text)))
-                                 `((:type "text" :text ,(apply #'concat (nreverse strs)))))
-                                (mapcar (lambda (tool-call) ;followed by the tool calls
-                                          (append (list :type "tool_use")
-                                           (copy-sequence tool-call)))
-                                 tool-use))))))
-                (plist-put info :partial_text nil) ; Clear any captured text
-                ;; Then shape the tool-use block by adding args so we can call the functions
-                (mapc (lambda (tool-call)
-                        (plist-put tool-call :args (plist-get tool-call :input))
-                        (plist-put tool-call :input nil)
-                        (plist-put tool-call :id (plist-get tool-call :id)))
-                      tool-use))
-              ;; Capture token usage
-              (plist-put info :tokens (gptel--anthropic-update-tokens
-                                       (plist-get response :usage) info))
+            (let ((response (gptel--json-read)))
+              (when-let* ((tool-use (plist-get info :tool-use)))
+                (let* ((data (plist-get info :data))
+                       (prompts (plist-get data :messages)))
+                  (plist-put ; Append a COPY of response text + tool-use to the prompts list
+                   data :messages
+                   (vconcat
+                    prompts
+                    `((:role "assistant"
+                             :content ,(vconcat ;Insert any LLM text and thinking text
+                                        (and-let* ((reasoning (plist-get info :partial_reasoning)))
+                                          `((:type "thinking" :thinking ,reasoning
+                                                   :signature ,(plist-get info :signature))))
+                                        (and-let* ((strs (plist-get info :partial_text)))
+                                          `((:type "text" :text ,(apply #'concat (nreverse strs)))))
+                                        (mapcar (lambda (tool-call) ;followed by the tool calls
+                                                  (append (list :type "tool_use")
+                                                          (copy-sequence tool-call)))
+                                                tool-use))))))
+                  (plist-put info :partial_text nil) ; Clear any captured text
+                  ;; Then shape the tool-use block by adding args so we can call the functions
+                  (mapc (lambda (tool-call)
+                          (plist-put tool-call :args (plist-get tool-call :input))
+                          (plist-put tool-call :input nil)
+                          (plist-put tool-call :id (plist-get tool-call :id)))
+                        tool-use)))
               (plist-put info :stop-reason
-                         (map-nested-elt response '(:delta :stop_reason)))))))
+                         (map-nested-elt response '(:delta :stop_reason)))
+              ;; Capture token usage
+              (gptel--anthropic-update-tokens (plist-get response :usage) info)))))
       (error (goto-char pt)))
     (let ((response-text (apply #'concat (nreverse content-strs))))
       (unless (string-empty-p response-text)
@@ -184,8 +184,7 @@ information if the stream contains it.  Not my best work, I know."
 
 Mutate state INFO with response metadata."
   (plist-put info :stop-reason (plist-get response :stop_reason))
-  (plist-put info :tokens (gptel--anthropic-update-tokens
-                           (plist-get response :usage) info))
+  (gptel--anthropic-update-tokens (plist-get response :usage) info)
   (cl-loop
    with content = (plist-get response :content)
    for cblock across content

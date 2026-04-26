@@ -37,16 +37,18 @@
   "Update token usage information from USAGE.
 USAGE is part of the response, INFO is the request plist."
   (when usage
-    (let* ((tokens (plist-get info :tokens))
-           (input (+ (or (plist-get usage :input_tokens) 0)
-                     (or (plist-get tokens :input) 0)))
-           (output (+ (or (plist-get usage :output_tokens) 0)
-                      (or (plist-get tokens :output) 0)))
-           (cached (+ (or (map-nested-elt
-                           usage '(:input_tokens_details :cached_tokens))
-                          0)
-                      (or (plist-get tokens :cached) 0))))
-      (list :input input :output output :cached cached))))
+    (let ((input (or (plist-get usage :input_tokens) 0))
+          (output (or (plist-get usage :output_tokens) 0))
+          (cached (or (map-nested-elt
+                       usage '(:input_tokens_details :cached_tokens))
+                      0)))
+      ;; prompt_tokens includes the cached tokens, but we capture and display
+      ;; the two exclusively in the UI.
+      (let ((tokens (list :input (- input cached) :output output :cached cached)))
+        (plist-put info :tokens tokens) ;Tokens for this turn
+        (plist-put info :tokens-full    ;Tokens for full request
+                   (gptel--sum-plists (plist-get info :tokens-full)
+                                      tokens))))))
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai-responses) info)
   "Parse an OpenAI Responses API data stream.
@@ -128,8 +130,8 @@ information if the stream contains it."
                             tool-use)))
                  (when-let* ((resp (plist-get data :response)))
                    (plist-put info :stop-reason (plist-get resp :status))
-                   (plist-put info :tokens (gptel--openai-responses-update-tokens
-                                            (plist-get resp :usage) info))))))))
+                   (gptel--openai-responses-update-tokens
+                    (plist-get resp :usage) info)))))))
       (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
@@ -140,8 +142,7 @@ Mutate state INFO with response metadata."
         (content-strs) (tool-use) (tool-calls))
     ;; Store usage info
     (plist-put info :stop-reason (plist-get response :status))
-    (plist-put info :tokens (gptel--openai-responses-update-tokens
-                             (plist-get response :usage) info))
+    (gptel--openai-responses-update-tokens (plist-get response :usage) info)
     ;; Process output items
     (cl-loop
      for item across output-items

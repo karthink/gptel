@@ -46,17 +46,18 @@ This function accumulates token counts across multiple turns in a
 multi-turn request (e.g., during tool use where results are fed
 back to the LLM)."
   (when usage
-    (let* ((tokens (plist-get info :tokens))
-           (input (+ (or (plist-get usage :inputTokens) 0)
-                     (or (plist-get tokens :input) 0)))
-           (output (+ (or (plist-get usage :outputTokens) 0)
-                      (or (plist-get tokens :output) 0)))
-           (cached (+ (or (plist-get usage :cacheReadInputTokens) 0)
-                      (or (plist-get tokens :cached) 0)))
-           (cache (+ (or (plist-get usage :cacheWriteInputTokens) 0)
-                     (or (plist-get tokens :cache) 0))))
-      (list :input input :output output
-            :cache cache :cached cached))))
+    (let ((input (or (plist-get usage :inputTokens) 0))
+          (output (or (plist-get usage :outputTokens) 0))
+          (cached (or (plist-get usage :cacheReadInputTokens) 0))
+          (cache (or (plist-get usage :cacheWriteInputTokens) 0)))
+      ;; Total input is input + cache (creation) + cached.  We combine input and
+      ;; cache (not cached!) because gptel's UI doesn't distinguish between them.
+      (let ((tokens (list :input (+ input cache) :output output
+                          :cached cached :cache cache)))
+        (plist-put info :tokens tokens) ;Tokens for this turn
+        (plist-put info :tokens-full    ;Tokens for full request
+                   (gptel--sum-plists (plist-get info :tokens-full)
+                                      tokens))))))
 
 (defconst gptel-bedrock--prompt-type
   ;; For documentation purposes only -- this describes the type of prompt objects that get passed
@@ -116,8 +117,7 @@ TOOLS is a list of `gptel-tool' structs, which see."
 
 Mutate state INFO with response metadata."
   (plist-put info :stop-reason (plist-get response :stopReason))
-  (plist-put info :tokens (gptel--bedrock-update-tokens
-                           (plist-get response :usage) info))
+  (gptel--bedrock-update-tokens (plist-get response :usage) info)
 
   (let* ((message (map-nested-elt response '(:output :message)))
          (content-strs (thread-last (plist-get message :content)
@@ -198,8 +198,7 @@ INFO is a plist containing the request context."
               (push event (car acc-cell)))
             (pcase event-type
               ("metadata"
-               (plist-put info :tokens (gptel--bedrock-update-tokens
-                                        (map-nested-elt event '(:payload :usage)) info)))
+               (gptel--bedrock-update-tokens (map-nested-elt event '(:payload :usage)) info))
               ("contentBlockDelta"
                (when-let ((delta-text (map-nested-elt event '(:payload :delta :text))))
                  (push delta-text strings)))
