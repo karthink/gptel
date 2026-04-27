@@ -338,7 +338,7 @@ See feature-specific documents for details:
 
 - *Subtree context*: limit conversation to current heading
 - *Branching context*: separate conversation per outline path
-- *Property-based config*: =GPTEL_BACKEND=, =GPTEL_MODEL=, =GPTEL_TEMPERATURE=, =GPTEL_INCLUDE_REASONING=, =GPTEL_REASONING_EFFORT=, etc. (inherited via Org property inheritance)
+- *Property-based config*: see [[*Property-Based Configuration]] below for the full list and priority order
 - *Link validation*: auto-detect file/attachment links, validate MIME support
 - *Context caching*: hash-based invalidation, tags =:cache_files:=, =:cache_summary:=
 - *Markdown→Org conversion*: streaming and non-streaming
@@ -348,6 +348,78 @@ See feature-specific documents for details:
 - *Org format instructions*: dynamic prompt injection telling LLM to use org-mode formatting with correct heading levels, examples, and #+SEQ_TODO keywords.  See [[file:gptel-org-agent-ai.org::*Org Format Instructions]]
 - *AI/FEEDBACK TODO keywords*: role-based conversation structure using TODO keywords instead of tags.  The =FEEDBACK= keyword also drives the iterative task cycle (AI finishes → FEEDBACK → user sends → AI-DOING → ...).  See [[*Discussion Structure: AI/FEEDBACK Keywords]]
 - *Unified org mode*: =gptel-org-mode= provides a single entry point that enables all org features (subtree context, TODO keywords, task workflow, highlighting)
+
+
+*** Property-Based Configuration
+
+gptel reads org properties from the current heading (with property
+inheritance) to configure per-subtree behaviour in chat buffers.  All
+recognised properties MUST use the =GPTEL_= prefix.
+
+**** Recognised Property Names
+
+The complete list of org properties recognised by gptel's chat-buffer
+property reader (see =gptel-org.el:1109=):
+
+- =GPTEL_PRESET= — name of a gptel preset to apply
+- =GPTEL_SYSTEM= — system message
+- =GPTEL_BACKEND= — backend name (e.g. =DeepSeek=, =Anthropic=)
+- =GPTEL_MODEL= — model symbol
+- =GPTEL_TEMPERATURE= — sampling temperature
+- =GPTEL_MAX_TOKENS= — response token cap
+- =GPTEL_NUM_MESSAGES_TO_SEND= — context window in messages
+- =GPTEL_TOOLS= — list of enabled tool names
+- =GPTEL_INCLUDE_REASONING= — whether to include reasoning blocks
+- =GPTEL_REASONING_EFFORT= — reasoning effort level
+
+**** GPTEL_ Prefix Requirement
+
+All chat-buffer properties MUST use the =GPTEL_= prefix.  Bare names
+like =BACKEND=, =MODEL=, =SYSTEM=, =TOOLS= are *not* recognised by
+gptel's chat-buffer property reader.
+
+Those bare names belong to a *different* system: agent definition
+files (in =gptel-agent/agents/*.org=) which use bare keys like
+=:name:=, =:description:=, =:tools:= parsed by gptel-agent.  Cross-
+context confusion between the two formats is a common user pain
+point — chat-buffer overrides need =GPTEL_=, agent-definition files
+do not.
+
+**** Priority Order
+
+Most specific to least specific:
+
+1. *Explicit org properties* — values set in the heading's PROPERTIES
+   drawer (with =GPTEL_= prefix), inherited from parent headings
+2. *Preset values* — values from the preset named by =GPTEL_PRESET=
+3. *Buffer defaults* — fallback to =gptel-backend=, =gptel-model=, etc.
+
+**** Worked Example: Overriding a Preset
+
+#+begin_example
+,* My task
+,  :PROPERTIES:
+,  :GPTEL_PRESET: gptel-agent
+,  :GPTEL_BACKEND: DeepSeek
+,  :GPTEL_MODEL: deepseek-v4-pro
+,  :GPTEL_MAX_TOKENS: 64000
+,  :END:
+#+end_example
+
+Here the =gptel-agent= preset provides default backend/model/tokens,
+but =GPTEL_BACKEND=, =GPTEL_MODEL=, and =GPTEL_MAX_TOKENS= explicitly
+override those preset values.  =GPTEL_PRESET= is itself an org
+property and could be overridden by a parent heading's property
+inheritance (though that would be unusual).
+
+**** Notes
+
+- =GPTEL_MAX_TOKENS: 64000= works correctly when the prefix is
+  present, confirming the override mechanism is fine when names match
+  the recognised list above.
+- =SUBAGENT-MODELS= has no override path at all — it is a separate
+  limitation tracked in the gptel-agent repo, unrelated to the
+  chat-buffer property system documented here.
 
 
 *** Thinking and Reasoning Effort
@@ -679,6 +751,8 @@ Pick one (default: A):
   drawer for known bare names (=BACKEND=, =MODEL=, =SYSTEM=, =TOOLS=)
   and message a warning when found, suggesting the =GPTEL_= prefix.
   Catches the mistake without changing semantics.
+
+***** FEEDBACK Select Option A                                    :petri:
 
 **** Mission
 1. Confirm Option choice (A unless overridden).
