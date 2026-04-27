@@ -542,7 +542,7 @@ Media files, if present, are placed in `gptel-context'."
     (gpt-5.2
      :description "The best model for coding and agentic tasks"
      :capabilities (media tool-use json url responses-api)
-     :reasoning-effort (member none low medium high)
+     :reasoning-effort (member none low medium high xhigh)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 1.75
