@@ -628,6 +628,73 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 * TODOs
 ** Adhoc TODOs
 
+*** AI-DO Document GPTEL_ prefix requirement for chat-buffer property overrides
+**** Origin
+- User reports that org properties do not override =GPTEL_PRESET= values.
+  Example buffer header (as written by user):
+  #+begin_src org
+    ,:PROPERTIES:
+    :GPTEL_MAX_TOKENS: 64000
+    :BACKEND: DeepSeek
+    :MODEL: deepseek-v4-pro
+    :SUBAGENT-MODELS: (:gatherer "DeepSeek/deepseek-v4-flash" ...)
+    :GPTEL_PRESET: gptel-agent
+    ,:END:
+  #+end_src
+- Observed: preset values win; =BACKEND= / =MODEL= appear ignored.
+
+**** Discussion highlights
+- Root cause is *property naming*, not priority logic.
+  =gptel-org--send-with-props= and =gptel-org--restore-state= already apply
+  preset first and overlay explicit org properties on top, in that order
+  (gptel-org.el:1019–1066, 1444–1471). Comment at line 1051 states the
+  intended priority: =org explicit properties > preset values > buffer defaults=.
+- The property name list at [[file:gptel-org.el::1109]] only recognises:
+  =GPTEL_PRESET=, =GPTEL_SYSTEM=, =GPTEL_BACKEND=, =GPTEL_MODEL=,
+  =GPTEL_TEMPERATURE=, =GPTEL_MAX_TOKENS=, =GPTEL_NUM_MESSAGES_TO_SEND=,
+  =GPTEL_TOOLS=, =GPTEL_INCLUDE_REASONING=, =GPTEL_REASONING_EFFORT=.
+- Bare-name properties (=BACKEND=, =MODEL=, etc.) are *invisible* to gptel.
+  Those bare names belong to a *different* system: agent definition files
+  in =gptel-agent/agents/*.org= use bare =:name:= / =:description:= /
+  =:tools:= keys parsed by =gptel-agent.el:390-472=. Cross-context
+  confusion between the two formats is the user-facing pain point.
+- =GPTEL_MAX_TOKENS: 64000= in the user's example *did* work (correct
+  prefix), confirming the mechanism is fine when names match.
+- =SUBAGENT-MODELS= is a *separate* problem — it has no override path
+  at all. Tracked as its own TODO in
+  [[file:../gptel-agent/gptel-agent-ai.org::*Allow per-buffer override of subagent-models]].
+
+**** Decisions
+Pick one (default: A):
+- *Option A — Documentation only (recommended).* Keep =GPTEL_*= prefix
+  requirement (matches existing convention, =GPTEL_PRESET= already
+  follows it). Update cheatsheet and any user-facing docs to make the
+  prefix requirement and the chat-buffer-vs-agent-file distinction
+  explicit.
+- *Option B — Accept bare names as aliases in chat buffers.* Add
+  =BACKEND=, =MODEL=, etc. to the property list as aliases for
+  =GPTEL_*=. Friendlier UX but blurs the line with agent-definition
+  format and risks namespace collisions with unrelated org properties.
+- *Option C — Strict warning.* On =gptel-send=, scan the property
+  drawer for known bare names (=BACKEND=, =MODEL=, =SYSTEM=, =TOOLS=)
+  and message a warning when found, suggesting the =GPTEL_= prefix.
+  Catches the mistake without changing semantics.
+
+**** Mission
+1. Confirm Option choice (A unless overridden).
+2. For Option A:
+   - Update =gptel-org-ai-cheatsheet.org= (or successor doc) to list
+     the exact recognised property names from
+     [[file:gptel-org.el::1109]] and clarify that bare names are not
+     recognised in chat buffers.
+   - Note the priority order =explicit org props > preset > buffer
+     defaults= explicitly, with a worked example overriding a preset.
+3. For Option C (if chosen later as a follow-up):
+   - Add a check in =gptel-org--send-with-props= that warns when a
+     bare-name property shadows a known =GPTEL_*= property.
+4. No code changes for Option A. No tests required.
+
+
 # DESIGN PATTERN INVARIANT (read first):
 # Every indirect buffer (agent, sub-agent, tool, REASONING, RESPOND)
 # uses the SAME design pattern: indirect-buffer + TERMINE terminator.
