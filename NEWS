@@ -88,8 +88,8 @@
   tooltip.
 
   Displaying costs in currency instead of tokens is not yet supported
-  because many backends do not return the required information (cache
-  creation details, etc).
+  because many backends do not provide all the required information
+  (tiered pricing schemes, cache creation details, etc).
 
 - New command ~gptel-preset~ to choose a gptel preset to apply, or save
   gptel's current settings as a preset.
@@ -111,7 +111,7 @@
   2. When using ~gptel-request~ for scripting purposes, you can fully
      isolate the call from the effects of gptel's environment with
      #+begin_src emacs-lisp
-     (gptel-with-preset 'gptel-backend
+     (gptel-with-preset 'gptel-default
        (gptel-request prompt ...))
      #+end_src
      Presets can also inherit from =gptel-default= to build a bespoke
