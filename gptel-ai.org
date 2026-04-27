@@ -1625,7 +1625,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 3. Replace the spec+args match in =--find-pending-entry= with an
    exact =pending-id= lookup; keep the heuristic match only as a
    fallback for legacy callers.
-*** AI-DO Unify IB/heading insertion behind one parent-aware API
+*** TODO Unify IB/heading insertion behind one parent-aware API
 **** Origin
 - Petri feedback after interactive test (playground-ws.org, 2026-04-27):
   #+begin_quote
@@ -1653,13 +1653,13 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
   (=gptel-org-agent.el=) currently expose /five/ heading-creation
   / IB-creation functions that all duplicate the same logic with
   subtle differences:
-  | Function | File | Lines | Parent semantics |
-  |----------+------+-------+------------------|
-  | =gptel-org-ib-safe-insert-sibling= | gptel-indirect-buffer.el | 1362-1392 | implicit via =point= at parent heading |
-  | =gptel-org-ib-create-heading= | gptel-indirect-buffer.el | 866-930 | implicit via =point= at parent heading |
-  | =gptel-org-ib-create-tool-heading= | gptel-indirect-buffer.el | 1394-1429 | implicit via =point= at parent heading |
-  | =gptel-org-ib-ensure-terminator= | gptel-indirect-buffer.el | 735-754 | implicit via =point= at parent heading |
-  | =gptel-org-agent--create-handover-heading= | gptel-org-agent.el | 325-375 | navigates UP via =find-user-task-heading=, uses =org-end-of-subtree= (NOT terminator-aware) |
+  | Function                                   | File                     |     Lines | Parent semantics                                                                            |
+  |--------------------------------------------+--------------------------+-----------+---------------------------------------------------------------------------------------------|
+  | =gptel-org-ib-safe-insert-sibling=         | gptel-indirect-buffer.el | 1362-1392 | implicit via =point= at parent heading                                                      |
+  | =gptel-org-ib-create-heading=              | gptel-indirect-buffer.el |   866-930 | implicit via =point= at parent heading                                                      |
+  | =gptel-org-ib-create-tool-heading=         | gptel-indirect-buffer.el | 1394-1429 | implicit via =point= at parent heading                                                      |
+  | =gptel-org-ib-ensure-terminator=           | gptel-indirect-buffer.el |   735-754 | implicit via =point= at parent heading                                                      |
+  | =gptel-org-agent--create-handover-heading= | gptel-org-agent.el       |   325-375 | navigates UP via =find-user-task-heading=, uses =org-end-of-subtree= (NOT terminator-aware) |
 - All of them require the caller to =goto-char= the parent heading
   first, which forces every call site to know whether it is in the
   base buffer or in an IB and to compute the right point.  Some
