@@ -1404,6 +1404,60 @@ org-mode, or has no agent tag on its first heading."
         (cl-find-if #'gptel-org-agent--agent-tag-p
                     (org-get-tags nil t))))))
 
+(defun gptel-org-agent--pending-tool-subtree-info (pending-id)
+  "Return a subtree-info plist for a PENDING tool-call dispatch.
+
+PENDING-ID is the tool-call entry key in
+`gptel-org-agent--pending-tool-calls' (created by
+`gptel-org-agent--display-tool-calls' at request-arrival time).
+
+Returns a plist of the same shape as
+`gptel-org-agent--setup-task-subtree' for use as the sub-agent's
+indirect buffer + insertion marker:
+  :indirect-buffer  - the entry's `:pending-ib'
+  :heading-marker   - the entry's `:heading-marker' (in base buffer)
+  :position-marker  - insertion marker inside the IB (BEFORE
+                      its TERMINE child)
+  :parent-tag       - nil (the PENDING IB has no agent tag)
+
+Returns nil if the entry is missing, the IB is dead, or the
+heading marker is detached.
+
+This is the path used when the Agent tool is dispatched from a
+PENDING tool-call confirmation: instead of creating a fresh
+sub-agent subtree (legacy `setup-task-subtree' branch), the
+sub-agent FSM streams into the existing PENDING IB.  See the
+AI-DO \"EXECUTING should be state transition\" decisions in
+gptel-ai.org."
+  (when pending-id
+    (let* ((entry (gethash pending-id gptel-org-agent--pending-tool-calls))
+           (pending-ib (and entry (plist-get entry :pending-ib)))
+           (heading-marker (and entry (plist-get entry :heading-marker))))
+      (when (and entry
+                 pending-ib (buffer-live-p pending-ib)
+                 heading-marker (marker-buffer heading-marker))
+        ;; Ensure gptel-mode is active in the IB so heading insertion
+        ;; works correctly (mirrors the setup-task-subtree branch).
+        (with-current-buffer pending-ib
+          (unless gptel-mode
+            (setq-local gptel-mode t))
+          ;; Mark this IB as an agent indirect buffer (mirrors the
+          ;; setup-task-subtree branch) so downstream code that checks
+          ;; this flag for level/auto-correct decisions works.
+          (setq-local gptel-org--agent-indirect-buffer-p t))
+        (let ((pos-marker
+               (gptel-org-agent--make-insertion-marker pending-ib)))
+          (gptel-org--debug
+           "org-agent pending-tool-subtree-info: REUSING pending-id=%s ib=%S pos=%d marker=%S"
+           pending-id (buffer-name pending-ib)
+           (marker-position pos-marker)
+           (and (markerp heading-marker)
+                (marker-position heading-marker)))
+          (list :indirect-buffer pending-ib
+                :heading-marker heading-marker
+                :position-marker pos-marker
+                :parent-tag nil))))))
+
 (defun gptel-org-agent--setup-task-subtree (agent-type description)
   "Set up a subtree and indirect buffer for a sub-agent task.
 
@@ -1812,6 +1866,22 @@ and INFO is the FSM info plist.")
 (defvar gptel-org-agent--pending-id-counter 0
   "Counter for generating unique pending tool call IDs.")
 
+(defvar gptel-org-agent--dispatching-pending-id nil
+  "Pending-id of the tool call currently being dispatched.
+
+Bound dynamically by `gptel-org-agent--accept-tool-calls' to the
+pending-id of the PENDING tool-call entry whose tool function is
+being invoked.
+
+Read by `gptel-agent--task' (the Agent tool function) to locate
+the PENDING IB and heading marker for sub-agent dispatch, so that
+the sub-agent re-uses the existing PENDING IB instead of creating
+a fresh sub-agent subtree.
+
+When nil (e.g. tool invoked outside the confirm flow), callers
+fall back to the legacy `gptel-org-agent--setup-task-subtree'
+path.")
+
 (defun gptel-org-agent--generate-pending-id ()
   "Generate a unique ID for a pending tool call entry."
   (format "gptel-pending-%d-%s"
@@ -1994,19 +2064,28 @@ INFO is the FSM info plist."
         ;; Mark tool-pending so the FSM knows we're waiting
         (plist-put info :tool-pending t)))))
 
-(defun gptel-org-agent--accept-tool-calls (tool-calls info)
+(defun gptel-org-agent--accept-tool-calls (tool-calls info &optional pending-id)
   "Accept and run TOOL-CALLS with explicit INFO.
 
 Restores the correct dynamic bindings from INFO before running each
 tool.  Executes in the buffer stored in INFO's :buffer slot so that
 buffer-local state (including `gptel--fsm-last') is available to
-tool functions like `gptel-agent--task'."
+tool functions like `gptel-agent--task'.
+
+PENDING-ID, when non-nil, is bound to
+`gptel-org-agent--dispatching-pending-id' for the duration of the
+tool dispatch.  This lets `gptel-agent--task' (the Agent tool
+function) locate the existing PENDING IB and reuse it for
+sub-agent dispatch instead of creating a fresh subtree (see
+IB-7 and the AI-DO \"EXECUTING should be state transition of
+ALLOWED EXECUTE heading\" decisions in gptel-ai.org)."
   (let ((gptel--preset (or (plist-get info :preset)
                            (and (boundp 'gptel--preset) gptel--preset)))
         (gptel-backend (or (plist-get info :backend)
                            (and (boundp 'gptel-backend) gptel-backend)))
         (gptel-model (or (plist-get info :model)
                          (and (boundp 'gptel-model) gptel-model)))
+        (gptel-org-agent--dispatching-pending-id pending-id)
         (buf (plist-get info :buffer)))
     (when (eq gptel-log-level 'debug)
       (gptel--log
@@ -2185,7 +2264,8 @@ This function is added to `org-after-todo-state-change-hook'."
                                        i (and ts (gptel-tool-name ts))
                                        (if ptr "fn" "nil"))
                                "debug-state-change" 'no-json)))
-                (gptel-org-agent--accept-tool-calls tool-calls info)
+                (gptel-org-agent--accept-tool-calls tool-calls info
+                                                    pending-id)
                 (let ((level-after-accept (org-current-level))
                       (heading-after-accept
                        (buffer-substring-no-properties
@@ -2681,7 +2761,7 @@ executes them."
           (remhash pending-id gptel-org-agent--pending-tool-calls)
           (org-delete-property "GPTEL_PENDING_ID")
           ;; Execute the tool calls
-          (gptel-org-agent--accept-tool-calls tool-calls info)
+          (gptel-org-agent--accept-tool-calls tool-calls info pending-id)
           (message "Tool calls executed manually for: %s" heading))))))
 
 (defun gptel-org-agent-accept-all-pending ()

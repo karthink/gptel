@@ -2883,5 +2883,314 @@ with the executor triad (\"EXECUTE\" \"EXECUTING\" \"EXECUTED\")."
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
+;;; ---- IB-7 PENDING-IB reuse for sub-agent dispatch ------------------------
+;;
+;; These tests codify the unified-pattern decisions in the AI-DO
+;; "EXECUTING should be state transition of ALLOWED EXECUTE heading"
+;; TODO (gptel-ai.org).  Rationale: a single PENDING tool-call IB is
+;; created at request-arrival time and re-used for the entire
+;; lifecycle PENDING → ALLOWED → EXECUTING → EXECUTED.  The Agent
+;; tool path (sub-agent dispatch) MUST reuse that IB instead of
+;; creating a fresh sub-agent subtree.
+
+(ert-deftest gptel-org-agent-test-pending-tool-subtree-info-reuses-ib ()
+  "`--pending-tool-subtree-info' returns the PENDING entry's IB+marker.
+
+Codifies IB-7 reuse: when a pending-id exists in
+`gptel-org-agent--pending-tool-calls', the helper returns a
+subtree-info plist whose `:indirect-buffer' is the entry's
+`:pending-ib' and `:heading-marker' is the entry's heading marker.
+The position-marker is inside the IB before its TERMINE child."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING"
+                                       "PENDING" "ALLOWED"
+                                       "EXECUTE" "EXECUTING"
+                                       "FEEDBACK"
+                                       "|" "AI-DONE" "DENIED"
+                                       "EXECUTED")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Dispatch executor\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (gptel-org-agent-tool-confirm-keywords
+              '("PENDING" "ALLOWED" "DENIED"))
+             (base-buf (current-buffer))
+             (marker (gptel-org-agent--create-subtree "main"))
+             (indirect-buf nil)
+             (pending-ib nil))
+        (clrhash gptel-org-agent--pending-tool-calls)
+        (unwind-protect
+            (cl-letf (((symbol-function 'gptel-agent-state-words)
+                       (lambda (agent-name)
+                         (if (equal agent-name "executor")
+                             '("EXECUTE" "EXECUTING" "EXECUTED")
+                           '("PENDING" "RUNNING" "DONE")))))
+              (setq indirect-buf
+                    (gptel-org-agent--open-indirect-buffer base-buf marker))
+              (let* ((tool-spec (gptel-make-tool
+                                 :name "Agent"
+                                 :function #'ignore
+                                 :description "Dispatch sub-agent"
+                                 :args '((:name "subagent_type"
+                                          :type "string"
+                                          :description "agent")
+                                         (:name "prompt"
+                                          :type "string"
+                                          :description "prompt"))
+                                 :confirm t
+                                 :include t))
+                     (arg-plist '(:subagent_type "executor"
+                                  :prompt "Run the thing"))
+                     (tool-calls (list (list tool-spec arg-plist #'ignore)))
+                     (position-marker
+                      (with-current-buffer indirect-buf
+                        (save-excursion
+                          (goto-char (point-max))
+                          (copy-marker (point) nil))))
+                     (info (list :buffer indirect-buf
+                                 :position position-marker
+                                 :tracking-marker position-marker
+                                 :callback #'gptel--insert-response
+                                 :tools (list tool-spec)))
+                     (pending-id nil)
+                     (entry-pending-ib nil)
+                     (entry-heading-marker nil))
+                ;; Create the PENDING entry.
+                (with-current-buffer indirect-buf
+                  (gptel-org-agent--display-tool-calls tool-calls info))
+                ;; Look up the entry data.
+                (maphash (lambda (id e)
+                           (setq pending-id id)
+                           (setq entry-pending-ib (plist-get e :pending-ib))
+                           (setq entry-heading-marker
+                                 (plist-get e :heading-marker)))
+                         gptel-org-agent--pending-tool-calls)
+                (setq pending-ib entry-pending-ib)
+                (should (stringp pending-id))
+                (should (bufferp entry-pending-ib))
+                (should (markerp entry-heading-marker))
+                ;; Call the helper.  It must return the same IB + marker.
+                (let ((subtree-info
+                       (gptel-org-agent--pending-tool-subtree-info
+                        pending-id)))
+                  (should subtree-info)
+                  (should (eq (plist-get subtree-info :indirect-buffer)
+                              entry-pending-ib))
+                  (should (eq (plist-get subtree-info :heading-marker)
+                              entry-heading-marker))
+                  ;; Position marker is inside the PENDING IB, before
+                  ;; TERMINE (which is the IB's last child per the
+                  ;; universal TERMINE invariant).
+                  (let ((pm (plist-get subtree-info :position-marker)))
+                    (should (markerp pm))
+                    (should (eq (marker-buffer pm) entry-pending-ib))
+                    (with-current-buffer entry-pending-ib
+                      (save-excursion
+                        (goto-char (point-min))
+                        ;; TERMINE child must exist.
+                        (should (gptel-org-ib-find-terminator "TERMINE"))
+                        ;; Position marker must be at-or-before TERMINE.
+                        (let ((termine-pos
+                               (gptel-org-ib-find-terminator "TERMINE")))
+                          (should (<= (marker-position pm)
+                                      termine-pos)))))))
+                ;; Returns nil for unknown pending-id.
+                (should-not
+                 (gptel-org-agent--pending-tool-subtree-info
+                  "nonexistent-id"))
+                ;; Returns nil for nil pending-id.
+                (should-not (gptel-org-agent--pending-tool-subtree-info nil))))
+          (clrhash gptel-org-agent--pending-tool-calls)
+          (when (and pending-ib (buffer-live-p pending-ib))
+            (kill-buffer pending-ib))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
+(ert-deftest gptel-org-agent-test-accept-tool-calls-binds-dispatching-id ()
+  "`--accept-tool-calls' binds `--dispatching-pending-id' for tool dispatch.
+
+Codifies the dynbind contract: when `--accept-tool-calls' is called
+with a non-nil PENDING-ID argument, `gptel-org-agent--dispatching-pending-id'
+is bound to that value while the tool function is invoked.  This is
+the mechanism by which `gptel-agent--task' locates the PENDING IB."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING"
+                                       "PENDING" "ALLOWED" "BASH"
+                                       "FEEDBACK"
+                                       "|" "AI-DONE" "DENIED")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Run a tool\nDescription\n")
+      (let* ((gptel-org-subtree-context t)
+             (observed-pending-id 'unset)
+             (tool-spec (gptel-make-tool
+                         :name "Bash"
+                         :function (lambda (_command)
+                                     (setq observed-pending-id
+                                           gptel-org-agent--dispatching-pending-id)
+                                     "result")
+                         :description "Run shell"
+                         :args '((:name "command"
+                                  :type "string"
+                                  :description "cmd"))
+                         :confirm t
+                         :include t))
+             (arg-plist '(:command "date"))
+             (tool-calls (list (list tool-spec arg-plist
+                                     (lambda (_) nil))))
+             (info (list :buffer (current-buffer)
+                         :tools (list tool-spec))))
+        ;; With pending-id supplied: dynbind reflects it during the
+        ;; tool function call.
+        (gptel-org-agent--accept-tool-calls tool-calls info "test-pending-42")
+        (should (equal observed-pending-id "test-pending-42"))
+        ;; After return: the dynbind is unbound (let-scope ended).
+        (should-not gptel-org-agent--dispatching-pending-id)
+        ;; Without pending-id: dynbind is nil during the tool call too.
+        (setq observed-pending-id 'unset)
+        (gptel-org-agent--accept-tool-calls tool-calls info)
+        (should (eq observed-pending-id nil))))))
+
+(ert-deftest gptel-org-agent-test-subagent-dispatch-no-duplicate-heading ()
+  "Sub-agent dispatch via PENDING IB does not create a duplicate heading.
+
+Codifies the load-bearing decision in the AI-DO \"EXECUTING\" TODO:
+when the Agent tool is dispatched from a PENDING tool-call entry,
+the sub-agent FSM re-uses the existing PENDING IB instead of
+creating a fresh sub-agent subtree.  The base buffer must therefore
+contain exactly ONE heading for the dispatch (the original PENDING
+heading), not two.
+
+This test simulates the dispatch by directly invoking the
+`gptel-org-agent--pending-tool-subtree-info' helper (the mechanism
+`gptel-agent--task' calls when `--dispatching-pending-id' is
+bound).  An end-to-end test that exercises `gptel-agent--task'
+itself lives in the gptel-agent test suite (which has gptel-agent
+on its load path).
+
+Asserts:
+  - The helper returns the EXISTING PENDING IB, not a new IB.
+  - No fresh sub-agent subtree heading is created in the base
+    buffer (no `:executor@...:' tag, no bare EXECUTING heading).
+  - The base buffer's heading count is unchanged across the call."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING"
+                                       "PENDING" "ALLOWED"
+                                       "EXECUTE" "EXECUTING"
+                                       "FEEDBACK"
+                                       "|" "AI-DONE" "DENIED"
+                                       "EXECUTED")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Dispatch executor\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (gptel-org-agent-tool-confirm-keywords
+              '("PENDING" "ALLOWED" "DENIED"))
+             (base-buf (current-buffer))
+             (marker (gptel-org-agent--create-subtree "main"))
+             (indirect-buf nil)
+             (pending-ib nil)
+             )
+        (clrhash gptel-org-agent--pending-tool-calls)
+        (unwind-protect
+            (cl-letf
+                (((symbol-function 'gptel-agent-state-words)
+                  (lambda (agent-name)
+                    (if (equal agent-name "executor")
+                        '("EXECUTE" "EXECUTING" "EXECUTED")
+                      '("PENDING" "RUNNING" "DONE")))))
+              (setq indirect-buf
+                    (gptel-org-agent--open-indirect-buffer base-buf marker))
+              (let* ((tool-spec (gptel-make-tool
+                                 :name "Agent"
+                                 :function #'ignore
+                                 :description "Dispatch sub-agent"
+                                 :args '((:name "subagent_type"
+                                          :type "string"
+                                          :description "agent")
+                                         (:name "prompt"
+                                          :type "string"
+                                          :description "prompt"))
+                                 :confirm t
+                                 :include t))
+                     (arg-plist '(:subagent_type "executor"
+                                  :prompt "date"))
+                     (tool-calls (list (list tool-spec arg-plist
+                                             (lambda (_) nil))))
+                     (position-marker
+                      (with-current-buffer indirect-buf
+                        (save-excursion
+                          (goto-char (point-max))
+                          (copy-marker (point) nil))))
+                     (info (list :buffer indirect-buf
+                                 :position position-marker
+                                 :tracking-marker position-marker
+                                 :callback #'gptel--insert-response
+                                 :tools (list tool-spec)))
+                     (captured-pending-id nil))
+                ;; 1. Request phase: create PENDING entry + heading + IB.
+                (with-current-buffer indirect-buf
+                  (gptel-org-agent--display-tool-calls tool-calls info))
+                (maphash (lambda (id e)
+                           (setq captured-pending-id id)
+                           (setq pending-ib (plist-get e :pending-ib)))
+                         gptel-org-agent--pending-tool-calls)
+                (should (stringp captured-pending-id))
+                (should (bufferp pending-ib))
+                ;; Snapshot the base-buffer heading count before
+                ;; "dispatch" (PENDING heading already created).
+                (let ((heading-count-before
+                       (with-current-buffer base-buf
+                         (how-many "^\\*+ " (point-min) (point-max)))))
+                  ;; 2. ALLOWED via raw text rewrite.
+                  (with-current-buffer base-buf
+                    (goto-char (point-min))
+                    (should (re-search-forward "^\\(\\*+\\) PENDING " nil t))
+                    (let ((inhibit-read-only t))
+                      (replace-match (concat (match-string 1) " ALLOWED ")
+                                     t t)))
+                  ;; 3. Simulate dispatch: bind dynbind and call helper.
+                  ;; This is what `gptel-agent--task' does internally
+                  ;; when the dynbind is set.
+                  (let* ((gptel-org-agent--dispatching-pending-id
+                          captured-pending-id)
+                         (subtree-info
+                          (gptel-org-agent--pending-tool-subtree-info
+                           captured-pending-id)))
+                    ;; ASSERTION 1: helper returned the EXISTING IB.
+                    (should subtree-info)
+                    (should (eq (plist-get subtree-info :indirect-buffer)
+                                pending-ib)))
+                  ;; ASSERTION 2: no new heading was inserted into
+                  ;; the base buffer.
+                  (with-current-buffer base-buf
+                    (should (= heading-count-before
+                               (how-many "^\\*+ "
+                                         (point-min) (point-max))))
+                    ;; No bare EXECUTING heading.
+                    (goto-char (point-min))
+                    (should (= 0 (how-many "^\\*+ EXECUTING "
+                                           (point-min) (point-max))))
+                    ;; No `:executor@' tag (would imply setup-task-subtree).
+                    (goto-char (point-min))
+                    (should-not (re-search-forward ":executor@[^:]+:"
+                                                   nil t))))))
+          (clrhash gptel-org-agent--pending-tool-calls)
+          (when (and pending-ib (buffer-live-p pending-ib))
+            (kill-buffer pending-ib))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
 (provide 'gptel-org-agent-test)
 ;;; gptel-org-agent-test.el ends here
