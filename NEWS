@@ -63,6 +63,17 @@
 
 ** Notable bug fixes
 
+- gptel-deepseek: persist =reasoning_content= from tool-call turns into
+  the conversation history so subsequent requests succeed.  Required by
+  DeepSeek's thinking-mode API rule: when an assistant turn performs a
+  tool call, the assistant's =reasoning_content= must travel with that
+  message in every later request, otherwise DeepSeek returns
+  =400 invalid_request_error= ("The =reasoning_content= in the thinking
+  mode must be passed back to the API.")  The reasoning is now stored
+  in the buffer-side tool sexp and reconstructed on parse; the DeepSeek
+  same-role merger has also been updated to leave messages carrying
+  =:tool_calls= or =:reasoning_content= unmerged.
+
 - ~gptel-backend~ can now be set from customize buffers.  These are
   produced by, for example, =M-x customize-group ⮐ gptel=.  Previously
   ~gptel-backend~ was displayed in a read-only way, and could even break

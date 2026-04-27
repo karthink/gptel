@@ -290,8 +290,21 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
         (let ((p1 (car index))
               (p2 (cadr index))
               (rest (cdr index)))
-          (when (and p2 (equal (plist-get p1 :role)
-                               (plist-get p2 :role)))
+          (when (and p2
+                     (equal (plist-get p1 :role)
+                            (plist-get p2 :role))
+                     ;; Don't merge messages carrying structural fields:
+                     ;; tool calls and DeepSeek reasoning_content must
+                     ;; stay in their own assistant message.  DeepSeek's
+                     ;; thinking-mode API requires reasoning_content to
+                     ;; travel with the assistant tool-call message it
+                     ;; came from; merging would silently drop the
+                     ;; second message's :tool_calls / :reasoning_content
+                     ;; and lose this association.
+                     (not (or (plist-get p1 :tool_calls)
+                              (plist-get p2 :tool_calls)
+                              (plist-get p1 :reasoning_content)
+                              (plist-get p2 :reasoning_content))))
             (setf (plist-get p1 :content)
                   (concat (plist-get p1 :content) "\n"
                           (plist-get p2 :content)))

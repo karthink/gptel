@@ -468,6 +468,39 @@ Controls display of thinking blocks:
 - buffer name string — append to named buffer
 
 Can be set per-subtree via =GPTEL_INCLUDE_REASONING= org property.
+
+***** DeepSeek tool-call =reasoning_content= persistence
+
+DeepSeek's thinking-mode API enforces an additional rule for tool calls:
+when the assistant's turn performed a tool call, the
+=reasoning_content= of that turn /must/ travel with the assistant
+tool-call message in every later request, otherwise the API returns
+=400 invalid_request_error= ("The =reasoning_content= in the thinking
+mode must be passed back to the API.")
+
+For the DeepSeek backend (=gptel-deepseek=), gptel persists this
+reasoning into the buffer-side tool-call sexp:
+
+#+begin_src elisp
+(:name NAME :args ARGS :reasoning_content "...")
+#+end_src
+
+- =gptel--display-tool-results= (=gptel.el=) writes the field when
+  =gptel-include-reasoning= is non-nil and not =ignore=, by reading
+  the assistant message that the runtime path
+  (=gptel-curl--parse-stream= for streaming, =gptel--parse-response=
+  for non-streaming) injected into =info :data :messages=.
+- =gptel--parse-buffer= (=gptel-openai.el=) reconstructs the assistant
+  message with the =:reasoning_content= field on subsequent requests.
+- The DeepSeek =:around= advice on =gptel--parse-buffer=
+  (=gptel-openai-extras.el=) refuses to merge consecutive same-role
+  messages that carry =:tool_calls= or =:reasoning_content=, so the
+  reasoning stays bound to the specific tool-call assistant message
+  that produced it.
+
+OpenAI/Anthropic/Gemini tool-call sexps are emitted unchanged (no
+=:reasoning_content= field), so their on-disk buffer format is
+byte-identical to the pre-fix output.
 ** Discussion Structure: AI/FEEDBACK Keywords
 
 /New approach/ — replaces the classical =:assistant:= / =:user:= tag-based subtree mode.

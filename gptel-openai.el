@@ -392,13 +392,32 @@ If the ID has the format used by a different backend, use as-is."
                                               (point) prev-pt)))
                      (push (car (gptel--parse-tool-results backend (list tool-call)))
                            prompts)
-                     (push (list :role "assistant"
-                                 :tool_calls
-                                 (vector (list :type "function"
-                                               :id id
-                                               :function `( :name ,name
-                                                            :arguments ,arguments))))
-                           prompts))
+                     ;; Recover DeepSeek/OpenRouter reasoning fields
+                     ;; persisted in the buffer-side tool sexp.  DeepSeek
+                     ;; requires reasoning_content from any tool-calling
+                     ;; assistant turn to be re-sent in subsequent
+                     ;; requests; see `gptel--display-tool-results' for
+                     ;; the persistence side.  When a single assistant
+                     ;; turn contained multiple tool calls, the buffer
+                     ;; has one (tool . ID) sexp per call and we push a
+                     ;; duplicate assistant message with reasoning per
+                     ;; call -- that's harmless for DeepSeek (and for
+                     ;; OpenAI, gated by the deepseek :around merger).
+                     (let ((reasoning_content
+                            (plist-get tool-call :reasoning_content))
+                           (reasoning (plist-get tool-call :reasoning)))
+                       (push (append
+                              (list :role "assistant"
+                                    :tool_calls
+                                    (vector (list :type "function"
+                                                  :id id
+                                                  :function `( :name ,name
+                                                               :arguments ,arguments))))
+                              (and reasoning_content
+                                   (list :reasoning_content reasoning_content))
+                              (and reasoning
+                                   (list :reasoning reasoning)))
+                             prompts)))
                  ((end-of-file invalid-read-syntax)
                   (message (format "Could not parse tool-call %s on line %s"
                                    id (line-number-at-pos (point))))))))

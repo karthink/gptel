@@ -2544,7 +2544,45 @@ for tool call results.  INFO contains the state of the request."
                    (id (plist-get tool-use :id))
                    (display-call (format "(%s %s)" name
                                          (string-trim (prin1-to-string args) "(" ")")))
-                   (call (prin1-to-string `(:name ,name :args ,args)))
+                   ;; For DeepSeek, persist the assistant's
+                   ;; reasoning_content alongside the tool-call sexp so
+                   ;; gptel--parse-buffer can re-send it on subsequent
+                   ;; turns.  DeepSeek's thinking-mode API requires
+                   ;; reasoning_content from a tool-calling assistant
+                   ;; turn to participate in all later context, otherwise
+                   ;; it returns 400 invalid_request_error.  We pull
+                   ;; reasoning from the assistant message that was
+                   ;; already injected into INFO :data :messages by the
+                   ;; runtime path (gptel-curl--parse-stream for stream,
+                   ;; gptel--parse-response for non-stream); that field
+                   ;; survives even after info :reasoning-chunks and
+                   ;; :reasoning have been consumed/cleared.
+                   (call
+                    (let* ((dseek-reasoning
+                            (and (fboundp 'gptel-deepseek-p)
+                                 (gptel-deepseek-p (plist-get info :backend))
+                                 (let ((flag (or (plist-get info :include-reasoning)
+                                                 gptel-include-reasoning)))
+                                   (and flag (not (eq flag 'ignore))))
+                                 (let* ((messages (plist-get
+                                                   (plist-get info :data) :messages))
+                                        (last-asst
+                                         (and (vectorp messages)
+                                              (cl-loop
+                                               for i from (1- (length messages)) downto 0
+                                               for m = (aref messages i)
+                                               when (and (equal (plist-get m :role) "assistant")
+                                                         (plist-get m :tool_calls))
+                                               return m))))
+                                   (and last-asst
+                                        (or (plist-get last-asst :reasoning_content)
+                                            (plist-get last-asst :reasoning)))))))
+                      (prin1-to-string
+                       (if (and (stringp dseek-reasoning)
+                                (not (string-empty-p dseek-reasoning)))
+                           `(:name ,name :args ,args
+                                   :reasoning_content ,dseek-reasoning)
+                         `(:name ,name :args ,args)))))
                    (truncated-call
                     (string-replace "\n" " "
                                     (truncate-string-to-width
