@@ -1359,13 +1359,137 @@ Returns t on success, nil on failure."
 
 ;;; ---- High-level Convenience Functions -------------------------------------
 
+(cl-defun gptel-org-ib-insert-child (parent todo-keyword title
+                                            &key tags terminator-keyword name
+                                            (create-indirect-buffer t))
+  "Insert a child heading under PARENT and (optionally) create an IB for it.
+
+This is the single, parent-aware entry point for creating a new
+TODO-keyword heading inside an existing parent subtree.  Replaces
+the implicit-=point=-based functions
+`gptel-org-ib-safe-insert-sibling' and
+`gptel-org-ib-create-tool-heading'.
+
+PARENT identifies the parent heading and may be:
+- A marker into the base buffer, pointing at the parent heading.
+- A registered indirect buffer (gptel IB) whose narrowed subtree's
+  root heading is the parent.  Resolved via `gptel-org-ib-get' /
+  `gptel-org-ib-base'.
+- The symbol `:point' meaning \"use current point in the current
+  buffer\".  This branch is a transitional shim for callers that
+  have not yet been migrated; it logs a debug message.
+
+TODO-KEYWORD is the org TODO state for the new heading (e.g.
+\"AI-DOING\").  TITLE is the heading text.
+
+Keyword arguments:
+- :TAGS                   list of tag strings, applied via
+                          `org-set-tags'.
+- :TERMINATOR-KEYWORD     when non-nil, ensure the parent has a
+                          child heading named (\"TERMINE\",
+                          \"FEEDBACK\", ...) and insert the new
+                          heading immediately BEFORE it.  When nil,
+                          insert at end of parent subtree.
+                          Idempotent (existing terminator is
+                          reused).
+- :NAME                   optional override for the indirect
+                          buffer name passed to
+                          `gptel-org-ib-create'.
+- :CREATE-INDIRECT-BUFFER non-nil (default t) creates an IB
+                          narrowed to the new heading.  Pass nil
+                          to suppress IB creation.
+
+Behavior:
+1. Resolve PARENT to (PARENT-CONTEXT-BUFFER . PARENT-MARKER) where
+   PARENT-CONTEXT-BUFFER is the buffer used as `current-buffer'
+   while editing (and during `gptel-org-ib-create' so the parent
+   IB node is captured for the registry).
+2. Inside PARENT-CONTEXT-BUFFER, with point at PARENT-MARKER,
+   ensure the terminator (if requested) and insert the new heading
+   immediately before it (or at end of subtree if no terminator).
+   The universal newline guard `(unless (bolp) (insert \"\\n\"))'
+   is applied before any heading text is inserted.
+3. Optionally create an indirect buffer narrowed to the new
+   heading.
+
+`save-excursion' wraps every layer; callers do not observe point
+movement.
+
+Returns a plist of the form
+  (:heading-marker MARKER :indirect-buffer IB-or-nil)
+where MARKER points at the new heading line and IB-or-nil is the
+freshly-created indirect buffer (or nil when CREATE-INDIRECT-BUFFER
+is nil)."
+  (let (parent-context-buffer parent-marker)
+    (cond
+     ((eq parent :point)
+      (gptel-org--debug
+       "org-ib insert-child: :point shim path in buffer %s at %d"
+       (buffer-name) (point))
+      (unless (org-at-heading-p)
+        (gptel-org-ib-fatal
+         "insert-child: :point but point %d not at heading in buffer %s"
+         (point) (buffer-name)))
+      (setq parent-context-buffer (current-buffer)
+            parent-marker (point-marker)))
+     ((markerp parent)
+      (unless (and (marker-buffer parent) (marker-position parent))
+        (gptel-org-ib-fatal
+         "insert-child: parent marker has no live buffer/position"))
+      (setq parent-context-buffer (marker-buffer parent)
+            parent-marker parent))
+     ((bufferp parent)
+      (unless (buffer-live-p parent)
+        (gptel-org-ib-fatal
+         "insert-child: parent buffer %S is not live" parent))
+      (let* ((info (gptel-org-ib-get (buffer-name parent))))
+        (unless info
+          (gptel-org-ib-fatal
+           "insert-child: buffer %S is not a registered gptel IB"
+           (buffer-name parent)))
+        (let ((hm (plist-get info :heading-marker)))
+          (unless (and (markerp hm) (marker-position hm))
+            (gptel-org-ib-fatal
+             "insert-child: IB %S has no live :heading-marker"
+             (buffer-name parent)))
+          (setq parent-context-buffer parent
+                parent-marker hm))))
+     (t
+      (gptel-org-ib-fatal
+       "insert-child: unsupported PARENT %S (must be :point, marker, or buffer)"
+       parent)))
+    (let (heading-marker indirect-buf)
+      (with-current-buffer parent-context-buffer
+        (save-excursion
+          (goto-char (marker-position parent-marker))
+          (unless (org-at-heading-p)
+            (gptel-org-ib-fatal
+             "insert-child: parent marker position %d not at heading in buffer %s"
+             (point) (buffer-name)))
+          ;; Ensure terminator (idempotent) on the parent.
+          (when terminator-keyword
+            (gptel-org-ib-ensure-terminator terminator-keyword))
+          ;; Delegate the actual insertion to the internal helper,
+          ;; which centralises the universal newline guard, level
+          ;; computation, and trailing-blank-line handling.
+          (setq heading-marker
+                (gptel-org-ib-create-heading
+                 todo-keyword title tags terminator-keyword)))
+        (when create-indirect-buffer
+          (save-excursion
+            (setq indirect-buf
+                  (gptel-org-ib-create parent-context-buffer
+                                       heading-marker name)))))
+      (list :heading-marker heading-marker
+            :indirect-buffer indirect-buf))))
+
 (defun gptel-org-ib-safe-insert-sibling (todo-keyword title tags terminator-keyword)
   "Create a heading and its indirect buffer in one step.
 
-This is the high-level function for safe concurrent task creation:
-  1. Ensures the terminator heading exists.
-  2. Creates a new child heading BEFORE the terminator.
-  3. Creates an indirect buffer narrowed to the new heading's subtree.
+OBSOLETE since the IB/heading insertion unification: thin shim that
+delegates to `gptel-org-ib-insert-child' with PARENT = `:point'.
+New code should call `gptel-org-ib-insert-child' directly with an
+explicit parent (marker or IB).
 
 TODO-KEYWORD is the org TODO state (e.g., \"AI-DO\").
 TITLE is the heading text.
@@ -1374,22 +1498,14 @@ TERMINATOR-KEYWORD identifies the terminator (e.g., \"FEEDBACK\").
 
 Point must be on the parent heading.
 Returns the indirect buffer for the newly created heading."
-  (save-excursion
-    (unless (org-at-heading-p)
-      (gptel-org-ib-fatal
-       "safe-insert-sibling: point %d not at heading in buffer %s"
-       (point) (buffer-name)))
-    ;; Ensure the terminator exists
-    (gptel-org-ib-ensure-terminator terminator-keyword)
-    ;; Create the new heading before the terminator
-    (let* ((heading-marker (gptel-org-ib-create-heading
-                            todo-keyword title tags terminator-keyword))
-           (base-buffer (current-buffer))
-           ;; `gptel-org-ib-create' seeds TERMINE inside the new IB
-           ;; (universal invariant — every IB has TERMINE as its last
-           ;; child).  No additional seeding required here.
-           (indirect-buf (gptel-org-ib-create base-buffer heading-marker)))
-      indirect-buf)))
+  (let ((result (gptel-org-ib-insert-child
+                 :point todo-keyword title
+                 :tags tags
+                 :terminator-keyword terminator-keyword)))
+    (plist-get result :indirect-buffer)))
+
+(make-obsolete 'gptel-org-ib-safe-insert-sibling
+               'gptel-org-ib-insert-child "next")
 
 (defun gptel-org-ib-create-tool-heading (todo-keyword title
                                                       &optional tags
@@ -1397,13 +1513,10 @@ Returns the indirect buffer for the newly created heading."
                                                       name)
   "Create a tool-call heading and its dedicated indirect buffer.
 
-Like `gptel-org-ib-safe-insert-sibling', but additionally lets the
-caller override the indirect buffer NAME.  TERMINE is seeded inside
-the new IB by the generic factory `gptel-org-ib-create' (universal
-invariant — every IB has TERMINE as its last child).  Body content
-inserted into the IB MUST land BEFORE TERMINE; use
-`gptel-org-ib-streaming-marker' to obtain a TERMINE-aware insertion
-point.
+OBSOLETE since the IB/heading insertion unification: thin shim that
+delegates to `gptel-org-ib-insert-child' with PARENT = `:point' and
+the supplied NAME.  New code should call `gptel-org-ib-insert-child'
+directly with an explicit parent (marker or IB).
 
 TODO-KEYWORD, TITLE, TAGS, TERMINATOR-KEYWORD have the same meaning
 as in `gptel-org-ib-create-heading'.  TERMINATOR-KEYWORD is the
@@ -1414,19 +1527,16 @@ overrides the auto-computed indirect buffer name.
 Point must be on the parent heading.
 
 Returns a cons cell (HEADING-MARKER . INDIRECT-BUFFER)."
-  (save-excursion
-    (unless (org-at-heading-p)
-      (gptel-org-ib-fatal
-       "create-tool-heading: point %d not at heading in buffer %s"
-       (point) (buffer-name)))
-    (when terminator-keyword
-      (gptel-org-ib-ensure-terminator terminator-keyword))
-    (let* ((heading-marker (gptel-org-ib-create-heading
-                            todo-keyword title tags terminator-keyword))
-           (base-buffer (current-buffer))
-           (indirect-buf (gptel-org-ib-create
-                          base-buffer heading-marker name)))
-      (cons heading-marker indirect-buf))))
+  (let ((result (gptel-org-ib-insert-child
+                 :point todo-keyword title
+                 :tags tags
+                 :terminator-keyword terminator-keyword
+                 :name name)))
+    (cons (plist-get result :heading-marker)
+          (plist-get result :indirect-buffer))))
+
+(make-obsolete 'gptel-org-ib-create-tool-heading
+               'gptel-org-ib-insert-child "next")
 
 
 (provide 'gptel-indirect-buffer)

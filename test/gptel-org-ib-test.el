@@ -1778,5 +1778,127 @@ fallback.  This locks in the IB-3.2 hard-fail policy."
                        :type 'user-error))))))
 
 
+;;; ---- Parent-aware insert-child API (IB-unification commit 1) -------------
+;;;
+;;; These tests cover `gptel-org-ib-insert-child', the single
+;;; parent-aware entry point that supersedes the implicit-=point=-based
+;;; functions `gptel-org-ib-safe-insert-sibling' and
+;;; `gptel-org-ib-create-tool-heading'.
+
+(defun gptel-org-ib-test--heading-order ()
+  "Return a list of (TODO-or-TITLE) strings for every heading in buffer.
+Helper for ordering assertions in insert-child tests."
+  (let (order)
+    (save-excursion
+      (goto-char (point-min))
+      (while (re-search-forward org-heading-regexp nil t)
+        (push (or (org-get-todo-state)
+                  (org-get-heading t t t t))
+              order)))
+    (nreverse order)))
+
+(ert-deftest gptel-org-ib-insert-child-uses-parent-marker ()
+  "`gptel-org-ib-insert-child' inserts via an explicit parent marker.
+
+The new heading must appear at parent-level + 1, with the supplied
+TODO keyword, and BEFORE the existing TERMINE child.  The returned
+plist must carry a non-nil `:heading-marker' and a live IB."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n** TERMINE\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (org-back-to-heading t)
+     (let* ((parent-marker (point-marker))
+            ;; Move point away to prove the API does not depend on it.
+            (_ (goto-char (point-max)))
+            (result (gptel-org-ib-insert-child
+                     parent-marker "AI-DOING" "Child"
+                     :terminator-keyword "TERMINE"))
+            (hm (plist-get result :heading-marker))
+            (ib (plist-get result :indirect-buffer)))
+       (should (markerp hm))
+       (should (marker-position hm))
+       (should (buffer-live-p ib))
+       ;; New heading: level 2, AI-DOING.
+       (save-excursion
+         (goto-char hm)
+         (should (org-at-heading-p))
+         (should (= 2 (org-current-level)))
+         (should (equal "AI-DOING" (org-get-todo-state))))
+       ;; Order: Parent, AI-DOING (Child), TERMINE.
+       (let ((order (gptel-org-ib-test--heading-order)))
+         (should (equal "Parent"   (nth 0 order)))
+         (should (equal "AI-DOING" (nth 1 order)))
+         (should (equal "TERMINE"  (nth 2 order))))))))
+
+(ert-deftest gptel-org-ib-insert-child-uses-indirect-buffer ()
+  "`gptel-org-ib-insert-child' accepts an IB as its parent.
+
+The IB's narrowed subtree's heading is treated as the parent.  The
+new heading must live in the underlying base buffer, at parent-level
++ 1, BEFORE the parent's TERMINE child.  A fresh child IB must be
+created (distinct from the parent IB)."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n"
+    (gptel-org-ib-test-with-cleanup
+     (let* ((base (current-buffer))
+            (parent-ib (progn (goto-char (point-min))
+                              (org-back-to-heading t)
+                              (gptel-org-ib-create base (point)))))
+       (should (buffer-live-p parent-ib))
+       ;; Sanity: the factory seeded TERMINE inside the parent IB.
+       (with-current-buffer parent-ib
+         (should (save-excursion
+                   (goto-char (point-min))
+                   (gptel-org-ib-find-terminator "TERMINE"))))
+       (let* ((result (gptel-org-ib-insert-child
+                       parent-ib "AI-DOING" "Child"
+                       :terminator-keyword "TERMINE"))
+              (hm (plist-get result :heading-marker))
+              (child-ib (plist-get result :indirect-buffer)))
+         (should (markerp hm))
+         (should (buffer-live-p child-ib))
+         (should-not (eq parent-ib child-ib))
+         ;; The new heading is visible in the base buffer at level 2.
+         (with-current-buffer base
+           (save-excursion
+             (goto-char hm)
+             (should (org-at-heading-p))
+             (should (= 2 (org-current-level)))
+             (should (equal "AI-DOING" (org-get-todo-state))))
+           ;; Order in base buffer: Parent, AI-DOING (Child), TERMINE.
+           (let ((order (gptel-org-ib-test--heading-order)))
+             (should (equal "Parent"   (nth 0 order)))
+             (should (equal "AI-DOING" (nth 1 order)))
+             (should (equal "TERMINE"  (nth 2 order))))))))))
+
+(ert-deftest gptel-org-ib-insert-child-newline-guard ()
+  "`gptel-org-ib-insert-child' applies the universal newline guard.
+
+When the parent's last body line lacks a trailing newline, the new
+heading must still begin with `*' at column 0 (a leading newline is
+inserted as needed)."
+  (gptel-org-ib-test-with-buffer
+      ;; Note: no trailing newline after \"body\".
+      "* Parent\nbody"
+    (gptel-org-ib-test-with-cleanup
+     ;; Sanity: end of buffer is not at bolp before insertion.
+     (should-not (save-excursion (goto-char (point-max)) (bolp)))
+     (goto-char (point-min))
+     (org-back-to-heading t)
+     (let* ((result (gptel-org-ib-insert-child
+                     (point-marker) "AI-DOING" "Child"
+                     :create-indirect-buffer nil))
+            (hm (plist-get result :heading-marker)))
+       (should (markerp hm))
+       (save-excursion
+         (goto-char hm)
+         (should (org-at-heading-p))
+         ;; The heading line begins at column 0 (universal newline
+         ;; guard inserted the missing leading newline).
+         (should (= 0 (current-column)))
+         (should (looking-at-p "^\\*\\* AI-DOING Child")))))))
+
+
 (provide 'gptel-org-ib-test)
 ;;; gptel-org-ib-test.el ends here
