@@ -1625,6 +1625,292 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 3. Replace the spec+args match in =--find-pending-entry= with an
    exact =pending-id= lookup; keep the heuristic match only as a
    fallback for legacy callers.
+*** AI-DO Unify IB/heading insertion behind one parent-aware API
+**** Origin
+- Petri feedback after interactive test (playground-ws.org, 2026-04-27):
+  #+begin_quote
+  Why in earth this is so hard to make it right. One function to
+  create IB below IB. This cannot be so hard. Everything is using
+  the same pattern. No fallback here and there. […] ALL INSERTION
+  SHOULD USE ONE FUNCTION THAT HAS PARENT ARGUMENT (Base or IB)
+  WHERE TO INSERT TEXT OR NEW IB.
+  #+end_quote
+- Reproduction symptoms in
+  [[file:../siro-ai/playground-ws.org::*Delegate to executor agent to run date with Bash tool]]:
+  1. =**** BASH :command "date"= heading at L87 is at level 4, but
+     its parent =*** AI-DOING Delegate to executor…= at L67 is at
+     level 3; the BASH tool subtree is therefore inserted at
+     parent-level + 1, which collides with the sibling
+     =**** ALLOWED EXECUTE …= at L68 (also level 4, the ancestor
+     of the BASH heading) — the BASH heading should live /under/ the
+     EXECUTING/EXECUTED IB and be at level 5.
+  2. =***** TERMINE= at L102 has no leading newline — the prior
+     RESPOND text "The system is ready for further operations."
+     runs directly into the marker on the same line.
+
+**** Discussion highlights
+- The IB module (=gptel-indirect-buffer.el=) and the agent layer
+  (=gptel-org-agent.el=) currently expose /five/ heading-creation
+  / IB-creation functions that all duplicate the same logic with
+  subtle differences:
+  | Function | File | Lines | Parent semantics |
+  |----------+------+-------+------------------|
+  | =gptel-org-ib-safe-insert-sibling= | gptel-indirect-buffer.el | 1362-1392 | implicit via =point= at parent heading |
+  | =gptel-org-ib-create-heading= | gptel-indirect-buffer.el | 866-930 | implicit via =point= at parent heading |
+  | =gptel-org-ib-create-tool-heading= | gptel-indirect-buffer.el | 1394-1429 | implicit via =point= at parent heading |
+  | =gptel-org-ib-ensure-terminator= | gptel-indirect-buffer.el | 735-754 | implicit via =point= at parent heading |
+  | =gptel-org-agent--create-handover-heading= | gptel-org-agent.el | 325-375 | navigates UP via =find-user-task-heading=, uses =org-end-of-subtree= (NOT terminator-aware) |
+- All of them require the caller to =goto-char= the parent heading
+  first, which forces every call site to know whether it is in the
+  base buffer or in an IB and to compute the right point.  Some
+  call sites do this correctly; =--create-handover-heading= sidesteps
+  the API entirely and hand-rolls insertion at =org-end-of-subtree=
+  (no terminator awareness — a known divergence).
+- Petri's design directive: there should be ONE insertion entry
+  point that takes an explicit /parent/ argument (a marker, an IB,
+  or the symbol pointing at a heading position).  The function
+  computes child level = parent-level + 1, locates the parent's
+  TERMINE child, ensures a leading newline, and inserts the new
+  heading immediately before TERMINE.  Callers never search backward,
+  never compute markers by hand, never inspect =point=.
+- The level-4 BASH bug originates from the legacy fallback path
+  =gptel-org-agent--setup-task-subtree= (gptel-org-agent.el:1461-1560,
+  flagged FIXME at gptel-agent-tools.el:1947): when the Agent tool is
+  invoked outside the confirm flow, this path creates a fresh subtree
+  /alongside/ the EXECUTING IB instead of nesting under it.  The unified
+  parent-aware API removes the asymmetry by making the parent argument
+  /always/ explicit and validated.
+- The TERMINE-on-same-line bug (L102) is an instance of the missing
+  =(unless (bolp) (insert "\n"))= guard.  =gptel-org-ib-create-heading=
+  (line 916) and =gptel-org-ib-create-terminator= (line 726) both have
+  the guard; the RESPOND insertion path (separate code in
+  =gptel-org-agent.el= around the streaming-marker logic) does not.
+
+**** Decisions
+- /Single API/: introduce =gptel-org-ib-insert-child= (working name)
+  with signature =(parent todo-keyword title &key tags terminator-keyword name)=:
+  - =parent= is one of: (a) a marker pointing at the parent heading
+    in the base buffer, (b) an indirect buffer whose narrowed
+    subtree is the parent, or (c) the symbol =:point= meaning "use
+    current point" (transitional, callers migrate away from this).
+  - The function resolves =parent= → (base-buffer, parent-marker),
+    ensures TERMINE on the parent (idempotent), inserts the new
+    heading before TERMINE, ensures a leading newline before any
+    inserted text, and (optionally) creates an IB narrowed to the
+    new heading.
+  - Returns =(:heading-marker M :indirect-buffer IB-or-nil)=.
+- /Deprecate/ =gptel-org-ib-safe-insert-sibling=,
+  =gptel-org-ib-create-heading=, =gptel-org-ib-create-tool-heading=,
+  and =gptel-org-agent--create-handover-heading= as direct call
+  targets.  Keep them as thin compatibility shims that delegate to
+  the new API while callers migrate; remove after a single pass
+  through the call sites.
+- /Forbid backward search for insertion points/ across the whole
+  agent layer.  The IB knows where new content goes (before its
+  TERMINE child); no caller may =re-search-backward= to discover
+  an insertion site.
+- /Universal newline guard/: every text/heading insertion call
+  ends with =(unless (bolp) (insert "\n"))= /before/ inserting
+  the next sentinel (TERMINE or new heading).  Centralise the
+  guard inside the new API so callers cannot forget it.
+
+**** Mission
+1. Add =gptel-org-ib-insert-child= to
+   =quelpa/build/gptel/gptel-indirect-buffer.el= with the signature
+   above.  Re-implement
+   =gptel-org-ib-safe-insert-sibling= and
+   =gptel-org-ib-create-tool-heading= as thin wrappers that build
+   the =parent= argument from current =point= and call the new API.
+   =gptel-org-ib-create-heading= becomes an internal helper invoked
+   only by the new API.
+2. Migrate =gptel-org-agent--create-handover-heading=
+   (gptel-org-agent.el:325-375) to call the new API with an
+   explicit parent marker derived from
+   =gptel-org-ib-find-user-task-heading=.  Remove the hand-rolled
+   =org-end-of-subtree= insertion.  Add terminator awareness so
+   the handover heading is inserted before the user task's TERMINE.
+3. Migrate =gptel-org-agent--setup-task-subtree=
+   (gptel-org-agent.el:1461-1560) and the legacy fallback in
+   =gptel-agent-tools.el= around line 1947 to the new API.  Confirm
+   the fallback is reachable (survey callers); if not, /delete/ it
+   per the AI-DONE EXECUTING TODO Mission step 4.
+4. Add the universal newline guard to the streaming/RESPOND
+   insertion path so RESPOND text cannot run into a sentinel
+   heading.  Verify by inspecting all =insert= sites in
+   =gptel-org-agent.el= and =gptel-org.el= that write user-visible
+   body content; any site that writes near a TERMINE / next-heading
+   boundary must call the centralised helper.
+5. /Forbid backward search/: grep for =re-search-backward= across
+   =quelpa/build/gptel/= and =quelpa/build/gptel-agent/=.  Audit
+   each hit; insertion-point discovery must not appear.  Document
+   any retained backward searches (e.g. patch-header parsing in
+   =gptel-agent--fix-patch-headers=) as non-IB tool-specific
+   parsing, with a comment.
+6. Tests in =quelpa/build/gptel/test=:
+   - =gptel-org-ib-insert-child-uses-parent-marker= — call with a
+     marker into a base buffer; assert child appears at parent+1
+     level before the parent's TERMINE.
+   - =gptel-org-ib-insert-child-uses-indirect-buffer= — same but
+     with an IB as parent.
+   - =gptel-org-ib-insert-child-newline-guard= — force the
+     parent's last line to lack a trailing newline; assert the
+     new heading still starts on its own line.
+   - =gptel-org-agent-handover-heading-uses-terminator= — assert
+     the handover heading is inserted before the user task's
+     TERMINE (regression test for the migrated function).
+   - =gptel-org-agent-bash-tool-heading-nesting= — replay the
+     dummy@executor@dummy@agent flow and assert the BASH heading
+     is at level 5 (under the EXECUTING IB at level 4), not at
+     level 4 alongside it.
+   Run =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
+7. Documentation:
+   - Update [[file:gptel-indirect-buffer-ai.org]] to describe the
+     single insertion API and the explicit-parent contract.
+   - Update [[file:gptel-ai.org::*Indirect-buffer canonical refactor]]
+     phase IB-2 / IB-4 sections to point at the new entry point.
+   - Update [[file:quelpa/build/gptel-agent/gptel-agent-ai.org]]
+     "Sub-Agent Subtree Handlers" to remove references to the
+     deprecated functions.
+8. Commit atomically in =quelpa/build/gptel/= submodule (and
+   =quelpa/build/gptel-agent/= where any handler change is
+   required).  Suggested sequence:
+   - Commit 1: introduce =gptel-org-ib-insert-child= + tests +
+     compatibility shims.
+   - Commit 2: migrate =--create-handover-heading= +
+     =--setup-task-subtree= + handover terminator test.
+   - Commit 3: universal newline guard on RESPOND/streaming path
+     + regression test for L102 same-line TERMINE.
+   - Commit 4: BASH-tool-heading nesting fix + level-5 regression
+     test.
+   - Commit 5: docs sync.
+
+**** Constraints
+- One pattern only.  No legacy carve-outs; no =if-from-pending-id=
+  branches in the new API; no per-agent quirks.  The compatibility
+  shims exist solely to keep call sites compiling during migration
+  and must be removed in the final commit of the series.
+- Sub-task delegation: split Mission steps 1, 2-3, 4-5, 6, 7-8
+  into separate =implementer= dispatches, each with synthesized
+  context drawn from this TODO.
+- Tests must run green on every commit (=make test=).
+
+*** AI-DO Fix interactive-test state-transition regressions in playground-ws.org
+**** Origin
+- Petri interactive test, 2026-04-27, in
+  [[file:../siro-ai/playground-ws.org]].
+- Two state-transition bugs visible in the post-test buffer:
+  1. =**** ALLOWED EXECUTE :description "Run date command with Bash" …=
+     (L68) — the EXECUTE tool-call heading is stuck at the ALLOWED
+     keyword.  Expected lifecycle:
+     =PENDING EXECUTE → ALLOWED EXECUTE → EXECUTING → EXECUTED=.
+     Observed: lifecycle stops at ALLOWED.  No EXECUTING or EXECUTED
+     transition occurs.
+  2. =*** AI-DOING Delegate to executor agent to run date with Bash tool=
+     (L67) — the parent agent heading is stuck at AI-DOING.  Expected:
+     =AI-DO → AI-DOING → AI-DONE=.  Observed: lifecycle stops at
+     AI-DOING.  Sibling task at L46 (=*** AI-DONE Run date with Bash
+     tool=) shows the same flow completed correctly without the
+     executor sub-agent in between, so the regression is specific
+     to the sub-agent delegation path.
+
+**** Discussion highlights
+- These are the surface symptoms of the lifecycle truncation
+  caveat documented in the AI-DONE TODO at L1377 ("EXECUTING
+  should be state transition of ALLOWED EXECUTE heading"):
+  #+begin_quote
+  /Caveat / follow-up:/ the lifecycle currently ends at
+  =EXECUTING= (DOING) — same as non-Agent tools.  A final
+  =EXECUTING → EXECUTED= transition + TERMINE removal at
+  result-display time is tracked by the existing TODO "TERMINE
+  not removed when task transitions to AI-DONE".
+  #+end_quote
+  …except that in the playground-ws repro the lifecycle does not
+  even reach EXECUTING — it stays at ALLOWED.  This suggests two
+  separate failure modes that both need fixing:
+  1. The ALLOWED → EXECUTING transition itself is not happening
+     for the executor agent variant (or is happening but not
+     observably so on the heading).
+  2. Even if it did, the EXECUTING → EXECUTED + TERMINE removal
+     follow-up is still pending (per the TERMINE-on-AI-DONE TODO
+     at L1239).
+- Suspect call sites:
+  - =gptel-org-agent--update-tool-heading=
+    (gptel-org-agent.el:2354-2480) is supposed to perform
+    PENDING/ALLOWED → DOING (=EXECUTING= for executor) via
+    =gptel-org-agent--set-todo-keyword=.  It is invoked from the
+    tool-result display advice; verify it fires for the Agent tool
+    when sub-agent dispatch reuses the PENDING IB
+    (=:from-pending-id= path established by gptel commit
+    =f0715c9= and gptel-agent commit =3808d47=).
+  - =gptel-agent-subtree--cleanup=
+    (gptel-agent-tools.el:1337-1453) yields ownership when
+    =:from-pending-id= is set, but the resulting transition to
+    EXECUTED at result-display time is missing — confirm whether
+    =--update-tool-heading= advances all the way to EXECUTED or
+    stops at EXECUTING.
+  - The parent =*** AI-DOING Delegate to executor…= heading
+    (L67, no agent tag with two =@= signs in the agent name —
+    it has =:dummy@agent:=) is /not/ a sub-agent heading; it is
+    the user-level task heading.  Its AI-DOING → AI-DONE
+    transition is expected to happen on top-level FSM completion,
+    which is a separate code path from sub-agent cleanup.
+
+**** Decisions
+(none yet — see Mission for investigation steps)
+
+**** Mission
+1. /Reproduce/ the playground-ws scenario in a controlled test:
+   the dummy@agent dispatches the executor sub-agent to run
+   =date= via the BASH tool.  Capture the buffer state after
+   the run.
+2. /Investigate the ALLOWED → EXECUTING gap/.  Add debug logging
+   (via =gptel-org--debug=) at the entry of
+   =gptel-org-agent--update-tool-heading= and at the
+   =gptel-org-agent--set-todo-keyword= call inside it.  Confirm
+   whether the function fires for the Agent-tool variant and
+   whether =--set-todo-keyword= is invoked with =EXECUTING= as
+   target.  Delegate the debug-log analysis to =researcher= per
+   the project rule.
+3. /Investigate the EXECUTING → EXECUTED transition/.  Identify
+   which code path is responsible (the AI-DONE caveat above
+   suggests it is missing entirely).  Decide whether the
+   transition belongs in =--update-tool-heading= (advancing
+   from DOING to DONE on result-display completion) or in a
+   separate result-finalisation hook.
+4. /Investigate the parent AI-DOING → AI-DONE transition/.
+   The user-level task heading (=*** AI-DOING Delegate to
+   executor agent…=) does not carry the =@@@= multi-agent tag,
+   so the cleanup-handler skip rule
+   (gptel-agent-tools.el:1376-1378) does NOT apply.  Confirm
+   which top-level FSM path advances /this/ heading and whether
+   it is reached when the sub-agent path returns.
+5. /Implement the fix(es)/.  Likely a single function call
+   addition (the missing EXECUTING → EXECUTED step) plus a
+   parent-task transition wiring.  No new code paths; route
+   through the existing =--set-todo-keyword= and the IB-7
+   ownership rule.
+6. /Tests/:
+   - Regression test asserting that after the executor sub-agent
+     completes, its tool-call heading is at EXECUTED (not stuck
+     at ALLOWED or EXECUTING).
+   - Regression test asserting the parent user-task heading
+     transitions to AI-DONE after the sub-agent path completes.
+   - Both run under =cd quelpa/build/gptel/test && make test=.
+7. /Doc updates/: amend the AI-DONE TODO at L1377 (caveat
+   section) and the TERMINE-on-AI-DONE TODO at L1239 (status
+   update) noting which residual gaps are now closed.
+8. /Commits/ atomic in =quelpa/build/gptel/= and
+   =quelpa/build/gptel-agent/= as needed.
+
+**** Constraints
+- This TODO depends on the unified-insertion API TODO above for
+  the BASH-heading nesting fix; the state-transition fix is
+  orthogonal and can be implemented independently.
+- Do not introduce new state keywords, new triads, or
+  per-tool-name special cases.  All transitions go through
+  =gptel-org-agent--set-todo-keyword= and the per-agent triad
+  table from =gptel-agent-state-words=.
+
 
 ** Researched TODOs
 *** Unified gptel-org-mode Refactoring
