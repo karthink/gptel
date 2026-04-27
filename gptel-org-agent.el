@@ -387,7 +387,7 @@ Returns the heading text of the created heading, or nil on failure."
                   (goto-char (marker-position heading-marker))
                   (forward-line 1)
                   (let ((inhibit-read-only t))
-                    (unless (bolp) (insert "\n"))
+                    (gptel-org-ib-ensure-bol)
                     (insert body)
                     (unless (string-suffix-p "\n" body)
                       (insert "\n")))))
@@ -887,6 +887,10 @@ through normal channels."
             (let ((pos (or (plist-get info :position) (point))))
               (goto-char (if (markerp pos) (marker-position pos) pos)))
             ;; Position at the nearest heading if not already there.
+            ;; Backward search OK: navigating from a known FSM
+            ;; :position into its containing heading for read-only
+            ;; navigation (TODO-state lookup, terminator creation via
+            ;; the IB API).  Not insertion-point discovery.
             (unless (org-at-heading-p)
               (when (re-search-backward org-heading-regexp nil t)
                 (beginning-of-line)))
@@ -1140,6 +1144,46 @@ task with DENIED + TERMINE, then re-signal the error."
      (gptel-org-agent--recover-from-ib-fatal err fsm)
      (signal (car err) (cdr err)))))
 
+(defun gptel-org-agent--ensure-bol-before-terminator (_beg _end)
+  "Ensure no streamed body content runs into the IB's TERMINE child.
+
+The streaming insertion path uses `gptel-org-ib-streaming-marker'
+which pins the FSM tracking-marker BEFORE the IB's TERMINE child
+with insertion-type nil.  Streamed text accumulates between the
+last body line and the TERMINE heading.  When the LLM ends a
+response without a trailing newline, the line containing TERMINE
+absorbs the trailing body text and surfaces as e.g.
+
+  The system is ready for further operations.***** TERMINE
+
+The bug-state TERMINE is no longer at BOL, so the regular
+`gptel-org-ib-find-terminator' (anchored at `^') cannot locate it.
+This hook scans for any `*+ TERMINE' occurrence mid-line and
+inserts a newline immediately before the leading stars, restoring
+TERMINE to its own line via the universal newline guard.
+
+Runs on `gptel-post-response-functions' at low depth (before the
+FEEDBACK-heading insertion at depth 95).  No-op when the current
+buffer is not a registered IB."
+  (when (gptel-org-ib-registered-p (current-buffer))
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (point-min))
+        ;; Scan for any `*+ TERMINE' occurrence; if it does not start
+        ;; at BOL, the streaming path concatenated body onto its line.
+        ;; Apply the universal newline guard right before the stars.
+        (let ((inhibit-read-only t))
+          (while (re-search-forward "\\*+ TERMINE\\b" nil t)
+            (goto-char (match-beginning 0))
+            ;; `gptel-org-ib-ensure-bol' is a no-op when already at
+            ;; BOL (the common, healthy case).
+            (gptel-org-ib-ensure-bol)
+            ;; Advance past this TERMINE heading so `re-search-forward'
+            ;; cannot match the same occurrence again.  An insertion
+            ;; above invalidates `match-end', so use `forward-line'.
+            (forward-line 1)))))))
+
 (defun gptel-org-agent--insert-user-heading (_beg _end)
   "Insert a user/feedback heading after the agent subtree when response completes.
 Added to `gptel-post-response-functions'.
@@ -1221,7 +1265,13 @@ in the conversation."
                                      (= (org-current-level) user-level)
                                      (gptel-org--heading-is-user-p)))
                             ;; Tag mode: check for :user: child within
-                            ;; agent subtree (original behavior)
+                            ;; agent subtree (original behavior).
+                            ;; Backward search OK: probing the LAST
+                            ;; heading in an existing subtree to detect
+                            ;; an already-present :user: child.  This
+                            ;; is content discovery, not IB insertion-
+                            ;; point discovery — the actual user heading
+                            ;; is created via the IB API below.
                             (save-excursion
                               (goto-char subtree-end)
                               (end-of-line)
@@ -1365,6 +1415,12 @@ Also sets up tool confirmation advice and hooks."
   (when (boundp 'gptel-mode-map)
     (define-key gptel-mode-map (kbd "C-c g j")
                 #'gptel-org-agent-jump-to-indirect-buffer))
+  ;; Universal newline guard: ensure no streamed body runs into the
+  ;; TERMINE sentinel.  Runs early (depth 10) so subsequent hooks
+  ;; (e.g. `--insert-user-heading' at depth 95) operate on a
+  ;; well-formed buffer.
+  (add-hook 'gptel-post-response-functions
+            #'gptel-org-agent--ensure-bol-before-terminator 10)
   ;; Insert :user: heading after agent response completes
   (add-hook 'gptel-post-response-functions
             #'gptel-org-agent--insert-user-heading 95)
@@ -1388,6 +1444,9 @@ Also sets up tool confirmation advice and hooks."
   ;; Remove user heading hook
   (remove-hook 'gptel-post-response-functions
                #'gptel-org-agent--insert-user-heading)
+  ;; Remove BOL guard hook
+  (remove-hook 'gptel-post-response-functions
+               #'gptel-org-agent--ensure-bol-before-terminator)
   ;; Remove tool confirmation advice and hooks
   (advice-remove 'gptel--display-tool-calls
                  #'gptel-org-agent--display-tool-calls-advice)
@@ -2741,7 +2800,11 @@ property.  Return the position of the heading, or nil."
                       (org-entry-get nil "GPTEL_PENDING_ID"))
              (setq found (point))))
          found))
-     ;; Search backward
+     ;; Search backward.
+     ;; Backward search OK: locating an existing PENDING tool-call
+     ;; heading by GPTEL_PENDING_ID for the interactive
+     ;; `gptel-org-agent-run-pending' fallback.  This is content
+     ;; discovery, not IB insertion-point discovery.
      (save-excursion
        (let ((found nil))
          (while (and (not found)
@@ -2914,7 +2977,7 @@ Works from both base org buffers and agent indirect buffers."
                (heading-text (format "%s %s %s" stars todo-keyword new-title)))
           ;; Go to end of current task subtree
           (org-end-of-subtree t)
-          (unless (bolp) (insert "\n"))
+          (gptel-org-ib-ensure-bol)
           ;; Insert the new heading
           (insert heading-text "\n")
           (message "Created handoff heading: %s" new-title))))

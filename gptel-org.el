@@ -2019,6 +2019,11 @@ to be children of it."
       ;; If no heading is found before beg, use the first heading in
       ;; the buffer as the top-level reference (relevant for agent
       ;; indirect buffers where the agent heading is the first heading).
+      ;; Backward search OK: reading the level of the assistant/agent
+      ;; heading that PRECEDES the just-streamed response region in
+      ;; order to rebase mis-leveled child headings.  Not IB insertion-
+      ;; point discovery — the response region is already inserted; we
+      ;; only need its containing heading's level.
       (let ((reference-level
              (save-excursion
                (goto-char beg)
@@ -2401,7 +2406,10 @@ markers like \"@assistant\"."
                             (org-get-tags nil t)
                             (org-get-heading t t t t))
           (point))
-      ;; Search backward for assistant heading
+      ;; Search backward for assistant heading.
+      ;; Backward search OK: locating the assistant/agent/chat heading
+      ;; that contains POS for read-only metadata (tags, todo state).
+      ;; Not IB insertion-point discovery.
       (gptel-org--debug "find-response-heading: not at matching heading, searching backward")
       (if (re-search-backward org-heading-regexp nil t)
           (let ((has-assistant (gptel-org--heading-is-assistant-p))

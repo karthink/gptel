@@ -554,6 +554,23 @@ position, or nil if not found or if called with a non-indirect buffer."
     nil))
 
 
+;;; ---- Universal newline guard ----------------------------------------------
+
+(defun gptel-org-ib-ensure-bol ()
+  "Ensure point is at the beginning of a line, inserting a newline if not.
+
+This is the universal newline guard for IB/heading insertion: any
+sentinel (heading or terminator) must start at column 0, and any
+streamed body content must end with a line break before the next
+sentinel.  Centralised here so callers in the agent layer cannot
+forget the contract.
+
+Returns t when a newline was inserted, nil otherwise."
+  (unless (bolp)
+    (insert "\n")
+    t))
+
+
 ;;; ---- Terminator Heading Management ----------------------------------------
 
 (defun gptel-org-ib--terminator-regexp (heading-keyword level)
@@ -687,7 +704,7 @@ Returns a marker to the terminator heading."
             m)
         ;; Not found: insert new sibling at end of subtree
         (goto-char subtree-end)
-        (unless (bolp) (insert "\n"))
+        (gptel-org-ib-ensure-bol)
         (let* ((stars (make-string level ?*))
                (heading-text (format "%s %s" stars terminator-keyword))
                (start (point)))
@@ -723,7 +740,7 @@ Returns a marker to the terminator heading."
            (heading-text (format "%s %s" stars heading-keyword)))
       ;; Move to the end of the parent subtree
       (org-end-of-subtree t)
-      (unless (bolp) (insert "\n"))
+      (gptel-org-ib-ensure-bol)
       (insert heading-text "\n")
       ;; Move back to the heading we just inserted
       (forward-line -1)
@@ -913,7 +930,7 @@ Returns a marker to the newly created heading."
            marker)
       (goto-char insert-pos)
       ;; Ensure we insert on a fresh line
-      (unless (bolp) (insert "\n"))
+      (gptel-org-ib-ensure-bol)
       ;; Insert the new heading followed by a blank line for body content
       (insert heading-text "\n")
       ;; Move back to the heading we just inserted
@@ -1407,8 +1424,8 @@ Behavior:
 2. Inside PARENT-CONTEXT-BUFFER, with point at PARENT-MARKER,
    ensure the terminator (if requested) and insert the new heading
    immediately before it (or at end of subtree if no terminator).
-   The universal newline guard `(unless (bolp) (insert \"\\n\"))'
-   is applied before any heading text is inserted.
+   The universal newline guard `gptel-org-ib-ensure-bol' is
+   applied before any heading text is inserted.
 3. Optionally create an indirect buffer narrowed to the new
    heading.
 

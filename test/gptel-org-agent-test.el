@@ -1160,6 +1160,72 @@ to AI-DONE with its tag removed."
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
+(ert-deftest gptel-org-agent-respond-text-no-same-line-terminator ()
+  "Regression: streamed RESPOND text must not concatenate onto TERMINE.
+
+Reproduces the playground-ws.org L102 symptom: when the streaming
+insertion path appends body text at the streaming-marker (pinned
+BEFORE the TERMINE child with insertion-type nil) and the final
+chunk does not end with a newline, the TERMINE heading line is
+absorbed onto the body line, surfacing as e.g.
+
+  The system is ready for further operations.***** TERMINE
+
+The post-response BOL guard
+\(`gptel-org-agent--ensure-bol-before-terminator') must restore
+TERMINE to its own line at column 0."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "FEEDBACK"
+                                       "|" "AI-DONE" "TERMINE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* AI-DO Implement feature\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-user-keyword "FEEDBACK")
+             (gptel-org-tasks-done-keyword "AI-DONE")
+             (base-buf (current-buffer))
+             (marker (gptel-org-agent--create-subtree "main"))
+             (indirect-buf nil))
+        (unwind-protect
+            (progn
+              (setq indirect-buf
+                    (gptel-org-agent--open-indirect-buffer base-buf marker))
+              ;; Simulate the streaming path: pin tracking-marker at
+              ;; the IB's TERMINE child via `gptel-org-ib-streaming-marker'
+              ;; and insert body text WITHOUT a trailing newline — the
+              ;; same shape the LLM produced in the playground-ws.org
+              ;; bug.
+              (with-current-buffer indirect-buf
+                (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
+                  (goto-char m)
+                  (insert "The system is ready for further operations."))
+                ;; Sanity: bug state — TERMINE on same line as body.
+                (goto-char (point-min))
+                (should (re-search-forward
+                         "operations\\.\\*+ TERMINE" nil t))
+                ;; Run the post-response BOL guard.
+                (gptel-org-agent--ensure-bol-before-terminator nil nil)
+                ;; Assert: TERMINE now starts at column 0 on its own
+                ;; line, with body text terminated by a newline.
+                (goto-char (point-min))
+                (should-not (re-search-forward
+                             "operations\\.\\*+ TERMINE" nil t))
+                (goto-char (point-min))
+                (should (re-search-forward
+                         "operations\\.\n\\*+ TERMINE" nil t))
+                ;; And the TERMINE heading is recognised by org as a
+                ;; heading at column 0.
+                (goto-char (point-min))
+                (should (re-search-forward "^\\*+ TERMINE\\b" nil t))
+                (goto-char (match-beginning 0))
+                (should (org-at-heading-p))))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
 (ert-deftest gptel-org-agent-test-insert-user-heading-level-is-agent-sibling ()
   "FEEDBACK heading should be at agent-level (sibling of agent subtree).
 In keyword mode, the FEEDBACK heading is created as a sibling of the agent
