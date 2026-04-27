@@ -605,6 +605,14 @@ Enable =gptel-org-mode= (which sets this automatically), or set
 4. Inserts =FEEDBACK= keyword headings for user prompts after each response
 5. Skips post-response title generation (the AI wrote it)
 
+File-local activation via =# gptel-org-mode: 1= or =# eval:
+(gptel-org-mode 1)= in a Local Variables block is safe: TODO keyword
+registration uses =org-set-regexps-and-options= (not =org-mode-restart=)
+so =kill-all-local-variables= never runs and =hack-local-variables= is
+not re-entered.  =gptel-mode= and =gptel-org-mode= are also marked
+=permanent-local= as defense in depth against any other code path that
+might reset buffer-local variables.
+
 *** Configuration Variables
 
 | Variable | Default | Purpose |
@@ -623,8 +631,8 @@ Enable =gptel-org-mode= (which sets this automatically), or set
 | =gptel-org--heading-is-user-p= | =t= when TODO state exists and has no =AI-= prefix |
 | =gptel-org--auto-correct-on-change= | Idempotent corrector on =after-change-functions= (buffer-local) |
 | =gptel-org--enable-auto-correct= | Set up ref-level and register the corrector hook |
-| =gptel-org--register-todo-keywords= | Register AI/FEEDBACK + REASONING/TOOL/RESULTS + all known tool-state keywords (BASH, EVAL, ...) on mode activation; one restart in the base buffer |
-| =gptel-org--ensure-todo-state= | Late-bind a TODO keyword during a request; uses =org-set-regexps-and-options= (not =org-mode-restart=) inside indirect buffers to avoid wiping buffer-local IB state |
+| =gptel-org--register-todo-keywords= | Register AI/FEEDBACK + REASONING/TOOL/RESULTS + all known tool-state keywords (BASH, EVAL, ...) on mode activation; refresh via =org-set-regexps-and-options= (never =org-mode-restart=) so file-local activation does not recurse |
+| =gptel-org--ensure-todo-state= | Late-bind a TODO keyword during a request; refresh via =org-set-regexps-and-options= to avoid wiping buffer-local state in both base and indirect buffers |
 
 *** Idempotent Auto-Corrector
 
@@ -2153,7 +2161,7 @@ Pick one (default: A):
   =gptel-org-agent--set-todo-keyword= and the per-agent triad
   table from =gptel-agent-state-words=.
 
-*** AI-DO Recursive loop when =gptel-org-mode: 1= is set as file-local variable
+*** AI-DONE Recursive loop when =gptel-org-mode: 1= is set as file-local variable
 **** Origin
 - User report (current AI-DO session): when an org file has
   =gptel-org-mode: 1= in its =Local Variables= block, opening
@@ -2755,8 +2763,8 @@ agent files (order depends on =(require 'gptel-agent)= timing), the
 alist is empty and the per-site =gptel-org--ensure-todo-state= calls
 in =--display-tool-calls= / =--update-tool-heading= /
 =--setup-task-subtree= paper over the gap on demand.  The per-site
-registration path calls =org-mode-restart= / =org-set-regexps-and-options=
-as a side effect, which is a little heavier than the batch path.
+registration path calls =org-set-regexps-and-options= as a side
+effect, which is a little heavier than the batch path.
 
 Fix: call =gptel-org--register-todo-keywords= from
 =gptel-agent-update= after agents are loaded, so all triads register
