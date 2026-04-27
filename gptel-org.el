@@ -2930,13 +2930,13 @@ corrupting subsequent heading updates."
                 (when (gptel-org--ensure-todo-state-1
                        done gptel-org--agent-state-face t)
                   (setq changed t)))))))
-      ;; Refresh org to pick up changes.  Guarded for indirect buffers
-      ;; (in practice this runs in the base buffer during `gptel-mode'
-      ;; setup, before any IB exists — but be defensive).
+      ;; Refresh TODO regexps without restarting org-mode.
+      ;; `org-mode-restart' would call `kill-all-local-variables',
+      ;; destroying gptel buffer-local state and (when activated via
+      ;; file-local variables) re-entering `gptel-org-mode' in a
+      ;; recursive loop.
       (when (and changed (derived-mode-p 'org-mode))
-        (if (gptel-org-ib-registered-p (current-buffer))
-            (org-set-regexps-and-options)
-          (org-mode-restart))))))
+        (org-set-regexps-and-options)))))
 
 (defun gptel-org--ensure-todo-state-1 (state face done-state)
   "Register STATE with FACE in org-todo machinery; return non-nil if changed.
@@ -2979,23 +2979,20 @@ When a refresh is required, refreshes the org TODO machinery so the
 new keyword takes effect immediately.  Idempotent: no refresh if STATE
 is already registered with the same face.
 
-In an indirect buffer, `org-set-regexps-and-options' is used instead
-of `org-mode-restart' because the latter calls
-`kill-all-local-variables' and destroys gptel buffer-local IB state
-(e.g. `gptel-org--agent-indirect-buffer-p', FSM references, ...).
-In practice
-this path should rarely fire during a request because
-`gptel-org--register-todo-keywords' pre-registers every known tool
-state at `gptel-mode' setup time."
+Uses `org-set-regexps-and-options' to refresh TODO regexps without
+restarting org-mode (avoids `kill-all-local-variables', which would
+destroy buffer-local state in both base and indirect buffers, and on
+file-local activation re-enters `gptel-org-mode' causing a recursive
+loop).  In practice this path should rarely fire during a request
+because `gptel-org--register-todo-keywords' pre-registers every known
+tool state at `gptel-mode' setup time."
   (when gptel-org-use-todo-keywords
     (let* ((face (or face gptel-org--tool-state-face))
            (done-state (if (eq done-state nil) t done-state))
            (changed (gptel-org--ensure-todo-state-1 state face done-state)))
       (cl-pushnew state gptel-org--ai-state-keywords :test #'equal)
       (when (and changed (derived-mode-p 'org-mode))
-        (if (gptel-org-ib-registered-p (current-buffer))
-            (org-set-regexps-and-options)
-          (org-mode-restart)))
+        (org-set-regexps-and-options))
       changed)))
 
 (defun gptel-org--ensure-todo-states (specs)
@@ -3006,9 +3003,11 @@ SPECS is a list of (STATE FACE &optional OPEN-P) entries, where:
   OPEN-P non-nil means register as an open/todo state (before \"|\");
     otherwise register as a done-state keyword.
 Performs a single refresh of the org TODO machinery if any state is
-new or changed.  In an indirect buffer, uses `org-set-regexps-and-options'
-instead of `org-mode-restart' to avoid destroying buffer-local IB
-state via `kill-all-local-variables'."
+new or changed.  Uses `org-set-regexps-and-options' to refresh TODO
+regexps without restarting org-mode (avoids `kill-all-local-variables',
+which would destroy buffer-local state in both base and indirect
+buffers, and on file-local activation re-enters `gptel-org-mode'
+causing a recursive loop)."
   (when gptel-org-use-todo-keywords
     (let ((any-changed nil))
       (dolist (spec specs)
@@ -3020,9 +3019,7 @@ state via `kill-all-local-variables'."
           (when (gptel-org--ensure-todo-state-1 state face done-state)
             (setq any-changed t))))
       (when (and any-changed (derived-mode-p 'org-mode))
-        (if (gptel-org-ib-registered-p (current-buffer))
-            (org-set-regexps-and-options)
-          (org-mode-restart)))
+        (org-set-regexps-and-options))
       any-changed)))
 
 
