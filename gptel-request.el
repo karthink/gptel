@@ -2276,33 +2276,33 @@ Initiate the request when done."
     (unless (plist-get info :dry-run) (gptel--fsm-transition fsm))
     fsm))
 
-(defun gptel-abort (buf)
-  "Stop any active gptel process associated with buffer BUF.
+(defun gptel-abort (buf-or-fsm)
+  "Abort a gptel request associated with BUF-OR-FSM.
 
-BUF defaults to the current buffer."
+When BUF-OR-FSM is a buffer, abort the most recent gptel requests
+associated with that buffer.
+
+When BUF-OR-FSM is a `gptel-fsm' (e.g., returned by `gptel-request'),
+abort that request.
+
+BUF-OR-FSM defaults to the current buffer."
   (interactive (list (current-buffer)))
-  (when-let* ((proc-attrs
-               (cl-find-if
-                (lambda (entry)
-                  ;; each entry has the form (PROC . (FSM ABORT-FN))
-                  (eq (thread-first (cadr entry) ; FSM
-                                    (gptel-fsm-info)
-                                    (plist-get :buffer))
-                      buf))
-                gptel--request-alist))
-              (proc (car proc-attrs))
-              (fsm (cadr proc-attrs))
-              (info (gptel-fsm-info fsm))
-              (abort-fn (cddr proc-attrs)))
-    ;; Run :callback with abort signal
-    (with-demoted-errors "Callback error: %S"
-      (and-let* ((cb (plist-get info :callback))
-                 ((functionp cb)))
-        (funcall cb 'abort info)))
-    (funcall abort-fn)
-    (setf (alist-get proc gptel--request-alist nil 'remove) nil)
-    (gptel--fsm-transition fsm 'ABRT)
-    (message "Stopped gptel request in buffer %S" (buffer-name buf))))
+  (cl-loop
+   for (proc . (fsm . abort-fn)) in gptel--request-alist
+   for info = (gptel-fsm-info fsm)
+   for buf = (plist-get info :buffer)
+   when (or (eq buf-or-fsm fsm)
+            (eq buf-or-fsm buf))
+   return (progn
+            ;; Run :callback with abort signal
+            (with-demoted-errors "Callback error: %S"
+              (and-let* ((cb (plist-get info :callback))
+                         ((functionp cb)))
+                (funcall cb 'abort info)))
+            (funcall abort-fn)
+            (setf (alist-get proc gptel--request-alist nil 'remove) nil)
+            (gptel--fsm-transition fsm 'ABRT)
+            (message "Stopped gptel request in buffer %S" (buffer-name buf)))))
 
 
 ;;; Prompt creation
