@@ -1090,7 +1090,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 11. Update this TODO to =AI-DONE= when all tests pass and the
     reproduction produces the expected buffer state.
 
-*** AI-DO Tool subtree missing indirect-buffer scaffolding (no IB, no TERMINE)
+*** TODO Tool subtree missing indirect-buffer scaffolding (no IB, no TERMINE)
 **** Origin
 - Interactive test "Run date with Bash tool" in
   =~/siro-ai/playground-ws.org= (the BASH heading at L51).
@@ -1146,7 +1146,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 5. Commit atomically in =quelpa/build/gptel/=.  Update related
    =-ai.org= docs.
 
-*** AI-DO Missing leading sub-heading for AI text after tool result
+*** TODO Missing leading sub-heading for AI text after tool result
 **** Origin
 - Interactive test "Run date with Bash tool" in playground-ws.org.
 - After the =#+end_tool= block at L60, the AI's textual response
@@ -1191,7 +1191,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
    sub-heading.
 6. Commit in =quelpa/build/gptel/= submodule.
 
-*** AI-DO TERMINE not removed when task transitions to AI-DONE
+*** TODO TERMINE not removed when task transitions to AI-DONE
 **** Origin
 - Interactive test "Run date with Bash tool" in playground-ws.org
   (L46-L65).
@@ -1233,7 +1233,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
    completes.
 5. Commit in =quelpa/build/gptel/= submodule.
 
-*** AI-DO Recursive loop / duplicate TERMINE in sub-agent delegation flow
+*** TODO Recursive loop / duplicate TERMINE in sub-agent delegation flow
 **** Origin
 - Interactive test "Delegate to executor agent to run date with Bash
   tool" in playground-ws.org (L72-L105).
@@ -1283,7 +1283,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 6. Commit in =quelpa/build/gptel-agent/= and/or =quelpa/build/gptel/=
    as appropriate.
 
-*** AI-DO EXECUTING should be state transition of ALLOWED EXECUTE heading, not a separate heading
+*** AI-DONE EXECUTING should be state transition of ALLOWED EXECUTE heading, not a separate heading
 **** Origin
 - Interactive test "Delegate to executor agent..." in
   playground-ws.org (L73-L76).
@@ -1316,7 +1316,28 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
   clutter → less TERMINE confusion).
 
 **** Decisions
-(none yet — see Mission for investigation steps)
+- Implemented in =quelpa/build/gptel= commit =bb60aae=.
+- PENDING tool-call headings now live in their own indirect buffer
+  (new helper =gptel-org-ib-create-tool-heading= in
+  =gptel-indirect-buffer.el=).
+- State transitions PENDING → ALLOWED → =doing-state= (e.g.
+  =EXECUTING=) now use real =org-todo= calls in that IB (with
+  =org-after-todo-state-change-hook= inhibited for the programmatic
+  =doing-state= transition).
+- =gptel-org-agent--update-tool-heading= rewritten: looks up the
+  entry by tool-name + args via new =--find-pending-entry=, switches
+  to =:pending-ib=, calls =gptel-org-agent--set-todo-keyword=,
+  replaces body, drops the REQ prefix from the heading title via
+  =org-edit-headline=.
+- Hash entry =gptel-org-agent--pending-tool-calls= now stores
+  =:pending-ib= and =:heading-marker=.
+- Lifecycle: ALLOWED keeps the entry alive (so =--update-tool-heading=
+  can find the IB); DENIED closes the IB and removes the entry.
+- Three new regression tests in =gptel-org-agent-test.el=:
+  =pending-entry-stores-ib-and-marker=,
+  =update-tool-heading-uses-org-todo=,
+  =update-tool-heading-executor-triad=.
+- All 454 tests pass (3 pre-existing media/persist skips unrelated).
 
 **** Mission
 1. Locate the code that emits the =EXECUTING= heading.  Confirm
@@ -1335,6 +1356,59 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
    rendering policy is clarified.
 7. Commit atomically.  Likely changes span =quelpa/build/gptel/= and
    =quelpa/build/gptel-agent/=.
+
+*** TODO Simplify legacy GPTEL_PENDING_ID lookup paths
+**** Origin
+- After commit =bb60aae=, the PENDING tool-call entry is keyed in
+  =gptel-org-agent--pending-tool-calls= and stores =:pending-ib= +
+  =:heading-marker= directly.  However,
+  =gptel-org-agent--find-pending-heading= and
+  =gptel-org-agent--on-todo-state-change= still rely on reading the
+  =GPTEL_PENDING_ID= org property from the heading at point.
+
+**** Discussion highlights
+- The property is still set in =--display-tool-calls= for backward
+  compatibility.
+- Now that the IB and heading-marker are stored in the hash table,
+  lookups by =org-entry-get= are no longer the only path.
+- Cleaning up the legacy path simplifies the code and removes one
+  source of state coupling (heading text vs. hash table).
+
+**** Mission
+1. Audit all readers of the =GPTEL_PENDING_ID= property.
+2. Decide whether to keep the property purely for diagnostics or
+   remove it.
+3. If keeping: ensure consistent cleanup on all terminal branches
+   (currently DENIED path leaves the property in place after closing
+   the IB).
+4. If removing: refactor =--on-todo-state-change= to look up entries
+   by point/heading-marker comparison instead.
+
+*** TODO Duplicate tool-spec+args disambiguation
+**** Origin
+- =gptel-org-agent--find-pending-entry= matches by =(tool-spec, args)=
+  equality.  When two tool calls have identical specs and args (e.g.
+  two =Bash :command "date"= calls in one batch), the oldest entry is
+  returned (lowest pending-id counter).
+
+**** Discussion highlights
+- This matches FSM execution order in practice, so it's correct for
+  current usage.
+- But if the tool runtime ever reorders or parallelises tool calls,
+  the oldest-entry policy would mis-attribute results.
+- The result-display path could pass the =pending-id= explicitly
+  through the FSM info plist so lookup is by exact identity, not
+  heuristic.
+
+**** Mission
+1. Determine if any current code paths can deliver tool results
+   out-of-order.
+2. If yes (or if you want defensive correctness): plumb =pending-id=
+   through the FSM → =--display-tool-results-advice= →
+   =--update-tool-heading= path.
+3. Replace the spec+args match in =--find-pending-entry= with an
+   exact =pending-id= lookup; keep the heuristic match only as a
+   fallback for legacy callers.
 
 ** Researched TODOs
 *** Unified gptel-org-mode Refactoring
