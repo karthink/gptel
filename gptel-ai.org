@@ -1784,6 +1784,74 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
      test.
    - Commit 5: docs sync.
 
+**** Progress
+- *Commit 1* — gptel =6cc8ced= — DONE.  Introduced
+  =gptel-org-ib-insert-child= in =gptel-indirect-buffer.el= with the
+  agreed signature =(parent todo-keyword title &key tags
+  terminator-keyword name (create-indirect-buffer t))=.  =parent= ∈
+  {marker, indirect-buffer, =:point=}.  Resolution to
+  =(base-buffer . parent-marker)= is single-pathed; insertion code
+  shared across all parent types; universal newline guard inside;
+  no =re-search-backward= for insertion-point discovery.
+  =gptel-org-ib-safe-insert-sibling= and
+  =gptel-org-ib-create-tool-heading= became thin shims with
+  =make-obsolete= declarations.  =gptel-org-ib-create-heading=
+  retained as the internal helper invoked by the new API (chosen
+  for cleanest diff, no logic duplication).  Tests:
+  =insert-child-uses-parent-marker=,
+  =insert-child-uses-indirect-buffer=,
+  =insert-child-newline-guard= — all pass; suite 463/460/3.
+- *Commit 2* — gptel =9aefc48= + gptel-agent =69d94c4= — DONE.
+  =gptel-org-agent--create-handover-heading= now calls
+  =gptel-org-ib-insert-child= with an explicit parent marker
+  derived from =gptel-org-ib-find-user-task-heading=; hand-rolled
+  =org-end-of-subtree= insertion removed; handover headings now
+  land before the user task's TERMINE.
+  =gptel-org-agent--setup-task-subtree= now calls the new API with
+  an explicit parent marker (no =:point= shim path).  The
+  gptel-agent fallback at =gptel-agent-tools.el:1947= was MIGRATED
+  (not deleted) — survey showed it routes through
+  =--setup-task-subtree= and is structurally required for
+  non-confirm Agent-tool invocations; the FIXME was replaced with a
+  permanent comment documenting the new contract.  Test:
+  =gptel-org-agent-handover-heading-uses-terminator= — passes;
+  suite 464/461/3.
+- *Commit 3* — gptel =4038b6d= + gptel-agent =4bd5fae= — DONE.
+  Added centralized helper =gptel-org-ib-ensure-bol= in
+  =gptel-indirect-buffer.el= and refactored existing
+  =(unless (bolp) (insert "\n"))= sites to call it (3 sites in
+  =gptel-indirect-buffer.el=, 2 sites in =gptel-org-agent.el=).
+  Streaming/RESPOND finalisation: TERMINE is never written outside
+  =gptel-org-ib-create-terminator= (which is already guarded), so
+  the L102 bug is in the body-completion path — added
+  =gptel-org-agent--ensure-bol-before-terminator= post-response
+  hook (depth 10) that scans for any =*+ TERMINE= not at BOL and
+  inserts a newline before the stars.  Wired via =add-hook= /
+  =remove-hook= in =--enable= / =--disable=.  Backward-search
+  audit: 9 sites classified, 6 in agent layer commented as
+  read-only navigation / parsing (gptel-org-agent.el:891, 1228,
+  2748; gptel-org.el:2025, 2406; gptel-agent-tools.el:740);
+  3 in core (markdown / SSE) left unchanged; no
+  insertion-discovery uses survived commits 1-2.  Test:
+  =gptel-org-agent-respond-text-no-same-line-terminator= — passes;
+  suite 465/462/3.
+- *Commit 4* — TODO (Mission step 6 remainder).  BASH-tool-heading
+  nesting fix.  Diagnosis still required: locate the call site
+  that, in the executor agent's non-confirm flow, captures a
+  parent at level 3 (user task) instead of level 4 (EXECUTING IB).
+  Fix by passing an explicit parent marker derived from the IB
+  registry to =gptel-org-ib-insert-child=.  Add regression test
+  =gptel-org-agent-bash-tool-heading-nesting= replaying the
+  dummy@executor@dummy@agent flow.  Target suite: 466/463/3.
+- *Commit 5* — TODO (Mission steps 7-8).  Documentation sync:
+  - [[file:gptel-indirect-buffer-ai.org]] — describe single
+    insertion API and explicit-parent contract.
+  - [[file:gptel-ai.org::*Indirect-buffer canonical refactor]]
+    phase IB-2 / IB-4 — point at the new entry point.
+  - [[file:quelpa/build/gptel-agent/gptel-agent-ai.org]]
+    "Sub-Agent Subtree Handlers" — remove references to deprecated
+    functions.
+
 **** Constraints
 - One pattern only.  No legacy carve-outs; no =if-from-pending-id=
   branches in the new API; no per-agent quirks.  The compatibility
