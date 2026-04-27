@@ -1090,6 +1090,252 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 11. Update this TODO to =AI-DONE= when all tests pass and the
     reproduction produces the expected buffer state.
 
+*** AI-DO Tool subtree missing indirect-buffer scaffolding (no IB, no TERMINE)
+**** Origin
+- Interactive test "Run date with Bash tool" in
+  =~/siro-ai/playground-ws.org= (the BASH heading at L51).
+- Observed buffer state shows the =**** BASH :command "date"= heading
+  rendered as a plain heading under the agent IB, with no per-tool
+  indirect buffer and no TERMINE inside it.  The AI-DOING/AI-DONE IB
+  has its own TERMINE (last child), but the tool heading itself lacks
+  the IB scaffolding that other heading types (reasoning, agent) get.
+- Workspace doc: [[file:../siro-ai/playground-ws.org::*Run date with Bash tool]]
+- Debug log: [[file:../siro-ai/debug-log-playground.org]]
+- Debug messages: [[file:../siro-ai/debug-message-playground.log]]
+
+**** Discussion highlights
+- Recent refactor (commit =d4b47c0=) intentionally removed eager
+  TERMINE seeding from generic =gptel-org-ib-create= so non-agent IBs
+  don't inherit TERMINE.  Agent-layer callsites
+  (=gptel-org-agent--open-indirect-buffer=,
+  =gptel-org-ib-safe-insert-sibling=) seed TERMINE explicitly.
+- Reasoning IBs are created by
+  =gptel-org--reasoning-create-indirect-buffer=; tool IBs by
+  =gptel-org--tool-create-indirect-buffer= (see existing AI-DONE TODO
+  "Eager TERMINE seeding leaks into non-agent IBs" for the callsite
+  list).
+- Question for investigation: should tool headings have their own IB
+  at all?  If yes, do they need a TERMINE?  If no, why does the user
+  perceive an inconsistency?
+- Look at =gptel-org--tool-create-indirect-buffer= to confirm whether
+  an IB is created and whether TERMINE seeding was removed without
+  replacement.
+- Compare with sub-agent =EXECUTING= heading (which DOES get its own
+  IB + TERMINE per the playground doc L102) — why is the executor
+  sub-agent's BASH child NOT given an IB but the executor itself is?
+  Maybe the convention is "only agent-level subtrees get IBs", in
+  which case the user's report is by-design and the TODO should
+  clarify the doc instead.
+
+**** Decisions
+(none yet — see Mission for investigation steps)
+
+**** Mission
+1. Read =gptel-org--tool-create-indirect-buffer= and the BASH tool
+   rendering pipeline.  Determine whether tool headings currently get
+   an IB.
+2. Determine the intended ownership policy: which heading kinds (agent
+   / reasoning / tool / sub-agent) own an IB, and which seed TERMINE.
+3. If tools should have an IB+TERMINE: implement seeding at the tool
+   callsite (analogous to the agent fix in =0a03204=).  Add a
+   regression test.
+4. If tools should NOT have an IB: document the intentional asymmetry
+   in =gptel-indirect-buffer-ai.org= and decide whether the buffer
+   rendering should change visually so the asymmetry is not
+   surprising.
+5. Commit atomically in =quelpa/build/gptel/=.  Update related
+   =-ai.org= docs.
+
+*** AI-DO Missing leading sub-heading for AI text after tool result
+**** Origin
+- Interactive test "Run date with Bash tool" in playground-ws.org.
+- After the =#+end_tool= block at L60, the AI's textual response
+  "Current date and time:" appears at column 0 (no heading prefix)
+  directly under the =*** AI-DONE Run date with Bash tool= heading.
+- Workspace doc: [[file:../siro-ai/playground-ws.org::*Run date with Bash tool]]
+
+**** Discussion highlights
+- The expected behavior: when the AI continues streaming text after a
+  tool call completes, the streamed content should start with its own
+  assistant sub-heading (e.g. =**** Current date and time= or similar)
+  so that the structure matches the sub-agent case at L80 where
+  =***** Current System Date and Time= is correctly emitted.
+- Compare:
+  - Direct tool case (L62): bare text — BUG
+  - Sub-agent tool case (L80): proper =***** Current System Date and
+    Time= heading — correct
+- Likely cause: =gptel-org-agent--make-insertion-marker= or the
+  streaming insertion logic behaves differently for the top-level
+  agent IB vs. the sub-agent IB.  The streaming marker may land at the
+  buffer position of the previous tool body's end without inserting a
+  fresh heading bullet, while the sub-agent path goes through
+  =gptel-org-ib-safe-insert-sibling= which adds the heading.
+- Cross-reference: existing AI-DONE TODO "Tool-call PENDING heading
+  inserted AFTER TERMINE on first tool call in agent IB" fixed marker
+  drift past TERMINE; this is a related but distinct issue about *what
+  gets inserted at the marker* once it's positioned correctly.
+
+**** Decisions
+(none yet — see Mission for investigation steps)
+
+**** Mission
+1. Trace the streaming-insertion path used after a tool call completes
+   in the top-level agent IB.
+2. Compare with the sub-agent path that correctly emits a heading.
+3. Determine the rule: should every post-tool AI text segment start
+   with a new heading, or only when the AI emits one explicitly?
+4. If the rule is "always new heading": fix the insertion to add a
+   sibling heading using the agent's heading-depth convention.
+5. Add a regression test using the dummy@agent fixture: assert that
+   after a tool call, the next AI text segment is emitted under a
+   sub-heading.
+6. Commit in =quelpa/build/gptel/= submodule.
+
+*** AI-DO TERMINE not removed when task transitions to AI-DONE
+**** Origin
+- Interactive test "Run date with Bash tool" in playground-ws.org
+  (L46-L65).
+- The agent subtree is in state =AI-DONE= (L48) but the =****
+  TERMINE= heading is still present at L65 — it should have been
+  removed on the AI-DONE transition.
+- Workspace doc: [[file:../siro-ai/playground-ws.org::*Run date with Bash tool]]
+
+**** Discussion highlights
+- Tests exist for this exact invariant: =gptel-org-agent-test.el=
+  "TERMINE removal on AI-DONE" (L481–L512).  The tests presumably
+  pass, so the bug is path-specific — likely the AI-DONE transition
+  triggered by tool-call completion (rather than a plain assistant
+  text completion) is not running the TERMINE-removal hook.
+- Suspect functions: the FSM cleanup hook that fires on AI-DOING →
+  AI-DONE transition.  Look for the hook registration around the
+  per-agent state-triad cleanup wiring (commit =8010ace= in
+  gptel-agent: "wire :state-words triad into sub-agent FSM cleanup").
+- Cross-reference TODO "Recursive loop / duplicate TERMINE in
+  sub-agent delegation flow" and TODO "EXECUTING should be state
+  transition of ALLOWED EXECUTE heading" — these may all share a
+  single root cause: tool-call completion taking a different code path
+  than plain-text completion.
+
+**** Decisions
+(none yet — see Mission for investigation steps)
+
+**** Mission
+1. Reproduce by running the dummy@agent flow with a single Bash tool
+   call and confirm TERMINE survives the AI-DONE transition.
+2. Identify the FSM transition handler responsible for TERMINE
+   removal.  Confirm whether it's invoked on tool-call-driven AI-DONE
+   transitions.
+3. Add the TERMINE-removal call to the tool-call completion path (or
+   unify the completion paths so both go through the same cleanup
+   hook).
+4. Extend the existing test "TERMINE removal on AI-DONE" with a
+   tool-call variant that asserts TERMINE is gone after the tool flow
+   completes.
+5. Commit in =quelpa/build/gptel/= submodule.
+
+*** AI-DO Recursive loop / duplicate TERMINE in sub-agent delegation flow
+**** Origin
+- Interactive test "Delegate to executor agent to run date with Bash
+  tool" in playground-ws.org (L72-L105).
+- Observed buffer shows BOTH a =***** TERMINE= inside the EXECUTING
+  sub-agent IB (L102) AND a =**** TERMINE= at the parent agent level
+  (L105).  User describes this as a "recursive loop issue".
+- Workspace doc: [[file:../siro-ai/playground-ws.org::*Delegate to executor agent to run date with Bash tool]]
+- Debug log: [[file:../siro-ai/debug-log-playground.org]] (6 API
+  requests recorded; the executor delegation triggered 4 of them:
+  requests #3-#6 between 11:46:58 and 11:47:31)
+
+**** Discussion highlights
+- Concern is the multiple round-trips: a single user "delegate" task
+  generated 4 backend requests.  Need to verify whether this is the
+  legitimate sub-agent FSM (call → tool result → call → completion)
+  or an unintended re-entry loop where the parent FSM kicks off
+  another iteration after the sub-agent completes.
+- The dual TERMINE (parent + child) may be a symptom rather than a
+  cause — once the sub-agent's IB is destroyed/folded back, its
+  TERMINE should not remain visible at the parent level.
+- Tied to TODO "TERMINE not removed when task transitions to AI-DONE"
+  and TODO "EXECUTING should be state transition of ALLOWED EXECUTE
+  heading".  Solving those two may resolve much of this one.
+- Investigate: =gptel-org-agent.el= sub-agent dispatch; whether
+  sub-agent completion correctly transitions the parent =ALLOWED
+  EXECUTE= heading to a terminal state.
+
+**** Decisions
+(none yet — see Mission for investigation steps)
+
+**** Mission
+1. Delegate debug log analysis to a researcher: feed the 4 sub-agent
+   requests from =debug-log-playground.org= and identify whether each
+   request corresponds to a legitimate FSM step (tool-call →
+   tool-result → final-text) or whether an extra iteration happened.
+2. Trace sub-agent completion path: how does the parent FSM observe
+   the sub-agent's completion and clean up the parent's =ALLOWED
+   EXECUTE= heading?
+3. If a re-entry loop is confirmed, identify the trigger (e.g., parent
+   FSM seeing the sub-agent's tool result as if it were the parent's
+   own tool result).
+4. Decide on fix scope: pure cleanup (TERMINE/heading) vs. dispatch
+   logic.
+5. Add a regression test using nested dummy agents (e.g., dummy@agent
+   delegating to a child dummy@agent) that asserts request count and
+   final buffer structure.
+6. Commit in =quelpa/build/gptel-agent/= and/or =quelpa/build/gptel/=
+   as appropriate.
+
+*** AI-DO EXECUTING should be state transition of ALLOWED EXECUTE heading, not a separate heading
+**** Origin
+- Interactive test "Delegate to executor agent..." in
+  playground-ws.org (L73-L76).
+- Observed structure:
+  - =**** ALLOWED EXECUTE :description "Run date command" :prompt
+    "..."= (L73) — request heading
+  - =**** EXECUTING Run date command :executor@dummy@agent:= (L76) —
+    separate heading
+- Expected per the per-agent state-triad design (gptel-ai.org L283
+  keyword table; commit =549684a= "feat(agent): per-agent state triads
+  in tool-heading lifecycle"; commit =8010ace= "wire :state-words
+  triad into sub-agent FSM cleanup"): a single heading whose TODO
+  state cycles =ALLOWED EXECUTE → EXECUTING → EXECUTED=, with
+  description/properties preserved across transitions.
+- Workspace doc: [[file:../siro-ai/playground-ws.org::*Delegate to executor agent to run date with Bash tool]]
+
+**** Discussion highlights
+- The state-triad infrastructure exists (=:state-words= property
+  loaded onto the agent plist per commits =040134c=, =4b67a62=,
+  =aeef41c=).  The bug is in the rendering/insertion path for the
+  executor sub-agent: instead of mutating the original heading's TODO
+  keyword, a NEW heading is inserted with the next state word.
+- Likely culprit: code path in =gptel-org-agent.el= or =gptel-agent.el=
+  that emits the sub-agent IB heading.  It probably constructs a
+  fresh heading with =EXECUTING= keyword instead of advancing the
+  existing =ALLOWED EXECUTE= heading via =org-todo=.
+- This is the most user-visible architectural deviation in the
+  playground test.  Fixing it likely simplifies TODO "Recursive loop /
+  duplicate TERMINE in sub-agent delegation flow" (less heading
+  clutter → less TERMINE confusion).
+
+**** Decisions
+(none yet — see Mission for investigation steps)
+
+**** Mission
+1. Locate the code that emits the =EXECUTING= heading.  Confirm
+   whether it's a fresh insert or an attempted transition.
+2. Read existing per-agent state-triad implementation (commits
+   =549684a=, =8010ace=) and the loader's =:state-words= consumption
+   (commit =040134c=).
+3. Refactor the sub-agent dispatch so it advances the originating
+   =ALLOWED EXECUTE= heading via =org-todo= to =EXECUTING=, preserving
+   heading text, tags, and properties (GPTEL_BACKEND, GPTEL_MODEL).
+4. On sub-agent completion, advance the same heading to =EXECUTED= (or
+   the agent-defined terminal state word).
+5. Update or add a test in =gptel-org-agent-test.el= that asserts the
+   heading line count is preserved across the state transition.
+6. Update =gptel-agent-ai.org= and =gptel-ai.org= documentation if the
+   rendering policy is clarified.
+7. Commit atomically.  Likely changes span =quelpa/build/gptel/= and
+   =quelpa/build/gptel-agent/=.
+
 ** Researched TODOs
 *** Unified gptel-org-mode Refactoring
 **** Phase 1: Fix variable rename — DONE
