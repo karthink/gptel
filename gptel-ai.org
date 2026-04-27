@@ -700,7 +700,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 * TODOs
 ** Adhoc TODOs
 
-*** AI-DO Document GPTEL_ prefix requirement for chat-buffer property overrides
+*** AI-DONE Document GPTEL_ prefix requirement for chat-buffer property overrides
 **** Origin
 - User reports that org properties do not override =GPTEL_PRESET= values.
   Example buffer header (as written by user):
