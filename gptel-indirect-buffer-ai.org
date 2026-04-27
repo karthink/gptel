@@ -164,34 +164,56 @@ falls into exactly one of the categories below.
 
 *** TERMINE
 
-- Single empty heading used as the unified terminator for a subtree.
+- Single empty heading used as the unified terminator for an IB's
+  subtree.
 - Replaces the pre-IB-4 two-keyword =RESULTS= / =FEEDBACK= scheme.
 - Body MUST be empty.
-- TERMINE is an *agent-layer convention*, not an IB-module concern.
-  The generic IB factory =gptel-org-ib-create= is neutral and does
-  NOT seed a TERMINE child — this lets the same factory serve
-  agent, tool, and reasoning IBs uniformly.  Tool and reasoning IBs
-  MUST NOT have a TERMINE child (their body content goes directly
-  under the heading).
-- *Seeded eagerly at indirect-buffer creation time* by the
-  agent-layer callsites that own TERMINE lifecycle, NOT lazily on
-  first streamed content:
-  - =gptel-org-agent--open-indirect-buffer= seeds TERMINE for the
-    primary agent subtree IB.
-  - =gptel-org-ib-safe-insert-sibling= (high-level convenience
-    helper) seeds TERMINE for child-agent IBs created via the
-    safe-sibling path.
-  Eager seeding guarantees that the FSM insertion marker returned
-  by =gptel-org-ib-streaming-marker= is always pinned BEFORE
-  TERMINE with =insertion-type=nil= from the moment the IB exists,
+- *Universal invariant (no exceptions):* /every/ IB created by gptel
+  has exactly one TERMINE child as its last heading.  This applies
+  uniformly to:
+  - the top-level agent subtree IB,
+  - sub-agent (tool-call) IBs (PENDING/ALLOWED/EXECUTING/EXECUTED
+    state-triad headings),
+  - tool body IBs (BASH, FILE-READ, etc.),
+  - REASONING IBs,
+  - RESPOND IBs.
+
+  There is *one design pattern*: indirect-buffer + TERMINE.  Code
+  paths that historically created an IB without TERMINE (tool /
+  reasoning) are legacy and MUST be migrated to seed TERMINE on
+  creation.
+
+- Rationale for universality: a TERMINE-terminated IB is the
+  /single/ contract every consumer relies on.  The streaming marker
+  =gptel-org-ib-streaming-marker= can be pinned BEFORE TERMINE with
+  =insertion-type=nil= regardless of IB kind, so the FSM, the
+  auto-corrector, and child-IB insertion all behave identically
+  whether the parent IB is an agent, a tool, or a reasoning block.
+  Having "tool/reasoning IBs without TERMINE" was the asymmetry
+  that produced marker drift, missing post-tool sub-headings, and
+  duplicate-TERMINE artefacts when sub-agents nested inside tool
+  IBs.
+
+- *Seeded eagerly at indirect-buffer creation time*, NOT lazily on
+  first streamed content.  Eager seeding guarantees the streaming
+  marker is pinned BEFORE TERMINE from the moment the IB exists,
   avoiding the marker-drift-past-terminator bug that would
-  otherwise occur when the first output in a fresh IB is a tool
-  call (see [[*Heading Creation Rule][Heading Creation Rule]]).  A
-  defensive =gptel-org-ib-ensure-terminator "TERMINE"= safety net
-  is retained in =gptel-org-agent--display-tool-calls= for
-  defense-in-depth.
-- Removed when the owning task / tool / agent run reaches a terminal
-  state.
+  otherwise occur when the first output is a tool call (see
+  [[*Heading Creation Rule][Heading Creation Rule]]).
+- *Where TERMINE is seeded:* the generic factory
+  =gptel-org-ib-create= seeds TERMINE for every IB it creates.
+  Agent-layer wrappers (=gptel-org-agent--open-indirect-buffer=,
+  =gptel-org-ib-safe-insert-sibling=,
+  =gptel-org--reasoning-create-indirect-buffer=,
+  =gptel-org--tool-create-indirect-buffer=) inherit TERMINE
+  through the factory and MUST NOT skip seeding.  A defensive
+  =gptel-org-ib-ensure-terminator "TERMINE"= safety net remains in
+  =gptel-org-agent--display-tool-calls= for defense-in-depth.
+- Removed when the owning IB's subtree reaches a terminal state
+  (the tool/agent run completes, the reasoning block finalises, or
+  the parent task transitions to =AI-DONE=).  Removal MUST go
+  through =gptel-org-ib-remove-terminator= which also closes the
+  IB whose narrowing included it.
 
 *** Agent tool
 
@@ -214,20 +236,24 @@ falls into exactly one of the categories below.
 
 ** Invariants for insertion
 
+- *Every IB has TERMINE as its last child heading.*  All sibling
+  insertions inside an IB go BEFORE TERMINE.  No exceptions for
+  tool, reasoning, or sub-agent IBs.
 - A new AI-DO child is inserted directly under the user's =TODO=,
   before any existing =TERMINE= sibling.
-- A new REASONING / RESPOND / tool heading is inserted inside the
-  active agent IB, before the subtree's =TERMINE=.
+- A new REASONING / RESPOND / tool / sub-agent heading is inserted
+  inside the active parent IB, before that IB's =TERMINE=.
 - Insertion that would place an =AI-DO= deeper than one level under
   =TODO= is a fatal error.
 
 ** Removal rules
 
-- =TERMINE= is removed when its owning subtree reaches a terminal
-  state (=AI-DONE=, tool executed, agent completed).
-- Removing =TERMINE= MUST also close any IBs whose narrowing
+- =TERMINE= is removed when its owning IB reaches a terminal state
+  (=AI-DONE= for the parent task IB, terminal state-word for a
+  sub-agent or tool IB, finalisation for a REASONING/RESPOND IB).
+- Removing =TERMINE= MUST also close the IB whose narrowing
   included it, via the canonical close API (=gptel-org-ib-close=).
-  The =gptel-org-ib-remove-terminator= function enforces this.
+  =gptel-org-ib-remove-terminator= enforces this contract.
 
 ** Historical note: RESULTS / FEEDBACK
 
