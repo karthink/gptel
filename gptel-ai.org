@@ -1283,7 +1283,7 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 6. Commit in =quelpa/build/gptel-agent/= and/or =quelpa/build/gptel/=
    as appropriate.
 
-*** AI-DONE EXECUTING should be state transition of ALLOWED EXECUTE heading, not a separate heading
+*** TODO EXECUTING should be state transition of ALLOWED EXECUTE heading, not a separate heading
 **** Origin
 - Interactive test "Delegate to executor agent..." in
   playground-ws.org (L73-L76).
@@ -1356,6 +1356,8 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
    rendering policy is clarified.
 7. Commit atomically.  Likely changes span =quelpa/build/gptel/= and
    =quelpa/build/gptel-agent/=.
+**** FEEDBACK Still EXECUTING is using separate heading and not changing the state of existing PENDING heading :petri:
+- How hard it can be to be wnole system to use one design pattern (indirect-buffer with terminate)
 
 *** TODO Simplify legacy GPTEL_PENDING_ID lookup paths
 **** Origin
