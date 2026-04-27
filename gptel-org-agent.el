@@ -1523,7 +1523,12 @@ gptel-ai.org."
           ;; Mark this IB as an agent indirect buffer (mirrors the
           ;; setup-task-subtree branch) so downstream code that checks
           ;; this flag for level/auto-correct decisions works.
-          (setq-local gptel-org--agent-indirect-buffer-p t))
+          (setq-local gptel-org--agent-indirect-buffer-p t)
+          ;; Enable auto-correct so gptel-org--ref-level is computed
+          ;; and set on this IB.  Without this, sub-agent tool-call
+          ;; heading insertion falls back to the parent agent's
+          ;; ref-level, producing headings one level too shallow.
+          (gptel-org--enable-auto-correct))
         (let ((pos-marker
                (gptel-org-agent--make-insertion-marker pending-ib)))
           (gptel-org--debug
@@ -2103,11 +2108,14 @@ INFO is the FSM info plist."
                 ;; `gptel-org-agent--update-tool-heading' once the tool
                 ;; runs.  See `gptel-org-agent--tool-heading-req-prefix-p'
                 ;; for the pure parser used by tests.
-                (let ((res (gptel-org-ib-create-tool-heading
-                            pending-kw truncated-title
-                            nil "TERMINE" ib-name)))
-                  (setq heading-marker (car res)
-                        pending-ib (cdr res))))
+                (let* ((parent-marker (point-marker))
+                       (result (gptel-org-ib-insert-child
+                                parent-marker
+                                pending-kw truncated-title
+                                :terminator-keyword "TERMINE"
+                                :name ib-name)))
+                  (setq heading-marker (plist-get result :heading-marker)
+                        pending-ib (plist-get result :indirect-buffer))))
               ;; Inside the dedicated IB, set GPTEL_PENDING_ID and
               ;; insert the body (the (:name :args ...) plist that the
               ;; rest of the system reads back).

@@ -1515,7 +1515,7 @@ Pick one (default: A):
   delegation" once interactive verification confirms the
   duplicate-heading symptom is gone.
 
-*** AI-DONE EXECUTING should be state transition of ALLOWED EXECUTE heading, not a separate heading
+*** DONE EXECUTING should be state transition of ALLOWED EXECUTE heading, not a separate heading
 **** Origin
 - Interactive test "Delegate to executor agent..." in
   playground-ws.org (L73-L76).
@@ -2003,7 +2003,7 @@ Pick one (default: A):
   context drawn from this TODO.
 - Tests must run green on every commit (=make test=).
 
-*** AI-DO Fix interactive-test state-transition regressions in playground-ws.org
+*** TODO Fix interactive-test state-transition regressions in playground-ws.org
 **** Origin
 - Petri interactive test, 2026-04-27, in
   [[file:../siro-ai/playground-ws.org]].

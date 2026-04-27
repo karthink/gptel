@@ -306,17 +306,7 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
           (host "api.deepseek.com")
           (protocol "https")
           (endpoint "/v1/chat/completions")
-          (models '((deepseek-reasoner
-                     :capabilities (tool reasoning)
-                     :context-window 128
-                     :input-cost 0.56
-                     :output-cost 1.68)
-                    (deepseek-chat
-                     :capabilities (tool)
-                     :context-window 128
-                     :input-cost 0.56
-                     :output-cost 1.68)
-                    (deepseek-v4-flash
+          (models '((deepseek-v4-flash
                      :description "DeepSeek V4 Flash — lightweight MoE (284B total / 13B active)"
                      :capabilities (tool)
                      :context-window 1000

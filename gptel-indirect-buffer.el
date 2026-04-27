@@ -1383,9 +1383,8 @@ Returns t on success, nil on failure."
 
 This is the single, parent-aware entry point for creating a new
 TODO-keyword heading inside an existing parent subtree.  Replaces
-the implicit-=point=-based functions
-`gptel-org-ib-safe-insert-sibling' and
-`gptel-org-ib-create-tool-heading'.
+the implicit-=point=-based function
+`gptel-org-ib-safe-insert-sibling'.
 
 PARENT identifies the parent heading and may be:
 - A marker into the base buffer, pointing at the parent heading.
@@ -1522,37 +1521,6 @@ Returns the indirect buffer for the newly created heading."
     (plist-get result :indirect-buffer)))
 
 (make-obsolete 'gptel-org-ib-safe-insert-sibling
-               'gptel-org-ib-insert-child "next")
-
-(defun gptel-org-ib-create-tool-heading (todo-keyword title
-                                                      &optional tags
-                                                      terminator-keyword
-                                                      name)
-  "Create a tool-call heading and its dedicated indirect buffer.
-
-OBSOLETE since the IB/heading insertion unification: thin shim that
-delegates to `gptel-org-ib-insert-child' with PARENT = `:point' and
-the supplied NAME.  New code should call `gptel-org-ib-insert-child'
-directly with an explicit parent (marker or IB).
-
-TODO-KEYWORD, TITLE, TAGS, TERMINATOR-KEYWORD have the same meaning
-as in `gptel-org-ib-create-heading'.  TERMINATOR-KEYWORD is the
-parent's terminator (e.g. \"TERMINE\") that the new heading must
-be inserted BEFORE; ensures it exists first.  NAME, when non-nil,
-overrides the auto-computed indirect buffer name.
-
-Point must be on the parent heading.
-
-Returns a cons cell (HEADING-MARKER . INDIRECT-BUFFER)."
-  (let ((result (gptel-org-ib-insert-child
-                 :point todo-keyword title
-                 :tags tags
-                 :terminator-keyword terminator-keyword
-                 :name name)))
-    (cons (plist-get result :heading-marker)
-          (plist-get result :indirect-buffer))))
-
-(make-obsolete 'gptel-org-ib-create-tool-heading
                'gptel-org-ib-insert-child "next")
 
 
