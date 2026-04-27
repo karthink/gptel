@@ -204,13 +204,14 @@ Verify the child heading exists at the correct level with the right tag."
          (kill-buffer indirect-buf))))))
 
 (ert-deftest gptel-org-agent-test-open-indirect-buffer-seeds-termine ()
-  "`gptel-org-agent--open-indirect-buffer' seeds a TERMINE child.
+  "`gptel-org-agent--open-indirect-buffer' produces an IB with TERMINE.
 
-TERMINE seeding is an agent-layer responsibility (the generic
-`gptel-org-ib-create' factory is neutral so it can also serve
-tool/reasoning IBs).  Agent IBs must have TERMINE pre-seeded so
-streaming insertion lands BEFORE it, preserving the
-\"TERMINE is last child\" invariant and sibling-IB isolation."
+TERMINE seeding is the responsibility of the generic factory
+`gptel-org-ib-create' (universal invariant — every IB has TERMINE
+as its last child, see gptel-indirect-buffer-ai.org *** TERMINE).
+Agent IBs inherit TERMINE from the factory so streaming insertion
+lands BEFORE it, preserving the \"TERMINE is last child\" invariant
+and sibling-IB isolation."
   (gptel-org-agent-test-with-buffer
    "* AI-DO Task\nDescription\n"
    (goto-char (point-min))

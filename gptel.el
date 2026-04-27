@@ -2253,7 +2253,24 @@ for streaming responses only."
                         ;; (no backward search needed — we recorded position before insertion)
                         (gptel-org--debug
                          "reasoning-stream: creating IB at heading-pos=%d" heading-pos)
-                        (gptel-org--reasoning-create-indirect-buffer heading-pos))))
+                        (let ((reasoning-ib
+                               (gptel-org--reasoning-create-indirect-buffer
+                                heading-pos)))
+                          ;; The reasoning IB now has a TERMINE child
+                          ;; (universal IB invariant).  Seeding TERMINE
+                          ;; pushed tracking-marker (insertion-type t)
+                          ;; past TERMINE.  Rewind it to TERMINE-line
+                          ;; start so subsequent reasoning text streams
+                          ;; BEFORE TERMINE.
+                          (when (and reasoning-ib
+                                     (buffer-live-p reasoning-ib))
+                            (let ((term-pos
+                                   (with-current-buffer reasoning-ib
+                                     (marker-position
+                                      (gptel-org-ib-streaming-marker
+                                       "TERMINE")))))
+                              (when-let* ((tm (plist-get info :tracking-marker)))
+                                (move-marker tm term-pos))))))))
                   ;; Handle title extraction from first line
                   (if (plist-get info :reasoning-title-pending)
                       (let* ((buf (concat (plist-get info :reasoning-title-buffer) text))
@@ -2678,7 +2695,16 @@ for tool call results.  INFO contains the state of the request."
                                       (if (and tool-ib (buffer-live-p tool-ib))
                                           (with-current-buffer tool-ib
                                             (save-excursion
-                                              (goto-char (point-max))
+                                              ;; Insert BEFORE the
+                                              ;; tool IB's TERMINE
+                                              ;; child (universal
+                                              ;; invariant — every IB
+                                              ;; has TERMINE as its
+                                              ;; last child, see
+                                              ;; gptel-indirect-buffer-ai.org).
+                                              (goto-char
+                                               (gptel-org-ib-streaming-marker
+                                                "TERMINE"))
                                               (insert prop-body)))
                                         ;; IB creation failed — fall back to
                                         ;; direct insertion at new-tm

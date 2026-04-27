@@ -828,18 +828,14 @@ Order of headings: parent, existing child, new heading, FEEDBACK."
          (kill-buffer intermediate))))))
 
 
-(ert-deftest gptel-org-ib-test-create-does-not-seed-termine ()
-  "`gptel-org-ib-create' does NOT pre-seed a TERMINE child.
+(ert-deftest gptel-org-ib-test-create-seeds-termine ()
+  "`gptel-org-ib-create' pre-seeds a TERMINE child (universal invariant).
 
-TERMINE is an agent-layer concern, not an IB-module concern.  The
-generic factory must remain neutral so it can serve agent, tool, and
-reasoning IBs uniformly — tool and reasoning IBs must NOT have a
-TERMINE child (the tool body / reasoning content goes directly under
-the heading).
-
-Agent-layer callers (`gptel-org-agent--open-indirect-buffer',
-`gptel-org-ib-safe-insert-sibling') seed TERMINE explicitly after
-calling this factory."
+Per the design invariant in gptel-indirect-buffer-ai.org (*** TERMINE),
+every IB created by gptel — agent, sub-agent, tool, REASONING, RESPOND
+— has TERMINE as its last child.  The generic factory seeds it eagerly
+at creation time so the streaming marker is pinned BEFORE TERMINE from
+the moment the IB exists, regardless of IB kind."
   (gptel-org-ib-test-with-buffer
       "* TASK\n** AI-DOING Sub-task :dummy@agent:\n"
     (gptel-org-ib-test-with-cleanup
@@ -849,23 +845,21 @@ calling this factory."
      (let ((ib (gptel-org-ib-create (current-buffer) (point))))
        (should (buffer-live-p ib))
        (with-current-buffer ib
-         ;; TERMINE must NOT exist — the factory is neutral.
-         (should-not (gptel-org-ib-find-terminator "TERMINE"))
-         ;; The narrowed buffer should contain only the heading and
-         ;; whatever body the source had — no synthesized TERMINE.
-         (let ((content (buffer-substring-no-properties
-                         (point-min) (point-max))))
-           (should (string-match-p "^\\*\\* AI-DOING Sub-task" content))
-           (should-not (string-match-p "TERMINE" content))))
+         ;; TERMINE must exist — seeded by the factory.
+         (should (gptel-org-ib-find-terminator "TERMINE"))
+         ;; Streaming marker must take the TERMINE branch:
+         ;; insertion-type=nil pinned at TERMINE line start.
+         (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
+           (should (markerp m))
+           (should-not (marker-insertion-type m))))
        (gptel-org-ib-close ib)
        (should-not (buffer-live-p ib))))))
 
 (ert-deftest gptel-org-ib-test-safe-insert-sibling-seeds-termine ()
-  "`gptel-org-ib-safe-insert-sibling' seeds TERMINE in the new child IB.
+  "`gptel-org-ib-safe-insert-sibling' produces an IB with TERMINE.
 
-Sibling-creation goes through the agent-layer convenience helper, so
-the resulting IB must have a TERMINE child (the agent layer owns
-TERMINE lifecycle)."
+TERMINE is seeded by the generic factory `gptel-org-ib-create'
+(universal invariant — every IB has TERMINE as its last child)."
   (gptel-org-ib-test-with-buffer
       "* TASK\n"
     (gptel-org-ib-test-with-cleanup

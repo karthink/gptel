@@ -543,23 +543,11 @@ Return the indirect buffer."
                           (marker-position heading-marker)
                         heading-marker))
          (indirect-buf (gptel-org-ib-create base-buffer heading-pos)))
-    ;; Apply agent-specific setup that gptel-org-ib-create doesn't do
+    ;; Apply agent-specific setup that gptel-org-ib-create doesn't do.
+    ;; TERMINE is already seeded by the factory (universal invariant —
+    ;; see `gptel-indirect-buffer-ai.org' *** TERMINE), so no
+    ;; additional seeding is required here.
     (with-current-buffer indirect-buf
-      ;; Seed the TERMINE terminator child inside the freshly narrowed
-      ;; agent subtree.  This is an agent-layer responsibility (NOT done
-      ;; by `gptel-org-ib-create', which is also used for tool/reasoning
-      ;; IBs that must NOT have TERMINE).  Without this, the first
-      ;; streamed content or tool call would trigger lazy TERMINE
-      ;; creation in `gptel-org-agent--display-tool-calls' (or similar)
-      ;; via `org-end-of-subtree', drifting the FSM `:tracking-marker'
-      ;; past TERMINE and causing subsequent PENDING tool headings to
-      ;; land AFTER TERMINE.  Pre-seeding pins
-      ;; `gptel-org-ib-streaming-marker' to the TERMINE line start with
-      ;; insertion-type=nil — no drift.
-      (save-excursion
-        (goto-char (point-min))
-        (when (org-at-heading-p)
-          (gptel-org-ib-ensure-terminator "TERMINE")))
       ;; Mark this buffer as an agent indirect buffer.  This flag persists
       ;; even after the agent tag is removed from the heading (e.g. by
       ;; `gptel-org-agent--insert-user-heading'), ensuring that
@@ -1887,13 +1875,11 @@ INFO is the FSM info plist."
       ;; change PENDING→ALLOWED from either buffer.
       (gptel-org-agent--ensure-tool-confirm-hook buf)
       ;; The `ensure-terminator' call below is a cheap idempotent
-      ;; safety net.  TERMINE seeding is the responsibility of the
-      ;; agent IB factory call sites (see
-      ;; `gptel-org-agent--open-indirect-buffer' and
-      ;; `gptel-org-ib-safe-insert-sibling').  On a correctly-seeded
-      ;; agent IB this is a no-op (returns a marker to the existing
-      ;; TERMINE).  On a hypothetical mis-constructed IB it
-      ;; restores the invariant before tool-call insertion.
+      ;; safety net for ill-formed inputs (e.g. older buffers loaded
+      ;; from disk that pre-date the universal TERMINE invariant).
+      ;; TERMINE is seeded by the generic factory `gptel-org-ib-create'
+      ;; for every IB, so on a correctly-constructed IB this is a
+      ;; no-op (returns a marker to the existing TERMINE).
       (save-excursion
         (goto-char (point-min))
         (when (org-at-heading-p)
