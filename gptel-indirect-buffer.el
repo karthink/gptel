@@ -1391,6 +1391,40 @@ Returns the indirect buffer for the newly created heading."
             (gptel-org-ib-ensure-terminator "TERMINE"))))
       indirect-buf)))
 
+(defun gptel-org-ib-create-tool-heading (todo-keyword title
+                                                      &optional tags
+                                                      terminator-keyword
+                                                      name)
+  "Create a tool-call heading and its dedicated indirect buffer.
+
+Like `gptel-org-ib-safe-insert-sibling' but does NOT seed an inner
+TERMINE terminator inside the new IB.  Tool-call IBs hold body
+content directly under the heading and must NOT have a TERMINE
+child (per the rationale in `gptel-org-ib-create').
+
+TODO-KEYWORD, TITLE, TAGS, TERMINATOR-KEYWORD have the same meaning
+as in `gptel-org-ib-create-heading'.  TERMINATOR-KEYWORD is the
+parent's terminator (e.g. \"TERMINE\") that the new heading must
+be inserted BEFORE; ensures it exists first.  NAME, when non-nil,
+overrides the auto-computed indirect buffer name.
+
+Point must be on the parent heading.
+
+Returns a cons cell (HEADING-MARKER . INDIRECT-BUFFER)."
+  (save-excursion
+    (unless (org-at-heading-p)
+      (gptel-org-ib-fatal
+       "create-tool-heading: point %d not at heading in buffer %s"
+       (point) (buffer-name)))
+    (when terminator-keyword
+      (gptel-org-ib-ensure-terminator terminator-keyword))
+    (let* ((heading-marker (gptel-org-ib-create-heading
+                            todo-keyword title tags terminator-keyword))
+           (base-buffer (current-buffer))
+           (indirect-buf (gptel-org-ib-create
+                          base-buffer heading-marker name)))
+      (cons heading-marker indirect-buf))))
+
 
 (provide 'gptel-indirect-buffer)
 ;;; gptel-indirect-buffer.el ends here

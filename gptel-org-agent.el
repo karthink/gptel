@@ -1863,16 +1863,23 @@ registered on both buffers so the state change is always caught."
            (buffer-name b)))))))
 
 (defun gptel-org-agent--display-tool-calls (tool-calls info)
-  "Display TOOL-CALLS as separate PENDING org headings in the agent subtree.
+  "Display TOOL-CALLS as separate PENDING org headings in dedicated IBs.
 
-Creates one child heading per tool call under the current position,
-each with a PENDING TODO state and its own unique ID.  Stores each
-tool call's data separately in `gptel-org-agent--pending-tool-calls'.
+Creates one child heading per tool call under the agent heading,
+each with a PENDING TODO state and its own unique ID.  Each PENDING
+heading lives in its own dedicated indirect buffer so that subsequent
+TODO state transitions (PENDING → ALLOWED → DOING → DONE) can be
+performed via real `org-todo' calls on the heading at point-min of
+that IB.
+
+Stores each tool call's data in `gptel-org-agent--pending-tool-calls'
+keyed by pending-id, with `:pending-ib' and `:heading-marker' so
+`gptel-org-agent--update-tool-heading' can locate the heading without
+buffer scanning.
 
 TOOL-CALLS is a list of (tool-spec arg-plist process-tool-result).
 INFO is the FSM info plist."
   (let* ((buf (plist-get info :buffer))
-         (start-marker (plist-get info :position))
          (pending-kw (nth 0 gptel-org-agent-tool-confirm-keywords)))
     (with-current-buffer buf
       ;; Ensure the todo-state-change hook is registered on both the
@@ -1887,155 +1894,119 @@ INFO is the FSM info plist."
       ;; agent IB this is a no-op (returns a marker to the existing
       ;; TERMINE).  On a hypothetical mis-constructed IB it
       ;; restores the invariant before tool-call insertion.
-      ;; IB-4.2: TERMINE replaces the previous RESULTS terminator;
-      ;; legacy RESULTS terminators still parse via
-      ;; `gptel-org-ib-find-terminator' elsewhere.
       (save-excursion
         (goto-char (point-min))
         (when (org-at-heading-p)
           (ignore-errors
             (gptel-org-ib-ensure-terminator "TERMINE"))))
-      (save-excursion
-        ;; Compute the PENDING heading level.  Use `gptel-org--ref-level'
-        ;; when available — it tracks the current response level.
-        ;; Falls back to `gptel-org--compute-response-level' (which
-        ;; always returns agent-level+1 from point-min) when ref-level
-        ;; is not set, and finally to point-min (the agent heading in IB).
-        (let* ((pending-level (or (bound-and-true-p gptel-org--ref-level)
-                                  (gptel-org--compute-response-level)
-                                  ;; Fallback: use point-min (agent heading in IB)
-                                  (save-excursion
-                                    (goto-char (point-min))
-                                    (if (org-at-heading-p)
-                                        (1+ (org-current-level))
-                                      1))))
-               (stars (make-string pending-level ?*))
-               (inhibit-read-only t)
-               ;; Suppress the auto-corrector during insertion.
-               ;; If the AI response contains an unclosed example/src
-               ;; block, `gptel-org--in-example-block-p' returns t for
-               ;; all subsequent positions.  Without this guard the
-               ;; auto-corrector would comma-escape the PENDING heading
-               ;; and its body text (they start with * or #+).
-               (gptel-org--auto-correcting t))
-          (gptel-org--debug
-           "display-tool-calls: ref-level=%S pending-level=%d stars=%S buffer=%S narrowed=%s point-min-heading=%S num-tools=%d"
-           gptel-org--ref-level pending-level stars (buffer-name)
-           (if (buffer-narrowed-p) "yes" "no")
-           (save-excursion
-             (goto-char (point-min))
-             (when (org-at-heading-p)
-               (buffer-substring-no-properties
-                (point) (line-end-position))))
-           (length tool-calls))
-          ;; Position at the end of the buffer content for insertion.
-          ;; Use start-marker (which has drifted to end of content) as
-          ;; the insertion point, since that's where new content should
-          ;; go — after the AI response text.
-          (goto-char (or (plist-get info :tracking-marker) start-marker))
-          (unless (bolp) (insert "\n"))
-          ;; Create one PENDING heading per tool call
-          (dolist (tc tool-calls)
-            (let* ((tool-spec (car tc))
-                   (arg-plist (cadr tc))
-                   (tool-name (gptel-tool-name tool-spec))
-                   (pending-id (gptel-org-agent--generate-pending-id))
-                   ;; Build heading title in the same format used when
-                   ;; the heading later transitions to the TOOL state,
-                   ;; so PENDING → TOOLSTATE is a pure keyword change
-                   ;; with no title rewriting needed.  Example:
-                   ;;   "PENDING GATHER :subagent_type \"gatherer\""
-                   ;; IB-5.3: the STATE word is the REQUEST token of
-                   ;; the (REQUEST DOING DONE) triad.  For non-Agent
-                   ;; tools the triad collapses to three copies of
-                   ;; the state keyword, so behaviour is unchanged.
-                   (triad (gptel-org-agent--tool-state-triad
-                           tool-name arg-plist))
-                   (tool-state (nth 0 triad))
-                   (args-title (gptel-org--format-tool-args-title
-                                arg-plist
-                                (gptel-org--tool-args-title-excludes tool-name)))
-                   (full-title (if (string-empty-p args-title)
-                                   tool-state
-                                 (concat tool-state " " args-title)))
-                   (truncated-title
-                    (string-replace
-                     "\n" " "
-                     (truncate-string-to-width
-                      full-title
-                      (max 60 (floor (* (window-width) 0.6)))
-                      0 nil " ..."))))
-              ;; Register ALL THREE triad words eagerly so the later
-              ;; REQUEST → DOING → DONE transitions can switch to
-              ;; recognised org-todo keywords without an org-mode
-              ;; restart.
-              (when (fboundp 'gptel-org--ensure-todo-state)
-                (dolist (state triad)
-                  (gptel-org--ensure-todo-state
-                   state
-                   (and (boundp 'gptel-org--tool-state-face)
-                        gptel-org--tool-state-face)
-                   t)))
-              (let ((heading-pos (point)))
-                ;; Insert the PENDING heading.
+      ;; Suppress the auto-corrector during insertion.
+      (let ((gptel-org--auto-correcting t))
+        (gptel-org--debug
+         "display-tool-calls: buffer=%S narrowed=%s num-tools=%d"
+         (buffer-name) (if (buffer-narrowed-p) "yes" "no")
+         (length tool-calls))
+        ;; Create one PENDING heading + dedicated IB per tool call
+        (dolist (tc tool-calls)
+          (let* ((tool-spec (car tc))
+                 (arg-plist (cadr tc))
+                 (tool-name (gptel-tool-name tool-spec))
+                 (pending-id (gptel-org-agent--generate-pending-id))
+                 ;; Build heading title in the same format used when
+                 ;; the heading later transitions to the DOING state.
+                 ;; IB-5.3: the STATE word is the REQUEST token of
+                 ;; the (REQUEST DOING DONE) triad.
+                 (triad (gptel-org-agent--tool-state-triad
+                         tool-name arg-plist))
+                 (tool-state (nth 0 triad))
+                 (args-title (gptel-org--format-tool-args-title
+                              arg-plist
+                              (gptel-org--tool-args-title-excludes tool-name)))
+                 (full-title (if (string-empty-p args-title)
+                                 tool-state
+                               (concat tool-state " " args-title)))
+                 (truncated-title
+                  (string-replace
+                   "\n" " "
+                   (truncate-string-to-width
+                    full-title
+                    (max 60 (floor (* (window-width) 0.6)))
+                    0 nil " ..."))))
+            ;; Register ALL THREE triad words eagerly so the later
+            ;; REQUEST → DOING → DONE transitions can switch to
+            ;; recognised org-todo keywords without an org-mode
+            ;; restart.
+            (when (fboundp 'gptel-org--ensure-todo-state)
+              (dolist (state triad)
+                (gptel-org--ensure-todo-state
+                 state
+                 (and (boundp 'gptel-org--tool-state-face)
+                      gptel-org--tool-state-face)
+                 t)))
+            ;; Create the PENDING heading and its dedicated indirect
+            ;; buffer.  The heading is inserted as a child of the
+            ;; agent heading (point-min) BEFORE the TERMINE
+            ;; terminator, so existing sibling IBs are not disturbed.
+            (let* ((heading-marker nil)
+                   (pending-ib nil)
+                   (ib-name (format "*gptel:tool-%s*" pending-id)))
+              (save-excursion
+                (goto-char (point-min))
+                (unless (org-at-heading-p)
+                  (org-back-to-heading t))
                 ;; IB-4.8 invariant: the request phase writes
                 ;; `<REQ> <STATE> <summary>'.  PENDING-KW is the REQ
-                ;; keyword from `gptel-org-agent-tool-confirm-keywords';
+                ;; keyword (from `gptel-org-agent-tool-confirm-keywords');
                 ;; TRUNCATED-TITLE already begins with TOOL-STATE (the
                 ;; STATE keyword).  The REQ prefix is dropped by
                 ;; `gptel-org-agent--update-tool-heading' once the tool
                 ;; runs.  See `gptel-org-agent--tool-heading-req-prefix-p'
                 ;; for the pure parser used by tests.
-                (insert (format "%s %s %s\n" stars pending-kw truncated-title))
-                ;; Insert tool call details as body
-                (insert (format "(:name %S :args %S)\n\n"
-                                tool-name arg-plist))
-                ;; Verify the heading was inserted correctly
+                (let ((res (gptel-org-ib-create-tool-heading
+                            pending-kw truncated-title
+                            nil "TERMINE" ib-name)))
+                  (setq heading-marker (car res)
+                        pending-ib (cdr res))))
+              ;; Inside the dedicated IB, set GPTEL_PENDING_ID and
+              ;; insert the body (the (:name :args ...) plist that the
+              ;; rest of the system reads back).
+              (with-current-buffer pending-ib
+                (let ((inhibit-read-only t)
+                      (gptel-org--auto-correcting t))
+                  (save-excursion
+                    (goto-char (point-min))
+                    (unless (org-at-heading-p)
+                      (org-back-to-heading t))
+                    (org-set-property "GPTEL_PENDING_ID" pending-id)
+                    ;; Move past the heading + property drawer to
+                    ;; insert the body.
+                    (goto-char (point-min))
+                    (org-end-of-meta-data t)
+                    (insert (format "(:name %S :args %S)\n\n"
+                                    tool-name arg-plist)))))
+              ;; Register the hook on the dedicated IB too — the user
+              ;; might transition state from inside the pending IB.
+              (gptel-org-agent--ensure-tool-confirm-hook pending-ib)
+              ;; Store the entry with all the data needed for
+              ;; --update-tool-heading and --on-todo-state-change.
+              (puthash pending-id
+                       (list :tool-calls (list tc)
+                             :info info
+                             :buffer buf
+                             :pending-ib pending-ib
+                             :heading-marker heading-marker)
+                       gptel-org-agent--pending-tool-calls)
+              ;; Fold the PENDING heading inside its dedicated IB so
+              ;; it doesn't clutter the agent buffer view either.
+              (with-current-buffer pending-ib
                 (save-excursion
-                  (goto-char heading-pos)
-                  (gptel-org--debug
-                   "display-tool-calls: inserted heading at pos=%d: %S"
-                   heading-pos
-                   (buffer-substring-no-properties
-                    (point) (line-end-position))))
-                ;; Store the pending ID as an org property on the heading
-                (save-excursion
-                  (goto-char heading-pos)
-                  (org-set-property "GPTEL_PENDING_ID" pending-id)
-                  ;; Verify level after property insertion (org-set-property
-                  ;; may modify heading structure)
-                  (goto-char heading-pos)
+                  (goto-char (point-min))
                   (when (org-at-heading-p)
-                    (let ((level-after-prop (org-current-level))
-                          (heading-after-prop
-                           (buffer-substring-no-properties
-                            (line-beginning-position) (line-end-position))))
-                      (gptel-org--debug
-                       "display-tool-calls: after org-set-property: level=%d heading=%S"
-                       level-after-prop heading-after-prop)
-                      (when (/= pending-level level-after-prop)
-                        (gptel-org--debug
-                         "display-tool-calls: WARNING org-set-property changed level! %d -> %d"
-                         pending-level level-after-prop)))))
-                ;; Store SINGLE tool call in hash table (list of one,
-                ;; preserving the expected list-of-lists structure for
-                ;; gptel-org-agent--accept-tool-calls / --deny-tool-calls)
-                (puthash pending-id
-                         (list :tool-calls (list tc)
-                               :info info
-                               :buffer buf)
-                         gptel-org-agent--pending-tool-calls)
-                ;; Fold the PENDING heading so it doesn't clutter the
-                ;; buffer during task execution
-                (save-excursion
-                  (goto-char heading-pos)
-                  (when (org-at-heading-p)
-                    (ignore-errors (org-fold-subtree t))))
-                (gptel-org--debug
-                 "org-agent tool-confirm: created PENDING heading for %s (id=%s)"
-                 tool-name pending-id))))
-          ;; Mark tool-pending so the FSM knows we're waiting
-          (plist-put info :tool-pending t))))))
+                    (ignore-errors (org-fold-subtree t)))))
+              (gptel-org--debug
+               "org-agent tool-confirm: created PENDING heading for %s (id=%s ib=%s)"
+               tool-name pending-id (buffer-name pending-ib)))))
+        ;; Mark tool-pending so the FSM knows we're waiting
+        (plist-put info :tool-pending t)))))
 
 (defun gptel-org-agent--accept-tool-calls (tool-calls info)
   "Accept and run TOOL-CALLS with explicit INFO.
@@ -2194,21 +2165,12 @@ This function is added to `org-after-todo-state-change-hook'."
                 (gptel-org--debug
                  "org-agent tool-confirm: WARNING stored buffer %s is dead"
                  stored-buf))
-              ;; Remove from pending table
-              (remhash pending-id gptel-org-agent--pending-tool-calls)
-              ;; Remove the property since it's no longer needed
-              (org-delete-property "GPTEL_PENDING_ID")
-              (let ((level-after-cleanup (org-current-level))
-                    (heading-after-cleanup
-                     (buffer-substring-no-properties
-                      (line-beginning-position) (line-end-position))))
-                (gptel-org--debug
-                 "org-agent tool-confirm: after property removal: level=%d (was %d) heading=%S"
-                 level-after-cleanup level-at-entry heading-after-cleanup)
-                (when (/= level-at-entry level-after-cleanup)
-                  (gptel-org--debug
-                   "org-agent tool-confirm: WARNING level changed after property removal! %d -> %d"
-                   level-at-entry level-after-cleanup)))
+              ;; Lifecycle: do NOT remhash or delete GPTEL_PENDING_ID
+              ;; here for the ALLOWED case — the entry's `:pending-ib'
+              ;; and `:heading-marker' are needed by
+              ;; `gptel-org-agent--update-tool-heading' once the tool
+              ;; result arrives.  The DENIED branch performs its own
+              ;; remhash + IB close below.
               (cond
                ((equal new-state allowed-kw)
                 (gptel-org--debug
@@ -2257,6 +2219,15 @@ This function is added to `org-after-todo-state-change-hook'."
                 ;; for a note when DENIED has @ in SEQ_TODO)
                 (let ((reason (org-entry-get nil "GPTEL_DENY_REASON")))
                   (gptel-org-agent--deny-tool-calls tool-calls info reason))
+                ;; Lifecycle: on DENIED no tool result will follow, so
+                ;; close the dedicated pending-ib and clear the entry
+                ;; now.  The DENIED heading itself remains in the base
+                ;; buffer for user reference.
+                (let ((pending-ib (plist-get entry :pending-ib)))
+                  (when (and pending-ib (buffer-live-p pending-ib))
+                    (ignore-errors
+                      (gptel-org-ib-close pending-ib nil))))
+                (remhash pending-id gptel-org-agent--pending-tool-calls)
                 (message "Tool calls denied, informing LLM..."))
                (t
                 (gptel-org--debug
@@ -2275,147 +2246,191 @@ original function ORIG-FN."
     (funcall orig-fn tool-calls info use-minibuffer)))
 
 
-(defun gptel-org-agent--update-tool-heading (tool-spec args result id)
-  "Update a PENDING/ALLOWED heading to TOOL state with RESULT.
+(defun gptel-org-agent--find-pending-entry (tool-spec args)
+  "Return (PENDING-ID . ENTRY) matching TOOL-SPEC and ARGS, or nil.
 
-Searches backward from point for a heading matching TOOL-SPEC's name
-in PENDING or ALLOWED state.  Changes the state to TOOL, updates the
-heading title with a truncated call display, and inserts the tool call
-details and RESULT as body text with appropriate text properties.
+Scans `gptel-org-agent--pending-tool-calls' for the oldest entry
+whose stored tool-call's tool-spec matches TOOL-SPEC (by `eq', then
+falling back to tool-name string comparison) and whose arg-plist
+equals ARGS.  Returns nil if no match is found.
+
+Used by `gptel-org-agent--update-tool-heading' to locate the
+dedicated indirect buffer for a tool result without scanning
+buffer text."
+  (let ((tool-name (gptel-tool-name tool-spec))
+        (best-id nil)
+        (best-entry nil)
+        (best-counter most-positive-fixnum))
+    (maphash
+     (lambda (id entry)
+       (let* ((tcs (plist-get entry :tool-calls))
+              (tc (car tcs)))
+         (when (and tc
+                    (let ((stored-spec (car tc))
+                          (stored-args (cadr tc)))
+                      (and (or (eq stored-spec tool-spec)
+                               (and stored-spec
+                                    (equal (gptel-tool-name stored-spec)
+                                           tool-name)))
+                           (equal stored-args args))))
+           ;; Prefer the oldest entry by extracting the counter portion
+           ;; of the pending-id ("gptel-pending-N-TIMESTAMP").
+           (when (string-match "\\`gptel-pending-\\([0-9]+\\)-" id)
+             (let ((counter (string-to-number (match-string 1 id))))
+               (when (< counter best-counter)
+                 (setq best-counter counter
+                       best-id id
+                       best-entry entry)))))))
+     gptel-org-agent--pending-tool-calls)
+    (when best-id
+      (cons best-id best-entry))))
+
+(defun gptel-org-agent--update-tool-heading (tool-spec args result id)
+  "Transition the PENDING tool heading to its DOING state with RESULT.
+
+Looks up the pending entry in `gptel-org-agent--pending-tool-calls'
+by matching TOOL-SPEC and ARGS.  If found, switches to the entry's
+`:pending-ib' (the dedicated indirect buffer holding the heading)
+and uses real `org-todo' transitions to advance the heading from
+PENDING/ALLOWED to its DOING state (triad[1]; e.g. EXECUTING for
+the executor agent, GATHERING for the gatherer).
+
+The heading title is rewritten via `org-edit-headline' to drop the
+REQ-state prefix (the title alone, no leading state keyword), and
+the body content is replaced with the call+result rendering.
 
 ID is the tool-use identifier from the LLM response, used for the
 `gptel' text property on the result body.
 
-Returns non-nil if a heading was found and updated, nil otherwise."
+Returns non-nil if a matching entry was found and updated, nil
+otherwise.  When nil is returned, the caller falls through to the
+default rendering path."
   (let* ((tool-name (gptel-tool-name tool-spec))
-         (pending-kw (nth 0 gptel-org-agent-tool-confirm-keywords))
-         (allowed-kw (nth 1 gptel-org-agent-tool-confirm-keywords))
-         (found nil))
-    (save-excursion
-      ;; Search backward for a PENDING or ALLOWED heading whose title
-      ;; begins with this tool's REQUEST state keyword — the format
-      ;; created by gptel-org-agent--display-tool-calls is
-      ;; "PENDING <REQUEST> :arg val ..." (e.g. "PENDING BASH :command ..."
-      ;; or "PENDING GATHER :subagent_type ...").  IB-5.3: for the
-      ;; Agent tool, triad[0] differs from triad[1]; for other tools
-      ;; the triad collapses, so triad[0] = triad[1] and behaviour is
-      ;; unchanged.
+         (entry-pair (gptel-org-agent--find-pending-entry tool-spec args))
+         (pending-id (car entry-pair))
+         (entry (cdr entry-pair))
+         (pending-ib (and entry (plist-get entry :pending-ib)))
+         (heading-marker (and entry (plist-get entry :heading-marker))))
+    (when (and entry
+               pending-ib (buffer-live-p pending-ib)
+               heading-marker (marker-buffer heading-marker))
       (let* ((triad (gptel-org-agent--tool-state-triad tool-name args))
-             (request-state (nth 0 triad))
-             (doing-state (nth 1 triad)))
-        (when (re-search-backward
-               (format "^\\(\\*+\\) \\(?:%s\\|%s\\) %s\\(?:[ \t]\\|$\\)"
-                       (regexp-quote pending-kw)
-                       (regexp-quote allowed-kw)
-                       (regexp-quote request-state))
-               nil t)
-        (let* ((heading-pos (line-beginning-position))
-               (stars (match-string 1))
-               (level (length stars))
-               (inhibit-read-only t)
-               (inhibit-modification-hooks t))
-          ;; Calculate end of this heading's subtree (up to next heading
-          ;; at same or higher level, or end of buffer)
-          (let ((subtree-end
-                 (save-excursion
-                   (forward-line 1)
-                   (if (re-search-forward
-                        (format "^\\*\\{1,%d\\} " level) nil t)
-                       (match-beginning 0)
-                     (point-max)))))
-            ;; Delete existing body content (the old plist details and
-            ;; any PROPERTIES drawer from the PENDING heading)
-            (save-excursion
-              (goto-char heading-pos)
-              (forward-line 1)
-              (delete-region (point) subtree-end))
-            ;; Replace the heading line: change keyword from PENDING/
-            ;; ALLOWED to the per-tool state (e.g. BASH) and update
-            ;; the title to the plist-style args form.  Register the
-            ;; state first so org fontifies and cycles the new
-            ;; keyword.
-            ;;
-            ;; IB-4.8 invariant: this is the REQ-dropping site.  The
-            ;; new-heading built below has NO REQ prefix, satisfying
-            ;; the bare `<STATE> <summary>' form after execution.
-            ;; `gptel-org-agent--tool-heading-req-prefix-p' returns
-            ;; nil on the rewritten heading.
-            (when (fboundp 'gptel-org--ensure-todo-state)
-              (gptel-org--ensure-todo-state
-               doing-state
-               (and (boundp 'gptel-org--tool-state-face)
-                    gptel-org--tool-state-face)
-               t))
-            (goto-char heading-pos)
-            (let* ((tool-state doing-state)
-                   (args-title (gptel-org--format-tool-args-title
-                                args
-                                (gptel-org--tool-args-title-excludes tool-name)))
-                   (full-title (if (string-empty-p args-title)
-                                   tool-state
-                                 (concat tool-state " " args-title)))
-                   (truncated-title
-                    (string-replace
-                     "\n" " "
-                     (truncate-string-to-width
-                      full-title
-                      (max 60 (floor (* (window-width) 0.6)))
-                      0 nil " ...")))
-                   (call (prin1-to-string `(:name ,tool-name :args ,args)))
-                   (result-str (if (stringp result) result
-                                 (format "%S" result)))
-                   ;; For most tools the result is opaque and must be
-                   ;; protected inside a #+begin_tool block; for tools
-                   ;; whose result is already org prose (currently the
-                   ;; Agent dispatcher) we emit it verbatim under a
-                   ;; RESULTS child heading instead.  See
-                   ;; `gptel-org--tool-result-as-org-p'.
-                   (as-org
-                    (and (fboundp 'gptel-org--tool-result-as-org-p)
-                         (gptel-org--tool-result-as-org-p tool-name)))
-                   (escaped-result
-                    (if as-org result-str
-                      (org-escape-code-in-string result-str)))
-                   ;; Build the new heading line using the tool-name
-                   ;; state as the TODO keyword
-                   (new-heading (concat stars " " truncated-title "\n"))
-                   ;; Build the body with plist and either a
-                   ;; #+begin_tool block or a RESULTS child heading.
-                   (body-text
-                    (if (fboundp 'gptel-org--tool-body-text)
-                        (gptel-org--tool-body-text
-                         tool-name call escaped-result stars)
-                      (concat call "\n"
-                              "#+begin_tool\n"
-                              escaped-result "\n"
-                              "#+end_tool\n"))))
-              ;; Delete the old heading line
-              (let ((line-end (min (1+ (line-end-position)) (point-max))))
-                (delete-region heading-pos line-end))
-              ;; Insert new heading line with proper text properties
-              ;; (gptel 'ignore so the heading line itself is skipped by parser)
-              (goto-char heading-pos)
-              (let ((prop-heading (propertize new-heading
-                                             'gptel 'ignore
-                                             'front-sticky '(gptel)))
-                    (prop-body (propertize body-text
-                                          'gptel `(tool . ,id))))
-                (insert prop-heading prop-body)))
-            ;; Fold the TOOL heading
-            (goto-char heading-pos)
-            (ignore-errors
+             (doing-state (nth 1 triad))
+             (call (prin1-to-string `(:name ,tool-name :args ,args)))
+             (result-str (if (stringp result) result (format "%S" result)))
+             ;; For most tools the result is opaque and must be
+             ;; protected inside a #+begin_tool block; for tools
+             ;; whose result is already org prose (currently the
+             ;; Agent dispatcher) we emit it verbatim under a
+             ;; RESULTS child heading instead.  See
+             ;; `gptel-org--tool-result-as-org-p'.
+             (as-org (and (fboundp 'gptel-org--tool-result-as-org-p)
+                          (gptel-org--tool-result-as-org-p tool-name)))
+             (escaped-result (if as-org result-str
+                               (org-escape-code-in-string result-str)))
+             (args-title (gptel-org--format-tool-args-title
+                          args
+                          (gptel-org--tool-args-title-excludes tool-name)))
+             (full-title (if (string-empty-p args-title)
+                             doing-state
+                           (concat doing-state " " args-title)))
+             (truncated-title
+              (string-replace
+               "\n" " "
+               (truncate-string-to-width
+                full-title
+                (max 60 (floor (* (window-width) 0.6)))
+                0 nil " ...")))
+             ;; Strip leading "DOING-STATE " from truncated-title to
+             ;; get the bare title for `org-edit-headline'.  The TODO
+             ;; keyword is set separately via `org-todo' so the title
+             ;; portion of the heading line should NOT repeat it.
+             (title-no-state
+              (cond
+               ((string-empty-p args-title) "")
+               ((string-prefix-p (concat doing-state " ") truncated-title)
+                (substring truncated-title (1+ (length doing-state))))
+               (t truncated-title))))
+        ;; Register the DOING state keyword so `org-todo' accepts it.
+        ;; IB-4.8 invariant: this is the REQ-dropping site.  After
+        ;; this function runs, `gptel-org-agent--tool-heading-req-prefix-p'
+        ;; returns nil on the rewritten heading.
+        (when (fboundp 'gptel-org--ensure-todo-state)
+          (gptel-org--ensure-todo-state
+           doing-state
+           (and (boundp 'gptel-org--tool-state-face)
+                gptel-org--tool-state-face)
+           t))
+        (with-current-buffer pending-ib
+          (save-excursion
+            (let ((inhibit-read-only t)
+                  (gptel-org--auto-correcting t))
+              (goto-char (point-min))
+              (unless (org-at-heading-p)
+                (org-back-to-heading t))
+              ;; 1. Real `org-todo' state transition.  Suppress the
+              ;;    confirm-state-change hook because this is a
+              ;;    programmatic transition driven by the tool result,
+              ;;    not by user action.
+              (let ((org-after-todo-state-change-hook nil))
+                (gptel-org-agent--set-todo-keyword doing-state))
+              ;; 2. Rewrite the headline title (drops the REQ-state
+              ;;    prefix; keeps just the args summary).  org-todo
+              ;;    above set the TODO keyword to DOING-STATE; the
+              ;;    title still reads "<old-REQ-state> <args-title>",
+              ;;    so we replace it with `<args-title>' alone.
+              (org-back-to-heading t)
+              (org-edit-headline title-no-state)
+              ;; Mark the heading line itself as gptel 'ignore so the
+              ;; outline parser skips it.
+              (let ((line-beg (line-beginning-position))
+                    (line-end (line-end-position)))
+                (put-text-property line-beg line-end
+                                   'gptel 'ignore)
+                (put-text-property line-beg line-end
+                                   'front-sticky '(gptel)))
+              ;; 3. Replace the body: delete everything from end of
+              ;;    heading line through end of subtree (this also
+              ;;    wipes the GPTEL_PENDING_ID property drawer), then
+              ;;    insert the new call+result body.
+              (let* ((stars (make-string (org-current-level) ?*))
+                     (body-text
+                      (if (fboundp 'gptel-org--tool-body-text)
+                          (gptel-org--tool-body-text
+                           tool-name call escaped-result stars)
+                        (concat call "\n"
+                                "#+begin_tool\n"
+                                escaped-result "\n"
+                                "#+end_tool\n")))
+                     (heading-line-end (line-end-position))
+                     (subtree-end (save-excursion
+                                    (org-end-of-subtree t)
+                                    (point))))
+                (let ((inhibit-modification-hooks t))
+                  (delete-region heading-line-end subtree-end)
+                  (goto-char heading-line-end)
+                  (insert "\n"
+                          (propertize body-text
+                                      'gptel `(tool . ,id)))))
+              ;; 4. Fold the heading.
+              (goto-char (point-min))
               (when (org-at-heading-p)
-                (org-fold-subtree t)))
-            (setq found t)))
-        ;; The edits above ran with inhibit-modification-hooks t, so the
-        ;; org-element cache did not see the deletions and insertions.
-        ;; Reset it now to prevent stale cache entries from causing
-        ;; "Invalid search bound (wrong side of point)" errors when
-        ;; subsequent inserts (e.g. streaming tool results via orig-fn
-        ;; fallback) trigger org-element--cache-after-change.
-        (when found
-          (org-element-cache-reset)))))
-    found))
+                (ignore-errors (org-fold-subtree t)))))
+          ;; Reset cache so subsequent operations see the new state.
+          (org-element-cache-reset))
+        (gptel-org--debug
+         "org-agent update-tool-heading: id=%s tool=%s -> %s (ib=%s)"
+         pending-id tool-name doing-state (buffer-name pending-ib))
+        ;; Mark the entry as transitioned by recording the doing-state.
+        ;; Lifecycle: entry remains in the hash table; IB stays alive
+        ;; until a separate cleanup step (mirrors sub-agent IB
+        ;; semantics — the heading is queryable in its IB until the
+        ;; user or supervisor closes it).
+        (puthash pending-id
+                 (plist-put (copy-sequence entry)
+                            :doing-state doing-state)
+                 gptel-org-agent--pending-tool-calls)
+        t))))
 
 (defun gptel-org-agent--display-tool-results-advice (orig-fn tool-results info)
   "Advice for `gptel--display-tool-results' to update existing headings.

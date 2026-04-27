@@ -2535,5 +2535,352 @@ the triad words instead of the generic subagent_type:
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
+(ert-deftest gptel-org-agent-test-pending-entry-stores-ib-and-marker ()
+  "PENDING tool-call entry stores :pending-ib and :heading-marker.
+
+Codifies the IB-7 invariant: each pending tool-call heading lives
+in its own dedicated indirect buffer so that subsequent state
+transitions can be performed via real `org-todo' calls instead of
+raw text rewriting.
+
+The hash-table entry must therefore include:
+  - :pending-ib    a live indirect buffer holding the heading
+  - :heading-marker a marker pointing to the heading line"
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING"
+                                       "PENDING" "ALLOWED" "BASH"
+                                       "FEEDBACK"
+                                       "|" "AI-DONE" "DENIED")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Run a tool\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (gptel-org-agent-tool-confirm-keywords
+              '("PENDING" "ALLOWED" "DENIED"))
+             (base-buf (current-buffer))
+             (marker (gptel-org-agent--create-subtree "main"))
+             (indirect-buf nil)
+             (pending-ib nil))
+        (clrhash gptel-org-agent--pending-tool-calls)
+        (unwind-protect
+            (progn
+              (setq indirect-buf
+                    (gptel-org-agent--open-indirect-buffer base-buf marker))
+              (let* ((tool-spec (gptel-make-tool
+                                 :name "Bash"
+                                 :function #'ignore
+                                 :description "Run shell"
+                                 :args '((:name "command"
+                                          :type "string"
+                                          :description "cmd"))
+                                 :confirm t
+                                 :include t))
+                     (arg-plist '(:command "date"))
+                     (tool-calls (list (list tool-spec arg-plist #'ignore)))
+                     (position-marker
+                      (with-current-buffer indirect-buf
+                        (save-excursion
+                          (goto-char (point-max))
+                          (copy-marker (point) nil))))
+                     (info (list :buffer indirect-buf
+                                 :position position-marker
+                                 :tracking-marker position-marker
+                                 :callback #'gptel--insert-response
+                                 :tools (list tool-spec))))
+                (with-current-buffer indirect-buf
+                  (gptel-org-agent--display-tool-calls tool-calls info))
+                ;; Exactly one entry was registered.
+                (should (= 1 (hash-table-count
+                              gptel-org-agent--pending-tool-calls)))
+                (maphash
+                 (lambda (_id entry)
+                   ;; New keys present and live.
+                   (should (plist-member entry :pending-ib))
+                   (should (plist-member entry :heading-marker))
+                   (let ((ib (plist-get entry :pending-ib))
+                         (m (plist-get entry :heading-marker)))
+                     (setq pending-ib ib)
+                     (should (bufferp ib))
+                     (should (buffer-live-p ib))
+                     (should (markerp m))
+                     (should (marker-buffer m))
+                     ;; The pending IB is registered with the IB
+                     ;; framework.
+                     (should (gptel-org-ib-registered-p ib))
+                     ;; Point-min in the pending IB is the heading.
+                     (with-current-buffer ib
+                       (save-excursion
+                         (goto-char (point-min))
+                         (should (org-at-heading-p))))))
+                 gptel-org-agent--pending-tool-calls)))
+          (clrhash gptel-org-agent--pending-tool-calls)
+          (when (and pending-ib (buffer-live-p pending-ib))
+            (kill-buffer pending-ib))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
+(ert-deftest gptel-org-agent-test-update-tool-heading-uses-org-todo ()
+  "`--update-tool-heading' transitions state via real `org-todo' on the IB.
+
+Architectural invariant (IB-7): the PENDING tool-call heading lives
+in its own indirect buffer.  PENDING → ALLOWED → DOING is performed
+via `org-todo' calls on that single heading, not by deleting and
+re-inserting heading lines.
+
+Concretely:
+  1. `--display-tool-calls' creates `PENDING GATHER ...' in a
+     dedicated pending-ib.
+  2. User flips PENDING → ALLOWED (simulated by raw text rewrite
+     in the base buffer).
+  3. `--update-tool-heading' rewrites the heading IN the pending-ib
+     via `org-todo' to GATHERING.
+
+Asserts:
+  - Heading line count in the base buffer is preserved across the
+    transition (no NEW heading is appended after :tracking-marker).
+  - The heading's TODO state, as read by `org-get-todo-state',
+    becomes the DOING-state keyword.
+  - The pending-ib remains alive after the transition (IB lifecycle
+    survives until a separate cleanup step)."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING"
+                                       "PENDING" "ALLOWED"
+                                       "GATHER" "GATHERING"
+                                       "FEEDBACK"
+                                       "|" "AI-DONE" "DENIED"
+                                       "GATHERED")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Dispatch sub-agent\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (gptel-org-tasks-done-keyword "AI-DONE")
+             (gptel-org-agent-tool-confirm-keywords
+              '("PENDING" "ALLOWED" "DENIED"))
+             (base-buf (current-buffer))
+             (marker (gptel-org-agent--create-subtree "main"))
+             (indirect-buf nil)
+             (pending-ib nil))
+        (clrhash gptel-org-agent--pending-tool-calls)
+        (unwind-protect
+            (cl-letf (((symbol-function 'gptel-agent-state-words)
+                       (lambda (agent-name)
+                         (if (equal agent-name "gatherer")
+                             '("GATHER" "GATHERING" "GATHERED")
+                           '("PENDING" "RUNNING" "DONE")))))
+              (setq indirect-buf
+                    (gptel-org-agent--open-indirect-buffer base-buf marker))
+              (let* ((tool-spec (gptel-make-tool
+                                 :name "Agent"
+                                 :function #'ignore
+                                 :description "Dispatch sub-agent"
+                                 :args '((:name "subagent_type"
+                                          :type "string"
+                                          :description "agent")
+                                         (:name "prompt"
+                                          :type "string"
+                                          :description "prompt"))
+                                 :confirm t
+                                 :include t))
+                     (arg-plist '(:subagent_type "gatherer"
+                                  :prompt "Find the thing"))
+                     (tool-calls (list (list tool-spec arg-plist #'ignore)))
+                     ;; Insert response text BEFORE the PENDING heading
+                     ;; would be created, so :tracking-marker sits in
+                     ;; the agent body — mirroring the production
+                     ;; scenario where the bug used to manifest.
+                     (position-marker
+                      (with-current-buffer indirect-buf
+                        (save-excursion
+                          (goto-char (point-min))
+                          (org-end-of-meta-data t)
+                          (insert "Some streamed AI text.\n")
+                          (copy-marker (point) nil))))
+                     (info (list :buffer indirect-buf
+                                 :position position-marker
+                                 :tracking-marker position-marker
+                                 :callback #'gptel--insert-response
+                                 :tools (list tool-spec))))
+                ;; 1. Request phase.
+                (with-current-buffer indirect-buf
+                  (gptel-org-agent--display-tool-calls tool-calls info))
+                ;; Capture the pending IB for later assertions.
+                (maphash (lambda (_id e)
+                           (setq pending-ib (plist-get e :pending-ib)))
+                         gptel-org-agent--pending-tool-calls)
+                (should (bufferp pending-ib))
+                (should (buffer-live-p pending-ib))
+                ;; 2. User flips PENDING → ALLOWED via raw text
+                ;;    (simulating the hook firing without execution).
+                (with-current-buffer base-buf
+                  (goto-char (point-min))
+                  (should (re-search-forward "^\\(\\*+\\) PENDING " nil t))
+                  (let ((inhibit-read-only t))
+                    (replace-match (concat (match-string 1) " ALLOWED ")
+                                   t t)))
+                ;; 3. Execution: --update-tool-heading.  Critically,
+                ;;    we invoke it via the FULL advice path, which is
+                ;;    what the FSM does in production — this is what
+                ;;    used to fall through to orig-fn (creating a NEW
+                ;;    EXECUTING heading) when the backward search
+                ;;    failed.
+                (let ((advice-orig-called nil)
+                      (orig-fn (lambda (&rest _)
+                                 (setq advice-orig-called t))))
+                  (with-current-buffer indirect-buf
+                    (gptel-org-agent--display-tool-results-advice
+                     orig-fn
+                     (list (list tool-spec arg-plist "sub-agent result"))
+                     (plist-put info :tool-use
+                                (list (list :name "Agent"
+                                            :id "call_g1")))))
+                  ;; The advice MUST NOT have fallen through to
+                  ;; orig-fn — the IB-based lookup found the entry.
+                  (should-not advice-orig-called))
+                ;; The heading is rewritten in-place (no duplicate
+                ;; GATHERING heading appended).  Counting GATHERING
+                ;; headings yields exactly 1.
+                (with-current-buffer base-buf
+                  (should (= 1 (how-many "^\\*+ GATHERING "
+                                         (point-min) (point-max))))
+                  ;; The PENDING/ALLOWED tool heading is gone — no
+                  ;; orphan request-state line for this tool call.
+                  (should (= 0 (how-many
+                                "^\\*+ \\(?:PENDING\\|ALLOWED\\|DENIED\\) GATHER "
+                                (point-min) (point-max)))))
+                ;; The TODO state on the heading is GATHERING — set
+                ;; via real `org-todo', readable via
+                ;; `org-get-todo-state'.
+                (with-current-buffer pending-ib
+                  (save-excursion
+                    (goto-char (point-min))
+                    (should (org-at-heading-p))
+                    (should (equal "GATHERING"
+                                   (org-get-todo-state)))))
+                ;; The dedicated IB is still alive after the
+                ;; transition (lifecycle survives the DOING phase).
+                (should (buffer-live-p pending-ib))))
+          (clrhash gptel-org-agent--pending-tool-calls)
+          (when (and pending-ib (buffer-live-p pending-ib))
+            (kill-buffer pending-ib))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
+(ert-deftest gptel-org-agent-test-update-tool-heading-executor-triad ()
+  "Executor agent heading transitions EXECUTE → EXECUTING via `org-todo'.
+
+Mirrors `gptel-org-agent-test-update-tool-heading-uses-org-todo'
+with the executor triad (\"EXECUTE\" \"EXECUTING\" \"EXECUTED\")."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING"
+                                       "PENDING" "ALLOWED"
+                                       "EXECUTE" "EXECUTING"
+                                       "FEEDBACK"
+                                       "|" "AI-DONE" "DENIED"
+                                       "EXECUTED")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Dispatch executor\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (gptel-org-tasks-done-keyword "AI-DONE")
+             (gptel-org-agent-tool-confirm-keywords
+              '("PENDING" "ALLOWED" "DENIED"))
+             (base-buf (current-buffer))
+             (marker (gptel-org-agent--create-subtree "main"))
+             (indirect-buf nil)
+             (pending-ib nil))
+        (clrhash gptel-org-agent--pending-tool-calls)
+        (unwind-protect
+            (cl-letf (((symbol-function 'gptel-agent-state-words)
+                       (lambda (agent-name)
+                         (if (equal agent-name "executor")
+                             '("EXECUTE" "EXECUTING" "EXECUTED")
+                           '("PENDING" "RUNNING" "DONE")))))
+              (setq indirect-buf
+                    (gptel-org-agent--open-indirect-buffer base-buf marker))
+              (let* ((tool-spec (gptel-make-tool
+                                 :name "Agent"
+                                 :function #'ignore
+                                 :description "Dispatch sub-agent"
+                                 :args '((:name "subagent_type"
+                                          :type "string"
+                                          :description "agent")
+                                         (:name "prompt"
+                                          :type "string"
+                                          :description "prompt"))
+                                 :confirm t
+                                 :include t))
+                     (arg-plist '(:subagent_type "executor"
+                                  :prompt "Run the thing"))
+                     (tool-calls (list (list tool-spec arg-plist #'ignore)))
+                     (position-marker
+                      (with-current-buffer indirect-buf
+                        (save-excursion
+                          (goto-char (point-min))
+                          (org-end-of-meta-data t)
+                          (insert "Some streamed AI text.\n")
+                          (copy-marker (point) nil))))
+                     (info (list :buffer indirect-buf
+                                 :position position-marker
+                                 :tracking-marker position-marker
+                                 :callback #'gptel--insert-response
+                                 :tools (list tool-spec))))
+                ;; 1. Request phase.
+                (with-current-buffer indirect-buf
+                  (gptel-org-agent--display-tool-calls tool-calls info))
+                (maphash (lambda (_id e)
+                           (setq pending-ib (plist-get e :pending-ib)))
+                         gptel-org-agent--pending-tool-calls)
+                (should (bufferp pending-ib))
+                ;; Heading is `<stars> PENDING EXECUTE ...'
+                (with-current-buffer base-buf
+                  (goto-char (point-min))
+                  (should (re-search-forward "^\\*+ PENDING EXECUTE "
+                                             nil t)))
+                ;; 2. ALLOWED via raw text rewrite.
+                (with-current-buffer base-buf
+                  (goto-char (point-min))
+                  (should (re-search-forward "^\\(\\*+\\) PENDING " nil t))
+                  (let ((inhibit-read-only t))
+                    (replace-match (concat (match-string 1) " ALLOWED ")
+                                   t t)))
+                ;; 3. Execution: heading transitions EXECUTING.
+                (with-current-buffer indirect-buf
+                  (should (gptel-org-agent--update-tool-heading
+                           tool-spec arg-plist "ok" "call_e1")))
+                ;; Heading rewritten in-place (no duplicate EXECUTING).
+                (with-current-buffer base-buf
+                  (should (= 1 (how-many "^\\*+ EXECUTING "
+                                         (point-min) (point-max))))
+                  (should (= 0 (how-many
+                                "^\\*+ \\(?:PENDING\\|ALLOWED\\|DENIED\\) EXECUTE "
+                                (point-min) (point-max)))))
+                ;; State is EXECUTING via real `org-todo'.
+                (with-current-buffer pending-ib
+                  (save-excursion
+                    (goto-char (point-min))
+                    (should (equal "EXECUTING"
+                                   (org-get-todo-state)))))
+                (should (buffer-live-p pending-ib))))
+          (clrhash gptel-org-agent--pending-tool-calls)
+          (when (and pending-ib (buffer-live-p pending-ib))
+            (kill-buffer pending-ib))
+          (when (and indirect-buf (buffer-live-p indirect-buf))
+            (kill-buffer indirect-buf)))))))
+
 (provide 'gptel-org-agent-test)
 ;;; gptel-org-agent-test.el ends here
