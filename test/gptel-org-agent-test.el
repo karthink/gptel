@@ -2222,6 +2222,63 @@ body
     (org-back-to-heading t)
     (should (eq t (gptel-org-agent--validate-ai-do-parent)))))
 
+(ert-deftest gptel-org-agent-handover-heading-uses-terminator ()
+  "`gptel-org-agent--create-handover-heading' inserts BEFORE TERMINE.
+
+Regression test for the unified parent-aware insertion API: the
+hand-rolled `org-end-of-subtree' path used to append the handover
+heading AFTER the user task's TERMINE child.  After migration to
+`gptel-org-ib-insert-child' with `:terminator-keyword \"TERMINE\"',
+the heading must land BEFORE the TERMINE marker, on its own line."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords
+         '((sequence "TODO" "AI-DO" "AI-DOING" "|" "DONE" "AI-DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "*** TODO User task\n**** TERMINE\n")
+      (goto-char (point-min))
+      (search-forward "User task")
+      (org-back-to-heading t)
+      (let* ((test-buf (current-buffer))
+             (user-task-pos (point))
+             result)
+        ;; Stub the IB resolver chain so the function operates on
+        ;; the test buffer with point at the user task heading.
+        ;; This drives `--create-handover-heading' through the same
+        ;; code path as the live IB flow without requiring a real IB.
+        (cl-letf (((symbol-function 'gptel-org-ib-registered-p)
+                   (lambda (_buf) t))
+                  ((symbol-function 'gptel-org-ib-base)
+                   (lambda (_buf) test-buf))
+                  ((symbol-function 'gptel-org-ib-resolve-agent-heading)
+                   (lambda (_buf) user-task-pos)))
+          (setq result
+                (gptel-org-agent--create-handover-heading
+                 "task body" "Sub task")))
+        ;; Return value is the heading text (level 4 = parent + 1).
+        (should (equal "**** AI-DO Sub task" result))
+        (let ((content (buffer-substring-no-properties (point-min) (point-max))))
+          ;; The handover heading is present.
+          (should (string-match-p "^\\*\\*\\*\\* AI-DO Sub task$" content))
+          ;; Body content was inserted.
+          (should (string-match-p "^task body$" content))
+          ;; The handover heading appears BEFORE TERMINE (regression).
+          (let ((handover-pos
+                 (string-match "^\\*\\*\\*\\* AI-DO Sub task" content))
+                (termine-pos
+                 (string-match "^\\*\\*\\*\\* TERMINE" content)))
+            (should handover-pos)
+            (should termine-pos)
+            (should (< handover-pos termine-pos))))
+        ;; Leading newline guard: the new heading must start at BOL,
+        ;; not be merged into a prior content line.
+        (goto-char (point-min))
+        (re-search-forward "^\\*\\*\\*\\* AI-DO Sub task")
+        (beginning-of-line)
+        (should (or (= (point) (point-min))
+                    (= (char-before) ?\n)))))))
+
 
 ;;; ---- IB-4.8: REQ-prefix invariant for tool headings ---------------------
 

@@ -356,21 +356,41 @@ Returns the heading text of the created heading, or nil on failure."
             ;; AI-DO ancestor.  Fatal user-error on violation.
             (gptel-org-agent--validate-ai-do-parent)
             (let* ((inhibit-read-only t)
+                   (parent-marker (point-marker))
                    (parent-level (org-current-level))
                    (child-level (1+ parent-level))
                    (stars (make-string child-level ?*))
                    (todo-keyword "AI-DO")
-                   (heading-text (format "%s %s %s" stars todo-keyword description)))
-              ;; Go to end of parent subtree to insert as last child
-              (org-end-of-subtree t)
-              (unless (bolp) (insert "\n"))
-              ;; Insert the heading
-              (insert heading-text "\n")
-              ;; Insert the body content
-              (when (and body (not (string-empty-p body)))
-                (insert body)
-                (unless (string-suffix-p "\n" body)
-                  (insert "\n")))
+                   (heading-text (format "%s %s %s" stars todo-keyword description))
+                   ;; Delegate to the unified parent-aware API.  The
+                   ;; new heading lands BEFORE the user task's TERMINE
+                   ;; child (regression fix: the previous hand-rolled
+                   ;; org-end-of-subtree path appended the heading
+                   ;; AFTER TERMINE, breaking handover terminator
+                   ;; semantics).  No IB is created for the handover
+                   ;; heading itself; the handover sub-agent gets its
+                   ;; own subtree elsewhere.
+                   (result (gptel-org-ib-insert-child
+                            parent-marker todo-keyword description
+                            :terminator-keyword "TERMINE"
+                            :create-indirect-buffer nil))
+                   (heading-marker (plist-get result :heading-marker)))
+              ;; Insert the body content between the new heading line
+              ;; and the parent's TERMINE child.  `create-heading'
+              ;; already left a blank line after the heading; we
+              ;; overwrite it with the body, ensuring a trailing
+              ;; newline so the body cannot run into TERMINE.
+              (when (and body (not (string-empty-p body))
+                         (markerp heading-marker)
+                         (marker-position heading-marker))
+                (save-excursion
+                  (goto-char (marker-position heading-marker))
+                  (forward-line 1)
+                  (let ((inhibit-read-only t))
+                    (unless (bolp) (insert "\n"))
+                    (insert body)
+                    (unless (string-suffix-p "\n" body)
+                      (insert "\n")))))
               heading-text)))))))
 
 (defun gptel-org-agent--extract-parent-context ()
@@ -1537,28 +1557,35 @@ org-mode, or we can't find a heading context to create the subtree."
               ;; the transition window.
               ;; IB-5.3: ensure the per-agent DOING keyword (e.g.
               ;; GATHERING) is registered as an open/todo state in the
-              ;; base buffer so `gptel-org-ib-safe-insert-sibling'
-              ;; accepts it.  Uses done-state=nil to mirror how
-              ;; AI-DOING is registered as an open state.
+              ;; base buffer so `gptel-org-ib-insert-child' accepts it.
+              ;; Uses done-state=nil to mirror how AI-DOING is
+              ;; registered as an open state.
               (when (fboundp 'gptel-org--ensure-todo-state)
                 (gptel-org--ensure-todo-state
                  doing-keyword
                  (and (boundp 'gptel-org--agent-state-face)
                       gptel-org--agent-state-face)
                  nil))
-              (let ((terminator-keyword "TERMINE"))
+              (let* ((terminator-keyword "TERMINE")
+                     ;; Capture the parent heading position as an
+                     ;; explicit marker; this routes through the
+                     ;; unified parent-aware API instead of the
+                     ;; transitional `:point' shim.  marker-buffer
+                     ;; will be the current (possibly indirect)
+                     ;; buffer, and `gptel-org-ib-insert-child'
+                     ;; resolves the rest.
+                     (parent-marker (point-marker)))
                 (gptel-org--debug
-                 "org-agent setup-task-subtree: creating new subtree via safe-insert-sibling (terminator=%S)"
+                 "org-agent setup-task-subtree: creating new subtree via insert-child (terminator=%S)"
                  terminator-keyword)
-                (setq indirect-buf
-                      (gptel-org-ib-safe-insert-sibling
-                       doing-keyword
-                       (or description "Sub-task")
-                       (list tag)
-                       terminator-keyword))
-                ;; Extract the heading marker from the registry
-                (let ((entry (gptel-org-ib-get (buffer-name indirect-buf))))
-                  (setq heading-marker (plist-get entry :heading-marker)))
+                (let ((result (gptel-org-ib-insert-child
+                               parent-marker
+                               doing-keyword
+                               (or description "Sub-task")
+                               :tags (list tag)
+                               :terminator-keyword terminator-keyword)))
+                  (setq indirect-buf (plist-get result :indirect-buffer))
+                  (setq heading-marker (plist-get result :heading-marker)))
                 ;; Apply agent-specific setup
                 (with-current-buffer indirect-buf
                   (setq-local gptel-org--agent-indirect-buffer-p t)
