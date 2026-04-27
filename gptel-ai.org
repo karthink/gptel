@@ -627,6 +627,17 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 
 * TODOs
 ** Adhoc TODOs
+
+# DESIGN PATTERN INVARIANT (read first):
+# Every indirect buffer (agent, sub-agent, tool, REASONING, RESPOND)
+# uses the SAME design pattern: indirect-buffer + TERMINE terminator.
+# No exceptions.  See
+# [[file:gptel-indirect-buffer-ai.org::*TERMINE]] and
+# [[file:gptel-indirect-buffer-ai.org::*Heading Creation Rule]].
+# Every open TODO below must converge on this single pattern;
+# legacy carve-outs (e.g. "tool/reasoning IBs without TERMINE") are
+# to be removed, not preserved.
+
 *** AI-DONE Fix user-error during file-local-variables in unsupported major mode
 **** Origin
 - User reports: when committing an org document via magit, magit loads the
@@ -1091,6 +1102,11 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
     reproduction produces the expected buffer state.
 
 *** TODO Tool subtree missing indirect-buffer scaffolding (no IB, no TERMINE)
+# Per the unified IB invariant, the answer is settled: tool subtrees
+# MUST get their own IB+TERMINE.  Implementation is folded into the
+# AI-DO EXECUTING TODO (Mission step 1).  This TODO stays open for
+# regression-test coverage of plain (non-sub-agent) tool calls and
+# may close when those tests land.
 **** Origin
 - Interactive test "Run date with Bash tool" in
   =~/siro-ai/playground-ws.org= (the BASH heading at L51).
@@ -1147,6 +1163,12 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
    =-ai.org= docs.
 
 *** TODO Missing leading sub-heading for AI text after tool result
+# Likely a downstream symptom of the unified-pattern fix in the
+# AI-DO EXECUTING TODO: once tool IBs have TERMINE and post-tool
+# AI text is streamed BEFORE that TERMINE inside the parent agent
+# IB, the heading insertion path becomes uniform with the
+# sub-agent path that already works.  Re-evaluate after the
+# unified IB refactor lands; may close without a separate fix.
 **** Origin
 - Interactive test "Run date with Bash tool" in playground-ws.org.
 - After the =#+end_tool= block at L60, the AI's textual response
@@ -1192,6 +1214,13 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 6. Commit in =quelpa/build/gptel/= submodule.
 
 *** TODO TERMINE not removed when task transitions to AI-DONE
+# With the unified IB invariant, TERMINE removal becomes a single
+# code path: =gptel-org-ib-remove-terminator= called on every IB
+# that reaches a terminal state (task AI-DONE, tool EXECUTED,
+# reasoning final, sub-agent terminal-word).  This TODO will be
+# resolved by ensuring every terminal-state transition (across
+# tool, reasoning, sub-agent, task) routes through that one
+# function.  See AI-DO EXECUTING TODO Mission steps 3-4.
 **** Origin
 - Interactive test "Run date with Bash tool" in playground-ws.org
   (L46-L65).
@@ -1234,6 +1263,16 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 5. Commit in =quelpa/build/gptel/= submodule.
 
 *** TODO Recursive loop / duplicate TERMINE in sub-agent delegation flow
+# Duplicate TERMINE is the visible artefact of the divergent
+# dispatch path that creates a separate EXECUTING heading (and
+# thus a second nested subtree with its own TERMINE) instead of
+# advancing the existing PENDING IB.  Resolving the AI-DO
+# EXECUTING TODO is expected to make this duplicate disappear.
+# The "4 API requests for one delegation" sub-question stays open
+# and should be re-investigated after the heading/TERMINE
+# duplication is gone — the request count may be legitimate FSM
+# steps (call → result → call → final) rather than a re-entry
+# loop.
 **** Origin
 - Interactive test "Delegate to executor agent to run date with Bash
   tool" in playground-ws.org (L72-L105).
@@ -1283,81 +1322,158 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 6. Commit in =quelpa/build/gptel-agent/= and/or =quelpa/build/gptel/=
    as appropriate.
 
-*** TODO EXECUTING should be state transition of ALLOWED EXECUTE heading, not a separate heading
+*** AI-DO EXECUTING should be state transition of ALLOWED EXECUTE heading, not a separate heading
 **** Origin
 - Interactive test "Delegate to executor agent..." in
   playground-ws.org (L73-L76).
-- Observed structure:
+- Observed structure (still present after the bb60aae attempt):
   - =**** ALLOWED EXECUTE :description "Run date command" :prompt
     "..."= (L73) — request heading
   - =**** EXECUTING Run date command :executor@dummy@agent:= (L76) —
     separate heading
-- Expected per the per-agent state-triad design (gptel-ai.org L283
-  keyword table; commit =549684a= "feat(agent): per-agent state triads
-  in tool-heading lifecycle"; commit =8010ace= "wire :state-words
-  triad into sub-agent FSM cleanup"): a single heading whose TODO
-  state cycles =ALLOWED EXECUTE → EXECUTING → EXECUTED=, with
-  description/properties preserved across transitions.
+- Expected per the per-agent state-triad design and the unified IB
+  pattern: a /single/ heading whose TODO state cycles
+  =PENDING EXECUTE → ALLOWED EXECUTE → EXECUTING → EXECUTED= (or
+  =DENIED= terminal), with description/properties preserved, and
+  whose dedicated IB (created at PENDING time) has TERMINE as its
+  last child throughout the lifecycle.
 - Workspace doc: [[file:../siro-ai/playground-ws.org::*Delegate to executor agent to run date with Bash tool]]
 
 **** Discussion highlights
-- The state-triad infrastructure exists (=:state-words= property
-  loaded onto the agent plist per commits =040134c=, =4b67a62=,
-  =aeef41c=).  The bug is in the rendering/insertion path for the
-  executor sub-agent: instead of mutating the original heading's TODO
-  keyword, a NEW heading is inserted with the next state word.
-- Likely culprit: code path in =gptel-org-agent.el= or =gptel-agent.el=
-  that emits the sub-agent IB heading.  It probably constructs a
-  fresh heading with =EXECUTING= keyword instead of advancing the
-  existing =ALLOWED EXECUTE= heading via =org-todo=.
-- This is the most user-visible architectural deviation in the
-  playground test.  Fixing it likely simplifies TODO "Recursive loop /
-  duplicate TERMINE in sub-agent delegation flow" (less heading
-  clutter → less TERMINE confusion).
+- *Petri feedback (load-bearing):* the previous fix attempt
+  (commit =bb60aae=) did not solve the user-visible problem.  A
+  separate =EXECUTING= heading is still being created.  This is
+  the symptom of a deeper architectural issue: the system has not
+  fully converged on one design pattern (indirect-buffer +
+  TERMINE) for sub-agent dispatch.
+- Per the unified IB invariant, the PENDING tool-call IB created
+  in =gptel-org-ib-create-tool-heading= must already have TERMINE
+  as its last child.  Sub-agent dispatch (the ALLOWED →
+  EXECUTING transition) should re-use that same IB and advance
+  the heading's TODO state in place via =org-todo=.  Any
+  sub-agent body content (REASONING / RESPOND / nested tool
+  calls) is inserted INSIDE that IB, BEFORE its TERMINE.  When
+  the sub-agent finishes, the same heading is advanced to
+  =EXECUTED= and the IB's TERMINE is removed via
+  =gptel-org-ib-remove-terminator= (which also closes the IB).
+- The hypothesis after bb60aae: there are TWO code paths that
+  both believe they own the EXECUTING heading.  =gptel-org-agent=
+  advances the original heading via =org-todo=, but the
+  sub-agent dispatch code in =gptel-agent= or in
+  =gptel-org-agent--display-tool-calls= still calls a heading
+  /constructor/ (=gptel-org-ib-safe-insert-sibling= or similar)
+  that emits a fresh heading with the EXECUTING keyword instead
+  of locating and re-using the existing PENDING IB.
+- This TODO is the foundation for the open IBs cluster: fixing it
+  will likely also resolve or simplify TODOs "Tool subtree missing
+  IB scaffolding", "Missing leading sub-heading after tool result",
+  "TERMINE not removed on AI-DONE", and "Recursive loop /
+  duplicate TERMINE".  Those four TODOs all describe symptoms of
+  divergent dispatch paths around tool/sub-agent IBs.
 
 **** Decisions
-- Implemented in =quelpa/build/gptel= commit =bb60aae=.
-- PENDING tool-call headings now live in their own indirect buffer
-  (new helper =gptel-org-ib-create-tool-heading= in
-  =gptel-indirect-buffer.el=).
-- State transitions PENDING → ALLOWED → =doing-state= (e.g.
-  =EXECUTING=) now use real =org-todo= calls in that IB (with
-  =org-after-todo-state-change-hook= inhibited for the programmatic
-  =doing-state= transition).
-- =gptel-org-agent--update-tool-heading= rewritten: looks up the
-  entry by tool-name + args via new =--find-pending-entry=, switches
-  to =:pending-ib=, calls =gptel-org-agent--set-todo-keyword=,
-  replaces body, drops the REQ prefix from the heading title via
-  =org-edit-headline=.
-- Hash entry =gptel-org-agent--pending-tool-calls= now stores
-  =:pending-ib= and =:heading-marker=.
-- Lifecycle: ALLOWED keeps the entry alive (so =--update-tool-heading=
-  can find the IB); DENIED closes the IB and removes the entry.
-- Three new regression tests in =gptel-org-agent-test.el=:
-  =pending-entry-stores-ib-and-marker=,
-  =update-tool-heading-uses-org-todo=,
-  =update-tool-heading-executor-triad=.
-- All 454 tests pass (3 pre-existing media/persist skips unrelated).
+- Adopt the universal TERMINE invariant (see
+  [[file:gptel-indirect-buffer-ai.org::*TERMINE]]): every IB,
+  including tool/sub-agent IBs, has TERMINE as its last child.
+- The PENDING tool-call IB created at request-arrival time is the
+  *only* IB used for that tool's entire lifecycle
+  (PENDING → ALLOWED → EXECUTING → EXECUTED/DENIED).  No
+  additional IB or heading is created on state transitions.
+- Heading TODO keyword transitions go through =org-todo= inside
+  the existing IB, never through heading insertion.
+- All sub-agent body content (REASONING / RESPOND / nested tool
+  calls / nested sub-agent IBs) is inserted INSIDE the EXECUTING
+  IB, before its TERMINE child.
+- On sub-agent completion: advance heading to terminal state-word
+  (=EXECUTED= for executor, or per =:state-words= triad), then
+  call =gptel-org-ib-remove-terminator= to remove TERMINE and
+  close the IB atomically.
+- Previous attempt (bb60aae) is partially correct (introduces
+  =gptel-org-ib-create-tool-heading=, switches some transitions
+  to =org-todo=) but a divergent dispatch path still creates a
+  separate EXECUTING heading.  The fix is to *find and remove
+  that path*, not to add another mechanism beside it.
 
 **** Mission
-1. Locate the code that emits the =EXECUTING= heading.  Confirm
-   whether it's a fresh insert or an attempted transition.
-2. Read existing per-agent state-triad implementation (commits
-   =549684a=, =8010ace=) and the loader's =:state-words= consumption
-   (commit =040134c=).
-3. Refactor the sub-agent dispatch so it advances the originating
-   =ALLOWED EXECUTE= heading via =org-todo= to =EXECUTING=, preserving
-   heading text, tags, and properties (GPTEL_BACKEND, GPTEL_MODEL).
-4. On sub-agent completion, advance the same heading to =EXECUTED= (or
-   the agent-defined terminal state word).
-5. Update or add a test in =gptel-org-agent-test.el= that asserts the
-   heading line count is preserved across the state transition.
-6. Update =gptel-agent-ai.org= and =gptel-ai.org= documentation if the
-   rendering policy is clarified.
-7. Commit atomically.  Likely changes span =quelpa/build/gptel/= and
-   =quelpa/build/gptel-agent/=.
-**** FEEDBACK Still EXECUTING is using separate heading and not changing the state of existing PENDING heading :petri:
-- How hard it can be to be wnole system to use one design pattern (indirect-buffer with terminate)
+1. *Confirm the universal TERMINE invariant in the IB module.*
+   - Edit =gptel-indirect-buffer.el= so =gptel-org-ib-create=
+     seeds TERMINE for every IB it creates.  Remove the comment
+     in =gptel-org-ib-create-tool-heading= ("tool-call IBs must
+     NOT have a TERMINE child") and seed TERMINE there too.
+   - Update =gptel-org--reasoning-create-indirect-buffer= and
+     =gptel-org--tool-create-indirect-buffer= to seed TERMINE
+     (or rely on the factory doing so).
+   - Adjust streaming-marker callers so insertions land BEFORE
+     TERMINE in tool/reasoning IBs (no more "body directly under
+     heading" assumption).
+
+2. *Find the dispatch path that creates the separate EXECUTING
+   heading.*  Candidates to grep for in
+   =quelpa/build/gptel-agent/= and =quelpa/build/gptel/=:
+   - =gptel-org-ib-safe-insert-sibling= calls with
+     =doing-state= / =EXECUTING= / state-word values
+   - =gptel-org-ib-create-heading= calls during sub-agent
+     dispatch
+   - any code that builds a heading string =* EXECUTING ...= via
+     =insert= / =format=
+   - sub-agent FSM entry points (=gptel-agent--start-subagent=,
+     =gptel-agent-dispatch=, or similar) that call the heading
+     factory instead of looking up the existing PENDING entry.
+
+3. *Refactor the dispatch to re-use the existing PENDING IB.*
+   - Look up the PENDING entry in
+     =gptel-org-agent--pending-tool-calls= via
+     =gptel-org-agent--find-pending-entry=.
+   - Switch to its =:pending-ib= and advance the heading via
+     =gptel-org-agent--set-todo-keyword= (already in place per
+     bb60aae).
+   - Stream the sub-agent's response into that same IB, before
+     its TERMINE.
+   - On completion advance to terminal state-word and remove
+     TERMINE via =gptel-org-ib-remove-terminator=.
+
+4. *Remove the legacy code path.*  Delete the dispatch function /
+   branch that emitted the separate heading.  No flags, no
+   compatibility wrappers.  One pattern only.
+
+5. *Tests.*
+   - Extend =gptel-org-agent-test.el= with a sub-agent dispatch
+     test (using the existing dummy@agent fixture or a new
+     executor@dummy@agent fixture) that asserts:
+     a) heading line count is preserved across PENDING → ALLOWED
+        → EXECUTING → EXECUTED;
+     b) only ONE heading exists for the dispatch;
+     c) TERMINE is the last child of the IB throughout, removed
+        on terminal state.
+   - Run =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
+     All tests must pass (the 3 pre-existing media/persist skips
+     are unrelated).
+
+6. *Doc updates.*
+   - =gptel-indirect-buffer-ai.org=: confirm the universal TERMINE
+     section reflects the implementation.
+   - =gptel-agent-ai.org=: document the in-place state-triad
+     transition policy for sub-agents.
+   - =gptel-ai.org=: cross-link TODOs that were resolved in
+     passing.
+
+7. *Commit atomically.*  Likely 2-3 commits across
+   =quelpa/build/gptel= and =quelpa/build/gptel-agent= (IB module
+   change → dispatch refactor → tests/docs).  Update this TODO
+   to AI-DONE with a Decisions update listing exact commits and
+   removed code paths.
+
+**** Constraints
+- No legacy carve-outs.  Do not introduce a feature flag, a "if
+  agent then TERMINE else not" branch, or a parallel dispatch
+  path.  One design pattern: indirect-buffer + TERMINE,
+  uniformly.
+- Do not preserve unused helpers.  If a function existed only to
+  support the now-defunct "tool IB without TERMINE" case, delete
+  it.
+- Sub-task delegation: split the implementation per Mission step
+  groups (1, 2-4, 5, 6) into separate implementer dispatches,
+  each with synthesized context drawn from this TODO.
 
 *** TODO Simplify legacy GPTEL_PENDING_ID lookup paths
 **** Origin
