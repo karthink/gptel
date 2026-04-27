@@ -1007,6 +1007,12 @@ context, tools, system prompt, model and more."
               gptel--old-header-line nil)
       (setq mode-line-process nil))))
 
+
+;; Mark gptel-mode as permanent-local so that `kill-all-local-variables'
+;; (e.g. via `org-mode-restart') does not silently disable the mode and
+;; leave the buffer in an inconsistent state.
+(put 'gptel-mode 'permanent-local t)
+
 ;; ;TODO(request-lib): Declaration no longer needed
 (defvar gptel--fsm-last)                ;Defined further below
 (defun gptel--update-status (&optional msg face)

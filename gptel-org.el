@@ -3331,6 +3331,14 @@ This mode is only intended for `org-mode' buffers."
     (kill-local-variable 'gptel-org-subtree-context)
     (kill-local-variable 'gptel-org-use-todo-keywords)))
 
+;; Mark gptel-org-mode as permanent-local so `kill-all-local-variables'
+;; (e.g. via `org-mode-restart' or org-mode reactivation) does not
+;; silently disable the mode.  Combined with the org-set-regexps-and-options
+;; switch in gptel-org--register-todo-keywords this hardens gptel against
+;; recursive activation chains when gptel-org-mode: 1 is used as a
+;; file-local variable.
+(put 'gptel-org-mode 'permanent-local t)
+
 (provide 'gptel-org)
 ;;; gptel-org.el ends here
 
