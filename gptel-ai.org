@@ -2153,6 +2153,129 @@ Pick one (default: A):
   =gptel-org-agent--set-todo-keyword= and the per-agent triad
   table from =gptel-agent-state-words=.
 
+*** AI-DO Recursive loop when =gptel-org-mode: 1= is set as file-local variable
+**** Origin
+- User report (current AI-DO session): when an org file has
+  =gptel-org-mode: 1= in its =Local Variables= block, opening
+  the file triggers a recursive loop with repeated messages of
+  the form =Registered <file> with gptel dashboard=.
+
+**** Discussion highlights
+- Confirmed loop trace (researcher):
+  #+begin_src
+    [file-local var] gptel-org-mode: 1
+      → gptel-org-mode activated
+        → (gptel-mode 1)                              (gptel-org.el ~L3312)
+          → gptel--restore-state                      (gptel.el)
+            → gptel-org--restore-state                (gptel-org.el)
+              → gptel-org--register-todo-keywords     (gptel-org.el ~L1474)
+                → org-mode-restart  (when `changed`)  (gptel-org.el ~L2939)
+                  → (funcall major-mode) = org-mode   ← kill-all-local-variables
+                  → hack-local-variables              ← re-reads gptel-org-mode: 1
+                    → gptel-org-mode activated AGAIN  ← LOOP
+  #+end_src
+- =changed= is /always/ =t= on first activation because gptel's
+  custom keywords (AI, HI, REASONING, TOOL, RESULTS, TERMINE,
+  RESPOND, …) are not in =org-todo-keywords= for a fresh buffer,
+  so the =org-mode-restart= branch is taken.
+- Neither =gptel-org-mode= nor =gptel-mode= are marked
+  =permanent-local=.  =org-mode-restart= calls =(funcall
+  major-mode)= which runs =kill-all-local-variables=, wiping
+  =gptel-mode=t= and =gptel-org-mode=t=.  Then
+  =hack-local-variables= re-applies =gptel-org-mode: 1= and the
+  whole chain re-enters.
+- The repeated registration message comes from
+  =gptel-org-dashboard-register= at
+  =quelpa/build/gptel/gptel-org-dashboard.el= ~L148–155
+  (=(message "Registered %s with gptel dashboard" …)=), called
+  from the activation body of =gptel-org-mode=.
+- Three call sites in =gptel-org.el= use =org-mode-restart= for
+  base buffers (=org-set-regexps-and-options= for IBs):
+  1. =gptel-org--register-todo-keywords= (~L2939)
+  2. =gptel-org--ensure-todo-state= (~L2997)
+  3. =gptel-org--ensure-todo-states= (~L3024)
+  Only path #1 is reached during file-local activation, but #2
+  and #3 share the same hazard pattern.
+
+**** Decisions (choose one or combine)
+1. *Option A — =permanent-local= flags (defensive, narrow):*
+   #+begin_src elisp
+     (put 'gptel-mode 'permanent-local t)
+     (put 'gptel-org-mode 'permanent-local t)
+   #+end_src
+   Survives =kill-all-local-variables=, so =hack-local-variables=
+   re-applying =gptel-org-mode: 1= is a no-op (mode already on)
+   and the loop short-circuits.  Cheap, but does not fix the
+   underlying re-entrancy hazard for other code paths that may
+   call =org-mode-restart=.
+2. *Option B — re-entrance guard in =gptel-org-mode= body:*
+   Add =gptel-org--mode-activating= dynamic guard, skip body if
+   already activating.  Safe but adds state.
+3. *Option C — replace =org-mode-restart= with
+   =org-set-regexps-and-options= in all three call sites:*
+   =org-set-regexps-and-options= refreshes TODO regexps/faces
+   without restarting the major mode or running
+   =hack-local-variables=.  Removes the loop at the source and
+   is consistent with what already runs in indirect buffers.
+   Tradeoff: =org-mode-restart= refreshes more org internals;
+   verify keyword/face/agenda updates still work.
+4. *Option D — defer registration via =run-with-idle-timer 0=:*
+   Breaks synchronous chain.  Slightly hacky, may surface
+   ordering issues elsewhere.
+5. *Recommended: C + A.*  C eliminates the loop at the call
+   site that triggers it, A hardens =gptel-mode=/=gptel-org-mode=
+   against any future =org-mode-restart= caller.
+
+**** Mission
+1. *Verify root cause* with a small repro: open an org file
+   containing
+   #+begin_src org
+     ,# Local Variables:
+     ,# gptel-org-mode: 1
+     ,# End:
+   #+end_src
+   in a clean Emacs (=emacs -Q= + minimal gptel load), confirm
+   the repeated =Registered … with gptel dashboard= message and
+   the call chain via =M-x toggle-debug-on-quit= + =C-g=.
+2. *Apply Decision C*: change three sites in
+   =quelpa/build/gptel/gptel-org.el= to call
+   =org-set-regexps-and-options= unconditionally (drop the
+   =gptel-org-ib-registered-p= branch in those three places).
+   Sites: =gptel-org--register-todo-keywords= (~L2939),
+   =gptel-org--ensure-todo-state= (~L2997),
+   =gptel-org--ensure-todo-states= (~L3024).
+3. *Apply Decision A*: add =(put 'gptel-mode 'permanent-local
+   t)= in =gptel.el= just after the =define-minor-mode
+   gptel-mode=, and =(put 'gptel-org-mode 'permanent-local t)=
+   in =gptel-org.el= just after the =define-minor-mode
+   gptel-org-mode=.
+4. *Tests*:
+   - Regression test: open a synthetic org buffer with
+     =gptel-org-mode= enabled via file-local-variables; assert
+     that =gptel-org-dashboard-register= runs exactly once and
+     no recursion occurs (count messages, or stub the function
+     and count invocations).
+   - Run =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
+     and confirm green.
+5. *Doc updates*: amend the relevant section of
+   =gptel-ai.org= (Org Mode Integration → Discussion Structure
+   subsection on =gptel-org-mode= activation) noting that file-
+   local activation is now safe.
+6. *Atomic commits* in =quelpa/build/gptel/=:
+   one for the =org-set-regexps-and-options= switch, one for
+   the =permanent-local= flags, one for tests/docs.
+
+**** Constraints
+- Do NOT introspect the running Emacs session for
+  =gptel-org-mode= / =gptel-mode= state — the running session
+  has the old version.  Read source under
+  =quelpa/build/gptel/= only; never =~/.emacs.d/elpa=.
+- Delegate any debug-log analysis to =researcher= per project
+  rule.
+- Keep changes minimal and targeted; do not refactor the
+  registration logic in =gptel-org-dashboard.el= as part of
+  this fix.
+
 
 ** Researched TODOs
 *** Unified gptel-org-mode Refactoring
