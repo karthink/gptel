@@ -872,14 +872,15 @@ The registry =gptel-org-ib--registry= maps buffer-name → =gptel-org-ib-node=.
 | =gptel-org-ib-create-terminator= (keyword &optional level) | Create terminator child heading at end of current subtree; returns marker |
 | =gptel-org-ib-ensure-terminator= (keyword) | Idempotent: find existing or create new CHILD terminator; returns marker |
 | =gptel-org-ib-ensure-sibling-terminator= (keyword level) | Idempotent: find existing or create new SIBLING terminator at LEVEL (same level as heading at point).  Search stops at any heading of shallower level to stay within parent scope |
-| =gptel-org-ib-remove-terminator= (keyword) | Delete matching terminator; before deletion, closes via =gptel-org-ib-close= any IB whose =:end-marker= falls inside or past the terminator region.  Fatal if the terminator body is non-empty |
+TEST INSERT
 | =gptel-org-ib-streaming-marker= (&optional terminator-keyword) | Return a marker safe for FSM streaming.  When TERMINATOR-KEYWORD names an existing child terminator, marker is at start of terminator line with insertion-type nil.  Otherwise marker is at =point-max= with insertion-type t |
 
 ** Safe Heading Creation
 
 | Function | Purpose |
 |----------+---------|
-| =gptel-org-ib-create-heading= (todo-keyword title &optional tags terminator-keyword) | Create child heading BEFORE the terminator heading; returns marker to new heading.  The heading is inserted on the line before the terminator so existing sibling IBs are undisturbed |
+| =gptel-org-ib-insert-child= (parent todo-keyword title &key tags terminator-keyword name create-indirect-buffer) | Single parent-aware insertion entry point.  Inserts a child heading before PARENT's =TERMINE= terminator using a universal newline guard (no backward search).  PARENT is a marker, indirect-buffer, or (deprecated) =:point= keyword.  Returns a plist =(:heading-marker M :indirect-buffer IB-or-nil)=.  When =:create-indirect-buffer= is non-nil (default =t=), also creates an IB narrowed to the new heading |
+| =gptel-org-ib-create-heading= (todo-keyword title &optional tags terminator-keyword) | *Internal helper.*  Inserts a child heading before the terminator and returns a marker.  Callers should use =gptel-org-ib-insert-child= instead |
 
 ** Indirect Buffer Lifecycle
 
@@ -907,9 +908,11 @@ The registry =gptel-org-ib--registry= maps buffer-name → =gptel-org-ib-node=.
 
 ** High-level Convenience
 
+=gptel-org-ib-safe-insert-sibling= is *obsolete* (has =make-obsolete=). =gptel-org-ib-insert-child= with =:create-indirect-buffer t= (the default) provides the same all-in-one behavior — callers should use the unified API directly.
+
 | Function | Purpose |
 |----------+---------|
-| =gptel-org-ib-safe-insert-sibling= (todo-keyword title tags terminator-keyword) | All-in-one agent-layer helper: ensure parent =TERMINE= terminator → create heading before it → create IB narrowed to new heading → seed a child =TERMINE= inside the new IB (agent-layer convention; owns TERMINE lifecycle for child-agent IBs created via this path).  Returns the indirect buffer |
+| =gptel-org-ib-insert-child= (parent todo-keyword title &key tags terminator-keyword name create-indirect-buffer) | Unified entry point.  Ensures PARENT =TERMINE= → creates heading before it → (when =:create-indirect-buffer= is non-nil) creates IB narrowed to new heading.  Returns =(:heading-marker M :indirect-buffer IB-or-nil)=.  Use this instead of the deprecated =gptel-org-ib-safe-insert-sibling= |
 
 ** Internal Helpers
 

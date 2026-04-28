@@ -2734,7 +2734,7 @@ Pick one (default: A):
     "Sub-Agent Subtree Handlers" — remove references to deprecated
     functions.
 
-**** AI-DO Migrate --create-subtree to unified insert-child API
+**** AI-DONE Migrate --create-subtree to unified insert-child API
 ***** Origin
 - Diagnosis of [[*Unify IB/heading insertion behind one parent-aware API][Unify IB/heading insertion]] (2026-04-28).
 - =gptel-org-agent--create-subtree= (gptel-org-agent.el:199-256) is
@@ -2761,7 +2761,7 @@ Pick one (default: A):
 3. Run tests: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
 4. Commit atomically.
 
-**** AI-DO Clean up tool IB TERMINE after tool completion
+**** AI-DONE Clean up tool IB TERMINE after tool completion
 ***** Origin
 - Diagnosis of [[*Unify IB/heading insertion behind one parent-aware API][Unify IB/heading insertion]] (2026-04-28).
 - Tool IBs (BASH, Eval, etc.) retain stale TERMINE headings after the
@@ -2786,7 +2786,7 @@ Pick one (default: A):
 2. Run tests: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
 3. Commit atomically.
 
-**** AI-DO Migrate insert-user-heading tag-mode to unified API
+**** AI-DONE Migrate insert-user-heading tag-mode to unified API
 ***** Origin
 - Diagnosis of [[*Unify IB/heading insertion behind one parent-aware API][Unify IB/heading insertion]] (2026-04-28).
 - =gptel-org-agent--insert-user-heading= tag-mode path
@@ -2803,7 +2803,7 @@ Pick one (default: A):
 2. Run tests.
 3. Commit atomically.
 
-**** AI-DO Remove :point shim from insert-child
+**** AI-DONE Remove :point shim from insert-child
 ***** Origin
 - Diagnosis of [[*Unify IB/heading insertion behind one parent-aware API][Unify IB/heading insertion]] (2026-04-28).
 - =gptel-org-ib-insert-child= has a =:point= parent resolution path
@@ -3382,6 +3382,12 @@ All eight sub-tasks IB-4.1–IB-4.8 completed in commits =a57cba1= →
   FSM wiring pending).
 - IB-4.8b: universal REQ prefix for auto-run tools (=:confirm nil=
   tools bypass heading creation today).
+- *Insertion API unified*: =gptel-org-ib-insert-child= is now the
+  single parent-aware entry point for heading insertion + optional IB
+  creation (commits =6cc8ced= through =85e9e32=).  Deprecated:
+  =gptel-org-ib-safe-insert-sibling=, =gptel-org-ib-create-tool-heading=,
+  and gptel-agent's hand-rolled =gptel-org-agent--create-handover-heading=.
+  =gptel-org-ib-create-heading= is now an internal helper.
 
 Related discovery from IB-4.7: sub-agent subtrees currently use
 =AI-DOING= as their TODO state rather than the per-agent state triad
