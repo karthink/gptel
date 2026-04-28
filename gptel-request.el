@@ -2166,6 +2166,7 @@ many active requests, queue this FSM for later dispatch."
                 ((marker-buffer tm)))
       (move-marker pm tm))
     (dolist (key '(:tool-result :tool-use :error :http-status :reasoning
+                   :reasoning-block :reasoning-chunks
                    :tracking-marker :tool-marker))
       (when (plist-get info key)
         (plist-put info key nil)))
