@@ -2156,6 +2156,14 @@ IB-4.6 generalisation.  Full docstring in the generalised helper."
 
 INFO is the request INFO, see `gptel--url-get-response'.  This is
 for streaming responses only."
+  (when (eq gptel-log-level 'debug)
+    (gptel--log
+     (format "reasoning-render: info-has-key=%s value=%S text-type=%S text-len=%S"
+             (and (plist-member info :include-reasoning) t)
+             (plist-get info :include-reasoning)
+             (if (eq text t) 'end-of-stream 'chunk)
+             (and (stringp text) (length text)))
+     "reasoning-render-debug" 'no-json))
   (when-let* ((include (plist-get info :include-reasoning)))
     (gptel-org--debug
      "reasoning-stream: include=%S text-type=%S"
@@ -2564,25 +2572,43 @@ for tool call results.  INFO contains the state of the request."
                    ;; survives even after info :reasoning-chunks and
                    ;; :reasoning have been consumed/cleared.
                    (call
-                    (let* ((dseek-reasoning
-                            (and (fboundp 'gptel-deepseek-p)
-                                 (gptel-deepseek-p (plist-get info :backend))
-                                 (let ((flag (or (plist-get info :include-reasoning)
-                                                 gptel-include-reasoning)))
-                                   (and flag (not (eq flag 'ignore))))
-                                 (let* ((messages (plist-get
-                                                   (plist-get info :data) :messages))
-                                        (last-asst
-                                         (and (vectorp messages)
-                                              (cl-loop
-                                               for i from (1- (length messages)) downto 0
-                                               for m = (aref messages i)
-                                               when (and (equal (plist-get m :role) "assistant")
-                                                         (plist-get m :tool_calls))
-                                               return m))))
-                                   (and last-asst
-                                        (or (plist-get last-asst :reasoning_content)
-                                            (plist-get last-asst :reasoning)))))))
+                    (let* ((dseek-fn-bound (fboundp 'gptel-deepseek-p))
+                           (dseek-backend-p
+                            (and dseek-fn-bound
+                                 (gptel-deepseek-p (plist-get info :backend))))
+                           (dseek-flag (or (plist-get info :include-reasoning)
+                                           gptel-include-reasoning))
+                           (dseek-flag-ok (and dseek-flag (not (eq dseek-flag 'ignore))))
+                           (dseek-messages (plist-get
+                                            (plist-get info :data) :messages))
+                           (dseek-messages-vector-p (vectorp dseek-messages))
+                           (dseek-last-asst
+                            (and dseek-backend-p dseek-flag-ok
+                                 dseek-messages-vector-p
+                                 (cl-loop
+                                  for i from (1- (length dseek-messages)) downto 0
+                                  for m = (aref dseek-messages i)
+                                  when (and (equal (plist-get m :role) "assistant")
+                                            (plist-get m :tool_calls))
+                                  return m)))
+                           (dseek-reasoning
+                            (and dseek-backend-p dseek-flag-ok dseek-last-asst
+                                 (or (plist-get dseek-last-asst :reasoning_content)
+                                     (plist-get dseek-last-asst :reasoning)))))
+                      (when (eq gptel-log-level 'debug)
+                        (gptel--log
+                         (format "reasoning-persist: name=%S fboundp=%s deepseek-p=%s gptel-flag=%S info-flag=%S vector-p=%s msg-len=%S last-asst-found=%s reasoning-type=%S reasoning-len=%S"
+                                 name
+                                 dseek-fn-bound
+                                 (and dseek-backend-p t)
+                                 gptel-include-reasoning
+                                 (plist-get info :include-reasoning)
+                                 dseek-messages-vector-p
+                                 (and dseek-messages-vector-p (length dseek-messages))
+                                 (and dseek-last-asst t)
+                                 (type-of dseek-reasoning)
+                                 (and (stringp dseek-reasoning) (length dseek-reasoning)))
+                         "reasoning-persist-debug" 'no-json))
                       (prin1-to-string
                        (if (and (stringp dseek-reasoning)
                                 (not (string-empty-p dseek-reasoning)))

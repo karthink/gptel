@@ -403,10 +403,11 @@ If the ID has the format used by a different backend, use as-is."
                      ;; duplicate assistant message with reasoning per
                      ;; call -- that's harmless for DeepSeek (and for
                      ;; OpenAI, gated by the deepseek :around merger).
-                     (let ((reasoning_content
-                            (plist-get tool-call :reasoning_content))
-                           (reasoning (plist-get tool-call :reasoning)))
-                       (push (append
+                     (let* ((reasoning_content
+                             (plist-get tool-call :reasoning_content))
+                            (reasoning (plist-get tool-call :reasoning))
+                            (asst-msg
+                             (append
                               (list :role "assistant"
                                     :tool_calls
                                     (vector (list :type "function"
@@ -416,8 +417,18 @@ If the ID has the format used by a different backend, use as-is."
                               (and reasoning_content
                                    (list :reasoning_content reasoning_content))
                               (and reasoning
-                                   (list :reasoning reasoning)))
-                             prompts)))
+                                   (list :reasoning reasoning)))))
+                       (when (eq gptel-log-level 'debug)
+                         (gptel--log
+                          (format "reasoning-recover: id=%S name=%S rc-present=%s rc-len=%S r-present=%s r-len=%S keys=%S"
+                                  id name
+                                  (and reasoning_content t)
+                                  (and (stringp reasoning_content) (length reasoning_content))
+                                  (and reasoning t)
+                                  (and (stringp reasoning) (length reasoning))
+                                  (cl-loop for (k _) on asst-msg by #'cddr collect k))
+                          "reasoning-recover-debug" 'no-json))
+                       (push asst-msg prompts)))
                  ((end-of-file invalid-read-syntax)
                   (message (format "Could not parse tool-call %s on line %s"
                                    id (line-number-at-pos (point))))))))

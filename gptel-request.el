@@ -2728,6 +2728,15 @@ Initiate the request when done."
            "preset-debug" t))
         (when gptel-include-reasoning   ;Required for next-request-only scope
           (plist-put info :include-reasoning gptel-include-reasoning))
+        (when (eq gptel-log-level 'debug)
+          (gptel--log
+           (format "reasoning-init: gptel-include-reasoning=%S info-has-key=%s backend-type=%S backend-name=%S"
+                   gptel-include-reasoning
+                   (and (plist-member info :include-reasoning) t)
+                   (type-of (plist-get info :backend))
+                   (and (plist-get info :backend)
+                        (gptel-backend-name (plist-get info :backend))))
+           "reasoning-init-debug" 'no-json))
         (when gptel-reasoning-effort
           (plist-put info :reasoning-effort gptel-reasoning-effort))
         (when (and gptel-use-tools gptel-tools)
