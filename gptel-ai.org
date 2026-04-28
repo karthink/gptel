@@ -1455,7 +1455,7 @@ endpoint to verify =gptel-deepseek-p= matches.
   requests should emit =reasoning-init-debug= with consistent
   values.
 
-*** AI-DONE Fix empty REASONING heading for streaming DeepSeek =reasoning_content= + tool calls
+*** AI-DO Fix empty REASONING heading for streaming DeepSeek =reasoning_content= + tool calls
 **** Origin
 - User reports REASONING heading is always empty in org-mode
   discussions (e.g., =**** REASONING = with no title or body text),
@@ -1541,6 +1541,8 @@ This is why the user sees reasoning in tools but not in the heading.
   =<think>= tags, non-streaming, streaming with text content).
 - Run: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
 
+***** FEEDBACK It is mandatory that REASONING block is own indirect buffer :petri:
+- Not sure if that is the case
 
 **** Resolution
 - Fix committed: =a378956= in =quelpa/build/gptel=
@@ -1555,8 +1557,7 @@ This is why the user sees reasoning in tools but not in the heading.
   only ensures the end-of-reasoning signal fires for the JSON-field
   path when text content never arrives to trigger it naturally.
 
-***** FEEDBACK It is mandatory that REASONING block is own indirect buffer :petri:
-- Not sure if that is the case
+***** FEEDBACK Still not working, only empty REASONING headings
 
 *** AI-DO Prevent error-response bytes contaminating TERMINE body
 **** Origin
