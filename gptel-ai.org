@@ -1119,7 +1119,7 @@ endpoint to verify =gptel-deepseek-p= matches.
   agent (raw log NOT pasted into main context).
 
 
-*** TODO Analyse DeepSeek =reasoning_content= diagnostic log
+*** AI-DONE Analyse DeepSeek =reasoning_content= diagnostic log
 **** Origin
 - Follow-up to AI-DONE *Locate DeepSeek =reasoning_content= 400
   regression — extend diagnostic coverage* (commit =e533708=).  Four
@@ -1173,6 +1173,236 @@ endpoint to verify =gptel-deepseek-p= matches.
       contain?
   + Spawn a fix TODO targeting the specific layer the log
     identifies.  Do NOT speculate — let the log decide.
+
+***** FEEDBACK Test run that triggers the issue executed succesfully :petri:
+- The executed todo task [[file:../../../../siro-ai/playground-ws.org::*Generate multiple tool calls in sequence to trigger the reasoning_content issue in deepseek][Generate multiple tool calls in sequence to trigger the reasoning_content issue in deepseek]]
+- The debug log [[file:../../../../siro-ai/debug-log-playground.org]]
+- Messages capture
+  #+begin_example
+    Log level set to debug
+    gptel: User task state changed to DOING
+    Wrote /tmp/gptel-agent-temp/glob-20260428-083859-2059.txt
+    Tool calls accepted, continuing... [2 times]
+    next-line: End of buffer [3 times]
+    TODO state changed to FEEDBACK
+    gptel: User task state changed to FEEDBACK
+    TODO state changed to GATHERED
+    DeepSeek error: ((HTTP/2 400) invalid_request_error) The `reasoning_content` in the thinking mode must be passed back to the API.
+    Stopped 1 gptel request(s) in buffer "playground-ws.org"
+    error in process sentinel: gptel-org-ib-fatal: remove-terminator: "TERMINE" has non-empty body (preview: "\"reasoning_content\" is likely a parameter used by DeepSeek's API that allows the")
+    error in process sentinel: remove-terminator: "TERMINE" has non-empty body (preview: "\"reasoning_content\" is likely a parameter used by DeepSeek's API that allows the")
+  #+end_example
+
+**** Findings (researcher analysis of debug log)
+- Log was =/home/petri/siro-ai/debug-log-playground.org= (13 655 lines,
+  6 distinct gptel requests, raw log NOT pasted into main context).
+
+***** Symptom (b) — "no reasoning rendered" — localised to TWO layers
+- =reasoning-init-debug= fires only on requests #1 and #2 — sub-agent
+  /tool-continuation requests (#3–#6) bypass =gptel--realize-query=
+  entirely so =:include-reasoning= is never set on their =info=
+  plists.  The render gate at =gptel.el:2167= then silently discards
+  reasoning even when the model returns it.
+- For request #5 (OrgOutline tool call) =reasoning-render-debug= does
+  not fire AT ALL despite DeepSeek streaming =reasoning_content=
+  chunks visible in the raw =data:= lines.  Root cause: =info
+  :reasoning-block= is left as ='done= from a prior turn and is
+  never reset per-request, so the dispatch =cond= at
+  =gptel-request.el:3466–3495= short-circuits.
+
+***** Symptom (a) — DeepSeek 400 on multi-turn tool calls — root cause
+- All 5 persist predicates pass on the failing turn (#5 OrgOutline)
+  but =reasoning-type=symbol reasoning-len=nil= — the assistant
+  message has no =:reasoning_content= field, so the persisted tool
+  sexp at =gptel.el:2613–2617= is written WITHOUT
+  =:reasoning_content=.  Request #6 then sends back the assistant
+  message without the field → DeepSeek 400.
+- Why is the field missing on the assistant message?  Two
+  contributing bugs:
+  1. =gptel-request.el:3448= — =:reasoning-block= ='done leftover
+     from prior turn suppresses the entire reasoning dispatch chain,
+     so =info :reasoning-chunks= is never populated for request #5.
+  2. =gptel-openai.el:134= — =(plist-put info :reasoning-chunks nil)=
+     runs unconditionally at =[DONE]=, outside the
+     =when-let* ((tool-use ...))= injection block.  Even if chunks
+     were collected, they get cleared if the tool-use plist branch
+     doesn't execute.
+- =reasoning-recover-debug= never fires in the entire log,
+  confirming the recover path is not exercised here (the bug is
+  upstream of recovery).
+
+***** TERMINE / remove-terminator fatal — cascade, not root cause
+- Cascade from the 400.  The error JSON body
+  ="reasoning_content" is likely a parameter ...= was inserted into
+  the active streaming marker position which happened to be inside
+  the TERMINE heading body.  =gptel-org-ib-remove-terminator= at
+  =gptel-indirect-buffer.el:839–843= correctly fails its invariant
+  check.  Independent fragility: the marker positioning on
+  non-200 responses should suppress insertion or relocate marker
+  before TERMINE cleanup runs.
+
+***** Bug layer summary
+| Layer        | File                       | Line(s)   | Bug                                                              |
+|--------------+----------------------------+-----------+------------------------------------------------------------------|
+| Stream parse | =gptel-openai.el=          | 134       | =:reasoning-chunks= cleared before injection on non-tool turns |
+| State machine| =gptel-request.el=         | 3448/3466 | =:reasoning-block= not reset per request; stale ='done suppresses dispatch |
+| Info init    | =gptel-request.el=         | 2729-2730 | =:include-reasoning= not propagated to tool-continuation plists |
+| Error route  | =gptel-indirect-buffer.el= | 839       | error bytes land in TERMINE body, fatal invariant fires |
+
+***** Follow-up fix TODOs spawned (see siblings below)
+- =Fix DeepSeek persist: reset :reasoning-block per request=
+- =Fix DeepSeek persist: gate :reasoning-chunks cleanup on tool-use injection=
+- =Propagate :include-reasoning to tool-continuation info plists=
+- =Prevent error-response bytes contaminating TERMINE body=
+
+
+
+*** AI-DO Fix DeepSeek reasoning: reset per-request reasoning state in =gptel-curl--stream-filter=
+**** Origin
+- Spawned from AI-DONE *Analyse DeepSeek =reasoning_content=
+  diagnostic log* (this section).  Researcher localised root cause
+  of two symptoms (no reasoning text rendered for request #5 +
+  cascade DeepSeek 400 on request #6) to stale =:reasoning-block=
+  state.
+
+**** Discussion highlights
+- =gptel-curl--stream-filter= (=quelpa/build/gptel/gptel-request.el=
+  L3446–3474) reads =:reasoning-block= from =proc-info=.  When a
+  prior turn finalised this to ='done (set in L3486 / L3493 / L3498
+  by =gptel-curl--parse-stream=), the =unless (eq reasoning-block
+  'done)= guard at L3466 short-circuits dispatch on every subsequent
+  turn that reuses the same =proc-info= FSM.  Confirmed empirically:
+  request #5 (OrgOutline) received =reasoning_content= in the wire
+  data but =reasoning-render-debug= did not fire.
+- Same applies to =:reasoning= (accumulated raw chunk) and
+  =:reasoning-chunks= (collected for [DONE] injection) — all three
+  must be reset to nil at the start of each new API request, not
+  just at FSM init.
+
+**** Mission
+- Identify the per-request init point (where the FSM transitions
+  into a new request — likely =gptel-curl-get-response= /
+  =gptel--fsm-transition= / wherever a new curl process is spawned
+  reusing an existing info plist).
+- Add =(plist-put info :reasoning-block nil)=,
+  =(plist-put info :reasoning nil)=,
+  =(plist-put info :reasoning-chunks nil)= at that point.
+- Verify with the existing diagnostic instrumentation that
+  =reasoning-render-debug= now fires on multi-turn tool-call
+  continuations.
+- *Implementer note:* Do not paste the diagnostic log into context
+  — only the four debug type tags matter for verification.
+
+
+
+*** AI-DO Fix DeepSeek =[DONE]= handler clears =:reasoning-chunks= unconditionally
+**** Origin
+- Spawned from AI-DONE *Analyse DeepSeek =reasoning_content=
+  diagnostic log*.  Researcher identified =gptel-openai.el:134= as a
+  contributing factor to symptom (a).
+
+**** Discussion highlights
+- =gptel-openai.el= L99–134 (=gptel-curl--parse-stream= [DONE]
+  branch):
+  - L105–125 conditional: =(when-let* ((tool-use ...) ...) ...)=
+    injects assistant message with =:tool_calls= and reasoning IF
+    =info :tool-use= is non-nil.
+  - L134 unconditional: =(when (plist-member info :reasoning-chunks)
+    (plist-put info :reasoning-chunks nil))= — this runs even when
+    no tool calls were present, discarding accumulated reasoning
+    silently.
+- Effect: turns with reasoning-only content (no tool calls) get
+  reasoning rendered to the buffer but never injected into the
+  messages vector — multi-turn continuations therefore have no
+  =:reasoning_content= on the assistant message and DeepSeek 400s.
+
+**** Mission
+- Move the cleanup =(plist-put info :reasoning-chunks nil)= INSIDE
+  the =when-let*= injection block so it only runs after successful
+  injection, OR
+- Add a parallel branch that injects an assistant message
+  =`(:role "assistant" :content ,response :reasoning_content
+  ,(...chunks...))= when there are reasoning-chunks but no
+  tool-calls, then clears chunks.
+- *Implementer choice:* the second option is preferred — it
+  preserves reasoning across non-tool turns.  Confirm by tracing
+  =gptel--inject-prompt= behaviour for OpenAI/DeepSeek backends.
+- Add a regression note in the inline comment referencing the
+  DeepSeek 400 invariant.
+
+
+
+*** AI-DO Propagate =:include-reasoning= to tool-continuation info plists
+**** Origin
+- Spawned from AI-DONE *Analyse DeepSeek =reasoning_content=
+  diagnostic log*.  Researcher confirmed =reasoning-init-debug= did
+  NOT fire for sub-agent / tool-continuation requests (#3–#6),
+  meaning =gptel--realize-query= is bypassed for those paths and
+  =:include-reasoning= is never set on their info plists.  The
+  render gate at =gptel.el:2167= then silently discards reasoning
+  text for those turns.
+
+**** Discussion highlights
+- =gptel-request.el= L2729–2730 (in =gptel--realize-query=):
+  #+begin_src elisp
+    (when gptel-include-reasoning
+      (plist-put info :include-reasoning gptel-include-reasoning))
+  #+end_src
+- Tool-continuation requests are spawned by FSM transitions after
+  tool execution, NOT by =gptel-request= → =gptel--realize-query=.
+  Need to identify the spawn site (FSM action that issues a new
+  HTTP request after =:tool-result= is collected).
+
+**** Mission
+- Locate the FSM action that issues continuation HTTP requests
+  after tool execution (probably in =gptel-fsm-handlers= or
+  =gptel--fsm-action= for state TYPE→TOOL→TYPE transitions).
+- Ensure =:include-reasoning= is either inherited from the parent
+  =info= plist (if non-nil) or refreshed from
+  =gptel-include-reasoning= at that point.
+- Add a =reasoning-init-debug= log emission at the
+  continuation-request init point so future debug logs capture
+  this path.
+- Verify by re-running the multi-turn DeepSeek scenario: all six
+  requests should emit =reasoning-init-debug= with consistent
+  values.
+
+
+
+*** AI-DO Prevent error-response bytes contaminating TERMINE body
+**** Origin
+- Spawned from AI-DONE *Analyse DeepSeek =reasoning_content=
+  diagnostic log*.  Cascade bug: the DeepSeek 400 error JSON body
+  was inserted at the active streaming marker, which happened to be
+  inside the TERMINE heading body, triggering
+  =gptel-org-ib-fatal= in =gptel-org-ib-remove-terminator=.
+
+**** Discussion highlights
+- =gptel-indirect-buffer.el= L839–843 invariant (=remove-terminator=)
+  is correct and should stay — non-empty TERMINE body indicates a
+  contamination event.
+- Real bug is upstream: the streaming insertion path does not
+  distinguish 200 vs non-200 responses.  Error JSON body is inserted
+  into the buffer at the streaming marker position before
+  =gptel--handle-error= takes over.
+- Symptoms: =error in process sentinel: gptel-org-ib-fatal: ...= in
+  =*Messages*= whenever a streaming request fails after the marker
+  is positioned at TERMINE.
+
+**** Mission
+- Trace the curl process filter / error-handling chain.  Identify
+  where response status is checked (200 vs error).
+- For non-200 responses, EITHER:
+  (a) suppress all buffer insertion of the response body — only
+      surface the error via =gptel--handle-error= / minibuffer / log,
+      OR
+  (b) ensure the streaming marker is moved out of any TERMINE
+      heading body before error bytes are written.
+- Option (a) is cleaner and preserves the =org-ib= invariant.
+- Add a regression test in =quelpa/build/gptel/test/= that simulates
+  a 400 response mid-stream and verifies TERMINE body remains empty.
+
+
 
 *** AI-DONE Document GPTEL_ prefix requirement for chat-buffer property overrides
 **** Origin
@@ -1914,80 +2144,6 @@ Pick one (default: A):
   =EXECUTING= (DOING) for sub-agents too, so the analogous
   =EXECUTING → EXECUTED= + TERMINE removal at result-display
   time is part of this TODO's remaining scope.  Leave open.
-
-*** TODO Recursive loop / duplicate TERMINE in sub-agent delegation flow
-# Duplicate TERMINE is the visible artefact of the divergent
-# dispatch path that creates a separate EXECUTING heading (and
-# thus a second nested subtree with its own TERMINE) instead of
-# advancing the existing PENDING IB.  Resolving the AI-DO
-# EXECUTING TODO is expected to make this duplicate disappear.
-# The "4 API requests for one delegation" sub-question stays open
-# and should be re-investigated after the heading/TERMINE
-# duplication is gone — the request count may be legitimate FSM
-# steps (call → result → call → final) rather than a re-entry
-# loop.
-**** Origin
-- Interactive test "Delegate to executor agent to run date with Bash
-  tool" in playground-ws.org (L72-L105).
-- Observed buffer shows BOTH a =***** TERMINE= inside the EXECUTING
-  sub-agent IB (L102) AND a =**** TERMINE= at the parent agent level
-  (L105).  User describes this as a "recursive loop issue".
-- Workspace doc: [[file:../siro-ai/playground-ws.org::*Delegate to executor agent to run date with Bash tool]]
-- Debug log: [[file:../siro-ai/debug-log-playground.org]] (6 API
-  requests recorded; the executor delegation triggered 4 of them:
-  requests #3-#6 between 11:46:58 and 11:47:31)
-
-**** Discussion highlights
-- Concern is the multiple round-trips: a single user "delegate" task
-  generated 4 backend requests.  Need to verify whether this is the
-  legitimate sub-agent FSM (call → tool result → call → completion)
-  or an unintended re-entry loop where the parent FSM kicks off
-  another iteration after the sub-agent completes.
-- The dual TERMINE (parent + child) may be a symptom rather than a
-  cause — once the sub-agent's IB is destroyed/folded back, its
-  TERMINE should not remain visible at the parent level.
-- Tied to TODO "TERMINE not removed when task transitions to AI-DONE"
-  and TODO "EXECUTING should be state transition of ALLOWED EXECUTE
-  heading".  Solving those two may resolve much of this one.
-- Investigate: =gptel-org-agent.el= sub-agent dispatch; whether
-  sub-agent completion correctly transitions the parent =ALLOWED
-  EXECUTE= heading to a terminal state.
-
-**** Decisions
-(none yet — see Mission for investigation steps)
-
-**** Mission
-1. Delegate debug log analysis to a researcher: feed the 4 sub-agent
-   requests from =debug-log-playground.org= and identify whether each
-   request corresponds to a legitimate FSM step (tool-call →
-   tool-result → final-text) or whether an extra iteration happened.
-2. Trace sub-agent completion path: how does the parent FSM observe
-   the sub-agent's completion and clean up the parent's =ALLOWED
-   EXECUTE= heading?
-3. If a re-entry loop is confirmed, identify the trigger (e.g., parent
-   FSM seeing the sub-agent's tool result as if it were the parent's
-   own tool result).
-4. Decide on fix scope: pure cleanup (TERMINE/heading) vs. dispatch
-   logic.
-5. Add a regression test using nested dummy agents (e.g., dummy@agent
-   delegating to a child dummy@agent) that asserts request count and
-   final buffer structure.
-6. Commit in =quelpa/build/gptel-agent/= and/or =quelpa/build/gptel/=
-   as appropriate.
-
-**** Status update 2026-04-27
-- The duplicate =EXECUTING= heading was the visible artefact of
-  the divergent dispatch path; that path is now closed (gptel
-  =f0715c9= + gptel-agent =3808d47=, see the AI-DONE
-  "EXECUTING should be state transition of ALLOWED EXECUTE
-  heading" TODO).  The "duplicate TERMINE" component is therefore
-  resolved.
-- The "4 API requests for one delegation" sub-question stays
-  open as a separate concern: this work did not change the
-  request count, only the heading/IB ownership.  Keep this TODO
-  open and re-scope to "request-count anomaly in sub-agent
-  delegation" once interactive verification confirms the
-  duplicate-heading symptom is gone.
 
 *** DONE EXECUTING should be state transition of ALLOWED EXECUTE heading, not a separate heading
 **** Origin
