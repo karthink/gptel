@@ -3321,7 +3321,7 @@ Pick one (default: A):
 
 
 
-*** AI-DO Fix REASONING IB created at separator position (heading-pos off-by-separator-len)
+*** AI-DONE Fix REASONING IB created at separator position (heading-pos off-by-separator-len)
 **** Origin
 - Discussion: gptel-ai.org → gptel → Introspect buffer playground-ws.org
 - Symptom buffer: [[file:../../../siro-ai/playground-ws.org::*Run date with Bash tool][siro-ai/playground-ws.org "Run date with Bash tool"]]
@@ -3431,6 +3431,16 @@ Pick one (default: A):
      single =gptel-curl--stream-insert-response= call), trivial to
      review.
 
+***** FEEDBACK Option 1 is ok                                     :petri:
+***** FEEDBACK Partially fixes — IB position is correct now, but    :petri:
+two line feeds still appear before =* REASONING= (was previously
+one or two more).  Heading-position fix is sound; the *separator
+stacking* between =gptel-curl--stream-insert-response= setup
+(=gptel-response-separator= = ="\n\n"=) and the REASONING-local
+=separator= (="\n"=) is a different bug.  See follow-up TODO
+"Reduce extra blank line(s) before REASONING heading on
+first-streaming-chunk".
+
 **** Mission
 - Apply option 1 to =gptel--display-reasoning-stream= in
   =quelpa/build/gptel/gptel.el= (~L2257-2261).
@@ -3463,6 +3473,154 @@ Pick one (default: A):
   DeepSeek =reasoning_content= + tool calls, commit a378956) addresses
   a *different* failure mode (stream-cleanup dispatch) but the
   user-visible "empty REASONING" overlap may have masked this bug.
+
+*** AI-DO Reduce extra blank line(s) before REASONING heading on first-streaming-chunk
+**** Origin
+- Follow-up to AI-DONE [[file:gptel-ai.org::*Fix REASONING IB created at separator position (heading-pos off-by-separator-len)][Fix REASONING IB created at separator position]]
+  (commit =8069a42=).
+- User feedback after deploying =8069a42=: REASONING IB is now correct
+  (=***** TERMINE= is a level-5 child as expected), but visually two
+  line feeds still appear before =* REASONING= in the agent IB.
+  Previously it was one or two more — i.e. the recent fix did not
+  introduce this; it just made the separator-position bug stop
+  masking it.
+
+**** Discussion highlights
+- Researcher trace of the first-streaming-chunk REASONING path (org
+  agent IB, =tracking-marker= nil, =gptel-mode= on):
+  1. =gptel--display-reasoning-stream= computes a local =separator=:
+     #+begin_src elisp
+       (let ((separator
+              (and (not tracking-marker) gptel-mode
+                   (not (string-suffix-p
+                         "\n" (let ((gptel-org--in-prefix-advice t))
+                                (gptel-response-prefix-string))))
+                   "\n")) ...)
+     #+end_src
+     In org-mode =gptel-response-prefix-alist= has =org-mode . ""=, so
+     the prefix string is =""= which does not end with =\n= →
+     =separator= is ="\n"=.
+  2. It then calls =(gptel-curl--stream-insert-response (concat separator heading-str) info t)=.
+     Because =tracking-marker= is still nil at this point, the inner
+     setup branch of =gptel-curl--stream-insert-response= runs first
+     and inserts =gptel-response-separator= (default ="\n\n"=) plus
+     the (empty) prefix, *then* sets =tracking-marker=, *then* inserts
+     =(concat "\n" "* REASONING \n")=.
+  3. Net inserted bytes before =* REASONING=:
+     - ="\n\n"= from =gptel-response-separator= (Source A)
+     - ="\n"=   from the local =separator= variable (Source B)
+     = three =\n= characters → two blank lines visually.
+- The check in step 1 was intended to avoid stacking =\n= when the
+  *prefix* already provides one.  It does NOT account for the
+  =gptel-response-separator= that =gptel-curl--stream-insert-response=
+  inserts in front of it on the first call.  Hence Source A and
+  Source B both fire and stack.
+- After the first chunk =tracking-marker= is set, =separator= becomes
+  nil, and =gptel-response-separator= is no longer re-inserted — so
+  subsequent reasoning blocks in the same turn are not affected.
+- TOOL path uses the same overall pattern but its callers are not in
+  the first-streaming-chunk position for org agent IBs in practice;
+  if/when they are, the same stacking would apply.  Verify before
+  changing TOOL.
+
+**** Decisions (options for user to choose)
+- Target visual: exactly *one blank line* (two =\n=) between the
+  preceding =:END:= / prior content and =* REASONING= — matching the
+  rest of the response separation in the buffer.
+
+- *Option 1 (recommended): suppress local =separator= when tracking-marker is nil*
+  When tracking-marker is nil the inner setup of
+  =gptel-curl--stream-insert-response= will already insert
+  =gptel-response-separator=, so the local ="\n"= is redundant.
+  #+begin_src elisp
+    ;; gptel.el ~L2248
+    (let ((separator
+           (and tracking-marker gptel-mode               ; was: (not tracking-marker)
+                (not (string-suffix-p
+                      "\n" (let ((gptel-org--in-prefix-advice t))
+                             (gptel-response-prefix-string))))
+                "\n"))
+          (heading-str (copy-sequence "* REASONING \n")))
+      ...)
+  #+end_src
+  Result for first-streaming-chunk: =gptel-response-separator= alone
+  → ="\n\n* REASONING \n"= → 1 blank line. ✓
+  Result when reasoning follows prior text in same turn
+  (tracking-marker non-nil): adds ="\n"= only if prior text doesn't
+  already end with =\n= — heading guaranteed to start on its own
+  line. ✓
+  *Pros:* Minimal delta; preserves all current behaviour for
+  reasoning-after-text; symmetrical with TOOL path semantics; no test
+  rewriting for the heading-position invariant.
+  *Cons:* Subtle reliance on =gptel-curl--stream-insert-response='s
+  setup branch; future refactor of that function must preserve the
+  invariant.
+
+- *Option 2: also account for =gptel-response-separator= in the check*
+  #+begin_src elisp
+    (let ((separator
+           (and (not tracking-marker) gptel-mode
+                (not (string-suffix-p
+                      "\n" (concat (and (not tracking-marker)
+                                        gptel-response-separator)
+                                   (let ((gptel-org--in-prefix-advice t))
+                                     (gptel-response-prefix-string)))))
+                "\n"))
+          (heading-str ...))
+      ...)
+  #+end_src
+  Equivalent net effect for the default ="\n\n"= separator.
+  *Pros:* Logic is self-explanatory.
+  *Cons:* More verbose; double-evaluation of =(not tracking-marker)=.
+
+- *Option 3: don't route the heading insert through =gptel-curl--stream-insert-response=*
+  Insert the heading directly with =insert= and manage =start-marker=
+  / =tracking-marker= ourselves, identically to how a fresh response
+  begins.  Most explicit, but largest delta and hardest to keep in
+  sync with future =gptel-curl--stream-insert-response= changes.
+  Not recommended.
+
+- *Recommended: Option 1.*
+
+**** Mission
+- Apply *Option 1* to =gptel--display-reasoning-stream= in
+  =quelpa/build/gptel/gptel.el= around L2248-2253: change
+  =(not tracking-marker)= to =tracking-marker= in the =separator=
+  computation.  Leave the rest of the heading-position calculation
+  (=pre-pos=, =separator-len=, =heading-pos= adjustment) intact —
+  =separator-len= will now be 0 in the first-chunk case, which is
+  consistent with the heading being inserted at exactly =pre-pos=.
+- Verify =gptel--display-tool-results= is *not* changed.
+- Add/extend a test in
+  =quelpa/build/gptel/test/gptel-unit-tests.el= or
+  =gptel-org-ib-test.el= that exercises the first-streaming-chunk
+  REASONING case (mock =gptel-curl--stream-insert-response= or run
+  the rendering path against a fresh agent IB) and asserts:
+  1. Exactly one blank line (two consecutive =\n=) between the
+     preceding content and =* REASONING=, i.e. no
+     =\n\n\n= sequence.
+  2. =***** TERMINE= still a level-5 child of =**** REASONING=
+     (regression guard for =8069a42=).
+- Run =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
+- Manual verification: with =gptel-org-debug-preserve-state= enabled,
+  trigger a reasoning-only DeepSeek request in a fresh playground
+  buffer, confirm exactly one blank line precedes =* REASONING=.
+- Commit message suggestion: =gptel-org: drop redundant separator
+  before REASONING heading on first-streaming chunk=
+- Atomic commit: =gptel.el= (and test file).
+
+**** Notes / risks
+- Affects only the first-streaming-chunk branch of REASONING
+  rendering; no behaviour change for the second and later reasoning
+  blocks within a turn.
+- Non-agent (regular gptel-mode) buffers: =gptel-org--dynamic-prefix-string=
+  also returns =""= for org-mode outside agent IBs, so the same
+  stacking applies and the same fix benefits regular buffers.
+- Markdown-mode is not affected; the REASONING-heading branch is
+  guarded by =(derived-mode-p 'org-mode)=.
+- If a future change makes =gptel-response-prefix-alist= return a
+  trailing-=\n= prefix for org-mode, Option 1 still behaves correctly
+  (heading inserted at =gptel-response-separator= boundary).
 
 ** Researched TODOs
 *** Unified gptel-org-mode Refactoring
@@ -4086,3 +4244,4 @@ tests (12 bash-safety + 18 trace + 4 loader), 0 unexpected failures.
 **** Mission
 - Enhance =gptel-org-debug-list-ibs= with richer diagnostics
   as needed during future debugging sessions.
+  
