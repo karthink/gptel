@@ -1382,18 +1382,13 @@ Returns t on success, nil on failure."
   "Insert a child heading under PARENT and (optionally) create an IB for it.
 
 This is the single, parent-aware entry point for creating a new
-TODO-keyword heading inside an existing parent subtree.  Replaces
-the implicit-=point=-based function
-`gptel-org-ib-safe-insert-sibling'.
+TODO-keyword heading inside an existing parent subtree.
 
 PARENT identifies the parent heading and may be:
 - A marker into the base buffer, pointing at the parent heading.
 - A registered indirect buffer (gptel IB) whose narrowed subtree's
   root heading is the parent.  Resolved via `gptel-org-ib-get' /
   `gptel-org-ib-base'.
-- The symbol `:point' meaning \"use current point in the current
-  buffer\".  This branch is a transitional shim for callers that
-  have not yet been migrated; it logs a debug message.
 
 TODO-KEYWORD is the org TODO state for the new heading (e.g.
 \"AI-DOING\").  TITLE is the heading text.
@@ -1438,16 +1433,6 @@ freshly-created indirect buffer (or nil when CREATE-INDIRECT-BUFFER
 is nil)."
   (let (parent-context-buffer parent-marker)
     (cond
-     ((eq parent :point)
-      (gptel-org--debug
-       "org-ib insert-child: :point shim path in buffer %s at %d"
-       (buffer-name) (point))
-      (unless (org-at-heading-p)
-        (gptel-org-ib-fatal
-         "insert-child: :point but point %d not at heading in buffer %s"
-         (point) (buffer-name)))
-      (setq parent-context-buffer (current-buffer)
-            parent-marker (point-marker)))
      ((markerp parent)
       (unless (and (marker-buffer parent) (marker-position parent))
         (gptel-org-ib-fatal
@@ -1472,7 +1457,7 @@ is nil)."
                 parent-marker hm))))
      (t
       (gptel-org-ib-fatal
-       "insert-child: unsupported PARENT %S (must be :point, marker, or buffer)"
+       "insert-child: unsupported PARENT %S (must be a marker or a registered gptel IB buffer)"
        parent)))
     (let (heading-marker indirect-buf)
       (with-current-buffer parent-context-buffer
@@ -1499,29 +1484,6 @@ is nil)."
       (list :heading-marker heading-marker
             :indirect-buffer indirect-buf))))
 
-(defun gptel-org-ib-safe-insert-sibling (todo-keyword title tags terminator-keyword)
-  "Create a heading and its indirect buffer in one step.
-
-OBSOLETE since the IB/heading insertion unification: thin shim that
-delegates to `gptel-org-ib-insert-child' with PARENT = `:point'.
-New code should call `gptel-org-ib-insert-child' directly with an
-explicit parent (marker or IB).
-
-TODO-KEYWORD is the org TODO state (e.g., \"AI-DO\").
-TITLE is the heading text.
-TAGS is a list of tag strings.
-TERMINATOR-KEYWORD identifies the terminator (e.g., \"FEEDBACK\").
-
-Point must be on the parent heading.
-Returns the indirect buffer for the newly created heading."
-  (let ((result (gptel-org-ib-insert-child
-                 :point todo-keyword title
-                 :tags tags
-                 :terminator-keyword terminator-keyword)))
-    (plist-get result :indirect-buffer)))
-
-(make-obsolete 'gptel-org-ib-safe-insert-sibling
-               'gptel-org-ib-insert-child "next")
 
 
 (provide 'gptel-indirect-buffer)

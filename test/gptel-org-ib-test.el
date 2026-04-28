@@ -9,7 +9,7 @@
 ;; - Indirect buffer lifecycle (create / close / valid-p).
 ;; - Recreation after a subtree has been moved (name-based lookup).
 ;; - Auto-correction: validate-and-fix, renarrow.
-;; - High-level safe-insert-sibling: the core invariant of the module.
+;; - High-level insert-child: the core invariant of the module.
 
 ;;; Code:
 
@@ -856,7 +856,7 @@ the moment the IB exists, regardless of IB kind."
        (should-not (buffer-live-p ib))))))
 
 (ert-deftest gptel-org-ib-test-safe-insert-sibling-seeds-termine ()
-  "`gptel-org-ib-safe-insert-sibling' produces an IB with TERMINE.
+  "`gptel-org-ib-insert-child' produces an IB with TERMINE.
 
 TERMINE is seeded by the generic factory `gptel-org-ib-create'
 (universal invariant — every IB has TERMINE as its last child)."
@@ -865,8 +865,11 @@ TERMINE is seeded by the generic factory `gptel-org-ib-create'
     (gptel-org-ib-test-with-cleanup
      (goto-char (point-min))
      (org-back-to-heading t)
-     (let ((ib (gptel-org-ib-safe-insert-sibling
-                "AI-DOING" "Child" '("dummy@agent") "FEEDBACK")))
+     (let ((ib (plist-get (gptel-org-ib-insert-child
+                           (point-marker) "AI-DOING" "Child"
+                           :tags '("dummy@agent")
+                           :terminator-keyword "FEEDBACK")
+                         :indirect-buffer)))
        (should (buffer-live-p ib))
        (with-current-buffer ib
          (should (gptel-org-ib-find-terminator "TERMINE"))
@@ -1658,14 +1661,16 @@ Covers `gptel-org-ib-registered-p', `gptel-org-ib-parent',
 ;;; ---- High-level -----------------------------------------------------------
 
 (ert-deftest gptel-org-ib-test-safe-insert-sibling-creates-all ()
-  "safe-insert-sibling creates terminator, heading, and IB."
+  "insert-child creates terminator, heading, and IB."
   (gptel-org-ib-test-with-buffer
       "* Parent\nbody\n"
     (gptel-org-ib-test-with-cleanup
      (goto-char (point-min))
      (org-back-to-heading t)
-     (let ((ib (gptel-org-ib-safe-insert-sibling
-                "AI-DO" "Task" nil "FEEDBACK")))
+     (let ((ib (plist-get (gptel-org-ib-insert-child
+                           (point-marker) "AI-DO" "Task"
+                           :terminator-keyword "FEEDBACK")
+                         :indirect-buffer)))
        (should (buffer-live-p ib))
        (should (gptel-org-ib-valid-p ib))
        ;; Registered
@@ -1690,20 +1695,26 @@ Covers `gptel-org-ib-registered-p', `gptel-org-ib-parent',
     (gptel-org-ib-test-with-cleanup
      (goto-char (point-min))
      (org-back-to-heading t)
-     (let* ((ib1 (gptel-org-ib-safe-insert-sibling
-                  "AI-DO" "T1" nil "FEEDBACK")))
+     (let* ((ib1 (plist-get (gptel-org-ib-insert-child
+                             (point-marker) "AI-DO" "T1"
+                             :terminator-keyword "FEEDBACK")
+                           :indirect-buffer)))
        ;; Put some unique content in ib1 so we can verify it survives
        (with-current-buffer ib1
          (goto-char (point-max))
          (insert "UNIQUE-T1-CONTENT\n"))
        (goto-char (point-min))
        (org-back-to-heading t)
-       (let* ((ib2 (gptel-org-ib-safe-insert-sibling
-                    "AI-DO" "T2" nil "FEEDBACK")))
+       (let* ((ib2 (plist-get (gptel-org-ib-insert-child
+                             (point-marker) "AI-DO" "T2"
+                             :terminator-keyword "FEEDBACK")
+                           :indirect-buffer)))
          (goto-char (point-min))
          (org-back-to-heading t)
-         (let ((ib3 (gptel-org-ib-safe-insert-sibling
-                     "AI-DO" "T3" nil "FEEDBACK")))
+         (let ((ib3 (plist-get (gptel-org-ib-insert-child
+                            (point-marker) "AI-DO" "T3"
+                            :terminator-keyword "FEEDBACK")
+                          :indirect-buffer)))
            ;; All 3 live and valid
            (should (gptel-org-ib-valid-p ib1))
            (should (gptel-org-ib-valid-p ib2))
@@ -1754,8 +1765,10 @@ fallback.  This locks in the IB-3.2 hard-fail policy."
     (gptel-org-ib-test-with-cleanup
      (goto-char (point-min))
      (org-back-to-heading t)
-     (let ((ib (gptel-org-ib-safe-insert-sibling
-                "AI-DO" "Task" nil "FEEDBACK")))
+     (let ((ib (plist-get (gptel-org-ib-insert-child
+                           (point-marker) "AI-DO" "Task"
+                           :terminator-keyword "FEEDBACK")
+                         :indirect-buffer)))
        (should (buffer-live-p ib))
        (should (gptel-org-ib-get (buffer-name ib)))
        ;; Inject staleness: narrow the IB so point-min is no longer
@@ -1782,8 +1795,7 @@ fallback.  This locks in the IB-3.2 hard-fail policy."
 ;;;
 ;;; These tests cover `gptel-org-ib-insert-child', the single
 ;;; parent-aware entry point that supersedes the implicit-=point=-based
-;;; functions `gptel-org-ib-safe-insert-sibling' and
-;;; `gptel-org-ib-create-tool-heading'.
+;;; function `gptel-org-ib-create-tool-heading'.
 
 (defun gptel-org-ib-test--heading-order ()
   "Return a list of (TODO-or-TITLE) strings for every heading in buffer.

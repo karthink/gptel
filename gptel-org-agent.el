@@ -210,9 +210,9 @@ DESCRIPTION is an optional string to use as the heading title.
 When nil, the parent heading's text is used instead.
 
 PARENT is an optional marker pointing to the parent heading.  When
-nil or omitted, point must be on the parent heading; the :point shim
-of `gptel-org-ib-insert-child' (the unified parent-aware insertion
-API) is used for backward compatibility.
+nil or omitted, point must be on the parent heading; a point-marker
+is created and passed to `gptel-org-ib-insert-child' (the unified
+parent-aware insertion API).
 
 The terminator keyword is \"TERMINE\" for consistency with the rest
 of the indirect-buffer system.
@@ -236,7 +236,7 @@ heading marker."
                   (org-element-property :raw-value (org-element-at-point)))))
            (doing-keyword
             (or (bound-and-true-p gptel-org-tasks-doing-keyword) "AI-DOING"))
-           (effective-parent (or parent :point)))
+           (effective-parent (or parent (point-marker))))
       (gptel-org--debug
        "org-agent create-subtree: creating %S under %S (terminator=\"TERMINE\")"
        tag effective-parent)
@@ -1660,7 +1660,7 @@ org-mode, or we can't find a heading context to create the subtree."
                      ;; Capture the parent heading position as an
                      ;; explicit marker; this routes through the
                      ;; unified parent-aware API instead of the
-                     ;; transitional `:point' shim.  marker-buffer
+                     ;; removed `:point' shim.  marker-buffer
                      ;; will be the current (possibly indirect)
                      ;; buffer, and `gptel-org-ib-insert-child'
                      ;; resolves the rest.
