@@ -3359,6 +3359,11 @@ PROCESS and _STATUS are process parameters."
               (funcall (plist-get info :callback) nil info)))
            ;; Finish handling a successful streaming response
            ((member http-status '("200" "100"))
+            ;; If reasoning block was started but never concluded (e.g. DeepSeek
+            ;; reasoning_content + tool calls with no text content), finalize it.
+            (when (eq (plist-get info :reasoning-block) 'in)
+              (funcall (plist-get info :callback) '(reasoning . t) info)
+              (plist-put info :reasoning-block 'done))
             (with-demoted-errors "gptel callback error: %S"
               (funcall (plist-get info :callback) t info)))
            ;; Capture error message from HTTP error response
