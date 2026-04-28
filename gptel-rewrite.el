@@ -422,30 +422,86 @@ SWITCHES are diff arguments."
         (setq-local diff-jump-to-old-file t))
       (display-buffer diff-buf))))
 
+(defcustom gptel-rewrite-ediff-extra-bindings '(("C-c C-a". accept-a)
+                                                ("C-c C-b". accept-b))
+  "An alist of extra bindings to use in gptel ediff buffers.
+
+The symbols `accept-a' and `accept-b' are special and mean to
+quit the ediff session and accept buffer A or B. Any other
+mappings in the alist are treated as ordinary bindings to
+commands."
+  :type '(alist :key-type string :value-type symbol))
+
 (defun gptel--rewrite-ediff (&optional ovs)
-  "Ediff pending LLM responses in OVS or at point."
+  "Ediff pending LLM responses in OVS or at point.
+
+During the ediff session, the original text is shown in buffer A
+and the LLM's response is shown in buffer B. When the session
+ends, the contents of buffer A are preserved and the overlay in
+buffer is updated to show the contents of buffer B.
+
+Therefore, after exiting the ediff session rejecting with
+\\[gptel--rewrite-reject] will result in the what was contained
+in buffer A at the end of the ediff session (the edited original
+buffer). Accepting with \\[gptel--rewrite-accept] will result in
+the final contents of buffer B (the edited LLM response)."
   (interactive (list (gptel--rewrite-overlay-at)))
-  (when-let* ((ov-buf (overlay-buffer (or (car-safe ovs) ovs)))
+  (setq ovs (ensure-list ovs))
+  (when-let* ((ov-buf (overlay-buffer (car ovs)))
               ((buffer-live-p ov-buf)))
     (letrec ((newbuf (gptel--rewrite-prepare-buffer ovs))
              (cwc (current-window-configuration))
              (hideshow
               (lambda (&optional restore)
-                (dolist (ov (ensure-list ovs))
+                (dolist (ov ovs)
                   (when-let* ((overlay-buffer ov))
                     (let ((disp (overlay-get ov 'display))
-                          (stored (overlay-get ov 'gptel--ediff)))
+                          (response (and restore
+                                         (with-current-buffer newbuf
+                                           (buffer-string)))))
                       (overlay-put ov 'face (and restore 'gptel-rewrite-highlight-face))
-                      (overlay-put ov 'display (and restore stored))
-                      (overlay-put ov 'gptel--ediff (unless restore disp)))))))
+                      (overlay-put ov 'display response)
+                      (when restore
+                        (overlay-put ov 'gptel-rewrite response)))))))
              (gptel--ediff-restore
               (lambda ()
                 (when (window-configuration-p cwc)
                   (set-window-configuration cwc))
                 (funcall hideshow 'restore)
-                (remove-hook 'ediff-quit-hook gptel--ediff-restore))))
+                (remove-hook 'ediff-quit-hook gptel--ediff-restore)
+                (remove-hook 'ediff-startup-hook gptel--ediff-setup)))
+             (gptel--ediff-accept-A
+              (lambda ()
+                (interactive)
+                ;; Pass the `current-prefix-arg' so as to mimic the behavior of
+                ;; `ediff-quit'.
+                (ediff-really-quit current-prefix-arg)
+                (gptel--rewrite-reject ovs)))
+             (gptel--ediff-accept-B
+              (lambda ()
+                (interactive)
+                (ediff-really-quit current-prefix-arg)
+                (gptel--rewrite-accept ovs)))
+             (gptel--ediff-setup
+              (lambda ()
+                (let* ((bindings gptel-rewrite-ediff-extra-bindings)
+                       (accept-a-keys (car (rassoc 'accept-a bindings)))
+                       (accept-b-keys (car (rassoc 'accept-b bindings)))
+                       (other-bindings (cl-remove-if (lambda (cell)
+                                                       (memq (cdr cell) '(accept-a accept-b)))
+                                                     bindings)))
+                  (use-local-map (make-composed-keymap
+                                  (apply #'define-keymap
+                                         accept-a-keys gptel--ediff-accept-A
+                                         accept-b-keys gptel--ediff-accept-B
+                                         other-bindings)
+                                  (current-local-map)))
+                  (message "Use %s and %s to quit ediff and immediately accept buffer A or B"
+                           accept-a-keys
+                           accept-b-keys)))))
       (funcall hideshow)
       (add-hook 'ediff-quit-hook gptel--ediff-restore 50)
+      (add-hook 'ediff-startup-hook gptel--ediff-setup)
       (let ((ediff-window-setup-function #'ediff-setup-windows-plain)
             (ediff-split-window-function #'split-window-horizontally))
         (ediff-buffers ov-buf newbuf)))))
