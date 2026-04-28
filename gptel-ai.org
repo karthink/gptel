@@ -1383,7 +1383,7 @@ endpoint to verify =gptel-deepseek-p= matches.
   parent repo with a one-line message.
 
 
-*** AI-DO Fix DeepSeek =[DONE]= handler clears =:reasoning-chunks= unconditionally
+*** AI-DONE Fix DeepSeek =[DONE]= handler clears =:reasoning-chunks= unconditionally
 **** Origin
 - Spawned from AI-DONE *Analyse DeepSeek =reasoning_content=
   diagnostic log*.  Researcher identified =gptel-openai.el:134= as a
@@ -1418,6 +1418,34 @@ endpoint to verify =gptel-deepseek-p= matches.
 - Add a regression note in the inline comment referencing the
   DeepSeek 400 invariant.
 
+**** Resolution
+- *Chosen:* Option A (gate the cleanup), not Option B (parallel
+  injection).  Implementation moves
+  =(plist-put info :reasoning-chunks nil)= INSIDE the
+  =when-let* ((tool-use ...))= block in =gptel-curl--parse-stream=
+  ([DONE] handler), so chunks are cleared only after they have
+  been consumed by =gptel--inject-prompt=.
+- *Why not Option B:*
+  + =info :data :messages= on a non-tool turn has *no consumer*.
+    The FSM ends after [DONE] for non-tool turns; the next user
+    request rebuilds messages from the buffer via
+    =gptel--parse-buffer=.  The persistence path in
+    =gptel.el= (~L2567) reads =info :data :messages= only for
+    assistant messages carrying =:tool_calls= (to copy
+    =:reasoning_content= into the buffer-side tool-call sexp).
+  + The full assistant response text is not available in [DONE]
+    handler scope (=content-strs= is local to a single
+    =gptel-curl--parse-stream= call), so we cannot construct a
+    well-formed =(:role "assistant" :content RESPONSE
+    :reasoning_content CHUNKS)= message there anyway.
+  + =gptel--handle-wait= already resets =:reasoning-chunks= at
+    every WAIT entry (commit =a7c078d=), so leaving chunks unset
+    in the non-tool branch is safe.
+- *Inline comment* in =gptel-openai.el= references this section
+  and the DeepSeek 400 invariant.
+- Test suite: 470/473 pass, 0 unexpected, 3 pre-existing skips —
+  matches the baseline recorded against commit =a7c078d=.
+- Submodule commit: =3477a943e94a2753e168af2f6670e9ee4e0491bd=.
 
 
 *** AI-DO Propagate =:include-reasoning= to tool-continuation info plists
