@@ -741,6 +741,334 @@ Migration: set =gptel-org-use-todo-keywords= to =t= and convert existing =:assis
 * TODOs
 ** Adhoc TODOs
 
+
+*** AI-DONE Reproduce DeepSeek =reasoning_content= 400 error in tests
+**** Origin
+- User reports the DeepSeek API still returns
+  : DeepSeek error: ((HTTP/2 400) invalid_request_error) The `reasoning_content` in the thinking mode must be passed back to the API.
+  even after commit =1a6952e= ("fix(deepseek): persist reasoning_content
+  across tool-call turns").
+- User also reports they no longer see *any* AI reasoning text in
+  responses (DeepSeek or Claude), so the on-screen reasoning rendering
+  may also be regressed independently of the round-trip fix.
+- Prior research: [[file:~/.emacs.d/fix-reasoning.org]] documents the
+  three-gap analysis (parse-buffer, runtime injection, deepseek
+  =:around= merger) that drove commit =1a6952e=.
+
+**** Discussion highlights
+- The existing test file =test/gptel-deepseek-reasoning-test.el= covers
+  only the *parse-buffer half* of the round-trip:
+  + =gptel-deepseek-reasoning-parse-buffer-roundtrip= — feeds a buffer
+    that *already contains* a tool sexp with =:reasoning_content= and
+    asserts =gptel--parse-buffer= preserves it.
+  + =gptel-deepseek-reasoning-parse-buffer-no-reasoning= — same, with
+    the reasoning field absent.
+  + =gptel-deepseek-reasoning-merger-preserves-tool-calls= — asserts
+    the DeepSeek =:around= merger does not collapse messages with
+    =:tool_calls= or =:reasoning_content=.
+  All three tests pass (469 total, 466 passed, 3 unrelated skips).
+- *What is NOT tested:* the *display-side* persistence in
+  =gptel--display-tool-results= (gptel.el ~L2553–L2591).  That code
+  expects the runtime path to have injected an assistant message
+  carrying =:reasoning_content= into =info :data :messages=; it then
+  pulls =:reasoning_content= from that message and writes it into the
+  buffer-side tool sexp.
+- Tracing the runtime path:
+  + *Streaming* (=gptel-curl--parse-stream=, gptel-openai.el L80–L130):
+    on =[DONE]=, injects an assistant message of the form
+    : (:role "assistant" :content :null :tool_calls [...] <reasoning-field> "...")
+    where =<reasoning-field>= is the dynamic key from the first
+    captured chunk (=:reasoning_content= for DeepSeek, =:reasoning= for
+    OpenRouter).  This *should* satisfy the display-side reader, but
+    no test verifies the resulting =:data :messages= shape.
+  + *Non-streaming* (=gptel--parse-response=, gptel-openai.el L175–L212):
+    calls =gptel--inject-prompt= with the *raw API response message*
+    (which already has =:reasoning_content= as a top-level field for
+    DeepSeek).  Reasoning is *additionally* stored in =info :reasoning=
+    for the streaming filter, but the injected message itself is not
+    augmented; it relies on the API returning =:reasoning_content=
+    inside the message — which it does, but again no test verifies it.
+- *Hypothesis (bug A — round-trip):* For non-streaming or for streams
+  where the chunked reasoning key is recorded as =:reasoning_content=,
+  the injected =:data :messages= entry should carry it.  The display
+  side, however, only triggers when =gptel-deepseek-p= AND
+  =gptel-include-reasoning= is non-nil.  If the user has reasoning
+  *display* disabled (or it's =ignore=) but still expects the tool-call
+  round-trip to succeed, the persistence is silently skipped and the
+  next turn omits =reasoning_content=, reproducing the 400.
+- *Hypothesis (bug B — display):* User reports no reasoning text shown
+  for DeepSeek or Claude.  The streaming display goes through
+  =gptel--display-reasoning-stream= (gptel.el L2154+), which only fires
+  on response cons =(reasoning . TEXT)= dispatched from the stream
+  filter.  This is independent of the API round-trip, but its absence
+  *also* implies =gptel-include-reasoning= might be nil/=ignore=, in
+  which case bug A is also active.
+- *Test gap to close:* we need ert tests that
+  1. Drive =gptel-curl--parse-stream= against a synthetic DeepSeek SSE
+     stream that contains *both* =reasoning_content= chunks *and* a
+     tool call, and assert that =info :data :messages= ends with an
+     assistant message carrying =:tool_calls= AND =:reasoning_content=.
+  2. Drive =gptel--parse-response= with a synthetic DeepSeek
+     non-streaming response containing both, and assert the same shape
+     in =info :data :messages=.
+  3. Call =gptel--display-tool-results= with that =info= against a
+     temp org buffer, and assert the resulting tool sexp text matches
+     =(:name ... :args ... :reasoning_content "...")=.
+  4. (Optional) Re-parse the same buffer with =gptel--parse-buffer= and
+     assert the reconstructed assistant message carries
+     =:reasoning_content= — closing the round-trip end-to-end.
+- These tests, if they fail, will localise the regression to one of
+  the three runtime stages.  If they all pass while the user still
+  sees the 400, the bug is in a layer not yet covered (e.g. the
+  =info :include-reasoning= flag plumbing, or a backend other than
+  =gptel-deepseek-p= for which the persistence guard is wrong).
+
+**** Decisions
+- *Scope of this task:* write the failing/diagnostic tests only.  Do
+  *not* attempt a fix in this task — first confirm where the failure
+  is in CI-style isolation.  A separate follow-up task will fix
+  whichever stage the new tests pinpoint.
+- Place new tests in the existing file
+  =test/gptel-deepseek-reasoning-test.el= (extends the round-trip
+  coverage already started there) rather than a new file.
+- Use the dummy DeepSeek backend from =gptel-test-backends= and
+  bind the SSE / response data inline as strings/plists; do *not*
+  hit any real network.
+- For the streaming test, build the SSE data from the literal chunks
+  documented in =fix-reasoning.org= section 7 (use the same chunk
+  format gptel already emits in its example fixtures
+  =examples-responses/openai/thinking_stream_deepseek_01.txt=, but
+  augmented with a synthetic =tool_calls= delta block at the end).
+
+**** Mission
+- Add four ert tests to
+  =quelpa/build/gptel/test/gptel-deepseek-reasoning-test.el=:
+  1. =gptel-deepseek-reasoning-stream-injects-reasoning-with-tool-call=
+     — drives =gptel-curl--parse-stream= with a synthetic SSE buffer
+     containing reasoning_content deltas followed by a tool_calls delta
+     followed by =[DONE]=, then asserts:
+     - the final element of =info :data :messages= has =:role "assistant"=
+     - that element has a non-empty =:tool_calls= vector
+     - that element has =:reasoning_content= equal to the concatenated
+       reasoning chunks (or =:reasoning= for the OpenRouter shape)
+  2. =gptel-deepseek-reasoning-nonstream-injects-reasoning-with-tool-call=
+     — calls =gptel--parse-response= with a synthetic non-streaming
+     DeepSeek response plist containing both =reasoning_content= and
+     =tool_calls=; asserts the same shape in =info :data :messages=.
+  3. =gptel-deepseek-reasoning-display-tool-results-persists-to-buffer=
+     — sets up an =info= plist with =:data :messages= ending in an
+     assistant message carrying =:tool_calls= and =:reasoning_content=,
+     plus =:tool-use=, =:position=, =:buffer=, =:backend= (deepseek),
+     and =:include-reasoning t=.  Calls
+     =gptel--display-tool-results= against a temp org buffer and
+     asserts the inserted tool sexp text contains
+     =:reasoning_content "..."=.
+  4. =gptel-deepseek-reasoning-roundtrip-end-to-end= — combines (3)
+     and the existing parse-buffer test: after display-tool-results
+     writes the sexp, run =gptel--parse-buffer= on the same buffer and
+     assert the reconstructed assistant message carries
+     =:reasoning_content=.
+- Run =cd quelpa/build/gptel/test && make test 2>&1 | tail -30= and
+  report which of the four new tests pass and which fail.  *Failures
+  are expected and informative* — do not "fix" them in this task; the
+  failure pattern tells us which stage of the pipeline is regressed.
+- Append the test-run summary (pass/fail per new test) to this TODO
+  under a new heading =Test results=.
+- Commit the new tests as an atomic commit in
+  =quelpa/build/gptel/= with message:
+  : test(deepseek): add diagnostic tests for reasoning_content round-trip
+  Do *not* commit any changes outside the test file.
+- Do not modify production code in this task.
+
+**** Test results 2026-04-28
+Commit: =e1b75fb= ("test(deepseek): add diagnostic tests for
+reasoning_content round-trip") on the gptel subrepo at
+=quelpa/build/gptel/=.
+
+Test run: =cd quelpa/build/gptel/test && make test=
+
+#+begin_src text
+Ran 473 tests, 470 results as expected, 0 unexpected, 3 skipped
+#+end_src
+
+Per-test results for the four new diagnostic tests:
+
+| Test                                                              | Result |
+|-------------------------------------------------------------------+--------|
+| gptel-deepseek-reasoning-stream-injects-reasoning-with-tool-call  | PASS   |
+| gptel-deepseek-reasoning-nonstream-injects-reasoning-with-tool-call | PASS |
+| gptel-deepseek-reasoning-display-tool-results-persists-to-buffer  | PASS   |
+| gptel-deepseek-reasoning-roundtrip-end-to-end                     | PASS   |
+
+Existing 3 tests (=parse-buffer-roundtrip=, =parse-buffer-no-reasoning=,
+=merger-preserves-tool-calls=) also continue to PASS.
+
+***** Diagnostic interpretation
+
+*All four new tests pass*, which is itself an informative finding:
+
+1. =gptel-curl--parse-stream= correctly injects an assistant message
+   with =:tool_calls= and =:reasoning_content= into =info :data :messages=
+   for synthetic DeepSeek SSE input. *The streaming runtime path is
+   not the regression site.*
+
+2. =gptel--parse-response= correctly injects =:reasoning_content= on
+   the assistant message for synthetic non-streaming DeepSeek
+   responses. *The non-streaming runtime path is not the regression
+   site.*
+
+3. =gptel--display-tool-results= correctly extracts
+   =:reasoning_content= from =info :data :messages= and writes it into
+   the buffer-side tool sexp, given a properly populated =info= plist
+   (with =:callback #'gptel--insert-response=, =:tool-use=,
+   =:include-reasoning t=, and an assistant message in =:data
+   :messages=).  *The display path is not the regression site.*
+
+4. The full display→parse-buffer round-trip preserves
+   =:reasoning_content= on the reconstructed assistant message.  *The
+   end-to-end persistence cycle works under controlled inputs.*
+
+***** Caveat — test 3/4 required a callback
+
+Initial runs of tests 3 and 4 failed with =(void-function nil)= from
+=funcall(nil ...)= deep inside =gptel--display-tool-results=, because
+the test info plist did not provide =:callback=.  Adding =:callback
+#'gptel--insert-response= to the test info made both tests pass.
+This is a test setup issue, not a production regression — production
+code paths always populate =:callback= via
+=gptel-request= / =gptel-fsm-info=.
+
+***** Where the regression must live
+
+Since all four new tests plus the three pre-existing parse-buffer
+tests pass, the regression must be in a layer not yet covered.
+Candidates:
+
+- *The =:include-reasoning= flag plumbing.* The display-side guard is
+  =(let ((flag (or (plist-get info :include-reasoning) gptel-include-reasoning))) (and flag (not (eq flag 'ignore))))=.
+  If the user has =gptel-include-reasoning= set to =nil= or =ignore=
+  (e.g. they prefer not to display reasoning), the persistence
+  branch is skipped entirely, leaving the buffer sexp without
+  =:reasoning_content=.  On the next turn DeepSeek 400s.  *This is
+  the most likely cause* and matches the discussion-highlights note
+  at L794–L799 of this org file.
+
+- The merger in =gptel-openai-extras.el= for back-to-back same-role
+  messages (covered by =merger-preserves-tool-calls= for the
+  parse-buffer side, but the runtime injection path may produce a
+  different shape — e.g. consecutive assistant messages from a
+  multi-turn tool loop where a non-tool-call assistant message
+  follows the tool-call one, possibly merging and dropping
+  =:reasoning_content=).
+
+- A backend-detection mismatch: the display guard uses
+  =(gptel-deepseek-p (plist-get info :backend))=, which only matches
+  =gptel-deepseek= structs constructed by =gptel-make-deepseek=.  If
+  the user reaches DeepSeek via =gptel-make-openai= with a
+  api.deepseek.com endpoint, the backend is a plain =gptel-openai=,
+  =gptel-deepseek-p= returns nil, and =:reasoning_content= is never
+  persisted.  *Worth verifying with the user how the backend is
+  configured.*
+
+- A buffer-state issue specific to org-mode chat buffers (e.g.
+  text-property =gptel= getting stripped on a particular buffer
+  edit, so =gptel--parse-buffer= no longer sees the tool block).
+
+***** Recommended next step
+
+Add a fifth diagnostic test that exercises the =:include-reasoning
+'ignore= and =:include-reasoning nil= cases, and a sixth that
+constructs the backend via =gptel-make-openai= with the deepseek
+endpoint to verify =gptel-deepseek-p= matches.
+
+*** AI-DO Locate DeepSeek =reasoning_content= 400 regression — extend diagnostic coverage
+**** Origin
+- Follow-up to AI-DONE "Reproduce DeepSeek =reasoning_content= 400
+  error in tests".  All four diagnostic tests added in commit =e1b75fb=
+  pass under controlled inputs (synthetic SSE / synthetic non-stream
+  response / pre-built info plist), so the regression must live in a
+  layer not yet covered.
+- User still hits the 400 in real conversations; user also reports no
+  reasoning text is rendered for DeepSeek or Claude.
+
+**** Discussion highlights
+- Three concrete suspect layers identified in the prior task's
+  "Where the regression must live" analysis:
+  1. *=gptel-include-reasoning= flag is nil/ignore in user's runtime.*
+     The display-side persistence branch in
+     =gptel--display-tool-results= is gated on this flag; if disabled,
+     =:reasoning_content= is never written to the buffer-side tool
+     sexp, and the next request omits it → 400.
+  2. *Backend constructed via =gptel-make-openai= pointed at
+     api.deepseek.com instead of =gptel-make-deepseek=.*  In that case
+     =gptel-deepseek-p= returns nil and the persistence branch is
+     skipped regardless of the include-reasoning flag.  User's
+     init.el currently has =(gptel-make-deepseek "DeepSeek" :stream t
+     :key gptel-api-key)= which is correct, but presets / aliases
+     could rebind =gptel-backend= to a different struct at request
+     time — worth confirming.
+  3. *Multi-turn merger collapse on the runtime injection path.*  The
+     existing =merger-preserves-tool-calls= test only covers the
+     buffer→messages parse path (=gptel--parse-buffer=).  The runtime
+     injection path adds messages directly to =:data :messages=
+     without going through the deepseek =:around= merger, but a later
+     parse-buffer pass on the persisted buffer might still lose
+     fields if a non-tool-call assistant turn lands between two tool
+     turns.
+
+**** Decisions (Optional choices for user)
+- *Choice A (recommended):* Add the two follow-up tests outlined
+  below to localise the bug to one specific layer.  These are still
+  diagnostic-only; the fix follows in a separate task.
+- *Choice B:* Skip extra diagnostics; instead instrument
+  =gptel--display-tool-results= and =gptel--inject-prompt= with
+  =gptel--log= calls behind =gptel-log-level 'debug=, ask the user to
+  reproduce once with debug logging on, and analyze the log.  Faster
+  to a real-world answer but only reveals what happens in user's
+  specific session.
+- *Choice C:* Both A and B in parallel.
+
+**** Mission
+- *(If Choice A or C)* Add two ert tests to
+  =quelpa/build/gptel/test/gptel-deepseek-reasoning-test.el=:
+  + =gptel-deepseek-reasoning-display-skipped-when-include-reasoning-nil=
+    — same setup as
+    =gptel-deepseek-reasoning-display-tool-results-persists-to-buffer=
+    but with =:include-reasoning nil= (and =gptel-include-reasoning=
+    let-bound to =nil=).  Assert the buffer sexp does *NOT* contain
+    =:reasoning_content=.  This documents the current (intentional?)
+    behaviour and confirms the gating logic.  If this test passes,
+    user's bug is bug A1 (flag is off when they expect it on).  If it
+    unexpectedly fails (sexp contains reasoning), the gating is
+    looser than intended — separate fix.
+  + =gptel-deepseek-reasoning-display-skipped-when-not-deepseek-struct=
+    — construct a backend via =gptel--make-openai= with
+    =:host "api.deepseek.com"=, set =info :backend= to it, otherwise
+    same as the persists-to-buffer test.  Assert the buffer sexp
+    does NOT contain =:reasoning_content=.  Confirms suspect 2 (the
+    persistence guard is too narrow).  If this test passes, the
+    guard should arguably be widened to detect any
+    api.deepseek.com endpoint, not just the =gptel-deepseek= struct.
+- *(If Choice B or C)* Add =gptel--log= debug entries at:
+  + =gptel--display-tool-results= dseek-reasoning extraction (gptel.el
+    ~L2553).  Log: backend type, =:include-reasoning= flag value,
+    presence/absence of last-assistant message in =info :data
+    :messages=, and whether =dseek-reasoning= ended up non-empty.
+  + =gptel--parse-buffer= tool-sexp recovery (gptel-openai.el ~L395).
+    Log: tool-call id, whether sexp had =:reasoning_content=,
+    reconstructed message keys.
+  Behind =gptel-log-level 'debug= so it's silent in normal use.
+  Then ask user to:
+  : (setq gptel-log-level 'debug)
+  reproduce the 400 once, save the *gptel-log* buffer to a file, and
+  attach it to the next iteration of this TODO.  *Delegate the log
+  analysis to a researcher agent* — do not paste raw log into the
+  main context.
+- Run the test suite, append =Test results= subheading to this TODO.
+- Atomic commit on =quelpa/build/gptel/= per output (test-only commit
+  for Choice A; doc + log-instrumentation commit for Choice B).
+
+
 *** AI-DONE Document GPTEL_ prefix requirement for chat-buffer property overrides
 **** Origin
 - User reports that org properties do not override =GPTEL_PRESET= values.
