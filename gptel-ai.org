@@ -2484,7 +2484,7 @@ Pick one (default: A):
 3. Replace the spec+args match in =--find-pending-entry= with an
    exact =pending-id= lookup; keep the heuristic match only as a
    fallback for legacy callers.
-*** TODO Unify IB/heading insertion behind one parent-aware API
+*** DOING Unify IB/heading insertion behind one parent-aware API
 **** Origin
 - Petri feedback after interactive test (playground-ws.org, 2026-04-27):
   #+begin_quote
@@ -2694,14 +2694,37 @@ Pick one (default: A):
   insertion-discovery uses survived commits 1-2.  Test:
   =gptel-org-agent-respond-text-no-same-line-terminator= — passes;
   suite 465/462/3.
-- *Commit 4* — TODO (Mission step 6 remainder).  BASH-tool-heading
-  nesting fix.  Diagnosis still required: locate the call site
-  that, in the executor agent's non-confirm flow, captures a
-  parent at level 3 (user task) instead of level 4 (EXECUTING IB).
-  Fix by passing an explicit parent marker derived from the IB
-  registry to =gptel-org-ib-insert-child=.  Add regression test
-  =gptel-org-agent-bash-tool-heading-nesting= replaying the
-  dummy@executor@dummy@agent flow.  Target suite: 466/463/3.
+- *Commit 4* — DIAGNOSED (gptel =8e3fc1d=).  BASH-tool-heading nesting
+  root cause: =gptel-org--enable-auto-correct= skipped setting
+  =gptel-org--ref-level= when =gptel-org-use-todo-keywords= was
+  nil — the ref-level guard was gated on TODO keywords, but agent
+  IBs always need ref-level for correct heading depth computation.
+  =8e3fc1d= ("fix: always set gptel-org--ref-level on agent IBs
+  regardless of TODO keywords") removes the TODO-keyword gate:
+  ref-level is now always computed and set on agent IBs.  The fix
+  is in =gptel-org.el:2275-2294= with a test in
+  =gptel-org-agent-test.el=.  The level-4 BASH heading now
+  correctly resolves to level-5 under the EXECUTING IB.
+  *Verdict:* BASH nesting is fixed.  Regression test NOT yet
+  written for the dummy@executor@dummy@agent flow replay.
+
+  *Remaining unification gaps discovered during diagnosis:*
+  1. =gptel-org-agent--create-subtree= (gptel-org-agent.el:199-256)
+     still calls =gptel-org-ib-create-heading= /directly/, uses old
+     FEEDBACK terminator keyword, creates IB separately.  This is
+     the /primary/ code path for fresh top-level agent subtrees.
+  2. =insert-user-heading= tag-mode path (gptel-org-agent.el:1378)
+     calls =gptel-org-ib-create-heading= directly with /no/
+     terminator at all.
+  3. =update-tool-heading= (gptel-org-agent.el:2448-2585) replaces
+     body content but never calls
+     =gptel-org-ib-remove-terminator= — tool IBs retain stale
+     TERMINE headings after completion.
+  4. =:point= shim in =gptel-org-ib-insert-child= still exists as
+     a transitional path with debug logging; should be removed
+     once all callers migrate (currently only tests call it).
+  → Follow-up TODOs: [[*AI-DO Migrate --create-subtree to unified insert-child API][AI-DO create-subtree]], [[*AI-DO Clean up tool IB TERMINE after tool completion][AI-DO tool IB TERMINE]],
+    [[*AI-DO Migrate insert-user-heading tag-mode to unified API][AI-DO insert-user-heading tag-mode]], [[*AI-DO Remove :point shim from insert-child][AI-DO :point shim]].
 - *Commit 5* — TODO (Mission steps 7-8).  Documentation sync:
   - [[file:gptel-indirect-buffer-ai.org]] — describe single
     insertion API and explicit-parent contract.
@@ -2710,6 +2733,108 @@ Pick one (default: A):
   - [[file:quelpa/build/gptel-agent/gptel-agent-ai.org]]
     "Sub-Agent Subtree Handlers" — remove references to deprecated
     functions.
+
+**** AI-DO Migrate --create-subtree to unified insert-child API
+***** Origin
+- Diagnosis of [[*Unify IB/heading insertion behind one parent-aware API][Unify IB/heading insertion]] (2026-04-28).
+- =gptel-org-agent--create-subtree= (gptel-org-agent.el:199-256) is
+  the /primary/ code path for creating fresh top-level agent subtrees
+  (called from =--maybe-setup-subtree= at line 839 when no existing
+  agent subtree is found).
+***** Discussion highlights
+- Currently calls =gptel-org-ib-create-heading= directly (bypassing the
+  unified =gptel-org-ib-insert-child= API).
+- Uses old FEEDBACK terminator keyword instead of the standard "TERMINE".
+- Creates IB separately via =gptel-org-agent--open-indirect-buffer=
+  instead of letting =insert-child= handle it.
+- This is the last remaining major call site that bypasses the unified API.
+***** Decisions
+- Refactor to call =gptel-org-ib-insert-child= with an explicit parent
+  marker (derived from the user task heading).
+- Use "TERMINE" as terminator keyword (unify with rest of system).
+- Remove separate IB creation — let =insert-child= create it.
+- Remove old FEEDBACK/legacy terminator keyword handling.
+***** Mission
+1. Refactor =gptel-org-agent--create-subtree= to use
+   =gptel-org-ib-insert-child=.
+2. Ensure callers (=--maybe-setup-subtree=) pass a proper parent marker.
+3. Run tests: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
+4. Commit atomically.
+
+**** AI-DO Clean up tool IB TERMINE after tool completion
+***** Origin
+- Diagnosis of [[*Unify IB/heading insertion behind one parent-aware API][Unify IB/heading insertion]] (2026-04-28).
+- Tool IBs (BASH, Eval, etc.) retain stale TERMINE headings after the
+  tool completes.  =gptel-org-agent--update-tool-heading= replaces body
+  content but never calls =gptel-org-ib-remove-terminator=.
+***** Discussion highlights
+- Each tool gets its own dedicated IB with a TERMINE seeded by
+  =gptel-org-ib-create=.
+- When the tool completes (=--update-tool-heading=, lines 2448-2585),
+  the body is replaced but TERMINE remains.
+- This causes orphaned TERMINE headings in tool IBs that are no longer
+  meaningful (tool is done, no more content will be added).
+- Contrast with agent IBs: =insert-user-heading= properly cleans up
+  TERMINE via =gptel-org-ib-remove-terminator=.
+***** Decisions
+- Add =gptel-org-ib-remove-terminator= call in
+  =--update-tool-heading= after body replacement.
+- Or consider: should tool IBs keep TERMINE?  Maybe not — once the
+  tool result is written, no more streaming content arrives.
+***** Mission
+1. Add TERMINE cleanup in =gptel-org-agent--update-tool-heading=.
+2. Run tests: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
+3. Commit atomically.
+
+**** AI-DO Migrate insert-user-heading tag-mode to unified API
+***** Origin
+- Diagnosis of [[*Unify IB/heading insertion behind one parent-aware API][Unify IB/heading insertion]] (2026-04-28).
+- =gptel-org-agent--insert-user-heading= tag-mode path
+  (gptel-org-agent.el:1378) calls =gptel-org-ib-create-heading=
+  directly with no terminator at all.
+***** Discussion highlights
+- Lower priority than =--create-subtree= migration.
+- The tag-mode path creates a child =:user:= heading for user messages
+  in tag-based agent mode.
+- Currently bypasses the unified API — should use =insert-child= with
+  appropriate parent.
+***** Mission
+1. Refactor tag-mode path to use =gptel-org-ib-insert-child=.
+2. Run tests.
+3. Commit atomically.
+
+**** AI-DO Remove :point shim from insert-child
+***** Origin
+- Diagnosis of [[*Unify IB/heading insertion behind one parent-aware API][Unify IB/heading insertion]] (2026-04-28).
+- =gptel-org-ib-insert-child= has a =:point= parent resolution path
+  with debug logging, marked as transitional.
+***** Discussion highlights
+- Currently only called from tests (via
+  =gptel-org-ib-safe-insert-sibling= shim).
+- Once all production callers use explicit parent markers/IBs, the
+  =:point= shim and the =safe-insert-sibling= shim can be removed.
+- Should be the /last/ step — after =--create-subtree= and
+  =insert-user-heading= migrations are complete.
+***** Mission
+1. Verify no production callers use the =:point= parent path.
+2. Remove =:point= resolution branch from =gptel-org-ib-insert-child=.
+3. Remove =gptel-org-ib-safe-insert-sibling= shim.
+4. Update tests that use the shim to call =insert-child= directly.
+5. Run tests.
+6. Commit atomically.
+
+**** AI-DO Documentation sync for IB insertion unification
+***** Origin
+- Commit 5 of [[*Unify IB/heading insertion behind one parent-aware API][Unify IB/heading insertion]].
+***** Mission
+1. Update [[file:gptel-indirect-buffer-ai.org]] — describe single
+   insertion API and explicit-parent contract.
+2. Update [[file:gptel-ai.org::*Indirect-buffer canonical refactor]]
+   phase IB-2 / IB-4 — point at the new entry point.
+3. Update [[file:quelpa/build/gptel-agent/gptel-agent-ai.org]]
+   "Sub-Agent Subtree Handlers" — remove references to deprecated
+   functions.
+4. Commit atomically.
 
 **** Constraints
 - One pattern only.  No legacy carve-outs; no =if-from-pending-id=
