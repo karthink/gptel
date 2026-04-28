@@ -196,8 +196,8 @@ Return a marker to the child heading if found, or nil."
 
 ;;; ---- Core functions -------------------------------------------------------
 
-(defun gptel-org-agent--create-subtree (agent-type &optional parent-tag description)
-  "Create an agent child heading under the current heading.
+(defun gptel-org-agent--create-subtree (agent-type &optional parent-tag description parent)
+  "Create an agent child heading under PARENT.
 
 AGENT-TYPE is a string identifying the agent (e.g., \"main\",
 \"researcher\", \"gatherer\").
@@ -209,48 +209,67 @@ is \"<AGENT-TYPE>@<PARENT-TAG>\".
 DESCRIPTION is an optional string to use as the heading title.
 When nil, the parent heading's text is used instead.
 
-Point must be on the parent heading (the TODO heading or another agent
-heading).
+PARENT is an optional marker pointing to the parent heading.  When
+nil or omitted, point must be on the parent heading; the :point shim
+of `gptel-org-ib-insert-child' (the unified parent-aware insertion
+API) is used for backward compatibility.
 
-Uses `gptel-org-ib-create-heading' (after ensuring the terminator)
-so that the new heading is inserted BEFORE any existing sibling
-terminator (e.g. FEEDBACK) and therefore does not disturb existing
-sibling indirect buffers narrowed to earlier subtrees.  When no
-terminator is appropriate or present, create-heading falls back to
-`org-end-of-subtree' (preserving prior behaviour for fresh trees).
+The terminator keyword is \"TERMINE\" for consistency with the rest
+of the indirect-buffer system.
 
-Return a marker to the newly created heading."
+When PARENT is non-nil, return a plist of the form
+  (:heading-marker MARKER :indirect-buffer IB-or-nil).
+When PARENT is nil (backward-compatible path), return just the
+heading marker."
   (save-excursion
-    (unless (org-at-heading-p)
-      (error "gptel-org-agent--create-subtree: point is not on a heading"))
     ;; Tool call confirmation text in the buffer may be marked read-only
     ;; (by `gptel--display-tool-calls').  Bypass read-only here.
     (let* ((inhibit-read-only t)
-           (parent-level (org-current-level))
-           (child-level (1+ parent-level))
            (tag (gptel-org-agent--construct-tag agent-type parent-tag))
            (heading-title
             (or description
-                (org-element-property :raw-value (org-element-at-point))))
+                (save-excursion
+                  (when (markerp parent)
+                    (goto-char parent))
+                  (unless (org-at-heading-p)
+                    (error "gptel-org-agent--create-subtree: not on a heading"))
+                  (org-element-property :raw-value (org-element-at-point)))))
            (doing-keyword
             (or (bound-and-true-p gptel-org-tasks-doing-keyword) "AI-DOING"))
-           ;; Terminator at parent level.  If a FEEDBACK (or custom user
-           ;; keyword) child exists already, insert before it; otherwise
-           ;; create-heading appends at end-of-subtree.
-           (terminator-keyword
-            (or (bound-and-true-p gptel-org-user-keyword) "FEEDBACK")))
+           (effective-parent (or parent :point)))
       (gptel-org--debug
-       "org-agent create-subtree: creating %S at level %d under level %d (terminator=%S)"
-       tag child-level parent-level terminator-keyword)
-      (let ((marker (gptel-org-ib-create-heading
-                     (if heading-title doing-keyword nil)
-                     (or heading-title "")
-                     (list tag)
-                     terminator-keyword)))
+       "org-agent create-subtree: creating %S under %S (terminator=\"TERMINE\")"
+       tag effective-parent)
+      (let ((plist (gptel-org-ib-insert-child
+                    effective-parent
+                    (if heading-title doing-keyword nil)
+                    (or heading-title "")
+                    :tags (list tag)
+                    :terminator-keyword "TERMINE"
+                    :create-indirect-buffer t)))
         (gptel-org--debug
-         "org-agent create-subtree: created heading at line %d, marker at %d"
-         (line-number-at-pos marker) (marker-position marker))
-        marker))))
+         "org-agent create-subtree: created heading, marker=%S, ib=%S"
+         (plist-get plist :heading-marker)
+         (plist-get plist :indirect-buffer))
+        ;; Apply agent-specific setup on the indirect buffer.
+        (let ((ib (plist-get plist :indirect-buffer)))
+          (when ib
+            (with-current-buffer ib
+              ;; Mark this buffer as an agent indirect buffer.
+              (setq-local gptel-org--agent-indirect-buffer-p t)
+              ;; Store the end-marker for backwards compatibility.
+              (let ((entry (gptel-org-ib-get (buffer-name ib))))
+                (when entry
+                  (setq-local gptel-org-agent--narrow-end-marker
+                              (plist-get entry :end-marker))))
+              ;; Enable the idempotent auto-corrector.
+              (gptel-org--enable-auto-correct))))
+        ;; Backward compat: when PARENT is nil (old calling convention),
+        ;; return just the heading marker.  When PARENT is explicit,
+        ;; return the full plist.
+        (if parent
+            plist
+          (plist-get plist :heading-marker))))))
 
 
 (defconst gptel-org-agent--ai-do-family-keywords
@@ -835,14 +854,20 @@ with its normal behavior."
                        (line-number-at-pos) agent-type preset))
                    (agent-tag (gptel-org-agent--construct-tag agent-type))
                    (existing (gptel-org-agent--find-agent-subtree agent-tag))
-                   (heading-marker (or existing
-                                       (gptel-org-agent--create-subtree agent-type)))
                    (base-buffer (current-buffer)))
-              (when existing
-                (gptel-org--debug "org-agent maybe-setup-subtree: reusing existing %S subtree"
-                                  agent-tag))
-              (setq result
-                    (gptel-org-agent--open-indirect-buffer base-buffer heading-marker))))
+              (if existing
+                  (progn
+                    (gptel-org--debug "org-agent maybe-setup-subtree: reusing existing %S subtree"
+                                      agent-tag)
+                    (setq result
+                          (gptel-org-agent--open-indirect-buffer
+                           base-buffer existing)))
+                ;; Use the unified parent-aware entry point with an
+                ;; explicit parent marker.  The returned plist already
+                ;; includes the indirect buffer.
+                (let ((plist (gptel-org-agent--create-subtree
+                              agent-type nil nil (point-marker))))
+                  (setq result (plist-get plist :indirect-buffer))))))
 
           result)))))
 
