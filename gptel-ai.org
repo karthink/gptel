@@ -1455,7 +1455,108 @@ endpoint to verify =gptel-deepseek-p= matches.
   requests should emit =reasoning-init-debug= with consistent
   values.
 
+*** AI-DONE Fix empty REASONING heading for streaming DeepSeek =reasoning_content= + tool calls
+**** Origin
+- User reports REASONING heading is always empty in org-mode
+  discussions (e.g., =**** REASONING = with no title or body text),
+  even though =:reasoning_content "..."= does appear inside tool
+  call sexps — proving reasoning content IS arriving.
+- Example: [[file:../siro-ai/playground-ws.org::*Run date with Bash tool][playground discussion]] shows empty REASONING heading but
+  =:reasoning_content "..."= in the Bash tool call.
+- Root cause: The streaming pipeline never dispatches the
+  ='(reasoning . t)= end-of-reasoning signal for the
+  =reasoning_content= JSON-field path (DeepSeek/Llama.cpp style).
+  Without this signal, =gptel--display-reasoning-stream= never
+  finalizes the title, never inserts body text, never inserts the
+  separator, and never folds the heading.
 
+**** Discussion highlights
+
+*The streaming pipeline has two reasoning modes:*
+1. =<think>...</think>= XML tags (OpenRouter-style):
+   The stream filter in =gptel-request.el= transitions
+   =:reasoning-block= → ='in= → =t= → ='done=, dispatching
+   ='(reasoning . t)= when =</think>= is detected.
+2. Separate =reasoning_content= JSON field (DeepSeek/Llama.cpp):
+   The stream filter transitions =:reasoning-block= → ='in= *only*.
+   It NEVER transitions to =t= and NEVER dispatches
+   ='(reasoning . t)=.
+
+*How the display function works (=gptel.el= L2154–2366):*
+- =gptel--display-reasoning-stream= receives individual chunks.
+- On the first chunk it creates =* REASONING \n= heading.
+- Body text is only inserted AFTER the first newline is found
+  (title extraction phase: L2289–2326).
+- End-of-stream handling (=eq text t=, L2186–2222) finalizes the
+  title, closes the indirect buffer, inserts separator, and folds
+  the heading.
+
+*Why it breaks for DeepSeek tool-call turns:*
+- Reasoning chunks arrive and accumulate title buffer (e.g.,
+  ="I should call calc with 2+2."=).
+- The heading =* REASONING \n= is created.
+- No newline appears in the reasoning text → title never finalized
+  → no body text ever inserted.
+- Tool calls arrive, =[DONE]= arrives — but ='(reasoning . t)= is
+  never sent because =:reasoning-block= is stuck at ='in=.
+- The =:reasoning-block= only transitions to =t= via =</think>=
+  tag detection (=gptel-request.el= L3495), never for JSON-field.
+
+*Where the reasoning DOES go:*
+The reasoning IS preserved in tool call sexps via the DeepSeek
+persistence mechanism (=gptel.el= L2557–2617), which reads
+=:reasoning_content= from the injected assistant message and writes
+it into the buffer-side tool sexp (=:reasoning_content "..."=).
+This is why the user sees reasoning in tools but not in the heading.
+
+*Stream sentinel final callback:*
+- =gptel-request.el= L3363 sends =t= to the callback at stream
+  end, but =gptel-curl--stream-insert-response= has no pcase for =t=,
+  so it's silently dropped.
+
+*Summary table:*
+
+| Path | Status |
+|------|--------|
+| Non-streaming with reasoning (any backend) | ✅ Works |
+| Streaming with =<think>...</think>= tags | ✅ Works |
+| Streaming with =reasoning_content= + text content | ✅ Works (content triggers =reasoning-block= → =t=) |
+| Streaming with =reasoning_content= + tool calls (no text) | ❌ BROKEN — ='(reasoning . t)= never dispatched |
+
+**** Mission
+- Fix: When stream ends and =:reasoning-block= is ='in= (JSON-field
+  mode with no text content having triggered =t=), dispatch
+  ='(reasoning . t)= to finalize the REASONING heading.
+- Implementation options (implementer chooses best approach):
+  1. In =gptel-curl--stream-cleanup= (=gptel-request.el= ~L3353):
+     check if =:reasoning-block= is ='in= and dispatch
+     ='(reasoning . t)= before the final =t= callback.
+  2. In =gptel-curl--stream-insert-response= (=gptel.el=): add a
+     =pcase= branch for =t= that handles pending reasoning
+     finalization.
+  3. In the stream filter (=gptel-request.el= L3468–3501): when
+     =[DONE]= is detected and =:reasoning-block= is ='in=, dispatch
+     ='(reasoning . t)= as part of the cleanup sequence.
+- Verify fix doesn't break other reasoning paths (OpenRouter
+  =<think>= tags, non-streaming, streaming with text content).
+- Run: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
+
+
+**** Resolution
+- Fix committed: =a378956= in =quelpa/build/gptel=
+- Approach: Option 1 — fix in =gptel-curl--stream-cleanup=
+  (=gptel-request.el= L3362–3366)
+- When the HTTP request completes successfully (status 200/100) and
+  =:reasoning-block= is still ='in= (never transitioned to =t=
+  because no text content arrived), dispatch ='(reasoning . t)= to
+  finalize the REASONING heading before the final =t= callback.
+- All 475 tests pass (472 pass, 0 unexpected, 3 pre-existing skips).
+- The REASONING indirect buffer mechanism is unaffected — the fix
+  only ensures the end-of-reasoning signal fires for the JSON-field
+  path when text content never arrives to trigger it naturally.
+
+***** FEEDBACK It is mandatory that REASONING block is own indirect buffer :petri:
+- Not sure if that is the case
 
 *** AI-DO Prevent error-response bytes contaminating TERMINE body
 **** Origin
