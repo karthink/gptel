@@ -2838,6 +2838,132 @@ Pick one (default: A):
   =gptel-org-agent--set-todo-keyword= and the per-agent triad
   table from =gptel-agent-state-words=.
 
+
+*** AI-DO Add debug logging for marker position diagnostics in post-response hooks
+**** Origin
+- Research into =gptel-org--fold-special-blocks: Invalid search bound
+  (wrong side of point)= error (2026-04-28).
+- Debug log shows =apply-response-title: beg=4096 end=4093= — BEG
+  after END — causing downstream =re-search-forward= crash in
+  =gptel-org--fold-special-blocks=.
+
+**** Discussion highlights
+- Both =gptel-org--apply-response-title= (depth 80) and
+  =gptel-org--fold-special-blocks= (depth 90) receive the same bad
+  =(beg, end)= from =gptel--handle-post-insert= via
+  =run-hook-with-args=.
+- The 3-byte gap (4096 vs 4093) suggests a small insertion (separator
+  or BOL guard ="\n"=) between the two marker positions.
+- Root cause is in how =gptel--handle-wait=, =gptel-curl--stream-insert-response=,
+  and =gptel--display-tool-results= interact with the =:position= and
+  =:tracking-marker= info plist keys during multi-turn agent tool cycles.
+- Suspect paths:
+  1. =gptel--display-tool-results= calls streaming callback with
+     =:tracking-marker= = nil (reset by =gptel--handle-wait=), causing
+     =move-marker start-marker (point)= to fire a second time.
+  2. =gptel-org-agent--ensure-bol-before-terminator= (depth 10) inserts
+     ="\n"= before TERMINE, potentially shifting positions of interest.
+  3. Co-location of TERMINE sentinel insertion with the =:position=
+     marker origin point creates fragile state.
+
+**** Decisions
+- Add debug logging before the fix to capture exact marker state:
+  buffer, position, insertion-type for both =:position= and
+  =:tracking-marker=.
+
+**** Mission
+1. Add diagnostic logging to =gptel--handle-post-insert= right before
+   =run-hook-with-args=:
+   #+begin_src elisp
+   (gptel--log "handle-post-insert: beg=%S end=%S start-buf=%S track-buf=%S info-buf=%S track-nil=%S"
+               (marker-position start-marker)
+               (marker-position tracking-marker)
+               (marker-buffer start-marker)
+               (marker-buffer tracking-marker)
+               (plist-get info :buffer)
+               (null (plist-get info :tracking-marker)))
+   #+end_src
+2. Add diagnostic logging to =gptel-curl--stream-insert-response= at
+   the first-chunk path (=unless tracking-marker= block) — log the
+   state of both markers before and after =move-marker=.
+3. Add diagnostic logging to =gptel--display-tool-results= callback
+   invocation — log whether =:tracking-marker= is nil at entry.
+4. Reproduce the issue and capture the diagnostic log.
+5. Commit the debug logging as a temporary diagnostic commit (to be
+   reverted or refined in the fix commit).
+
+**** Constraints
+- Use =gptel--log= for consistency with existing debug infrastructure.
+- Do NOT fix the bug in this commit; this TODO is purely diagnostic.
+- The diagnostic commit is standalone and can be reverted once the
+  root cause is confirmed.
+
+*** AI-DO Fix beg-after-end marker position bug in post-response hooks
+**** Origin
+- The error =gptel-org--fold-special-blocks: Invalid search bound
+  (wrong side of point)= observed in playground-ws.org interactive
+  test (2026-04-28).
+- Debug log: =apply-response-title: beg=4096 end=4093=.
+- Related to existing TODO [[*Unify IB/heading insertion behind one parent-aware API]]
+  Commit 4: "BASH-tool-heading nesting fix + regression test".
+
+**** Discussion highlights
+- The =gptel-post-response-functions= hook passes =(marker-position
+  start-marker)= as BEG and =(marker-position tracking-marker)= as END.
+  When =:position= ends up *after* =:tracking-marker= (BEG > END),
+  =re-search-forward= in =gptel-org--fold-special-blocks= signals
+  "Invalid search bound (wrong side of point)".
+- The researcher-deep analysis identified the likely trigger:
+  =gptel--display-tool-results= calls the streaming callback
+  (=gptel-curl--stream-insert-response=) when =:tracking-marker= is
+  nil (reset by =gptel--handle-wait=).  The first-chunk path runs
+  =move-marker start-marker (point)=, potentially advancing
+  =:position= in a way that breaks the invariant =:position= ≤
+  =:tracking-marker=.
+- A secondary suspect is =gptel-org-agent--ensure-bol-before-terminator=
+  (post-response hook depth 10) which inserts text before TERMINE —
+  if TERMINE is between =start-marker= and =tracking-marker=, the
+  ="\n"= insertion shifts positions.
+- The 3-byte gap (4096 → 4093) matches the size of
+  =gptel-response-separator= (3 bytes: ="\n\n"=) or a BOL guard ="\n"=
+  plus other content.
+
+**** Decisions
+- Fix at the source: ensure =:position= ≤ =:tracking-marker= invariant
+  holds when =gptel--handle-post-insert= runs.
+- Options:
+  1. Guard in =gptel-curl--stream-insert-response=: if
+     =:tracking-marker= is nil but =:position= has already been moved
+     (position ≠ original intent), skip the =move-marker=.
+  2. Guard in =gptel--handle-post-insert=: swap BEG/END if BEG > END
+     before calling =run-hook-with-args= (defensive).
+  3. Fix =gptel--display-tool-results= to not call the streaming
+     callback with =:tracking-marker= = nil — restore or preserve
+     the marker before the tool-result insertion path.
+  - Option 2 is the safest as a defensive measure. Option 3 is the
+    most correct. Likely both are warranted.
+
+**** Mission
+1. *Disable back the debug logging* added by the diagnostic TODO above
+   (or keep as permanent diagnostics at a lower verbosity level).
+2. *Add defensive guard* in =gptel--handle-post-insert=: if
+   =marker-position(start-marker) > marker-position(tracking-marker)=,
+   swap them before passing to =run-hook-with-args=. Log a warning.
+3. *Fix the root cause* in the tool-result display path: ensure
+   =:tracking-marker= is not nil when =gptel--display-tool-results=
+   invokes the streaming callback during multi-turn cycles.
+4. *Add regression test*: simulate a tool-call cycle where the response
+   starts with tool calls (no leading text) and verify
+   =gptel-post-response-functions= receives BEG ≤ END.
+5. *Tests*: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
+6. *Documentation*: update the "Unify IB/heading insertion" TODO with
+   progress on Commit 4 (BASH nesting fix).
+
+**** Constraints
+- Must not break the existing agent tool execution flow.
+- The defensive guard must log a warning so we can detect if the root
+  cause persists.
+- Tests must pass on both gptel and gptel-agent submodules.
 *** AI-DONE Recursive loop when =gptel-org-mode: 1= is set as file-local variable
 **** Origin
 - User report (current AI-DO session): when an org file has
