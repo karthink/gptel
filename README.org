@@ -1660,6 +1660,12 @@ In dedicated chat buffers: you can additionally customize =gptel-prompt-prefix-a
 
 For more custom formatting, use =gptel-pre-response-hook= and =gptel-post-response-functions=.
 
+If you want to act on rendered reasoning or tool blocks, use
+=gptel-post-reasoning-insert-functions= or
+=gptel-post-tool-insert-functions=.  These are UI hooks: they run when
+gptel inserts these blocks into a buffer, such as via =gptel-send=,
+and are not part of the =gptel-request= API.
+
 #+html: </details>
 #+html: <details><summary>
 **** How does gptel distinguish between user prompts and LLM responses?
@@ -1854,10 +1860,12 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-prompt-transform-functions= | Runs in a temp buffer to transform text before sending      |
 | =gptel-post-request-hook=          | Runs immediately after dispatching a =gptel-request=.       |
 | =gptel-pre-response-hook=          | Runs before inserting the LLM response into the buffer      |
-| =gptel-post-response-functions=    | Runs after inserting the full LLM response into the buffer  |
-| =gptel-post-stream-hook=           | Runs after each streaming insertion                         |
-| =gptel-pre-tool-call-functions=    | Runs before each tool call, can block or modify it          |
-| =gptel-post-tool-call-functions=   | Runs after each tool call, can block or modify results      |
+| =gptel-post-response-functions=         | Runs after inserting the full LLM response into the buffer       |
+| =gptel-post-stream-hook=                | Runs after each streaming insertion                              |
+| =gptel-post-tool-insert-functions=      | Runs after gptel inserts a tool result block into a buffer       |
+| =gptel-post-reasoning-insert-functions= | Runs after gptel inserts and folds a reasoning block in a buffer |
+| =gptel-pre-tool-call-functions=         | Runs before each tool call, can block or modify it               |
+| =gptel-post-tool-call-functions=        | Runs after each tool call, can block or modify results           |
 | =gptel-context-wrap-function=      | To include additional context formatted your way            |
 | =gptel-rewrite-default-action=     | Automatically diff, ediff, merge or replace refactored text |
 | =gptel-post-rewrite-functions=     | Runs after a =gptel-rewrite= request succeeds               |

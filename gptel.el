@@ -263,6 +263,30 @@ to the LLM, and after a text insertion."
   :type 'hook
   :group 'gptel)
 
+(defcustom gptel-post-tool-insert-functions nil
+  "Abnormal hook run after gptel inserts a tool result block into a buffer.
+
+Each function is called with two arguments: the beginning and end
+buffer positions of the inserted block.
+
+This hook runs only when gptel inserts tool result blocks into a
+buffer, such as via `gptel-send'.  It is not part of the
+`gptel-request' API."
+  :type 'hook
+  :group 'gptel)
+
+(defcustom gptel-post-reasoning-insert-functions nil
+  "Abnormal hook run after gptel inserts a reasoning block into a buffer.
+
+Each function is called with two arguments: the beginning and end
+buffer positions of the inserted block.
+
+This hook runs after the block has been closed and folded.  It runs
+only when gptel inserts reasoning blocks into a buffer, such as via
+`gptel-send'.  It is not part of the `gptel-request' API."
+  :type 'hook
+  :group 'gptel)
+
 (defcustom gptel-pre-tool-call-functions nil
   "Abnormal hook called before each tool call.
 
@@ -1828,7 +1852,12 @@ Optional RAW disables text properties and transformation."
                             (when (looking-at "^#\\+end_reasoning")
                               (org-cycle)))
                    (when (re-search-backward "^```" start-marker t)
-                     (gptel-markdown-cycle-block)))))))))
+                     (gptel-markdown-cycle-block))))
+               (when-let* ((bounds (gptel--reasoning-bounds
+                                    start-marker
+                                    (plist-get info :tracking-marker))))
+                 (run-hook-with-args 'gptel-post-reasoning-insert-functions
+                                     (car bounds) (cdr bounds))))))))
       (`(tool-call . ,tool-calls)
        (gptel--display-tool-calls tool-calls info))
       (`(tool-result . ,tool-results)
@@ -1937,6 +1966,42 @@ INTERACTIVEP is t when gptel is called interactively."
     (current-buffer)))
 
 
+;;; Rendered block helpers
+(defun gptel--last-block-bounds (start-marker tracking-marker open-re close-re)
+  "Return bounds of the latest block between START-MARKER and TRACKING-MARKER.
+
+The block delimiters are matched by OPEN-RE and CLOSE-RE."
+  (when (and (markerp start-marker) (marker-buffer start-marker)
+             (markerp tracking-marker) (marker-buffer tracking-marker))
+    (save-excursion
+      (goto-char tracking-marker)
+      (when (re-search-backward close-re start-marker t)
+        (let ((block-end (min (point-max) (1+ (line-end-position)))))
+          (when (re-search-backward open-re start-marker t)
+            (cons (match-beginning 0) block-end)))))))
+
+(defun gptel--reasoning-bounds (start-marker tracking-marker)
+  "Return bounds of the latest reasoning block."
+  (gptel--last-block-bounds
+   start-marker tracking-marker
+   (if (derived-mode-p 'org-mode)
+       "^#\\+begin_reasoning[ 	]*$"
+     "^``` reasoning[ 	]*$")
+   (if (derived-mode-p 'org-mode)
+       "^#\\+end_reasoning[ 	]*$"
+     "^```[ 	]*$")))
+
+(defun gptel--tool-bounds (start-marker tracking-marker)
+  "Return bounds of the latest tool block."
+  (gptel--last-block-bounds
+   start-marker tracking-marker
+   (if (derived-mode-p 'org-mode)
+       "^#\\+begin_tool\\(?: .+\\)?$"
+     "^``` tool ")
+   (if (derived-mode-p 'org-mode)
+       "^#\\+end_tool[ 	]*$"
+     "^```[ 	]*$")))
+
 ;;; Reasoning content UI
 (defun gptel--display-reasoning-stream (text info)
   "Show reasoning TEXT in an appropriate location.
@@ -1971,7 +2036,11 @@ for streaming responses only."
                                (when (looking-at "^#\\+end_reasoning")
                                  (org-cycle)))
                       (when (re-search-backward "^```" start-marker t)
-                        (gptel-markdown-cycle-block))))))
+                        (gptel-markdown-cycle-block)))))
+                (when-let* ((bounds (gptel--reasoning-bounds
+                                     start-marker tracking-marker)))
+                  (run-hook-with-args 'gptel-post-reasoning-insert-functions
+                                      (car bounds) (cdr bounds))))
             (unless (and reasoning-marker tracking-marker
                          (= reasoning-marker tracking-marker))
               (let ((separator        ;Separate from response prefix if required
@@ -2228,7 +2297,10 @@ for tool call results.  INFO contains the state of the request."
              (forward-line -1)
              (if (derived-mode-p 'org-mode)
                  (when (looking-at-p "^#\\+end_tool") (org-cycle))
-               (when (looking-at-p "^```") (gptel-markdown-cycle-block))))))))))
+               (when (looking-at-p "^```") (gptel-markdown-cycle-block)))))
+         (when-let* ((bounds (gptel--tool-bounds start-marker tracking-marker)))
+           (run-hook-with-args 'gptel-post-tool-insert-functions
+                               (car bounds) (cdr bounds))))))))
 
 (defun gptel--format-tool-call (name arg-values)
   "Format a tool call for display in the buffer.

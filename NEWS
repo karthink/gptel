@@ -156,6 +156,12 @@
   results, block the tool call but continue the request, or stop the
   request entirely.
 
+- New hooks ~gptel-post-tool-insert-functions~ and
+  ~gptel-post-reasoning-insert-functions~ run after gptel inserts tool
+  and reasoning blocks into a buffer.  These are UI-layer hooks, and
+  each function is called with the beginning and end positions of the
+  inserted block.
+
 - New variable ~gptel-bedrock-aws-cli-command~ to set the path to the
   AWS CLI command for the Bedrock backend.  Defaults to "ews".
 
