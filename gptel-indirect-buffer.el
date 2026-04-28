@@ -80,6 +80,7 @@
 ;; External variables
 (defvar gptel-org-debug)
 (defvar gptel-org-agent--narrow-end-marker)
+(defvar gptel-org-debug-preserve-state)
 
 
 ;;; ---- Canonical Node Struct ------------------------------------------------
@@ -791,6 +792,11 @@ for any reason, the error is logged and the removal proceeds."
       (gptel-org-ib-fatal
        "remove-terminator: point %d not at heading in buffer %s"
        (point) (buffer-name)))
+    (when gptel-org-debug-preserve-state
+      (gptel-org--debug
+       "org-ib remove-terminator: SKIPPING removal of %S (gptel-org-debug-preserve-state is non-nil)"
+       heading-keyword)
+      (cl-return-from gptel-org-ib-remove-terminator nil))
     (let ((removed 0)
           (parent-pos (point))
           (parent-level (org-current-level))
@@ -1121,42 +1127,46 @@ killing the indirect buffer.
 Removes the entry from the tracking registry, cleans up markers,
 and kills the buffer."
   (when (buffer-live-p indirect-buffer)
-    (let* ((buf-name (buffer-name indirect-buffer))
-           (entry (gptel-org-ib-get buf-name))
-           (base-buf (plist-get entry :base))
-           (subtree-start (with-current-buffer indirect-buffer
-                            (point-min))))
-      (unless entry
+    (if gptel-org-debug-preserve-state
         (gptel-org--debug
-         "org-ib close: WARNING buffer %S not in registry" buf-name))
-      (gptel-org--debug "org-ib close: closing %S (fold=%s)" buf-name fold)
-      ;; Optionally fold the completed subtree in the base buffer
-      (when (and fold (buffer-live-p base-buf))
-        (with-current-buffer base-buf
-          (save-excursion
-            (goto-char subtree-start)
-            (when (org-at-heading-p)
-              (org-fold-subtree t)
-              (gptel-org--debug "org-ib close: folded subtree at line %d"
-                                (line-number-at-pos))))))
-      ;; Unregister (cleans up markers)
-      (when entry
-        (gptel-org-ib-unregister buf-name))
-      ;; If there's a buffer-local end-marker not tracked in registry,
-      ;; clean that up too (for buffers created by the old code path).
-      ;; Guard with an explicit liveness check: close is the graceful
-      ;; teardown path and must remain idempotent even when the
-      ;; indirect buffer has already been killed.  Registry-consistency
-      ;; fatals live on the create/op paths, not here.
-      (let ((local-end-marker
-             (and (buffer-live-p indirect-buffer)
-                  (buffer-local-value 'gptel-org-agent--narrow-end-marker
-                                      indirect-buffer))))
-        (when (and (markerp local-end-marker)
-                   (marker-buffer local-end-marker))
-          (set-marker local-end-marker nil)))
-      ;; Kill the indirect buffer
-      (kill-buffer indirect-buffer))))
+         "org-ib close: SKIPPING close of %S (gptel-org-debug-preserve-state is non-nil)"
+         (buffer-name indirect-buffer))
+      (let* ((buf-name (buffer-name indirect-buffer))
+             (entry (gptel-org-ib-get buf-name))
+             (base-buf (plist-get entry :base))
+             (subtree-start (with-current-buffer indirect-buffer
+                              (point-min))))
+        (unless entry
+          (gptel-org--debug
+           "org-ib close: WARNING buffer %S not in registry" buf-name))
+        (gptel-org--debug "org-ib close: closing %S (fold=%s)" buf-name fold)
+        ;; Optionally fold the completed subtree in the base buffer
+        (when (and fold (buffer-live-p base-buf))
+          (with-current-buffer base-buf
+            (save-excursion
+              (goto-char subtree-start)
+              (when (org-at-heading-p)
+                (org-fold-subtree t)
+                (gptel-org--debug "org-ib close: folded subtree at line %d"
+                                  (line-number-at-pos))))))
+        ;; Unregister (cleans up markers)
+        (when entry
+          (gptel-org-ib-unregister buf-name))
+        ;; If there's a buffer-local end-marker not tracked in registry,
+        ;; clean that up too (for buffers created by the old code path).
+        ;; Guard with an explicit liveness check: close is the graceful
+        ;; teardown path and must remain idempotent even when the
+        ;; indirect buffer has already been killed.  Registry-consistency
+        ;; fatals live on the create/op paths, not here.
+        (let ((local-end-marker
+               (and (buffer-live-p indirect-buffer)
+                    (buffer-local-value 'gptel-org-agent--narrow-end-marker
+                                        indirect-buffer))))
+          (when (and (markerp local-end-marker)
+                     (marker-buffer local-end-marker))
+            (set-marker local-end-marker nil)))
+        ;; Kill the indirect buffer
+        (kill-buffer indirect-buffer)))))
 
 (defun gptel-org-ib-valid-p (indirect-buffer)
   "Return non-nil if INDIRECT-BUFFER is still valid.
@@ -1485,6 +1495,85 @@ is nil)."
             :indirect-buffer indirect-buf))))
 
 
+
+;;; ---- Debug Support -------------------------------------------------------
+
+(defun gptel-org-debug-list-ibs ()
+  "Display a buffer listing all registered indirect buffers and their state.
+Shows for each IB: buffer name, base buffer, tag, heading marker position,
+end marker position, live/killed status, and narrow region bounds.
+Also lists any TERMINE children found in the base buffer subtrees.
+
+When `gptel-org-debug-preserve-state' is non-nil, this command also
+notes that cleanup is disabled."
+  (interactive)
+  (let* ((buf (get-buffer-create "*gptel-org-IB-debug*"))
+         (registry-count 0))
+    (with-current-buffer buf
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (special-mode)
+        (setq header-line-format
+              "gptel-org Indirect Buffer Registry  (q to quit)")
+        (when gptel-org-debug-preserve-state
+          (insert (propertize
+                   "⚠ Cleanup is DISABLED (gptel-org-debug-preserve-state is non-nil)\n\n"
+                   'face 'warning)))
+        (insert (propertize "=== Registered Indirect Buffers ===\n\n"
+                            'face 'bold))
+        (maphash
+         (lambda (name node)
+           (setq registry-count (1+ registry-count))
+           (let* ((ib (gptel-org-ib-node-buffer node))
+                  (base (gptel-org-ib-node-base node))
+                  (tag (gptel-org-ib-node-tag node))
+                  (hm (gptel-org-ib-node-heading-marker node))
+                  (em (gptel-org-ib-node-end-marker node))
+                  (parent (gptel-org-ib-node-parent node))
+                  (children (gptel-org-ib-node-children node))
+                  (live (buffer-live-p ib)))
+             (insert (format "%-40s  %s\n"
+                             name
+                             (if live
+                                 (propertize "[LIVE]" 'face 'success)
+                               (propertize "[DEAD]" 'face 'error))))
+             (insert (format "  base:       %s\n"
+                             (if (buffer-live-p base)
+                                 (buffer-name base)
+                               "(dead)")))
+             (insert (format "  tag:        %s\n" (or tag "(none)")))
+             (insert (format "  heading:    %d\n"
+                             (if (marker-position hm) hm 0)))
+             (insert (format "  end-marker: %d\n"
+                             (if (marker-position em) em 0)))
+             (when parent
+               (insert (format "  parent:     %s\n"
+                               (buffer-name (gptel-org-ib-node-buffer parent)))))
+             (when children
+               (insert (format "  children:   %d\n" (length children))))
+             ;; If live, show narrow bounds
+             (when live
+               (with-current-buffer ib
+                 (insert (format "  narrow:     [%d, %d] (size=%d)\n"
+                                 (point-min) (point-max)
+                                 (- (point-max) (point-min))))))
+             ;; Check if the base buffer subtree still has TERMINE
+             (when (and (buffer-live-p base) (marker-position hm))
+               (with-current-buffer base
+                 (save-excursion
+                   (goto-char hm)
+                   (when (org-at-heading-p)
+                     (let ((term-pos (gptel-org-ib-find-terminator "TERMINE")))
+                       (if term-pos
+                           (insert (format "  TERMINE:    at position %d\n" term-pos))
+                         (insert "  TERMINE:    (none)\n")))))))
+             (insert "\n")))
+         gptel-org-ib--registry)
+        (if (= registry-count 0)
+            (insert "(no registered indirect buffers)\n")
+          (insert (format "Total: %d registered buffer(s)\n" registry-count)))
+        (goto-char (point-min))))
+    (pop-to-buffer buf)))
 
 (provide 'gptel-indirect-buffer)
 ;;; gptel-indirect-buffer.el ends here

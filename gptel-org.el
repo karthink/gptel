@@ -124,6 +124,17 @@ FORMAT-STRING and ARGS are passed to `format'."
     (when (eq gptel-log-level 'debug)
       (gptel--log msg "gptel-org" 'no-json))))
 
+(defvar gptel-org-debug-preserve-state nil
+  "When non-nil, preserve indirect buffers and TERMINE headings.
+Setting this to t disables the automatic cleanup of TERMINE child
+headings and indirect buffer closing.  This is useful for debugging
+the indirect buffer lifecycle — you can inspect the state of all
+IBs and their TERMINE children before they are torn down.
+
+Commands to inspect the preserved state:
+  \\<gptel-org-debug-preserve-state>
+  `gptel-org-debug-list-ibs' — list all registered indirect buffers.")
+
 (defvar org-link-angle-re)
 (defvar org-link-bracket-re)
 (declare-function mailcap-file-name-to-mime-type "mailcap")
