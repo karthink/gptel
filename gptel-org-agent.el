@@ -1397,15 +1397,16 @@ in the conversation."
                                "insert-user-heading: ensured %s sibling at level %d"
                                kw user-level))
                           ;; Tag mode: CHILD :user: heading via
-                          ;; terminator-aware create-heading.  We insert
-                          ;; at end of the agent subtree (no sub-terminator
-                          ;; for the user heading itself).
-                          (let ((m (gptel-org-ib-create-heading
-                                    nil "" (list user-tag) nil)))
+                          ;; unified parent-aware insert-child API.
+                          (let ((result (gptel-org-ib-insert-child
+                                         (point-marker)
+                                         nil ""
+                                         :tags (list user-tag)
+                                         :create-indirect-buffer nil))
+                                (m (plist-get result :heading-marker)))
                             (gptel-org--debug
                              "insert-user-heading: created :%s: child heading at level %d (marker %S)"
-                             user-tag user-level m)))))
-                    ;; Clean up marker
+                             user-tag user-level m)))))                    ;; Clean up marker
                     (set-marker subtree-end nil))))))))
       ;; Close the indirect buffer after all DONE processing completes.
       ;; Register on `gptel--done-cleanup-functions' so the closure runs
@@ -2597,6 +2598,10 @@ default rendering path."
                   (insert "\n"
                           (propertize body-text
                                       'gptel `(tool . ,id)))))
+              ;; Remove TERMINE child - no more streaming content
+              ;; will arrive after tool completion.
+              (org-back-to-heading t)
+              (gptel-org-ib-remove-terminator "TERMINE")
               ;; 4. Fold the heading.
               (goto-char (point-min))
               (when (org-at-heading-p)
