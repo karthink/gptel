@@ -122,7 +122,20 @@ information if the stream contains it."
                                    :args (ignore-errors (gptel--json-read-string
                                                          (plist-get spec :arguments))))
                      into call-specs
-                     finally (plist-put info :tool-use call-specs)))
+                     finally (plist-put info :tool-use call-specs))
+                    ;; Cleanup gated on injection: the chunks were just
+                    ;; consumed above by `gptel--inject-prompt'; clear them
+                    ;; so the next reuse of this info plist starts clean.
+                    ;; DO NOT clear unconditionally outside this branch --
+                    ;; on a non-tool turn the chunks are not needed in
+                    ;; :data :messages (no consumer), and `gptel--handle-wait'
+                    ;; resets :reasoning-chunks at the start of every new
+                    ;; request anyway.  Required to preserve
+                    ;; :reasoning_content for DeepSeek multi-turn tool flow
+                    ;; (see gptel-ai.org "Fix DeepSeek =[DONE]= handler
+                    ;; clears =:reasoning-chunks= unconditionally").
+                    (when (plist-member info :reasoning-chunks)
+                      (plist-put info :reasoning-chunks nil)))
                   ;; Update token usage if present
                   (when-let* ((last-resp (save-excursion
                                            (forward-line -1)
@@ -130,8 +143,7 @@ information if the stream contains it."
                                                 (goto-char (match-end 0))
                                                 (ignore-errors (gptel--json-read)))))
                               (usage (plist-get last-resp :usage)))
-                    (plist-put info :tokens (gptel--openai-update-tokens usage info)))
-                  (when (plist-member info :reasoning-chunks) (plist-put info :reasoning-chunks nil)))
+                    (plist-put info :tokens (gptel--openai-update-tokens usage info))))
               (when-let* ((response (gptel--json-read))
                           (delta (map-nested-elt response '(:choices 0 :delta))))
                 (if-let* ((content (plist-get delta :content))
