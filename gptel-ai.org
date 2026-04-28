@@ -981,7 +981,7 @@ Add a fifth diagnostic test that exercises the =:include-reasoning
 constructs the backend via =gptel-make-openai= with the deepseek
 endpoint to verify =gptel-deepseek-p= matches.
 
-*** AI-DO Locate DeepSeek =reasoning_content= 400 regression — extend diagnostic coverage
+*** AI-DONE Locate DeepSeek =reasoning_content= 400 regression — extend diagnostic coverage
 **** Origin
 - Follow-up to AI-DONE "Reproduce DeepSeek =reasoning_content= 400
   error in tests".  All four diagnostic tests added in commit =e1b75fb=
@@ -1028,6 +1028,8 @@ endpoint to verify =gptel-deepseek-p= matches.
   specific session.
 - *Choice C:* Both A and B in parallel.
 
+***** FEEDBACK Do the extra diagnostic (B)                        :petri:
+- Important point is that I do not see any reasoning text
 **** Mission
 - *(If Choice A or C)* Add two ert tests to
   =quelpa/build/gptel/test/gptel-deepseek-reasoning-test.el=:
@@ -1068,6 +1070,109 @@ endpoint to verify =gptel-deepseek-p= matches.
 - Atomic commit on =quelpa/build/gptel/= per output (test-only commit
   for Choice A; doc + log-instrumentation commit for Choice B).
 
+**** Implementation (Choice B)
+- Commit =e533708= on =quelpa/build/gptel/= master:
+  =diag: log include-reasoning state across persist/render paths=.
+- Four diagnostic =gptel--log= sites added, all gated on
+  =(eq gptel-log-level 'debug)= so production users with logging off
+  pay zero cost.  Payloads are intentionally small — booleans,
+  lengths, type names, short strings only; *no reasoning text bodies
+  are logged* (per user FEEDBACK).
+  1. =gptel-request.el= ~L2731 (request init), type
+     =reasoning-init-debug=.  Logs: =gptel-include-reasoning= value,
+     whether =info :include-reasoning= key is present after the init
+     guard, backend struct type and name.  Reveals suspect 1 (flag
+     off) and suspect 2 (wrong backend struct) at request time.
+  2. =gptel.el= ~L2156 (=gptel--display-reasoning-stream= entry),
+     type =reasoning-render-debug=.  Fires UNCONDITIONALLY (within the
+     debug gate) BEFORE the existing =when-let*= include gate — so it
+     fires even when =:include-reasoning= is absent.  Records key
+     presence, value, text type (=chunk= vs =end-of-stream=), text
+     length only.  This is the diagnostic for "no reasoning text
+     rendered".
+  3. =gptel.el= ~L2575 (=dseek-reasoning= extraction in
+     =gptel--display-tool-results=), type =reasoning-persist-debug=.
+     The original =let*= bound only =dseek-reasoning= with predicates
+     inlined in =(and ...)=.  Refactored to bind each predicate
+     separately (=dseek-fn-bound=, =dseek-backend-p=, =dseek-flag-ok=,
+     =dseek-messages-vector-p=, =dseek-last-asst=, etc.) so each can
+     be observed; =and= short-circuit semantics preserved by
+     re-asserting gating booleans downstream.  Logs all of these plus
+     =dseek-reasoning= type+length and the tool name.
+  4. =gptel-openai.el= ~L416 (=(tool . ,id)= recovery in
+     =gptel--parse-buffer=), type =reasoning-recover-debug=.  Logs
+     tool-call id+name, whether =:reasoning_content= / =:reasoning=
+     were present in the persisted sexp (boolean + length), and the
+     keys in the reconstructed assistant message plist.
+
+**** Test results
+- =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
+- 473 tests, *470 passed, 0 unexpected failures*, 3 skipped
+  (pre-existing: =media-link-parsing-md-1=, =media-link-parsing-md-2=,
+  =persist-restore-bounds=).  No regressions.
+
+**** Next step (user action required)
+- See follow-up TODO *"Analyse DeepSeek =reasoning_content=
+  diagnostic log"* below.  User reproduces once with
+  =(setq gptel-log-level 'debug)=, attaches the saved =*gptel-log*=
+  buffer to the follow-up; log analysis is delegated to a researcher
+  agent (raw log NOT pasted into main context).
+
+
+*** TODO Analyse DeepSeek =reasoning_content= diagnostic log
+**** Origin
+- Follow-up to AI-DONE *Locate DeepSeek =reasoning_content= 400
+  regression — extend diagnostic coverage* (commit =e533708=).  Four
+  =gptel--log= sites now record the include-reasoning state at
+  request init, render gate, persistence, and recovery — all gated on
+  =(eq gptel-log-level 'debug)= with small payloads (no reasoning text
+  bodies).
+- User reports two symptoms: (a) DeepSeek 400 invalid_request_error
+  on multi-turn tool calls, (b) no reasoning text rendered for
+  DeepSeek or Claude.  Hypothesised root cause is shared: =info
+  :include-reasoning= absent from the plist at the relevant decision
+  points.
+
+**** Discussion highlights
+- The render-gate log fires UNCONDITIONALLY (within the debug gate)
+  before the existing =when-let*= include check, so it is the
+  diagnostic for symptom (b) "no reasoning text".  If
+  =gptel--display-reasoning-stream= is never called at all, the bug
+  is upstream (parser not extracting reasoning); if it IS called but
+  the include gate rejects, the bug is in =info= plist init.
+- The persist log records each predicate independently
+  (=dseek-fn-bound=, =dseek-backend-p=, =dseek-flag-ok=,
+  =dseek-messages-vector-p=, =dseek-last-asst=) so the failing
+  predicate at runtime is directly visible.
+
+**** Mission
+- /User action:/
+  1. =(setq gptel-log-level 'debug)=
+  2. Reproduce both symptoms in a normal conversation: ask DeepSeek
+     a question that triggers reasoning, then a follow-up that
+     triggers a tool call, then a third turn that historically
+     produces the 400.  If using Claude, do an analogous turn that
+     should produce visible thinking text.
+  3. Save the =*gptel-log*= buffer to a file
+     (e.g. =/tmp/gptel-deepseek-debug.log=) and attach the path to
+     this TODO heading.
+- /AI action after log attached:/
+  + *Delegate analysis to a researcher agent* — do NOT paste the raw
+    log into the main context.  The researcher should grep the log
+    for the four type tags (=reasoning-init-debug=,
+    =reasoning-render-debug=, =reasoning-persist-debug=,
+    =reasoning-recover-debug=) and report:
+    - Symptom (b) localisation: did =reasoning-render-debug= fire?
+      With which =include= value and key-presence?  Did it fire as
+      =chunk= or only =end-of-stream=?
+    - Symptom (a) localisation: which of the persist predicates
+      failed (=dseek-fn-bound=, =dseek-backend-p=, =dseek-flag-ok=,
+      =dseek-messages-vector-p=, =dseek-last-asst=)?  Was the
+      =reasoning-recover-debug= entry present on the failing turn,
+      and which keys did the reconstructed assistant message
+      contain?
+  + Spawn a fix TODO targeting the specific layer the log
+    identifies.  Do NOT speculate — let the log decide.
 
 *** AI-DONE Document GPTEL_ prefix requirement for chat-buffer property overrides
 **** Origin
