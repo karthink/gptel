@@ -3923,3 +3923,22 @@ Implemented in gptel-agent commit =6a9ac08=:
 Verified: =cd quelpa/build/gptel-agent/test && make test= runs all 34
 tests (12 bash-safety + 18 trace + 4 loader), 0 unexpected failures.
 
+
+*** TODO Enhance gptel-org-debug-preserve-state with richer diagnostics
+**** Origin
+- =gptel-org-debug-preserve-state= added in commit =9052332= (2026-04-28)
+  to allow temporarily disabling TERMINE removal and IB closing for
+  debugging.
+- =gptel-org-debug-list-ibs= provides basic registry listing.
+**** Discussion highlights
+- The listing function currently shows static IB state.
+- Possible enhancements:
+  + Show streaming marker positions alongside end markers
+  + Add a live-refresh mode that updates as IBs change
+  + Add ability to save/restore IB state for test fixtures
+  + Show FSM state for each IB (if an agent task is in progress)
+  + Filter by base buffer or tag
+  + Highlight IBs whose end-marker position is suspicious (before heading, etc.)
+**** Mission
+- Enhance =gptel-org-debug-list-ibs= with richer diagnostics
+  as needed during future debugging sessions.
