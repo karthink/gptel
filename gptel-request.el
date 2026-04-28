@@ -1881,7 +1881,7 @@ injects the results into the prompt data and transitions the FSM."
                (let ((confirm))         ;Check if tool requires confirmation
                  (cond      ;:confirm in tool-call (from hooks) takes precedence
                   ((and-let* ((call-confirm (plist-member tool-call :confirm)))
-                     (setq confirm (cadr call-confirm))))
+                     (prog1 t (setq confirm (cadr call-confirm)))))
                   ((and gptel-confirm-tool-calls ;global and tool-specific setting
                         (or (eq gptel-confirm-tool-calls t) ;always confirm, or
                             (and-let* ((confirm (gptel-tool-confirm tool-spec)))
