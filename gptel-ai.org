@@ -2484,7 +2484,7 @@ Pick one (default: A):
 3. Replace the spec+args match in =--find-pending-entry= with an
    exact =pending-id= lookup; keep the heuristic match only as a
    fallback for legacy callers.
-*** DOING Unify IB/heading insertion behind one parent-aware API
+*** AI-DONE Unify IB/heading insertion behind one parent-aware API
 **** Origin
 - Petri feedback after interactive test (playground-ws.org, 2026-04-27):
   #+begin_quote
@@ -2705,8 +2705,10 @@ Pick one (default: A):
   is in =gptel-org.el:2275-2294= with a test in
   =gptel-org-agent-test.el=.  The level-4 BASH heading now
   correctly resolves to level-5 under the EXECUTING IB.
-  *Verdict:* BASH nesting is fixed.  Regression test NOT yet
-  written for the dummy@executor@dummy@agent flow replay.
+  *Verdict:* BASH nesting is fixed.  Regression test
+  =gptel-org-agent-bash-tool-heading-nesting= exists in
+  =gptel-org-agent-test.el:2279= — verifies ref-level=5 for
+  executor sub-agent IB sans TODO keywords.
 
   *Remaining unification gaps discovered during diagnosis:*
   1. =gptel-org-agent--create-subtree= (gptel-org-agent.el:199-256)
@@ -2725,14 +2727,17 @@ Pick one (default: A):
      once all callers migrate (currently only tests call it).
   → Follow-up TODOs: [[*AI-DO Migrate --create-subtree to unified insert-child API][AI-DO create-subtree]], [[*AI-DO Clean up tool IB TERMINE after tool completion][AI-DO tool IB TERMINE]],
     [[*AI-DO Migrate insert-user-heading tag-mode to unified API][AI-DO insert-user-heading tag-mode]], [[*AI-DO Remove :point shim from insert-child][AI-DO :point shim]].
-- *Commit 5* — TODO (Mission steps 7-8).  Documentation sync:
-  - [[file:gptel-indirect-buffer-ai.org]] — describe single
-    insertion API and explicit-parent contract.
+- *Commit 5* — DONE (gptel =007b5f1= + gptel-agent =c57c548=).  Documentation sync:
+  - [[file:gptel-indirect-buffer-ai.org]] — "Safe Heading Creation" and
+    "High-level Convenience" sections updated to document
+    =gptel-org-ib-insert-child= as the single parent-aware API;
+    deprecated =safe-insert-sibling= replaced with obsolescence notice.
   - [[file:gptel-ai.org::*Indirect-buffer canonical refactor]]
-    phase IB-2 / IB-4 — point at the new entry point.
+    Phase IB-4 — added note referencing insertion API unification
+    (commits 6cc8ced—85e9e32).
   - [[file:quelpa/build/gptel-agent/gptel-agent-ai.org]]
-    "Sub-Agent Subtree Handlers" — remove references to deprecated
-    functions.
+    Architecture / Indirect Buffer Model — replaced
+    =safe-insert-sibling= reference with =insert-child=.
 
 **** AI-DONE Migrate --create-subtree to unified insert-child API
 ***** Origin
@@ -2823,7 +2828,7 @@ Pick one (default: A):
 5. Run tests.
 6. Commit atomically.
 
-**** AI-DO Documentation sync for IB insertion unification
+**** AI-DONE Documentation sync for IB insertion unification
 ***** Origin
 - Commit 5 of [[*Unify IB/heading insertion behind one parent-aware API][Unify IB/heading insertion]].
 ***** Mission
