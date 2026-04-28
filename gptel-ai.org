@@ -1257,7 +1257,7 @@ endpoint to verify =gptel-deepseek-p= matches.
 
 
 
-*** AI-DO Fix DeepSeek reasoning: reset per-request reasoning state in =gptel-curl--stream-filter=
+*** AI-DONE Fix DeepSeek reasoning: reset per-request reasoning state in =gptel-curl--stream-filter=
 **** Origin
 - Spawned from AI-DONE *Analyse DeepSeek =reasoning_content=
   diagnostic log* (this section).  Researcher localised root cause
@@ -1293,6 +1293,94 @@ endpoint to verify =gptel-deepseek-p= matches.
 - *Implementer note:* Do not paste the diagnostic log into context
   — only the four debug type tags matter for verification.
 
+**** Resolution
+- Per-request init point already existed: =gptel--handle-wait= in
+  =quelpa/build/gptel/gptel-request.el= (~L2168) iterates a
+  =dolist= over keys to reset on every WAIT transition (entry to a
+  new curl request, including tool-call continuations).
+- =:reasoning= was already in the list; =:reasoning-block= and
+  =:reasoning-chunks= were missing.  Added both.
+- gptel test suite green: 470/473 passed, 0 unexpected, 3
+  pre-existing skips.
+- Submodule commit: =a7c078dae9e70297baa46d7cc1a5350abed72b50=
+  (=quelpa/build/gptel/=, branch =master=, ahead of
+  =origin/master=).  Parent =~/.emacs.d= submodule pointer not
+  bumped — see follow-up below.
+- Out-of-scope (deferred): four org-mode-specific reasoning
+  rendering keys (=:reasoning-title-pending=,
+  =:reasoning-title-buffer=, =:reasoning-heading-pos=,
+  =:reasoning-rest-starting=) — see follow-up TODO below.
+
+
+*** TODO Reset org-mode reasoning rendering keys per-request in =gptel--handle-wait=
+**** Origin
+- Follow-up from AI-DONE *Fix DeepSeek reasoning: reset
+  per-request reasoning state* (above).  Implementer flagged four
+  additional reasoning-related plist keys living in =gptel.el= that
+  the gatherer surfaced but were intentionally left out of scope to
+  keep that fix minimal.
+
+**** Discussion highlights
+- Keys set by the org-mode reasoning rendering callback in
+  =gptel.el= (around L2208, L2263, L2305, L2312, L2325, L2333,
+  L2365):
+  - =:reasoning-title-pending= — flag for pending title formatting
+  - =:reasoning-title-buffer= — accumulator for title text spanning
+    chunks
+  - =:reasoning-heading-pos= — position of the reasoning heading in
+    the org buffer
+  - =:reasoning-rest-starting= — flag for stripping leading stars
+- Open question: do these keys actually leak across multi-turn
+  tool-call continuations in practice, or are they always finalised
+  to a quiescent value before the next turn?  If they leak, expect
+  symptoms like duplicated/garbled reasoning headings in org mode
+  on the second tool-call continuation.
+- Risk if reset blindly: low — they are all rendering-state flags
+  that should be re-initialised per turn anyway.
+
+**** Mission
+- Reproduce or rule out: run a multi-turn tool-call exchange in
+  org mode against a reasoning-capable backend (DeepSeek,
+  Anthropic with extended thinking, or Gemini) and observe whether
+  reasoning headings render correctly on turns 2+.
+- If a defect is observed, add the four keys to the =dolist= in
+  =gptel--handle-wait= alongside =:reasoning-block= /
+  =:reasoning-chunks= already added.
+- If no defect is observed, document the finding here and close
+  the TODO.
+
+
+**** Verification
+- gptel test suite remains green: =cd quelpa/build/gptel/test &&
+  make test 2>&1 | tail -30=.
+
+
+*** TODO Bump =~/.emacs.d= submodule pointer to gptel master tip
+**** Origin
+- Follow-up from AI-DONE *Fix DeepSeek reasoning: reset
+  per-request reasoning state*.  The gptel submodule worktree
+  advanced 11 commits ahead of =origin/master=; the parent
+  =~/.emacs.d= repo still points at the old SHA.
+
+**** Discussion highlights
+- Implementer commit: =a7c078dae9e70297baa46d7cc1a5350abed72b50=
+  in =quelpa/build/gptel/=.
+- User has not yet pushed the submodule branch upstream (origin
+  + gitea), so bumping the parent pointer locally is fine but the
+  pointer will dangle for any other clone until push.
+- Choices:
+  1. Push gptel =master= to =origin= (and =gitea=) first, THEN
+     bump the parent submodule pointer in =~/.emacs.d= and commit.
+  2. Bump locally only; defer push until ready to publish all 11
+     ahead-commits.
+  3. Leave both as-is; user manages submodule bumps manually.
+
+**** Mission
+- Decide between options 1–3 above (mark choice in this TODO).
+- If 1 or 2: delegate to executor to run =git push origin master=
+  (and =git push gitea master=) inside =quelpa/build/gptel/=
+  followed by =git add quelpa/build/gptel && git commit= in the
+  parent repo with a one-line message.
 
 
 *** AI-DO Fix DeepSeek =[DONE]= handler clears =:reasoning-chunks= unconditionally
