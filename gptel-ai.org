@@ -3320,6 +3320,150 @@ Pick one (default: A):
   this fix.
 
 
+
+*** AI-DO Fix REASONING IB created at separator position (heading-pos off-by-separator-len)
+**** Origin
+- Discussion: gptel-ai.org → gptel → Introspect buffer playground-ws.org
+- Symptom buffer: [[file:../../../siro-ai/playground-ws.org::*Run date with Bash tool][siro-ai/playground-ws.org "Run date with Bash tool"]]
+- Captured with =gptel-org-debug-preserve-state= enabled.
+
+**** Discussion highlights
+- User noticed that REASONING indirect buffers are wrong while TOOL
+  indirect buffers (e.g. =BASH=) using the same procedure are correct.
+- Visible buffer state for the failing run:
+  #+begin_src org
+    ,*** AI-DOING Run date with Bash tool                          :agent@agent:
+    ,**** REASONING
+    ,**** TERMINE         <-- BUG: agent's TERMINE exposed as sibling, no level-5 child
+    ,**** BASH :command "date"
+    ,(:name "Bash" :args (:command "date"))
+    ,#+begin_tool
+    ,Tue Apr 28 19:01:52 EEST 2026
+    ,#+end_tool
+    ,***** TERMINE        <-- correct: child TERMINE under BASH
+  #+end_src
+- User hypothesis: "REASONING heading is moved down few lines before
+  the indirect buffer is created on the original position; now the
+  ~* REASONING~ heading is terminator."
+- Confirmed by code trace below — the IB is wrapping the *separator*
+  line, not the REASONING heading line.
+
+**** Root cause (researcher trace, file:line)
+- =gptel.el= ~L2257-2261 in =gptel--display-reasoning-stream=:
+  #+begin_src elisp
+    (let ((heading-pos (marker-position
+                        (or (plist-get info :tracking-marker)
+                            (plist-get info :position)))))
+      (gptel-curl--stream-insert-response
+       (concat separator heading-str) info t)            ;; SEPARATOR + heading
+      ...
+      (gptel-org--reasoning-create-indirect-buffer heading-pos))
+  #+end_src
+  =heading-pos= is captured as a raw integer *before* insertion.  The
+  call inserts =(concat separator heading-str)= = ="\n* REASONING \n"=
+  in one go, but =heading-pos= is *not* shifted by =(length separator)=.
+  When =separator = "\n"= (the common first-streaming-chunk case in an
+  agent IB where =gptel-mode= is on and the prefix doesn't end with
+  newline), the REASONING heading lives at =heading-pos + 1=, while
+  =heading-pos= still points at the separator =\n= line.
+- =gptel-org-ib-create= → =gptel-org-ib--compute-subtree-region= calls
+  =org-end-of-subtree= with point on a blank line (not a heading) →
+  unbounded region.  The TERMINE-seeding guard
+  =(when (org-at-heading-p) (gptel-org-ib-ensure-terminator "TERMINE"))=
+  fails (=point-min= is =\n=, not a heading), so *no =***** TERMINE=
+  child is ever seeded* in the REASONING IB.
+- The post-IB rewind in =gptel--display-reasoning-stream=:
+  #+begin_src elisp
+    (let ((term-pos
+           (with-current-buffer reasoning-ib
+             (marker-position
+              (gptel-org-ib-streaming-marker "TERMINE")))))
+      (move-marker tm term-pos))
+  #+end_src
+  finds no TERMINE inside the IB → falls through to point-max of the
+  (over-broadened) IB → tracking-marker is moved to a position at or
+  near the *agent's* =**** TERMINE=.  Subsequent reasoning chunks
+  stream there, leaving =**** REASONING= empty and exposing the agent's
+  =**** TERMINE= as a sibling — exactly the captured symptom.
+
+**** Why TOOL works (the path that should be mirrored)
+- =gptel--display-tool-results= computes =heading-start-pos= *after*
+  inserting separator+heading and explicitly adds =separator-len=:
+  #+begin_src elisp
+    (let* ((pre-tm   (plist-get info :tracking-marker))
+           (pre-pos  (and (markerp pre-tm) (marker-position pre-tm)))
+           (separator-len (length (or separator ""))))
+      (funcall ... (concat separator heading-line) info 'raw)
+      (let* ((heading-start-pos
+              (cond (pre-pos (+ pre-pos separator-len)) ...))))
+  #+end_src
+  This is the correct pattern; REASONING needs the same.
+
+**** Decisions
+- Fix: align REASONING with TOOL by adjusting =heading-pos= for
+  separator length.  Two equivalent shapes — pick one:
+  1. /Integer math/ (mirrors TOOL exactly, minimal change):
+     #+begin_src elisp
+       (let* ((pre-pos (marker-position
+                        (or (plist-get info :tracking-marker)
+                            (plist-get info :position))))
+              (separator-len (length (or separator ""))))
+         (gptel-curl--stream-insert-response
+          (concat separator heading-str) info t)
+         (let ((heading-pos (+ pre-pos separator-len)))
+           ...
+           (gptel-org--reasoning-create-indirect-buffer heading-pos)))
+     #+end_src
+  2. /Two inserts/ (semantically clearer; insert separator first, then
+     snapshot, then insert heading):
+     #+begin_src elisp
+       (when separator
+         (gptel-curl--stream-insert-response separator info t))
+       (let ((heading-pos (marker-position
+                           (or (plist-get info :tracking-marker)
+                               (plist-get info :position)))))
+         (gptel-curl--stream-insert-response heading-str info t)
+         ...
+         (gptel-org--reasoning-create-indirect-buffer heading-pos))
+     #+end_src
+  - *Recommended: option 1* — direct parallel with the TOOL path, one
+     callable for the heading insert (preserves any side-effects of a
+     single =gptel-curl--stream-insert-response= call), trivial to
+     review.
+
+**** Mission
+- Apply option 1 to =gptel--display-reasoning-stream= in
+  =quelpa/build/gptel/gptel.el= (~L2257-2261).
+- Verify TOOL path is unchanged.
+- Add/extend a test in =quelpa/build/gptel/test= that exercises the
+  first-streaming-chunk REASONING case with =separator = "\n"= (mock
+  =gptel-curl--stream-insert-response= or run the org-mode REASONING
+  rendering path) and asserts the resulting buffer contains
+  =**** REASONING= followed by =***** TERMINE= as a child (level 5),
+  not the agent's =**** TERMINE= as a sibling.
+- Re-run =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
+- Manual verification: open a fresh playground buffer with
+  =gptel-org-debug-preserve-state= enabled, trigger a reasoning-only
+  or reasoning+tool DeepSeek request, confirm the captured tree shows
+  =***** TERMINE= as a level-5 child of =**** REASONING=.
+- Commit message suggestion: =gptel-org: fix REASONING IB created at
+  separator position (off-by-separator-len)=
+- Atomic commit: only =gptel.el= (and the new/updated test file).
+
+**** Notes / risks
+- Do NOT change the TOOL path; it is correct.
+- The bug is most visible when REASONING is the *very first* streamed
+  content of a turn (=tracking-marker= nil → =separator= becomes "\n").
+  After the first chunk, =tracking-marker= is non-nil and =separator=
+  is nil, so subsequent reasoning blocks within the same turn are
+  unaffected — but the first one always is in the agent IB scenario.
+- Related open TODO at L1315 (reset reasoning rendering keys per
+  request) is independent and not blocked by this fix.
+- Related, already-resolved TODO at L1458 (empty REASONING heading on
+  DeepSeek =reasoning_content= + tool calls, commit a378956) addresses
+  a *different* failure mode (stream-cleanup dispatch) but the
+  user-visible "empty REASONING" overlap may have masked this bug.
+
 ** Researched TODOs
 *** Unified gptel-org-mode Refactoring
 **** Phase 1: Fix variable rename — DONE
