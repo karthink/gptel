@@ -2253,38 +2253,39 @@ for streaming responses only."
                       (add-text-properties
                        0 (length heading-str)
                        '(gptel ignore front-sticky (gptel)) heading-str)
-                      ;; Record heading position before insertion advances markers
-                      (let ((heading-pos (marker-position
-                                          (or (plist-get info :tracking-marker)
-                                              (plist-get info :position)))))
+                      (let* ((pre-pos (marker-position
+                                       (or (plist-get info :tracking-marker)
+                                           (plist-get info :position))))
+                             (separator-len (length (or separator ""))))
                         (gptel-curl--stream-insert-response
                          (concat separator heading-str) info t)
-                        (plist-put info :reasoning-title-pending t)
-                        (plist-put info :reasoning-title-buffer "")
-                        ;; Store heading position for end-of-stream title/fold operations
-                        (plist-put info :reasoning-heading-pos heading-pos)
-                        ;; Create indirect buffer directly at the known heading position
-                        ;; (no backward search needed — we recorded position before insertion)
-                        (gptel-org--debug
-                         "reasoning-stream: creating IB at heading-pos=%d" heading-pos)
-                        (let ((reasoning-ib
-                               (gptel-org--reasoning-create-indirect-buffer
-                                heading-pos)))
-                          ;; The reasoning IB now has a TERMINE child
-                          ;; (universal IB invariant).  Seeding TERMINE
-                          ;; pushed tracking-marker (insertion-type t)
-                          ;; past TERMINE.  Rewind it to TERMINE-line
-                          ;; start so subsequent reasoning text streams
-                          ;; BEFORE TERMINE.
-                          (when (and reasoning-ib
-                                     (buffer-live-p reasoning-ib))
-                            (let ((term-pos
-                                   (with-current-buffer reasoning-ib
-                                     (marker-position
-                                      (gptel-org-ib-streaming-marker
-                                       "TERMINE")))))
-                              (when-let* ((tm (plist-get info :tracking-marker)))
-                                (move-marker tm term-pos))))))))
+                        (let ((heading-pos (+ pre-pos separator-len)))
+                          (plist-put info :reasoning-title-pending t)
+                          (plist-put info :reasoning-title-buffer "")
+                          ;; Store heading position for end-of-stream title/fold operations
+                          (plist-put info :reasoning-heading-pos heading-pos)
+                          ;; Create indirect buffer directly at the known heading position
+                          ;; (no backward search needed — we recorded position before insertion)
+                          (gptel-org--debug
+                           "reasoning-stream: creating IB at heading-pos=%d" heading-pos)
+                          (let ((reasoning-ib
+                                 (gptel-org--reasoning-create-indirect-buffer
+                                  heading-pos)))
+                            ;; The reasoning IB now has a TERMINE child
+                            ;; (universal IB invariant).  Seeding TERMINE
+                            ;; pushed tracking-marker (insertion-type t)
+                            ;; past TERMINE.  Rewind it to TERMINE-line
+                            ;; start so subsequent reasoning text streams
+                            ;; BEFORE TERMINE.
+                            (when (and reasoning-ib
+                                       (buffer-live-p reasoning-ib))
+                              (let ((term-pos
+                                     (with-current-buffer reasoning-ib
+                                       (marker-position
+                                        (gptel-org-ib-streaming-marker
+                                         "TERMINE")))))
+                                (when-let* ((tm (plist-get info :tracking-marker)))
+                                  (move-marker tm term-pos)))))))))
                   ;; Handle title extraction from first line
                   (if (plist-get info :reasoning-title-pending)
                       (let* ((buf (concat (plist-get info :reasoning-title-buffer) text))
