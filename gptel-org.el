@@ -2279,16 +2279,19 @@ and registers `gptel-org--auto-correct-on-change' as a buffer-local
 `after-change-functions' hook.
 
 This should be called once when an agent indirect buffer is created."
-  (when (and (bound-and-true-p gptel-org-use-todo-keywords)
-             (gptel-org--in-agent-indirect-buffer-p))
+  (when (gptel-org--in-agent-indirect-buffer-p)
     (let ((ref-level (gptel-org--compute-response-level)))
       (when ref-level
         (setq-local gptel-org--ref-level ref-level)
-        (add-hook 'after-change-functions
-                  #'gptel-org--auto-correct-on-change nil t)
         (gptel-org--debug
-         "auto-correct enabled: ref-level=%d buffer=%S"
-         ref-level (buffer-name))))))
+         "auto-correct: ref-level=%d buffer=%S"
+         ref-level (buffer-name))
+        (when (bound-and-true-p gptel-org-use-todo-keywords)
+          (add-hook 'after-change-functions
+                    #'gptel-org--auto-correct-on-change nil t)
+          (gptel-org--debug
+           "auto-correct hook registered: ref-level=%d buffer=%S"
+           ref-level (buffer-name)))))))
 
 
 

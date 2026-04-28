@@ -2233,6 +2233,126 @@ in the coordinator's indirect buffer."
           (when (and coord-indirect (buffer-live-p coord-indirect))
             (kill-buffer coord-indirect)))))))
 
+(ert-deftest gptel-org-agent-ref-level-set-without-todo-keywords ()
+  "`gptel-org--ref-level' is set on agent IBs even when TODO keywords disabled.
+
+Regression test for the BASH-tool-heading nesting bug: when
+`gptel-org-use-todo-keywords' is nil, `gptel-org--enable-auto-correct'
+must still compute and set buffer-local `gptel-org--ref-level' on agent
+indirect buffers.  Otherwise `gptel--tool-heading-ref-level' Priority 1
+returns nil for sub-agent IBs and the lookup falls back to the parent
+agent's IB, producing tool headings one level too shallow.
+
+The hook registration (which depends on TODO keywords) is correctly
+skipped, but ref-level itself must always be set."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Run a tool\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             ;; Critical: TODO keywords disabled — exercises the bug
+             (gptel-org-use-todo-keywords nil)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (base-buf (current-buffer))
+             (coord-marker (gptel-org-agent--create-subtree "coordinator"))
+             (coord-indirect nil))
+        (unwind-protect
+            (progn
+              (setq coord-indirect
+                    (gptel-org-agent--open-indirect-buffer base-buf coord-marker))
+              ;; ref-level MUST be set even though TODO keywords are disabled
+              (with-current-buffer coord-indirect
+                (should (bound-and-true-p gptel-org--ref-level))
+                (should (= 4 gptel-org--ref-level))
+                ;; The auto-correct hook is correctly NOT registered,
+                ;; since TODO keyword handling is disabled.
+                (should-not (memq #'gptel-org--auto-correct-on-change
+                                  after-change-functions))))
+          (when (and coord-indirect (buffer-live-p coord-indirect))
+            (kill-buffer coord-indirect)))))))
+
+(ert-deftest gptel-org-agent-bash-tool-heading-nesting ()
+  "BASH heading lands at sub-agent ref-level, not parent's, sans TODO keywords.
+
+Regression test for the BASH-tool-heading nesting bug.  When the
+executor sub-agent runs a Bash tool, the resulting heading must be
+inserted at the sub-agent's ref-level (5), not the parent agent's (4).
+
+Bug scenario: with `gptel-org-use-todo-keywords' nil,
+`gptel-org--enable-auto-correct' previously skipped setting
+`gptel-org--ref-level' entirely.  `gptel--tool-heading-ref-level'
+Priority 1 then returned nil for the executor IB; Priority 3 walked the
+IB registry and found the parent (coordinator) IB whose narrowing also
+contains the position — returning ref-level=4 instead of 5.
+
+After the fix, ref-level is always set on agent IBs regardless of TODO
+keyword configuration, so Priority 1 returns 5 directly."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "DOING"
+                                       "|" "AI-DONE" "DONE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "** DOING Delegate task\nDescription\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             ;; Critical: TODO keywords disabled — exercises the bug
+             (gptel-org-use-todo-keywords nil)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (base-buf (current-buffer))
+             (coord-marker (gptel-org-agent--create-subtree "coordinator"))
+             (coord-indirect nil)
+             (executor-result nil)
+             (executor-indirect nil))
+        (unwind-protect
+            (progn
+              ;; Coordinator IB: parent agent at level 3, ref-level=4
+              (setq coord-indirect
+                    (gptel-org-agent--open-indirect-buffer base-buf coord-marker))
+              (with-current-buffer coord-indirect
+                (should (= 4 gptel-org--ref-level)))
+
+              ;; Executor sub-agent IB: child at level 4, ref-level=5
+              (with-current-buffer coord-indirect
+                (setq executor-result
+                      (gptel-org-agent--setup-task-subtree
+                       "executor" "Run bash command")))
+              (should executor-result)
+              (setq executor-indirect
+                    (plist-get executor-result :indirect-buffer))
+              ;; The fix: ref-level must be set even with TODO keywords nil
+              (with-current-buffer executor-indirect
+                (should (bound-and-true-p gptel-org--ref-level))
+                (should (= 5 gptel-org--ref-level)))
+
+              ;; Verify `gptel--tool-heading-ref-level' returns 5 when
+              ;; called with the executor IB as target-buffer.  This is
+              ;; the exact path used to compute the BASH heading depth.
+              (let* ((pos-in-executor
+                      (with-current-buffer executor-indirect
+                        (copy-marker (point-max)))))
+                (unwind-protect
+                    (let ((level (gptel--tool-heading-ref-level
+                                  executor-indirect    ; target-buffer
+                                  executor-indirect    ; info :buffer
+                                  pos-in-executor      ; start-marker
+                                  pos-in-executor)))   ; tracking-marker
+                      ;; Without the fix this returns 4 (parent's ref-level
+                      ;; via Priority 3 fallback).  With the fix Priority 1
+                      ;; returns 5 directly.
+                      (should (= 5 level)))
+                  (set-marker pos-in-executor nil))))
+          (when (and executor-indirect (buffer-live-p executor-indirect))
+            (kill-buffer executor-indirect))
+          (when (and coord-indirect (buffer-live-p coord-indirect))
+            (kill-buffer coord-indirect)))))))
+
 ;;; ---- IB-4.7: AI-DO depth validator ---------------------------------------
 
 (ert-deftest gptel-org-agent-test-ai-do-rejects-nesting ()
