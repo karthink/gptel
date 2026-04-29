@@ -37,6 +37,7 @@
 (defvar gptel--system-message)
 (defvar gptel-model)
 (defvar gptel-temperature)
+(defvar gptel-reasoning-effort)
 (defvar gptel-max-tokens)
 (defvar gptel--link-type-cache)
 (defvar gptel--preset)
@@ -501,12 +502,13 @@ parameters.
 ARGS are the original function call arguments."
   (if (derived-mode-p 'org-mode)
       (pcase-let ((`( ,gptel--preset ,gptel--system-message ,gptel-backend
-                      ,gptel-model ,gptel-temperature ,gptel-max-tokens
-                      ,gptel--num-messages-to-send ,gptel-tools)
+                      ,gptel-model ,gptel-temperature ,gptel-reasoning-effort
+                      ,gptel-max-tokens ,gptel--num-messages-to-send ,gptel-tools)
                    (seq-mapn (lambda (a b) (or a b))
                              (gptel-org--entry-properties)
                              (list gptel--preset gptel--system-message gptel-backend
-                                   gptel-model gptel-temperature gptel-max-tokens
+                                   gptel-model gptel-temperature
+                                   gptel-reasoning-effort gptel-max-tokens
                                    gptel--num-messages-to-send gptel-tools))))
         (apply send-fun args))
     (apply send-fun args)))
@@ -524,12 +526,12 @@ ARGS are the original function call arguments."
 (defun gptel-org--entry-properties (&optional pt)
   "Find gptel configuration properties stored at PT."
   (pcase-let
-      ((`(,preset ,system ,backend ,model ,temperature ,tokens ,num ,tools)
+      ((`(,preset ,system ,backend ,model ,temperature ,effort ,tokens ,num ,tools)
          (mapcar
           (lambda (prop) (org-entry-get (or pt (point)) prop 'selective))
           '("GPTEL_PRESET" "GPTEL_SYSTEM" "GPTEL_BACKEND"
-            "GPTEL_MODEL" "GPTEL_TEMPERATURE" "GPTEL_MAX_TOKENS"
-            "GPTEL_NUM_MESSAGES_TO_SEND" "GPTEL_TOOLS"))))
+            "GPTEL_MODEL" "GPTEL_TEMPERATURE" "GPTEL_REASONING_EFFORT"
+            "GPTEL_MAX_TOKENS" "GPTEL_NUM_MESSAGES_TO_SEND" "GPTEL_TOOLS"))))
     (when preset (setq preset (gptel--intern preset)))
     (when system
       (setq system (string-replace "\\n" "\n" system)))
@@ -539,6 +541,7 @@ ARGS are the original function call arguments."
     (when model (setq model (gptel--intern model)))
     (when temperature
       (setq temperature (gptel--to-number temperature)))
+    (when effort (setq effort (gptel--intern effort)))
     (when tokens (setq tokens (gptel--to-number tokens)))
     (when num (setq num (gptel--to-number num)))
     (when tools
@@ -550,7 +553,7 @@ ARGS are the original function call arguments."
                    (display-warning
                     '(gptel org tools)
                     (format "Tool %s not found, ignoring" tname)))))
-    (list preset system backend model temperature tokens num tools)))
+    (list preset system backend model temperature effort tokens num tools)))
 
 (defun gptel-org--restore-state ()
   "Restore gptel state for Org buffers when turning on `gptel-mode'."
@@ -560,7 +563,7 @@ ARGS are the original function call arguments."
         (progn
           (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
             (gptel--restore-props (read bounds)))
-          (pcase-let ((`(,preset ,system ,backend ,model ,temperature ,tokens ,num ,tools)
+          (pcase-let ((`(,preset ,system ,backend ,model ,temperature ,effort ,tokens ,num ,tools)
                        (gptel-org--entry-properties (point-min))))
             (when preset
               (if (gptel-get-preset preset)
@@ -582,6 +585,7 @@ ARGS are the original function call arguments."
                backend))
             (when model (setq-local gptel-model model))
             (when temperature (setq-local gptel-temperature temperature))
+            (when effort (setq-local gptel-reasoning-effort effort))
             (when tokens (setq-local gptel-max-tokens tokens))
             (when num (setq-local gptel--num-messages-to-send num))
             (when tools (setq-local gptel-tools tools))))
@@ -630,11 +634,16 @@ send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
       (if (gptel--preset-mismatch-value preset-spec :tools tool-names)
           (org-entry-put pt "GPTEL_TOOLS" (string-join tool-names " "))
         (org-entry-delete pt "GPTEL_TOOLS")))
-    ;; Temperature, max tokens and cutoff
+    ;; Temperature, reasoning effort, max tokens and cutoff
     (if (and (gptel--preset-mismatch-value preset-spec :temperature gptel-temperature)
-             (not (equal (default-value 'gptel-temperature) gptel-temperature)))
+             (not (equal gptel-temperature 1.0)))
         (org-entry-put pt "GPTEL_TEMPERATURE" (number-to-string gptel-temperature))
       (org-entry-delete pt "GPTEL_TEMPERATURE"))
+    (if (and (gptel--preset-mismatch-value preset-spec :reasoning-effort
+                                           gptel-reasoning-effort)
+             gptel-reasoning-effort)
+        (org-entry-put pt "GPTEL_REASONING_EFFORT" (prin1-to-string gptel-reasoning-effort))
+      (org-entry-delete pt "GPTEL_REASONING_EFFORT"))
     (if (and (gptel--preset-mismatch-value preset-spec :max-tokens gptel-max-tokens)
              gptel-max-tokens)
         (org-entry-put pt "GPTEL_MAX_TOKENS" (number-to-string gptel-max-tokens))

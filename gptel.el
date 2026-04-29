@@ -2650,6 +2650,7 @@ to registering the preset, elisp code to do the same is copied to the
            :tools ',(mapcar #'gptel-tool-name gptel-tools)
            :stream ,gptel-stream
            :temperature ,gptel-temperature
+           :reasoning-effort ,gptel-reasoning-effort
            :max-tokens ,gptel-max-tokens
            :use-context ',gptel-use-context
            :track-media ,gptel-track-media

@@ -246,6 +246,12 @@ Mutate state INFO with response metadata."
         (t gptel--system-message))))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
+    (when gptel-reasoning-effort
+      (if (eq gptel-reasoning-effort 'adaptive)
+          (plist-put prompts-plist :thinking (list :type "adaptive"))
+        (plist-put prompts-plist
+                   :thinking (list :type "enabled"
+                                   :budget_tokens gptel-reasoning-effort))))
     (when gptel-use-tools
       (when (eq gptel-use-tools 'force)
         (plist-put prompts-plist :tool_choice '(:type "any")))
