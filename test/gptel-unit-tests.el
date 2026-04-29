@@ -965,5 +965,51 @@ the generalised IB-4.6 helper."
     ;; Sanity: the full region begins with the RESPOND heading + stripped body.
     (should (string-prefix-p "* RESPOND summary\n star-starting\n" region))))
 
+(ert-deftest gptel-test-org-insert-heading-no-separator ()
+  "`gptel--org-insert-heading' never inserts double newlines before headings."
+  (let* ((gptel-response-separator "\n\n")
+         (buf (generate-new-buffer " *gptel-test-heading*"))
+         (info nil))
+    (unwind-protect
+        (with-current-buffer buf
+          (fundamental-mode)
+          (setq info (list :buffer buf
+                           :position (set-marker (make-marker) (point-min))
+                           :callback (lambda (str info &optional raw)
+                                       (let ((tm (or (plist-get info :tracking-marker)
+                                                     (plist-get info :position))))
+                                         (with-current-buffer (marker-buffer tm)
+                                           (save-excursion
+                                             (goto-char tm)
+                                             (insert str)
+                                             (plist-put info :tracking-marker
+                                                        (copy-marker (point) t))))))))
+          ;; Test 1: Empty buffer - no blank line before heading
+          (let ((pos (gptel--org-insert-heading "* REASONING \n" info)))
+            (should (= pos 1))
+            (should (string-prefix-p "* REASONING " (buffer-string)))
+            ;; No leading newline in empty buffer
+            (should-not (string-prefix-p "\n" (buffer-string))))
+          ;; Test 2: After text on same line - single newline separator
+          (erase-buffer)
+          (insert "Some text")
+          (set-marker (plist-get info :position) (point-max))
+          (plist-put info :tracking-marker nil)
+          (let ((pos (gptel--org-insert-heading "* RESPOND \n" info)))
+            (should (= pos (+ (length "Some text") (length "\n") 1)))
+            (should (string-prefix-p "Some text\n* RESPOND " (buffer-string))))
+          ;; Test 3: After a newline (at BOL) - no extra separator
+          (erase-buffer)
+          (insert "* Previous heading\n")
+          (set-marker (plist-get info :position) (point-max))
+          (plist-put info :tracking-marker nil)
+          (let ((pos (gptel--org-insert-heading "* Another heading\n" info)))
+            (should (= pos (1+ (length "* Previous heading\n"))))
+            ;; No double newline - headings are consecutive
+            (should (string-match "\\* Previous heading\n\\* Another heading"
+                                  (buffer-string)))))
+      (when (buffer-live-p buf)
+        (kill-buffer buf)))))
+
 (provide 'gptel-unit-tests)
 ;;; gptel-unit-tests.el ends here
