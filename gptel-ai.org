@@ -4250,10 +4250,82 @@ It remains for non-heading text blocks and for markdown-mode.
 6. Remove duplicated separator logic from individual functions
 7. Add tests for separator behavior
 
+**** Progress log
+- =gptel--org-insert-heading= added (gptel.el:2154)
+- =:no-separator= flag added to =gptel--insert-response= and
+  =gptel-curl--stream-insert-response= so heading callers can suppress
+  the blanket =gptel-response-separator=
+- Migrated call sites: REASONING heading (streaming),
+  tool-result heading, non-streaming reasoning (=gptel--insert-response=)
+- *Syntax error from in-progress refactor fixed*: the diff that
+  replaced REASONING's local =let/let*/let*= scaffolding around
+  =gptel-curl--stream-insert-response= dropped 1 closing paren after
+  the inner =(when-let* ((tm …)) (move-marker tm term-pos))= block
+  and left a stray closing paren at the end of
+  =gptel--display-tool-results=.  Net effect: =(unless …)= for
+  "open the heading if not yet done" never closed, swallowing
+  =defvar gptel--tool-preview-alist=, =gptel--display-tool-calls=
+  and =gptel--display-tool-results= into the body of
+  =gptel--display-reasoning-stream=.  =check-parens= reported OK
+  (overall balance was kept by the stray =)= at the bottom of
+  =gptel--display-tool-results=), but =fboundp= showed both
+  =gptel--display-tool-calls= and =gptel--display-tool-results= as
+  =nil= after load.  Tests =gptel-org-agent-test-tool-heading-*=
+  failed with =void-function gptel--display-tool-results=.
+- Fix: added missing =)= after =(move-marker tm term-pos)=, removed
+  matching stray =)= at end of =gptel--display-tool-results=.
+- Test status after fix: 476 tests, 472 passed, 1 unexpected fail,
+  3 skipped.  Remaining failure is a logic bug in the new test
+  =gptel-test-org-insert-heading-no-separator= (not the
+  implementation) — see follow-up below.
+
 **** Related TODOs
 - [[*Reduce extra blank line(s) before REASONING heading on first-streaming-chunk][Reduce extra blank line(s)]] (AI-DO) — the specific symptom this solves
 - [[*Unify IB/heading insertion behind one parent-aware API][Unify IB/heading insertion]] (AI-DONE) — prerequisite work (IB child insertion)
 - [[*Fix REASONING IB created at separator position (heading-pos off-by-separator-len)][Fix REASONING IB separator position]] (AI-DONE) — the off-by-one bug now generalized
+- [[*Fix wrong expected position in =gptel-test-org-insert-heading-no-separator=][Fix wrong expected position in test]] (AI-DO follow-up)
+
+*** AI-DO Fix wrong expected position in =gptel-test-org-insert-heading-no-separator=
+
+**** Origin
+- Discovered while fixing the syntax error in [[*Harmonize separator usage: org headings as natural separators][Harmonize separator usage]].
+- The new test in =test/gptel-unit-tests.el::970= (Test 2, "After text on
+  same line") expects =gptel--org-insert-heading= to return the
+  pre-insertion marker position, but the function actually returns the
+  position where the heading text /starts/ (after the inserted
+  separator).  This matches the function's docstring ("Returns the
+  buffer position (integer) of the inserted heading") and the original
+  call-site contracts (REASONING and tool-heading both use the return
+  value as =heading-pos= for IB creation, which must point at the
+  heading line, not at the separator).
+
+**** Discussion highlights
+- Buffer state before insertion: =Some text= → point-max = 10,
+  =insert-marker= = 10, =bolp= = nil → =separator= = ="\n"=.
+- Function inserts ="\n* RESPOND \n"= at marker pos 10.  After insertion:
+  - position 10 = ="\n"= (separator)
+  - position 11 = =*= (start of heading text)
+- Function returns =(+ pre-pos (length separator))= = =11=.
+- Test expects =(1+ (length "Some text"))= = =10= → fails with
+  =(= 11 10)=.
+
+**** Mission
+- Update Test 2 expectation to match the documented semantics:
+  =(should (= pos (+ (length "Some text") (length "\n") 1)))=
+  (or equivalently a clearly-named local like =heading-start-pos=).
+- Optionally also strengthen Test 3 to assert the returned position
+  points at the =*= of the new heading (using
+  =(char-after pos)= = =?\*=).
+- Re-run =cd quelpa/build/gptel/test && make test= and confirm 0
+  unexpected failures.
+
+**** Decisions (Optional)
+- Option A: Fix only Test 2's expected value.  Minimal change.
+- Option B: Refactor all three sub-tests to use a shared
+  =should-equal-heading-pos= helper that derives the expected position
+  from the buffer state, removing the brittle arithmetic.
+- Recommend Option A for now (smallest patch); Option B can be a
+  separate cleanup if the test grows.
 ** Improvement TODOs
 *** DONE AI-DONE Clean up byte-compile warnings surfaced on fresh install
 CLOSED: [2026-04-23]
