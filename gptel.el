@@ -1887,14 +1887,16 @@ Optional RAW disables text properties and transformation."
     (pcase response
       ((pred stringp)                ;Response text
        (with-current-buffer gptel-buffer
-         (when tracking-marker           ;separate from previous response
+         (when (and tracking-marker
+                    (not (plist-get info :no-separator)))
            (setq response (concat gptel-response-separator response)))
          (save-excursion
            (with-current-buffer (marker-buffer start-marker)
              (goto-char (or tracking-marker start-marker))
              ;; (run-hooks 'gptel-pre-response-hook)
              (unless (or (bobp) (plist-get info :in-place)
-                         tracking-marker)
+                         tracking-marker
+                         (plist-get info :no-separator))
                (insert gptel-response-separator)
                (when gptel-mode
                  (insert (gptel-response-prefix-string)))
@@ -1935,10 +1937,6 @@ Optional RAW disables text properties and transformation."
                           (heading-text (car heading+body))
                           (body-text (cdr heading+body))
                           (tail gptel-response-separator))
-                     ;; Heading line: always ignored (never sent to LLM)
-                     (add-text-properties
-                      0 (length heading-text)
-                      '(gptel ignore front-sticky (gptel)) heading-text)
                      ;; Body text: ignored or response based on include setting
                      (when body-text
                        (if (eq include 'ignore)
@@ -1948,12 +1946,14 @@ Optional RAW disables text properties and transformation."
                          (add-text-properties
                           0 (length body-text)
                           '(gptel response front-sticky (gptel)) body-text)))
-                     ;; Record heading position before insertion advances markers
-                     (let ((heading-pos (marker-position
-                                         (or tracking-marker start-marker))))
-                       ;; Insert everything as raw
-                       (gptel--insert-response
-                        (concat separator heading-text body-text tail) info t)
+                     ;; Insert heading via harmonized function
+                     (let ((heading-pos (gptel--org-insert-heading heading-text info)))
+                       ;; Insert body + tail without extra separator
+                       (when body-text
+                         (plist-put info :no-separator t)
+                         (unwind-protect
+                             (gptel--insert-response (concat body-text tail) info t)
+                           (plist-put info :no-separator nil)))
                        ;; Show in indirect buffer for non-streaming
                        ;; (no backward search — we know the heading position)
                        (gptel-org--debug
@@ -2009,7 +2009,8 @@ Optional RAW disables text properties and transformation."
          (save-excursion
            (unless tracking-marker
              (goto-char start-marker)
-             (unless (or (bobp) (plist-get info :in-place))
+             (unless (or (bobp) (plist-get info :in-place)
+                         (plist-get info :no-separator))
                (insert gptel-response-separator)
                (when gptel-mode
                  ;; Put prefix before AI response.
@@ -2151,6 +2152,39 @@ the REASONING keyword.  Kept for call-site continuity after the
 IB-4.6 generalisation.  Full docstring in the generalised helper."
   (gptel--format-keyword-heading-org "REASONING" text))
 
+(defun gptel--org-insert-heading (heading-str info)
+  "Insert HEADING-STR as an org heading via the callback in INFO.
+
+Computes the correct separator based on context:
+- No separator if at beginning of line or beginning of buffer
+  (the heading is its own visual separator).
+- A single \"\\n\" otherwise for a beginning-of-line guard.
+
+Temporarily sets :no-separator in INFO to prevent the callback
+from adding `gptel-response-separator' before the heading.
+
+Adds `gptel ignore' text properties to HEADING-STR so the
+heading is never sent back to the LLM.
+
+Returns the buffer position (integer) of the inserted heading."
+  (let* ((insert-marker (or (plist-get info :tracking-marker)
+                            (plist-get info :position)))
+         (at-bol (with-current-buffer (marker-buffer insert-marker)
+                   (save-excursion
+                     (goto-char insert-marker)
+                     (bolp))))
+         (separator (if at-bol "" "\n"))
+         (pre-pos (marker-position insert-marker)))
+    (add-text-properties
+     0 (length heading-str)
+     '(gptel ignore front-sticky (gptel)) heading-str)
+    (plist-put info :no-separator t)
+    (unwind-protect
+        (funcall (plist-get info :callback)
+                 (concat separator heading-str) info 'raw)
+      (plist-put info :no-separator nil))
+    (+ pre-pos (length separator))))
+
 (defun gptel--display-reasoning-stream (text info)
   "Show reasoning TEXT in an appropriate location.
 
@@ -2243,49 +2277,33 @@ for streaming responses only."
                      (buffer-name)
                      (when (buffer-base-buffer) (buffer-name (buffer-base-buffer)))
                      reasoning-marker tracking-marker start-marker)
-                    (let ((separator
-                           (and (not tracking-marker) gptel-mode
-                                (not (string-suffix-p
-                                      "\n" (let ((gptel-org--in-prefix-advice t))
-                                             (gptel-response-prefix-string))))
-                                "\n"))
-                          (heading-str (copy-sequence "* REASONING \n")))
-                      (add-text-properties
-                       0 (length heading-str)
-                       '(gptel ignore front-sticky (gptel)) heading-str)
-                      (let* ((pre-pos (marker-position
-                                       (or (plist-get info :tracking-marker)
-                                           (plist-get info :position))))
-                             (separator-len (length (or separator ""))))
-                        (gptel-curl--stream-insert-response
-                         (concat separator heading-str) info t)
-                        (let ((heading-pos (+ pre-pos separator-len)))
-                          (plist-put info :reasoning-title-pending t)
-                          (plist-put info :reasoning-title-buffer "")
-                          ;; Store heading position for end-of-stream title/fold operations
-                          (plist-put info :reasoning-heading-pos heading-pos)
-                          ;; Create indirect buffer directly at the known heading position
-                          ;; (no backward search needed — we recorded position before insertion)
-                          (gptel-org--debug
-                           "reasoning-stream: creating IB at heading-pos=%d" heading-pos)
-                          (let ((reasoning-ib
-                                 (gptel-org--reasoning-create-indirect-buffer
-                                  heading-pos)))
-                            ;; The reasoning IB now has a TERMINE child
-                            ;; (universal IB invariant).  Seeding TERMINE
-                            ;; pushed tracking-marker (insertion-type t)
-                            ;; past TERMINE.  Rewind it to TERMINE-line
-                            ;; start so subsequent reasoning text streams
-                            ;; BEFORE TERMINE.
-                            (when (and reasoning-ib
-                                       (buffer-live-p reasoning-ib))
-                              (let ((term-pos
-                                     (with-current-buffer reasoning-ib
-                                       (marker-position
-                                        (gptel-org-ib-streaming-marker
-                                         "TERMINE")))))
-                                (when-let* ((tm (plist-get info :tracking-marker)))
-                                  (move-marker tm term-pos)))))))))
+                    (let ((heading-pos (gptel--org-insert-heading "* REASONING \n" info)))
+                      (plist-put info :reasoning-title-pending t)
+                      (plist-put info :reasoning-title-buffer "")
+                      ;; Store heading position for end-of-stream title/fold operations
+                      (plist-put info :reasoning-heading-pos heading-pos)
+                      ;; Create indirect buffer directly at the known heading position
+                      ;; (no backward search needed — we recorded position before insertion)
+                      (gptel-org--debug
+                       "reasoning-stream: creating IB at heading-pos=%d" heading-pos)
+                      (let ((reasoning-ib
+                             (gptel-org--reasoning-create-indirect-buffer
+                              heading-pos)))
+                        ;; The reasoning IB now has a TERMINE child
+                        ;; (universal IB invariant).  Seeding TERMINE
+                        ;; pushed tracking-marker (insertion-type t)
+                        ;; past TERMINE.  Rewind it to TERMINE-line
+                        ;; start so subsequent reasoning text streams
+                        ;; BEFORE TERMINE.
+                        (when (and reasoning-ib
+                                   (buffer-live-p reasoning-ib))
+                          (let ((term-pos
+                                 (with-current-buffer reasoning-ib
+                                   (marker-position
+                                    (gptel-org-ib-streaming-marker
+                                     "TERMINE")))))
+                            (when-let* ((tm (plist-get info :tracking-marker)))
+                              (move-marker tm term-pos)))))))
                   ;; Handle title extraction from first line
                   (if (plist-get info :reasoning-title-pending)
                       (let* ((buf (concat (plist-get info :reasoning-title-buffer) text))
@@ -2700,9 +2718,6 @@ for tool call results.  INFO contains the state of the request."
                                     body-result "\n"
                                     "#+end_tool\n")))
                          (prop-body (propertize body-text 'gptel `(tool . ,id))))
-                    (add-text-properties
-                     0 (length heading-line)
-                     '(gptel ignore front-sticky (gptel)) heading-line)
                     ;; Register the dynamic per-tool-name state (e.g.
                     ;; BASH, EVAL) in the target buffer so org fontifies
                     ;; it and cycling works.  Guarded with fboundp since
@@ -2722,22 +2737,10 @@ for tool call results.  INFO contains the state of the request."
                     ;; marker so body insertion and fold can locate it
                     ;; without relying on a state-keyword regex (the
                     ;; keyword varies per tool name now).
-                    (let* ((pre-tm (plist-get info :tracking-marker))
-                           (pre-pos (and (markerp pre-tm)
-                                         (marker-position pre-tm)))
-                           (separator-len (length (or separator ""))))
-                      (funcall (plist-get info :callback)
-                               (concat separator heading-line)
-                               info 'raw)
-                      (let* ((new-tm (plist-get info :tracking-marker))
-                             ;; Heading started right after separator.
-                             (heading-start-pos
-                              (cond
-                               (pre-pos (+ pre-pos separator-len))
-                               ((markerp new-tm)
-                                (- (marker-position new-tm)
-                                   (length heading-line)))))
-                             (heading-marker
+                    (let* ((heading-start-pos
+                            (gptel--org-insert-heading heading-line info))
+                           (new-tm (plist-get info :tracking-marker))
+                           (heading-marker
                               (and heading-start-pos
                                    (with-current-buffer target-buffer
                                      (copy-marker heading-start-pos nil)))))
@@ -2834,7 +2837,7 @@ for tool call results.  INFO contains the state of the request."
                      (when hm (set-marker hm nil))
                      (plist-put info :tool-heading-marker nil))
                  (forward-line -1)
-                 (when (looking-at-p "^```") (gptel-markdown-cycle-block)))))))))))
+                 (when (looking-at-p "^```") (gptel-markdown-cycle-block))))))))))
 
 (defun gptel--tool-heading-ref-level (target-buffer info-buf start-marker tracking-marker)
   "Compute the correct heading level for a TOOL heading.
