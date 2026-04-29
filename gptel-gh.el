@@ -126,6 +126,14 @@
      :input-cost 0.33
      :output-cost 0.33
      :cutoff-date "2025-08")
+    (gpt-5.5
+     :description "GitHub Copilot GPT-5.5"
+     :capabilities (media tool-use json url responses-api)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1
+     :output-cost 1
+     :cutoff-date "2026-04")
     (claude-haiku-4.5
      :description "Near-frontier intelligence at blazing speeds with extended thinking"
      :capabilities (media tool-use cache)
