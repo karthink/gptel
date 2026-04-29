@@ -3582,6 +3582,10 @@ first-streaming-chunk".
 
 - *Recommended: Option 1.*
 
+***** FEEDBACK Why to use =gptel-response-separator=              :petri:
+- The double LF is not needed at all
+- The org heading is natural response separator
+
 **** Mission
 - Apply *Option 1* to =gptel--display-reasoning-stream= in
   =quelpa/build/gptel/gptel.el= around L2248-2253: change
@@ -3608,6 +3612,7 @@ first-streaming-chunk".
 - Commit message suggestion: =gptel-org: drop redundant separator
   before REASONING heading on first-streaming chunk=
 - Atomic commit: =gptel.el= (and test file).
+- This TODO is subsumed by the broader [[*Harmonize separator usage: org headings as natural separators][separator harmonization]] research (AI-DO).
 
 **** Notes / risks
 - Affects only the first-streaming-chunk branch of REASONING
@@ -4150,6 +4155,105 @@ feature-list row for =gptel-indirect-buffer-ai.org= to the
 post-refactor label.  Top-level =Indirect-buffer canonical refactor=
 heading remains TODO because follow-ups IB-4.6b, IB-4.8b, IB-5.5,
 IB-5.6, IB-5.7 are still open.
+
+*** AI-DO Harmonize separator usage: org headings as natural separators
+
+**** Origin
+- Petri's feedback: "The double LF is not needed at all. The org heading is natural response separator."
+- Follow-up to [[*Reduce extra blank line(s) before REASONING heading on first-streaming-chunk][Reduce extra blank line(s)]]
+- Current separator architecture has two systems that collide:
+  1. =gptel-response-separator= (default ="\n\n"=) — blanket separator inserted before all responses
+  2. Local =separator= variables (="\n"=) — computed per-heading in individual functions
+- These collide on first-chunk heading insertion, producing 3x =\n= (2 blank lines)
+
+**** Current separator insertion points (full audit)
+| Insertion point                     | File:line      | What                             | Heading follows? |
+|-------------------------------------+----------------+----------------------------------+------------------|
+| =gptel-curl--stream-insert-response=  | gptel.el:2013  | =gptel-response-separator=       | Sometimes        |
+| (first chunk, no tracking-marker)   |                | (="\n\n"=)                       |                  |
+| =gptel--display-reasoning-stream=     | gptel.el:2248  | local =separator= (="\n"=)        | Always           |
+| (first reasoning chunk)             |                | + ="* REASONING \n"=             |                  |
+| =gptel--display-reasoning-stream=     | gptel.el:2214  | =gptel-response-separator=       | No (closes)      |
+| (end of reasoning, text=t)          |                | (="\n\n"=)                       |                  |
+| =gptel--display-tool-results=         | gptel.el:2544  | =gptel-response-separator=       | Always           |
+| (non-consecutive tool)              |                | or local ="\n"= or nil           |                  |
+| =gptel--display-tool-results=         | gptel.el:2542  | local ="\n"= (first result)      | Always           |
+| (first tool result)                 |                |                                  |                  |
+| =gptel--insert-response=             | gptel.el:1898  | =gptel-response-separator=       | Sometimes        |
+| (non-streaming, first call)         |                | (="\n\n"=)                       |                  |
+| =gptel--insert-response=             | gptel.el:1891  | =gptel-response-separator=       | Sometimes        |
+| (non-streaming, subsequent)         |                | prepended to response string     |                  |
+
+**** Problem analysis
+
+***** Problem 1: Separator stacking on first-streaming-chunk REASONING
+- =gptel-curl--stream-insert-response= sees =tracking-marker= nil → inserts ="\n\n"= (1)
+- =gptel--display-reasoning-stream= computes local =separator = "\n"= and prepends (2)
+- Net before =* REASONING=: ="\n\n\n"= → 2 blank lines visually
+- In org-mode with empty response prefix, the goal is 1 blank line (="\n\n"=)
+
+***** Problem 2: No central function for heading insertion
+- Each heading insertion point (reasoning, tool, non-streaming) has its own separator logic
+- Duplicated =separator-len= math, duplicated =concat separator heading-str= patterns
+- The [[*Unify IB/heading insertion behind one parent-aware API][IB unification]] created =gptel-org-ib-insert-child= for child headings inside IBs,
+  but the initial heading insertion into the base buffer is still scattered
+
+***** Problem 3: The blanket =gptel-response-separator= is wrong for org headings
+- =gptel-response-separator= is defined as: "String inserted before responses.
+  Also inserted before and after non-consecutive tool calls."
+- In org-mode, a heading like =* REASONING= or =** BASH :cmd "ls"= already
+  creates visual separation — the ="\n\n"= is redundant
+- The separator should be: exactly one =\n= before heading (BOL guard), not ="\n\n"=
+
+***** Problem 4: First-chunk detection is fragile
+- The check =(not tracking-marker)= is used both to mean "first response ever"
+  and "need separator" — conflating two concepts
+- When heading insertion sets up =tracking-marker= itself, the logic breaks
+
+**** Existing partial solutions
+- =gptel-org-ib-ensure-bol= (gptel-indirect-buffer.el:560): ensures BOL before heading
+  inside IBs only
+- =gptel-org-ib-insert-child=: unified child heading insertion inside IBs
+- Tool results: correct =separator-len= math (mirrors pre-pos + separator-len)
+- REASONING: separator-len fix applied (commit =8069a42=)
+
+**** Proposed solution: Single harmonized heading insertion function
+
+Create =gptel--org-insert-heading(heading-str info &optional opts)= that:
+1. Computes the correct separator based on context (tracking-marker state,
+   whether preceding text ends with =\n=)
+2. Ensures exactly one =\n= before the heading (BOL guard) —
+   does NOT use =gptel-response-separator=
+3. Inserts heading + separator via the callback
+4. Returns the heading buffer position for IB creation
+5. Is used by ALL heading insertion callers (reasoning, tool results,
+   non-streaming)
+
+Separator rules for org headings:
+| Context                           | Separator before heading |
+|-----------------------------------+--------------------------|
+| First response, buffer empty      | =""= (no separator)      |
+| First response, non-empty buffer  | ="\n"= (one BOL guard)   |
+| Subsequent response, after text   | ="\n"= (one BOL guard)   |
+| Subsequent response, consecutive  | =""= (already at BOL)    |
+
+Note: =gptel-response-separator= (="\n\n"=) is NEVER used before org headings.
+It remains for non-heading text blocks and for markdown-mode.
+
+***** Required changes
+1. Create =gptel--org-insert-heading= in gptel.el
+2. Modify =gptel-curl--stream-insert-response= to accept =:no-separator= flag
+   (or have heading callers bypass it for the separator portion)
+3. Migrate =gptel--display-reasoning-stream= to use the new function
+4. Migrate =gptel--display-tool-results= org branch to use the new function
+5. Migrate =gptel--insert-response= reasoning branch to use the new function
+6. Remove duplicated separator logic from individual functions
+7. Add tests for separator behavior
+
+**** Related TODOs
+- [[*Reduce extra blank line(s) before REASONING heading on first-streaming-chunk][Reduce extra blank line(s)]] (AI-DO) — the specific symptom this solves
+- [[*Unify IB/heading insertion behind one parent-aware API][Unify IB/heading insertion]] (AI-DONE) — prerequisite work (IB child insertion)
+- [[*Fix REASONING IB created at separator position (heading-pos off-by-separator-len)][Fix REASONING IB separator position]] (AI-DONE) — the off-by-one bug now generalized
 ** Improvement TODOs
 *** DONE AI-DONE Clean up byte-compile warnings surfaced on fresh install
 CLOSED: [2026-04-23]
@@ -4244,4 +4348,5 @@ tests (12 bash-safety + 18 trace + 4 loader), 0 unexpected failures.
 **** Mission
 - Enhance =gptel-org-debug-list-ibs= with richer diagnostics
   as needed during future debugging sessions.
+  
   
