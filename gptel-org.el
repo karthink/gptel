@@ -24,6 +24,7 @@
 
 ;;; Code:
 (require 'cl-lib)
+(require 'gptel)
 (require 'org-element)
 (require 'outline)
 (require 'mailcap)                    ;FIXME Avoid this somehow
