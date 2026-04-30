@@ -3627,6 +3627,127 @@ first-streaming-chunk".
   trailing-=\n= prefix for org-mode, Option 1 still behaves correctly
   (heading inserted at =gptel-response-separator= boundary).
 
+
+*** AI-DO PENDING tool call injected inside REASONING block instead of after its TERMINE
+**** Origin
+- Interactive test in [[file:../../../siro-ai/playground-ws.org::*Delegate to executor agent to run date with Bash tool][playground-ws.org]] (second AI-DOING task, L88–L109).
+- Expected: REASONING block fully closes (heading → body → child TERMINE), THEN PENDING EXECUTE is inserted as a sibling.
+- Actual: PENDING EXECUTE (L90, level 4) appears right after REASONING heading (L89, level 4), structurally a sibling but buffer-positioned /before/ REASONING's TERMINE.  The REASONING indirect buffer region encompasses the PENDING heading.
+
+**** Discussion highlights
+
+*Workspace state (playground-ws.org L88–L109):*
+#+begin_src org
+,*** AI-DOING Delegate to executor agent...         :agent@agent:     [L88]
+,**** REASONING THE USER WANTS ME TO DELEGATE T                       [L89]
+,**** PENDING EXECUTE :description "Run date command" ...             [L90]
+,:GPTEL_PENDING_ID: gptel-pending-2-1777475939                        [L92]
+     (:name "Agent" :args (:subagent_type "executor" ...))            [L94]
+,***** TERMINE                                                        [L97]
+,**** TERMINE                                                         [L100]
+O AN EXECUTOR AGENT TO RUN THE `DATE` COMMAND...                      [L101]
+,***** TERMINE                                                        [L104]
+,**** TERMINE                                                         [L106]
+,*** TERMINE                                                          [L109]
+#+end_src
+
+*Three sub-bugs visible:*
+1. *PENDING inside REASONING IB:* The =**** PENDING EXECUTE= (L90) is
+   structurally a sibling of =**** REASONING= (both level 4), but the
+   REASONING indirect buffer (=*gptel:reasoning-2ecdb6*=) spans L89–L100+,
+   so the PENDING heading is /included/ in the REASONING IB region.  It
+   should be inserted /after/ REASONING's child TERMINE, outside the
+   REASONING IB.
+2. *Truncated REASONING heading:* The heading at L89 reads ="THE USER WANTS
+   ME TO DELEGATE T"= — the remainder of the reasoning text ("O AN EXECUTOR
+   AGENT TO RUN THE `DATE` COMMAND...") appears as orphaned body text on
+   L101–102, after =**** TERMINE=.
+3. *Duplicate TERMINE closers:* L104–106 (=***** TERMINE=, =**** TERMINE=)
+   duplicate L97 and L100.
+
+*Root cause hypothesis (sub-bug 1):*
+The REASONING heading+IB is created during the streaming phase (see
+=gptel--display-reasoning-stream= in =gptel.el=).  When the model emits a
+tool call after reasoning, =gptel-org-agent--display-tool-calls= selects an
+insertion position.  If the REASONING IB was opened but not yet closed (no
+child TERMINE seeded), the tool call insertion lands inside the REASONING
+IB region — the FSM tracking marker may still point inside the REASONING
+subtree.
+
+*Relevant prior fixes:*
+- [[*Fix REASONING IB created at separator position][AI-DONE Fix REASONING IB created at separator position]] (commit =8069a42=):
+  fixed off-by-separator-len so REASONING IB wraps the correct heading.  May
+  have been masking this tool-insertion-position bug.
+- [[*Fix empty REASONING heading for streaming DeepSeek =reasoning_content= + tool calls][AI-DONE Fix empty REASONING heading for streaming DeepSeek reasoning_content + tool calls]]
+  (commit =a378956=): ensures ='(reasoning . t)= signal fires for
+  JSON-field path so REASONING heading gets finalized.  The truncated
+  heading (sub-bug 2) may be related to the title-finalization path.
+- [[*Eager TERMINE seeding leaks into non-agent IBs (tool/reasoning)][AI-DONE Eager TERMINE seeding leaks]] (commits =c99eccb=, =16c5808=, =57a8f1f=):
+  moved TERMINE seeding to agent-layer callsites.  REASONING IBs
+  intentionally do NOT get TERMINE seeded — but the tool-call insertion
+  code needs to account for this.
+
+*Key question for implementation:*
+How does =gptel-org-agent--display-tool-calls= determine where to insert
+PENDING headings?  If the insertion position is derived from the FSM
+=:position= / =:tracking-marker=, and that marker was set during reasoning
+streaming (pointing inside the REASONING IB), then tool calls will land
+inside the REASONING block.  The fix likely involves:
+- Either closing the REASONING IB before inserting tool calls (flushing
+  pending reasoning state), or
+- Ensuring the tool-call insertion marker is positioned /after/ the
+  REASONING heading's subtree (i.e., after its TERMINE), or
+- Having =display-tool-calls= detect that it's inside a REASONING IB and
+  jump out before inserting.
+
+**** Mission
+1. *Trace the insertion path.*  Read:
+   - =gptel-org-agent--display-tool-calls= in =gptel-org-agent.el=
+     (how does it choose where to insert PENDING?)
+   - =gptel-org-agent--make-insertion-marker= in =gptel-org-agent.el=
+     (how is the insertion marker initially set?)
+   - =gptel--display-reasoning-stream= in =gptel.el= (~L2154–2366)
+     (how does the REASONING stream set/update the FSM position markers?)
+   - The FSM callback dispatch that routes tool calls to
+     =display-tool-calls= (how does the FSM transition from reasoning to
+     tool calls?)
+2. *Fix sub-bug 1 (PENDING inside REASONING IB).*  Ensure tool-call
+   insertion position is after the REASONING subtree (outside the
+   REASONING IB), not inside it.  Implementation approach left to
+   implementer after tracing; likely candidates:
+   - Flush/close REASONING state in the FSM before dispatching tool calls.
+   - Adjust the =:position= / =:tracking-marker= in
+     =display-tool-calls= to skip past any open REASONING subtree.
+   - Detect active REASONING IB in =display-tool-calls=, close it, and
+     reposition.
+3. *Fix sub-bug 2 (truncated REASONING heading).*  Investigate why the
+   REASONING heading title is truncated — likely a newline handling issue
+   in =gptel--display-reasoning-stream='s title-extraction phase
+   (~L2289–2326).  The title buffer appears to contain the full reasoning
+   text but only part is extracted as the heading title; the rest leaks as
+   body text.
+4. *Fix sub-bug 3 (duplicate TERMINE closers).*  Determine why duplicate
+   =***** TERMINE= / =**** TERMINE= pairs are emitted (L104/L106 mirror
+   L97/L100).  Likely a double-dispatch or re-entry in the terminator
+   creation logic.
+5. *Add regression tests* in =quelpa/build/gptel/test=:
+   - Test: reasoning stream followed by tool call — assert PENDING is
+     inserted /after/ REASONING's TERMINE, not inside the REASONING IB.
+   - Test: REASONING heading title is complete (not truncated).
+   - Test: no duplicate TERMINE closers after reasoning+tool sequence.
+6. *Run test suite:* =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
+7. *Manual verification* with =gptel-org-debug-preserve-state= enabled in
+   playground-ws.org.
+8. *Commit atomically* in =quelpa/build/gptel/= (one commit per sub-bug
+   if they touch different files, or a single commit if tightly coupled).
+9. Update this TODO to =AI-DONE= when all checks pass.
+
+**** Follow-ups
+- The truncated heading (sub-bug 2) may be related to the open
+  [[*Reduce extra blank line(s) before REASONING heading on first-streaming-chunk][AI-DO Reduce extra blank line(s) before REASONING heading]] — both deal
+  with newline/separator handling in the REASONING stream path.
+- The duplicate TERMINE issue (sub-bug 3) may relate to the broader
+  [[*Harmonize separator usage: org headings as natural separators][separator harmonization]] research.
 ** Researched TODOs
 *** Unified gptel-org-mode Refactoring
 **** Phase 1: Fix variable rename — DONE
