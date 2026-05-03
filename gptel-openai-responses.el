@@ -50,6 +50,41 @@ USAGE is part of the response, INFO is the request plist."
                    (gptel--sum-plists (plist-get info :tokens-full)
                                       tokens))))))
 
+(defun gptel--openai-responses-reasoning-metadata (item)
+  "Return persisted reasoning metadata from Responses API ITEM."
+  (nconc
+   (when-let* ((id (plist-get item :id))
+               ((not (eq id :null))))
+     (list :id id))
+   (when-let* ((encrypted (plist-get item :encrypted_content))
+               ((not (eq encrypted :null))))
+     (list :encrypted_content encrypted))))
+
+(defun gptel--openai-responses-reasoning-text (item)
+  "Return visible reasoning summary/content text from Responses API ITEM."
+  (cl-loop with summary = (plist-get item :summary)
+           with content = (plist-get item :content)
+           for part across (cond
+                            ((and (vectorp content) (> (length content) 0))
+                             content)
+                            ((vectorp summary) summary)
+                            (t []))
+           for text = (plist-get part :text)
+           when (stringp text)
+           collect text into texts
+           finally return (apply #'concat texts)))
+
+(defun gptel--openai-responses-add-include (data include)
+  "Add INCLUDE to Responses request DATA without duplicating it."
+  (let* ((existing (plist-get data :include))
+         (items (cond
+                 ((vectorp existing) (append existing nil))
+                 ((listp existing) existing)
+                 ((and existing (not (eq existing :null))) (list existing)))))
+    (unless (member include items)
+      (setq items (append items (list include))))
+    (plist-put data :include (vconcat items))))
+
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai-responses) info)
   "Parse an OpenAI Responses API data stream.
 
@@ -67,6 +102,14 @@ information if the stream contains it."
               (forward-char 5)
               (setq data (gptel--json-read))
               (pcase event-type
+                ;; Output item starts
+                ("response.output_item.added"
+                 (when-let* ((item (plist-get data :item))
+                             ((equal (plist-get item :type) "reasoning")))
+                   (plist-put info :reasoning-block nil)
+                   (plist-put info :reasoning nil)
+                   (plist-put info :reasoning-metadata
+                              (gptel--openai-responses-reasoning-metadata item))))
                 ;; Text content delta
                 ("response.output_text.delta"
                  (when-let* ((delta (plist-get data :delta))
@@ -80,16 +123,27 @@ information if the stream contains it."
                 ;; Function call completed (user-defined tools)
                 ("response.output_item.done"
                  (when-let* ((item (plist-get data :item))
-                             ((equal (plist-get item :type) "function_call"))
-                             (tool-call
-                              (list :id (plist-get item :call_id)
-                                    :name (plist-get item :name)
-                                    :args (ignore-errors
-                                            (gptel--json-read-string
-                                             (plist-get item :arguments))))))
-                   (plist-put info :tool-use
-                              (cons tool-call (plist-get info :tool-use)))
-                   (plist-put info :partial_json nil)))
+                             (type (plist-get item :type)))
+                   (pcase type
+                     ("function_call"
+                      (when-let* ((tool-call
+                                   (list :id (plist-get item :call_id)
+                                         :name (plist-get item :name)
+                                         :args (ignore-errors
+                                                 (gptel--json-read-string
+                                                  (plist-get item :arguments))))))
+                        (plist-put info :tool-use
+                                   (cons tool-call (plist-get info :tool-use)))
+                        (plist-put info :partial_json nil)))
+                     ("reasoning"
+                      (let ((metadata
+                             (gptel--openai-responses-reasoning-metadata item)))
+                        (plist-put info :reasoning-metadata metadata)
+                        (when (and (plist-get metadata :encrypted_content)
+                                   (or (not (stringp (plist-get info :reasoning)))
+                                       (string-empty-p (plist-get info :reasoning))))
+                          (plist-put info :reasoning " "))
+                        (plist-put info :reasoning-block t))))))
                 ;; Reasoning content
                 ((or "response.reasoning_summary_text.delta"
                      "response.reasoning.delta")
@@ -98,7 +152,7 @@ information if the stream contains it."
                               (concat (plist-get info :reasoning) delta))))
                 ((or "response.reasoning_summary_text.done"
                      "response.reasoning.done")
-                 (plist-put info :reasoning-block t))
+                 nil)
                 ;; NOTE: backend tools are not supported in gptel yet, this
                 ;; parsing is for the future
                 ;; Web search completed (server-side tool)
@@ -171,13 +225,12 @@ Mutate state INFO with response metadata."
               tool-use))
        ;; Reasoning summary
        ("reasoning"
-        (cl-loop with summary = (plist-get item :summary)
-                 with content = (plist-get item :content)
-                 for s across
-                 (if (length= content 0) summary content)
-                 collect (plist-get s :text) into reasoning
-                 finally do
-                 (plist-put info :reasoning (apply #'concat reasoning))))
+        (let* ((text (gptel--openai-responses-reasoning-text item))
+               (metadata (gptel--openai-responses-reasoning-metadata item)))
+          (plist-put info :reasoning-items
+                     (append (plist-get info :reasoning-items)
+                             (list (cons (if (string-empty-p text) " " text)
+                                         metadata))))))
        ;; Web search results (server-side tool)
        ("web_search_call"
         (when-let* ((status (plist-get item :status))
@@ -251,11 +304,13 @@ Mutate state INFO with response metadata."
                                       (gptel--dispatch-schema-type gptel--schema))
                              :strict t))))
     ;; Merge request params
-    (gptel--merge-plists
-     prompts-plist
-     gptel--request-params
-     (gptel-backend-request-params gptel-backend)
-     (gptel--model-request-params gptel-model))))
+    (let ((data (gptel--merge-plists
+                 prompts-plist
+                 gptel--request-params
+                 (gptel-backend-request-params gptel-backend)
+                 (gptel--model-request-params gptel-model))))
+      (gptel--openai-responses-add-include
+       data "reasoning.encrypted_content"))))
 
 ;; Helper functions for Responses API format conversion
 
@@ -405,6 +460,16 @@ If POSITION is
              if text collect
              (list :role (if role "user" "assistant") :content text))))
 
+(defun gptel--openai-responses-reasoning-item (metadata)
+  "Return a Responses API reasoning input item from METADATA."
+  (when-let* ((encrypted-content (plist-get metadata :encrypted_content)))
+    (nconc
+     (list :type "reasoning")
+     (when-let* ((id (plist-get metadata :id)))
+       (list :id id))
+     (list :summary []
+           :encrypted_content encrypted-content))))
+
 (cl-defmethod gptel--parse-buffer ((backend gptel-openai-responses) &optional max-entries)
   (let ((prompts) (prev-pt (point)))
     (if (or gptel-mode gptel-track-response)
@@ -417,6 +482,9 @@ If POSITION is
              (when-let* ((content (gptel--trim-prefixes
                                    (buffer-substring-no-properties (point) prev-pt))))
                (push (list :role "assistant" :content content) prompts)))
+            (`(reasoning . ,metadata)
+             (when-let* ((item (gptel--openai-responses-reasoning-item metadata)))
+               (push item prompts)))
             (`(tool . ,id)
              (save-excursion
                (condition-case nil

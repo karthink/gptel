@@ -622,7 +622,7 @@ Link failed to validate, see `gptel-markdown-validate-link' or `gptel-org-valida
           (when-let* ((prop (get-char-property (point) 'gptel)))
             (let* ((prop-name (if (symbolp prop) prop (car prop)))
                    (val (when (consp prop) (cdr prop)))
-                   (bound (if val
+                   (bound (if (consp prop)
                               (list (point) prev-pt val)
                             (list (point) prev-pt))))
               (push bound (alist-get prop-name bounds))))
@@ -1119,23 +1119,25 @@ must be set."
 (defun gptel-highlight--margin-prefix (type)
   "Create margin prefix string for TYPE.
 
-Supported TYPEs are response, ignore and tool calls."
+Supported TYPEs are response, reasoning, ignore and tool calls."
   (propertize ">" 'display
               `( (margin left-margin)
                  ,(propertize "▎" 'face
                               (pcase type
-                                ('response 'gptel-response-fringe-highlight)
+                                ((or 'response `(reasoning . ,_))
+                                 'gptel-response-fringe-highlight)
                                 ('ignore 'shadow)
                                 (`(tool . ,_) 'shadow))))))
 
 (defun gptel-highlight--fringe-prefix (type)
   "Create fringe prefix string for TYPE.
 
-Supported TYPEs are response, ignore and tool calls."
+Supported TYPEs are response, reasoning, ignore and tool calls."
   (propertize ">" 'display
               `( left-fringe gptel-highlight-fringe
                  ,(pcase type
-                    ('response 'gptel-response-fringe-highlight)
+                    ((or 'response `(reasoning . ,_))
+                     'gptel-response-fringe-highlight)
                     ('ignore 'shadow)
                     (`(tool . ,_) 'shadow)))))
 
@@ -1146,7 +1148,7 @@ Supported TYPEs are response, ignore and tool calls."
   (when (memq 'face gptel-highlight-methods)
     (overlay-put ov 'font-lock-face
                  (pcase val
-                   ('response 'gptel-response-highlight)
+                   ((or 'response `(reasoning . ,_)) 'gptel-response-highlight)
                    ('ignore 'shadow)
                    (`(tool . ,_) 'shadow))))
   (when-let* ((prefix
@@ -1167,7 +1169,7 @@ BEG and END delimit the region to refresh."
                               (point) 'gptel nil beg))
                   (/= (point) prev-pt))
         (pcase (get-char-property (point) 'gptel)
-          ((and (or 'response 'ignore `(tool . ,_)) val)
+          ((and (or 'response 'ignore `(tool . ,_) `(reasoning . ,_)) val)
            (if-let* ((ov (or (cdr-safe (get-char-property-and-overlay
                                         (point) 'gptel-highlight))
                              (cdr-safe (get-char-property-and-overlay
@@ -1819,7 +1821,12 @@ Optional RAW disables text properties and transformation."
                      (gptel--insert-response
                       (concat (car blocks) text (cdr blocks)) info t))
                  (gptel--insert-response (concat separator (car blocks)) info t)
-                 (gptel--insert-response text info)
+                 (add-text-properties
+                  0 (length text)
+                  `(gptel (reasoning . ,(plist-get info :reasoning-metadata))
+                          front-sticky (gptel))
+                  text)
+                 (gptel--insert-response text info t)
                  (gptel--insert-response (cdr blocks) info t))
                (save-excursion
                  (goto-char (plist-get info :tracking-marker))
@@ -1955,6 +1962,8 @@ for streaming responses only."
         (with-current-buffer (marker-buffer start-marker)
           (if (eq text t)               ;end of stream
               (progn
+                (when-let* ((prop (plist-get info :reasoning-property)))
+                  (setcdr prop (plist-get info :reasoning-metadata)))
                 (gptel-curl--stream-insert-response
                  (concat (if (derived-mode-p 'org-mode)
                              "\n#+end_reasoning"
@@ -1972,6 +1981,8 @@ for streaming responses only."
                                  (org-cycle)))
                       (when (re-search-backward "^```" start-marker t)
                         (gptel-markdown-cycle-block))))))
+                (plist-put info :reasoning-property nil)
+                (plist-put info :reasoning-marker nil)
             (unless (and reasoning-marker tracking-marker
                          (= reasoning-marker tracking-marker))
               (let ((separator        ;Separate from response prefix if required
@@ -1992,7 +2003,16 @@ for streaming responses only."
                   (add-text-properties
                    0 (length text) '(gptel ignore front-sticky (gptel)) text)
                   (gptel-curl--stream-insert-response text info t))
-              (gptel-curl--stream-insert-response text info)))
+              (let ((prop (or (plist-get info :reasoning-property)
+                              (let ((cell (cons 'reasoning
+                                                (plist-get info :reasoning-metadata))))
+                                (plist-put info :reasoning-property cell)
+                                cell))))
+                (add-text-properties
+                 0 (length text)
+                 `(gptel ,prop front-sticky (gptel))
+                 text)
+                (gptel-curl--stream-insert-response text info t))))
           (setq tracking-marker (plist-get info :tracking-marker))
           (if reasoning-marker
               (move-marker reasoning-marker tracking-marker)
