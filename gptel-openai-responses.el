@@ -74,17 +74,6 @@ USAGE is part of the response, INFO is the request plist."
            collect text into texts
            finally return (apply #'concat texts)))
 
-(defun gptel--openai-responses-add-include (data include)
-  "Add INCLUDE to Responses request DATA without duplicating it."
-  (let* ((existing (plist-get data :include))
-         (items (cond
-                 ((vectorp existing) (append existing nil))
-                 ((listp existing) existing)
-                 ((and existing (not (eq existing :null))) (list existing)))))
-    (unless (member include items)
-      (setq items (append items (list include))))
-    (plist-put data :include (vconcat items))))
-
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai-responses) info)
   "Parse an OpenAI Responses API data stream.
 
@@ -274,6 +263,9 @@ Mutate state INFO with response metadata."
             ;; Stateless: don't store responses server-side, don't use
             ;; previous_response_id. Each request contains full context.
             :store :json-false
+            ;; The above requires `encrypted_content' to be included. See
+            ;; https://developers.openai.com/api/docs/guides/reasoning?example=refactoring#encrypted-reasoning-items
+            :include ["reasoning.encrypted_content"]
             :stream ,(or gptel-stream :json-false)))
         (o-model-p (memq gptel-model '(o1 o1-preview o1-mini o3-mini o3 o4-mini))))
     ;; System message becomes instructions
@@ -304,13 +296,11 @@ Mutate state INFO with response metadata."
                                       (gptel--dispatch-schema-type gptel--schema))
                              :strict t))))
     ;; Merge request params
-    (let ((data (gptel--merge-plists
-                 prompts-plist
-                 gptel--request-params
-                 (gptel-backend-request-params gptel-backend)
-                 (gptel--model-request-params gptel-model))))
-      (gptel--openai-responses-add-include
-       data "reasoning.encrypted_content"))))
+    (gptel--merge-plists
+     prompts-plist
+     gptel--request-params
+     (gptel-backend-request-params gptel-backend)
+     (gptel--model-request-params gptel-model))))
 
 ;; Helper functions for Responses API format conversion
 
