@@ -1980,9 +1980,9 @@ for streaming responses only."
                                (when (looking-at "^#\\+end_reasoning")
                                  (org-cycle)))
                       (when (re-search-backward "^```" start-marker t)
-                        (gptel-markdown-cycle-block))))))
+                        (gptel-markdown-cycle-block)))))
                 (plist-put info :reasoning-property nil)
-                (plist-put info :reasoning-marker nil)
+                (plist-put info :reasoning-marker nil))
             (unless (and reasoning-marker tracking-marker
                          (= reasoning-marker tracking-marker))
               (let ((separator        ;Separate from response prefix if required
