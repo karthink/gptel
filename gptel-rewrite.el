@@ -556,7 +556,7 @@ INFO is the async communication channel for the rewrite request."
           (insert response)
           (unless (eobp) (ignore-errors (delete-char (length response))))
           (font-lock-ensure)
-          (overlay-put ov 'display (propertize (buffer-string) 'face 'default))))
+          (overlay-put ov 'display (propertize (buffer-string)))))
       (unless (plist-get info :stream) (gptel--rewrite-callback t info)))
 
      ((eq response 'abort)              ;request aborted
