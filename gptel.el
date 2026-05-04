@@ -2238,7 +2238,8 @@ for streaming responses only."
                               (when (looking-at "^\\(\\*+ REASONING\\) *$")
                                 (let ((inhibit-read-only t)
                                       (inhibit-modification-hooks t))
-                                  (replace-match (concat (match-string 1) " " (string-trim title-buf))))))))
+                                  (replace-match (concat (match-string 1) " " (string-trim title-buf)))
+                                  (org-element-cache-reset))))))
                         (plist-put info :reasoning-title-pending nil))
                       ;; Close reasoning indirect buffer before separator
                       ;; (separator would expand the IB's narrowed region)
@@ -2320,7 +2321,8 @@ for streaming responses only."
                                   (when (looking-at "^\\(\\*+ REASONING\\) *$")
                                     (let ((inhibit-read-only t)
                                           (inhibit-modification-hooks t))
-                                      (replace-match (concat (match-string 1) " " title))))))
+                                      (replace-match (concat (match-string 1) " " title))
+                                      (org-element-cache-reset)))))
                               (plist-put info :reasoning-title-pending nil)
                               ;; Insert remaining text as body.  Strip a single
                               ;; leading `*' so the body cannot masquerade as a
