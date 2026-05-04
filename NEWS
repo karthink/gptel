@@ -4,6 +4,9 @@
 
 ** Breaking changes
 ** New models and backends
+
+- Bedrock backend: Add support for =claude-opus-4-7=.
+
 ** New features and UI changes
 ** Notable bug fixes
 
