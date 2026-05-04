@@ -3638,17 +3638,17 @@ first-streaming-chunk".
 
 *Workspace state (playground-ws.org L88–L109):*
 #+begin_src org
-,*** AI-DOING Delegate to executor agent...         :agent@agent:     [L88]
-,**** REASONING THE USER WANTS ME TO DELEGATE T                       [L89]
-,**** PENDING EXECUTE :description "Run date command" ...             [L90]
-,:GPTEL_PENDING_ID: gptel-pending-2-1777475939                        [L92]
-     (:name "Agent" :args (:subagent_type "executor" ...))            [L94]
-,***** TERMINE                                                        [L97]
-,**** TERMINE                                                         [L100]
-O AN EXECUTOR AGENT TO RUN THE `DATE` COMMAND...                      [L101]
-,***** TERMINE                                                        [L104]
-,**** TERMINE                                                         [L106]
-,*** TERMINE                                                          [L109]
+  ,*** AI-DOING Delegate to executor agent...         :agent@agent:     [L88]
+  ,**** REASONING THE USER WANTS ME TO DELEGATE T                       [L89]
+  ,**** PENDING EXECUTE :description "Run date command" ...             [L90]
+  ,:GPTEL_PENDING_ID: gptel-pending-2-1777475939                        [L92]
+       (:name "Agent" :args (:subagent_type "executor" ...))            [L94]
+  ,***** TERMINE                                                        [L97]
+  ,**** TERMINE                                                         [L100]
+  O AN EXECUTOR AGENT TO RUN THE `DATE` COMMAND...                      [L101]
+  ,***** TERMINE                                                        [L104]
+  ,**** TERMINE                                                         [L106]
+  ,*** TERMINE                                                          [L109]
 #+end_src
 
 *Three sub-bugs visible:*
@@ -3700,54 +3700,241 @@ inside the REASONING block.  The fix likely involves:
 - Having =display-tool-calls= detect that it's inside a REASONING IB and
   jump out before inserting.
 
-**** Mission
-1. *Trace the insertion path.*  Read:
-   - =gptel-org-agent--display-tool-calls= in =gptel-org-agent.el=
-     (how does it choose where to insert PENDING?)
-   - =gptel-org-agent--make-insertion-marker= in =gptel-org-agent.el=
-     (how is the insertion marker initially set?)
-   - =gptel--display-reasoning-stream= in =gptel.el= (~L2154–2366)
-     (how does the REASONING stream set/update the FSM position markers?)
-   - The FSM callback dispatch that routes tool calls to
-     =display-tool-calls= (how does the FSM transition from reasoning to
-     tool calls?)
-2. *Fix sub-bug 1 (PENDING inside REASONING IB).*  Ensure tool-call
-   insertion position is after the REASONING subtree (outside the
-   REASONING IB), not inside it.  Implementation approach left to
-   implementer after tracing; likely candidates:
-   - Flush/close REASONING state in the FSM before dispatching tool calls.
-   - Adjust the =:position= / =:tracking-marker= in
-     =display-tool-calls= to skip past any open REASONING subtree.
-   - Detect active REASONING IB in =display-tool-calls=, close it, and
-     reposition.
-3. *Fix sub-bug 2 (truncated REASONING heading).*  Investigate why the
-   REASONING heading title is truncated — likely a newline handling issue
-   in =gptel--display-reasoning-stream='s title-extraction phase
-   (~L2289–2326).  The title buffer appears to contain the full reasoning
-   text but only part is extracted as the heading title; the rest leaks as
-   body text.
-4. *Fix sub-bug 3 (duplicate TERMINE closers).*  Determine why duplicate
-   =***** TERMINE= / =**** TERMINE= pairs are emitted (L104/L106 mirror
-   L97/L100).  Likely a double-dispatch or re-entry in the terminator
-   creation logic.
-5. *Add regression tests* in =quelpa/build/gptel/test=:
-   - Test: reasoning stream followed by tool call — assert PENDING is
-     inserted /after/ REASONING's TERMINE, not inside the REASONING IB.
-   - Test: REASONING heading title is complete (not truncated).
-   - Test: no duplicate TERMINE closers after reasoning+tool sequence.
-6. *Run test suite:* =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
-7. *Manual verification* with =gptel-org-debug-preserve-state= enabled in
-   playground-ws.org.
-8. *Commit atomically* in =quelpa/build/gptel/= (one commit per sub-bug
-   if they touch different files, or a single commit if tightly coupled).
-9. Update this TODO to =AI-DONE= when all checks pass.
+**** Root cause analysis (researcher-deep, 2025-07-02)
 
-**** Follow-ups
-- The truncated heading (sub-bug 2) may be related to the open
-  [[*Reduce extra blank line(s) before REASONING heading on first-streaming-chunk][AI-DO Reduce extra blank line(s) before REASONING heading]] — both deal
-  with newline/separator handling in the REASONING stream path.
-- The duplicate TERMINE issue (sub-bug 3) may relate to the broader
-  [[*Harmonize separator usage: org headings as natural separators][separator harmonization]] research.
+Four distinct root causes identified (see [[*Fix :reasoning-block transition in parse-stream for tool-calls][RC1]], [[*Fix title-extraction body deferral in REASONING stream][RC2]], [[*Fix tracking-marker restoration after reasoning IB close][RC3]], [[*Fix duplicate TERMINE seeding on multi-IB sequence][RC4]]):
+
+,*RC1 (=gptel-openai.el:165-168=)*: =:reasoning-block= never transitions
+to =t= during streaming when DeepSeek sends =reasoning_content= followed
+by =tool_calls= (content is always =:null=).  =:reasoning-block= stays
+='in= until the cleanup sentinel, causing REASONING close to race with
+tool-call dispatch.
+
+,*RC2 (=gptel.el:2308-2346=)*: Title-extraction defers ALL body insertion
+until first newline in the reasoning chunk.  If no newline arrives before
+end-of-stream, the entire accumulated text becomes the heading title —
+causing the truncated heading and orphaned body text (sub-bugs 2).
+
+,*RC3 (=gptel.el:2306 + end-of-stream handler)*: =tracking-marker= is
+rewound into the REASONING IB on first chunk but NEVER restored after the
+IB closes.  Later tool-result insertion via =gptel--org-insert-heading=
+uses this stale marker, causing tool results to land inside the closed
+REASONING subtree (sub-bug 1, bugs 4-5).
+
+,*RC4 (=gptel-org-ib-create=)*: Sequential IB creation (REASONING →
+PENDING → EXECUTOR dispatch) each seed their own TERMINE without
+coordinating, producing duplicate =***** TERMINE= / =**** TERMINE= pairs
+(sub-bug 3).
+
+,*Fix priority:*
+1. *RC1* (primary) — eliminate the race at the source in
+   =gptel-curl--parse-stream=.
+2. *RC2* (primary) — fix heading/buffer title-blob in
+   =gptel--display-reasoning-stream= end-of-stream handler.
+3. *RC3* (primary) — safety-net tracking-marker hygiene.
+4. *RC4* (defensive) — prevent duplicate TERMINE seeding.
+
+All four fixes are specified as follow-up =AI-DO= tasks below.
+
+**** Mission
+**** Mission
+1. Implement RC1-RC4 fixes via the follow-up =AI-DO= tasks below.
+2. Each fix is independently testable; implement them as separate commits.
+3. Run test suite after all fixes: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
+4. Manual verification in playground-ws.org with =gptel-org-debug-preserve-state= enabled.
+5. Update this TODO to =AI-DONE= when all checks pass.
+
+**** Follow-up tasks
+The root cause analysis produced four specific fix tasks (all =AI-DO=):
+
+- [[*Fix :reasoning-block transition in parse-stream for tool-calls][Fix :reasoning-block transition in parse-stream for tool-calls (RC1)]]
+- [[*Fix title-extraction body deferral in REASONING stream][Fix title-extraction body deferral in REASONING stream (RC2)]]
+- [[*Fix tracking-marker restoration after reasoning IB close][Fix tracking-marker restoration after reasoning IB close (RC3)]]
+- [[*Fix duplicate TERMINE seeding on multi-IB sequence][Fix duplicate TERMINE seeding on multi-IB sequence (RC4)]]
+
+*** AI-DO Fix :reasoning-block transition in parse-stream for tool-calls
+
+**** Origin
+- From deep research root cause analysis of PENDING-inside-REASONING bug ([[*PENDING tool call injected inside REASONING block instead of after its TERMINE][parent task]]).
+
+**** Discussion highlights
+When DeepSeek streams =reasoning_content= followed by =tool_calls= in the
+same response, =delta.content= is always =:null= — so the
+=:reasoning-block= detector at =gptel-openai.el:165-168= never fires:
+
+,#+begin_src elisp
+;; Done with reasoning if we get non-empty content
+(if-let* (((plist-member info :reasoning))
+          (c (plist-get delta :content))
+          ((not (or (eq c :null) (string-blank-p c)))))
+    (plist-put info :reasoning-block t))
+,#+end_src
+
+Tool_call deltas only set =delta.tool_calls=, not =delta.content=.
+Consequence: =:reasoning-block= stays ='in= throughout streaming, and
+=(reasoning . t)= is fired only by the cleanup sentinel
+(=gptel-request.el:3365=), racing with the immediate tool-call dispatch.
+
+,*Fix:* Also transition =:reasoning-block= to =t= when tool_calls are
+detected in a delta.  Add a second clause:
+,#+begin_src elisp
+(when (plist-member info :reasoning)
+  (cond
+   ((let ((c (plist-get delta :content)))
+      (and c (not (eq c :null)) (not (string-blank-p c))))
+    (plist-put info :reasoning-block t))
+   ;; Tool calls also mark end of reasoning
+   ((map-nested-elt delta '(:tool_calls 0))
+    (plist-put info :reasoning-block t))))
+,#+end_src
+
+**** Mission
+1. Read =gptel-curl--parse-stream= in =quelpa/build/gptel/gptel-openai.el=
+   (the OpenAI backend file, around lines 130-182).
+2. Modify the =:reasoning-block= transition logic to also flip to =t=
+   when =(:tool_calls 0)= is present in the delta.
+3. Verify the fix doesn't affect Anthropic or Gemini backends (they don't
+   use the same DeepSeek =reasoning_content= field).
+4. Run tests and manual verification.
+
+**** Verification
+- Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
+- Manual test: trigger DeepSeek reasoning + tool call in playground-ws.org
+
+*** AI-DO Fix title-extraction body deferral in REASONING stream
+
+**** Origin
+- From deep research root cause analysis of PENDING-inside-REASONING bug ([[*PENDING tool call injected inside REASONING block instead of after its TERMINE][parent task]]).
+
+**** Discussion highlights
+The first-chunk handler in =gptel--display-reasoning-stream=
+(=gptel.el:~2308-2346=) accumulates reasoning text in
+=:reasoning-title-buffer= without inserting it into the IB body — waiting
+for a newline to split title from body.  If =reasoning_content= has no
+newline before end-of-stream, the end-of-stream handler
+(=gptel.el:~2233-2243=) blasts the ENTIRE accumulated text into the
+heading title via =replace-match=:
+
+,#+begin_src elisp
+(replace-match (concat (match-string 1) " " (string-trim title-buf)))
+,#+end_src
+
+=string-trim= removes leading/trailing whitespace but does NOT strip
+embedded newlines.  A multi-paragraph reasoning chunk with internal
+newlines produces a multi-line "heading" — org truncates the display,
+and the rest appears as orphaned body text on subsequent lines.
+
+,*Fix (in end-of-stream handler):* Split =title-buf=:
+1. Take only the first line (up to first newline, or first 60 chars) as
+   the heading title.
+2. Insert the remainder as body text via
+   =gptel-curl--stream-insert-response= (with leading =*= stripped).
+3. Additionally, sanitize the title with
+   =(replace-regexp-in-string "\n" " " title)= for safety.
+
+**** Mission
+1. Read =gptel--display-reasoning-stream= in =quelpa/build/gptel/gptel.el=
+   (end-of-stream handler around lines 2233-2255).
+2. Modify the title-finalization block: when =:reasoning-title-pending=
+   is =t= and end-of-stream arrives:
+   a. Split =title-buf= into first-line (heading) and rest (body).
+   b. Set heading title to first-line only (sanitized).
+   c. If rest is non-empty, insert it into the buffer as body text.
+3. Also sanitize titles to prevent embedded newlines from ever landing
+   on heading lines.
+4. Run tests and manual verification.
+
+**** Verification
+- Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
+- Manual test: trigger DeepSeek reasoning + tool call in playground-ws.org
+
+*** AI-DO Fix tracking-marker restoration after reasoning IB close
+
+**** Origin
+- From deep research root cause analysis of PENDING-inside-REASONING bug ([[*PENDING tool call injected inside REASONING block instead of after its TERMINE][parent task]]).
+
+**** Discussion highlights
+The first-chunk handler in =gptel--display-reasoning-stream= rewinds
+=tracking-marker= to just before TERMINE inside the REASONING IB
+(=gptel.el:~2300-2306=).  When end-of-stream fires and the reasoning IB
+is closed, the marker is NOT advanced past the now-closed REASONING
+subtree.  The separator is inserted at the stale position (inside the
+REASONING subtree), and any subsequent =gptel--org-insert-heading= call
+(for tool results) uses this contaminated marker — landing tool results
+inside the closed REASONING subtree.
+
+,*Fix:* In the end-of-stream handler, after closing the reasoning IB and
+before inserting the separator, reposition =tracking-marker= to
+=org-end-of-subtree= of the REASONING heading:
+
+,#+begin_src elisp
+(gptel-org--reasoning-close-indirect-buffer)
+;; Move tracking-marker past the closed REASONING subtree
+(when-let* ((reasoning-pos (plist-get info :reasoning-heading-pos))
+            (tm (plist-get info :tracking-marker)))
+  (with-current-buffer (marker-buffer tm)
+    (save-excursion
+      (goto-char reasoning-pos)
+      (when (org-at-heading-p)
+        (org-end-of-subtree t)
+        (move-marker tm (point))))))
+;; Now insert separator at safe position
+(gptel-curl--stream-insert-response gptel-response-separator info t)
+,#+end_src
+
+**** Mission
+1. Read =gptel--display-reasoning-stream= in =quelpa/build/gptel/gptel.el=
+   (end-of-stream handler, lines ~2233-2255).
+2. After =gptel-org--reasoning-close-indirect-buffer= and before the
+   separator insertion, reposition =:tracking-marker= to the end of the
+   REASONING subtree (=org-end-of-subtree t=).
+3. Ensure the separator is inserted at the repositioned marker.
+4. Run tests and manual verification.
+
+**** Verification
+- Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
+- Manual test: trigger DeepSeek reasoning + tool call in playground-ws.org
+
+*** AI-DO Fix duplicate TERMINE seeding on multi-IB sequence
+
+**** Origin
+- From deep research root cause analysis of PENDING-inside-REASONING bug ([[*PENDING tool call injected inside REASONING block instead of after its TERMINE][parent task]]).
+
+**** Discussion highlights
+When REASONING → PENDING → EXECUTOR IBs are created in sequence, each
+=gptel-org-ib-create= call seeds a fresh TERMINE child.  If the executor
+sub-agent dispatch in =gptel-org-agent.el= creates a new IB instead of
+reusing the PENDING IB, you get parallel TERMINE seeds — resulting in
+duplicate =***** TERMINE= and =**** TERMINE= closers (observed at
+L97/L104 and L100/L106 in playground-ws.org).
+
+,*Fix approach:* Investigate the executor sub-agent dispatch path in
+=gptel-org-agent.el= (around line 1992, the PENDING IB reuse comment
+about IB-7).  Ensure:
+1. The executor result is inserted into the existing PENDING/DOING IB,
+   not a newly created one.
+2. =gptel-org-ib-ensure-terminator= is idempotent (already should be —
+   verify with =gptel-org-ib-find-terminator= and add debug logging).
+3. If TERMINE seeding in =gptel-org-ib-create= is the source of
+   duplication, gate it on a "no existing child TERMINE" check.
+
+**** Mission
+1. Trace the executor sub-agent dispatch path:
+   - Read =gptel-org-agent.el= for tool-result insertion after sub-agent
+     completes (~line 1992 for IB-7 comment).
+   - Read =gptel-org-ib-create= for TERMINE seeding logic
+     (~line 1108-1116 in gptel-indirect-buffer.el).
+2. Determine the exact duplication mechanism:
+   - Is a second IB created when the executor finishes?
+   - Is TERMINE seeded twice in the same IB?
+   - Or is =gptel-org-ib-ensure-terminator= called redundantly?
+3. Implement fix to prevent duplicate TERMINE pairs.
+4. Run tests and manual verification.
+
+**** Verification
+- Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
+- Manual test: trigger DeepSeek reasoning + tool call in playground-ws.org
+
 ** Researched TODOs
 *** Unified gptel-org-mode Refactoring
 **** Phase 1: Fix variable rename — DONE
@@ -4288,22 +4475,22 @@ IB-5.6, IB-5.7 are still open.
 - These collide on first-chunk heading insertion, producing 3x =\n= (2 blank lines)
 
 **** Current separator insertion points (full audit)
-| Insertion point                     | File:line      | What                             | Heading follows? |
-|-------------------------------------+----------------+----------------------------------+------------------|
-| =gptel-curl--stream-insert-response=  | gptel.el:2013  | =gptel-response-separator=       | Sometimes        |
-| (first chunk, no tracking-marker)   |                | (="\n\n"=)                       |                  |
-| =gptel--display-reasoning-stream=     | gptel.el:2248  | local =separator= (="\n"=)        | Always           |
-| (first reasoning chunk)             |                | + ="* REASONING \n"=             |                  |
-| =gptel--display-reasoning-stream=     | gptel.el:2214  | =gptel-response-separator=       | No (closes)      |
-| (end of reasoning, text=t)          |                | (="\n\n"=)                       |                  |
-| =gptel--display-tool-results=         | gptel.el:2544  | =gptel-response-separator=       | Always           |
-| (non-consecutive tool)              |                | or local ="\n"= or nil           |                  |
-| =gptel--display-tool-results=         | gptel.el:2542  | local ="\n"= (first result)      | Always           |
-| (first tool result)                 |                |                                  |                  |
-| =gptel--insert-response=             | gptel.el:1898  | =gptel-response-separator=       | Sometimes        |
-| (non-streaming, first call)         |                | (="\n\n"=)                       |                  |
-| =gptel--insert-response=             | gptel.el:1891  | =gptel-response-separator=       | Sometimes        |
-| (non-streaming, subsequent)         |                | prepended to response string     |                  |
+| Insertion point                      | File:line     | What                         | Heading follows? |
+|--------------------------------------+---------------+------------------------------+------------------|
+| =gptel-curl--stream-insert-response= | gptel.el:2013 | =gptel-response-separator=   | Sometimes        |
+| (first chunk, no tracking-marker)    |               | (="\n\n"=)                   |                  |
+| =gptel--display-reasoning-stream=    | gptel.el:2248 | local =separator= (="\n"=)   | Always           |
+| (first reasoning chunk)              |               | + ="* REASONING \n"=         |                  |
+| =gptel--display-reasoning-stream=    | gptel.el:2214 | =gptel-response-separator=   | No (closes)      |
+| (end of reasoning, text=t)           |               | (="\n\n"=)                   |                  |
+| =gptel--display-tool-results=        | gptel.el:2544 | =gptel-response-separator=   | Always           |
+| (non-consecutive tool)               |               | or local ="\n"= or nil       |                  |
+| =gptel--display-tool-results=        | gptel.el:2542 | local ="\n"= (first result)  | Always           |
+| (first tool result)                  |               |                              |                  |
+| =gptel--insert-response=             | gptel.el:1898 | =gptel-response-separator=   | Sometimes        |
+| (non-streaming, first call)          |               | (="\n\n"=)                   |                  |
+| =gptel--insert-response=             | gptel.el:1891 | =gptel-response-separator=   | Sometimes        |
+| (non-streaming, subsequent)          |               | prepended to response string |                  |
 
 **** Problem analysis
 
