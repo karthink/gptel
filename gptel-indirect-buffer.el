@@ -642,7 +642,7 @@ on a heading, only the `point-max' fallback is used."
                            (gptel-org-ib-find-terminator terminator-keyword))))))
     (if term-pos
         (let ((m (make-marker)))
-          (set-marker m term-pos)
+          (set-marker m (1- term-pos))
           (set-marker-insertion-type m nil)
           m)
       (save-excursion
