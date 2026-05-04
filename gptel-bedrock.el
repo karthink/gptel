@@ -1,6 +1,6 @@
 ;;; gptel-bedrock.el --- AWS Bedrock support for gptel  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 Karthik Chikmagalur
+;; Copyright (C) 2025-2026 Karthik Chikmagalur
 
 ;; Keywords: comm, convenience
 

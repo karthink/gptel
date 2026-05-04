@@ -1,6 +1,6 @@
 ;;; gptel-rewrite.el --- Refactoring functions for gptel  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024  Karthik Chikmagalur
+;; Copyright (C) 2024-2026  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthikchikmagalur@gmail.com>
 ;; Keywords: hypermedia, convenience, tools

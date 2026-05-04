@@ -1,6 +1,6 @@
 # -*- mode: org; -*-
 
-* 0.9.9.5-pre
+* 0.9.9.5 2026-05-03
 
 ** Breaking changes
 
@@ -200,7 +200,7 @@
   Note that this is a bug fix. It's how the API has been documented and
   was supposed to work in the first place.
 
-* 0.9.9.4
+* 0.9.9.4 2026-02-21
 
 ** Breaking changes
 
@@ -279,7 +279,7 @@
   call tools within their "reasoning" phase are now correctly handled
   by gptel.
 
-* 0.9.9.3
+* 0.9.9.3 2025-11-09
 
 ** Breaking changes
 

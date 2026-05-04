@@ -136,7 +136,9 @@ information if the stream contains it."
                                     :call_id (plist-get tc :id)
                                     :name (plist-get tc :name)
                                     :arguments
-                                    (gptel--json-encode (plist-get tc :args))))
+                                    (decode-coding-string
+                                     (gptel--json-encode (plist-get tc :args))
+                                     'utf-8 t)))
                             tool-use)))
                  (when-let* ((resp (plist-get data :response)))
                    (plist-put info :stop-reason (plist-get resp :status))
