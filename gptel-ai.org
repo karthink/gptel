@@ -4185,7 +4185,7 @@ reason.
   marker, response-title application, auto-corrector, role-tracking
   and all agent-pipeline tests — deferred to IB-4.6b below.
 
-***** TODO IB-4.6b Wire RESPOND heading into response insertion
+***** AI-DO IB-4.6b Wire RESPOND heading into response insertion
 Pipeline-level change.  Wrap streaming assistant response content in
 a =* RESPOND <title>= heading inserted inside the active agent IB,
 before the subtree's TERMINE.  Depends on:
