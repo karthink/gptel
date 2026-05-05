@@ -3936,6 +3936,93 @@ about IB-7).  Ensure:
 - Manual test: trigger DeepSeek reasoning + tool call in playground-ws.org
 
 ** Researched TODOs
+*** TODO Fix TERMINE: move from child-level to sibling-level for proper IB isolation
+
+**** Origin
+- Spotted during review of the TERMINE/indirect-buffer isolation architecture.
+- The current design creates TERMINE as a CHILD of every IB heading, but for proper
+  isolation the boundary needs to be a SIBLING (or parent) heading below.
+
+**** Discussion highlights
+Current behavior:
+- =gptel-org-ib-create= seeds =*** TERMINE= as a CHILD of the task heading.
+- Every IB gets its own child TERMINE.
+- =gptel-org-ib-create-heading= inserts new children before the child TERMINE.
+
+Problem:
+- For proper IB isolation via narrowing, the region boundary must be at a sibling
+  or parent heading below the isolated heading.
+- A child TERMINE inside the IB's narrowed region doesn't provide a stable
+  external boundary between sibling IBs.
+- The org-mode =org-end-of-subtree= naturally stops at the next same-or-shallower
+  heading, making a sibling-level TERMINE the correct sentinel.
+
+Target design (user spec):
+#+begin_src org
+,* DOING
+,** AI-DO plaa  <-- IB
+,*** REASONING <-- IB
+plaaplaa
+,*** RESPOND <-- IB
+plaaplaa
+,** TERMINE <-- One terminator per task level, sibling of AI-DO
+#+end_src
+
+- One TERMINE at the task (AI-DO) level, not one per child IB.
+- New child headings are inserted by going to BOL of TERMINE, inserting LF,
+  then writing the new heading on the blank line above TERMINE.
+- This naturally keeps sibling IBs isolated because each child heading's
+  subtree ends at the next sibling or the task-level TERMINE.
+
+Key observations from code analysis:
+- =gptel-org-ib-create-heading= already falls back to =org-end-of-subtree=
+  when no child terminator is found — this correctly inserts before the
+  sibling TERMINE without needing changes.
+- =gptel-org-ib-streaming-marker= falls back to =point-max= with
+  =insertion-type t= when no child terminator exists — content auto-expands
+  the narrowing, which is correct.
+- =ensure-sibling-terminator= already exists for sibling-level terminators
+  (used for FEEDBACK).
+
+**** Changes required
+
+1. =gptel-org-ib-create= (~L1107-1118): Replace child-level =ensure-terminator=
+   with sibling-level =ensure-sibling-terminator= at the heading's own level.
+
+2. =gptel-org-ib-insert-child= (~L1482): When =terminator-keyword= is "TERMINE",
+   use =ensure-sibling-terminator= at the parent's level instead of child-level
+   =ensure-terminator=.
+
+3. =gptel-org-ib-find-terminator= (~L584): Add optional LEVEL parameter. When
+   provided, search at that level; otherwise default to child-level (current
+   behavior). This allows =remove-terminator= and =streaming-marker= to find
+   the sibling TERMINE.
+
+4. =gptel-org-ib-remove-terminator= (~L774): Use the LEVEL-aware
+   =find-terminator= to locate sibling TERMINE.
+
+5. =gptel-org-ib-streaming-marker= (~L622): Pass appropriate level when
+   searching for TERMINE.
+
+6. Callers in =gptel-org-agent.el=:
+   - =gptel-org-agent--make-insertion-marker= (~L644): Update TERMINE lookup.
+   - =gptel-org-agent--display-tool-calls= (~L2074): Review ensure-terminator call.
+   - =gptel-org-agent--collect-agent-body= (~L1752): Update find-terminator call.
+
+7. Tests in =test/gptel-org-ib-test.el= and =test/gptel-org-agent-test.el=:
+   Update assertions that currently expect child-level TERMINE.
+
+**** Mission
+1. Read all affected functions in =gptel-indirect-buffer.el= and =gptel-org-agent.el=.
+2. Implement the changes described above.
+3. Update tests to expect sibling-level TERMINE.
+4. Run =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
+5. Fix any test failures.
+
+**** Verification
+- Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
+- The child→sibling TERMINE change must not break any existing tests.
+
 *** Unified gptel-org-mode Refactoring
 **** Phase 1: Fix variable rename — DONE
 - Renamed =gptel-org-agent-subtrees= → =gptel-org-subtree-context= in gptel-agent
