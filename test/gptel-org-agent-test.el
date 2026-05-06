@@ -207,11 +207,10 @@ Verify the child heading exists at the correct level with the right tag."
   "`gptel-org-agent--open-indirect-buffer' produces an IB with TERMINE.
 
 TERMINE seeding is the responsibility of the generic factory
-`gptel-org-ib-create' (universal invariant — every IB has TERMINE
-as its last child, see gptel-indirect-buffer-ai.org *** TERMINE).
-Agent IBs inherit TERMINE from the factory so streaming insertion
-lands BEFORE it, preserving the \"TERMINE is last child\" invariant
-and sibling-IB isolation."
+`gptel-org-ib-create' which now creates TERMINE as a SIBLING in the
+base buffer (not a child within the IB).  From within the narrowed
+IB, TERMINE is invisible; the streaming marker falls back to
+point-max with insertion-type t."
   (gptel-org-agent-test-with-buffer
    "* AI-DO Task\nDescription\n"
    (goto-char (point-min))
@@ -224,14 +223,20 @@ and sibling-IB isolation."
            (setq indirect-buf
                  (gptel-org-agent--open-indirect-buffer base-buf marker))
            (should (buffer-live-p indirect-buf))
+           ;; TERMINE is a sibling in the base buffer, not a child in the IB.
+           (with-current-buffer base-buf
+             (goto-char (marker-position marker))
+             (should (gptel-org-ib-find-terminator "TERMINE" nil 1)))
+           ;; In the IB, TERMINE is outside the narrowing; fallback to
+           ;; point-max with insertion-type t.
            (with-current-buffer indirect-buf
-             ;; TERMINE must exist — seeded by the agent factory.
-             (should (gptel-org-ib-find-terminator "TERMINE"))
-             ;; Streaming marker must take the TERMINE branch:
-             ;; insertion-type=nil pinned at TERMINE line start.
+             (should-not (save-excursion
+                           (goto-char (point-min))
+                           (when (org-at-heading-p)
+                             (gptel-org-ib-find-terminator "TERMINE"))))
              (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
                (should (markerp m))
-               (should-not (marker-insertion-type m)))))
+               (should (marker-insertion-type m)))))
        ;; Cleanup
        (when (and indirect-buf (buffer-live-p indirect-buf))
          (kill-buffer indirect-buf))))))
@@ -2415,14 +2420,17 @@ Regression test for the unified parent-aware insertion API: the
 hand-rolled `org-end-of-subtree' path used to append the handover
 heading AFTER the user task's TERMINE child.  After migration to
 `gptel-org-ib-insert-child' with `:terminator-keyword \"TERMINE\"',
-the heading must land BEFORE the TERMINE marker, on its own line."
+the heading must land BEFORE the TERMINE marker, on its own line.
+
+With sibling-level TERMINE, the handover heading (level 4) sits
+between the user task body and the TERMINE sibling (level 3)."
   (let ((org-inhibit-startup t)
         (org-todo-keywords
          '((sequence "TODO" "AI-DO" "AI-DOING" "|" "DONE" "AI-DONE")))
         (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
     (with-temp-buffer
       (delay-mode-hooks (org-mode))
-      (insert "*** TODO User task\n**** TERMINE\n")
+      (insert "*** TODO User task\n*** TERMINE\n")
       (goto-char (point-min))
       (search-forward "User task")
       (org-back-to-heading t)
@@ -2453,7 +2461,7 @@ the heading must land BEFORE the TERMINE marker, on its own line."
           (let ((handover-pos
                  (string-match "^\\*\\*\\*\\* AI-DO Sub task" content))
                 (termine-pos
-                 (string-match "^\\*\\*\\*\\* TERMINE" content)))
+                 (string-match "^\\*\\*\\* TERMINE" content)))
             (should handover-pos)
             (should termine-pos)
             (should (< handover-pos termine-pos))))
@@ -2464,9 +2472,6 @@ the heading must land BEFORE the TERMINE marker, on its own line."
         (beginning-of-line)
         (should (or (= (point) (point-min))
                     (= (char-before) ?\n)))))))
-
-
-;;; ---- IB-4.8: REQ-prefix invariant for tool headings ---------------------
 
 (ert-deftest gptel-org-agent-test-tool-heading-req-prefix-p ()
   "Pure helper recognises `<REQ> <STATE> <summary>' form."
@@ -3226,22 +3231,38 @@ The position-marker is inside the IB before its TERMINE child."
                               entry-pending-ib))
                   (should (eq (plist-get subtree-info :heading-marker)
                               entry-heading-marker))
-                  ;; Position marker is inside the PENDING IB, before
-                  ;; TERMINE (which is the IB's last child per the
-                  ;; universal TERMINE invariant).
+                  ;; Position marker is inside the PENDING IB.  TERMINE
+                  ;; is a SIBLING of the PENDING heading in the BASE
+                  ;; buffer (universal TERMINE invariant per the new
+                  ;; sibling-level design), so it lies outside the
+                  ;; PENDING IB's narrowing.  Verify TERMINE exists in
+                  ;; the base buffer at the PENDING heading's level
+                  ;; and that the position marker is at-or-before it.
                   (let ((pm (plist-get subtree-info :position-marker)))
                     (should (markerp pm))
                     (should (eq (marker-buffer pm) entry-pending-ib))
-                    (with-current-buffer entry-pending-ib
-                      (save-excursion
-                        (goto-char (point-min))
-                        ;; TERMINE child must exist.
-                        (should (gptel-org-ib-find-terminator "TERMINE"))
-                        ;; Position marker must be at-or-before TERMINE.
-                        (let ((termine-pos
-                               (gptel-org-ib-find-terminator "TERMINE")))
-                          (should (<= (marker-position pm)
-                                      termine-pos)))))))
+                    (let* ((pending-level
+                            (with-current-buffer entry-pending-ib
+                              (save-excursion
+                                (goto-char (point-min))
+                                (org-current-level))))
+                           (base
+                            (or (buffer-base-buffer entry-pending-ib)
+                                entry-pending-ib))
+                           (pm-base-pos
+                            ;; Position in the base buffer (markers in
+                            ;; an IB share positions with the base).
+                            (marker-position pm))
+                           (termine-pos
+                            (with-current-buffer base
+                              (save-excursion
+                                (goto-char (marker-position
+                                            entry-heading-marker))
+                                (gptel-org-ib-find-terminator
+                                 "TERMINE" nil pending-level)))))
+                      (should pending-level)
+                      (should termine-pos)
+                      (should (<= pm-base-pos termine-pos))))
                 ;; Returns nil for unknown pending-id.
                 (should-not
                  (gptel-org-agent--pending-tool-subtree-info

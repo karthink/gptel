@@ -581,15 +581,23 @@ HEADING-KEYWORD is the terminator text (e.g., \"FEEDBACK\").
 LEVEL is the expected heading level (number of stars)."
   (format "^\\*\\{%d\\} +%s\\b" level (regexp-quote heading-keyword)))
 
-(defun gptel-org-ib-find-terminator (heading-keyword &optional bound)
-  "Find the terminator heading matching HEADING-KEYWORD in current subtree.
+(defun gptel-org-ib-find-terminator (heading-keyword &optional bound level)
+  "Find the terminator heading matching HEADING-KEYWORD.
 
-Search forward from point for a child heading whose text matches
-HEADING-KEYWORD.  BOUND limits the search region; when nil, the
-search is bounded by the end of the current subtree.
+Point must be on a heading.
 
-Point must be on the parent heading.  The terminator is expected to
-be a direct child (one level deeper than the current heading).
+When LEVEL is nil (default), search forward for a CHILD terminator
+heading at one level deeper than the current heading.  The search
+is bounded by the end of the current subtree (or BOUND when given).
+
+When LEVEL is non-nil, search for a SIBLING (or arbitrary-level)
+terminator heading at that exact level.  The search starts at the
+end of the current subtree and is bounded by the next heading of
+shallower level than LEVEL (or BOUND when given), which marks the
+end of the parent's scope.
+
+HEADING-KEYWORD is the terminator text (e.g., \"TERMINE\",
+\"FEEDBACK\").
 
 Returns the position (beginning of line) of the terminator heading,
 or nil if not found."
@@ -598,26 +606,61 @@ or nil if not found."
       (gptel-org-ib-fatal
        "find-terminator: point %d not at heading in buffer %s"
        (point) (buffer-name)))
-    (let* ((parent-level (org-current-level))
-           (child-level (1+ parent-level))
-           (search-bound (or bound
-                             (save-excursion
-                               (org-end-of-subtree t)
-                               (point))))
-           (regexp (gptel-org-ib--terminator-regexp heading-keyword child-level))
-           (found nil))
-      (save-excursion
-        (forward-line 1)
-        (when (<= (point) search-bound)
-          (while (and (not found)
-                      (re-search-forward regexp search-bound t))
-            (beginning-of-line)
-            ;; Verify this is truly at the expected level (not deeper)
-            (when (= (org-current-level) child-level)
-              (setq found (point)))
-            (unless found
-              (forward-line 1)))))
-      found)))
+    (if level
+        ;; Arbitrary-LEVEL search.  Search forward from the current
+        ;; heading (skipping its own heading line) for any heading at
+        ;; exactly LEVEL.  The search is bounded by the next heading
+        ;; of shallower level than LEVEL, which marks the end of the
+        ;; parent's scope (or BOUND when given, or point-max).  This
+        ;; locates both child terminators (LEVEL > current) and
+        ;; sibling terminators (LEVEL == current) using one unified
+        ;; rule: \"a heading at LEVEL within the parent's reach\".
+        (let* ((regexp (gptel-org-ib--terminator-regexp
+                        heading-keyword level))
+               (search-bound
+                (or bound
+                    (save-excursion
+                      (forward-line 1)
+                      (let ((stop-regexp
+                             (when (> level 1)
+                               (format "^\\*\\{1,%d\\} " (1- level)))))
+                        (if (and stop-regexp
+                                 (re-search-forward stop-regexp nil t))
+                            (match-beginning 0)
+                          (point-max))))))
+               (found nil))
+          (save-excursion
+            (forward-line 1)
+            (while (and (not found)
+                        (re-search-forward regexp search-bound t))
+              (beginning-of-line)
+              (when (= (org-current-level) level)
+                (setq found (point)))
+              (unless found
+                (forward-line 1))))
+          found)
+      ;; Child-level search (default, legacy behavior).
+      (let* ((parent-level (org-current-level))
+             (child-level (1+ parent-level))
+             (search-bound (or bound
+                               (save-excursion
+                                 (org-end-of-subtree t)
+                                 (point))))
+             (regexp (gptel-org-ib--terminator-regexp
+                      heading-keyword child-level))
+             (found nil))
+        (save-excursion
+          (forward-line 1)
+          (when (<= (point) search-bound)
+            (while (and (not found)
+                        (re-search-forward regexp search-bound t))
+              (beginning-of-line)
+              ;; Verify this is truly at the expected level (not deeper)
+              (when (= (org-current-level) child-level)
+                (setq found (point)))
+              (unless found
+                (forward-line 1)))))
+        found))))
 
 (defun gptel-org-ib-streaming-marker (&optional terminator-keyword)
   "Return a marker safe for FSM streaming into the current indirect buffer.
@@ -689,12 +732,15 @@ Returns a marker to the terminator heading."
         (goto-char subtree-end)
         ;; Search forward for sibling terminator.  Stop at a heading of
         ;; lower (shallower) level than LEVEL, which indicates we've
-        ;; left the parent's scope.
-        (let ((stop-regexp (format "^\\*\\{1,%d\\} " (1- level)))
-              (limit nil))
-          (save-excursion
-            (when (re-search-forward stop-regexp nil t)
-              (setq limit (match-beginning 0))))
+        ;; left the parent's scope.  When LEVEL is 1 there is no
+        ;; shallower level, so search to end of buffer.
+        (let* ((stop-regexp (when (> level 1)
+                              (format "^\\*\\{1,%d\\} " (1- level))))
+               (limit nil))
+          (when stop-regexp
+            (save-excursion
+              (when (re-search-forward stop-regexp nil t)
+                (setq limit (match-beginning 0)))))
           (when (re-search-forward regexp limit t)
             (beginning-of-line)
             (when (= (org-current-level) level)
@@ -1050,6 +1096,17 @@ Returns the indirect buffer."
          (buf-name (or name
                        (gptel-org-ib-compute-name
                         root-buf pos resolved-tag)))
+         ;; Seed TERMINE FIRST so org-end-of-subtree stops before it.
+         ;; This keeps the sibling TERMINE outside the narrowed region.
+         ;; (Must be done before computing the subtree region, otherwise
+         ;; the end-marker with insertion-type t advances past TERMINE.)
+         (_ (progn
+              (with-current-buffer root-buf
+                (save-excursion
+                  (goto-char pos)
+                  (when (org-at-heading-p)
+                    (gptel-org-ib-ensure-sibling-terminator
+                     "TERMINE" (org-current-level)))))))
          ;; Compute subtree region
          (region (gptel-org-ib--compute-subtree-region root-buf pos))
          (beg (car region))
@@ -1101,21 +1158,14 @@ Returns the indirect buffer."
        (when parent-node
          (buffer-name (gptel-org-ib-node-buffer parent-node)))))
     (gptel-org--debug "org-ib create: created buffer %S" buf-name)
-    ;; Seed the universal TERMINE terminator child inside the freshly
-    ;; narrowed subtree.  Per the design invariant in
-    ;; `gptel-indirect-buffer-ai.org' (see *** TERMINE), every IB
-    ;; created by gptel — agent, sub-agent (tool-call), tool body
-    ;; (BASH/FILE-READ/...), REASONING, RESPOND — has TERMINE as its
-    ;; last child.  Eager seeding pins
-    ;; `gptel-org-ib-streaming-marker' BEFORE TERMINE from the moment
-    ;; the IB exists, avoiding marker-drift-past-terminator bugs that
-    ;; occur with lazy creation when the first streamed content
-    ;; happens to be a tool call.
-    (with-current-buffer indirect-buf
-      (save-excursion
-        (goto-char (point-min))
-        (when (org-at-heading-p)
-          (gptel-org-ib-ensure-terminator "TERMINE"))))
+    ;; The universal TERMINE terminator was already seeded as a
+    ;; SIBLING heading in the base buffer above (before computing the
+    ;; subtree region).  TERMINE lives outside the IB's narrowing
+    ;; (the boundary is the sibling heading), which provides proper
+    ;; isolation between sibling IBs.  From within this IB, TERMINE
+    ;; is invisible; `gptel-org-ib-streaming-marker' falls back to
+    ;; `point-max' with insertion-type t and content auto-expands the
+    ;; narrowing up to (but not past) TERMINE.
     indirect-buf))
 
 (defun gptel-org-ib-close (indirect-buffer &optional fold)
@@ -1478,8 +1528,15 @@ is nil)."
              "insert-child: parent marker position %d not at heading in buffer %s"
              (point) (buffer-name)))
           ;; Ensure terminator (idempotent) on the parent.
+          ;; TERMINE is a SIBLING of the parent (same level, in the
+          ;; base buffer), not a CHILD.  Other terminators (FEEDBACK,
+          ;; RESULTS, ...) remain child-level for backward
+          ;; compatibility.
           (when terminator-keyword
-            (gptel-org-ib-ensure-terminator terminator-keyword))
+            (if (string= terminator-keyword "TERMINE")
+                (gptel-org-ib-ensure-sibling-terminator
+                 terminator-keyword (org-current-level))
+              (gptel-org-ib-ensure-terminator terminator-keyword)))
           ;; Delegate the actual insertion to the internal helper,
           ;; which centralises the universal newline guard, level
           ;; computation, and trailing-blank-line handling.

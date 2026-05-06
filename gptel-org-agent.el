@@ -641,10 +641,13 @@ earlier subtrees are not disturbed."
       (let ((user-kw (or (bound-and-true-p gptel-org-user-keyword)
                          "FEEDBACK")))
         (cond
-         ;; Try TERMINE first (IB-4.2 unified terminator).
+         ;; Try TERMINE first (IB-4.2 unified terminator).  Check both
+         ;; child-level (legacy) and sibling-level (current design).
          ((and (org-at-heading-p)
                (save-excursion
-                 (gptel-org-ib-find-terminator "TERMINE")))
+                 (or (gptel-org-ib-find-terminator "TERMINE")
+                     (gptel-org-ib-find-terminator
+                      "TERMINE" nil (org-current-level)))))
           (gptel-org-ib-streaming-marker "TERMINE"))
          ;; Legacy, pre-IB-4.2: RESULTS terminator (task / sub-agent IBs).
          ((and (org-at-heading-p)
@@ -2061,17 +2064,23 @@ INFO is the FSM info plist."
       ;; indirect buffer and its base buffer so that the user can
       ;; change PENDING→ALLOWED from either buffer.
       (gptel-org-agent--ensure-tool-confirm-hook buf)
-      ;; The `ensure-terminator' call below is a cheap idempotent
-      ;; safety net for ill-formed inputs (e.g. older buffers loaded
-      ;; from disk that pre-date the universal TERMINE invariant).
-      ;; TERMINE is seeded by the generic factory `gptel-org-ib-create'
-      ;; for every IB, so on a correctly-constructed IB this is a
-      ;; no-op (returns a marker to the existing TERMINE).
-      (save-excursion
-        (goto-char (point-min))
-        (when (org-at-heading-p)
-          (ignore-errors
-            (gptel-org-ib-ensure-terminator "TERMINE"))))
+      ;; Safety net: ensure sibling TERMINE exists in the base buffer.
+      ;; The TERMINE is a sibling of the agent heading (created by
+      ;; `gptel-org-ib-create' for well-formed IBs).  This idempotent
+      ;; call fixes ill-formed inputs (e.g. older buffers loaded from
+      ;; disk that pre-date the sibling TERMINE invariant).
+      (let ((base (gptel-org-ib-base-buffer buf))
+            (node (gptel-org-ib--get-node (buffer-name buf))))
+        (when (and base node)
+          (with-current-buffer base
+            (save-excursion
+              (let ((hm (gptel-org-ib-node-heading-marker node)))
+                (when (marker-position hm)
+                  (goto-char hm)
+                  (when (org-at-heading-p)
+                    (ignore-errors
+                      (gptel-org-ib-ensure-sibling-terminator
+                       "TERMINE" (org-current-level))))))))))
       ;; Suppress the auto-corrector during insertion.
       (let ((gptel-org--auto-correcting t))
         (gptel-org--debug
