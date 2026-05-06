@@ -3273,7 +3273,7 @@ The position-marker is inside the IB before its TERMINE child."
           (when (and pending-ib (buffer-live-p pending-ib))
             (kill-buffer pending-ib))
           (when (and indirect-buf (buffer-live-p indirect-buf))
-            (kill-buffer indirect-buf)))))))
+            (kill-buffer indirect-buf))))))))
 
 (ert-deftest gptel-org-agent-test-accept-tool-calls-binds-dispatching-id ()
   "`--accept-tool-calls' binds `--dispatching-pending-id' for tool dispatch.
