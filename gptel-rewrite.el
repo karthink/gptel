@@ -216,7 +216,8 @@ which see."
            (propertize " Waiting..." 'face '(warning default)) ;status element 1
            (propertize                                         ;status element 2
             " " 'display
-            (if (fboundp 'string-pixel-width)
+            (if (and (fboundp 'string-pixel-width)
+                     (display-graphic-p))
                 `(space :align-to (- right (,(string-pixel-width hint-str))))
               `(space :align-to (- right ,(+ 1 (string-width hint-str))))))
            (propertize hint-str 'face '(warning default)))) ;status element 3
