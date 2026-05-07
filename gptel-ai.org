@@ -4102,6 +4102,126 @@ THE ANSWER IS 4.
 - The unified insertion-above-TERMINE rule must produce well-formed org
   output for the FEEDBACK / AI-DOING / REASONING / RESPOND example above.
 
+**** Current status (3rd iteration WIP, commit a55edf5)
+The =1st iteration= and =2nd iteration= attempts (commits =59a06a5=,
+=24ab54f=) did not converge.  This third iteration adopts a single
+coherent rule, *but tests are still failing*.
+
+***** Adopted design rule
+*Per-IB sibling TERMINE inside the IB narrowing.*
+- Every IB created by =gptel-org-ib-create= seeds a sibling TERMINE
+  at its OWN level in the base buffer (idempotent via
+  =ensure-sibling-terminator=).
+- =--compute-subtree-region= extends the IB region to INCLUDE the
+  sibling TERMINE line.  This makes TERMINE visible inside the
+  IB's narrowing.
+- =gptel-org-ib-streaming-marker= tries sibling-level
+  =find-terminator= first (with =LEVEL = (org-current-level)=),
+  falling back to legacy child-level search.  When sibling TERMINE
+  is found inside narrowing, the marker is pinned BEFORE TERMINE
+  with insertion-type =nil=.
+
+This per-IB rule contradicts the 2nd-iteration "ONE TERMINE per
+top-level user task" wording but matches what the test suite
+actually asserts (see =gptel-org-ib-test-create-seeds-termine=,
+=safe-insert-sibling-seeds-termine=, and the
+=pending-tool-subtree-info-reuses-ib= test which expects TERMINE
+at the PENDING IB's level, not the agent level).
+
+***** Why tests are still failing
+After commit =a55edf5=, the test suite reports 6 unexpected failures:
+- =gptel-org-agent-test-open-indirect-buffer-seeds-termine=
+- =gptel-org-agent-respond-text-no-same-line-terminator=
+- =gptel-org-agent-test-insert-user-heading-not-duplicated=
+- =gptel-org-agent-test-tool-heading-at-root-when-inserted-in-base-buffer=
+- =gptel-org-ib-test-create-seeds-termine= (regression)
+- =gptel-org-ib-test-recreate-after-move= (regression)
+
+Verifier diagnosis: Emacs is loading STALE byte-compiled =.elc=
+files instead of the modified =.el= sources.  The test output
+contains lines like:
+#+begin_src 
+Source file ‘gptel-indirect-buffer.el’ newer than byte-compiled file; using older file
+#+end_src
+
+This means the test runner is exercising the OLD code paths.  A
+direct elisp call to =ensure-sibling-terminator= + =find-terminator=
+with =LEVEL=2= confirmed the new logic itself is sound (returned a
+valid position).
+
+User has confirmed the implementation does not work correctly even
+after recompiling.  Further iteration is needed; see follow-up
+TODO below.
+
+**** TODO Iterate TERMINE refactor (4th iteration)
+:PROPERTIES:
+:CREATED:  [2026-05-07]
+:END:
+
+***** Origin
+- 3rd iteration (commits =a55edf5= on top of =24ab54f=) did not
+  converge to a passing test suite.
+- User confirmed the per-IB sibling-TERMINE-inside-narrowing
+  design does not work correctly in practice.
+
+***** Discussion highlights
+- The current implementation (per-IB sibling TERMINE, narrowing
+  includes TERMINE, streaming-marker pins before TERMINE) is the
+  most coherent design that aligns with existing passing tests
+  like =gptel-org-ib-test-create-seeds-termine= and
+  =safe-insert-sibling-seeds-termine=.
+- However the user's stated goal in the 2nd iteration was a
+  /single/ TERMINE per top-level user task — nested IBs share the
+  task-level anchor.  This is a fundamentally different model and
+  would require:
+  1. Stop seeding TERMINE inside =gptel-org-ib-create=.
+  2. Add an explicit task-level TERMINE management API (seed when
+     a task heading transitions to AI-DOING; remove on AI-DONE).
+  3. Update every IB-test that asserts a per-IB TERMINE (~10
+     tests) — or accept those tests as testing internal helpers,
+     not the public design.
+  4. Rewrite =streaming-marker= to look UP the IB hierarchy for
+     the task-level TERMINE in the base buffer, then translate to
+     a pin position — but the IB narrowing does not include the
+     task-level TERMINE so the marker would have to operate on
+     the BASE buffer position with the IB just providing its own
+     point-max as a sibling-of-TERMINE writing region.
+- This is a significant rework.  Decide between two paths:
+  - *Path A — converge on per-IB sibling TERMINE (current direction)*
+    Keep current architecture, fix bugs in =find-terminator=
+    sibling-search and verify the streaming pin is actually inside
+    the narrowing.  Accept that REASONING/RESPOND/PENDING IBs each
+    have their own TERMINE — visually denser org tree but
+    consistent invariant.
+  - *Path B — single task-level TERMINE*
+    Match the user's verbal spec exactly.  Remove TERMINE seeding
+    from the IB factory.  Add a task-lifecycle hook that manages
+    one TERMINE at the user-task level.  Rewrite
+    =streaming-marker= and =insert-child= to use the task-level
+    TERMINE from the BASE buffer.  Update ~10 IB tests.
+
+***** Decisions (Optional)
+- User to decide: Path A or Path B?
+- If Path A: focus on fixing the 6 currently-failing tests by
+  ensuring the sibling-level =find-terminator= works correctly
+  inside the narrowed IB, and that the streaming-marker correctly
+  pins before TERMINE in all flows (agent IB, PENDING IB, tool
+  IB, sub-agent IB).
+- If Path B: this is effectively a fresh refactor; the current
+  =a55edf5= commit should be reverted before starting.
+
+***** Mission
+Resolve the path decision and continue the refactor accordingly.
+Whatever path is chosen, the acceptance criteria are:
+1. =cd quelpa/build/gptel/test && make test= reports 0 unexpected
+   failures (3 skipped is fine).
+2. The example from the parent TODO renders cleanly:
+   - =FEEDBACK / AI-DOING / REASONING / RESPOND= produce a well-formed
+     org tree with no concatenated heading-onto-body lines.
+3. No =.orig= or =.rej= files left in the working tree.
+4. Documentation in =gptel-indirect-buffer-ai.org= section *TERMINE*
+   matches the chosen design.
+
 *** Unified gptel-org-mode Refactoring
 **** Phase 1: Fix variable rename — DONE
 - Renamed =gptel-org-agent-subtrees= → =gptel-org-subtree-context= in gptel-agent
