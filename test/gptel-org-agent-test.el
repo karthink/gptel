@@ -204,41 +204,63 @@ Verify the child heading exists at the correct level with the right tag."
          (kill-buffer indirect-buf))))))
 
 (ert-deftest gptel-org-agent-test-open-indirect-buffer-seeds-termine ()
-  "`gptel-org-agent--open-indirect-buffer' produces an IB with TERMINE.
+  "Task lifecycle (CSTR-3) seeds TERMINE as sibling of AI-DOING heading.
 
-TERMINE seeding is the responsibility of the generic factory
-`gptel-org-ib-create' which creates TERMINE as a SIBLING of the
-IB's heading at the same level in the base buffer.  The IB's
-narrowing is extended to include that TERMINE line so the
-streaming marker can pin BEFORE it with insertion-type nil."
-  (gptel-org-agent-test-with-buffer
-   "* AI-DO Task\nDescription\n"
-   (goto-char (point-min))
-   (org-back-to-heading t)
-   (let* ((base-buf (current-buffer))
-          (marker (gptel-org-agent--create-subtree "main"))
-          (indirect-buf nil))
-     (unwind-protect
-         (progn
-           (setq indirect-buf
-                 (gptel-org-agent--open-indirect-buffer base-buf marker))
-           (should (buffer-live-p indirect-buf))
-           ;; The agent heading created by `--create-subtree' is at
-           ;; level 2 (child of `* AI-DO Task').  TERMINE is its
-           ;; level-2 sibling.
-           (with-current-buffer base-buf
-             (goto-char (marker-position marker))
-             (should (gptel-org-ib-find-terminator "TERMINE" nil 2)))
-           ;; The IB's narrowing now INCLUDES the sibling TERMINE
-           ;; line, so the streaming marker pins BEFORE TERMINE with
-           ;; insertion-type nil.
-           (with-current-buffer indirect-buf
-             (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
-               (should (markerp m))
-               (should-not (marker-insertion-type m)))))
-       ;; Cleanup
-       (when (and indirect-buf (buffer-live-p indirect-buf))
-         (kill-buffer indirect-buf))))))
+Per CSTR-3, TERMINE seeding lives in
+`gptel-org-agent--setup-task-subtree' (the task lifecycle), not in
+the generic IB factory.  TERMINE is a SIBLING of the AI-DOING
+heading at the agent/task level (level 2 in this test).  The IB's
+narrowing is strictly `org-end-of-subtree' and does NOT include
+TERMINE; the streaming marker therefore detects the base-buffer
+terminator via the unified primitive and pins BEFORE the narrowing
+boundary with insertion-type nil."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "FEEDBACK"
+                                       "|" "AI-DONE" "TERMINE")))
+        (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+    (gptel-org-agent-test-with-buffer
+     "* AI-DO Task\nDescription\n"
+     (goto-char (point-min))
+     (org-back-to-heading t)
+     (let* ((gptel-org-subtree-context t)
+            (gptel-org-use-todo-keywords t)
+            (gptel-org-tasks-doing-keyword "AI-DOING")
+            (base-buf (current-buffer))
+            (info nil)
+            (indirect-buf nil))
+       (unwind-protect
+           (progn
+             (setq info (gptel-org-agent--setup-task-subtree
+                         "main" "Task description"))
+             (should info)
+             (setq indirect-buf (plist-get info :indirect-buffer))
+             (should (buffer-live-p indirect-buf))
+             ;; The agent heading is at level 2 (child of `* AI-DO Task').
+             ;; CSTR-3 seeds TERMINE as a sibling at level 2.
+             (with-current-buffer base-buf
+               (let ((heading-marker (plist-get info :heading-marker)))
+                 (goto-char (marker-position heading-marker))
+                 (should (= 2 (org-current-level)))
+                 (should (gptel-org-ib-find-terminator "TERMINE" nil 2)))
+               ;; Exactly ONE TERMINE exists.
+               (should (= 1 (how-many "^\\*\\* TERMINE\\b"
+                                      (point-min) (point-max)))))
+             ;; The IB's narrowing does NOT include TERMINE.
+             (with-current-buffer indirect-buf
+               (save-excursion
+                 (goto-char (point-min))
+                 (when (org-at-heading-p)
+                   (should-not
+                    (gptel-org-ib-find-terminator "TERMINE" nil 2)))))
+             ;; Streaming marker detects the base-buffer terminator
+             ;; and pins at point-max with insertion-type nil.
+             (with-current-buffer indirect-buf
+               (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
+                 (should (markerp m))
+                 (should-not (marker-insertion-type m)))))
+         ;; Cleanup
+         (when (and indirect-buf (buffer-live-p indirect-buf))
+           (kill-buffer indirect-buf)))))))
 
 (ert-deftest gptel-org-agent-test-indirect-buffer-grows ()
   "Insert text at end of indirect buffer and verify narrow region expands."
@@ -1169,15 +1191,20 @@ to AI-DONE with its tag removed."
 
 Reproduces the playground-ws.org L102 symptom: when the streaming
 insertion path appends body text at the streaming-marker (pinned
-BEFORE the TERMINE child with insertion-type nil) and the final
+at the IB's `point-max' with insertion-type nil — which corresponds
+in the base buffer to the BOL of the sibling TERMINE) and the final
 chunk does not end with a newline, the TERMINE heading line is
 absorbed onto the body line, surfacing as e.g.
 
-  The system is ready for further operations.***** TERMINE
+  The system is ready for further operations.** TERMINE
 
-The post-response BOL guard
-\(`gptel-org-agent--ensure-bol-before-terminator') must restore
-TERMINE to its own line at column 0."
+Per CSTR-2/3, TERMINE is a sibling of the AI-DOING heading at the
+agent/task level (level 2 in this test), seeded by
+`gptel-org-agent--setup-task-subtree'.  TERMINE lives OUTSIDE the
+IB's narrowing.  The post-response BOL guard
+\(`gptel-org-agent--ensure-bol-before-terminator') widens to scan
+the base buffer for any `*+ TERMINE' on the same line as body
+text, and restores TERMINE to its own line at column 0."
   (let ((org-inhibit-startup t)
         (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "FEEDBACK"
                                        "|" "AI-DONE" "TERMINE")))
@@ -1190,43 +1217,68 @@ TERMINE to its own line at column 0."
       (let* ((gptel-org-subtree-context t)
              (gptel-org-use-todo-keywords t)
              (gptel-org-user-keyword "FEEDBACK")
+             (gptel-org-tasks-doing-keyword "AI-DOING")
              (gptel-org-tasks-done-keyword "AI-DONE")
              (base-buf (current-buffer))
-             (marker (gptel-org-agent--create-subtree "main"))
+             (info nil)
              (indirect-buf nil))
         (unwind-protect
             (progn
-              (setq indirect-buf
-                    (gptel-org-agent--open-indirect-buffer base-buf marker))
-              ;; Simulate the streaming path: pin tracking-marker at
-              ;; the IB's TERMINE child via `gptel-org-ib-streaming-marker'
-              ;; and insert body text WITHOUT a trailing newline — the
-              ;; same shape the LLM produced in the playground-ws.org
-              ;; bug.
+              ;; Use setup-task-subtree so CSTR-3 seeds TERMINE.
+              (setq info (gptel-org-agent--setup-task-subtree
+                          "main" "Implement feature"))
+              (setq indirect-buf (plist-get info :indirect-buffer))
+              ;; Sanity: TERMINE was seeded as a sibling of AI-DOING
+              ;; at level 2.
+              (with-current-buffer base-buf
+                (save-excursion
+                  (goto-char (point-min))
+                  (should (re-search-forward "^\\*\\* TERMINE\\b" nil t))))
+              ;; Simulate the streaming path: pin tracking-marker via
+              ;; `gptel-org-ib-streaming-marker' (CSTR-2/3: pinned at
+              ;; IB's point-max with insertion-type nil because a base-
+              ;; buffer terminator exists) and insert body text WITHOUT
+              ;; a trailing newline — the same shape the LLM produced
+              ;; in the playground-ws.org bug.
               (with-current-buffer indirect-buf
                 (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
+                  (should (markerp m))
+                  (should-not (marker-insertion-type m))
                   (goto-char m)
-                  (insert "The system is ready for further operations."))
-                ;; Sanity: bug state — TERMINE on same line as body.
-                (goto-char (point-min))
-                (should (re-search-forward
-                         "operations\\.\\*+ TERMINE" nil t))
-                ;; Run the post-response BOL guard.
-                (gptel-org-agent--ensure-bol-before-terminator nil nil)
-                ;; Assert: TERMINE now starts at column 0 on its own
-                ;; line, with body text terminated by a newline.
-                (goto-char (point-min))
-                (should-not (re-search-forward
-                             "operations\\.\\*+ TERMINE" nil t))
-                (goto-char (point-min))
-                (should (re-search-forward
-                         "operations\\.\n\\*+ TERMINE" nil t))
-                ;; And the TERMINE heading is recognised by org as a
-                ;; heading at column 0.
-                (goto-char (point-min))
-                (should (re-search-forward "^\\*+ TERMINE\\b" nil t))
-                (goto-char (match-beginning 0))
-                (should (org-at-heading-p))))
+                  (insert "The system is ready for further operations.")))
+              ;; Sanity: bug state — TERMINE on same line as body in
+              ;; the base buffer.  Search via widened scan since
+              ;; TERMINE is outside any IB's narrowing.
+              (with-current-buffer base-buf
+                (save-excursion
+                  (save-restriction
+                    (widen)
+                    (goto-char (point-min))
+                    (should (re-search-forward
+                             "operations\\.\\*+ TERMINE" nil t)))))
+              ;; Run the post-response BOL guard from the IB context
+              ;; (it widens internally to fix the base buffer).
+              (with-current-buffer indirect-buf
+                (gptel-org-agent--ensure-bol-before-terminator nil nil))
+              ;; Assert: TERMINE now starts at column 0 on its own
+              ;; line in the base buffer, with body text terminated
+              ;; by a newline.
+              (with-current-buffer base-buf
+                (save-excursion
+                  (save-restriction
+                    (widen)
+                    (goto-char (point-min))
+                    (should-not (re-search-forward
+                                 "operations\\.\\*+ TERMINE" nil t))
+                    (goto-char (point-min))
+                    (should (re-search-forward
+                             "operations\\.\n\\*+ TERMINE" nil t))
+                    ;; And the TERMINE heading is recognised by org as a
+                    ;; heading at column 0.
+                    (goto-char (point-min))
+                    (should (re-search-forward "^\\*+ TERMINE\\b" nil t))
+                    (goto-char (match-beginning 0))
+                    (should (org-at-heading-p))))))
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
 
@@ -3231,23 +3283,16 @@ The position-marker is inside the IB before its TERMINE child."
                   (should (eq (plist-get subtree-info :heading-marker)
                               entry-heading-marker))
                   ;; Position marker is inside the PENDING IB.  Per
-                  ;; CSTR-2, TERMINE is no longer auto-seeded by the
-                  ;; IB factory; CSTR-3 will move seeding into the
-                  ;; task lifecycle.  For now we verify the
-                  ;; position-marker invariants (markerp, correct
-                  ;; buffer) and — when a TERMINE happens to exist as
-                  ;; a sibling of the PENDING heading in the base
-                  ;; buffer — that the position-marker stays
-                  ;; at-or-before TERMINE.
+                  ;; CSTR-3, the task-level TERMINE is shared across
+                  ;; the parent agent IB and the PENDING IB — exactly
+                  ;; one TERMINE exists at the agent/task level (level
+                  ;; 3 in this test, since the agent heading is a
+                  ;; child of `** DOING ...' at level 2).  The
+                  ;; position-marker is at-or-before that TERMINE.
                   (let ((pm (plist-get subtree-info :position-marker)))
                     (should (markerp pm))
                     (should (eq (marker-buffer pm) entry-pending-ib))
-                    (let* ((pending-level
-                            (with-current-buffer entry-pending-ib
-                              (save-excursion
-                                (goto-char (point-min))
-                                (org-current-level))))
-                           (base
+                    (let* ((base
                             (or (buffer-base-buffer entry-pending-ib)
                                 entry-pending-ib))
                            (pm-base-pos
@@ -3257,13 +3302,19 @@ The position-marker is inside the IB before its TERMINE child."
                            (termine-pos
                             (with-current-buffer base
                               (save-excursion
-                                (goto-char (marker-position
-                                            entry-heading-marker))
-                                (gptel-org-ib-find-terminator
-                                 "TERMINE" nil pending-level)))))
-                      (should pending-level)
-                      (when termine-pos
-                        (should (<= pm-base-pos termine-pos)))))
+                                (goto-char (point-min))
+                                (and (re-search-forward
+                                      "^\\*\\*\\* TERMINE\\b" nil t)
+                                     (match-beginning 0))))))
+                      ;; Strict CSTR-3 assertion: TERMINE is shared
+                      ;; across the parent agent IB and the PENDING IB.
+                      ;; Exactly ONE TERMINE exists at the agent
+                      ;; (task) level (level 3).
+                      (with-current-buffer base
+                        (should (= 1 (how-many "^\\*\\*\\* TERMINE\\b"
+                                               (point-min) (point-max)))))
+                      (should termine-pos)
+                      (should (<= pm-base-pos termine-pos))))
                 ;; Returns nil for unknown pending-id.
                 (should-not
                  (gptel-org-agent--pending-tool-subtree-info
@@ -3456,6 +3507,113 @@ Asserts:
             (kill-buffer pending-ib))
           (when (and indirect-buf (buffer-live-p indirect-buf))
             (kill-buffer indirect-buf)))))))
+
+(ert-deftest gptel-org-agent-test-cstr-end-to-end-agent-task ()
+  "End-to-end CSTR-3: a top-level user task has exactly ONE TERMINE.
+
+Codifies the canonical CSTR form:
+  * TODO Some task
+  ** AI-DOING Agent :main@agent:
+  *** REASONING                   <- (response content under agent)
+  *** RESPOND                     <- (response content under agent)
+  ** TERMINE                      <- sibling of AI-DOING (task level)
+
+Verifies:
+1. `gptel-org-agent--setup-task-subtree' creates AI-DOING + IB and
+   seeds TERMINE as a sibling at the agent (task) level.
+2. Exactly one TERMINE heading exists at level 2.
+3. A nested IB created under AI-DOING (e.g. PENDING tool subtree)
+   re-resolves the SAME TERMINE — no duplicate is created.
+4. The nested IB's narrowing does NOT include TERMINE."
+  (let ((org-inhibit-startup t)
+        (org-todo-keywords '((sequence "TODO" "AI-DOING" "PENDING"
+                                       "FEEDBACK"
+                                       "|" "DONE" "AI-DONE")))
+        (gptel-org-todo-keywords '("TODO" "AI-DOING")))
+    (with-temp-buffer
+      (delay-mode-hooks (org-mode))
+      (insert "* TODO Some task\nDescription line.\n")
+      (goto-char (point-min))
+      (org-back-to-heading t)
+      (let* ((gptel-org-subtree-context t)
+             (gptel-org-use-todo-keywords t)
+             (gptel-org-tasks-doing-keyword "AI-DOING")
+             (gptel-org-tasks-done-keyword "AI-DONE")
+             (base-buf (current-buffer))
+             (info nil)
+             (agent-ib nil)
+             (pending-ib nil))
+        (unwind-protect
+            (progn
+              ;; Step 1: setup-task-subtree creates AI-DOING + IB,
+              ;; and CSTR-3 seeds the task-level TERMINE.
+              (setq info (gptel-org-agent--setup-task-subtree
+                          "main" "Some task"))
+              (should info)
+              (setq agent-ib (plist-get info :indirect-buffer))
+              (should (buffer-live-p agent-ib))
+              (let ((heading-marker (plist-get info :heading-marker)))
+                (should (markerp heading-marker))
+                ;; AI-DOING heading is at level 2.
+                (with-current-buffer base-buf
+                  (save-excursion
+                    (goto-char (marker-position heading-marker))
+                    (should (org-at-heading-p))
+                    (should (= 2 (org-current-level)))
+                    (should (equal "AI-DOING" (org-get-todo-state))))))
+              ;; Step 2: TERMINE exists as sibling at level 2,
+              ;; and exactly ONE TERMINE exists.
+              (with-current-buffer base-buf
+                (save-excursion
+                  (goto-char (point-min))
+                  (should (re-search-forward "^\\*\\* TERMINE\\b" nil t)))
+                (should (= 1 (how-many "^\\*\\* TERMINE\\b"
+                                       (point-min) (point-max))))
+                ;; And no TERMINE at level 1 (would be sibling of user
+                ;; task) or level 3+ (would be a child of AI-DOING).
+                (should (= 0 (how-many "^\\* TERMINE\\b"
+                                       (point-min) (point-max))))
+                (should (= 0 (how-many "^\\*\\*\\*+ TERMINE\\b"
+                                       (point-min) (point-max)))))
+              ;; Step 3: create a nested IB (simulating PENDING) under
+              ;; the agent heading via insert-child with TERMINE
+              ;; terminator.  The unified primitive must re-resolve
+              ;; the existing TERMINE — no duplicate created.
+              (with-current-buffer agent-ib
+                (save-excursion
+                  (goto-char (point-min))
+                  (let* ((parent-marker (point-marker))
+                         (result (gptel-org-ib-insert-child
+                                  parent-marker
+                                  "PENDING" "Tool call"
+                                  :terminator-keyword "TERMINE")))
+                    (setq pending-ib (plist-get result :indirect-buffer)))))
+              (should (buffer-live-p pending-ib))
+              ;; Still exactly ONE TERMINE at level 2 — idempotent.
+              (with-current-buffer base-buf
+                (should (= 1 (how-many "^\\*\\* TERMINE\\b"
+                                       (point-min) (point-max))))
+                (should (= 0 (how-many "^\\*\\*\\* TERMINE\\b"
+                                       (point-min) (point-max)))))
+              ;; Step 4: the PENDING IB's narrowing does NOT include
+              ;; TERMINE (TERMINE is outside, in the base buffer).
+              (with-current-buffer pending-ib
+                (save-restriction
+                  ;; Operate within the IB's narrowing only.
+                  (goto-char (point-min))
+                  (should-not (re-search-forward "^\\*+ TERMINE\\b"
+                                                 nil t))))
+              ;; And the agent IB also doesn't include TERMINE.
+              (with-current-buffer agent-ib
+                (save-restriction
+                  (goto-char (point-min))
+                  (should-not (re-search-forward "^\\*+ TERMINE\\b"
+                                                 nil t)))))
+          ;; Cleanup
+          (when (and pending-ib (buffer-live-p pending-ib))
+            (kill-buffer pending-ib))
+          (when (and agent-ib (buffer-live-p agent-ib))
+            (kill-buffer agent-ib)))))))
 
 (provide 'gptel-org-agent-test)
 ;;; gptel-org-agent-test.el ends here

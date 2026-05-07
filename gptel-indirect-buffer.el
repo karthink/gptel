@@ -1620,13 +1620,17 @@ is nil)."
              (point) (buffer-name)))
           ;; Ensure terminator (idempotent) on the parent.
           ;;
-          ;; CSTR-2: TERMINE seeding now uses the unified primitive
+          ;; CSTR-3: TERMINE seeding uses the unified primitive
           ;; `gptel-org-ib-resolve-or-seed-terminator' against the
-          ;; base buffer.  It walks up to the task level and seeds
-          ;; the conditional single TERMINE only when no shallower-
-          ;; or-equal terminator exists below.  Per CSTR-3 this
-          ;; will move into the task lifecycle entirely; for now
-          ;; we use the parent's own level as task-level.
+          ;; base buffer at the new heading's (child) level — the
+          ;; canonical CSTR form has TERMINE as a SIBLING of the
+          ;; AI-DOING heading at the agent/task level, which is
+          ;; parent-level + 1.  Idempotent: if a TERMINE already
+          ;; exists at this level (or shallower) below the parent,
+          ;; it is reused.  Task-lifecycle seeding (CSTR-3 in
+          ;; `gptel-org-agent--setup-task-subtree') typically
+          ;; ensures TERMINE already exists; nested insert-child
+          ;; calls here just re-resolve it.
           ;;
           ;; Other terminator keywords (FEEDBACK, RESULTS, ...)
           ;; remain child-level for backward compatibility.
@@ -1635,7 +1639,7 @@ is nil)."
                 (let* ((base-buf (gptel-org-ib-base-buffer
                                   parent-context-buffer))
                        (parent-pos (marker-position parent-marker))
-                       (task-level (org-current-level)))
+                       (task-level (1+ (org-current-level))))
                   (gptel-org-ib-resolve-or-seed-terminator
                    base-buf parent-pos task-level))
               (gptel-org-ib-ensure-terminator terminator-keyword)))

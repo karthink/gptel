@@ -583,9 +583,9 @@ Return the indirect buffer."
                         heading-marker))
          (indirect-buf (gptel-org-ib-create base-buffer heading-pos)))
     ;; Apply agent-specific setup that gptel-org-ib-create doesn't do.
-    ;; TERMINE is already seeded by the factory (universal invariant —
-    ;; see `gptel-indirect-buffer-ai.org' *** TERMINE), so no
-    ;; additional seeding is required here.
+    ;; Per CSTR-3, TERMINE seeding lives in the task lifecycle
+    ;; (`gptel-org-agent--setup-task-subtree') rather than the IB
+    ;; factory, so no seeding is performed here either.
     (with-current-buffer indirect-buf
       ;; Mark this buffer as an agent indirect buffer.  This flag persists
       ;; even after the agent tag is removed from the heading (e.g. by
@@ -932,9 +932,17 @@ through normal channels."
                 (when user-pos
                   (goto-char user-pos)
                   (gptel-org-agent--set-todo-keyword "DENIED")
-                  ;; Insert TERMINE child with error as example block.
+                  ;; Insert TERMINE via the unified CSTR-3 primitive
+                  ;; (idempotent — reuses an existing terminator below
+                  ;; if one is present, otherwise seeds one).  Per the
+                  ;; CSTR canonical form, TERMINE for a user task lives
+                  ;; at the agent (task) level — a sibling of the
+                  ;; would-be AI-DOING heading and a child of the user
+                  ;; task — so we use (1+ user-level) as task-level.
                   (let ((term-marker
-                         (gptel-org-ib-create-terminator "TERMINE")))
+                         (gptel-org-ib-resolve-or-seed-terminator
+                          (current-buffer) (point)
+                          (1+ (org-current-level)))))
                     (when (markerp term-marker)
                       (goto-char term-marker)
                       (end-of-line)
@@ -1700,6 +1708,23 @@ org-mode, or we can't find a heading context to create the subtree."
                       (setq-local gptel-org-agent--narrow-end-marker
                                   (plist-get entry :end-marker))))
                   (gptel-org--enable-auto-correct))))
+            ;; CSTR-3: Seed the single task-level TERMINE via the
+            ;; unified primitive.  TERMINE is a sibling of the
+            ;; AI-DOING heading at the task (agent) level.  Operates
+            ;; on the base buffer at the AI-DOING heading position;
+            ;; idempotent — if a TERMINE already exists (e.g. seeded
+            ;; by `gptel-org-ib-insert-child' above, or persisted
+            ;; from an earlier interaction), the existing marker is
+            ;; returned without inserting a new one.
+            (when (and heading-marker (marker-position heading-marker))
+              (with-current-buffer base-buffer
+                (save-excursion
+                  (save-restriction
+                    (widen)
+                    (goto-char (marker-position heading-marker))
+                    (when (org-at-heading-p)
+                      (gptel-org-ib-resolve-or-seed-terminator
+                       base-buffer (point) (org-current-level)))))))
             ;; Create a position marker inside the indirect buffer.
             ;; This is where the LLM response will start being inserted.
             (when indirect-buf
@@ -2077,23 +2102,25 @@ INFO is the FSM info plist."
       ;; indirect buffer and its base buffer so that the user can
       ;; change PENDING→ALLOWED from either buffer.
       (gptel-org-agent--ensure-tool-confirm-hook buf)
-      ;; Safety net: TERMINE is seeded as a SIBLING by the generic
-      ;; IB factory `gptel-org-ib-create', but older buffers loaded
-      ;; from disk may lack it.  `ensure-sibling-terminator' is
-      ;; idempotent — it reuses an existing same-level sibling
-      ;; TERMINE when present and only inserts when missing.
+      ;; CSTR-3: Lazy-resolve TERMINE via the unified primitive.
+      ;; Idempotent — finds an existing TERMINE (the typical case,
+      ;; since `gptel-org-agent--setup-task-subtree' seeds it at
+      ;; task start) or seeds one if missing (e.g. for older
+      ;; buffers loaded from disk without TERMINE).
       (let ((base (gptel-org-ib-base-buffer buf))
             (node (gptel-org-ib--get-node (buffer-name buf))))
         (when (and base node)
           (with-current-buffer base
             (save-excursion
-              (let ((hm (gptel-org-ib-node-heading-marker node)))
-                (when (marker-position hm)
-                  (goto-char hm)
-                  (when (org-at-heading-p)
-                    (ignore-errors
-                      (gptel-org-ib-ensure-sibling-terminator
-                       "TERMINE" (org-current-level))))))))))
+              (save-restriction
+                (widen)
+                (let ((hm (gptel-org-ib-node-heading-marker node)))
+                  (when (marker-position hm)
+                    (goto-char hm)
+                    (when (org-at-heading-p)
+                      (ignore-errors
+                        (gptel-org-ib-resolve-or-seed-terminator
+                         base (point) (org-current-level)))))))))))
       ;; Suppress the auto-corrector during insertion.
       (let ((gptel-org--auto-correcting t))
         (gptel-org--debug

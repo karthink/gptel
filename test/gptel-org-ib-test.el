@@ -977,13 +977,14 @@ seeds it idempotently."
 (ert-deftest gptel-org-ib-test-safe-insert-sibling-seeds-termine ()
   "`gptel-org-ib-insert-child' with :terminator-keyword \"TERMINE\" seeds.
 
-CSTR-2: the IB factory no longer seeds TERMINE.  Instead,
+CSTR-3: the IB factory no longer seeds TERMINE.  Instead,
 `gptel-org-ib-insert-child' with :terminator-keyword \"TERMINE\"
 delegates to `gptel-org-ib-resolve-or-seed-terminator' against the
-base buffer, seeding a TERMINE sibling at the parent's level.
-TERMINE lives outside the IB's narrowing; streaming-marker pins at
-`point-max' with insertion-type nil when a base-buffer terminator
-is detected."
+base buffer at the new heading's (child) level.  Per the canonical
+CSTR form, TERMINE is a SIBLING of the AI-DOING heading at the
+agent/task level (parent-level + 1).  TERMINE lives outside the
+IB's narrowing; streaming-marker pins at `point-max' with
+insertion-type nil when a base-buffer terminator is detected."
   (gptel-org-ib-test-with-buffer
       "* TASK\n"
     (gptel-org-ib-test-with-cleanup
@@ -997,11 +998,12 @@ is detected."
                             :terminator-keyword "TERMINE")
                           :indirect-buffer)))
        (should (buffer-live-p ib))
-       ;; TERMINE was seeded at the parent's own level (level 1).
+       ;; TERMINE was seeded at the new heading's level (level 2),
+       ;; i.e. sibling of the AI-DOING heading.
        (with-current-buffer base
          (goto-char pos)
          (org-back-to-heading t)
-         (should (gptel-org-ib-find-terminator "TERMINE" nil 1)))
+         (should (gptel-org-ib-find-terminator "TERMINE" nil 2)))
        ;; In the IB, TERMINE is outside the narrowing.
        (with-current-buffer ib
          (should-not (save-excursion
@@ -1951,8 +1953,9 @@ Helper for ordering assertions in insert-child tests."
   "`gptel-org-ib-insert-child' inserts via an explicit parent marker.
 
 The new heading must appear at parent-level + 1, with the supplied
-TODO keyword.  TERMINE is created as a SIBLING of the parent (at
-level 1), not as a child.  The returned plist must carry a non-nil
+TODO keyword.  Per CSTR-3, TERMINE is created as a SIBLING of the
+new heading at the agent/task level (parent-level + 1, level 2 in
+this test).  The returned plist must carry a non-nil
 `:heading-marker' and a live IB."
   (gptel-org-ib-test-with-buffer
       "* Parent\n"
@@ -1987,11 +1990,12 @@ level 1), not as a child.  The returned plist must carry a non-nil
 
 The IB's narrowed subtree's heading is treated as the parent.  The
 new heading must live in the underlying base buffer, at parent-level
-+ 1.  Per CSTR-2, the IB factory does NOT auto-seed TERMINE; the
++ 1.  Per CSTR-3, the IB factory does NOT auto-seed TERMINE; the
 :terminator-keyword \"TERMINE\" arg to insert-child invokes the
-unified primitive, which seeds TERMINE as a sibling of the parent
-(at level 1).  A fresh child IB must be created (distinct from the
-parent IB)."
+unified primitive, which seeds TERMINE as a sibling of the new
+heading at the agent/task level (parent-level + 1, level 2 in this
+test).  A fresh child IB must be created (distinct from the parent
+IB)."
   (gptel-org-ib-test-with-buffer
       "* Parent\n"
     (gptel-org-ib-test-with-cleanup
@@ -2000,10 +2004,11 @@ parent IB)."
                               (org-back-to-heading t)
                               (gptel-org-ib-create base (point)))))
        (should (buffer-live-p parent-ib))
-       ;; CSTR-2: factory no longer auto-seeds TERMINE.
+       ;; CSTR-2/3: factory no longer auto-seeds TERMINE.
        (with-current-buffer base
          (goto-char (point-min))
-         (should-not (gptel-org-ib-find-terminator "TERMINE" nil 1)))
+         (should-not (gptel-org-ib-find-terminator "TERMINE" nil 1))
+         (should-not (gptel-org-ib-find-terminator "TERMINE" nil 2)))
        (let* ((result (gptel-org-ib-insert-child
                        parent-ib "AI-DOING" "Child"
                        :terminator-keyword "TERMINE"))
@@ -2013,10 +2018,10 @@ parent IB)."
          (should (buffer-live-p child-ib))
          (should-not (eq parent-ib child-ib))
          ;; insert-child with :terminator-keyword "TERMINE" seeded
-         ;; TERMINE as a sibling of the parent at level 1.
+         ;; TERMINE as a sibling of the new heading at level 2.
          (with-current-buffer base
            (goto-char (point-min))
-           (should (gptel-org-ib-find-terminator "TERMINE" nil 1))
+           (should (gptel-org-ib-find-terminator "TERMINE" nil 2))
            ;; The new heading is visible in the base buffer at level 2.
            (save-excursion
              (goto-char hm)
