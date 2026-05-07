@@ -4019,9 +4019,88 @@ Key observations from code analysis:
 4. Run =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
 5. Fix any test failures.
 
+**** Clarified architectural rules (user, 2nd iteration)
+The previous implementation attempt (commit =59a06a5= "wip: TERMINE refactor")
+went the WRONG direction — it kept TERMINE child-level. Discard that approach
+and implement the rules below. Do NOT trust the existing modified state of
+=gptel-indirect-buffer.el= / =gptel-org-agent.el=; treat them as a starting
+point and rewrite as needed.
+
+***** Single-TERMINE invariant
+- Exactly ONE TERMINE per top-level user task.
+- TERMINE lives as a SIBLING of AI-DO at the task (agent) heading level.
+- Nested IBs (REASONING, RESPOND, TOOL, etc.) do NOT create their own TERMINE.
+  They are anchored by the single task-level TERMINE.
+
+***** Unified insertion rule (the only rule)
+All new insertion — plain text, sibling IB, child IB at any depth — MUST
+follow the same procedure, anchored by the TERMINE heading:
+
+1. Move to =BOL= of the =TERMINE= heading line.
+2. Insert =\n= (one LF) at point.  Point now sits on a new empty line that
+   precedes TERMINE.
+3. Move point UP to the new empty line.
+4. Write the new heading (or text) on that empty line.
+5. If creating an IB: make the indirect buffer for the new heading; the IB
+   gets its own narrowing whose end is the line of TERMINE (or the next
+   same-or-shallower heading, whichever comes first).
+
+Corollary: text streamed/inserted INTO an existing IB is always appended
+at the END of that IB's narrowed region.
+
+***** Why the bad example happens
+Example of WRONG output (current impl):
+#+begin_src org
+,** FEEDBACK Calculate 2 + 2
+,*** AI-DOING Calculate 2 + 2                                  :agent@agent:
+
+
+2 + 2 = 4**** REASONING THIS IS A SIMPLE TASK ...
+
+
+,*** TERMINE
+#+end_src
+
+Problems:
+1. The REASONING heading appears glued to the response text rather than as
+   a clean sibling-of-RESPOND heading at level 4.
+2. The RESPOND heading is missing entirely — response text has no anchor.
+3. Multiple structural anomalies because insertion isn't routed through
+   the unified TERMINE-anchored rule.
+
+Expected output (correct):
+#+begin_src org
+,** FEEDBACK Calculate 2 + 2
+,*** AI-DOING Calculate 2 + 2                                  :agent@agent:
+,**** REASONING THIS IS A SIMPLE TASK - JUST CALCULATE 2 + 2.
+THE ANSWER IS 4.
+,**** RESPOND
+2 + 2 = 4
+,**** REASONING I SHOULD UPDATE THE TASK STATUS TO DONE.
+,*** TERMINE
+#+end_src
+
+***** Implementation focus
+- Make TERMINE the SOLE anchor for all IB creation in a task.
+- Every code path that inserts a heading or text below an agent must go
+  through the single "insert above TERMINE" primitive.
+- Remove any code path that tries to seed/find/remove a child-level TERMINE
+  per IB.  If dead code remains after the refactor, delete it.
+- Do not duplicate insertion logic — collapse into one helper if needed.
+
+***** Test expectations
+- Tests already expect sibling-level TERMINE (e.g. =find-terminator "TERMINE" nil 1=
+  and =... nil 2=).  After this refactor, those tests should pass.
+- Tests that still encode child-level TERMINE assumptions must be updated
+  to match the single-TERMINE-per-task design.
+- 5 failing tests at task start was the baseline; current 9 failing is
+  expected midway.  Goal: 0 TERMINE-related failures.
+
 **** Verification
-- Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
-- The child→sibling TERMINE change must not break any existing tests.
+- Run: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
+- All TERMINE-related test failures must be resolved.
+- The unified insertion-above-TERMINE rule must produce well-formed org
+  output for the FEEDBACK / AI-DOING / REASONING / RESPOND example above.
 
 *** Unified gptel-org-mode Refactoring
 **** Phase 1: Fix variable rename — DONE
