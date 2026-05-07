@@ -4007,7 +4007,114 @@ Key observations from code analysis:
       ,***** BASH 3rd ...  IB
       ,** TERMINE  <-- AI-DOING IB TERMINE
     #+end_src  
-**** Changes required
+**** Decisions — Canonical rule (3rd iteration user feedback)
+:PROPERTIES:
+:CUSTOM_ID: termine-canonical-rule
+:END:
+
+The user's FEEDBACK above resolves the Path A vs Path B debate from
+the 4th-iteration TODO and supersedes both the 2nd-iteration
+"Clarified rules" and the 3rd-iteration "Adopted design rule"
+sections below.  The active rule is now:
+
+***** Conditional Single-TERMINE Rule (CSTR)
+1. *Single TERMINE per top-level user task.* TERMINE lives as a
+   SIBLING of the AI-DOING heading at the task (agent) level.  In
+   the typical task tree exactly one TERMINE exists.
+2. *Conditional creation.* TERMINE is /only seeded when no
+   sibling-or-shallower heading already exists below/ the
+   target insertion point in the base buffer.  In the typical
+   case, the AI-DOING task seeds exactly one TERMINE at task
+   start; nested IB creations re-use it because each nested
+   heading already has a same-or-shallower heading below it
+   (either a sibling IB or, ultimately, the task-level TERMINE).
+3. *Base-buffer-anchored insertion.* All IB creation resolves a
+   /base buffer/ position first, regardless of which IB the
+   request originated from.  Nested IB requests still compute
+   the matching base-buffer point.  IB narrowing therefore
+   always covers a region whose end is a real heading visible
+   in the base buffer — never a synthetic boundary.
+4. *Universal insertion primitive.* Every heading insertion goes
+   through one helper that:
+   a. Locates the next sibling-or-shallower heading below the
+      base-buffer insertion point (this may be TERMINE or any
+      ordinary heading — both are acceptable terminators).
+   b. If no such heading exists, seed a TERMINE at the task
+      level (this is the only TERMINE-creation site).
+   c. Move to BOL of that terminator heading.
+   d. Insert =\n= (one LF), move UP to the new empty line.
+   e. Write the new heading on that empty line.
+   f. Optionally create the IB whose narrowing ends at the
+      terminator line.
+5. *Streaming text* into an existing IB is appended at
+   point-max of that IB's narrowing — same as today.
+
+This is fundamentally Path B (single task-level TERMINE) from
+the 4th-iteration TODO with the user's clarification that
+TERMINE creation is /conditional/ on no-terminator-below.  The
+conditional clause makes the rule robust to insertion points
+that already have natural terminators (e.g., creating a heading
+just before an existing same-level heading).
+
+***** Bug evidence from user's test run
+The current implementation (commit =a55edf5=, per-IB sibling
+TERMINE) produced this output for a simple "Calculate 2 + 2"
+agent task:
+
+#+begin_src org
+,** FEEDBACK Calculate 2 + 2
+,*** AI-DOING Calculate 2 + 2                                  :agent@agent:
+
+
+2 + 2 = 4
+
+That was simple. Is there anything else you need for the playground project?**** REASONING THE USER WANTS ME TO CALCULATE 2 + 2, WHICH IS STRAIGHTFORWARD. LET ME JUST ANSWER DIRECTLY.
+
+
+
+,**** TERMINE
+#+end_src
+
+Two structural failures visible:
+1. =**** REASONING …= heading is glued to the response body
+   line "Is there anything else you need for the playground
+   project?" — there is no LF separating them.  The REASONING
+   heading is also at depth 4 (=****=), which is wrong for a
+   sibling-of-RESPOND inside =*** AI-DOING= (should be
+   =**** REASONING= as a child, but the body of =*** AI-DOING=
+   should not contain raw response text — see #2).
+2. The =RESPOND= heading is missing entirely.  The "2 + 2 = 4"
+   answer text is streamed directly under =*** AI-DOING= as
+   raw body, rather than being wrapped in a =**** RESPOND
+   <title>= heading.  This is the IB-4.6b "UNWIRED" status of
+   the RESPOND heading scaffolding.
+3. =**** TERMINE= is at depth 4 (child of =*** AI-DOING=) which
+   contradicts even the per-IB sibling TERMINE rule of the
+   3rd-iteration commit — TERMINE for AI-DOING should be at
+   depth 3 (sibling of AI-DOING).  The output suggests the
+   TERMINE seeding path is firing inside the wrong frame of
+   reference (probably =org-current-level= called from inside
+   a nested IB returning the IB's heading level rather than
+   the base-buffer position's level).
+
+Expected output under CSTR:
+#+begin_src org
+,** FEEDBACK Calculate 2 + 2
+,*** AI-DOING Calculate 2 + 2                                  :agent@agent:
+,**** REASONING THE USER WANTS ME TO CALCULATE 2 + 2 …
+LET ME JUST ANSWER DIRECTLY.
+,**** RESPOND
+2 + 2 = 4
+
+That was simple. Is there anything else you need …
+,*** TERMINE
+#+end_src
+
+**** Changes required (STALE — superseded by 4th-iteration plan)
+The numbered list below was written for the 2nd-iteration
+"per-IB sibling TERMINE" interpretation and is left here for
+historical reference.  The actionable work is now tracked in
+the [[#termine-cstr-implementation][4th-iteration CSTR implementation TODO]].
 
 1. =gptel-org-ib-create= (~L1107-1118): Replace child-level =ensure-terminator=
    with sibling-level =ensure-sibling-terminator= at the heading's own level.
@@ -4035,14 +4142,22 @@ Key observations from code analysis:
 7. Tests in =test/gptel-org-ib-test.el= and =test/gptel-org-agent-test.el=:
    Update assertions that currently expect child-level TERMINE.
 
-**** Mission
+**** Mission (STALE — see CSTR plan)
+*Active mission moved to the [[#termine-cstr-implementation][4th-iteration CSTR implementation TODO]].*
+The 5-step plan below was for the per-IB sibling-TERMINE
+interpretation and is no longer valid.
+
 1. Read all affected functions in =gptel-indirect-buffer.el= and =gptel-org-agent.el=.
 2. Implement the changes described above.
 3. Update tests to expect sibling-level TERMINE.
 4. Run =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
 5. Fix any test failures.
 
-**** Clarified architectural rules (user, 2nd iteration)
+**** Clarified architectural rules (user, 2nd iteration — STALE)
+*Superseded by the [[#termine-canonical-rule][Conditional Single-TERMINE Rule (CSTR)]]
+above.*  Kept for historical context; the bullets below are no
+longer the active spec.
+
 The previous implementation attempt (commit =59a06a5= "wip: TERMINE refactor")
 went the WRONG direction — it kept TERMINE child-level. Discard that approach
 and implement the rules below. Do NOT trust the existing modified state of
@@ -4125,10 +4240,17 @@ THE ANSWER IS 4.
 - The unified insertion-above-TERMINE rule must produce well-formed org
   output for the FEEDBACK / AI-DOING / REASONING / RESPOND example above.
 
-**** Current status (3rd iteration WIP, commit a55edf5)
+**** Current status (3rd iteration WIP, commit a55edf5 — SUPERSEDED)
+*Superseded by the [[#termine-canonical-rule][Conditional Single-TERMINE Rule (CSTR)]].*
+The per-IB sibling TERMINE rule documented below is the design that
+shipped in =a55edf5= and that the user's "Calculate 2 + 2" test run
+demonstrates does not produce well-formed org output.  Kept for
+historical context only.
+
 The =1st iteration= and =2nd iteration= attempts (commits =59a06a5=,
 =24ab54f=) did not converge.  This third iteration adopts a single
-coherent rule, *but tests are still failing*.
+coherent rule, *but tests are still failing* — and the design itself
+is wrong, per user feedback in the FEEDBACK section above.
 
 ***** Adopted design rule
 *Per-IB sibling TERMINE inside the IB narrowing.*
@@ -4176,74 +4298,219 @@ User has confirmed the implementation does not work correctly even
 after recompiling.  Further iteration is needed; see follow-up
 TODO below.
 
-*** TODO Iterate TERMINE refactor (4th iteration)
+*** TODO Iterate TERMINE refactor (4th iteration) — CSTR implementation
 :PROPERTIES:
 :CREATED:  [2026-05-07]
+:CUSTOM_ID: termine-cstr-implementation
 :END:
 
 **** Origin
-- 3rd iteration (commits =a55edf5= on top of =24ab54f=) did not
-  converge to a passing test suite.
-- User confirmed the per-IB sibling-TERMINE-inside-narrowing
-  design does not work correctly in practice.
+- The 3rd iteration (commit =a55edf5=, per-IB sibling TERMINE)
+  produces malformed org output for a trivial agent task — see
+  evidence in the [[*Bug evidence from user's test run][parent TODO's bug-evidence section]].
+- The user has resolved the Path A vs Path B debate from the
+  earlier 4th-iteration draft via the new FEEDBACK rule above.
+  The active spec is the [[#termine-canonical-rule][Conditional Single-TERMINE Rule (CSTR)]].
 
 **** Discussion highlights
-- The current implementation (per-IB sibling TERMINE, narrowing
-  includes TERMINE, streaming-marker pins before TERMINE) is the
-  most coherent design that aligns with existing passing tests
-  like =gptel-org-ib-test-create-seeds-termine= and
-  =safe-insert-sibling-seeds-termine=.
-- However the user's stated goal in the 2nd iteration was a
-  /single/ TERMINE per top-level user task — nested IBs share the
-  task-level anchor.  This is a fundamentally different model and
-  would require:
-  1. Stop seeding TERMINE inside =gptel-org-ib-create=.
-  2. Add an explicit task-level TERMINE management API (seed when
-     a task heading transitions to AI-DOING; remove on AI-DONE).
-  3. Update every IB-test that asserts a per-IB TERMINE (~10
-     tests) — or accept those tests as testing internal helpers,
-     not the public design.
-  4. Rewrite =streaming-marker= to look UP the IB hierarchy for
-     the task-level TERMINE in the base buffer, then translate to
-     a pin position — but the IB narrowing does not include the
-     task-level TERMINE so the marker would have to operate on
-     the BASE buffer position with the IB just providing its own
-     point-max as a sibling-of-TERMINE writing region.
-- This is a significant rework.  Decide between two paths:
-  - *Path A — converge on per-IB sibling TERMINE (current direction)*
-    Keep current architecture, fix bugs in =find-terminator=
-    sibling-search and verify the streaming pin is actually inside
-    the narrowing.  Accept that REASONING/RESPOND/PENDING IBs each
-    have their own TERMINE — visually denser org tree but
-    consistent invariant.
-  - *Path B — single task-level TERMINE*
-    Match the user's verbal spec exactly.  Remove TERMINE seeding
-    from the IB factory.  Add a task-lifecycle hook that manages
-    one TERMINE at the user-task level.  Rewrite
-    =streaming-marker= and =insert-child= to use the task-level
-    TERMINE from the BASE buffer.  Update ~10 IB tests.
+The CSTR effectively chooses Path B (single task-level TERMINE)
+with one critical refinement: TERMINE creation is /conditional/.
+A TERMINE is only seeded when no sibling-or-shallower heading
+exists below the chosen base-buffer insertion point.  In the
+typical agent task, exactly one TERMINE is seeded at task start
+(when AI-DO transitions to AI-DOING and the agent's task
+subtree has no terminator below it); all subsequent nested IB
+creations re-use it because each newly-created heading already
+has a same-or-shallower heading below (a sibling, or ultimately
+the task-level TERMINE itself).
 
-**** Decisions (Optional)
-- User to decide: Path A or Path B?
-- If Path A: focus on fixing the 6 currently-failing tests by
-  ensuring the sibling-level =find-terminator= works correctly
-  inside the narrowed IB, and that the streaming-marker correctly
-  pins before TERMINE in all flows (agent IB, PENDING IB, tool
-  IB, sub-agent IB).
-- If Path B: this is effectively a fresh refactor; the current
-  =a55edf5= commit should be reverted before starting.
+The CSTR has three axes of consequence for the codebase:
+
+1. *TERMINE seeding moves out of the IB factory.*  Today
+   =gptel-org-ib-create= unconditionally calls
+   =ensure-sibling-terminator= at every IB's own level.  Under
+   CSTR this is wrong — nested IBs do NOT seed their own
+   TERMINE.  Seeding moves to a single task-lifecycle entry
+   point: =gptel-org-agent--setup-task-subtree= (or wherever
+   AI-DOING is first written).
+
+2. *A unified "find-or-create-terminator" primitive.*  Replace
+   the three distinct helpers (=ensure-terminator=,
+   =ensure-sibling-terminator=, =find-terminator=) with one
+   helper that, given a base-buffer insertion point, returns
+   the next sibling-or-shallower heading below — creating a
+   TERMINE if none exists.  This helper becomes the sole TERMINE
+   creation site.
+
+3. *Heading insertion always operates on base-buffer positions.*
+   The unified insertion primitive must convert any IB-relative
+   request to a base-buffer position before doing the
+   "insert-LF-before-terminator-and-write-heading" dance.  This
+   is partially in place via =gptel-org-ib-absolute-position=
+   from Phase IB-2.6.
+
+The bug visible in the user's "Calculate 2 + 2" output indicates
+multiple structural failures, not just the wrong TERMINE depth:
+- =RESPOND= heading not wrapping the response (IB-4.6b is still
+  unwired — independent issue, but visible here).
+- =REASONING= heading concatenated onto the response body line
+  (BOL guard is failing for the streaming insertion path).
+- =TERMINE= seeded at the wrong level (=org-current-level=
+  evaluated in the IB's frame, picking up the IB's own depth
+  rather than the base-buffer's task-level depth).
+
+A clean CSTR refactor addresses all three by routing every
+heading insertion through one base-buffer-anchored primitive.
+
+**** Decisions
+- *Adopted: CSTR (Path B + conditional creation).*  No further
+  user decision required at this point.
+- *Implementation order:* land the CSTR primitives first, then
+  migrate callers in stages, keeping tests green at each step.
+  Do NOT revert =a55edf5=; instead overwrite the affected
+  functions in subsequent commits and let git history record the
+  evolution.
+- *Test rewrite policy:* TERMINE-related tests (~10) currently
+  encode the per-IB sibling rule.  They will be rewritten to the
+  CSTR.  Tests asserting general IB factory behaviour (parent/
+  child links, registry shape, naming) stay as-is.
+- *Scope boundary with IB-4.6b:* RESPOND-heading wiring is a
+  separate task ([[*Wire RESPOND heading into response insertion][IB-4.6b]]) and is NOT part of the CSTR.
+  However the CSTR primitive is what IB-4.6b will call, so
+  CSTR must land first.
 
 **** Mission
-Resolve the path decision and continue the refactor accordingly.
-Whatever path is chosen, the acceptance criteria are:
-1. =cd quelpa/build/gptel/test && make test= reports 0 unexpected
-   failures (3 skipped is fine).
-2. The example from the parent TODO renders cleanly:
-   - =FEEDBACK / AI-DOING / REASONING / RESPOND= produce a well-formed
-     org tree with no concatenated heading-onto-body lines.
-3. No =.orig= or =.rej= files left in the working tree.
-4. Documentation in =gptel-indirect-buffer-ai.org= section *TERMINE*
-   matches the chosen design.
+Implement the CSTR end-to-end, with tests, in three sub-phases.
+Each sub-phase should compile, run all tests, and commit.
+
+***** Sub-phase CSTR-1: Unified terminator-resolution primitive
+- New function =gptel-org-ib-resolve-or-seed-terminator=
+  (gptel-indirect-buffer.el).
+  - Signature: =(BASE-BUFFER POS &optional TASK-LEVEL)=
+  - Operates entirely in BASE-BUFFER (uses
+    =with-current-buffer= + =save-excursion= + widen).
+  - From POS, scan forward for the next heading whose level is
+    =<= the level at POS.  If found, return its marker.
+  - If not found and TASK-LEVEL given, seed a =TERMINE= heading
+    at TASK-LEVEL at the next valid position (end of the task
+    subtree as scoped by walking up to the task heading and
+    going to its =org-end-of-subtree=).  Return marker of new
+    TERMINE.
+  - Idempotent — a second call with same args returns the same
+    marker.
+- New tests in =test/gptel-org-ib-test.el=:
+  - =resolve-or-seed-finds-existing-sibling=
+  - =resolve-or-seed-finds-existing-parent=
+  - =resolve-or-seed-creates-termine-when-none=
+  - =resolve-or-seed-is-idempotent=
+- Commit message prefix: =refactor(ib): CSTR-1 ...=
+
+***** Sub-phase CSTR-2: Migrate IB factory + insertion to CSTR
+- =gptel-org-ib-create=: REMOVE the unconditional
+  =ensure-sibling-terminator= call.  IB factory no longer seeds
+  TERMINE.
+- =gptel-org-ib-insert-child=: replace =ensure-terminator= /
+  =ensure-sibling-terminator= calls with a single call to
+  =gptel-org-ib-resolve-or-seed-terminator=.  The
+  =:terminator-keyword= keyword arg is removed (or kept as a
+  no-op for backward compat with one cycle's deprecation).
+- =gptel-org-ib--compute-subtree-region=: REMOVE the +1-line
+  extension that included sibling TERMINE in narrowing.  IB
+  narrowing is now strictly =org-end-of-subtree= — TERMINE is
+  outside, in the parent buffer.  Streaming-marker logic
+  changes accordingly (next sub-phase).
+- =gptel-org-ib-streaming-marker=: rewrite to call
+  =resolve-or-seed-terminator= against the BASE buffer at the
+  IB's heading-pos, then translate the returned base-buffer
+  marker to a pin position.  When the IB's narrowing ends
+  before the terminator (always, post-CSTR-2), the streaming
+  marker pins at =point-max= of the IB narrowing with
+  =insertion-type t=, and the terminator stays untouched.
+- =gptel-org-ib-ensure-terminator= and
+  =gptel-org-ib-ensure-sibling-terminator=: keep for one cycle
+  but mark =obsolete=; their bodies now delegate to
+  =resolve-or-seed-terminator=.
+- =gptel-org-ib-find-terminator=: keep, simplify to a thin
+  read-only forward-search helper used by removal/migration
+  paths and the legacy LEVEL-based callers.
+- Update tests in =test/gptel-org-ib-test.el= to reflect
+  the new factory contract (no automatic TERMINE).
+- Commit message prefix: =refactor(ib): CSTR-2 ...=
+
+***** Sub-phase CSTR-3: Task-lifecycle TERMINE seeding + auto-corrector
+- =gptel-org-agent--setup-task-subtree= (or the AI-DO →
+  AI-DOING transition site): seed the single task-level
+  TERMINE via =resolve-or-seed-terminator= with TASK-LEVEL =
+  task heading's level.
+- =gptel-org-agent--insert-user-heading= (AI-DONE transition,
+  ~L1380): keep the TERMINE removal call but route via the
+  unified API.
+- =gptel-org-agent--display-tool-calls=: drop the L2080–2096
+  "safety net" sibling-TERMINE seeding for old buffers.  The
+  task-lifecycle path now owns this.  If a buffer is loaded
+  from disk without TERMINE, =resolve-or-seed-terminator=
+  invoked from the next insertion will seed it lazily anyway.
+- =gptel-org-agent--recover-from-ib-fatal=: replace direct
+  =gptel-org-ib-create-terminator= call (~L937) with the
+  unified API.
+- Update =gptel-org--adjust-response-headings= post-response
+  auto-corrector to recognize the CSTR layout (one TERMINE
+  per task, sibling-of-AI-DOING).  Remove any
+  per-IB-TERMINE-aware corrections.
+- Update tests:
+  - Rewrite =gptel-org-ib-test-create-seeds-termine= → factory
+    no longer seeds; assert =resolve-or-seed= seeds at task
+    level when called explicitly.
+  - Rewrite =gptel-org-agent-test-open-indirect-buffer-seeds-termine=
+    similarly.
+  - Update =pending-tool-subtree-info-reuses-ib= to expect a
+    /single/ task-level TERMINE shared across PENDING and the
+    parent agent IB.
+  - Add new integration test =cstr-end-to-end-agent-task=
+    that spins up a fake FEEDBACK→AI-DOING flow with one
+    REASONING + one RESPOND insertion and asserts the produced
+    org tree matches the [[#termine-canonical-rule][CSTR Expected output example]].
+- Commit message prefix: =refactor(ib): CSTR-3 ...=
+
+***** Verification
+After CSTR-3:
+- =cd quelpa/build/gptel/test && make test 2>&1 | tail -30= →
+  0 unexpected failures (skipped fine).
+- Hand-test: trigger an agent task through =gptel-send= (or via
+  agent dispatch) and visually inspect the resulting org tree;
+  it must match the CSTR expected-output example.
+- =grep -n 'ensure-sibling-terminator\|ensure-terminator' gptel-*.el=
+  → calls only inside obsolete shims, with deprecation notice.
+
+**** Risks / open questions
+- *Streaming-marker base-buffer translation.*  Today the marker
+  lives inside the IB's narrowing.  Under CSTR-2, the marker
+  /could/ live in the base buffer (un-narrowed) since TERMINE
+  is outside the IB.  We need to confirm whether the streaming
+  insertion code (=gptel-curl--stream-insert-response=) tolerates
+  a marker whose buffer is the base, not the IB.  Most likely
+  yes — it uses =marker-buffer= and inserts via the marker.  If
+  not, the marker stays inside the IB at point-max with
+  =insertion-type t=, and we rely on org-mode's natural
+  next-heading boundary to keep insertion within the IB.
+- *Tool/PENDING IBs sharing the task TERMINE.*  Today every tool
+  IB has its own TERMINE.  Under CSTR they share the task's.
+  Need to verify the PENDING-tool flow's heading-insertion
+  ordering still produces correct nesting (PENDING → ALLOWED
+  → tool result, all under their REASONING parent inside
+  AI-DOING, all before the single AI-DOING-sibling TERMINE).
+- *Sub-agent dispatch.*  Sub-agents create their own AI-DOING
+  subtree (Phase IB-5).  Each sub-agent task gets its own
+  TERMINE per CSTR.  Need to verify
+  =gptel-org-agent--setup-task-subtree= seeds correctly for
+  sub-agents, not just top-level user tasks.
+- *Org-mode legacy buffers.*  Files saved during the per-IB-
+  TERMINE era will have multiple TERMINE headings.  The
+  =gptel-org-migrate-terminators= command (Phase IB-4.4) only
+  rewrites RESULTS/FEEDBACK → TERMINE; it doesn't dedupe
+  multiple TERMINEs.  Add a one-shot =gptel-org-ib-dedupe-termine=
+  command (or extend migrate-terminators) to collapse them.
+  Optional follow-up; not blocking CSTR landing.
 
 **** Unified gptel-org-mode Refactoring
 ***** Phase 1: Fix variable rename — DONE
