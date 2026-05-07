@@ -4510,6 +4510,38 @@ After CSTR-3:
   rewrites RESULTS/FEEDBACK → TERMINE; it doesn't dedupe
   multiple TERMINEs.  Add a one-shot =gptel-org-ib-dedupe-termine=
   command (or extend migrate-terminators) to collapse them.
+
+**** Outcomes (2026-05-07 — commit =774bbbd=)
+- CSTR-1, CSTR-2, CSTR-3 implementation committed as WIP.
+- 4 files changed, 325 insertions, 131 deletions:
+  - =gptel-indirect-buffer.el=: =resolve-or-seed-terminator= unified
+    primitive; =insert-child= TERMINE level fix; streaming-marker CSTR
+    integration.
+  - =gptel-org-agent.el=: =setup-task-subtree= seeds TERMINE at task
+    level; =handle-user-response-deny=, =ensure-tool-confirm-hook= use
+    unified API.
+  - =test/gptel-org-agent-test.el=, =test/gptel-org-ib-test.el=:
+    rewritten for CSTR semantics.
+- Test status: 484 tests, 1 unexpected failure.
+  - FAILED: =gptel-org-agent-respond-text-no-same-line-terminator=
+    — the "bug state" assertion (body text concatenated onto TERMINE
+    line) no longer reproduces.  This may indicate the CSTR
+    implementation already prevents the concatenation, making the
+    bug-reproduction step of the test obsolete.  Needs investigation.
+- Remaining per the Mission: integration test =cstr-end-to-end-agent-task=,
+  hand-test, grep audit for obsolete call sites.
+
+***** TODO Follow-up: Fix failing test gptel-org-agent-respond-text-no-same-line-terminator
+- The test reproduces a bug where streamed body text without trailing
+  newline gets concatenated onto the TERMINE heading line.
+- Under CSTR, TERMINE is at task level (outside IB narrowing), and the
+  streaming marker pins at IB =point-max= with CSTR-aware logic.
+- The "bug state" assertion (=re-search-forward "operations\\.\\*+ TERMINE"=)
+  fails — body text no longer lands on the TERMINE line.
+- Investigate whether the CSTR streaming-marker placement already fixes
+  the concatenation issue; if so, restructure the test to verify the
+  correct behavior directly rather than reproducing-then-fixing.
+- Commit prefix: =fix(test): ...=
   Optional follow-up; not blocking CSTR landing.
 
 **** Unified gptel-org-mode Refactoring
