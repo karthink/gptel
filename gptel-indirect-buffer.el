@@ -722,43 +722,54 @@ and TASK-LEVEL is nil."
               (point-marker)))
            (t nil)))))))
 
-(defun gptel-org-ib-streaming-marker (&optional terminator-keyword)
+(defun gptel-org-ib-streaming-marker (&optional _terminator-keyword)
   "Return a marker safe for FSM streaming into the current indirect buffer.
 
-If TERMINATOR-KEYWORD names a child terminator heading of the
-current subtree (e.g., \"FEEDBACK\" or \"RESULTS\"), position the
-marker at the beginning of that terminator's heading line with
-insertion-type nil.  Text inserted at this marker is placed BEFORE
-the terminator, and the marker stays pinned to the terminator line
-as content accumulates.
+Per CSTR-2, the conditional single-TERMINE rule places TERMINE as a
+sibling at the task heading's level in the base buffer, OUTSIDE the
+narrowing of every IB under that task.  Streaming therefore pins the
+marker at the IB's `point-max' with insertion-type nil so that text
+inserted at the marker lands BEFORE the narrowing boundary — which is
+also BEFORE the sibling TERMINE in the base buffer.
 
-If no terminator exists, place the marker at `point-max' with
-insertion-type t (advances with appended text).
+When the current buffer is a registered IB and a TERMINE terminator
+exists in its base buffer (resolved via
+`gptel-org-ib-resolve-or-seed-terminator', read-only — no seeding),
+return a marker at `point-max' with insertion-type nil.
 
-Typically called with the current buffer narrowed to an agent or
-task subtree, point on the narrowed-to heading.  When point is not
-on a heading, only the `point-max' fallback is used."
-  (let ((term-pos
-         (and terminator-keyword
-              (save-excursion
-                (goto-char (point-min))
-                (when (org-at-heading-p)
-                  ;; TERMINE is seeded by the factory as a SIBLING of
-                  ;; the IB's heading (same level), and the IB's
-                  ;; narrowing is extended to include that sibling line
-                  ;; (see `gptel-org-ib--compute-subtree-region').  Try
-                  ;; the sibling-level search first, then fall back to
-                  ;; the legacy child-level search for callers that
-                  ;; still keep a child-level terminator.
-                  (or (gptel-org-ib-find-terminator
-                       terminator-keyword nil (org-current-level))
-                      (gptel-org-ib-find-terminator
-                       terminator-keyword)))))))
-    (if term-pos
-        (let ((m (make-marker)))
-          (set-marker m term-pos)
-          (set-marker-insertion-type m nil)
+When no terminator exists (or the current buffer is not a registered
+IB), fall back to a marker at `point-max' with insertion-type t.
+
+The TERMINATOR-KEYWORD argument is accepted for backward compatibility
+but is not used: terminator presence is determined entirely by the
+unified primitive operating in the base buffer.  Caller need not be at
+the IB heading; current buffer narrowing is what matters."
+  (let* ((node (gptel-org-ib--get-node (buffer-name (current-buffer))))
+         (base (and node (gptel-org-ib-node-base node)))
+         (heading-marker (and node (gptel-org-ib-node-heading-marker node)))
+         (term
+          (and node
+               (buffer-live-p base)
+               (markerp heading-marker)
+               (marker-position heading-marker)
+               (gptel-org-ib-resolve-or-seed-terminator
+                base (marker-position heading-marker)))))
+    (if term
+        ;; Terminator exists in base buffer (outside the narrowing).
+        ;; Pin marker AT `point-max', which corresponds in the base
+        ;; buffer to the BOL of the sibling terminator (compute-subtree-
+        ;; region ends the narrowing right at the start of the next
+        ;; heading line).  Inserting at the marker lands streamed text
+        ;; cleanly at column 0 BEFORE the terminator.  The IB's
+        ;; end-marker (insertion-type t) advances to keep the narrowing
+        ;; growing; this marker (insertion-type nil) stays pinned at
+        ;; the original boundary so subsequent streams continue to land
+        ;; immediately before the terminator.
+        (let ((m (copy-marker (point-max) nil)))
           m)
+      ;; No terminator: fall back to point-max with insertion-type t,
+      ;; trimming any trailing newlines so streamed text begins after
+      ;; the last body content.
       (save-excursion
         (goto-char (point-max))
         (skip-chars-backward "\n")
@@ -887,6 +898,16 @@ Point must be on the parent heading."
                               terminator-keyword existing)
             (copy-marker existing))
         (gptel-org-ib-create-terminator terminator-keyword)))))
+
+(make-obsolete 'gptel-org-ib-ensure-terminator
+               "use `gptel-org-ib-resolve-or-seed-terminator' instead"
+               "0.10.0")
+(make-obsolete 'gptel-org-ib-ensure-sibling-terminator
+               "use `gptel-org-ib-resolve-or-seed-terminator' instead"
+               "0.10.0")
+(make-obsolete 'gptel-org-ib-create-terminator
+               "use `gptel-org-ib-resolve-or-seed-terminator' instead"
+               "0.10.0")
 
 (defun gptel-org-ib-remove-terminator (heading-keyword)
   "Remove the terminator child heading matching HEADING-KEYWORD.
@@ -1106,18 +1127,16 @@ terminator — this ensures that text inserted at point-max in a
 narrowed indirect buffer starts on its own line rather than appending
 to the last line of the heading.
 
-When a sibling TERMINE heading at the same level immediately
-follows the subtree, END is extended to include that TERMINE line.
-This makes the sibling TERMINE visible inside the IB's narrowing
-so that `gptel-org-ib-streaming-marker' can pin the streaming
-marker BEFORE TERMINE with insertion-type nil — preventing
-streamed body text from concatenating onto the IB's heading line
-when the IB body is otherwise empty."
+Per CSTR-2, the IB's narrowing does NOT include any sibling TERMINE
+heading.  The terminator lives outside the narrowing; streaming-marker
+pins the marker at the IB's `point-max' with insertion-type nil so
+that text inserted at the marker is placed BEFORE the narrowing
+boundary (and therefore BEFORE the sibling TERMINE in the base
+buffer)."
   (with-current-buffer base-buffer
     (save-excursion
       (goto-char heading-pos)
-      (let* ((own-level (and (org-at-heading-p) (org-current-level)))
-             (beg (pos-bol))
+      (let* ((beg (pos-bol))
              (end (progn (org-end-of-subtree t)
                          ;; org-end-of-subtree may leave point before the
                          ;; trailing newline.  Advance past it so the
@@ -1125,15 +1144,6 @@ when the IB body is otherwise empty."
                          (when (eq (char-after) ?\n)
                            (forward-char 1))
                          (point))))
-        ;; Extend END across an immediately-following sibling TERMINE
-        ;; heading at the same level, so the IB's narrowing includes it.
-        (when own-level
-          (save-excursion
-            (goto-char end)
-            (when (looking-at
-                   (gptel-org-ib--terminator-regexp "TERMINE" own-level))
-              (forward-line 1)
-              (setq end (point)))))
         (cons beg end)))))
 
 (defun gptel-org-ib--extract-tag-at (base-buffer heading-pos)
@@ -1177,22 +1187,13 @@ Returns the indirect buffer."
          ;; buffer directly (top-level task in the file).
          (parent-node (gptel-org-ib--get-node
                        (buffer-name (current-buffer))))
-         ;; TERMINE seeding (idempotent, per-IB): always ensure a
-         ;; sibling TERMINE at THIS heading's own level in the base
-         ;; buffer BEFORE computing the subtree region.  Per-level
-         ;; seeding gives every IB (agent, PENDING, tool, reasoning,
-         ;; sub-agent) its own sibling TERMINE inside its narrowing
-         ;; — the universal invariant that
-         ;; `gptel-org-ib-streaming-marker' relies on to pin the
-         ;; streaming marker BEFORE TERMINE with insertion-type nil.
-         ;; `ensure-sibling-terminator' is idempotent: it reuses an
-         ;; existing same-level TERMINE if one is already present.
-         (_ (with-current-buffer root-buf
-              (save-excursion
-                (goto-char pos)
-                (when (org-at-heading-p)
-                  (gptel-org-ib-ensure-sibling-terminator
-                   "TERMINE" (org-current-level))))))
+         ;; CSTR-2: the IB factory no longer seeds TERMINE.  The
+         ;; conditional single-TERMINE rule (one TERMINE per task,
+         ;; only when no shallower-or-equal terminator exists below)
+         ;; is enforced by the task lifecycle (CSTR-3) via
+         ;; `gptel-org-ib-resolve-or-seed-terminator'.  Nested IBs
+         ;; (REASONING, TOOL, sub-agent) do not seed; they resolve
+         ;; the existing terminator at task-creation time.
          ;; Extract tag for naming (skip when name is provided —
          ;; avoids dependency on gptel-org-agent for non-agent callers)
          (resolved-tag (unless name
@@ -1253,11 +1254,9 @@ Returns the indirect buffer."
        (when parent-node
          (buffer-name (gptel-org-ib-node-buffer parent-node)))))
     (gptel-org--debug "org-ib create: created buffer %S" buf-name)
-    ;; TERMINE is seeded by the generic IB factory (idempotently at the
-    ;; top of this function).  One sibling TERMINE per user task acts as
-    ;; the anchor for all IB creations under that task; nested IBs
-    ;; (REASONING, TOOL, sub-agent) reuse the existing TERMINE because
-    ;; the check finds it already present in the base buffer.
+    ;; CSTR-2: TERMINE is no longer seeded by the IB factory.  The
+    ;; conditional single-TERMINE rule is enforced by the task
+    ;; lifecycle (CSTR-3) via `gptel-org-ib-resolve-or-seed-terminator'.
     indirect-buf))
 
 (defun gptel-org-ib-close (indirect-buffer &optional fold)
@@ -1621,14 +1620,25 @@ is nil)."
              (point) (buffer-name)))
           ;; Ensure terminator (idempotent) on the parent.
           ;;
-          ;; TERMINE seeding is handled by the generic IB factory
-          ;; `gptel-org-ib-create' (idempotently, as a sibling at
-          ;; the heading's own level).  Other terminator keywords
-          ;; (FEEDBACK, RESULTS, ...) remain child-level for
-          ;; backward compatibility.
-          (when (and terminator-keyword
-                     (not (string= terminator-keyword "TERMINE")))
-            (gptel-org-ib-ensure-terminator terminator-keyword))
+          ;; CSTR-2: TERMINE seeding now uses the unified primitive
+          ;; `gptel-org-ib-resolve-or-seed-terminator' against the
+          ;; base buffer.  It walks up to the task level and seeds
+          ;; the conditional single TERMINE only when no shallower-
+          ;; or-equal terminator exists below.  Per CSTR-3 this
+          ;; will move into the task lifecycle entirely; for now
+          ;; we use the parent's own level as task-level.
+          ;;
+          ;; Other terminator keywords (FEEDBACK, RESULTS, ...)
+          ;; remain child-level for backward compatibility.
+          (when terminator-keyword
+            (if (string= terminator-keyword "TERMINE")
+                (let* ((base-buf (gptel-org-ib-base-buffer
+                                  parent-context-buffer))
+                       (parent-pos (marker-position parent-marker))
+                       (task-level (org-current-level)))
+                  (gptel-org-ib-resolve-or-seed-terminator
+                   base-buf parent-pos task-level))
+              (gptel-org-ib-ensure-terminator terminator-keyword)))
           ;; Delegate the actual insertion to the internal helper,
           ;; which centralises the universal newline guard, level
           ;; computation, and trailing-blank-line handling.

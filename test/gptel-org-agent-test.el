@@ -3230,13 +3230,15 @@ The position-marker is inside the IB before its TERMINE child."
                               entry-pending-ib))
                   (should (eq (plist-get subtree-info :heading-marker)
                               entry-heading-marker))
-                  ;; Position marker is inside the PENDING IB.  TERMINE
-                  ;; is a SIBLING of the PENDING heading in the BASE
-                  ;; buffer (universal TERMINE invariant per the new
-                  ;; sibling-level design), so it lies outside the
-                  ;; PENDING IB's narrowing.  Verify TERMINE exists in
-                  ;; the base buffer at the PENDING heading's level
-                  ;; and that the position marker is at-or-before it.
+                  ;; Position marker is inside the PENDING IB.  Per
+                  ;; CSTR-2, TERMINE is no longer auto-seeded by the
+                  ;; IB factory; CSTR-3 will move seeding into the
+                  ;; task lifecycle.  For now we verify the
+                  ;; position-marker invariants (markerp, correct
+                  ;; buffer) and — when a TERMINE happens to exist as
+                  ;; a sibling of the PENDING heading in the base
+                  ;; buffer — that the position-marker stays
+                  ;; at-or-before TERMINE.
                   (let ((pm (plist-get subtree-info :position-marker)))
                     (should (markerp pm))
                     (should (eq (marker-buffer pm) entry-pending-ib))
@@ -3260,8 +3262,8 @@ The position-marker is inside the IB before its TERMINE child."
                                 (gptel-org-ib-find-terminator
                                  "TERMINE" nil pending-level)))))
                       (should pending-level)
-                      (should termine-pos)
-                      (should (<= pm-base-pos termine-pos))))
+                      (when termine-pos
+                        (should (<= pm-base-pos termine-pos)))))
                 ;; Returns nil for unknown pending-id.
                 (should-not
                  (gptel-org-agent--pending-tool-subtree-info

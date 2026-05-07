@@ -521,69 +521,98 @@ transitions to AI-DONE) and asserts the observable effect."
 ;;; ---- Streaming Marker ----------------------------------------------------
 
 (ert-deftest gptel-org-ib-test-streaming-marker-with-terminator ()
-  "With a FEEDBACK terminator, marker lands at start of FEEDBACK line."
+  "Inside an IB, with a sibling TERMINE in the base buffer, the
+streaming marker is pinned at the IB's `point-max' with
+insertion-type nil so that streamed text lands BEFORE the narrowing
+boundary (and therefore BEFORE TERMINE in the base buffer)."
   (gptel-org-ib-test-with-buffer
-      "* Parent\n** Child\nbody\n** FEEDBACK\n"
-    (goto-char (point-min))
-    (org-back-to-heading t)
-    (let ((m (gptel-org-ib-streaming-marker "FEEDBACK")))
-      (should (markerp m))
-      (should-not (marker-insertion-type m))
-      (save-excursion
-        (goto-char m)
-        (should (bolp))
-        (should (org-at-heading-p))
-        (should (equal "FEEDBACK" (org-get-todo-state)))))))
+      "* TASK\n** AI-DOING Child :dummy@agent:\nbody\n** TERMINE\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (re-search-forward "^\\*\\* AI-DOING ")
+     (beginning-of-line)
+     (let* ((base (current-buffer))
+            (pos (point))
+            (ib (gptel-org-ib-create base pos)))
+       (with-current-buffer ib
+         (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
+           (should (markerp m))
+           ;; Pinned BEFORE the narrowing boundary.
+           (should-not (marker-insertion-type m))
+           (should (= (marker-position m) (point-max)))))))))
 
 (ert-deftest gptel-org-ib-test-streaming-marker-without-terminator ()
-  "Without terminator, marker is at point-max with insertion-type t."
+  "Without a terminator in the base buffer, the IB's streaming marker
+is at `point-max' with insertion-type t (auto-advancing)."
   (gptel-org-ib-test-with-buffer
-      "* Parent\nbody\n"
-    (goto-char (point-min))
-    (org-back-to-heading t)
-    (let ((m (gptel-org-ib-streaming-marker "FEEDBACK")))
-      (should (markerp m))
-      (should (marker-insertion-type m))
-      ;; Marker at end-of-buffer (modulo trailing newline handling).
-      (should (= (marker-position m)
-                 (save-excursion
-                   (goto-char (point-max))
-                   (skip-chars-backward "\n")
-                   (end-of-line)
-                   (point)))))))
+      "* TASK\n** AI-DOING Child :dummy@agent:\nbody\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (re-search-forward "^\\*\\* AI-DOING ")
+     (beginning-of-line)
+     (let* ((base (current-buffer))
+            (pos (point))
+            (ib (gptel-org-ib-create base pos)))
+       (with-current-buffer ib
+         (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
+           (should (markerp m))
+           (should (marker-insertion-type m))
+           (should (= (marker-position m)
+                      (save-excursion
+                        (goto-char (point-max))
+                        (skip-chars-backward "\n")
+                        (end-of-line)
+                        (point))))))))))
 
 (ert-deftest gptel-org-ib-test-streaming-marker-insertion-before-terminator ()
-  "Inserting at the streaming marker places content BEFORE the terminator."
+  "Inserting at the streaming marker places content BEFORE the
+sibling TERMINE in the base buffer (TERMINE stays last)."
   (gptel-org-ib-test-with-buffer
-      "* Parent\n** Child\nbody\n** FEEDBACK\n"
-    (goto-char (point-min))
-    (org-back-to-heading t)
-    (let ((m (gptel-org-ib-streaming-marker "FEEDBACK")))
-      (save-excursion
-        (goto-char m)
-        (insert "*** TOOL streamed\n"))
-      ;; FEEDBACK should still exist and be after the inserted heading.
-      (goto-char (point-min))
-      (let (order)
-        (while (re-search-forward org-heading-regexp nil t)
-          (push (or (org-get-todo-state)
-                    (org-get-heading t t t t))
-                order))
-        (setq order (nreverse order))
-        (should (equal "Parent" (nth 0 order)))
-        (should (equal "Child" (nth 1 order)))
-        (should (equal "TOOL streamed" (nth 2 order)))
-        (should (equal "FEEDBACK" (nth 3 order)))))))
+      "* TASK\n** AI-DOING Child :dummy@agent:\nbody\n** TERMINE\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (re-search-forward "^\\*\\* AI-DOING ")
+     (beginning-of-line)
+     (let* ((base (current-buffer))
+            (pos (point))
+            (ib (gptel-org-ib-create base pos)))
+       (with-current-buffer ib
+         (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
+           (save-excursion
+             (goto-char m)
+             (insert "*** TOOL streamed\n"))))
+       ;; In the base buffer, headings should be:
+       ;;   TASK, AI-DOING Child, TOOL streamed, TERMINE
+       (with-current-buffer base
+         (goto-char (point-min))
+         (let (order)
+           (while (re-search-forward org-heading-regexp nil t)
+             (push (or (org-get-todo-state)
+                       (org-get-heading t t t t))
+                   order))
+           (setq order (nreverse order))
+           (should (equal "TASK" (nth 0 order)))
+           (should (equal "AI-DOING" (nth 1 order)))
+           (should (equal "TOOL streamed" (nth 2 order)))
+           (should (equal "TERMINE" (nth 3 order)))))))))
 
 (ert-deftest gptel-org-ib-test-streaming-marker-no-terminator-arg ()
-  "Passing nil for terminator falls back to point-max with insertion-type t."
+  "Passing nil for TERMINATOR-KEYWORD: the unified primitive determines
+terminator presence (the keyword arg is ignored).  With no terminator
+in the base buffer, falls back to `point-max' with insertion-type t."
   (gptel-org-ib-test-with-buffer
-      "* Parent\n** Child\n** FEEDBACK\n"
-    (goto-char (point-min))
-    (org-back-to-heading t)
-    (let ((m (gptel-org-ib-streaming-marker nil)))
-      (should (markerp m))
-      (should (marker-insertion-type m)))))
+      "* TASK\n** AI-DOING Child :dummy@agent:\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (re-search-forward "^\\*\\* AI-DOING ")
+     (beginning-of-line)
+     (let* ((base (current-buffer))
+            (pos (point))
+            (ib (gptel-org-ib-create base pos)))
+       (with-current-buffer ib
+         (let ((m (gptel-org-ib-streaming-marker nil)))
+           (should (markerp m))
+           (should (marker-insertion-type m))))))))
 
 
 ;;; ---- Sibling Terminator --------------------------------------------------
@@ -909,13 +938,17 @@ Order of headings: parent, existing child, new heading, FEEDBACK."
          (kill-buffer intermediate))))))
 
 
-(ert-deftest gptel-org-ib-test-create-seeds-termine ()
-  "`gptel-org-ib-create' pre-seeds a TERMINE sibling (universal invariant).
+(ert-deftest gptel-org-ib-test-create-does-not-seed-termine ()
+  "Per CSTR-2, `gptel-org-ib-create' no longer seeds a TERMINE sibling.
 
-Per the design invariant, every IB created by gptel has TERMINE as a
-SIBLING heading (at the same level as the IB's heading).  The sibling
-TERMINE lives outside the narrowed region for proper IB isolation.
-The factory seeds it eagerly in the base buffer at creation time."
+The IB factory is now decoupled from terminator seeding.  TERMINE
+seeding is the responsibility of the task lifecycle (CSTR-3) via the
+unified primitive `gptel-org-ib-resolve-or-seed-terminator', invoked
+explicitly when a task is created or restarted.
+
+After `gptel-org-ib-create', no TERMINE sibling is auto-created.
+Calling `resolve-or-seed-terminator' explicitly with a TASK-LEVEL
+seeds it idempotently."
   (gptel-org-ib-test-with-buffer
       "* TASK\n** AI-DOING Sub-task :dummy@agent:\n"
     (gptel-org-ib-test-with-cleanup
@@ -926,32 +959,31 @@ The factory seeds it eagerly in the base buffer at creation time."
             (pos (point))
             (ib (gptel-org-ib-create base pos)))
        (should (buffer-live-p ib))
-       ;; TERMINE exists as a SIBLING in the base buffer (at level 2).
+       ;; No TERMINE sibling was auto-created by the factory.
        (with-current-buffer base
          (goto-char pos)
          (org-back-to-heading t)
-         (should (gptel-org-ib-find-terminator "TERMINE" nil 2)))
-       ;; In the narrowed IB, the child-level TERMINE search returns nil
-       ;; because TERMINE is outside the narrowing.  Streaming marker
-       ;; falls back to point-max with insertion-type t.
-       (with-current-buffer ib
-         (should-not (save-excursion
-                       (goto-char (point-min))
-                       (when (org-at-heading-p)
-                         (gptel-org-ib-find-terminator "TERMINE"))))
-         (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
-           (should (markerp m))
-           (should (marker-insertion-type m))))
+         (should-not (gptel-org-ib-find-terminator "TERMINE" nil 2)))
+       ;; Explicit seeding via the unified primitive creates it.
+       (let ((m (gptel-org-ib-resolve-or-seed-terminator base pos 2)))
+         (should (markerp m))
+         (with-current-buffer base
+           (goto-char pos)
+           (org-back-to-heading t)
+           (should (gptel-org-ib-find-terminator "TERMINE" nil 2))))
        (gptel-org-ib-close ib)
        (should-not (buffer-live-p ib))))))
 
 (ert-deftest gptel-org-ib-test-safe-insert-sibling-seeds-termine ()
-  "`gptel-org-ib-insert-child' produces an IB with sibling TERMINE.
+  "`gptel-org-ib-insert-child' with :terminator-keyword \"TERMINE\" seeds.
 
-TERMINE is seeded by the generic factory `gptel-org-ib-create'
-as a sibling heading in the base buffer (not as a child heading).
-From within the narrowed child IB, TERMINE is invisible and the
-streaming marker falls back to point-max with insertion-type t."
+CSTR-2: the IB factory no longer seeds TERMINE.  Instead,
+`gptel-org-ib-insert-child' with :terminator-keyword \"TERMINE\"
+delegates to `gptel-org-ib-resolve-or-seed-terminator' against the
+base buffer, seeding a TERMINE sibling at the parent's level.
+TERMINE lives outside the IB's narrowing; streaming-marker pins at
+`point-max' with insertion-type nil when a base-buffer terminator
+is detected."
   (gptel-org-ib-test-with-buffer
       "* TASK\n"
     (gptel-org-ib-test-with-cleanup
@@ -962,25 +994,26 @@ streaming marker falls back to point-max with insertion-type t."
             (ib (plist-get (gptel-org-ib-insert-child
                             (point-marker) "AI-DOING" "Child"
                             :tags '("dummy@agent")
-                            :terminator-keyword "FEEDBACK")
+                            :terminator-keyword "TERMINE")
                           :indirect-buffer)))
        (should (buffer-live-p ib))
-       ;; The factory `gptel-org-ib-create' was invoked on the new
-       ;; AI-DOING child (level 2), so TERMINE is seeded as a SIBLING
-       ;; of the child at level 2 in the base buffer.
+       ;; TERMINE was seeded at the parent's own level (level 1).
        (with-current-buffer base
          (goto-char pos)
          (org-back-to-heading t)
-         (should (gptel-org-ib-find-terminator "TERMINE" nil 2)))
-       ;; In the IB, TERMINE is outside the narrowing; fallback to point-max.
+         (should (gptel-org-ib-find-terminator "TERMINE" nil 1)))
+       ;; In the IB, TERMINE is outside the narrowing.
        (with-current-buffer ib
          (should-not (save-excursion
                        (goto-char (point-min))
                        (when (org-at-heading-p)
                          (gptel-org-ib-find-terminator "TERMINE"))))
+         ;; streaming-marker should detect the base-buffer terminator
+         ;; via the unified primitive and pin at point-max with
+         ;; insertion-type nil.
          (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
            (should (markerp m))
-           (should (marker-insertion-type m))))))))
+           (should-not (marker-insertion-type m))))))))
 (ert-deftest gptel-org-ib-test-close-kills-and-unregisters ()
   "`close' kills the IB and removes it from the registry."
   (gptel-org-ib-test-with-buffer
@@ -1742,14 +1775,13 @@ Covers `gptel-org-ib-registered-p', `gptel-org-ib-parent',
             (ib (gptel-org-ib-create base heading-pos))
             (before-size (with-current-buffer ib (- (point-max) (point-min)))))
        ;; Append body text at end of first subtree in the base buffer.
-       ;; With sibling-level TERMINE the factory seeds "* TERMINE" as
-       ;; a sibling between "* Heading" and "* Next", so "end of the
-       ;; first subtree" is now the line before "* TERMINE".  Insert
-       ;; there to actually extend Heading's subtree; the IB
-       ;; end-marker position then needs to be recomputed.
+       ;; CSTR-2: the factory no longer seeds TERMINE, so "end of the
+       ;; first subtree" is the line before the next sibling
+       ;; ("* Next").  Insert there to extend Heading's subtree; the
+       ;; IB end-marker position then needs to be recomputed.
        (with-current-buffer base
          (goto-char (point-min))
-         (re-search-forward "^\\* TERMINE")
+         (re-search-forward "^\\* Next")
          (beginning-of-line)
          (insert "more body line\n"))
        ;; Now renarrow should pick up the new text.
@@ -1955,8 +1987,11 @@ level 1), not as a child.  The returned plist must carry a non-nil
 
 The IB's narrowed subtree's heading is treated as the parent.  The
 new heading must live in the underlying base buffer, at parent-level
-+ 1.  TERMINE is created as a SIBLING of the parent (at level 1).
-A fresh child IB must be created (distinct from the parent IB)."
++ 1.  Per CSTR-2, the IB factory does NOT auto-seed TERMINE; the
+:terminator-keyword \"TERMINE\" arg to insert-child invokes the
+unified primitive, which seeds TERMINE as a sibling of the parent
+(at level 1).  A fresh child IB must be created (distinct from the
+parent IB)."
   (gptel-org-ib-test-with-buffer
       "* Parent\n"
     (gptel-org-ib-test-with-cleanup
@@ -1965,16 +2000,10 @@ A fresh child IB must be created (distinct from the parent IB)."
                               (org-back-to-heading t)
                               (gptel-org-ib-create base (point)))))
        (should (buffer-live-p parent-ib))
-       ;; The factory seeds TERMINE as a sibling in the base buffer.
+       ;; CSTR-2: factory no longer auto-seeds TERMINE.
        (with-current-buffer base
          (goto-char (point-min))
-         (should (gptel-org-ib-find-terminator "TERMINE" nil 1)))
-       ;; From within the parent IB, TERMINE is outside the narrowing.
-       (with-current-buffer parent-ib
-         (should-not (save-excursion
-                       (goto-char (point-min))
-                       (when (org-at-heading-p)
-                         (gptel-org-ib-find-terminator "TERMINE")))))
+         (should-not (gptel-org-ib-find-terminator "TERMINE" nil 1)))
        (let* ((result (gptel-org-ib-insert-child
                        parent-ib "AI-DOING" "Child"
                        :terminator-keyword "TERMINE"))
@@ -1983,8 +2012,12 @@ A fresh child IB must be created (distinct from the parent IB)."
          (should (markerp hm))
          (should (buffer-live-p child-ib))
          (should-not (eq parent-ib child-ib))
-         ;; The new heading is visible in the base buffer at level 2.
+         ;; insert-child with :terminator-keyword "TERMINE" seeded
+         ;; TERMINE as a sibling of the parent at level 1.
          (with-current-buffer base
+           (goto-char (point-min))
+           (should (gptel-org-ib-find-terminator "TERMINE" nil 1))
+           ;; The new heading is visible in the base buffer at level 2.
            (save-excursion
              (goto-char hm)
              (should (org-at-heading-p))
