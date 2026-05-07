@@ -5306,3 +5306,113 @@ tests (12 bash-safety + 18 trace + 4 loader), 0 unexpected failures.
   as needed during future debugging sessions.
   
   
+*** AI-DONE Add GPT-5.5 to OpenAI model table and normalize GPT-5 family
+CLOSED: [2026-05-07]
+Implemented the *Aligned* option in =gptel-openai.el=:
+
+- Added a new =gpt-5.5= entry to =gptel--openai-models= mirroring the
+  =gpt-5.4= shape (context window, pricing, mime-types). Pricing is a
+  placeholder mirrored from =gpt-5.4= and should be sanity-checked
+  against OpenAI's pricing page before release.
+- Added the =reasoning= capability to every GPT-5 family entry
+  (=gpt-5=, =gpt-5-mini=, =gpt-5-nano=, =gpt-5.1=, =gpt-5.2=,
+  =gpt-5.3-chat-latest=, =gpt-5.4=, =gpt-5.5=). Existing capabilities
+  are preserved; =reasoning= is appended.
+- Replaced the hardcoded =memq= reasoning-model list in
+  =gptel--request-data= (gptel-openai.el ~line 234) with a
+  capability-driven check =(gptel--model-capable-p 'reasoning)=, so the
+  model table is now the single source of truth for reasoning
+  treatment (=:max_completion_tokens=, no =:temperature=, no
+  =:parallel_tool_calls=).
+- Extended =gptel--openai-model-aliases= with =gpt5=, =gpt5.1=,
+  =gpt5.3=, =gpt5.4=, =gpt5.5= (existing =gpt5.2= updated for
+  reasoning). =gpt5.3= maps to =gpt-5.3-chat-latest= since no plain
+  =gpt-5.3= model exists. All aliases carry =reasoning= in their
+  =:capabilities= so capability-driven dispatch works whether the user
+  selects the alias or the underlying model symbol.
+- Added focused tests in =test/gptel-unit-tests.el=:
+  + =gptel-test-openai-gpt5-family-has-reasoning-capability= — every
+    GPT-5 family model entry, including =gpt-5.5=, declares
+    =reasoning= in =:capabilities=.
+  + =gptel-test-openai-gpt5-aliases-cover-family-and-have-reasoning=
+    — each =gpt5.x= alias is present, has the correct =:model-id=,
+    declares =reasoning=, and points at an existing model entry.
+  + =gptel-test-openai-request-data-reasoning-dispatch= — verifies
+    =gptel--request-data= emits =:max_completion_tokens= (and omits
+    =:temperature= / =:parallel_tool_calls=) for a synthetic
+    reasoning-capable model, and =:max_tokens= + =:temperature= for a
+    non-reasoning model. Saves/restores symbol plists so it does not
+    leak global state.
+
+Verified: focused ERT run of =^gptel-test-openai-= (=cd test=, manual
+=emacs -Q ... -l ert --batch=) — 3/3 passing.
+
+Files changed:
+- =gptel-openai.el= — model table, alias map, request-data dispatch.
+- =test/gptel-unit-tests.el= — three new ERT tests.
+
+Follow-up:
+- The o1 family (including =o1-preview=) is no longer listed in the
+  hardcoded =memq=; behavior now relies on =:reasoning= in the model
+  plist. =o1=, =o1-mini=, =o3=, =o3-mini=, =o4-mini= already declare
+  =reasoning= in =gptel--openai-models=, so dispatch is preserved.
+  =o1-preview= is *not* in the model table (and never was), so users
+  who set =gptel-model= to that bare symbol will lose reasoning
+  treatment unless they add the capability themselves; intentional —
+  table is now the source of truth. No new TODO unless this regresses
+  someone in practice.
+- OpenRouter / Azure / compatible backends that reuse
+  =gptel--openai-models= inherit the new entries automatically. No
+  parallel edits needed.
+
+**** Origin
+- User request: "Update OpenAI models — there is 5.5 model available."
+- =gptel--openai-models= in =quelpa/build/gptel/gptel-openai.el= is a
+  static =defconst= listing GPT-5, GPT-5-mini, GPT-5-nano, GPT-5.1,
+  GPT-5.2, GPT-5.3-chat-latest, GPT-5.4 — but no =gpt-5.5=.
+- =gptel--request-data= hardcodes reasoning-model handling for the
+  GPT-5 family via a =memq= over symbol names.
+**** Discussion highlights
+- The OpenAI backend uses a static model table (=gptel--openai-models=
+  =defconst=); new releases require an explicit code edit rather than
+  any auto-discovery.
+- =gpt-5.5= is currently missing from that table, so it cannot be
+  selected even though the user reports it as available upstream.
+- Reasoning treatment for the GPT-5 family is partly hardcoded inside
+  =gptel--request-data= (=memq= against a fixed symbol list), and the
+  per-model =:capabilities= plist is inconsistent: GPT-5 entries are
+  treated as reasoning models in request handling but do not carry
+  =:reasoning= in their =:capabilities=. Aliases are also incomplete —
+  only =gpt5.2 -> "gpt-5.2"= is registered.
+- Adding =gpt-5.5= in isolation works, but leaves the underlying
+  inconsistency in place; a small normalization pass would make
+  future GPT-5.x additions trivial.
+**** Mission
+Pick one of the following implementation options:
+
+- *Minimal* — Add a =gpt-5.5= entry to =gptel--openai-models= mirroring
+  the existing GPT-5.x entries (context window, capabilities, pricing
+  if known). No other changes. Lowest risk, smallest diff.
+- *Aligned* — Add =gpt-5.5= and normalize the GPT-5 family:
+  + Add =:reasoning= to =:capabilities= for all GPT-5* entries that
+    are treated as reasoning models in =gptel--request-data=.
+  + Either keep the =memq= guard in =gptel--request-data= in sync, or
+    switch it to read =:reasoning= from =:capabilities= so the table
+    is the single source of truth.
+  + Extend the alias map so each =gpt-5.x= has a corresponding short
+    alias (=gpt5=, =gpt5.1=, =gpt5.3=, =gpt5.4=, =gpt5.5=, …) for
+    parity with the existing =gpt5.2= alias.
+- *Broader* — In addition to the *Aligned* changes, audit
+  =gptel--openai-models= for stale/deprecated entries (older GPT-4*
+  variants, preview-only SKUs that have been retired) and prune or
+  flag them while the table is open. Highest churn, best long-term
+  hygiene.
+
+***** Likely follow-ups (not separate TODOs yet)
+- If the =memq= reasoning check is kept hardcoded, a future TODO can
+  migrate all backends (OpenAI, Azure, OpenRouter mirrors) to a
+  capability-driven check.
+- Pricing/context-window data for =gpt-5.5= will need verification
+  against OpenAI's current pricing page before merge.
+- Consider whether OpenRouter / Azure / compatible backends that
+  reuse =gptel--openai-models= need parallel entries.

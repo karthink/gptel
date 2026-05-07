@@ -1011,5 +1011,94 @@ the generalised IB-4.6 helper."
       (when (buffer-live-p buf)
         (kill-buffer buf)))))
 
+;;; Tests for OpenAI GPT-5 family metadata and reasoning-capability
+;;; based request-data dispatch.
+
+(defun gptel-test--openai-model-plist (name)
+  "Return the property list of NAME from `gptel--openai-models'."
+  (cdr (assq name gptel--openai-models)))
+
+(defun gptel-test--openai-alias-plist (name)
+  "Return the property list of NAME from `gptel--openai-model-aliases'."
+  (cdr (assq name gptel--openai-model-aliases)))
+
+(ert-deftest gptel-test-openai-gpt5-family-has-reasoning-capability ()
+  "Every GPT-5 family entry should declare the `reasoning' capability.
+Also includes the new gpt-5.5 entry."
+  (dolist (model '(gpt-5 gpt-5-mini gpt-5-nano
+                         gpt-5.1 gpt-5.2 gpt-5.3-chat-latest
+                         gpt-5.4 gpt-5.5))
+    (let ((plist (gptel-test--openai-model-plist model)))
+      (should plist)
+      (should (memq 'reasoning (plist-get plist :capabilities))))))
+
+(ert-deftest gptel-test-openai-gpt5-aliases-cover-family-and-have-reasoning ()
+  "Each gpt5.x alias maps to an existing model and inherits reasoning."
+  (let ((alias-pairs '((gpt5    . "gpt-5")
+                       (gpt5.1  . "gpt-5.1")
+                       (gpt5.2  . "gpt-5.2")
+                       (gpt5.3  . "gpt-5.3-chat-latest")
+                       (gpt5.4  . "gpt-5.4")
+                       (gpt5.5  . "gpt-5.5"))))
+    (dolist (pair alias-pairs)
+      (let* ((alias (car pair))
+             (target (cdr pair))
+             (plist (gptel-test--openai-alias-plist alias)))
+        (should plist)
+        (should (equal (plist-get plist :model-id) target))
+        (should (memq 'reasoning (plist-get plist :capabilities)))
+        ;; Sanity: the underlying model exists in the model table.
+        (should (assq (intern target) gptel--openai-models))))))
+
+(ert-deftest gptel-test-openai-request-data-reasoning-dispatch ()
+  "`gptel--request-data' should key off the `reasoning' capability:
+- reasoning models receive :max_completion_tokens, no :temperature, and
+  no :parallel_tool_calls when tools are present;
+- non-reasoning models receive :max_tokens and :temperature."
+  ;; Save and restore the symbol plists we mutate so we don't leak state
+  ;; into other tests.
+  (let* ((reasoning-sym 'gptel-test-reasoning-model)
+         (plain-sym     'gptel-test-plain-model)
+         (saved-reasoning (symbol-plist reasoning-sym))
+         (saved-plain     (symbol-plist plain-sym)))
+    (unwind-protect
+        (progn
+          (gptel--process-models
+           `((,reasoning-sym :capabilities (reasoning tool-use))
+             (,plain-sym     :capabilities (tool-use))))
+          (let* ((backend (gptel--make-openai
+                           :name "OpenAI-test"
+                           :host "api.openai.com"
+                           :header nil
+                           :models (list reasoning-sym plain-sym)
+                           :protocol "https"
+                           :endpoint "/v1/chat/completions"
+                           :stream nil
+                           :url "https://api.openai.com/v1/chat/completions"))
+                 (gptel-backend backend)
+                 (gptel-stream nil)
+                 (gptel-temperature 0.7)
+                 (gptel-max-tokens 256)
+                 (gptel-use-tools nil)
+                 (gptel--system-message nil)
+                 (gptel--schema nil)
+                 (gptel--request-params nil)
+                 (prompts (list (list :role "user" :content "hi"))))
+            ;; Reasoning model
+            (let* ((gptel-model reasoning-sym)
+                   (data (gptel--request-data backend prompts)))
+              (should (eq (plist-get data :max_completion_tokens) 256))
+              (should-not (plist-member data :max_tokens))
+              (should-not (plist-member data :temperature))
+              (should-not (plist-member data :parallel_tool_calls)))
+            ;; Plain model
+            (let* ((gptel-model plain-sym)
+                   (data (gptel--request-data backend prompts)))
+              (should (eq (plist-get data :max_tokens) 256))
+              (should-not (plist-member data :max_completion_tokens))
+              (should (equal (plist-get data :temperature) 0.7)))))
+      (setplist reasoning-sym saved-reasoning)
+      (setplist plain-sym saved-plain))))
+
 (provide 'gptel-unit-tests)
 ;;; gptel-unit-tests.el ends here

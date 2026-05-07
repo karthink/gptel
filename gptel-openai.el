@@ -233,10 +233,9 @@ Mutate state INFO with response metadata."
          (list :model (gptel--model-name gptel-model)
                :messages (vconcat prompts)
                :stream (or gptel-stream :json-false)))
-        (reasoning-model-p ; TODO: Embed this capability in the model's properties
-         (memq gptel-model '(o1 o1-preview o1-mini o3-mini o3 o4-mini
-                                gpt-5 gpt-5-mini gpt-5-nano gpt-5.1 gpt-5.2
-                                gpt-5.3-chat-latest gpt-5.4))))
+        ;; Reasoning models are identified via the :reasoning capability
+        ;; on the model symbol's plist; see `gptel--openai-models'.
+        (reasoning-model-p (gptel--model-capable-p 'reasoning)))
     (when gptel-stream
       (plist-put prompts-plist :stream_options '(:include_usage t)))
     (when (and gptel-temperature (not reasoning-model-p))
@@ -581,7 +580,7 @@ Media files, if present, are placed in `gptel-context'."
      :cutoff-date "2023-11")
     (gpt-5
      :description "Flagship model for coding, reasoning, and agentic tasks across domains"
-     :capabilities (media tool-use json url)
+     :capabilities (media tool-use json url reasoning)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 1.25
@@ -589,7 +588,7 @@ Media files, if present, are placed in `gptel-context'."
      :cutoff-date "2024-09")
     (gpt-5-mini
      :description "Faster, more cost-efficient version of GPT-5"
-     :capabilities (media tool-use json url)
+     :capabilities (media tool-use json url reasoning)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 0.25
@@ -597,7 +596,7 @@ Media files, if present, are placed in `gptel-context'."
      :cutoff-date "2024-09")
     (gpt-5-nano
      :description "Fastest, cheapest version of GPT-5"
-     :capabilities (media tool-use json url)
+     :capabilities (media tool-use json url reasoning)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 0.05
@@ -605,7 +604,7 @@ Media files, if present, are placed in `gptel-context'."
      :cutoff-date "2024-09")
     (gpt-5.1
      :description "The best model for coding and agentic tasks"
-     :capabilities (media tool-use json url)
+     :capabilities (media tool-use json url reasoning)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 1.25
@@ -613,7 +612,7 @@ Media files, if present, are placed in `gptel-context'."
      :cutoff-date "2024-09")
     (gpt-5.2
      :description "The best model for coding and agentic tasks"
-     :capabilities (media tool-use json url)
+     :capabilities (media tool-use json url reasoning)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 1.75
@@ -621,7 +620,7 @@ Media files, if present, are placed in `gptel-context'."
      :cutoff-date "2025-08")
     (gpt-5.3-chat-latest
      :description "Answers right away"
-     :capabilities (media tool-use json url)
+     :capabilities (media tool-use json url reasoning)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 1.75
@@ -629,7 +628,15 @@ Media files, if present, are placed in `gptel-context'."
      :cutoff-date "2025-08")
     (gpt-5.4
      :description "The best model for coding and agentic tasks"
-     :capabilities (media tool-use json url)
+     :capabilities (media tool-use json url reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 2.50
+     :output-cost 15
+     :cutoff-date "2025-08")
+    (gpt-5.5
+     :description "The best model for coding and agentic tasks"
+     :capabilities (media tool-use json url reasoning)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 1050
      :input-cost 2.50
@@ -714,20 +721,68 @@ sources:
 - <https://platform.openai.com/docs/models>")
 
 (defconst gptel--openai-model-aliases
-  '((gpt5.2
-     :description "Alias for latest GPT-5.2 model"
+  '((gpt5
+     :description "Alias for the GPT-5 model"
+     :model-id "gpt-5"
+     :capabilities (media tool-use json url reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1.25
+     :output-cost 10
+     :cutoff-date "2024-09")
+    (gpt5.1
+     :description "Alias for the GPT-5.1 model"
+     :model-id "gpt-5.1"
+     :capabilities (media tool-use json url reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1.25
+     :output-cost 10
+     :cutoff-date "2024-09")
+    (gpt5.2
+     :description "Alias for the GPT-5.2 model"
      :model-id "gpt-5.2"
-     :capabilities (media tool-use json url)
+     :capabilities (media tool-use json url reasoning)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 1.75
      :output-cost 14
+     :cutoff-date "2025-08")
+    (gpt5.3
+     :description "Alias for the GPT-5.3 chat-latest model"
+     :model-id "gpt-5.3-chat-latest"
+     :capabilities (media tool-use json url reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1.75
+     :output-cost 14
+     :cutoff-date "2025-08")
+    (gpt5.4
+     :description "Alias for the GPT-5.4 model"
+     :model-id "gpt-5.4"
+     :capabilities (media tool-use json url reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 2.50
+     :output-cost 15
+     :cutoff-date "2025-08")
+    (gpt5.5
+     :description "Alias for the GPT-5.5 model"
+     :model-id "gpt-5.5"
+     :capabilities (media tool-use json url reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 2.50
+     :output-cost 15
      :cutoff-date "2025-08"))
   "Model aliases that map simple names to the latest model versions.
 
-These aliases provide stable names that always point to the current
-latest version of each model family:
-- `gpt5.2': Alias for gpt-5.2, the latest flagship model
+These aliases provide stable short names for each member of the GPT-5
+family.  Each alias maps to a corresponding model entry in
+`gptel--openai-models' via its :model-id property; capabilities are
+kept in sync so capability-driven request handling (e.g. reasoning
+treatment in `gptel--request-data') applies uniformly whether the
+user picks the alias or the underlying model symbol.
 
 The actual model used is specified in the :model-id property.")
 
