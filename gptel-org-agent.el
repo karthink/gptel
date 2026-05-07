@@ -2077,13 +2077,9 @@ INFO is the FSM info plist."
       ;; indirect buffer and its base buffer so that the user can
       ;; change PENDING→ALLOWED from either buffer.
       (gptel-org-agent--ensure-tool-confirm-hook buf)
-      ;; Safety net: ensure the user-task TERMINE child exists in the
-      ;; base buffer.  Per the single-TERMINE invariant, one TERMINE
-      ;; lives as a CHILD of the user task heading at agent-level.
-      ;; This idempotent call fixes ill-formed inputs (e.g. older
-      ;; buffers loaded from disk that pre-date the invariant); for
-      ;; well-formed IBs created via `gptel-org-agent--create-subtree'
-      ;; TERMINE is already seeded.
+      ;; Safety net: TERMINE is seeded as a SIBLING by the generic
+      ;; IB factory `gptel-org-ib-create', but older buffers loaded
+      ;; from disk may lack it.  This idempotent check fills the gap.
       (let ((base (gptel-org-ib-base-buffer buf))
             (node (gptel-org-ib--get-node (buffer-name buf))))
         (when (and base node)
@@ -2093,11 +2089,13 @@ INFO is the FSM info plist."
                 (when (marker-position hm)
                   (goto-char hm)
                   (when (org-at-heading-p)
-                    ;; Walk up past all @agent-tagged headings to the
-                    ;; user task; ensure TERMINE child there.
-                    (when (gptel-org-ib-find-user-task-heading)
-                      (ignore-errors
-                        (gptel-org-ib-ensure-terminator "TERMINE"))))))))))
+                    (let ((level (org-current-level)))
+                      (save-excursion
+                        (beginning-of-line)
+                        (unless (re-search-forward "^\\*+ TERMINE\\b" nil t)
+                          (ignore-errors
+                            (gptel-org-ib-ensure-sibling-terminator
+                             "TERMINE" level))))))))))))
       ;; Suppress the auto-corrector during insertion.
       (let ((gptel-org--auto-correcting t))
         (gptel-org--debug

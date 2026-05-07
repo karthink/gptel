@@ -1088,6 +1088,25 @@ Returns the indirect buffer."
          ;; buffer directly (top-level task in the file).
          (parent-node (gptel-org-ib--get-node
                        (buffer-name (current-buffer))))
+         ;; TERMINE seeding (idempotent): one sibling TERMINE per user
+         ;; task.  Seed in the base buffer BEFORE computing the subtree
+         ;; region so that `org-end-of-subtree' naturally stops at the
+         ;; TERMINE line and the end-marker is correctly positioned just
+         ;; before TERMINE.
+         ;;
+         ;; Only seed if no TERMINE heading exists anywhere forward in
+         ;; the base buffer.  If TERMINE already exists, the heading
+         ;; under this task already has its shared anchor.
+         (_ (with-current-buffer root-buf
+              (save-excursion
+                (goto-char pos)
+                (when (org-at-heading-p)
+                  (let ((level (org-current-level)))
+                    (save-excursion
+                      (beginning-of-line)
+                      (unless (re-search-forward "^\\*+ TERMINE\\b" nil t)
+                        (gptel-org-ib-ensure-sibling-terminator
+                         "TERMINE" level))))))))
          ;; Extract tag for naming (skip when name is provided —
          ;; avoids dependency on gptel-org-agent for non-agent callers)
          (resolved-tag (unless name
@@ -1096,7 +1115,8 @@ Returns the indirect buffer."
          (buf-name (or name
                        (gptel-org-ib-compute-name
                         root-buf pos resolved-tag)))
-         ;; Compute subtree region
+         ;; Compute subtree region (TERMINE already seeded, so
+         ;; org-end-of-subtree stops at the TERMINE line)
          (region (gptel-org-ib--compute-subtree-region root-buf pos))
          (beg (car region))
          (end (cdr region))
@@ -1147,13 +1167,11 @@ Returns the indirect buffer."
        (when parent-node
          (buffer-name (gptel-org-ib-node-buffer parent-node)))))
     (gptel-org--debug "org-ib create: created buffer %S" buf-name)
-    ;; Note: TERMINE seeding is the responsibility of the agent layer
-    ;; (`gptel-org-agent--create-subtree'), not the generic IB factory.
-    ;; A single TERMINE per top-level user task acts as the anchor for
-    ;; all IB creations under that task; nested IBs (REASONING, TOOL,
-    ;; sub-agent) share the top-level TERMINE via natural org subtree
-    ;; nesting and do not seed their own.  See
-    ;; `gptel-indirect-buffer-ai.org' (*** TERMINE) for the design.
+    ;; TERMINE is seeded by the generic IB factory (idempotently at the
+    ;; top of this function).  One sibling TERMINE per user task acts as
+    ;; the anchor for all IB creations under that task; nested IBs
+    ;; (REASONING, TOOL, sub-agent) reuse the existing TERMINE because
+    ;; the check finds it already present in the base buffer.
     indirect-buf))
 
 (defun gptel-org-ib-close (indirect-buffer &optional fold)
@@ -1517,30 +1535,14 @@ is nil)."
              (point) (buffer-name)))
           ;; Ensure terminator (idempotent) on the parent.
           ;;
-          ;; Single-TERMINE invariant: one TERMINE per user task.
-          ;; When TERMINATOR-KEYWORD is "TERMINE" we seed it ONLY
-          ;; when the parent heading is the user task itself (has no
-          ;; @agent tag) — this places TERMINE as a child of the
-          ;; user task at agent-level, which is the unique anchor
-          ;; for all IB creation under that task.
-          ;;
-          ;; Nested inserts (sub-agents, REASONING, TOOL, PENDING)
-          ;; whose parent IS @agent-tagged skip the seed: they reuse
-          ;; the existing user-task TERMINE via natural org subtree
-          ;; nesting (`org-end-of-subtree' on the top-level agent
-          ;; subtree stops at the sibling TERMINE).
-          ;;
-          ;; Other terminator keywords (FEEDBACK, RESULTS, ...)
-          ;; remain child-level for backward compatibility.
-          (when terminator-keyword
-            (let ((parent-tags (org-get-tags nil t)))
-              (cond
-               ((string= terminator-keyword "TERMINE")
-                (unless (cl-some #'gptel-org-agent--agent-tag-p
-                                 parent-tags)
-                  (gptel-org-ib-ensure-terminator terminator-keyword)))
-               (t
-                (gptel-org-ib-ensure-terminator terminator-keyword)))))
+          ;; TERMINE seeding is handled by the generic IB factory
+          ;; `gptel-org-ib-create' (idempotently, as a sibling at
+          ;; the heading's own level).  Other terminator keywords
+          ;; (FEEDBACK, RESULTS, ...) remain child-level for
+          ;; backward compatibility.
+          (when (and terminator-keyword
+                     (not (string= terminator-keyword "TERMINE")))
+            (gptel-org-ib-ensure-terminator terminator-keyword))
           ;; Delegate the actual insertion to the internal helper,
           ;; which centralises the universal newline guard, level
           ;; computation, and trailing-blank-line handling.
