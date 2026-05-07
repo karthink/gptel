@@ -207,10 +207,10 @@ Verify the child heading exists at the correct level with the right tag."
   "`gptel-org-agent--open-indirect-buffer' produces an IB with TERMINE.
 
 TERMINE seeding is the responsibility of the generic factory
-`gptel-org-ib-create' which now creates TERMINE as a SIBLING in the
-base buffer (not a child within the IB).  From within the narrowed
-IB, TERMINE is invisible; the streaming marker falls back to
-point-max with insertion-type t."
+`gptel-org-ib-create' which creates TERMINE as a SIBLING of the
+IB's heading at the same level in the base buffer.  The IB's
+narrowing is extended to include that TERMINE line so the
+streaming marker can pin BEFORE it with insertion-type nil."
   (gptel-org-agent-test-with-buffer
    "* AI-DO Task\nDescription\n"
    (goto-char (point-min))
@@ -223,20 +223,19 @@ point-max with insertion-type t."
            (setq indirect-buf
                  (gptel-org-agent--open-indirect-buffer base-buf marker))
            (should (buffer-live-p indirect-buf))
-           ;; TERMINE is a sibling in the base buffer, not a child in the IB.
+           ;; The agent heading created by `--create-subtree' is at
+           ;; level 2 (child of `* AI-DO Task').  TERMINE is its
+           ;; level-2 sibling.
            (with-current-buffer base-buf
              (goto-char (marker-position marker))
-             (should (gptel-org-ib-find-terminator "TERMINE" nil 1)))
-           ;; In the IB, TERMINE is outside the narrowing; fallback to
-           ;; point-max with insertion-type t.
+             (should (gptel-org-ib-find-terminator "TERMINE" nil 2)))
+           ;; The IB's narrowing now INCLUDES the sibling TERMINE
+           ;; line, so the streaming marker pins BEFORE TERMINE with
+           ;; insertion-type nil.
            (with-current-buffer indirect-buf
-             (should-not (save-excursion
-                           (goto-char (point-min))
-                           (when (org-at-heading-p)
-                             (gptel-org-ib-find-terminator "TERMINE"))))
              (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
                (should (markerp m))
-               (should (marker-insertion-type m)))))
+               (should-not (marker-insertion-type m)))))
        ;; Cleanup
        (when (and indirect-buf (buffer-live-p indirect-buf))
          (kill-buffer indirect-buf))))))

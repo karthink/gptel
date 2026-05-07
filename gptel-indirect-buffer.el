@@ -678,11 +678,22 @@ insertion-type t (advances with appended text).
 Typically called with the current buffer narrowed to an agent or
 task subtree, point on the narrowed-to heading.  When point is not
 on a heading, only the `point-max' fallback is used."
-  (let ((term-pos (and terminator-keyword
-                       (save-excursion
-                         (goto-char (point-min))
-                         (when (org-at-heading-p)
-                           (gptel-org-ib-find-terminator terminator-keyword))))))
+  (let ((term-pos
+         (and terminator-keyword
+              (save-excursion
+                (goto-char (point-min))
+                (when (org-at-heading-p)
+                  ;; TERMINE is seeded by the factory as a SIBLING of
+                  ;; the IB's heading (same level), and the IB's
+                  ;; narrowing is extended to include that sibling line
+                  ;; (see `gptel-org-ib--compute-subtree-region').  Try
+                  ;; the sibling-level search first, then fall back to
+                  ;; the legacy child-level search for callers that
+                  ;; still keep a child-level terminator.
+                  (or (gptel-org-ib-find-terminator
+                       terminator-keyword nil (org-current-level))
+                      (gptel-org-ib-find-terminator
+                       terminator-keyword)))))))
     (if term-pos
         (let ((m (make-marker)))
           (set-marker m term-pos)
@@ -1033,18 +1044,36 @@ heading line and END is the end of the subtree.  END is advanced past
 any trailing newline so that the region includes the final line
 terminator — this ensures that text inserted at point-max in a
 narrowed indirect buffer starts on its own line rather than appending
-to the last line of the heading."
+to the last line of the heading.
+
+When a sibling TERMINE heading at the same level immediately
+follows the subtree, END is extended to include that TERMINE line.
+This makes the sibling TERMINE visible inside the IB's narrowing
+so that `gptel-org-ib-streaming-marker' can pin the streaming
+marker BEFORE TERMINE with insertion-type nil — preventing
+streamed body text from concatenating onto the IB's heading line
+when the IB body is otherwise empty."
   (with-current-buffer base-buffer
     (save-excursion
       (goto-char heading-pos)
-      (let ((beg (pos-bol))
-            (end (progn (org-end-of-subtree t)
-                        ;; org-end-of-subtree may leave point before the
-                        ;; trailing newline.  Advance past it so the
-                        ;; narrowed region includes the line terminator.
-                        (when (eq (char-after) ?\n)
-                          (forward-char 1))
-                        (point))))
+      (let* ((own-level (and (org-at-heading-p) (org-current-level)))
+             (beg (pos-bol))
+             (end (progn (org-end-of-subtree t)
+                         ;; org-end-of-subtree may leave point before the
+                         ;; trailing newline.  Advance past it so the
+                         ;; narrowed region includes the line terminator.
+                         (when (eq (char-after) ?\n)
+                           (forward-char 1))
+                         (point))))
+        ;; Extend END across an immediately-following sibling TERMINE
+        ;; heading at the same level, so the IB's narrowing includes it.
+        (when own-level
+          (save-excursion
+            (goto-char end)
+            (when (looking-at
+                   (gptel-org-ib--terminator-regexp "TERMINE" own-level))
+              (forward-line 1)
+              (setq end (point)))))
         (cons beg end)))))
 
 (defun gptel-org-ib--extract-tag-at (base-buffer heading-pos)
@@ -1088,25 +1117,22 @@ Returns the indirect buffer."
          ;; buffer directly (top-level task in the file).
          (parent-node (gptel-org-ib--get-node
                        (buffer-name (current-buffer))))
-         ;; TERMINE seeding (idempotent): one sibling TERMINE per user
-         ;; task.  Seed in the base buffer BEFORE computing the subtree
-         ;; region so that `org-end-of-subtree' naturally stops at the
-         ;; TERMINE line and the end-marker is correctly positioned just
-         ;; before TERMINE.
-         ;;
-         ;; Only seed if no TERMINE heading exists anywhere forward in
-         ;; the base buffer.  If TERMINE already exists, the heading
-         ;; under this task already has its shared anchor.
+         ;; TERMINE seeding (idempotent, per-IB): always ensure a
+         ;; sibling TERMINE at THIS heading's own level in the base
+         ;; buffer BEFORE computing the subtree region.  Per-level
+         ;; seeding gives every IB (agent, PENDING, tool, reasoning,
+         ;; sub-agent) its own sibling TERMINE inside its narrowing
+         ;; — the universal invariant that
+         ;; `gptel-org-ib-streaming-marker' relies on to pin the
+         ;; streaming marker BEFORE TERMINE with insertion-type nil.
+         ;; `ensure-sibling-terminator' is idempotent: it reuses an
+         ;; existing same-level TERMINE if one is already present.
          (_ (with-current-buffer root-buf
               (save-excursion
                 (goto-char pos)
                 (when (org-at-heading-p)
-                  (let ((level (org-current-level)))
-                    (save-excursion
-                      (beginning-of-line)
-                      (unless (re-search-forward "^\\*+ TERMINE\\b" nil t)
-                        (gptel-org-ib-ensure-sibling-terminator
-                         "TERMINE" level))))))))
+                  (gptel-org-ib-ensure-sibling-terminator
+                   "TERMINE" (org-current-level))))))
          ;; Extract tag for naming (skip when name is provided —
          ;; avoids dependency on gptel-org-agent for non-agent callers)
          (resolved-tag (unless name

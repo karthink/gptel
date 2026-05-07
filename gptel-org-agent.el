@@ -2079,7 +2079,9 @@ INFO is the FSM info plist."
       (gptel-org-agent--ensure-tool-confirm-hook buf)
       ;; Safety net: TERMINE is seeded as a SIBLING by the generic
       ;; IB factory `gptel-org-ib-create', but older buffers loaded
-      ;; from disk may lack it.  This idempotent check fills the gap.
+      ;; from disk may lack it.  `ensure-sibling-terminator' is
+      ;; idempotent — it reuses an existing same-level sibling
+      ;; TERMINE when present and only inserts when missing.
       (let ((base (gptel-org-ib-base-buffer buf))
             (node (gptel-org-ib--get-node (buffer-name buf))))
         (when (and base node)
@@ -2089,13 +2091,9 @@ INFO is the FSM info plist."
                 (when (marker-position hm)
                   (goto-char hm)
                   (when (org-at-heading-p)
-                    (let ((level (org-current-level)))
-                      (save-excursion
-                        (beginning-of-line)
-                        (unless (re-search-forward "^\\*+ TERMINE\\b" nil t)
-                          (ignore-errors
-                            (gptel-org-ib-ensure-sibling-terminator
-                             "TERMINE" level))))))))))))
+                    (ignore-errors
+                      (gptel-org-ib-ensure-sibling-terminator
+                       "TERMINE" (org-current-level))))))))))
       ;; Suppress the auto-corrector during insertion.
       (let ((gptel-org--auto-correcting t))
         (gptel-org--debug
