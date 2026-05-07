@@ -3936,7 +3936,7 @@ about IB-7).  Ensure:
 - Manual test: trigger DeepSeek reasoning + tool call in playground-ws.org
 
 ** Researched TODOs
-*** TODO Fix TERMINE: move from child-level to sibling-level for proper IB isolation
+*** AI-DOING Fix TERMINE: move from child-level to sibling-level for proper IB isolation
 
 **** Origin
 - Spotted during review of the TERMINE/indirect-buffer isolation architecture.
