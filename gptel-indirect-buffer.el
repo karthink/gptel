@@ -685,7 +685,7 @@ on a heading, only the `point-max' fallback is used."
                            (gptel-org-ib-find-terminator terminator-keyword))))))
     (if term-pos
         (let ((m (make-marker)))
-          (set-marker m (1- term-pos))
+          (set-marker m term-pos)
           (set-marker-insertion-type m nil)
           m)
       (save-excursion
@@ -1096,17 +1096,6 @@ Returns the indirect buffer."
          (buf-name (or name
                        (gptel-org-ib-compute-name
                         root-buf pos resolved-tag)))
-         ;; Seed TERMINE FIRST so org-end-of-subtree stops before it.
-         ;; This keeps the sibling TERMINE outside the narrowed region.
-         ;; (Must be done before computing the subtree region, otherwise
-         ;; the end-marker with insertion-type t advances past TERMINE.)
-         (_ (progn
-              (with-current-buffer root-buf
-                (save-excursion
-                  (goto-char pos)
-                  (when (org-at-heading-p)
-                    (gptel-org-ib-ensure-sibling-terminator
-                     "TERMINE" (org-current-level)))))))
          ;; Compute subtree region
          (region (gptel-org-ib--compute-subtree-region root-buf pos))
          (beg (car region))
@@ -1158,14 +1147,13 @@ Returns the indirect buffer."
        (when parent-node
          (buffer-name (gptel-org-ib-node-buffer parent-node)))))
     (gptel-org--debug "org-ib create: created buffer %S" buf-name)
-    ;; The universal TERMINE terminator was already seeded as a
-    ;; SIBLING heading in the base buffer above (before computing the
-    ;; subtree region).  TERMINE lives outside the IB's narrowing
-    ;; (the boundary is the sibling heading), which provides proper
-    ;; isolation between sibling IBs.  From within this IB, TERMINE
-    ;; is invisible; `gptel-org-ib-streaming-marker' falls back to
-    ;; `point-max' with insertion-type t and content auto-expands the
-    ;; narrowing up to (but not past) TERMINE.
+    ;; Note: TERMINE seeding is the responsibility of the agent layer
+    ;; (`gptel-org-agent--create-subtree'), not the generic IB factory.
+    ;; A single TERMINE per top-level user task acts as the anchor for
+    ;; all IB creations under that task; nested IBs (REASONING, TOOL,
+    ;; sub-agent) share the top-level TERMINE via natural org subtree
+    ;; nesting and do not seed their own.  See
+    ;; `gptel-indirect-buffer-ai.org' (*** TERMINE) for the design.
     indirect-buf))
 
 (defun gptel-org-ib-close (indirect-buffer &optional fold)
@@ -1528,15 +1516,31 @@ is nil)."
              "insert-child: parent marker position %d not at heading in buffer %s"
              (point) (buffer-name)))
           ;; Ensure terminator (idempotent) on the parent.
-          ;; TERMINE is a SIBLING of the parent (same level, in the
-          ;; base buffer), not a CHILD.  Other terminators (FEEDBACK,
-          ;; RESULTS, ...) remain child-level for backward
-          ;; compatibility.
+          ;;
+          ;; Single-TERMINE invariant: one TERMINE per user task.
+          ;; When TERMINATOR-KEYWORD is "TERMINE" we seed it ONLY
+          ;; when the parent heading is the user task itself (has no
+          ;; @agent tag) — this places TERMINE as a child of the
+          ;; user task at agent-level, which is the unique anchor
+          ;; for all IB creation under that task.
+          ;;
+          ;; Nested inserts (sub-agents, REASONING, TOOL, PENDING)
+          ;; whose parent IS @agent-tagged skip the seed: they reuse
+          ;; the existing user-task TERMINE via natural org subtree
+          ;; nesting (`org-end-of-subtree' on the top-level agent
+          ;; subtree stops at the sibling TERMINE).
+          ;;
+          ;; Other terminator keywords (FEEDBACK, RESULTS, ...)
+          ;; remain child-level for backward compatibility.
           (when terminator-keyword
-            (if (string= terminator-keyword "TERMINE")
-                (gptel-org-ib-ensure-sibling-terminator
-                 terminator-keyword (org-current-level))
-              (gptel-org-ib-ensure-terminator terminator-keyword)))
+            (let ((parent-tags (org-get-tags nil t)))
+              (cond
+               ((string= terminator-keyword "TERMINE")
+                (unless (cl-some #'gptel-org-agent--agent-tag-p
+                                 parent-tags)
+                  (gptel-org-ib-ensure-terminator terminator-keyword)))
+               (t
+                (gptel-org-ib-ensure-terminator terminator-keyword)))))
           ;; Delegate the actual insertion to the internal helper,
           ;; which centralises the universal newline guard, level
           ;; computation, and trailing-blank-line handling.

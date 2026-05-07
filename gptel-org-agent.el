@@ -641,13 +641,18 @@ earlier subtrees are not disturbed."
       (let ((user-kw (or (bound-and-true-p gptel-org-user-keyword)
                          "FEEDBACK")))
         (cond
-         ;; Try TERMINE first (IB-4.2 unified terminator).  Check both
-         ;; child-level (legacy) and sibling-level (current design).
+         ;; Try TERMINE first (IB-4.2 unified terminator).  TERMINE
+         ;; is a CHILD of the user task at agent-level.  From an
+         ;; agent IB narrowed to the agent subtree, TERMINE is
+         ;; outside the narrowing and `find-terminator' returns nil;
+         ;; the marker then falls through to the `point-max'
+         ;; insertion-type t case, which correctly stops at TERMINE
+         ;; via auto-expanding narrowing.  When point IS at the
+         ;; user-task level (rare path) the child-level search
+         ;; succeeds and the marker pins BEFORE TERMINE.
          ((and (org-at-heading-p)
                (save-excursion
-                 (or (gptel-org-ib-find-terminator "TERMINE")
-                     (gptel-org-ib-find-terminator
-                      "TERMINE" nil (org-current-level)))))
+                 (gptel-org-ib-find-terminator "TERMINE")))
           (gptel-org-ib-streaming-marker "TERMINE"))
          ;; Legacy, pre-IB-4.2: RESULTS terminator (task / sub-agent IBs).
          ((and (org-at-heading-p)
@@ -1353,25 +1358,33 @@ in the conversation."
                                       (gptel-org--debug
                                        "insert-user-heading: tool confirm heading transitioned from %s to %s"
                                        state done-kw))))))))
-                        ;; IB-4.3: remove the TERMINE child (if any) under
-                        ;; the completing agent subtree.  TERMINE is a
-                        ;; placeholder that keeps sibling IBs safe during
-                        ;; concurrent streaming; once the agent has
-                        ;; transitioned to AI-DONE, no more content will
-                        ;; flow into this subtree, so the placeholder is
-                        ;; redundant.  Also opportunistically sweep
-                        ;; legacy RESULTS/FEEDBACK empty-body terminators
-                        ;; — but don't let legacy data corruption break
-                        ;; the normal completion path.
+                        ;; IB-4.3: remove the user task's TERMINE
+                        ;; child once the agent has transitioned to
+                        ;; AI-DONE — the response cycle is complete
+                        ;; and the placeholder is redundant.  TERMINE
+                        ;; is a CHILD of the user task heading (at
+                        ;; agent-level), so we navigate up past all
+                        ;; @agent-tagged ancestors to the user task
+                        ;; before calling `remove-terminator'.  Also
+                        ;; opportunistically sweep legacy
+                        ;; RESULTS/FEEDBACK empty-body child
+                        ;; terminators under the completing agent
+                        ;; subtree — but don't let legacy data
+                        ;; corruption break the normal completion
+                        ;; path.
                         (save-excursion
                           (goto-char agent-heading-pos)
-                          (when (org-at-heading-p)
+                          (when (and (org-at-heading-p)
+                                     (gptel-org-ib-find-user-task-heading))
                             (let ((removed
                                    (gptel-org-ib-remove-terminator "TERMINE")))
                               (when removed
                                 (gptel-org--debug
-                                 "insert-user-heading: removed TERMINE child of agent at %d"
-                                 agent-heading-pos)))
+                                 "insert-user-heading: removed TERMINE child of user task at %d"
+                                 (point))))))
+                        (save-excursion
+                          (goto-char agent-heading-pos)
+                          (when (org-at-heading-p)
                             (dolist (legacy-kw '("RESULTS" "FEEDBACK"))
                               (condition-case err
                                   (save-excursion
@@ -2064,11 +2077,13 @@ INFO is the FSM info plist."
       ;; indirect buffer and its base buffer so that the user can
       ;; change PENDING→ALLOWED from either buffer.
       (gptel-org-agent--ensure-tool-confirm-hook buf)
-      ;; Safety net: ensure sibling TERMINE exists in the base buffer.
-      ;; The TERMINE is a sibling of the agent heading (created by
-      ;; `gptel-org-ib-create' for well-formed IBs).  This idempotent
-      ;; call fixes ill-formed inputs (e.g. older buffers loaded from
-      ;; disk that pre-date the sibling TERMINE invariant).
+      ;; Safety net: ensure the user-task TERMINE child exists in the
+      ;; base buffer.  Per the single-TERMINE invariant, one TERMINE
+      ;; lives as a CHILD of the user task heading at agent-level.
+      ;; This idempotent call fixes ill-formed inputs (e.g. older
+      ;; buffers loaded from disk that pre-date the invariant); for
+      ;; well-formed IBs created via `gptel-org-agent--create-subtree'
+      ;; TERMINE is already seeded.
       (let ((base (gptel-org-ib-base-buffer buf))
             (node (gptel-org-ib--get-node (buffer-name buf))))
         (when (and base node)
@@ -2078,9 +2093,11 @@ INFO is the FSM info plist."
                 (when (marker-position hm)
                   (goto-char hm)
                   (when (org-at-heading-p)
-                    (ignore-errors
-                      (gptel-org-ib-ensure-sibling-terminator
-                       "TERMINE" (org-current-level))))))))))
+                    ;; Walk up past all @agent-tagged headings to the
+                    ;; user task; ensure TERMINE child there.
+                    (when (gptel-org-ib-find-user-task-heading)
+                      (ignore-errors
+                        (gptel-org-ib-ensure-terminator "TERMINE"))))))))))
       ;; Suppress the auto-corrector during insertion.
       (let ((gptel-org--auto-correcting t))
         (gptel-org--debug
