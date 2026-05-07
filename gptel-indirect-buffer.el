@@ -662,6 +662,66 @@ or nil if not found."
                 (forward-line 1)))))
         found))))
 
+;;; Unified Terminator Resolution (CSTR-1)
+
+(defun gptel-org-ib-resolve-or-seed-terminator (base-buffer pos &optional task-level)
+  "Resolve or create a TERMINE heading for the subtree at POS in BASE-BUFFER.
+
+Operates entirely in BASE-BUFFER.  Starting from POS, scans forward
+for the next heading whose level is <= the level at POS.  If found,
+returns a marker to it.  If not found and TASK-LEVEL is given, seeds
+a TERMINE heading at TASK-LEVEL at the end of the task subtree and
+returns a marker to it.
+
+Idempotent: a second call with the same args returns the same marker.
+
+BASE-BUFFER is the org base buffer.
+POS is a position or marker in BASE-BUFFER pointing at a heading.
+TASK-LEVEL is the level for seeding a TERMINE if none is found.
+  When nil, no seeding is performed and nil is returned if no
+  terminator exists.
+
+Returns a marker to the terminator heading, or nil if none exists
+and TASK-LEVEL is nil."
+  (with-current-buffer base-buffer
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char pos)
+        (unless (org-at-heading-p)
+          (gptel-org-ib-fatal
+           "resolve-or-seed-terminator: pos %d not at heading in buffer %s"
+           (point) (buffer-name)))
+        (let* ((level-at-pos (org-current-level))
+               (found
+                (save-excursion
+                  (forward-line 1)
+                  (let ((result nil))
+                    (while (and (not result)
+                                (re-search-forward org-heading-regexp nil t))
+                      (beginning-of-line)
+                      (when (<= (org-current-level) level-at-pos)
+                        (setq result (point)))
+                      (unless result
+                        (forward-line 1)))
+                    result))))
+          (cond
+           (found
+            (copy-marker found))
+           (task-level
+            ;; Walk up to the task heading, then go to end of its subtree
+            ;; and seed a TERMINE there.
+            (goto-char pos)
+            (while (and (> (org-current-level) task-level)
+                        (org-up-heading-safe)))
+            (org-end-of-subtree t)
+            (gptel-org-ib-ensure-bol)
+            (let ((start (point)))
+              (insert (make-string task-level ?*) " TERMINE\n")
+              (goto-char start)
+              (point-marker)))
+           (t nil)))))))
+
 (defun gptel-org-ib-streaming-marker (&optional terminator-keyword)
   "Return a marker safe for FSM streaming into the current indirect buffer.
 

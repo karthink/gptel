@@ -645,6 +645,87 @@ transitions to AI-DONE) and asserts the observable effect."
                      (match-beginning 0))))))))
 
 
+;;;---- Unified Terminator Resolution (CSTR-1) ----
+
+(ert-deftest gptel-org-ib-test-resolve-or-seed-finds-existing-sibling ()
+  "resolve-or-seed returns existing sibling TERMINE when present."
+  (gptel-org-ib-test-with-buffer
+      "* Top\n** Agent :agent:\nbody\n** TERMINE\n"
+    (goto-char (point-min))
+    (re-search-forward "^\\*\\* Agent")
+    (beginning-of-line)
+    (let* ((base (current-buffer))
+           (pos (point))
+           (m (gptel-org-ib-resolve-or-seed-terminator base pos)))
+      (should (markerp m))
+      (save-excursion
+        (goto-char m)
+        (should (org-at-heading-p))
+        (should (equal "TERMINE" (org-get-todo-state)))
+        (should (= 2 (org-current-level)))))))
+
+(ert-deftest gptel-org-ib-test-resolve-or-seed-finds-existing-parent-level ()
+  "resolve-or-seed finds a shallower-level TERMINE from a deeper heading."
+  (gptel-org-ib-test-with-buffer
+      "* Top\n** AI-DOING Agent :agent:\n*** PENDING Gather data :gatherer:\nbody\n** TERMINE\n"
+    (goto-char (point-min))
+    (re-search-forward "^\\*\\*\\* PENDING")
+    (beginning-of-line)
+    (let* ((base (current-buffer))
+           (pos (point))
+           (m (gptel-org-ib-resolve-or-seed-terminator base pos)))
+      (should (markerp m))
+      (save-excursion
+        (goto-char m)
+        (should (org-at-heading-p))
+        (should (equal "TERMINE" (org-get-todo-state)))
+        (should (= 2 (org-current-level)))))))
+
+(ert-deftest gptel-org-ib-test-resolve-or-seed-creates-termine-when-none ()
+  "resolve-or-seed creates TERMINE at TASK-LEVEL when none exists."
+  (gptel-org-ib-test-with-buffer
+      "* Top\n** AI-DOING Agent :agent:\n*** PENDING Gather data :gatherer:\nbody text\n"
+    (goto-char (point-min))
+    (re-search-forward "^\\*\\*\\* PENDING")
+    (beginning-of-line)
+    (let* ((base (current-buffer))
+           (pos (point))
+           (m (gptel-org-ib-resolve-or-seed-terminator base pos 2)))
+      (should (markerp m))
+      (save-excursion
+        (goto-char m)
+        (should (org-at-heading-p))
+        (should (equal "TERMINE" (org-get-todo-state)))
+        (should (= 2 (org-current-level))))
+      ;; Verify TERMINE was inserted after all existing content
+      ;; (i.e., after the "body text" line of the PENDING heading)
+      (save-excursion
+        (goto-char (point-min))
+        (re-search-forward "^\\*\\*\\* PENDING")
+        (org-end-of-subtree t)
+        ;; TERMINE should be at end of the task subtree (which starts at ** AI-DOING)
+        ;; After PENDING's subtree ends, TERMINE follows
+        (should (re-search-forward "^\\*\\* TERMINE" nil t))))))
+
+(ert-deftest gptel-org-ib-test-resolve-or-seed-is-idempotent ()
+  "resolve-or-seed returns the same marker on repeated calls."
+  (gptel-org-ib-test-with-buffer
+      "* Top\n** Agent :agent:\nbody\n"
+    (goto-char (point-min))
+    (re-search-forward "^\\*\\* Agent")
+    (beginning-of-line)
+    (let* ((base (current-buffer))
+           (pos (point))
+           (m1 (gptel-org-ib-resolve-or-seed-terminator base pos 2))
+           (m2 (gptel-org-ib-resolve-or-seed-terminator base pos 2)))
+      (should (markerp m1))
+      (should (markerp m2))
+      (should (= (marker-position m1) (marker-position m2)))
+      ;; Only one TERMINE heading exists
+      (goto-char (point-min))
+      (should (= 1 (how-many "^\\*\\* TERMINE" (point-min) (point-max)))))))
+
+
 ;;; ---- Safe Heading Creation (Insert Before Terminator) --------------------
 
 (ert-deftest gptel-org-ib-test-create-heading-before-terminator ()
