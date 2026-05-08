@@ -119,8 +119,9 @@ information if the stream contains it."
                      for spec = (plist-get tool-call :function)
                      collect (list :id (plist-get tool-call :id)
                                    :name (plist-get spec :name)
-                                   :args (ignore-errors (gptel--json-read-string
-                                                         (plist-get spec :arguments))))
+                                   :args (and-let* ((arguments (plist-get spec :arguments))
+                                                    ((stringp arguments)))
+                                           (ignore-errors (gptel--json-read-string arguments))))
                      into call-specs
                      finally (plist-put info :tool-use call-specs))
                     ;; Cleanup gated on injection: the chunks were just
@@ -209,9 +210,10 @@ Mutate state INFO with response metadata."
       (cl-loop             ;Then capture the tool call data for running the tool
        for tool-call across tool-calls  ;replace ":arguments" with ":args"
        for call-spec = (copy-sequence (plist-get tool-call :function))
-       do (ignore-errors (plist-put call-spec :args
-                                    (gptel--json-read-string
-                                     (plist-get call-spec :arguments))))
+       do (when-let* ((arguments (plist-get call-spec :arguments))
+                      ((stringp arguments)))
+            (ignore-errors (plist-put call-spec :args
+                                      (gptel--json-read-string arguments))))
        (plist-put call-spec :arguments nil)
        (plist-put call-spec :id (plist-get tool-call :id))
        collect call-spec into tool-use

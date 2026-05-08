@@ -2302,12 +2302,15 @@ injects the results into the prompt data and transitions the FSM."
            "preset-debug" t))
         (mapc                           ; Construct function calls
          (lambda (tool-call)
-           (letrec ((args (plist-get tool-call :args))
+           (letrec ((args (or (plist-get tool-call :args) '()))
                     (name (plist-get tool-call :name))
                     (tool-spec (cl-find-if (lambda (ts) (equal (gptel-tool-name ts) name))
                                            (plist-get info :tools)))
                     (process-tool-result (apply-partially #'gptel--process-tool-call
                                                           fsm tool-spec tool-call)))
+             (when (and tool-spec (null (plist-get tool-call :args)))
+               (gptel--log (format "Tool %s called with nil :args (JSON parse failed or empty arguments)" name)
+                           "tool-error" t))
              (when (eq gptel-log-level 'debug)
                (gptel--log
                 (format "handle-tool-use: creating closure for tool=%s fsm=%s tool-spec=%s confirm-pending=%s"
