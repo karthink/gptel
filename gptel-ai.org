@@ -3852,6 +3852,7 @@ and the rest appears as orphaned body text on subsequent lines.
 
 **** Origin
 - From deep research root cause analysis of PENDING-inside-REASONING bug ([[*PENDING tool call injected inside REASONING block instead of after its TERMINE][parent task]]).
+- *Test case confirmed:* [[file:test/gptel-org-reasoning-ib-test.el][gptel-org-reasoning-ib-streaming-end-to-end]] (commit =e637942=).
 
 **** Discussion highlights
 The first-chunk handler in =gptel--display-reasoning-stream= rewinds
@@ -3863,11 +3864,21 @@ REASONING subtree), and any subsequent =gptel--org-insert-heading= call
 (for tool results) uses this contaminated marker — landing tool results
 inside the closed REASONING subtree.
 
-,*Fix:* In the end-of-stream handler, after closing the reasoning IB and
-before inserting the separator, reposition =tracking-marker= to
-=org-end-of-subtree= of the REASONING heading:
+*Test evidence (2025-07-09):* The end-to-end test
+=gptel-org-reasoning-ib-streaming-end-to-end= fails at Step 2:
+reasoning body text =I need to calculate...= appears *before* the
+=* REASONING= heading instead of inside the REASONING subtree.
+This confirms =tracking-marker= ends up positioned before the heading
+after the first-chunk rewind + title extraction sequence — the body
+streaming phase is also affected, not just end-of-stream.
 
-,#+begin_src elisp
+*Fix has two parts:*
+
+*Part 1 — End-of-stream:* In the end-of-stream handler, after closing
+the reasoning IB and before inserting the separator, reposition
+=tracking-marker= to =org-end-of-subtree= of the REASONING heading:
+
+#+begin_src elisp
 (gptel-org--reasoning-close-indirect-buffer)
 ;; Move tracking-marker past the closed REASONING subtree
 (when-let* ((reasoning-pos (plist-get info :reasoning-heading-pos))
@@ -3880,19 +3891,40 @@ before inserting the separator, reposition =tracking-marker= to
         (move-marker tm (point))))))
 ;; Now insert separator at safe position
 (gptel-curl--stream-insert-response gptel-response-separator info t)
-,#+end_src
+#+end_src
+
+*Part 2 — Body streaming (heading creation rewind):* The
+=tracking-marker= rewind in the first-chunk handler (=gptel.el:~2300-2306=)
+uses =gptel-org-ib-streaming-marker= which, under CSTR-2 (no TERMINE in
+IB), falls back to a =point-marker= at the end of the heading line in the
+IB.  After title extraction via =replace-match=, the marker may end up
+at an incorrect position.  *Needs investigation:* why does tracking-marker
+land before the REASONING heading?  Possible causes:
+- =replace-match= inside title extraction adjusts the marker unexpectedly
+- =gptel-org-ib-streaming-marker= fallback returns a position that
+  doesn't account for the =*= heading prefix
+- The IB's =point-max= fallback interacts poorly with =org-end-of-subtree=
+  for single-line subtrees
+
+*Alternative approach:* Instead of rewinding tracking-marker to inside
+the IB, keep tracking-marker *after* the REASONING heading and stream
+reasoning body through the IB's own insertion mechanism.  This avoids
+the fragile marker dance entirely.
 
 **** Mission
 1. Read =gptel--display-reasoning-stream= in =quelpa/build/gptel/gptel.el=
-   (end-of-stream handler, lines ~2233-2255).
-2. After =gptel-org--reasoning-close-indirect-buffer= and before the
+   (first-chunk handler ~2278-2310, end-of-stream handler ~2233-2255).
+2. *Part 1:* After =gptel-org--reasoning-close-indirect-buffer= and before the
    separator insertion, reposition =:tracking-marker= to the end of the
    REASONING subtree (=org-end-of-subtree t=).
-3. Ensure the separator is inserted at the repositioned marker.
-4. Run tests and manual verification.
+3. *Part 2:* Debug why body text lands before REASONING heading.  Consider
+   adding debug-log statements to =gptel-org--debug= at each marker move.
+4. Run the new test: =gptel-org-reasoning-ib-streaming-end-to-end=
+5. Run full test suite.
 
 **** Verification
 - Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
+- Specifically: =gptel-org-reasoning-ib-streaming-end-to-end= must pass
 - Manual test: trigger DeepSeek reasoning + tool call in playground-ws.org
 
 *** AI-DO Fix duplicate TERMINE seeding on multi-IB sequence
