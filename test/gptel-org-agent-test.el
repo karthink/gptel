@@ -1187,24 +1187,21 @@ to AI-DONE with its tag removed."
             (kill-buffer indirect-buf)))))))
 
 (ert-deftest gptel-org-agent-respond-text-no-same-line-terminator ()
-  "Regression: streamed RESPOND text must not concatenate onto TERMINE.
+  "CSTR-2/3: streamed RESPOND text stays separate from TERMINE.
 
-Reproduces the playground-ws.org L102 symptom: when the streaming
-insertion path appends body text at the streaming-marker (pinned
-at the IB's `point-max' with insertion-type nil — which corresponds
-in the base buffer to the BOL of the sibling TERMINE) and the final
-chunk does not end with a newline, the TERMINE heading line is
-absorbed onto the body line, surfacing as e.g.
+Per CSTR-2, `gptel-org-ib-create-heading' inserts a blank body
+\(a single newline) after the indirect-buffer heading, and the IB's
+narrowing ends at that newline.  `gptel-org-ib-streaming-marker'
+returns a marker pinned at the IB's point-max with insertion-type
+nil, which in the base buffer corresponds to the blank line
+immediately before the sibling TERMINE heading.  Therefore even
+when the streaming insertion path appends body text without a
+trailing newline, TERMINE remains on its own line at column 0
+because the pre-existing newline separates them.
 
-  The system is ready for further operations.** TERMINE
-
-Per CSTR-2/3, TERMINE is a sibling of the AI-DOING heading at the
-agent/task level (level 2 in this test), seeded by
-`gptel-org-agent--setup-task-subtree'.  TERMINE lives OUTSIDE the
-IB's narrowing.  The post-response BOL guard
-\(`gptel-org-agent--ensure-bol-before-terminator') widens to scan
-the base buffer for any `*+ TERMINE' on the same line as body
-text, and restores TERMINE to its own line at column 0."
+The post-response BOL guard
+\(`gptel-org-agent--ensure-bol-before-terminator') is a belt-and-
+suspenders no-op when CSTR-2/3 has already done its job."
   (let ((org-inhibit-startup t)
         (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "FEEDBACK"
                                        "|" "AI-DONE" "TERMINE")))
@@ -1238,31 +1235,41 @@ text, and restores TERMINE to its own line at column 0."
               ;; `gptel-org-ib-streaming-marker' (CSTR-2/3: pinned at
               ;; IB's point-max with insertion-type nil because a base-
               ;; buffer terminator exists) and insert body text WITHOUT
-              ;; a trailing newline — the same shape the LLM produced
-              ;; in the playground-ws.org bug.
+              ;; a trailing newline.
               (with-current-buffer indirect-buf
                 (let ((m (gptel-org-ib-streaming-marker "TERMINE")))
                   (should (markerp m))
                   (should-not (marker-insertion-type m))
                   (goto-char m)
                   (insert "The system is ready for further operations.")))
-              ;; Sanity: bug state — TERMINE on same line as body in
-              ;; the base buffer.  Search via widened scan since
-              ;; TERMINE is outside any IB's narrowing.
+              ;; Verify correct CSTR-2/3 behavior: TERMINE is already
+              ;; on its own line at column 0 in the base buffer — the
+              ;; pre-existing newline from CSTR-2/3 separates it from
+              ;; the inserted body text.
               (with-current-buffer base-buf
                 (save-excursion
                   (save-restriction
                     (widen)
                     (goto-char (point-min))
+                    ;; TERMINE is NOT on the same line as body text.
+                    (should-not (re-search-forward
+                                 "operations\\.\\*+ TERMINE" nil t))
+                    ;; TERMINE is on its own line, separated by newline.
+                    (goto-char (point-min))
                     (should (re-search-forward
-                             "operations\\.\\*+ TERMINE" nil t)))))
-              ;; Run the post-response BOL guard from the IB context
-              ;; (it widens internally to fix the base buffer).
+                             "operations\\.\n\\*+ TERMINE" nil t))
+                    ;; And the TERMINE heading is at column 0.
+                    (goto-char (point-min))
+                    (should (re-search-forward "^\\*+ TERMINE\\b" nil t))
+                    (goto-char (match-beginning 0))
+                    (should (org-at-heading-p)))))
+              ;; Belt-and-suspenders: run the post-response BOL guard
+              ;; from the IB context.  Since CSTR-2/3 has already kept
+              ;; TERMINE separate, this should be a no-op.
               (with-current-buffer indirect-buf
                 (gptel-org-agent--ensure-bol-before-terminator nil nil))
-              ;; Assert: TERMINE now starts at column 0 on its own
-              ;; line in the base buffer, with body text terminated
-              ;; by a newline.
+              ;; Verify the guard didn't break anything: TERMINE is
+              ;; still on its own line at column 0.
               (with-current-buffer base-buf
                 (save-excursion
                   (save-restriction
@@ -1273,8 +1280,6 @@ text, and restores TERMINE to its own line at column 0."
                     (goto-char (point-min))
                     (should (re-search-forward
                              "operations\\.\n\\*+ TERMINE" nil t))
-                    ;; And the TERMINE heading is recognised by org as a
-                    ;; heading at column 0.
                     (goto-char (point-min))
                     (should (re-search-forward "^\\*+ TERMINE\\b" nil t))
                     (goto-char (match-beginning 0))
