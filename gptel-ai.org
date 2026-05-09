@@ -3848,10 +3848,27 @@ and the rest appears as orphaned body text on subsequent lines.
 - Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
 - Manual test: trigger DeepSeek reasoning + tool call in playground-ws.org
 
-*** AI-DO Fix tracking-marker restoration after reasoning IB close
+*** AI-DONE Fix tracking-marker restoration after reasoning IB close
 
 **** Origin
 - From deep research root cause analysis of PENDING-inside-REASONING bug ([[*PENDING tool call injected inside REASONING block instead of after its TERMINE][parent task]]).
+
+**** Outcomes / Results
+- *Part 1 — End-of-stream:* Added =tracking-marker= repositioning past
+  REASONING subtree after IB close + before separator insertion in
+  =gptel--display-reasoning-stream= (=gptel.el=).
+- *Part 2 — Body streaming:* Fixed =gptel-org-ib--compute-subtree-region=
+  (=gptel-indirect-buffer.el=): added =(goto-char (line-end-position))=
+  before the newline guard so it fires correctly for heading-only
+  subtrees where =org-end-of-subtree t= stops before trailing whitespace.
+  Root cause: on a single-line heading like ="* REASONING "=,
+  =org-end-of-subtree t= stops at the trailing space (char-after = 0x20),
+  not the =\n= (0x0a), so the guard misfired. The IB was narrowed without
+  the newline, causing =gptel-org-ib-streaming-marker= to return a
+  marker inside the heading line; =replace-match= then dragged it to
+  the heading start, causing body text to insert before REASONING.
+- *Test:* =gptel-org-reasoning-ib-streaming-end-to-end= passes.
+  Full suite: 481/482 pass (1 pre-existing failure, 3 skipped).
 - *Test case confirmed:* [[file:test/gptel-org-reasoning-ib-test.el][gptel-org-reasoning-ib-streaming-end-to-end]] (commit =e637942=).
 
 **** Discussion highlights
