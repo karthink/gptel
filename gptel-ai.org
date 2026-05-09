@@ -4580,7 +4580,7 @@ After CSTR-3:
 - Remaining per the Mission: integration test =cstr-end-to-end-agent-task=,
   hand-test, grep audit for obsolete call sites.
 
-***** TODO Follow-up: Fix failing test gptel-org-agent-respond-text-no-same-line-terminator
+*** TODO Follow-up: Fix failing test gptel-org-agent-respond-text-no-same-line-terminator
 - The test reproduces a bug where streamed body text without trailing
   newline gets concatenated onto the TERMINE heading line.
 - Under CSTR, TERMINE is at task level (outside IB narrowing), and the
