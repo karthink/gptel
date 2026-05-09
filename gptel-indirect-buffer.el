@@ -1138,9 +1138,12 @@ buffer)."
       (goto-char heading-pos)
       (let* ((beg (pos-bol))
              (end (progn (org-end-of-subtree t)
-                         ;; org-end-of-subtree may leave point before the
-                         ;; trailing newline.  Advance past it so the
-                         ;; narrowed region includes the line terminator.
+                         ;; org-end-of-subtree on a heading-only subtree
+                         ;; may stop before trailing whitespace (e.g. at
+                         ;; "G" in "* REASONING "), so (char-after) is
+                         ;; space, not \n, and the guard misfires.
+                         ;; Explicitly advance to end-of-line first.
+                         (goto-char (line-end-position))
                          (when (eq (char-after) ?\n)
                            (forward-char 1))
                          (point))))

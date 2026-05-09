@@ -2248,6 +2248,18 @@ for streaming responses only."
                       ;; (separator would expand the IB's narrowed region)
                       (gptel-org--debug "reasoning-stream: closing reasoning IB")
                       (gptel-org--reasoning-close-indirect-buffer)
+                      ;; Move tracking-marker past the closed REASONING
+                      ;; subtree so the separator (and any subsequent
+                      ;; tool call headings) land after REASONING, not
+                      ;; inside it.
+                      (when-let* ((reasoning-pos (plist-get info :reasoning-heading-pos))
+                                  (tm (plist-get info :tracking-marker)))
+                        (with-current-buffer (marker-buffer tm)
+                          (save-excursion
+                            (goto-char reasoning-pos)
+                            (when (org-at-heading-p)
+                              (org-end-of-subtree t)
+                              (move-marker tm (point))))))
                       ;; Insert separator
                       (gptel-curl--stream-insert-response
                        gptel-response-separator info t)
