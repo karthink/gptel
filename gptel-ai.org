@@ -4966,6 +4966,33 @@ Can be deferred until the classical response-title path is retired.
 The scaffolding helper =gptel-org--insert-respond-heading= shipped
 in IB-4.6 is the intended entry point for the shaping logic.
 
+******* Origin
+- Observed in user's [[file:../siro-ai/playground-ws.org::*Calculate 2 + 2][Calculate 2 + 2]] playground task: response text
+  ="2 + 2 = 4"= injected directly under =AI-DOING= without a =RESPOND=
+  wrapper, causing output to appear inside the =REASONING= block.
+
+******* Wire-point analysis
+- Entry point: =gptel-curl--stream-insert-response= (gptel.el ~L1995),
+  =(pred stringp)= branch, first-chunk detection via =unless
+  tracking-marker= block.
+- However, when reasoning is active, =tracking-marker= already exists
+  by the time normal text arrives → need separate
+  =:respond-heading-inserted= plist guard flag.
+- Insert =* RESPOND \n= via =gptel--org-insert-heading= (mirroring
+  REASONING heading pattern), store =:respond-heading-pos=, then
+  stream body text normally.
+- Deferred title extraction: =gptel--format-keyword-heading-org= can
+  extract title from first non-empty line (same as REASONING pattern).
+
+******* Test coverage
+- Test =gptel-org-respond-heading-missing-during-streaming= added to
+  [[file:test/gptel-org-reasoning-ib-test.el]] (=:expected-result :failed=)
+  — demonstrates current broken behavior: 3 headings (Project → Task →
+  REASONING), response text bare.  Will pass (4 headings including
+  =RESPOND=) when IB-4.6b is wired.
+- Existing =gptel-org-reasoning-ib-streaming-end-to-end= continues to
+  pass (Step 4 only checks response text position, not heading wrapping).
+
 ******* DONE IB-4.7 AI-DO depth validator
 - files: =gptel-org-agent.el= (new defconst
   =gptel-org-agent--ai-do-family-keywords=, new defuns
