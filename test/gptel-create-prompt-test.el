@@ -466,6 +466,124 @@ Some details")))))
 
 
 ;;; TODO(cache) With gptel-cache
+
+(defvar gptel-test-cache-model
+  (let ((sym (make-symbol "gptel-test-cache-model")))
+    (put sym :capabilities '(cache))
+    sym)
+  "Test model that supports Anthropic prompt caching.")
+
+(defvar gptel-test-no-cache-model
+  (let ((sym (make-symbol "gptel-test-no-cache-model")))
+    (put sym :capabilities '(media tool json))
+    sym)
+  "Test model without cache capability.")
+
+(defun gptel-test--has-cache-control-p (obj)
+  "Return t if OBJ contains a :cache_control key anywhere in its structure."
+  (cond
+   ((vectorp obj)
+    (cl-loop for elt across obj
+             thereis (gptel-test--has-cache-control-p elt)))
+   ((consp obj)
+    (or (and (keywordp (car obj))
+             (eq (car obj) :cache_control))
+        (gptel-test--has-cache-control-p (car obj))
+        (gptel-test--has-cache-control-p (cdr obj))))
+   (t nil)))
+
+;; Test 1: Single-part system message gets cache_control when gptel-cache is t
+(ert-deftest gptel-test-cache-system-single ()
+  (with-gptel-chat-file
+   "examples/prompt-creation.md" anthropic gptel-test-cache-model
+   (let ((gptel-cache t)
+         (gptel--system-message "You are a test assistant."))
+     (let* ((prompts (gptel--create-prompt 1792))
+            (request-data (gptel--request-data gptel-backend prompts))
+            (system (plist-get request-data :system)))
+       (should system)
+       (should (vectorp system))
+       (should (equal 1 (length system)))
+       (should (equal '(:type "ephemeral")
+                      (plist-get (aref system 0) :cache_control)))))))
+
+;; Test 2: Multi-part system message -- only the last part gets cache_control
+(ert-deftest gptel-test-cache-system-multi ()
+  (with-gptel-chat-file
+   "examples/prompt-creation.md" anthropic gptel-test-cache-model
+   (let ((gptel-cache t)
+         (gptel--system-message
+          '("Part one." "Part two." "Part three.")))
+     (let* ((prompts (gptel--create-prompt 1792))
+            (request-data (gptel--request-data gptel-backend prompts))
+            (system (plist-get request-data :system)))
+       (should system)
+       (should (vectorp system))
+       (should (equal 3 (length system)))
+       (should-not (plist-get (aref system 0) :cache_control))
+       (should-not (plist-get (aref system 1) :cache_control))
+       (should (equal '(:type "ephemeral")
+                      (plist-get (aref system 2) :cache_control)))))))
+
+;; Test 3: Tool caching -- only the last tool gets cache_control
+(ert-deftest gptel-test-cache-tool ()
+  (with-gptel-chat-file
+   "examples/prompt-creation.md" anthropic gptel-test-cache-model
+   (let ((gptel-cache t)
+         (gptel-use-tools t)
+         (gptel-tools
+          (list (gptel-make-tool
+                 :name "test_tool_1"
+                 :function (lambda () 1)
+                 :description "First test tool"
+                 :args nil)
+                (gptel-make-tool
+                 :name "test_tool_2"
+                 :function (lambda () 2)
+                 :description "Second test tool"
+                 :args nil))))
+     (let* ((prompts (gptel--create-prompt 1792))
+            (request-data (gptel--request-data gptel-backend prompts))
+            (tools (plist-get request-data :tools)))
+       (should tools)
+       (should (vectorp tools))
+       (should (equal 2 (length tools)))
+       (should-not (plist-get (aref tools 0) :cache_control))
+       (should (equal '(:type "ephemeral")
+                      (plist-get (aref tools 1) :cache_control)))))))
+
+;; Test 4: Message caching -- last message gets cache_control
+(ert-deftest gptel-test-cache-message ()
+  (with-gptel-chat-file
+   "examples/prompt-creation.md" anthropic gptel-test-cache-model
+   (let ((gptel-cache t))
+     (let* ((prompts (gptel--create-prompt 1792))
+            (last-msg (car (last prompts)))
+            (content (plist-get last-msg :content)))
+       (should content)
+       (should (vectorp content))
+       (should (equal '(:type "ephemeral")
+                      (plist-get (aref content 0) :cache_control)))
+       (dolist (msg (butlast prompts))
+         (should-not (gptel-test--has-cache-control-p msg)))))))
+
+;; Test 5: No cache_control anywhere when gptel-cache is nil
+(ert-deftest gptel-test-cache-no-cache-when-nil ()
+  (with-gptel-chat-file
+   "examples/prompt-creation.md" anthropic gptel-test-cache-model
+   (let ((gptel-cache nil))
+     (let* ((prompts (gptel--create-prompt 1792))
+            (request-data (gptel--request-data gptel-backend prompts)))
+       (should-not (gptel-test--has-cache-control-p request-data))))))
+
+;; Test 6: No cache_control when model lacks cache capability
+(ert-deftest gptel-test-cache-no-capability ()
+  (with-gptel-chat-file
+   "examples/prompt-creation.md" anthropic gptel-test-no-cache-model
+   (let ((gptel-cache t))
+     (let* ((prompts (gptel--create-prompt 1792))
+            (request-data (gptel--request-data gptel-backend prompts)))
+       (should-not (gptel-test--has-cache-control-p request-data))))))
 ;;; Bounds v2 Testing
 
 ;; Tests for the new bounds format: ((response (N1 N2) ...) (tool (N3 N4) ...))

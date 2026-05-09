@@ -4037,7 +4037,7 @@ error or misbehavior.
 - Changed =mapcar= → iterating with index to only =nconc= =cache_control= on the final element
 - Tests pass.
 
-*** AI-DOING Add Anthropic prompt caching tests
+*** AI-DONE Add Anthropic prompt caching tests
 :PROPERTIES:
 :GPTEL_PRESET: gptel-coordinator
 :END:
@@ -4059,7 +4059,16 @@ placeholder.  Need tests for:
 1. Add prompt-caching tests to =gptel-create-prompt-test.el= (or new test file).
 2. Run tests to confirm.
 
-- Manual test: trigger DeepSeek reasoning + tool call in playground-ws.org
+**** Outcomes / Results
+- Added 6 =ert-deftest= tests to =gptel-create-prompt-test.el=:
+  1. =gptel-test-cache-system-single= — single-part system message gets =cache_control=
+  2. =gptel-test-cache-system-multi= — only last part of multi-part system message gets =cache_control=
+  3. =gptel-test-cache-tool= — only last tool gets =cache_control=
+  4. =gptel-test-cache-message= — last message gets =cache_control=
+  5. =gptel-test-cache-no-cache-when-nil= — no =cache_control= when =gptel-cache= is =nil=
+  6. =gptel-test-cache-no-capability= — no =cache_control= when model lacks =cache= capability
+- Also added helper: =gptel-test--has-cache-control-p= (recursive predicate)
+- All 6 tests pass (0 failures).
 
 ** Researched TODOs
 *** AI-DONE Fix TERMINE: move from child-level to sibling-level for proper IB isolation
