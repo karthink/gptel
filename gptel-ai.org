@@ -4966,12 +4966,12 @@ Can be deferred until the classical response-title path is retired.
 The scaffolding helper =gptel-org--insert-respond-heading= shipped
 in IB-4.6 is the intended entry point for the shaping logic.
 
-******* Origin
+******** Origin
 - Observed in user's [[file:../siro-ai/playground-ws.org::*Calculate 2 + 2][Calculate 2 + 2]] playground task: response text
   ="2 + 2 = 4"= injected directly under =AI-DOING= without a =RESPOND=
   wrapper, causing output to appear inside the =REASONING= block.
 
-******* Wire-point analysis
+******** Wire-point analysis
 - Entry point: =gptel-curl--stream-insert-response= (gptel.el ~L1995),
   =(pred stringp)= branch, first-chunk detection via =unless
   tracking-marker= block.
@@ -4984,7 +4984,7 @@ in IB-4.6 is the intended entry point for the shaping logic.
 - Deferred title extraction: =gptel--format-keyword-heading-org= can
   extract title from first non-empty line (same as REASONING pattern).
 
-******* Test coverage
+******** Test coverage
 - Test =gptel-org-respond-heading-missing-during-streaming= added to
   [[file:test/gptel-org-reasoning-ib-test.el]] (=:expected-result :failed=)
   — demonstrates current broken behavior: 3 headings (Project → Task →
