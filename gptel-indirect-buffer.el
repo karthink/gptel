@@ -909,7 +909,7 @@ Point must be on the parent heading."
                "use `gptel-org-ib-resolve-or-seed-terminator' instead"
                "0.10.0")
 
-(defun gptel-org-ib-remove-terminator (heading-keyword)
+(cl-defun gptel-org-ib-remove-terminator (heading-keyword)
   "Remove the terminator child heading matching HEADING-KEYWORD.
 Point must be on the parent heading.
 
