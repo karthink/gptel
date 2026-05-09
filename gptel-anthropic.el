@@ -238,12 +238,13 @@ Mutate state INFO with response metadata."
        prompts-plist :system
        (cond
         ((consp gptel--system-message)  ;multi-part system message
-         (vconcat (mapcar (lambda (part)
-                            (nconc (list :type "text" :text part)
-                                   (and cachep
-                                        (list :cache_control
-                                              '(:type "ephemeral")))))
-                          gptel--system-message)))
+         (let ((parts (vconcat (mapcar (lambda (part)
+                                         (list :type "text" :text part))
+                                       gptel--system-message))))
+           (when cachep
+             (nconc (aref parts (1- (length parts)))
+                    '(:cache_control (:type "ephemeral"))))
+           parts))
         (cachep `[(:type "text" :text ,gptel--system-message
                          :cache_control (:type "ephemeral"))])
         (t gptel--system-message))))
