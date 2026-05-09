@@ -4580,18 +4580,27 @@ After CSTR-3:
 - Remaining per the Mission: integration test =cstr-end-to-end-agent-task=,
   hand-test, grep audit for obsolete call sites.
 
-*** TODO Follow-up: Fix failing test gptel-org-agent-respond-text-no-same-line-terminator
-- The test reproduces a bug where streamed body text without trailing
-  newline gets concatenated onto the TERMINE heading line.
-- Under CSTR, TERMINE is at task level (outside IB narrowing), and the
-  streaming marker pins at IB =point-max= with CSTR-aware logic.
-- The "bug state" assertion (=re-search-forward "operations\\.\\*+ TERMINE"=)
-  fails — body text no longer lands on the TERMINE line.
-- Investigate whether the CSTR streaming-marker placement already fixes
-  the concatenation issue; if so, restructure the test to verify the
-  correct behavior directly rather than reproducing-then-fixing.
-- Commit prefix: =fix(test): ...=
-  Optional follow-up; not blocking CSTR landing.
+*** AI-DONE Follow-up: Fix failing test gptel-org-agent-respond-text-no-same-line-terminator
+CLOSED: [2026-04-30]
+** Origin
+- Test =gptel-org-agent-respond-text-no-same-line-terminator= was
+  failing: the "bug state" assertion expected body text concatenated
+  onto the TERMINE heading line, but CSTR-2/3 already prevents this.
+** Outcomes / Results
+- Root cause: =gptel-org-ib-create-heading= inserts a blank body =\n=
+  after the heading, and =gptel-org-ib--compute-subtree-region= ends
+  the IB's narrowing at that =\n= (not at =*= of TERMINE).  The
+  streaming marker therefore lands before the blank =\n=, which acts
+  as a permanent separator.  The bug state (=operations.** TERMINE=)
+  cannot occur through this code path.
+- Fix: Restructured the test to verify correct behavior directly —
+  TERMINE is on its own line from the start (CSTR-2/3 prevention).
+  Removed the bug-state assertion and added verification that
+  =ensure-bol-before-terminator= is a safe no-op when CSTR has already
+  handled the newline.
+- Commit: 14a2a5f (=fix(test): restructure no-same-line-terminator
+  test for CSTR-correct behavior=)
+- All 485 tests pass, 0 failures.
 
 *** Unified gptel-org-mode Refactoring
 **** Phase 1: Fix variable rename — DONE
