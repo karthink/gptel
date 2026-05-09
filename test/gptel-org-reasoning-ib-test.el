@@ -15,7 +15,8 @@ tags such as `:agent@agent:'."
   (declare (indent 1))
   `(let ((org-inhibit-startup t)
          (org-todo-keywords '((sequence "AI-DO" "AI-DOING" "|" "AI-DONE")))
-         (gptel-org-todo-keywords '("AI-DO" "AI-DOING")))
+         (gptel-org-todo-keywords '("AI-DO" "AI-DOING"))
+         (gptel-org-use-todo-keywords t))
      (with-temp-buffer
        (delay-mode-hooks (org-mode))
        (org-set-regexps-and-options)

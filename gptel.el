@@ -2022,16 +2022,79 @@ Optional RAW disables text properties and transformation."
              (setq tracking-marker (set-marker (make-marker) (point)))
              (set-marker-insertion-type tracking-marker t)
              (plist-put info :tracking-marker tracking-marker))
-           (goto-char tracking-marker)
-           (unless raw
-             (when transformer
-               (setq response (funcall transformer response)))
-             (add-text-properties
-              0 (length response) '(gptel response front-sticky (gptel))
-              response))
-           ;; (run-hooks 'gptel-pre-stream-hook)
-           (insert response)
-           (run-hooks 'gptel-post-stream-hook)))))
+           ;; Insert RESPOND heading on first string chunk (org + keyword mode only)
+           (when (and (not raw)
+                      (derived-mode-p 'org-mode)
+                      (bound-and-true-p gptel-org-use-todo-keywords)
+                      (not (plist-get info :reasoning-heading-pos))
+                      (not (plist-get info :respond-heading-inserted)))
+             (plist-put info :respond-heading-inserted t)
+             (plist-put info :respond-title-pending t)
+             (plist-put info :respond-title-buffer "")
+             (let ((heading-pos (gptel--org-insert-heading "* RESPOND /\n" info)))
+               (plist-put info :respond-heading-pos heading-pos)))
+           (if (and (not raw)
+                    (plist-get info :respond-title-pending))
+               ;; Title extraction FSM
+               (let* ((buf (concat (plist-get info :respond-title-buffer) response))
+                      (newline-pos (string-match "\n" buf)))
+                 (if newline-pos
+                     ;; Found newline — extract title, update heading, stream rest
+                     (let ((title (string-trim (substring buf 0 newline-pos)))
+                           (rest (substring buf (1+ newline-pos))))
+                       ;; Update heading with extracted title
+                       (when-let* (((not (string-empty-p title)))
+                                   (rpos (plist-get info :respond-heading-pos)))
+                         (save-excursion
+                           (goto-char rpos)
+                           (when (looking-at "^\\(\\*+ RESPOND\\) /$")
+                             (let ((inhibit-read-only t)
+                                   (inhibit-modification-hooks t))
+                               (replace-match (concat (match-string 1) " " title))
+                               (org-element-cache-reset)))))
+                       (plist-put info :respond-title-pending nil)
+                       ;; Stream rest as body (if any)
+                       (unless (string-empty-p rest)
+                         (let ((prop-rest (copy-sequence
+                                           (gptel--strip-leading-star rest))))
+                           (unless raw
+                             (when transformer
+                               (setq prop-rest (funcall transformer prop-rest)))
+                             (add-text-properties
+                              0 (length prop-rest)
+                              '(gptel response front-sticky (gptel)) prop-rest))
+                           (goto-char tracking-marker)
+                           (insert prop-rest)
+                           (run-hooks 'gptel-post-stream-hook)))
+                       ;; If rest was empty, next chunk needs star-stripping
+                       (when (string-empty-p rest)
+                         (plist-put info :respond-rest-starting t)))
+                   ;; No newline yet — accumulate and insert as body
+                   (plist-put info :respond-title-buffer buf)
+                   (goto-char tracking-marker)
+                   (unless raw
+                     (when transformer
+                       (setq response (funcall transformer response)))
+                     (add-text-properties
+                      0 (length response)
+                      '(gptel response front-sticky (gptel)) response))
+                   (insert response)
+                   (run-hooks 'gptel-post-stream-hook)))
+             ;; Title already extracted — stream body normally
+             (let ((body-text
+                    (if (plist-get info :respond-rest-starting)
+                        (prog1 (gptel--strip-leading-star response)
+                          (plist-put info :respond-rest-starting nil))
+                      response)))
+               (goto-char tracking-marker)
+               (unless raw
+                 (when transformer
+                   (setq body-text (funcall transformer body-text)))
+                 (add-text-properties
+                  0 (length body-text)
+                  '(gptel response front-sticky (gptel)) body-text))
+               (insert body-text)
+               (run-hooks 'gptel-post-stream-hook)))))))
     (`(reasoning . ,text)
      (gptel--display-reasoning-stream text info))
     (`(tool-call . ,tool-calls)
@@ -2269,7 +2332,10 @@ for streaming responses only."
                           (save-excursion
                             (goto-char reasoning-pos)
                             (when (org-at-heading-p)
-                              (org-fold-subtree t))))))
+                              (org-fold-subtree t)))))
+                      ;; Clear reasoning state so subsequent response
+                      ;; text can trigger RESPOND heading creation
+                      (plist-put info :reasoning-heading-pos nil))
                   ;; Markdown: close ``` block
                   (gptel-curl--stream-insert-response
                    (concat (propertize "\n```" 'gptel 'ignore
