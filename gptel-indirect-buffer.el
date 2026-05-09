@@ -1487,7 +1487,7 @@ nil if the situation is unrecoverable."
 
 ;;; ---- Re-narrowing ---------------------------------------------------------
 
-(defun gptel-org-ib-renarrow (indirect-buffer)
+(cl-defun gptel-org-ib-renarrow (indirect-buffer)
   "Re-narrow INDIRECT-BUFFER to its heading's current subtree bounds.
 
 Used when the subtree boundaries may have shifted (e.g., after edits
