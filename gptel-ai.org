@@ -3982,6 +3982,78 @@ about IB-7).  Ensure:
 
 **** Verification
 - Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
+
+*** AI-DO Fix multi-part system message Anthropic cache_control placement
+:PROPERTIES:
+:GPTEL_PRESET: gptel-coordinator
+:END:
+
+**** Origin
+- Found during verification of Anthropic prompt caching implementation.
+
+**** Discussion highlights
+In =gptel-anthropic.el= (lines 237-243), when =gptel--system-message= is a
+list (multi-part system message) and caching is enabled, =cache_control=
+is added to EVERY part via =nconc= in =mapcar=:
+
+#+begin_src elisp
+((consp gptel--system-message)
+ (vconcat (mapcar (lambda (part)
+                    (nconc (list :type "text" :text part)
+                           (and cachep
+                                (list :cache_control
+                                      '(:type "ephemeral")))))
+                  gptel--system-message)))
+#+end_src
+
+Per the Anthropic API spec: /"The cache_control parameter must be placed
+on the final content block in a content array."/ — only the LAST part
+should carry =cache_control=.  Having it on all parts may cause an API
+error or misbehavior.
+
+*Other caching paths verified correct:*
+- Single-part system message — =cache_control= on single block ✓
+- Tool caching (last tool) ✓
+- Message caching (last message, both =request-data= and =parse-buffer=) ✓
+- =anthropic-beta: extended-cache-ttl-2025-04-11= header ✓
+- All Claude models declare =cache= capability ✓
+- =cache_creation_input_tokens= / =cache_read_input_tokens= parsed ✓
+
+*No dedicated tests exist for Anthropic prompt caching.* Only a
+=TODO(cache)= placeholder in =gptel-create-prompt-test.el:468=.
+
+**** Mission
+1. Fix =gptel-anthropic.el= lines 237-243: only add =cache_control= to the
+   LAST part of a multi-part system message.
+2. Run tests: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
+
+**** Verification
+- =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
+- Visual inspection of generated JSON for multi-part system messages with cache
+  enabled.
+
+*** TODO Add Anthropic prompt caching tests
+:PROPERTIES:
+:GPTEL_PRESET: gptel-coordinator
+:END:
+
+**** Origin
+- Found during Anthropic prompt caching verification: no dedicated tests exist.
+
+**** Discussion highlights
+=gptel-create-prompt-test.el:468= has a =;;; TODO(cache) With gptel-cache=
+placeholder.  Need tests for:
+- Single-part system message gets =cache_control=
+- Multi-part system message gets =cache_control= only on last part
+- Tool definitions get =cache_control= on last tool
+- Messages get =cache_control= on last message
+- No =cache_control= when =gptel-cache= is =nil=
+- No =cache_control= when model lacks =cache= capability
+
+**** Mission
+1. Add prompt-caching tests to =gptel-create-prompt-test.el= (or new test file).
+2. Run tests to confirm.
+
 - Manual test: trigger DeepSeek reasoning + tool call in playground-ws.org
 
 ** Researched TODOs
