@@ -3983,7 +3983,7 @@ about IB-7).  Ensure:
 **** Verification
 - Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
 
-*** AI-DO Fix multi-part system message Anthropic cache_control placement
+*** AI-DONE Fix multi-part system message Anthropic cache_control placement
 :PROPERTIES:
 :GPTEL_PRESET: gptel-coordinator
 :END:
@@ -4032,7 +4032,12 @@ error or misbehavior.
 - Visual inspection of generated JSON for multi-part system messages with cache
   enabled.
 
-*** TODO Add Anthropic prompt caching tests
+**** Outcomes / Results
+- Fixed in commit =4ce7045=: =fix: only add cache_control to last part of multi-part system message=
+- Changed =mapcar= → iterating with index to only =nconc= =cache_control= on the final element
+- Tests pass.
+
+*** AI-DOING Add Anthropic prompt caching tests
 :PROPERTIES:
 :GPTEL_PRESET: gptel-coordinator
 :END:
