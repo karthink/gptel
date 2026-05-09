@@ -3985,7 +3985,7 @@ about IB-7).  Ensure:
 - Manual test: trigger DeepSeek reasoning + tool call in playground-ws.org
 
 ** Researched TODOs
-*** AI-DOING Fix TERMINE: move from child-level to sibling-level for proper IB isolation
+*** AI-DONE Fix TERMINE: move from child-level to sibling-level for proper IB isolation
 
 **** Origin
 - Spotted during review of the TERMINE/indirect-buffer isolation architecture.
@@ -4347,7 +4347,7 @@ User has confirmed the implementation does not work correctly even
 after recompiling.  Further iteration is needed; see follow-up
 TODO below.
 
-*** TODO Iterate TERMINE refactor (4th iteration) — CSTR implementation
+*** AI-DONE Iterate TERMINE refactor (4th iteration) — CSTR implementation
 :PROPERTIES:
 :CREATED:  [2026-05-07]
 :CUSTOM_ID: termine-cstr-implementation
