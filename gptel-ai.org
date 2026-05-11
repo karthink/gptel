@@ -4105,6 +4105,10 @@ Doc updates applied:
   - =gptel-org-ib-create= and end-marker initialization in =gptel-indirect-buffer.el=
   - REASONING triad transitions in the org integration layer
   - Streaming insert path: =gptel-curl--stream-insert-response= and =gptel--insert-response=
+- *Chosen streaming driver (scout result):* the canonical pattern in [[file:test/gptel-org-reasoning-ib-test.el]] drives streaming by calling =gptel-curl--stream-insert-response= directly with a minimal =info= plist (=:buffer=, =:position= marker, =:callback #'gptel-curl--stream-insert-response=, =:include-reasoning t=). No FSM, no stub backend, no real network. Reference tests already using this driver (and exact entry points to reuse):
+  - =gptel-org-reasoning-ib-streaming-end-to-end= (test/gptel-org-reasoning-ib-test.el L57) — drives =(reasoning . "...\n")= chunks, then =(reasoning . t)= sentinel, then a plain-string response chunk.
+  - =gptel-org-respond-ib-lifecycle-end-to-end= (same file, L333) — drives plain-string response chunks and fires =:post= lambdas to complete the RESPONDING → RESPONDED transition.
+  The =(reasoning . t)= sentinel runs =gptel--display-reasoning-stream= which closes the REASONING IB (no-op when =gptel-org-debug-preserve-state= is t), moves the tracking marker past =org-end-of-subtree=, inserts =gptel-response-separator=, and clears =:reasoning-heading-pos= — the latter is what enables the next plain-string chunk to auto-create the =**** RESPONDING= sibling heading via =gptel--org-insert-heading= (gptel.el L2029–2083). This is exactly the temporal sequence that exposes the =insertion-type=t= end-marker bug. The new failing test therefore reuses the =gptel-curl--stream-insert-response= driver directly, with no extra wrapping.
 
 **** Mission
 1. Scout the existing test suite under [[file:quelpa/build/gptel/test]] to identify the canonical pattern for driving streaming / FSM transitions in tests (without hitting real network). Reference: how do current tests simulate streamed reasoning + response content arriving incrementally?
