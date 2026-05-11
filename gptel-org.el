@@ -1184,12 +1184,14 @@ otherwise falls back to tag detection.
 
 In keyword mode, a heading is assistant when its TODO state has the
 \"AI-\" prefix (AI-DO, AI-DOING, AI-DONE, etc.) or is one of the
-special gptel states: REASONING, RESPOND, RESPONDING, RESPONDED,
-TOOL, RESULTS, TERMINE, PENDING, ALLOWED, DENIED.  All these states
-contain AI-authored or AI-system content.  TERMINE is the generic
-closed-vocabulary subtree terminator that will eventually replace
-RESULTS/FEEDBACK terminator headings.  RESPOND/RESPONDING/RESPONDED
-are the assistant response state triad (IB-4.6b).
+special gptel states: REASON, REASONING, REASONED, RESPOND,
+RESPONDING, RESPONDED, TOOL, RESULTS, TERMINE, PENDING, ALLOWED,
+DENIED.  All these states contain AI-authored or AI-system content.
+TERMINE is the generic closed-vocabulary subtree terminator that will
+eventually replace RESULTS/FEEDBACK terminator headings.
+REASON/REASONING/REASONED is the reasoning state triad and
+RESPOND/RESPONDING/RESPONDED is the assistant response state triad
+(IB-4.6b).
 Headings without a TODO state (plain headings) return nil here and
 inherit from their parent via `gptel-org--restore-bounds-from-tags'."
   (if gptel-org-use-todo-keywords
@@ -1197,7 +1199,8 @@ inherit from their parent via `gptel-org--restore-bounds-from-tags'."
         (let ((todo (org-get-todo-state)))
           (and todo
                (or (string-prefix-p "AI-" todo)
-                   (member todo '("REASONING" "RESPOND" "RESPONDING" "RESPONDED"
+                   (member todo '("REASON" "REASONING" "REASONED"
+                                  "RESPOND" "RESPONDING" "RESPONDED"
                                   "TOOL" "RESULTS" "TERMINE"
                                   "PENDING" "ALLOWED" "DENIED"))
                    (member todo gptel-org--ai-state-keywords)))))
@@ -2884,6 +2887,11 @@ is enabled."
 Dim, non-bold to signal that TERMINE is a terminator placeholder
 rather than primary content.")
 
+(defconst gptel-org--reasoning-state-face
+  '(:foreground "#8FBCBB" :weight light :slant italic)
+  "Face for the REASONING state triad keywords (REASON/REASONING/REASONED).
+Dimmed, light, italic to de-emphasize thinking content.")
+
 (defun gptel-org--register-todo-keywords ()
   "Register all gptel TODO keywords and their faces if needed.
 
@@ -2955,6 +2963,20 @@ corrupting subsequent heading updates."
       (when (gptel-org--ensure-todo-state-1
              "RESPONDED" gptel-org--agent-state-face t)
         (setq changed t))
+      ;; Idempotent upgrade path: splice the REASONING state triad
+      ;; (REASON, REASONING, REASONED) into the keyword sequences
+      ;; if missing.  REASONING wraps active streaming reasoning
+      ;; content in an IB (already registered in the multi-keyword
+      ;; sequence above); REASONED marks its completion on the
+      ;; success path.  REASON is the initial/transient state,
+      ;; pre-registered for symmetry/future use.  All three share
+      ;; the reasoning-state face for visual consistency.
+      (when (gptel-org--ensure-todo-state-1
+             "REASON" gptel-org--reasoning-state-face t)
+        (setq changed t))
+      (when (gptel-org--ensure-todo-state-1
+             "REASONED" gptel-org--reasoning-state-face t)
+        (setq changed t))
       ;; Register faces in org-todo-keyword-faces if missing
       (unless (assoc ai-kw org-todo-keyword-faces)
         (push (cons ai-kw gptel-org-assistant-keyword-face)
@@ -2966,7 +2988,7 @@ corrupting subsequent heading updates."
         (setq changed t))
       ;; REASONING face: dimmed/italic to de-emphasize thinking
       (unless (assoc "REASONING" org-todo-keyword-faces)
-        (push '("REASONING" . (:foreground "#8FBCBB" :weight light :slant italic))
+        (push (cons "REASONING" gptel-org--reasoning-state-face)
               org-todo-keyword-faces)
         (setq changed t))
       ;; RESPOND / RESPONDING / RESPONDED faces are registered via

@@ -2465,7 +2465,39 @@ for streaming responses only."
                                     (gptel-org-ib-streaming-marker
                                      "TERMINE")))))
                             (when-let* ((tm (plist-get info :tracking-marker)))
-                              (move-marker tm term-pos)))))))
+                              (move-marker tm term-pos)))))
+                      ;; Push a :post cleanup lambda that transitions
+                      ;; REASONING → REASONED on successful completion
+                      ;; and closes the reasoning IB as a defensive
+                      ;; fallback.  Gated on :error absence and guarded
+                      ;; with an idempotence flag.  heading-pos is
+                      ;; captured via lexical closure because
+                      ;; :reasoning-heading-pos is cleared in the
+                      ;; end-of-stream branch before :post fires.
+                      (let ((reasoning-captured-pos heading-pos)
+                            (cleanup-fn
+                             (lambda (info)
+                               (when (and (not (plist-get info :error))
+                                          (not (plist-get info :reasoned-transition-done)))
+                                 (plist-put info :reasoned-transition-done t)
+                                 (let ((buf (plist-get info :buffer)))
+                                   (when (and reasoning-captured-pos buf
+                                              (buffer-live-p buf))
+                                     (with-current-buffer buf
+                                       (save-excursion
+                                         (goto-char reasoning-captured-pos)
+                                         (when (and (org-at-heading-p)
+                                                    (string=
+                                                     (org-get-todo-state)
+                                                     "REASONING"))
+                                           (org-todo "REASONED"))))))
+                                 ;; Close the reasoning IB (idempotent — safe if
+                                 ;; already closed by end-of-stream branch on the
+                                 ;; success path, but essential on error/abort
+                                 ;; paths where the final (eq text t) sentinel
+                                 ;; never arrives)
+                                 (gptel-org--reasoning-close-indirect-buffer)))))
+                        (plist-put info :post (cons cleanup-fn (plist-get info :post))))))
                   ;; Handle title extraction from first line
                   (if (plist-get info :reasoning-title-pending)
                       (let* ((buf (concat (plist-get info :reasoning-title-buffer) text))
