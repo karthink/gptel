@@ -4206,7 +4206,7 @@ placeholder.  Need tests for:
 **** AI-DO Add RESPONDING→RESPONDED completion transition
 **** AI-DO Update tests for RESPOND triad
 
-*** AI-DO Apply IB + auto-correct + state triad to RESPOND and REASONING
+*** AI-DOING Apply IB + auto-correct + state triad to RESPOND and REASONING
 :PROPERTIES:
 :GPTEL_PRESET: gptel-coordinator
 :END:
@@ -4303,7 +4303,7 @@ placeholder.  Need tests for:
    state triad + shared task TERMINE" invariant explicitly.
 
 **** TODOs
-***** AI-DO Prerequisite: complete IB-4.6c heading-depth fix
+***** AI-DOING Prerequisite: complete IB-4.6c heading-depth fix
 - Link: [[file:gptel-ai.org::*AI-DO IB-4.6c Fix heading depth in gptel--org-insert-heading][AI-DO IB-4.6c]]
 - Must land first; RESPOND/REASONING headings need to land at correct depth
   before IB creation wraps them.
@@ -5286,7 +5286,7 @@ in IB-4.6 is the intended entry point for the shaping logic.
   pass (Step 4 only checks response text position, not heading wrapping).
 
 
-******* AI-DO IB-4.6c Fix heading depth in gptel--org-insert-heading
+******* AI-DOING IB-4.6c Fix heading depth in gptel--org-insert-heading
 =gptel--org-insert-heading= inserts headings at level 1 (single =*=)
 regardless of context.  Both REASONING and RESPOND headings are
 affected — they land at =*= level instead of inheriting the depth
