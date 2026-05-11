@@ -4076,6 +4076,148 @@ Doc updates applied:
 - An attempt during implementation to manually simulate the temporal sequence (inserting text + then a RESPONDING heading at the end-marker position) was abandoned because manual inserts do not exercise the actual streaming pipeline, so a successful repro must drive =gptel-curl--stream-insert-response= or the FSM directly.
 - Follow-up failing-test task: see sibling =AI-DO Add failing temporal-bug test for REASONING IB end-marker advancing past streaming inserts and absorbing RESPONDING heading=.
 
+*** AI-DO Fix void-variable =reasoning-captured-pos= error from parallel =let= in streaming REASONING cleanup-fn
+
+**** Origin
+
+User-reported runtime error during a streaming DeepSeek request that produced
+a REASONING heading and then transitioned to RESPOND. Backtrace:
+
+#+begin_src elisp
+  Debugger entered--Lisp error: (void-variable reasoning-captured-pos)
+    #<subr F616e6f6e796d6f75732d6c616d626461_anonymous_lambda_59>((:uuid "541c35f50493c9be5a4179187e5fae66" ...))
+    #f(compiled-function (f) #<bytecode 0x1a486eb2cc0c0d10>)(#<subr F616e6f6e796d6f75732d6c616d626461_anonymous_lambda_59>)
+    gptel--handle-post-insert(#s(gptel-fsm :state DONE ...))
+    #f(compiled-function (h) #<bytecode -0x5fb80d4c85a6085>)(gptel--handle-post-insert)
+    gptel--fsm-transition(#s(gptel-fsm :state DONE ...))
+    gptel-curl--stream-cleanup(#<process gptel-curl> "finished\n")
+#+end_src
+
+The anonymous lambda is the REASONING streaming =cleanup-fn= registered onto
+=info :post= at [[file:gptel.el::2500]]. It is invoked by
+=gptel--handle-post-insert= via =(mapc (lambda (f) (funcall f info)) (plist-get info :post))=
+when the FSM reaches DONE.
+
+**** Discussion highlights
+
+- File header: =gptel.el= uses =lexical-binding: t=, so closures capture variables by lexical reference at compile time.
+- The cleanup-fn is constructed at [[file:gptel.el::2477]] inside
+  =gptel--display-reasoning-stream= (defun at [[file:gptel.el::2327]]):
+
+  #+begin_src elisp
+    (let ((reasoning-captured-pos heading-pos)
+          (cleanup-fn
+           (lambda (info)
+             (when (and (not (plist-get info :error))
+                        (not (plist-get info :reasoned-transition-done)))
+               (plist-put info :reasoned-transition-done t)
+               (let ((buf (plist-get info :buffer)))
+                 (when (and reasoning-captured-pos buf
+                            (buffer-live-p buf))
+                   (with-current-buffer buf
+                     (save-excursion
+                       (goto-char reasoning-captured-pos)
+                       (when (and (org-at-heading-p)
+                                  (string=
+                                   (org-get-todo-state)
+                                   "REASONING"))
+                         (org-todo "REASONED"))))))
+               ;; Close the reasoning IB
+               ...))))
+      ...
+      (plist-put info :post (cons cleanup-fn (plist-get info :post))))
+  #+end_src
+
+- This is *=let= (parallel binding)*, not =let*=. Per Elisp semantics, all
+  init-forms of a =let= are evaluated in the *enclosing* lexical
+  environment before any of the new bindings are established. So when the
+  lambda init-form for =cleanup-fn= is evaluated, =reasoning-captured-pos=
+  is *not yet a lexical binding* — the lambda's reference to
+  =reasoning-captured-pos= compiles as a *free reference*. At runtime,
+  with no dynamic =defvar= for that symbol either, the lambda signals
+  =void-variable reasoning-captured-pos= when accessed.
+- Why it doesn't always fire: the offending =when= guard short-circuits
+  when =:error= or =:reasoned-transition-done= is set, so the void-variable
+  reference is only evaluated on the happy path (clean streaming finish
+  with a REASONING → RESPOND transition still pending at DONE time).
+- For comparison, the analogous RESPOND streaming cleanup at
+  [[file:gptel.el::2071]] binds *only* =cleanup-fn= in its =let= and does
+  not close over any sibling let-bound variable, so it is unaffected.
+- =heading-pos= itself is always a non-nil integer
+  (=gptel--org-insert-heading= always returns the inserted position), and
+  was deliberately captured *by value* into =reasoning-captured-pos=
+  because =:reasoning-heading-pos= is cleared on the end-of-stream
+  branch before =:post= fires (see comment block at
+  [[file:gptel.el::2469]]). The bug is purely in the binding form, not the
+  capture strategy.
+- The same buggy pattern is replicated in the test mirror at
+  [[file:test/gptel-org-reasoning-ib-test.el::494]] — it must be fixed in
+  lockstep, or the test will start failing once the production code is
+  corrected (because the test currently exercises the bug-compatible
+  shape of the lambda).
+
+**** Decisions
+
+The fix is a *one-character change*: =let= → =let*= at
+[[file:gptel.el::2477]] (and the mirror at
+[[file:test/gptel-org-reasoning-ib-test.el::494]]).
+
+Alternative considered and rejected: rewriting the closure to read the
+position from =info= via =(plist-get info :reasoning-heading-pos)= rather
+than via lexical capture. Rejected because the existing comment at
+[[file:gptel.el::2469]] documents that =:reasoning-heading-pos= is
+deliberately cleared before =:post= fires on the end-of-stream branch;
+the lexical capture is the intended design. Keep the design, fix the
+binding form.
+
+**** Mission
+
+Eliminate the =void-variable reasoning-captured-pos= runtime error by
+correcting the binding form so the cleanup lambda properly closes over
+=reasoning-captured-pos=, and prevent regression with a focused test.
+
+**** TODOs
+
+***** AI-DO Add failing test that reproduces =void-variable reasoning-captured-pos= via the DONE-state =:post= callback
+
+- Goal: a *red* ert-deftest that fires the REASONING streaming cleanup-fn
+  by walking the same code path as the user's backtrace, asserting the
+  =void-variable= signal under =lexical-binding: t=.
+- Approach: construct an =info= plist with a live buffer at an org
+  REASONING heading, no =:error= and no =:reasoned-transition-done=,
+  evaluate the exact =(let ((reasoning-captured-pos heading-pos)
+  (cleanup-fn (lambda (info) ...))) ...)= form (or call the production
+  helper that contains it), retrieve the lambda via =(plist-get info
+  :post)=, =funcall= it, and assert =(should-error ... :type
+  'void-variable)=.
+- File: =test/gptel-org-reasoning-ib-test.el=, sibling to the existing
+  narrowing tests.
+- The test must be red against current =master= and green after the
+  =let*= fix lands.
+
+***** AI-DO Apply =let= → =let*= fix in production and mirror test
+
+- Edit [[file:gptel.el::2477]]: =let= → =let*=.
+- Edit [[file:test/gptel-org-reasoning-ib-test.el::494]]: =let*= →
+  =let*= in the mirrored fixture (the test that replicates the production
+  shape).
+- Run =cd quelpa/build/gptel/test && make test 2>&1 | tail -30= and
+  confirm:
+  - The new red test from the previous TODO turns green.
+  - No pre-existing tests regress.
+
+***** AI-DO Audit other =let= forms in =gptel.el= that bind a lambda alongside a sibling variable the lambda references
+
+- Grep =gptel.el= for the pattern =(let ((... ...) (... (lambda ...)))=
+  and inspect each hit for the same parallel-binding-vs-closure-capture
+  hazard.
+- Particularly scan around all =:post= and =:cleanup= lambda
+  registrations and around any other cleanup-fn or callback construction
+  sites.
+- Report findings as a checklist; if any other sites are vulnerable,
+  spawn fixes here. If none, document the audit result and close.
+
+**** Outcomes / Results / Follow-up linked tasks
 ** Researched TODOs
 *** AI-DONE Fix TERMINE: move from child-level to sibling-level for proper IB isolation
 
