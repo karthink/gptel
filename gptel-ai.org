@@ -4080,6 +4080,11 @@ Doc updates applied:
 - This variable should be enabled for the test case
 - The behaviour of the IB content should not change when the debug variable is set
 
+****** Feedback Outcome
+- Refactored the test to run the four IB-narrowing assertions twice — once with =gptel-org-debug-preserve-state= bound to nil and once bound to t — via a =cl-flet= helper =verify-ib-narrowing=. Both iterations must produce identical narrowing bounds, asserting the invariant that the debug-preserve-state flag does not affect IB content.
+- Cleanup detail: when =debug-preserve-state= is t, =gptel-org-ib-close= is a no-op (by design — it preserves IBs for inspection), so the test manually kills the IB buffer in =unwind-protect= cleanup for that iteration. The nil iteration uses the standard =gptel-org--reasoning-close-indirect-buffer=.
+- Full suite: 496 passed, 0 failed, 3 skipped. Committed as =b28dd1d=: =test(reasoning-ib): assert bounds invariant holds under debug-preserve-state both nil and t=.
+
 *** AI-DONE Fix void-variable =reasoning-captured-pos= error from parallel =let= in streaming REASONING cleanup-fn
 
 **** Origin
