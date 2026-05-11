@@ -4218,6 +4218,110 @@ correcting the binding form so the cleanup lambda properly closes over
   spawn fixes here. If none, document the audit result and close.
 
 **** Outcomes / Results / Follow-up linked tasks
+*** AI-DO Introduce a `gptel--register-post-cleanup` helper to make closure-capture for `:post` lambdas structurally safe
+
+**** Origin
+
+Follow-up to [[*Fix void-variable =reasoning-captured-pos= error from parallel =let= in streaming REASONING cleanup-fn][the REASONING cleanup-fn =let=/=let*= bug]].
+
+The root cause of that bug was not the wrong keyword per se — it was that
+the call site /open-coded/ a closure construction inside a parallel
+=let= alongside the variables the closure was supposed to capture.  Any
+future =:post= or =:cleanup= lambda added to =gptel.el= can repeat the
+same mistake.  The audit sub-task in the parent (=Audit other =let=
+forms in =gptel.el= that bind a lambda alongside a sibling variable the
+lambda references=) catches /existing/ instances but does nothing to
+prevent /new/ ones.
+
+**** Discussion highlights
+
+- The bug-prone shape:
+
+  #+begin_src elisp
+    (let ((captured-x some-expr)
+          (cleanup-fn (lambda (info) ... captured-x ...)))   ;; <-- free reference
+      (plist-put info :post (cons cleanup-fn (plist-get info :post))))
+  #+end_src
+
+  This is exactly the pattern at [[file:gptel.el::2477]].  =let*= fixes
+  it, but every author of a future =:post= callback has to remember the
+  rule.  Code review is the only safety net.
+
+- A small helper inverts the responsibility: the helper takes the
+  values to close over /as arguments/, and the lambda is built /inside/
+  the helper where the bindings are guaranteed to be in scope:
+
+  #+begin_src elisp
+    (defun gptel--register-post-cleanup (info captured-pos cleanup-body)
+      "Push CLEANUP-BODY onto INFO :post, closing over CAPTURED-POS.
+    CLEANUP-BODY is a function of (INFO POS)."
+      (let ((fn (lambda (info)
+                  (funcall cleanup-body info captured-pos))))
+        (plist-put info :post (cons fn (plist-get info :post)))))
+  #+end_src
+
+  Call sites become declarative and impossible to get wrong:
+
+  #+begin_src elisp
+    (gptel--register-post-cleanup
+     info heading-pos
+     (lambda (info pos)
+       (when (and (not (plist-get info :error))
+                  (not (plist-get info :reasoned-transition-done)))
+         ...use POS, not a free variable...)))
+  #+end_src
+
+- This is /pure refactor/: behaviour identical, but the parallel-=let=
+  closure-capture footgun is removed from the call site.  Reviewers
+  no longer need to reason about binding order at every =:post=
+  registration.
+
+- Alternative considered: a =cl-flet= / =letrec= idiom at each call
+  site.  Rejected — it shifts the burden but doesn't eliminate it,
+  and is more verbose than a helper.
+
+- Alternative considered: keep relying on =let*= discipline + the
+  audit.  Rejected — works for known sites but offers zero protection
+  against future regressions; the cost of a tiny helper is negligible.
+
+- Scope note: this task should be picked up /after/ the parent fix and
+  audit land, so the helper is introduced against a known-good
+  baseline.  All audit-identified call sites convert to the helper in
+  the same change.
+
+**** Mission
+
+Replace ad-hoc closure-capture-into-=:post= patterns in =gptel.el= with
+a single small helper that makes the capture structurally safe, so the
+=void-variable= class of bug cannot recur in future =:post= or =:cleanup=
+lambda registrations.
+
+**** TODOs
+
+***** AI-DO Add =gptel--register-post-cleanup= helper with unit test
+
+- Add the helper near other plist/post-callback utilities in =gptel.el=
+  (locate via the existing =:post= use sites).
+- Add an ert-deftest covering: ordering preserved (LIFO push), captured
+  value reaches the cleanup body, multiple registrations compose.
+
+***** AI-DO Migrate the REASONING cleanup-fn registration site to the helper
+
+- Convert the site at (post-parent-fix) [[file:gptel.el::2477]] from the
+  open-coded =let*=/=lambda=/=plist-put= sequence to a single
+  =gptel--register-post-cleanup= call.
+- Update the mirrored fixture in
+  [[file:test/gptel-org-reasoning-ib-test.el::494]] in lockstep.
+- Run =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
+
+***** AI-DO Migrate any other =:post= registration sites surfaced by the parent task's audit
+
+- Depends on the audit checklist produced by the parent task's third
+  sub-TODO.
+- For each surfaced site, convert to =gptel--register-post-cleanup= (or
+  document why the helper does not fit and the site is benign).
+
+**** Outcomes / Results / Follow-up linked tasks
 ** Researched TODOs
 *** AI-DONE Fix TERMINE: move from child-level to sibling-level for proper IB isolation
 
