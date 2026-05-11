@@ -2239,14 +2239,40 @@ Returns the buffer position (integer) of the inserted heading."
                      (goto-char insert-marker)
                      (bolp))))
          (separator (if at-bol "" "\n"))
-         (pre-pos (marker-position insert-marker)))
+         (pre-pos (marker-position insert-marker))
+         ;; Compute target heading depth.  Callers (e.g. the
+         ;; end-of-reasoning handler) may pre-seed
+         ;; `:next-heading-sibling-level' in INFO to force the next
+         ;; heading to be a sibling of a just-closed subtree rather
+         ;; than a child of the enclosing heading.  This is needed
+         ;; because after `org-end-of-subtree' the tracking-marker
+         ;; sits at the trailing edge of the subtree but org-mode
+         ;; still considers that position to be "inside" the last
+         ;; heading, so `org-current-level' would over-nest.
+         (sibling-hint (plist-get info :next-heading-sibling-level))
+         (target-depth
+          (or sibling-hint
+              (with-current-buffer (marker-buffer insert-marker)
+                (save-excursion
+                  (goto-char insert-marker)
+                  (if-let ((level (org-current-level)))
+                      (1+ level)
+                    1)))))
+         ;; Strip caller-provided leading stars so we can prepend
+         ;; the correct depth.  Callers pass e.g. "* RESPOND /\n".
+         (heading-body (if (string-match "\\`\\*+ " heading-str)
+                           (substring heading-str (match-end 0))
+                         heading-str))
+         (heading (concat (make-string target-depth ?*) " " heading-body)))
+    (when sibling-hint
+      (plist-put info :next-heading-sibling-level nil))
     (add-text-properties
-     0 (length heading-str)
-     '(gptel ignore front-sticky (gptel)) heading-str)
+     0 (length heading)
+     '(gptel ignore front-sticky (gptel)) heading)
     (plist-put info :no-separator t)
     (unwind-protect
         (funcall (plist-get info :callback)
-                 (concat separator heading-str) info 'raw)
+                 (concat separator heading) info 'raw)
       (plist-put info :no-separator nil))
     (+ pre-pos (length separator))))
 
@@ -2319,6 +2345,14 @@ for streaming responses only."
                           (save-excursion
                             (goto-char reasoning-pos)
                             (when (org-at-heading-p)
+                              ;; Snapshot REASONING level so the next
+                              ;; heading (RESPOND) lands as its sibling,
+                              ;; not as a child of REASONING.  After
+                              ;; `org-end-of-subtree' the marker is
+                              ;; trailing the subtree but still considered
+                              ;; "inside" it by `org-current-level'.
+                              (plist-put info :next-heading-sibling-level
+                                         (org-current-level))
                               (org-end-of-subtree t)
                               (move-marker tm (point))))))
                       ;; Insert separator

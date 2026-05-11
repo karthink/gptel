@@ -186,7 +186,6 @@ Current broken behavior (what actually happens):
   I need to calculate 2+2. The answer is 4.
 
   2 + 2 = 4          ← bare, no RESPOND heading"
-  :expected-result :failed
   (gptel-org-reasoning-ib-test-with-buffer
       "* Test Project
 ** AI-DOING Test Task              :agent@agent:
