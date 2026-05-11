@@ -4076,6 +4076,10 @@ Doc updates applied:
 - An attempt during implementation to manually simulate the temporal sequence (inserting text + then a RESPONDING heading at the end-marker position) was abandoned because manual inserts do not exercise the actual streaming pipeline, so a successful repro must drive =gptel-curl--stream-insert-response= or the FSM directly.
 - Follow-up failing-test task: see sibling =AI-DO Add failing temporal-bug test for REASONING IB end-marker advancing past streaming inserts and absorbing RESPONDING heading=.
 
+***** FEEDBACK User interactive test have the =(setq gptel-org-debug-preserve-state t)= defined
+- This variable should be enabled for the test case
+- The behaviour of the IB content should not change when the debug variable is set
+
 *** AI-DONE Fix void-variable =reasoning-captured-pos= error from parallel =let= in streaming REASONING cleanup-fn
 
 **** Origin
