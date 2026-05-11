@@ -4443,6 +4443,46 @@ Doc updates applied:
 - Final test count: 497 passed, 0 unexpected, 3 skipped (up from 489 passed, 3 skipped)
 - Note: existing =gptel-org-respond-heading-missing-during-streaming= test now PASSING (was known-failure before IB-4.6c)
 
+*** AI-DO Add failing test proving REASONING IB is not narrowed and gets polluted by sibling RESPOND content
+
+**** Origin
+- User-observed bug in live AI session. After streaming a deepseek@agent sub-task, the REASONING indirect buffer's narrowed region extended past its own subtree and included the sibling RESPONDING heading plus its body. The REASONING IB should narrow strictly to the REASONING subtree (heading + body, up to but not including its next same-or-higher level sibling), but it does not — it absorbs the following RESPONDING heading.
+
+**** Discussion highlights
+- Reproduction shape observed by the user (REASONING IB content shown — note that the RESPONDING heading and body should NOT be part of the REASONING IB):
+
+  #+begin_src org
+  ,** DOING Calculate 2 + 2
+  ,*** AI-DOING Calculate 2 + 2                               :deepseek@agent:
+  ,**** REASONING THE USER HAS A SIMPLE TASK: "CALCULATE 2 + 2" WITH STATUS DOING. LET ME EVALUATE THIS USING THE EVAL TOOL - IT'S A TRIVIAL CALCULATION THAT I CAN DO INLINE WITHOUT DELEGATION.
+
+  ,**** RESPONDING 2 + 2 = 4
+  2 + 2 = 4
+  This is too trivial to warrant delegation. Can I help with something more substantive related to the Siroic AI integration project?
+  ,#+end_src
+
+- Expected: the REASONING IB narrowing covers only =**** REASONING ...= and its body, ending at the start of =**** RESPONDING ...=. The RESPONDING IB (when created) covers only the RESPONDING subtree.
+- Existing reasoning IB tests live in [[file:test/gptel-org-reasoning-ib-test.el]] and currently cover lifecycle, triad transitions, idempotence, error paths, and keyword-registration triads — but NO test asserts the narrowed region bounds of a REASONING IB against a *real* sibling RESPONDING heading present in the base buffer.
+- Related background: [[file:gptel-indirect-buffer-ai.org]] describes the TERMINE/CSTR pattern; siblings are inserted BEFORE the terminator so existing IB narrowing should not be disturbed. This test will check whether that invariant is actually preserved during the REASONING → REASONED → RESPONDING streaming transition.
+- Related existing item: see [[*Apply IB + auto-correct + state triad to RESPOND and REASONING][AI-DONE Apply IB + auto-correct + state triad to RESPOND and REASONING]] — the triad work is in place but bounds correctness is unverified.
+
+**** Mission
+1. Add a new failing =ert-deftest= to [[file:test/gptel-org-reasoning-ib-test.el]] named =gptel-org-reasoning-ib-narrowing-bounds-not-polluted-by-respond= (or similar clear name).
+2. Test setup: construct an org buffer matching the user's reproduction shape — a =** DOING= parent, a =*** AI-DOING ...:deepseek@agent:= child with an explicit TERMINE sibling (per CSTR), and inside the AI-DOING subtree, a =**** REASONING ...= heading with body followed by a =**** RESPONDING ...= heading with body.
+3. Open/resolve the REASONING indirect buffer for the REASONING heading using the canonical resolver API documented in =gptel-indirect-buffer-ai.org= (Functions Reference section). Do NOT call =buffer-base-buffer= directly.
+4. Assert: inside the REASONING IB, =(point-min)= corresponds to the start of the REASONING heading line in the base buffer, and =(point-max)= corresponds to the position immediately BEFORE the =**** RESPONDING= heading line in the base buffer. The REASONING heading text must be visible; the RESPONDING heading text must NOT be visible inside the IB.
+5. Optionally also create the RESPONDING IB and assert symmetric bounds for it (RESPONDING IB narrowed strictly to its subtree).
+6. Run the test — it is expected to FAIL given the bug. The failure output is the deliverable for this TODO; do not "fix" the bug yet, just prove it exists with a red test.
+7. Add a brief comment at the top of the new test referencing this TODO and the user's reproduction.
+
+**** Verification
+- Run: =cd quelpa/build/gptel/test && make test 2>&1 | tail -60=
+- Confirm the new test FAILS with a bounds mismatch (REASONING IB point-max is past the RESPONDING heading start) — that proves the bug.
+- All other previously-passing tests must continue to pass.
+
+**** Follow-up
+- Once the failing test is committed, a separate AI-DO will be created to FIX the bounds so this test goes green.
+
 ** Researched TODOs
 *** AI-DONE Fix TERMINE: move from child-level to sibling-level for proper IB isolation
 
