@@ -4158,7 +4158,7 @@ placeholder.  Need tests for:
 - All 6 tests pass (0 failures).
 
 
-*** AI-DOING Apply IB + auto-correct + state triad to RESPOND and REASONING
+*** AI-DONE Apply IB + auto-correct + state triad to RESPOND and REASONING
 :PROPERTIES:
 :GPTEL_PRESET: gptel-coordinator
 :END:
@@ -4173,6 +4173,22 @@ placeholder.  Need tests for:
   indirect buffer (agent, sub-agent, tool, REASONING, RESPOND) uses the SAME
   design pattern: indirect-buffer + TERMINE terminator." — but RESPOND does
   not yet get its own IB, and REASONING does not yet use a three-state triad.
+
+**** Outcomes
+- 6 sub-tasks completed in this session:
+  1. Fix TERMINE: move from child-level to sibling-level for proper IB isolation
+  2. Apply RESPOND triad: keywords RESOND/RESPONDING/RESPONDED + IB + streaming + :post transition
+  3. Apply REASONING triad: keywords REASON/REASONING/REASONED + :post transition with closure
+  4. IB-4.6c heading-depth fix: =gptel--org-insert-heading= sibling-level computation
+  5. Wire RESPOND + auto-correct into the streaming pipeline
+  6. Tests for RESPOND IB + REASONING triad (5 new tests, all passing)
+- Key files modified (source):
+  - =gptel.el=: RESPOND heading insertion + IB creation + :post lambda (~L2029-2083), REASONING :post lambda (~L2469-2499), =gptel--strip-leading-star= generalised
+  - =gptel-org.el=: RESPOND triad utilities (~L2317-2344), RESPOND IB create/close (~L2608-2691), REASONING IB create/close (~L2510-2602), keyword registration for both triads (~L2937-3000), =gptel-org--respond-indirect-buffer= variable, =gptel-org--heading-is-assistant-p= extended
+- Key files modified (tests):
+  - =test/gptel-org-reasoning-ib-test.el=: 5 new tests + expanded fixture, existing REASONING end-to-end test, RESPOND-heading-missing test now passing
+- Total commits in this session: 2 (tests + docs)
+- Final test count: 497 passed, 0 unexpected, 3 skipped
 
 **** Discussion highlights
 - *RESPOND today*: streaming pipeline (=gptel-curl--stream-insert-response=,
@@ -4409,11 +4425,23 @@ Doc updates applied:
 - =gptel-org.el=: Updated stale commentary (~L2317-2339) to reflect that
   RESPOND wiring is LIVE (was "scaffolding, not called by pipeline").
 
-***** AI-DOING Tests for RESPOND IB + REASONING triad
+***** AI-DONE Tests for RESPOND IB + REASONING triad
 - Convert known-failure RESPOND test → passing test
 - Add unit tests for REASONING triad
 - Add integration test for RESPOND IB lifecycle
 - =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
+
+****** Outcomes
+- Test file modified: =quelpa/build/gptel/test/gptel-org-reasoning-ib-test.el=
+- Tests added (5 new, all passing):
+  1. =gptel-org-respond-ib-lifecycle-end-to-end= — integration: RESPONDING heading + IB creation, body streaming into IB, :post transition to RESPONDED + IB close
+  2. =gptel-org-reasoning-ib-triad-transition= — unit: REASONING → REASONED via :post lambda with closure-captured heading-pos, idempotence gate
+  3. =gptel-org-respond-triad-idempotence= — unit: :responded-transition-done flag prevents double transition
+  4. =gptel-org-respond-triad-error-path= — unit: :error non-nil gates the RESPONDING → RESPONDED transition
+  5. =gptel-org-keyword-registration-triads= — unit: 6 keywords registered, =gptel-org--heading-is-assistant-p= returns t for each
+- Fixture added: =gptel-org-state-triad-test-with-buffer= (extends base fixture with full REASONING + RESPOND triads in =org-todo-keywords=)
+- Final test count: 497 passed, 0 unexpected, 3 skipped (up from 489 passed, 3 skipped)
+- Note: existing =gptel-org-respond-heading-missing-during-streaming= test now PASSING (was known-failure before IB-4.6c)
 
 ** Researched TODOs
 *** AI-DONE Fix TERMINE: move from child-level to sibling-level for proper IB isolation
