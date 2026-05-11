@@ -1312,49 +1312,6 @@ endpoint to verify =gptel-deepseek-p= matches.
   =:reasoning-rest-starting=) — see follow-up TODO below.
 
 
-*** TODO Reset org-mode reasoning rendering keys per-request in =gptel--handle-wait=
-**** Origin
-- Follow-up from AI-DONE *Fix DeepSeek reasoning: reset
-  per-request reasoning state* (above).  Implementer flagged four
-  additional reasoning-related plist keys living in =gptel.el= that
-  the gatherer surfaced but were intentionally left out of scope to
-  keep that fix minimal.
-
-**** Discussion highlights
-- Keys set by the org-mode reasoning rendering callback in
-  =gptel.el= (around L2208, L2263, L2305, L2312, L2325, L2333,
-  L2365):
-  - =:reasoning-title-pending= — flag for pending title formatting
-  - =:reasoning-title-buffer= — accumulator for title text spanning
-    chunks
-  - =:reasoning-heading-pos= — position of the reasoning heading in
-    the org buffer
-  - =:reasoning-rest-starting= — flag for stripping leading stars
-- Open question: do these keys actually leak across multi-turn
-  tool-call continuations in practice, or are they always finalised
-  to a quiescent value before the next turn?  If they leak, expect
-  symptoms like duplicated/garbled reasoning headings in org mode
-  on the second tool-call continuation.
-- Risk if reset blindly: low — they are all rendering-state flags
-  that should be re-initialised per turn anyway.
-
-**** Mission
-- Reproduce or rule out: run a multi-turn tool-call exchange in
-  org mode against a reasoning-capable backend (DeepSeek,
-  Anthropic with extended thinking, or Gemini) and observe whether
-  reasoning headings render correctly on turns 2+.
-- If a defect is observed, add the four keys to the =dolist= in
-  =gptel--handle-wait= alongside =:reasoning-block= /
-  =:reasoning-chunks= already added.
-- If no defect is observed, document the finding here and close
-  the TODO.
-
-
-**** Verification
-- gptel test suite remains green: =cd quelpa/build/gptel/test &&
-  make test 2>&1 | tail -30=.
-
-
 *** AI-DONE Fix DeepSeek =[DONE]= handler clears =:reasoning-chunks= unconditionally
 **** Origin
 - Spawned from AI-DONE *Analyse DeepSeek =reasoning_content=
@@ -1418,6 +1375,49 @@ endpoint to verify =gptel-deepseek-p= matches.
 - Test suite: 470/473 pass, 0 unexpected, 3 pre-existing skips —
   matches the baseline recorded against commit =a7c078d=.
 - Submodule commit: =3477a943e94a2753e168af2f6670e9ee4e0491bd=.
+
+
+*** TODO Reset org-mode reasoning rendering keys per-request in =gptel--handle-wait=
+**** Origin
+- Follow-up from AI-DONE *Fix DeepSeek reasoning: reset
+  per-request reasoning state* (above).  Implementer flagged four
+  additional reasoning-related plist keys living in =gptel.el= that
+  the gatherer surfaced but were intentionally left out of scope to
+  keep that fix minimal.
+
+**** Discussion highlights
+- Keys set by the org-mode reasoning rendering callback in
+  =gptel.el= (around L2208, L2263, L2305, L2312, L2325, L2333,
+  L2365):
+  - =:reasoning-title-pending= — flag for pending title formatting
+  - =:reasoning-title-buffer= — accumulator for title text spanning
+    chunks
+  - =:reasoning-heading-pos= — position of the reasoning heading in
+    the org buffer
+  - =:reasoning-rest-starting= — flag for stripping leading stars
+- Open question: do these keys actually leak across multi-turn
+  tool-call continuations in practice, or are they always finalised
+  to a quiescent value before the next turn?  If they leak, expect
+  symptoms like duplicated/garbled reasoning headings in org mode
+  on the second tool-call continuation.
+- Risk if reset blindly: low — they are all rendering-state flags
+  that should be re-initialised per turn anyway.
+
+**** Mission
+- Reproduce or rule out: run a multi-turn tool-call exchange in
+  org mode against a reasoning-capable backend (DeepSeek,
+  Anthropic with extended thinking, or Gemini) and observe whether
+  reasoning headings render correctly on turns 2+.
+- If a defect is observed, add the four keys to the =dolist= in
+  =gptel--handle-wait= alongside =:reasoning-block= /
+  =:reasoning-chunks= already added.
+- If no defect is observed, document the finding here and close
+  the TODO.
+
+
+**** Verification
+- gptel test suite remains green: =cd quelpa/build/gptel/test &&
+  make test 2>&1 | tail -30=.
 
 
 *** AI-DO Propagate =:include-reasoning= to tool-continuation info plists
@@ -2136,205 +2136,6 @@ Pick one (default: A):
 11. Update this TODO to =AI-DONE= when all tests pass and the
     reproduction produces the expected buffer state.
 
-*** TODO Tool subtree missing indirect-buffer scaffolding (no IB, no TERMINE)
-# Per the unified IB invariant, the answer is settled: tool subtrees
-# MUST get their own IB+TERMINE.  Implementation is folded into the
-# AI-DO EXECUTING TODO (Mission step 1).  This TODO stays open for
-# regression-test coverage of plain (non-sub-agent) tool calls and
-# may close when those tests land.
-**** Origin
-- Interactive test "Run date with Bash tool" in
-  =~/siro-ai/playground-ws.org= (the BASH heading at L51).
-- Observed buffer state shows the =**** BASH :command "date"= heading
-  rendered as a plain heading under the agent IB, with no per-tool
-  indirect buffer and no TERMINE inside it.  The AI-DOING/AI-DONE IB
-  has its own TERMINE (last child), but the tool heading itself lacks
-  the IB scaffolding that other heading types (reasoning, agent) get.
-- Workspace doc: [[file:../siro-ai/playground-ws.org::*Run date with Bash tool]]
-- Debug log: [[file:../siro-ai/debug-log-playground.org]]
-- Debug messages: [[file:../siro-ai/debug-message-playground.log]]
-
-**** Discussion highlights
-- Recent refactor (commit =d4b47c0=) intentionally removed eager
-  TERMINE seeding from generic =gptel-org-ib-create= so non-agent IBs
-  don't inherit TERMINE.  Agent-layer callsites
-  (=gptel-org-agent--open-indirect-buffer=,
-  =gptel-org-ib-safe-insert-sibling=) seed TERMINE explicitly.
-- Reasoning IBs are created by
-  =gptel-org--reasoning-create-indirect-buffer=; tool IBs by
-  =gptel-org--tool-create-indirect-buffer= (see existing AI-DONE TODO
-  "Eager TERMINE seeding leaks into non-agent IBs" for the callsite
-  list).
-- Question for investigation: should tool headings have their own IB
-  at all?  If yes, do they need a TERMINE?  If no, why does the user
-  perceive an inconsistency?
-- Look at =gptel-org--tool-create-indirect-buffer= to confirm whether
-  an IB is created and whether TERMINE seeding was removed without
-  replacement.
-- Compare with sub-agent =EXECUTING= heading (which DOES get its own
-  IB + TERMINE per the playground doc L102) — why is the executor
-  sub-agent's BASH child NOT given an IB but the executor itself is?
-  Maybe the convention is "only agent-level subtrees get IBs", in
-  which case the user's report is by-design and the TODO should
-  clarify the doc instead.
-
-**** Decisions
-(none yet — see Mission for investigation steps)
-
-**** Mission
-1. Read =gptel-org--tool-create-indirect-buffer= and the BASH tool
-   rendering pipeline.  Determine whether tool headings currently get
-   an IB.
-2. Determine the intended ownership policy: which heading kinds (agent
-   / reasoning / tool / sub-agent) own an IB, and which seed TERMINE.
-3. If tools should have an IB+TERMINE: implement seeding at the tool
-   callsite (analogous to the agent fix in =0a03204=).  Add a
-   regression test.
-4. If tools should NOT have an IB: document the intentional asymmetry
-   in =gptel-indirect-buffer-ai.org= and decide whether the buffer
-   rendering should change visually so the asymmetry is not
-   surprising.
-5. Commit atomically in =quelpa/build/gptel/=.  Update related
-   =-ai.org= docs.
-
-**** Status update 2026-04-27
-- Step 1 of the AI-DONE "EXECUTING should be state transition of
-  ALLOWED EXECUTE heading" TODO (commit =0366134=, "gptel-ib:
-  seed TERMINE universally in =gptel-org-ib-create=") made
-  TERMINE seeding universal: every IB created by the factory now
-  has TERMINE as its last child, including plain (non-Agent)
-  tool subtrees.
-- Likely resolved.  Awaiting interactive verification by the
-  user with the playground "Run date with Bash tool" test
-  before closing.  Leave open.
-
-*** TODO Missing leading sub-heading for AI text after tool result
-# Likely a downstream symptom of the unified-pattern fix in the
-# AI-DO EXECUTING TODO: once tool IBs have TERMINE and post-tool
-# AI text is streamed BEFORE that TERMINE inside the parent agent
-# IB, the heading insertion path becomes uniform with the
-# sub-agent path that already works.  Re-evaluate after the
-# unified IB refactor lands; may close without a separate fix.
-**** Origin
-- Interactive test "Run date with Bash tool" in playground-ws.org.
-- After the =#+end_tool= block at L60, the AI's textual response
-  "Current date and time:" appears at column 0 (no heading prefix)
-  directly under the =*** AI-DONE Run date with Bash tool= heading.
-- Workspace doc: [[file:../siro-ai/playground-ws.org::*Run date with Bash tool]]
-
-**** Discussion highlights
-- The expected behavior: when the AI continues streaming text after a
-  tool call completes, the streamed content should start with its own
-  assistant sub-heading (e.g. =**** Current date and time= or similar)
-  so that the structure matches the sub-agent case at L80 where
-  =***** Current System Date and Time= is correctly emitted.
-- Compare:
-  - Direct tool case (L62): bare text — BUG
-  - Sub-agent tool case (L80): proper =***** Current System Date and
-    Time= heading — correct
-- Likely cause: =gptel-org-agent--make-insertion-marker= or the
-  streaming insertion logic behaves differently for the top-level
-  agent IB vs. the sub-agent IB.  The streaming marker may land at the
-  buffer position of the previous tool body's end without inserting a
-  fresh heading bullet, while the sub-agent path goes through
-  =gptel-org-ib-safe-insert-sibling= which adds the heading.
-- Cross-reference: existing AI-DONE TODO "Tool-call PENDING heading
-  inserted AFTER TERMINE on first tool call in agent IB" fixed marker
-  drift past TERMINE; this is a related but distinct issue about *what
-  gets inserted at the marker* once it's positioned correctly.
-
-**** Decisions
-(none yet — see Mission for investigation steps)
-
-**** Mission
-1. Trace the streaming-insertion path used after a tool call completes
-   in the top-level agent IB.
-2. Compare with the sub-agent path that correctly emits a heading.
-3. Determine the rule: should every post-tool AI text segment start
-   with a new heading, or only when the AI emits one explicitly?
-4. If the rule is "always new heading": fix the insertion to add a
-   sibling heading using the agent's heading-depth convention.
-5. Add a regression test using the dummy@agent fixture: assert that
-   after a tool call, the next AI text segment is emitted under a
-   sub-heading.
-6. Commit in =quelpa/build/gptel/= submodule.
-
-**** Status update 2026-04-27
-- Step 1 of the AI-DONE "EXECUTING should be state transition of
-  ALLOWED EXECUTE heading" TODO (commit =0366134=) made TERMINE
-  seeding universal in =gptel-org-ib-create=.  Post-tool AI text
-  now streams BEFORE the tool IB's TERMINE inside the parent
-  agent IB.
-- Hypothesis: this likely subsumes the "missing leading
-  sub-heading" symptom by making the heading-insertion path
-  uniform.  Awaiting interactive verification by the user with
-  the playground "Run date with Bash tool" test.  Leave open
-  until verified.
-
-*** TODO TERMINE not removed when task transitions to AI-DONE
-# With the unified IB invariant, TERMINE removal becomes a single
-# code path: =gptel-org-ib-remove-terminator= called on every IB
-# that reaches a terminal state (task AI-DONE, tool EXECUTED,
-# reasoning final, sub-agent terminal-word).  This TODO will be
-# resolved by ensuring every terminal-state transition (across
-# tool, reasoning, sub-agent, task) routes through that one
-# function.  See AI-DO EXECUTING TODO Mission steps 3-4.
-**** Origin
-- Interactive test "Run date with Bash tool" in playground-ws.org
-  (L46-L65).
-- The agent subtree is in state =AI-DONE= (L48) but the =****
-  TERMINE= heading is still present at L65 — it should have been
-  removed on the AI-DONE transition.
-- Workspace doc: [[file:../siro-ai/playground-ws.org::*Run date with Bash tool]]
-
-**** Discussion highlights
-- Tests exist for this exact invariant: =gptel-org-agent-test.el=
-  "TERMINE removal on AI-DONE" (L481–L512).  The tests presumably
-  pass, so the bug is path-specific — likely the AI-DONE transition
-  triggered by tool-call completion (rather than a plain assistant
-  text completion) is not running the TERMINE-removal hook.
-- Suspect functions: the FSM cleanup hook that fires on AI-DOING →
-  AI-DONE transition.  Look for the hook registration around the
-  per-agent state-triad cleanup wiring (commit =8010ace= in
-  gptel-agent: "wire :state-words triad into sub-agent FSM cleanup").
-- Cross-reference TODO "Recursive loop / duplicate TERMINE in
-  sub-agent delegation flow" and TODO "EXECUTING should be state
-  transition of ALLOWED EXECUTE heading" — these may all share a
-  single root cause: tool-call completion taking a different code path
-  than plain-text completion.
-
-**** Decisions
-(none yet — see Mission for investigation steps)
-
-**** Mission
-1. Reproduce by running the dummy@agent flow with a single Bash tool
-   call and confirm TERMINE survives the AI-DONE transition.
-2. Identify the FSM transition handler responsible for TERMINE
-   removal.  Confirm whether it's invoked on tool-call-driven AI-DONE
-   transitions.
-3. Add the TERMINE-removal call to the tool-call completion path (or
-   unify the completion paths so both go through the same cleanup
-   hook).
-4. Extend the existing test "TERMINE removal on AI-DONE" with a
-   tool-call variant that asserts TERMINE is gone after the tool flow
-   completes.
-5. Commit in =quelpa/build/gptel/= submodule.
-
-**** Status update 2026-04-27
-- Steps 2-4 of the AI-DONE "EXECUTING should be state transition
-  of ALLOWED EXECUTE heading" TODO (gptel =f0715c9=, gptel-agent
-  =3808d47=) establish =gptel-org-agent--update-tool-heading= as
-  the single owner of heading transition + IB close for
-  sub-agent dispatch.  Plain-text task =AI-DONE= transitions are
-  *not* changed by this work — TERMINE removal on a non-tool,
-  non-sub-agent task transition still goes through the original
-  path.
-- See the "Caveat / follow-up" entry in the resolution of the
-  AI-DONE TODO above: the lifecycle currently terminates at
-  =EXECUTING= (DOING) for sub-agents too, so the analogous
-  =EXECUTING → EXECUTED= + TERMINE removal at result-display
-  time is part of this TODO's remaining scope.  Leave open.
-
 *** DONE EXECUTING should be state transition of ALLOWED EXECUTE heading, not a separate heading
 **** Origin
 - Interactive test "Delegate to executor agent..." in
@@ -2533,33 +2334,6 @@ Pick one (default: A):
   =EXECUTING → EXECUTED= transition + TERMINE removal at
   result-display time is tracked by the existing TODO "TERMINE
   not removed when task transitions to AI-DONE".
-
-*** TODO Simplify legacy GPTEL_PENDING_ID lookup paths
-**** Origin
-- After commit =bb60aae=, the PENDING tool-call entry is keyed in
-  =gptel-org-agent--pending-tool-calls= and stores =:pending-ib= +
-  =:heading-marker= directly.  However,
-  =gptel-org-agent--find-pending-heading= and
-  =gptel-org-agent--on-todo-state-change= still rely on reading the
-  =GPTEL_PENDING_ID= org property from the heading at point.
-
-**** Discussion highlights
-- The property is still set in =--display-tool-calls= for backward
-  compatibility.
-- Now that the IB and heading-marker are stored in the hash table,
-  lookups by =org-entry-get= are no longer the only path.
-- Cleaning up the legacy path simplifies the code and removes one
-  source of state coupling (heading text vs. hash table).
-
-**** Mission
-1. Audit all readers of the =GPTEL_PENDING_ID= property.
-2. Decide whether to keep the property purely for diagnostics or
-   remove it.
-3. If keeping: ensure consistent cleanup on all terminal branches
-   (currently DENIED path leaves the property in place after closing
-   the IB).
-4. If removing: refactor =--on-todo-state-change= to look up entries
-   by point/heading-marker comparison instead.
 
 *** TODO Duplicate tool-spec+args disambiguation
 **** Origin
@@ -3130,72 +2904,6 @@ Pick one (default: A):
 - The diagnostic commit is standalone and can be reverted once the
   root cause is confirmed.
 
-*** AI-DO Fix beg-after-end marker position bug in post-response hooks
-**** Origin
-- The error =gptel-org--fold-special-blocks: Invalid search bound
-  (wrong side of point)= observed in playground-ws.org interactive
-  test (2026-04-28).
-- Debug log: =apply-response-title: beg=4096 end=4093=.
-- Related to existing TODO [[*Unify IB/heading insertion behind one parent-aware API]]
-  Commit 4: "BASH-tool-heading nesting fix + regression test".
-
-**** Discussion highlights
-- The =gptel-post-response-functions= hook passes =(marker-position
-  start-marker)= as BEG and =(marker-position tracking-marker)= as END.
-  When =:position= ends up *after* =:tracking-marker= (BEG > END),
-  =re-search-forward= in =gptel-org--fold-special-blocks= signals
-  "Invalid search bound (wrong side of point)".
-- The researcher-deep analysis identified the likely trigger:
-  =gptel--display-tool-results= calls the streaming callback
-  (=gptel-curl--stream-insert-response=) when =:tracking-marker= is
-  nil (reset by =gptel--handle-wait=).  The first-chunk path runs
-  =move-marker start-marker (point)=, potentially advancing
-  =:position= in a way that breaks the invariant =:position= ≤
-  =:tracking-marker=.
-- A secondary suspect is =gptel-org-agent--ensure-bol-before-terminator=
-  (post-response hook depth 10) which inserts text before TERMINE —
-  if TERMINE is between =start-marker= and =tracking-marker=, the
-  ="\n"= insertion shifts positions.
-- The 3-byte gap (4096 → 4093) matches the size of
-  =gptel-response-separator= (3 bytes: ="\n\n"=) or a BOL guard ="\n"=
-  plus other content.
-
-**** Decisions
-- Fix at the source: ensure =:position= ≤ =:tracking-marker= invariant
-  holds when =gptel--handle-post-insert= runs.
-- Options:
-  1. Guard in =gptel-curl--stream-insert-response=: if
-     =:tracking-marker= is nil but =:position= has already been moved
-     (position ≠ original intent), skip the =move-marker=.
-  2. Guard in =gptel--handle-post-insert=: swap BEG/END if BEG > END
-     before calling =run-hook-with-args= (defensive).
-  3. Fix =gptel--display-tool-results= to not call the streaming
-     callback with =:tracking-marker= = nil — restore or preserve
-     the marker before the tool-result insertion path.
-  - Option 2 is the safest as a defensive measure. Option 3 is the
-    most correct. Likely both are warranted.
-
-**** Mission
-1. *Disable back the debug logging* added by the diagnostic TODO above
-   (or keep as permanent diagnostics at a lower verbosity level).
-2. *Add defensive guard* in =gptel--handle-post-insert=: if
-   =marker-position(start-marker) > marker-position(tracking-marker)=,
-   swap them before passing to =run-hook-with-args=. Log a warning.
-3. *Fix the root cause* in the tool-result display path: ensure
-   =:tracking-marker= is not nil when =gptel--display-tool-results=
-   invokes the streaming callback during multi-turn cycles.
-4. *Add regression test*: simulate a tool-call cycle where the response
-   starts with tool calls (no leading text) and verify
-   =gptel-post-response-functions= receives BEG ≤ END.
-5. *Tests*: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=.
-6. *Documentation*: update the "Unify IB/heading insertion" TODO with
-   progress on Commit 4 (BASH nesting fix).
-
-**** Constraints
-- Must not break the existing agent tool execution flow.
-- The defensive guard must log a warning so we can detect if the root
-  cause persists.
-- Tests must pass on both gptel and gptel-agent submodules.
 *** AI-DONE Recursive loop when =gptel-org-mode: 1= is set as file-local variable
 **** Origin
 - User report (current AI-DO session): when an org file has
@@ -3627,130 +3335,6 @@ first-streaming-chunk".
   trailing-=\n= prefix for org-mode, Option 1 still behaves correctly
   (heading inserted at =gptel-response-separator= boundary).
 
-
-*** AI-DO PENDING tool call injected inside REASONING block instead of after its TERMINE
-**** Origin
-- Interactive test in [[file:../../../siro-ai/playground-ws.org::*Delegate to executor agent to run date with Bash tool][playground-ws.org]] (second AI-DOING task, L88–L109).
-- Expected: REASONING block fully closes (heading → body → child TERMINE), THEN PENDING EXECUTE is inserted as a sibling.
-- Actual: PENDING EXECUTE (L90, level 4) appears right after REASONING heading (L89, level 4), structurally a sibling but buffer-positioned /before/ REASONING's TERMINE.  The REASONING indirect buffer region encompasses the PENDING heading.
-
-**** Discussion highlights
-
-*Workspace state (playground-ws.org L88–L109):*
-#+begin_src org
-  ,*** AI-DOING Delegate to executor agent...         :agent@agent:     [L88]
-  ,**** REASONING THE USER WANTS ME TO DELEGATE T                       [L89]
-  ,**** PENDING EXECUTE :description "Run date command" ...             [L90]
-  ,:GPTEL_PENDING_ID: gptel-pending-2-1777475939                        [L92]
-       (:name "Agent" :args (:subagent_type "executor" ...))            [L94]
-  ,***** TERMINE                                                        [L97]
-  ,**** TERMINE                                                         [L100]
-  O AN EXECUTOR AGENT TO RUN THE `DATE` COMMAND...                      [L101]
-  ,***** TERMINE                                                        [L104]
-  ,**** TERMINE                                                         [L106]
-  ,*** TERMINE                                                          [L109]
-#+end_src
-
-*Three sub-bugs visible:*
-1. *PENDING inside REASONING IB:* The =**** PENDING EXECUTE= (L90) is
-   structurally a sibling of =**** REASONING= (both level 4), but the
-   REASONING indirect buffer (=*gptel:reasoning-2ecdb6*=) spans L89–L100+,
-   so the PENDING heading is /included/ in the REASONING IB region.  It
-   should be inserted /after/ REASONING's child TERMINE, outside the
-   REASONING IB.
-2. *Truncated REASONING heading:* The heading at L89 reads ="THE USER WANTS
-   ME TO DELEGATE T"= — the remainder of the reasoning text ("O AN EXECUTOR
-   AGENT TO RUN THE `DATE` COMMAND...") appears as orphaned body text on
-   L101–102, after =**** TERMINE=.
-3. *Duplicate TERMINE closers:* L104–106 (=***** TERMINE=, =**** TERMINE=)
-   duplicate L97 and L100.
-
-*Root cause hypothesis (sub-bug 1):*
-The REASONING heading+IB is created during the streaming phase (see
-=gptel--display-reasoning-stream= in =gptel.el=).  When the model emits a
-tool call after reasoning, =gptel-org-agent--display-tool-calls= selects an
-insertion position.  If the REASONING IB was opened but not yet closed (no
-child TERMINE seeded), the tool call insertion lands inside the REASONING
-IB region — the FSM tracking marker may still point inside the REASONING
-subtree.
-
-*Relevant prior fixes:*
-- [[*Fix REASONING IB created at separator position][AI-DONE Fix REASONING IB created at separator position]] (commit =8069a42=):
-  fixed off-by-separator-len so REASONING IB wraps the correct heading.  May
-  have been masking this tool-insertion-position bug.
-- [[*Fix empty REASONING heading for streaming DeepSeek =reasoning_content= + tool calls][AI-DONE Fix empty REASONING heading for streaming DeepSeek reasoning_content + tool calls]]
-  (commit =a378956=): ensures ='(reasoning . t)= signal fires for
-  JSON-field path so REASONING heading gets finalized.  The truncated
-  heading (sub-bug 2) may be related to the title-finalization path.
-- [[*Eager TERMINE seeding leaks into non-agent IBs (tool/reasoning)][AI-DONE Eager TERMINE seeding leaks]] (commits =c99eccb=, =16c5808=, =57a8f1f=):
-  moved TERMINE seeding to agent-layer callsites.  REASONING IBs
-  intentionally do NOT get TERMINE seeded — but the tool-call insertion
-  code needs to account for this.
-
-*Key question for implementation:*
-How does =gptel-org-agent--display-tool-calls= determine where to insert
-PENDING headings?  If the insertion position is derived from the FSM
-=:position= / =:tracking-marker=, and that marker was set during reasoning
-streaming (pointing inside the REASONING IB), then tool calls will land
-inside the REASONING block.  The fix likely involves:
-- Either closing the REASONING IB before inserting tool calls (flushing
-  pending reasoning state), or
-- Ensuring the tool-call insertion marker is positioned /after/ the
-  REASONING heading's subtree (i.e., after its TERMINE), or
-- Having =display-tool-calls= detect that it's inside a REASONING IB and
-  jump out before inserting.
-
-**** Root cause analysis (researcher-deep, 2025-07-02)
-
-Four distinct root causes identified (see [[*Fix :reasoning-block transition in parse-stream for tool-calls][RC1]], [[*Fix title-extraction body deferral in REASONING stream][RC2]], [[*Fix tracking-marker restoration after reasoning IB close][RC3]], [[*Fix duplicate TERMINE seeding on multi-IB sequence][RC4]]):
-
-,*RC1 (=gptel-openai.el:165-168=)*: =:reasoning-block= never transitions
-to =t= during streaming when DeepSeek sends =reasoning_content= followed
-by =tool_calls= (content is always =:null=).  =:reasoning-block= stays
-='in= until the cleanup sentinel, causing REASONING close to race with
-tool-call dispatch.
-
-,*RC2 (=gptel.el:2308-2346=)*: Title-extraction defers ALL body insertion
-until first newline in the reasoning chunk.  If no newline arrives before
-end-of-stream, the entire accumulated text becomes the heading title —
-causing the truncated heading and orphaned body text (sub-bugs 2).
-
-,*RC3 (=gptel.el:2306 + end-of-stream handler)*: =tracking-marker= is
-rewound into the REASONING IB on first chunk but NEVER restored after the
-IB closes.  Later tool-result insertion via =gptel--org-insert-heading=
-uses this stale marker, causing tool results to land inside the closed
-REASONING subtree (sub-bug 1, bugs 4-5).
-
-,*RC4 (=gptel-org-ib-create=)*: Sequential IB creation (REASONING →
-PENDING → EXECUTOR dispatch) each seed their own TERMINE without
-coordinating, producing duplicate =***** TERMINE= / =**** TERMINE= pairs
-(sub-bug 3).
-
-,*Fix priority:*
-1. *RC1* (primary) — eliminate the race at the source in
-   =gptel-curl--parse-stream=.
-2. *RC2* (primary) — fix heading/buffer title-blob in
-   =gptel--display-reasoning-stream= end-of-stream handler.
-3. *RC3* (primary) — safety-net tracking-marker hygiene.
-4. *RC4* (defensive) — prevent duplicate TERMINE seeding.
-
-All four fixes are specified as follow-up =AI-DO= tasks below.
-
-**** Mission
-**** Mission
-1. Implement RC1-RC4 fixes via the follow-up =AI-DO= tasks below.
-2. Each fix is independently testable; implement them as separate commits.
-3. Run test suite after all fixes: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
-4. Manual verification in playground-ws.org with =gptel-org-debug-preserve-state= enabled.
-5. Update this TODO to =AI-DONE= when all checks pass.
-
-**** Follow-up tasks
-The root cause analysis produced four specific fix tasks (all =AI-DO=):
-
-- [[*Fix :reasoning-block transition in parse-stream for tool-calls][Fix :reasoning-block transition in parse-stream for tool-calls (RC1)]]
-- [[*Fix title-extraction body deferral in REASONING stream][Fix title-extraction body deferral in REASONING stream (RC2)]]
-- [[*Fix tracking-marker restoration after reasoning IB close][Fix tracking-marker restoration after reasoning IB close (RC3)]]
-- [[*Fix duplicate TERMINE seeding on multi-IB sequence][Fix duplicate TERMINE seeding on multi-IB sequence (RC4)]]
 
 *** AI-DO Fix :reasoning-block transition in parse-stream for tool-calls
 
