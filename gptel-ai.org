@@ -4163,7 +4163,7 @@ Doc updates applied:
 - Commit the failing test as a documented regression.
 - /Done with a deviation:/ the new test EMPIRICALLY PASSES under the canonical streaming driver — the simple temporal hypothesis is not confirmed.  Full suite: =Ran 500 tests, 497 results as expected, 0 unexpected, 3 skipped=.  Committed as a passing regression (see Outcomes).  A follow-up AI-DO is needed to extend the reproduction conditions before opening a fix task.
 
-*** AI-DO Capture live-reproduction conditions for REASONING IB absorbing RESPONDED sibling
+*** AI-DONE Capture live-reproduction conditions for REASONING IB absorbing RESPONDED sibling
 
 **** Origin
 - Follow-up to sibling [[*Add failing temporal-bug test for REASONING IB end-marker advancing past streaming inserts and absorbing RESPONDING heading][AI-DO Add failing temporal-bug test for REASONING IB end-marker ...]] whose Outcomes record that the canonical =gptel-curl--stream-insert-response= driver did NOT reproduce the bug, and whose Follow-up asks for "conditions closer to the user's live session" before opening a fix task.
