@@ -902,6 +902,190 @@ This is too trivial to warrant delegation.
         (verify-ib-narrowing nil)
         (verify-ib-narrowing t)))))
 
+(ert-deftest gptel-org-reasoning-ib-temporal-end-marker-not-polluted-by-respond ()
+  "Verify the REASONING IB narrowing does not absorb a sibling
+RESPONDING heading created later during the same streaming session.
+
+This is the TEMPORAL counterpart to
+`gptel-org-reasoning-ib-narrowing-bounds-not-polluted-by-respond' (the
+static-fixture baseline).  It drives the canonical streaming pipeline
+via `gptel-curl--stream-insert-response' (chosen streaming driver,
+recorded in gptel-ai.org Discussion highlights of the parent AI-DO).
+
+Diagnostic hypothesis under examination (from sibling AI-DONE Outcomes,
+gptel-ai.org \"Add failing test proving REASONING IB is not narrowed
+and gets polluted by sibling RESPOND content\"):
+
+  The IB's end-marker is created with `insertion-type=t' in
+  `gptel-org-ib-create' (gptel-indirect-buffer.el).  During live
+  streaming each insert AT the marker position pushes it forward,
+  auto-expanding the narrowing.  If a RESPONDING sibling heading is
+  then inserted at the pushed-forward position (i.e., AFTER the IB was
+  opened and AFTER REASONING body streaming advanced the marker), the
+  new RESPONDING heading lands INSIDE the already-expanded narrowed
+  region of the REASONING IB.
+
+EMPIRICAL RESULT (currently): this test PASSES.  The simple temporal
+hypothesis above is NOT confirmed by driving the canonical streaming
+pipeline on a minimal fixture.  After streaming reasoning body via
+`gptel-curl--stream-insert-response', firing `(reasoning . t)' and a
+response chunk, the REASONING IB's =(point-max)= settles BEFORE the
+auto-created =**** RESPONDING= sibling heading — the same correct
+bounds the static-fixture baseline asserts.  The user-observed bug
+therefore requires additional conditions not captured by the canonical
+streaming driver alone (possible factors to investigate in a follow-up
+AI-DO: partial chunks, properties/drawers, tool calls mid-stream,
+FSM-driven RESPONDING IB creation after the IB end-marker, or a
+different ordering of close + sibling insertion).
+
+The test is COMMITTED AS A PASSING REGRESSION: it asserts the
+invariant the REASONING IB must satisfy after a complete REASONING →
+REASONED → RESPOND streaming sequence, and falsifies the simple
+end-marker-advancement hypothesis.  A future change that breaks this
+invariant via the streaming pipeline will trip the test here.
+
+Reproduction sequence (temporal, NOT static — chosen streaming driver
+recorded in gptel-ai.org Discussion highlights of the parent AI-DO):
+  1. Build base buffer with only =** DOING= / =*** AI-DOING= headings
+     (no REASONING/RESPONDING siblings yet).
+  2. Stream reasoning chunks via `gptel-curl--stream-insert-response'
+     — the first chunk creates the =**** REASONING= heading + IB; the
+     subsequent chunk(s) push the IB end-marker forward.
+  3. Send the =(reasoning . t)= sentinel — `gptel--display-reasoning-stream'
+     closes the IB (no-op when `gptel-org-debug-preserve-state' is t),
+     moves the tracking marker past `org-end-of-subtree', inserts the
+     response separator, and clears `:reasoning-heading-pos'.
+  4. Stream a plain-string response chunk — this is the production
+     entry point that auto-creates the =**** RESPONDING= sibling
+     heading via `gptel--org-insert-heading' (gptel.el L2029-2083).
+  5. Locate REASONING and RESPONDING heading positions in the base
+     buffer and verify the REASONING IB narrowing stops at the
+     RESPONDING heading start.
+
+The IB is inspected directly when alive (debug-preserve-state=t case),
+or re-created at the REASONING heading position when the streaming
+flow already closed it (debug-preserve-state=nil case).  Per parent
+task spec the invariant is asserted under both values of the debug
+variable — the bounds must not depend on debug state.
+
+TODO: see gptel-ai.org \"Add failing temporal-bug test for REASONING
+IB end-marker advancing past streaming inserts and absorbing
+RESPONDING heading\".  Outcomes section there records the surprising
+diagnostic finding."
+  (cl-flet
+      ((verify-temporal-ib-narrowing
+        (debug?)
+        (gptel-org-state-triad-test-with-buffer
+            "* Test Project
+** DOING Calculate 2 + 2
+*** AI-DOING Calculate 2 + 2                               :deepseek@agent:
+|POINT|"
+          (let* ((gptel-org-debug-preserve-state debug?)
+                 (buf (current-buffer))
+                 (start-marker (set-marker (make-marker) (point)))
+                 (info (list :buffer buf
+                             :position start-marker
+                             :callback #'gptel-curl--stream-insert-response
+                             :include-reasoning t)))
+            (unwind-protect
+                (progn
+                  ;; --- Step 1: first reasoning chunk creates REASONING heading + IB.
+                  (gptel-curl--stream-insert-response
+                   '(reasoning . "THE USER HAS A SIMPLE TASK CALCULATE 2 PLUS 2.\n")
+                   info)
+                  (should gptel-org--reasoning-indirect-buffer)
+                  (should (buffer-live-p gptel-org--reasoning-indirect-buffer))
+
+                  ;; --- Step 2: more reasoning body — IB end-marker advances
+                  ;; because of `insertion-type=t' on the end-marker.
+                  (gptel-curl--stream-insert-response
+                   '(reasoning . "Let me evaluate this — trivial calculation.\n")
+                   info)
+
+                  ;; --- Step 3: end-of-reasoning sentinel.  Triggers
+                  ;; `gptel--display-reasoning-stream' which closes the IB
+                  ;; (no-op when debug-preserve-state=t), moves the tracking
+                  ;; marker past `org-end-of-subtree', inserts the separator,
+                  ;; and clears :reasoning-heading-pos.
+                  (gptel-curl--stream-insert-response '(reasoning . t) info)
+
+                  ;; --- Step 4: first plain response chunk auto-creates the
+                  ;; =**** RESPONDING= sibling heading via the production path
+                  ;; (gptel.el L2029-2083).  With the bug present, this
+                  ;; heading lands INSIDE the still-expanded REASONING IB
+                  ;; narrowing.
+                  (gptel-curl--stream-insert-response "2 + 2 = 4\n" info)
+
+                  ;; --- Step 5: locate base-buffer positions of the two
+                  ;; auto-created sibling headings.
+                  (let* ((reasoning-pos
+                          (save-excursion
+                            (goto-char (point-min))
+                            (should (re-search-forward
+                                     "^\\*\\*\\*\\* REASONING " nil t))
+                            (line-beginning-position)))
+                         (responding-pos
+                          (save-excursion
+                            (goto-char (point-min))
+                            (should (re-search-forward
+                                     "^\\*\\*\\*\\* RESPONDING " nil t))
+                            (line-beginning-position))))
+                    (should reasoning-pos)
+                    (should responding-pos)
+                    (should (< reasoning-pos responding-pos))
+
+                    ;; --- Step 6: inspect the REASONING IB.  If still alive
+                    ;; (debug-preserve-state=t), use it directly.  If killed
+                    ;; (debug-preserve-state=nil), re-create at the REASONING
+                    ;; heading position so we can assert the same invariant.
+                    (let* ((alive-ib gptel-org--reasoning-indirect-buffer)
+                           (ib (if (and alive-ib (buffer-live-p alive-ib))
+                                   alive-ib
+                                 (gptel-org--reasoning-create-indirect-buffer
+                                  reasoning-pos)
+                                 gptel-org--reasoning-indirect-buffer)))
+                      (should ib)
+                      (should (buffer-live-p ib))
+                      (with-current-buffer ib
+                        (message "=== TEMPORAL REASONING IB (debug=%S) ==="
+                                 debug?)
+                        (message "%s" (buffer-string))
+                        (message (concat "point-min=%d point-max=%d "
+                                         "(base reasoning=%d responding=%d)")
+                                 (point-min) (point-max)
+                                 reasoning-pos responding-pos)
+
+                        ;; Assertion A: IB point-min is REASONING heading start.
+                        (should (= (point-min) reasoning-pos))
+
+                        ;; Assertion B (THE BUG): IB point-max must be at or
+                        ;; before the RESPONDING heading start.
+                        (should (<= (point-max) responding-pos))
+
+                        ;; Assertion C: REASONING heading text IS visible.
+                        (goto-char (point-min))
+                        (should (re-search-forward "THE USER HAS" nil t))
+
+                        ;; Assertion D (THE BUG): RESPONDING heading text NOT
+                        ;; visible inside the REASONING IB.
+                        (goto-char (point-min))
+                        (should-not (re-search-forward
+                                     "^\\*\\*\\*\\* RESPONDING" nil t))))))
+              ;; Cleanup: kill any leftover IBs so each iteration starts
+              ;; clean.  With debug-preserve-state=t, `gptel-org-ib-close'
+              ;; is a no-op, and we may also have re-created the REASONING
+              ;; IB during step 6 of the debug=nil iteration.
+              (when (and gptel-org--reasoning-indirect-buffer
+                         (buffer-live-p gptel-org--reasoning-indirect-buffer))
+                (kill-buffer gptel-org--reasoning-indirect-buffer))
+              (setq gptel-org--reasoning-indirect-buffer nil)
+              (when (and gptel-org--respond-indirect-buffer
+                         (buffer-live-p gptel-org--respond-indirect-buffer))
+                (kill-buffer gptel-org--respond-indirect-buffer))
+              (setq gptel-org--respond-indirect-buffer nil))))))
+    (verify-temporal-ib-narrowing nil)
+    (verify-temporal-ib-narrowing t)))
+
 (ert-deftest gptel-org-keyword-registration-triads ()
   "Verify RESPOND/RESPONDING/RESPONDED and REASON/REASONING/REASONED
 are registered as TODO keywords and recognized by

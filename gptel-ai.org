@@ -4135,16 +4135,33 @@ Doc updates applied:
 
 **** Follow-up
 - Once this failing test is committed (red), create a separate AI-DO sibling task to FIX the end-marker behavior (e.g., switch the end-marker to =insertion-type=nil=, or relocate the marker before each RESPONDING insertion, or guard the narrowing during the REASONED→RESPOND transition). Do not include fix work in this TODO.
+- The empirical outcome below /falsifies/ the simple end-marker advancement hypothesis as the cause of the user-observed bug.  Before opening a fix AI-DO, refine the hypothesis: drive the streaming pipeline under conditions closer to the user's live session (partial chunks via FSM, properties/drawers, tool-call mid-stream, RESPOND IB creation after the REASONING IB end-marker, alternative ordering of REASONING IB close + sibling insertion) and capture a /failing/ reproduction first.
+
+**** Outcomes
+- *Chosen streaming driver:* =gptel-curl--stream-insert-response= called directly with a minimal =info= plist (=:buffer=, =:position= marker, =:callback=, =:include-reasoning t=).  No FSM, no stub backend, no real network.  Same canonical pattern as the existing streaming tests =gptel-org-reasoning-ib-streaming-end-to-end= (L57) and =gptel-org-respond-ib-lifecycle-end-to-end= (L333) in [[file:test/gptel-org-reasoning-ib-test.el]].  Recorded under Discussion highlights of this AI-DO before the test was written.
+- *New test added:* =gptel-org-reasoning-ib-temporal-end-marker-not-polluted-by-respond= in [[file:test/gptel-org-reasoning-ib-test.el]] (inserted immediately after the static-fixture baseline =gptel-org-reasoning-ib-narrowing-bounds-not-polluted-by-respond=).  Drives the canonical streaming sequence:
+  1. First reasoning chunk → creates =**** REASONING= heading + IB.
+  2. Second reasoning chunk → exercises IB end-marker advancement.
+  3. =(reasoning . t)= sentinel → REASONING-side cleanup via =gptel--display-reasoning-stream= (closes IB when =gptel-org-debug-preserve-state= is nil; no-op when t).
+  4. Plain-string response chunk → auto-creates the =**** RESPONDING= sibling heading via =gptel--org-insert-heading= (gptel.el L2029–2083).
+  5. Asserts the REASONING IB's =(point-min, point-max)= bounds and that the RESPONDING heading text is not visible inside the IB.  Runs under both =gptel-org-debug-preserve-state= nil and t, using the =cl-flet= pattern of the baseline test (each iteration runs in its own =with-temp-buffer= via the macro =gptel-org-state-triad-test-with-buffer=).
+- *Surprising empirical result — test PASSES.*  After driving the canonical streaming pipeline on a minimal fixture (=** DOING= / =*** AI-DOING= only, no pre-existing REASONING/RESPONDING children), the REASONING IB's =(point-max)= settles at the position immediately before the auto-created =**** RESPONDING= sibling heading — same correct bounds the static-fixture baseline asserts.  Observed under both debug-preserve-state values: =point-min=117 point-max=222 (base reasoning=117 responding=223)=.  Assertion B =(should (<= (point-max) responding-pos))= holds (=222 <= 223=); Assertion D =(should-not (re-search-forward "^\\*\\*\\*\\* RESPONDING"))= holds inside the IB.  The simple temporal hypothesis from the prior task's Outcomes — that =insertion-type=t= on the end-marker would auto-expand the narrowing past a subsequently-inserted RESPONDING sibling — is therefore NOT confirmed by the canonical streaming driver alone.
+- *Mechanistic conjecture explaining the negative result:* the =(reasoning . t)= sentinel's REASONING-side cleanup in =gptel--display-reasoning-stream= runs =(org-end-of-subtree t)= and =(move-marker tm (point))= /before/ the response chunk inserts the RESPONDING heading, re-anchoring the tracking marker at the proper subtree boundary.  Additionally, an indirect buffer's narrowing (BEGV/ZV) is its own buffer-local state and does not automatically follow a marker passed to =narrow-to-region= once narrowing has been established.  Either of these effects is sufficient to mask the hypothesised bug under the canonical streaming flow.  The actual user-observed pollution must require conditions beyond what this minimal driver exercises (see Follow-up).
+- *Commit decision:* the test is committed as a /passing/ regression rather than fabricated to fail.  Forcing a red via =:expected-result :failed= would obscure the diagnostic finding.  The passing test still constitutes a valuable invariant: any future change that breaks the REASONING IB bounds via the canonical streaming pipeline will be caught here.  The test docstring documents the empirical result and refers back to this Outcomes section.
+- *Full suite:* =Ran 500 tests, 497 results as expected, 0 unexpected, 3 skipped= (the 3 skips are pre-existing and unrelated).  No regressions in previously-passing tests.
 
 **** TODOs
-***** AI-DO Scout streaming test infrastructure in =test/=
+***** AI-DONE Scout streaming test infrastructure in =test/=
 - Identify whether existing tests use =gptel-curl--stream-insert-response= directly, a stub backend, or a different mechanism to simulate streamed chunk arrival.
 - Document the chosen driver in this TODO's Discussion highlights before writing the new test.
-***** AI-DO Implement the failing temporal-bug test
+- /Done:/ chosen driver = direct =gptel-curl--stream-insert-response= calls (see Discussion highlights and Outcomes).  Committed as =docs(ai): record chosen streaming driver for temporal REASONING IB test=.
+***** AI-DONE Implement the failing temporal-bug test
 - Following the Mission steps above.
-***** AI-DO Run full suite and confirm RED test
+- /Done:/ =gptel-org-reasoning-ib-temporal-end-marker-not-polluted-by-respond= added.  See Outcomes for the empirical-PASS finding and committed-as-baseline rationale.
+***** AI-DONE Run full suite and confirm RED test
 - =cd quelpa/build/gptel/test && make test 2>&1 | tail -60= — only the new test should fail; all others must still pass.
 - Commit the failing test as a documented regression.
+- /Done with a deviation:/ the new test EMPIRICALLY PASSES under the canonical streaming driver — the simple temporal hypothesis is not confirmed.  Full suite: =Ran 500 tests, 497 results as expected, 0 unexpected, 3 skipped=.  Committed as a passing regression (see Outcomes).  A follow-up AI-DO is needed to extend the reproduction conditions before opening a fix task.
 
 *** AI-DONE Fix void-variable =reasoning-captured-pos= error from parallel =let= in streaming REASONING cleanup-fn
 
