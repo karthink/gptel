@@ -4085,6 +4085,63 @@ Doc updates applied:
 - Cleanup detail: when =debug-preserve-state= is t, =gptel-org-ib-close= is a no-op (by design — it preserves IBs for inspection), so the test manually kills the IB buffer in =unwind-protect= cleanup for that iteration. The nil iteration uses the standard =gptel-org--reasoning-close-indirect-buffer=.
 - Full suite: 496 passed, 0 failed, 3 skipped. Committed as =b28dd1d=: =test(reasoning-ib): assert bounds invariant holds under debug-preserve-state both nil and t=.
 
+*** AI-DO Add failing temporal-bug test for REASONING IB end-marker advancing past streaming inserts and absorbing RESPONDING heading
+
+**** Origin
+- Follow-up from sibling [[*Add failing test proving REASONING IB is not narrowed and gets polluted by sibling RESPOND content][AI-DONE Add failing test proving REASONING IB is not narrowed and gets polluted by sibling RESPOND content]].
+- That task added a static-fixture =ert-deftest= (=gptel-org-reasoning-ib-narrowing-bounds-not-polluted-by-respond=) which PASSES — it cannot reproduce the user-observed bug because both REASONING and RESPONDING siblings already exist in the base buffer at IB creation time, so =org-end-of-subtree= establishes the correct end-marker.
+- The Outcomes section of that task pinpointed the real (temporal) cause: the IB end-marker is created with =insertion-type=t= (see =gptel-org-ib-create= in =gptel-indirect-buffer.el=). During live streaming each insert AT the marker position pushes the marker forward, auto-expanding the narrowing. If a RESPONDING sibling heading is then inserted at that pushed-forward marker position (i.e., AFTER the IB was opened and AFTER REASONING streaming pushed the end-marker), the new RESPONDING heading lands INSIDE the already-expanded narrowed region of the REASONING IB.
+
+**** Discussion highlights
+- The bug is *temporal/dynamic*, not static — it requires the actual streaming sequence:
+  1. REASONING heading is created and the REASONING IB is opened (end-marker placed at end of REASONING subtree, =insertion-type=t=).
+  2. Streaming inserts REASONING body content at the end-marker — each insert advances the marker because of =insertion-type=t=.
+  3. REASONING → REASONED transition runs.
+  4. RESPONDING heading is created as a sibling of REASONING — but because the IB's end-marker advanced during step 2, the RESPONDING heading is inserted BEFORE the (advanced) end-marker, ending up inside the narrowing.
+- The previous task's Outcomes explicitly notes: /"manual inserts do not exercise the actual streaming pipeline, so a successful repro must drive =gptel-curl--stream-insert-response= or the FSM directly."/
+- Existing test infrastructure to study: [[file:test/gptel-org-reasoning-ib-test.el]] (current sibling tests use static fixtures). Also relevant: any existing test that drives the streaming pipeline / FSM transitions for triad state changes. The new test must mimic that drive style.
+- Related background: [[file:gptel-indirect-buffer-ai.org]] (TERMINE/CSTR pattern, end-marker invariants, =insertion-type= rationale).
+- Related code locations (gptel-agent should NOT be touched — gptel only):
+  - =gptel-org-ib-create= and end-marker initialization in =gptel-indirect-buffer.el=
+  - REASONING triad transitions in the org integration layer
+  - Streaming insert path: =gptel-curl--stream-insert-response= and =gptel--insert-response=
+
+**** Mission
+1. Scout the existing test suite under [[file:quelpa/build/gptel/test]] to identify the canonical pattern for driving streaming / FSM transitions in tests (without hitting real network). Reference: how do current tests simulate streamed reasoning + response content arriving incrementally?
+2. Add a new failing =ert-deftest= to [[file:test/gptel-org-reasoning-ib-test.el]] named =gptel-org-reasoning-ib-temporal-end-marker-not-polluted-by-respond= (or similar clear name).
+3. Test setup must reproduce the temporal sequence, NOT the static fixture:
+   1. Construct base org buffer with =** DOING= parent and =*** AI-DOING ...:deepseek@agent:= child (no REASONING/RESPONDING children yet — they will be created during the test).
+   2. Open the REASONING IB using the canonical API (per [[file:gptel-indirect-buffer-ai.org]]). This is the point where =insertion-type=t= matters.
+   3. Drive incremental streaming inserts of REASONING body text at the IB's end-marker (use the same primitive the streaming pipeline uses — =gptel-curl--stream-insert-response= or equivalent helper).
+   4. Trigger the REASONING → REASONED → RESPOND transition through the public state-transition entry point (do NOT touch internals directly; use whatever the live triad code calls).
+   5. Let the transition insert the =**** RESPONDING= heading + body.
+4. Assert: after all streaming has completed but BEFORE any RESPONDING IB is opened, the REASONING IB's =(point-max)= must correspond to the position immediately before the =**** RESPONDING= heading in the base buffer. The RESPONDING heading text MUST NOT be visible inside the REASONING IB.
+5. Run with =gptel-org-debug-preserve-state= bound to BOTH nil and t (use the =verify-ib-narrowing= =cl-flet= pattern from the existing baseline test) — invariant must hold for both.
+6. Run the test — it is EXPECTED TO FAIL given the bug. The failing test output is the deliverable; do NOT fix the underlying =insertion-type=t= behavior yet.
+7. Add a comment at the top of the new test referencing this TODO and the diagnostic hypothesis in the sibling task's Outcomes.
+
+**** Verification
+- Run: =cd quelpa/build/gptel/test && make test 2>&1 | tail -60=
+- Confirm the new test FAILS with REASONING IB =point-max= positioned past the =**** RESPONDING= heading start (or with RESPONDING heading text visible inside the IB).
+- All previously-passing tests must continue to pass.
+
+**** Decisions
+- Driver choice: prefer the highest-level streaming entry point that exercises the real end-marker advancement (likely =gptel-curl--stream-insert-response=). Avoid hand-rolled =insert= calls — they were already proven insufficient in the sibling task.
+- Scope: the test reproduces the bug only. Fix is a separate AI-DO (see Follow-up).
+
+**** Follow-up
+- Once this failing test is committed (red), create a separate AI-DO sibling task to FIX the end-marker behavior (e.g., switch the end-marker to =insertion-type=nil=, or relocate the marker before each RESPONDING insertion, or guard the narrowing during the REASONED→RESPOND transition). Do not include fix work in this TODO.
+
+**** TODOs
+***** AI-DO Scout streaming test infrastructure in =test/=
+- Identify whether existing tests use =gptel-curl--stream-insert-response= directly, a stub backend, or a different mechanism to simulate streamed chunk arrival.
+- Document the chosen driver in this TODO's Discussion highlights before writing the new test.
+***** AI-DO Implement the failing temporal-bug test
+- Following the Mission steps above.
+***** AI-DO Run full suite and confirm RED test
+- =cd quelpa/build/gptel/test && make test 2>&1 | tail -60= — only the new test should fail; all others must still pass.
+- Commit the failing test as a documented regression.
+
 *** AI-DONE Fix void-variable =reasoning-captured-pos= error from parallel =let= in streaming REASONING cleanup-fn
 
 **** Origin
