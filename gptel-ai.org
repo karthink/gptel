@@ -4303,8 +4303,8 @@ placeholder.  Need tests for:
    state triad + shared task TERMINE" invariant explicitly.
 
 **** TODOs
-***** AI-DOING Prerequisite: complete IB-4.6c heading-depth fix
-- Link: [[file:gptel-ai.org::*AI-DO IB-4.6c Fix heading depth in gptel--org-insert-heading][AI-DO IB-4.6c]]
+***** AI-DONE Prerequisite: complete IB-4.6c heading-depth fix
+- Link: [[file:gptel-ai.org::*AI-DONE IB-4.6c Fix heading depth in gptel--org-insert-heading][AI-DONE IB-4.6c]]
 - Must land first; RESPOND/REASONING headings need to land at correct depth
   before IB creation wraps them.
 
@@ -5286,7 +5286,7 @@ in IB-4.6 is the intended entry point for the shaping logic.
   pass (Step 4 only checks response text position, not heading wrapping).
 
 
-******* AI-DOING IB-4.6c Fix heading depth in gptel--org-insert-heading
+******* AI-DONE IB-4.6c Fix heading depth in gptel--org-insert-heading
 =gptel--org-insert-heading= inserts headings at level 1 (single =*=)
 regardless of context.  Both REASONING and RESPOND headings are
 affected — they land at =*= level instead of inheriting the depth
@@ -5314,6 +5314,24 @@ display-reasoning-stream=, =gptel-curl--stream-insert-response=).
 - Update callers if needed.
 - Remove =:expected-result :failed= from =gptel-org-respond-heading-
   missing-during-streaming= once heading depth assertion passes.
+******** Outcomes
+- Files changed: =gptel.el= (=gptel--org-insert-heading=, end-of-reasoning
+  handler in =gptel--display-reasoning-stream=),
+  =test/gptel-org-reasoning-ib-test.el= (removed =:expected-result :failed=
+  from =gptel-org-respond-heading-missing-during-streaming=).
+- What changed: =gptel--org-insert-heading= now computes target heading
+  depth from buffer context using =(1+ org-current-level)= at the
+  insertion marker (defaulting to 1 if no parent).  Caller-supplied
+  leading stars are stripped and replaced with the correct count.
+  The end-of-reasoning handler snapshots REASONING's level into
+  =:next-heading-sibling-level= so the subsequent RESPOND heading
+  lands as a sibling (same depth) rather than a child of REASONING
+  (which would over-nest because =org-end-of-subtree= leaves the marker
+  at a position still considered inside the REASONING subtree).
+- Test result: =gptel-org-respond-heading-missing-during-streaming=
+  now passes (all 6 assertions including assertion C =*** RESPOND=
+  depth check).  492 total tests, 489 passed, 0 unexpected, 3 skipped
+  (pre-existing).
 ******* DONE IB-4.7 AI-DO depth validator
 - files: =gptel-org-agent.el= (new defconst
   =gptel-org-agent--ai-do-family-keywords=, new defuns
