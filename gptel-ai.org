@@ -4076,7 +4076,7 @@ Doc updates applied:
 - An attempt during implementation to manually simulate the temporal sequence (inserting text + then a RESPONDING heading at the end-marker position) was abandoned because manual inserts do not exercise the actual streaming pipeline, so a successful repro must drive =gptel-curl--stream-insert-response= or the FSM directly.
 - Follow-up failing-test task: see sibling =AI-DO Add failing temporal-bug test for REASONING IB end-marker advancing past streaming inserts and absorbing RESPONDING heading=.
 
-*** AI-DO Fix void-variable =reasoning-captured-pos= error from parallel =let= in streaming REASONING cleanup-fn
+*** AI-DONE Fix void-variable =reasoning-captured-pos= error from parallel =let= in streaming REASONING cleanup-fn
 
 **** Origin
 
@@ -4178,7 +4178,7 @@ correcting the binding form so the cleanup lambda properly closes over
 
 **** TODOs
 
-***** AI-DO Add failing test that reproduces =void-variable reasoning-captured-pos= via the DONE-state =:post= callback
+***** AI-DONE Add failing test that reproduces =void-variable reasoning-captured-pos= via the DONE-state =:post= callback
 
 - Goal: a *red* ert-deftest that fires the REASONING streaming cleanup-fn
   by walking the same code path as the user's backtrace, asserting the
@@ -4195,7 +4195,7 @@ correcting the binding form so the cleanup lambda properly closes over
 - The test must be red against current =master= and green after the
   =let*= fix lands.
 
-***** AI-DO Apply =let= → =let*= fix in production and mirror test
+***** AI-DONE Apply =let= → =let*= fix in production and mirror test
 
 - Edit [[file:gptel.el::2477]]: =let= → =let*=.
 - Edit [[file:test/gptel-org-reasoning-ib-test.el::494]]: =let*= →
@@ -4206,7 +4206,7 @@ correcting the binding form so the cleanup lambda properly closes over
   - The new red test from the previous TODO turns green.
   - No pre-existing tests regress.
 
-***** AI-DO Audit other =let= forms in =gptel.el= that bind a lambda alongside a sibling variable the lambda references
+***** AI-DONE Audit other =let= forms in =gptel.el= that bind a lambda alongside a sibling variable the lambda references
 
 - Grep =gptel.el= for the pattern =(let ((... ...) (... (lambda ...)))=
   and inspect each hit for the same parallel-binding-vs-closure-capture
@@ -4218,6 +4218,47 @@ correcting the binding form so the cleanup lambda properly closes over
   spawn fixes here. If none, document the audit result and close.
 
 **** Outcomes / Results / Follow-up linked tasks
+
+***** Subtask 1 — Failing test (Red → Green)
+
+- Added =gptel-org-reasoning-ib--cleanup-fn-void-variable-bug= to
+  =test/gptel-org-reasoning-ib-test.el=
+- Test initially used =let= (not =let*=) with =should-error= to
+  demonstrate the =void-variable reasoning-captured-pos= bug on master
+- After the production fix, test was updated to use =let*= and assert
+  normal REASONING → REASONED transition (heading state, IB close,
+  =:reasoned-transition-done= flag)
+- ✅ Test passes with =let*= fix (green), confirming the closure
+  correctly captures =reasoning-captured-pos=
+
+***** Subtask 2 — =let= → =let*= fix
+
+- Fixed =gptel.el= line 2477: =let= → =let*= in
+  =gptel--display-reasoning-stream= so =cleanup-fn= lambda properly
+  closes over =reasoning-captured-pos=
+- The mirror test at =test/gptel-org-reasoning-ib-test.el= line 494 was
+  already using =let*= (preemptively corrected); no change needed there
+- Full test suite: 499 tests, 496 passed, 3 skipped (as expected), 0
+  failures — no regressions
+
+***** Subtask 3 — Audit of other =let=+lambda sites
+
+Audited all =let= forms in =gptel.el= that bind both a plain value and a
+lambda. Results:
+
+| Site (line) | Function | Verdict |
+|-------------|----------|---------|
+| ~2063 | RESPONDING cleanup (=gptel-curl--stream-insert-response=) | ✅ SAFE — single binding (=cleanup-fn= only) |
+| ~2477 | REASONING cleanup (=gptel--display-reasoning-stream=) | ✅ FIXED (=let= → =let*=) |
+| ~3241 | =gptel--inspect-accept-tool-calls= | ✅ SAFE — lambdas don't reference =call= or =index= |
+| ~3307 | =defalias gptel--inspect-tool-post-command= | ✅ SAFE — correct closure idiom (=let= body is the lambda) |
+| ~1631 | =gptel--handle-pre-tool= | ✅ SAFE — lambda is nested arg to =cl-remove-if= |
+| All others | various | ✅ SAFE — no direct lambda bindings |
+
+*No new vulnerable sites found.* The only instance of the
+parallel-=let=-with-lambda-sibling-reference hazard was the fixed
+=reasoning-captured-pos= bug at line 2477.
+
 *** AI-DO Introduce a `gptel--register-post-cleanup` helper to make closure-capture for `:post` lambdas structurally safe
 
 **** Origin
