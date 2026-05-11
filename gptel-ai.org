@@ -4271,23 +4271,23 @@ placeholder.  Need tests for:
   children under "Implement RESPOND IB wrapping" below.
 - Heading-depth bug (children at =***= instead of =****=) resolved by deletion.
 
-***** AI-DO Implement RESPOND IB wrapping
+***** AI-DOING Implement RESPOND IB wrapping
 - New function =gptel-org--respond-create-indirect-buffer= mirroring
   =gptel-org--reasoning-create-indirect-buffer=
 - Wire into =gptel-curl--stream-insert-response=
 - Install auto-correct hook on the new IB
 - Close/widen IB in =:post= lambda
-****** AI-DO Implement RESPOND triad registration and keywords
+****** AI-DOING Implement RESPOND triad registration and keywords
 - Register =RESPOND=, =RESPONDING=, =RESPONDED= with
   =gptel-org--agent-state-face=
 - Update =gptel-org--heading-is-assistant-p= to recognize all three
 - Update =gptel-org--insert-respond-heading= scaffolding to use =RESPONDING=
-****** AI-DO Update streaming pipeline for RESPONDING insertion
+****** AI-DOING Update streaming pipeline for RESPONDING insertion
 - In =gptel-curl--stream-insert-response=: insert =* RESPONDING /<title>=
   directly on first chunk (skip transient =RESPOND= to avoid double org-todo
   transition flicker during streaming)
 - Update title extraction regex to match =RESPONDING=
-****** AI-DO Add RESPONDING→RESPONDED completion transition
+****** AI-DOING Add RESPONDING→RESPONDED completion transition
 - Add =:post= lambda in info plist that transitions =RESPONDING= → =RESPONDED=
   on successful stream completion
 - On error/abort: leave as =RESPONDING= (do not transition)
