@@ -211,8 +211,12 @@
 (defvar gptel-org--in-prefix-advice)
 (declare-function gptel-org--reasoning-create-indirect-buffer "gptel-org")
 (declare-function gptel-org--reasoning-close-indirect-buffer "gptel-org")
+(declare-function gptel-org--respond-create-indirect-buffer "gptel-org")
+(declare-function gptel-org--respond-close-indirect-buffer "gptel-org")
 (declare-function gptel-org--tool-create-indirect-buffer "gptel-org")
 (declare-function gptel-org--tool-close-indirect-buffer "gptel-org")
+(declare-function gptel-org--debug "gptel-org")
+(declare-function gptel-org-ib-streaming-marker "gptel-indirect-buffer")
 (declare-function org-at-heading-p "org")
 (declare-function org-get-tags "org")
 (declare-function org-end-of-subtree "org")
@@ -2022,7 +2026,7 @@ Optional RAW disables text properties and transformation."
              (setq tracking-marker (set-marker (make-marker) (point)))
              (set-marker-insertion-type tracking-marker t)
              (plist-put info :tracking-marker tracking-marker))
-           ;; Insert RESPOND heading on first string chunk (org + keyword mode only)
+           ;; Insert RESPONDING heading on first string chunk (org + keyword mode only)
            (when (and (not raw)
                       (derived-mode-p 'org-mode)
                       (bound-and-true-p gptel-org-use-todo-keywords)
@@ -2031,8 +2035,52 @@ Optional RAW disables text properties and transformation."
              (plist-put info :respond-heading-inserted t)
              (plist-put info :respond-title-pending t)
              (plist-put info :respond-title-buffer "")
-             (let ((heading-pos (gptel--org-insert-heading "* RESPOND /\n" info)))
-               (plist-put info :respond-heading-pos heading-pos)))
+             (let ((heading-pos (gptel--org-insert-heading "* RESPONDING /\n" info)))
+               (plist-put info :respond-heading-pos heading-pos)
+               ;; Create RESPOND indirect buffer at the heading position
+               ;; and rewind the tracking-marker inside it so body text
+               ;; streams into the IB (before its TERMINE boundary).
+               (gptel-org--debug
+                "respond-stream: creating IB at heading-pos=%d" heading-pos)
+               (let ((respond-ib
+                      (gptel-org--respond-create-indirect-buffer
+                       heading-pos)))
+                 (when (and respond-ib
+                            (buffer-live-p respond-ib))
+                   (let ((term-pos
+                          (with-current-buffer respond-ib
+                            (marker-position
+                             (gptel-org-ib-streaming-marker
+                              "TERMINE")))))
+                     (when-let* ((tm (plist-get info :tracking-marker)))
+                       (move-marker tm term-pos))))
+               ;; Push a :post cleanup lambda that transitions
+               ;; RESPONDING → RESPONDED on successful completion
+               ;; and closes the RESPOND IB.  Gated on :error absence
+               ;; (both success and error paths run :post) and guarded
+               ;; with an idempotence flag since :post may fire
+               ;; multiple times.
+               (let ((cleanup-fn
+                      (lambda (info)
+                        (when (and (not (plist-get info :error))
+                                   (not (plist-get info :responded-transition-done))
+                                   (plist-get info :respond-heading-pos))
+                          (plist-put info :responded-transition-done t)
+                          (let ((rpos (plist-get info :respond-heading-pos))
+                                (buf (plist-get info :buffer)))
+                            (when (and rpos buf (buffer-live-p buf))
+                              (with-current-buffer buf
+                                (save-excursion
+                                  (goto-char rpos)
+                                  (when (and (org-at-heading-p)
+                                             (string=
+                                              (org-get-todo-state)
+                                              "RESPONDING"))
+                                    (org-todo "RESPONDED"))))))
+                          ;; Close the RESPOND IB (idempotent — safe if
+                          ;; already closed)
+                          (gptel-org--respond-close-indirect-buffer)))))
+                 (plist-put info :post (cons cleanup-fn (plist-get info :post)))))))
            (if (and (not raw)
                     (plist-get info :respond-title-pending))
                ;; Title extraction FSM
@@ -2047,7 +2095,7 @@ Optional RAW disables text properties and transformation."
                                    (rpos (plist-get info :respond-heading-pos)))
                          (save-excursion
                            (goto-char rpos)
-                           (when (looking-at "^\\(\\*+ RESPOND\\) /$")
+                           (when (looking-at "^\\(\\*+ RESPONDING\\) /$")
                              (let ((inhibit-read-only t))
                                (replace-match (concat (match-string 1) " " title))
                                (org-element-cache-reset)))))
