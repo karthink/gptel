@@ -4045,27 +4045,28 @@ about IB-7).  Ensure:
    =replace-match= sites in =gptel.el= (=inhibit-read-only t= stays).
 4. Verify tests pass.
 5. Update =gptel-indirect-buffer-ai.org= if needed.
-
-**** AI-DO Remove inhibit-modification-hooks from RESPOND title replacement (gptel.el ~L2052)
-***** Mission
+   
+**** TODOs
+***** AI-DO Remove inhibit-modification-hooks from RESPOND title replacement (gptel.el ~L2052)
+****** Mission
 Remove =(inhibit-modification-hooks t)= from the =let= binding at
 =gptel.el= line ~2052 (RESPOND mid-stream title replacement).
 Keep =(inhibit-read-only t)=.
 
-**** AI-DO Remove inhibit-modification-hooks from REASONING title replacement (gptel.el ~L2306)
-***** Mission
+***** AI-DO Remove inhibit-modification-hooks from REASONING title replacement (gptel.el ~L2306)
+****** Mission
 Remove =(inhibit-modification-hooks t)= from the =let= binding at
 =gptel.el= line ~2306 (REASONING end-of-stream fallback).
 Keep =(inhibit-read-only t)=.
 
-**** AI-DO Remove inhibit-modification-hooks from REASONING title replacement (gptel.el ~L2404)
-***** Mission
+***** AI-DO Remove inhibit-modification-hooks from REASONING title replacement (gptel.el ~L2404)
+****** Mission
 Remove =(inhibit-modification-hooks t)= from the =let= binding at
 =gptel.el= line ~2404 (REASONING mid-stream newline).
 Keep =(inhibit-read-only t)=.
 
-**** AI-DO Verify tests pass and update docs
-***** Mission
+***** AI-DO Verify tests pass and update docs
+****** Mission
 1. Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
 2. If auto-correct docs mention =inhibit-modification-hooks= pattern
    for title replacement, update them.
