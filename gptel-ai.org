@@ -4937,7 +4937,7 @@ reason.
   marker, response-title application, auto-corrector, role-tracking
   and all agent-pipeline tests — deferred to IB-4.6b below.
 
-******* AI-DO IB-4.6b Wire RESPOND heading into response insertion
+******* AI-DONE IB-4.6b Wire RESPOND heading into response insertion
 Pipeline-level change.  Wrap streaming assistant response content in
 a =* RESPOND <title>= heading inserted inside the active agent IB,
 before the subtree's TERMINE.  Depends on:
@@ -4984,6 +4984,26 @@ in IB-4.6 is the intended entry point for the shaping logic.
 - Deferred title extraction: =gptel--format-keyword-heading-org= can
   extract title from first non-empty line (same as REASONING pattern).
 
+******** Outcomes / Results
+- Commit: =f899d03= — =gptel-curl--stream-insert-response= extended
+  with RESPOND heading insertion + title extraction FSM (mirrors
+  REASONING pattern).  ~70 lines added to =gptel.el=.
+- =gptel--display-reasoning-stream= clears =:reasoning-heading-pos=
+  at end-of-reasoning to prevent RESPOND from triggering during
+  reasoning body streaming.
+- Test macro updated to enable =gptel-org-use-todo-keywords=.
+- All 492 tests pass (0 unexpected, 1 expected failure).
+- =gptel-org-respond-heading-missing-during-streaming=: 4 out of 5
+  assertion groups now pass — RESPOND heading created, response text
+  under RESPOND, ordering correct.  Assertion C (heading depth =3)
+  still fails due to pre-existing =gptel--org-insert-heading= level-1
+  insertion (also affects REASONING).  See follow-up [[#IB-4.6c Fix heading depth in gptel--org-insert-heading][IB-4.6c]].
+- Pre-existing scaffolding (=gptel-org--insert-respond-heading=,
+  =gptel-org--heading-is-assistant-p= RESPOND recognition,
+  =gptel-org--apply-response-title= keyword-mode no-op,
+  =gptel-org--register-todo-keywords= RESPOND registration) was
+  already in place from IB-4.6 — no changes needed.
+
 ******** Test coverage
 - Test =gptel-org-respond-heading-missing-during-streaming= added to
   [[file:test/gptel-org-reasoning-ib-test.el]] (=:expected-result :failed=)
@@ -4993,6 +5013,35 @@ in IB-4.6 is the intended entry point for the shaping logic.
 - Existing =gptel-org-reasoning-ib-streaming-end-to-end= continues to
   pass (Step 4 only checks response text position, not heading wrapping).
 
+
+******* AI-DO IB-4.6c Fix heading depth in gptel--org-insert-heading
+=gptel--org-insert-heading= inserts headings at level 1 (single =*=)
+regardless of context.  Both REASONING and RESPOND headings are
+affected — they land at =*= level instead of inheriting the depth
+of the parent heading (e.g. =***= under =** AI-DOING=).
+
+This was exposed by the IB-4.6b RESPOND test (=gptel-org-respond-
+heading-missing-during-streaming=) assertion C, which checks for
+=*** RESPOND= but gets =* RESPOND=.  The REASONING end-to-end test
+does not assert heading depth so the same bug was masked.
+
+Fix: compute the correct heading level in =gptel--org-insert-heading=
+based on the buffer context at the insertion point, or accept a
+depth parameter and pass the right level from callers (=gptel--
+display-reasoning-stream=, =gptel-curl--stream-insert-response=).
+
+******** Origin
+- IB-4.6b RESPOND test assertion C failure: expected =*** RESPOND=
+  (depth 3), got =* RESPOND= (depth 1).
+- Confirmed same issue affects REASONING heading (masked — test
+  doesn't assert depth).
+
+******** Mission
+- Fix =gptel--org-insert-heading= to produce correctly-nested
+  headings.
+- Update callers if needed.
+- Remove =:expected-result :failed= from =gptel-org-respond-heading-
+  missing-during-streaming= once heading depth assertion passes.
 ******* DONE IB-4.7 AI-DO depth validator
 - files: =gptel-org-agent.el= (new defconst
   =gptel-org-agent--ai-do-family-keywords=, new defuns
