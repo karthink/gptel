@@ -4205,6 +4205,143 @@ placeholder.  Need tests for:
 **** AI-DO Update streaming pipeline for RESPONDING insertion
 **** AI-DO Add RESPONDING→RESPONDED completion transition
 **** AI-DO Update tests for RESPOND triad
+
+*** AI-DO Apply IB + auto-correct + state triad to RESPOND and REASONING
+:PROPERTIES:
+:GPTEL_PRESET: gptel-coordinator
+:END:
+
+**** Origin
+- User request: "Update the RESPOND process. Currently not using IB. It must
+  have own indirect buffer. It should use the triad (RESPOND → RESPONDING →
+  RESPONDED). Similarly reasoning should use (REASON → REASONING → REASONED).
+  The fundamental design pattern IB + auto-correct should be used for
+  everywhere."
+- Design invariant already documented at [[file:gptel-ai.org::1667]]: "Every
+  indirect buffer (agent, sub-agent, tool, REASONING, RESPOND) uses the SAME
+  design pattern: indirect-buffer + TERMINE terminator." — but RESPOND does
+  not yet get its own IB, and REASONING does not yet use a three-state triad.
+
+**** Discussion highlights
+- *RESPOND today*: streaming pipeline (=gptel-curl--stream-insert-response=,
+  gptel.el ~L1995) inserts =* RESPOND /<title>= as a plain heading and streams
+  content directly via =tracking-marker=. No IB wrapping; no TERMINE; no
+  completion transition. Heading stays as =RESPOND= forever.
+- *REASONING today*: =gptel--display-reasoning-stream= (gptel.el ~L2154-2366)
+  *does* create an IB via =gptel-org--reasoning-create-indirect-buffer= and
+  closes it via =gptel-org--reasoning-close-indirect-buffer=. However the
+  heading uses a single keyword =* REASONING= (no triad: no =REASON= initial
+  state, no =REASONED= terminal state).
+- *Agent triads* (e.g. =GATHER → GATHERING → GATHERED=) already follow the
+  three-state pattern via =:state-words= property — ~15 agent triads in
+  gptel-agent. RESPOND and REASONING should match this pattern for
+  consistency.
+- *IB + auto-correct invariant*: auto-correct
+  (=gptel-org--auto-correct-on-change=, [[file:gptel-ai.org::637]]) only works
+  *inside* an IB because the IB narrows the editable region. Without an IB,
+  RESPOND content has no rebase/escape/fence-conversion safety net during
+  streaming.
+- Existing sibling TODO [[file:gptel-ai.org::*AI-DO RESPOND state triad: RESPOND → RESPONDING → RESPONDED][AI-DO RESPOND state triad]] (line 4161) already
+  covers the *keyword + transition* part of RESPOND but does NOT cover IB
+  wrapping. That TODO should be folded into / re-scoped under this one, or
+  this TODO should explicitly depend on it.
+
+**** Decisions
+- Treat "IB + auto-correct + state triad + TERMINE" as a *single universal
+  pattern* for any streaming response surface (agent, sub-agent, tool,
+  REASONING, RESPOND, future surfaces).
+- RESPOND triad: =RESPOND= (transient/initial, may be skipped) → =RESPONDING=
+  (inserted on first chunk, IB created) → =RESPONDED= (transitioned via
+  =:post= lambda on stream completion). On error/abort: stay at =RESPONDING=.
+- REASONING triad: =REASON= (transient/initial) → =REASONING= (inserted on
+  first reasoning chunk, IB already exists) → =REASONED= (transitioned on
+  reasoning-stream end / before RESPONDING starts).
+- RESPOND gets its own IB wrapping the response heading; share the parent
+  task-level TERMINE per design invariant (REASONING and RESPOND do not get
+  their own TERMINE — they share the single task-level TERMINE / CSTR).
+- Auto-correct hook (=gptel-org--auto-correct-on-change=) must be installed on
+  both the new RESPOND IB and continue working on the REASONING IB.
+
+**** Mission
+1. *Prerequisite*: Resolve [[file:gptel-ai.org::*AI-DO IB-4.6c Fix heading depth in gptel--org-insert-heading][AI-DO IB-4.6c heading-depth fix]] so RESPOND
+   and REASONING headings land at the correct nesting depth before IB
+   creation.
+2. *RESPOND triad* (sub-task — fold the existing [[file:gptel-ai.org::*AI-DO RESPOND state triad: RESPOND → RESPONDING → RESPONDED][AI-DO RESPOND state triad]]
+   line 4161 under this parent):
+   - Register all three keywords with =gptel-org--agent-state-face=
+   - Streaming pipeline inserts =* RESPONDING /<title>= directly (skip
+     transient =RESPOND=)
+   - Add =:post= lambda for =RESPONDING → RESPONDED=
+3. *RESPOND IB wrapping* (new — not in line-4161 TODO):
+   - Create =gptel-org--respond-create-indirect-buffer= mirroring
+     =gptel-org--reasoning-create-indirect-buffer=
+   - Wire it into =gptel-curl--stream-insert-response= so the response
+     heading streams *inside* its own narrowed IB
+   - Install =gptel-org--auto-correct-on-change= on the RESPOND IB
+   - Close/widen the IB in =:post= lambda alongside the triad transition
+4. *REASONING triad* (new):
+   - Register =REASON= and =REASONED= keywords alongside =REASONING=
+   - Update =gptel--display-reasoning-stream= to insert =* REASONING= on
+     first chunk (skip =REASON=) and transition to =REASONED= on
+     reasoning-end (before RESPONDING streams)
+   - Update =gptel-org--heading-is-assistant-p= and any callers to recognize
+     all three REASONING keywords
+5. *Universal-pattern audit*:
+   - Verify TERMINE/CSTR boundary placement for both REASONING and RESPOND IBs
+   - Confirm auto-correct fires correctly inside RESPOND IB during streaming
+     (idempotent, no recursion via =inhibit-modification-hooks=)
+   - Update [[file:gptel-indirect-buffer-ai.org]] sections describing
+     REASONING/RESPOND to reflect new triad + IB structure
+6. *Tests*:
+   - Convert known-failure RESPOND test → passing test with triad + IB
+   - Add unit tests for REASONING triad transitions
+   - Add integration test: streaming a response creates a RESPOND IB,
+     transitions =RESPONDING → RESPONDED=, and TERMINE/CSTR remains at
+     task level
+7. *Docs*: Update =gptel-ai.org= Key Design Patterns and
+   =gptel-indirect-buffer-ai.org= to state the universal "IB + auto-correct +
+   state triad + shared task TERMINE" invariant explicitly.
+
+**** TODOs
+***** AI-DO Prerequisite: complete IB-4.6c heading-depth fix
+- Link: [[file:gptel-ai.org::*AI-DO IB-4.6c Fix heading depth in gptel--org-insert-heading][AI-DO IB-4.6c]]
+- Must land first; RESPOND/REASONING headings need to land at correct depth
+  before IB creation wraps them.
+
+***** AI-DO Fold existing RESPOND triad TODO under this parent (or mark dependency)
+- Link: [[file:gptel-ai.org::*AI-DO RESPOND state triad: RESPOND → RESPONDING → RESPONDED][AI-DO RESPOND state triad (line 4161)]]
+- Decide: re-parent its 4 sub-TODOs under this TODO, OR keep it standalone
+  and mark step 2 of this TODO as "see line 4161".
+- Note: the line-4161 TODO has a heading-level bug — its "Origin / Discussion
+  highlights / Decisions / Mission / TODOs" children are at =***= (sibling
+  level) instead of =****= (child level). Fix while folding.
+
+***** AI-DO Implement RESPOND IB wrapping
+- New function =gptel-org--respond-create-indirect-buffer= mirroring
+  =gptel-org--reasoning-create-indirect-buffer=
+- Wire into =gptel-curl--stream-insert-response=
+- Install auto-correct hook on the new IB
+- Close/widen IB in =:post= lambda
+
+***** AI-DO Implement REASONING state triad (REASON → REASONING → REASONED)
+- Register =REASON= and =REASONED= keywords with
+  =gptel-org--agent-state-face=
+- Update =gptel--display-reasoning-stream= to insert =* REASONING= and
+  transition to =REASONED= on reasoning-end
+- Update =gptel-org--heading-is-assistant-p=
+
+***** AI-DO Universal-pattern audit + doc update
+- Verify TERMINE/CSTR placement for RESPOND + REASONING IBs
+- Confirm auto-correct fires correctly during RESPOND streaming
+- Update [[file:gptel-indirect-buffer-ai.org]] to document the universal
+  pattern explicitly
+
+***** AI-DO Tests for RESPOND IB + REASONING triad
+- Convert known-failure RESPOND test → passing test
+- Add unit tests for REASONING triad
+- Add integration test for RESPOND IB lifecycle
+- =cd quelpa/build/gptel/test && make test 2>&1 | tail -30=
+
 ** Researched TODOs
 *** AI-DONE Fix TERMINE: move from child-level to sibling-level for proper IB isolation
 
