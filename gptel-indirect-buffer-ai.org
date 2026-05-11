@@ -22,11 +22,12 @@ The module provides:
   about an IB's relationships.  Direct =buffer-base-buffer=, marker
   arithmetic, and buffer-local marker variables outside this API are
   forbidden.
-- A unified *TERMINE terminator heading* pattern: each active task's
-  subtree is bounded by an empty =TERMINE= child heading; new
-  siblings are inserted BEFORE the terminator so existing IBs are
-  never disturbed.  TERMINE replaces the pre-IB-4 two-keyword
-  =FEEDBACK= / =RESULTS= scheme.
+- A unified *TERMINE terminator heading* pattern (CSTR: Conditional
+  Single-TERMINE Rule): each top-level user task has one =TERMINE=
+  sibling placed at the same level as the =AI-DOING= heading, outside
+  the IB's narrowing.  New siblings are inserted BEFORE the
+  terminator so existing IBs are never disturbed.  TERMINE replaces
+  the pre-IB-4 two-keyword =FEEDBACK= / =RESULTS= scheme.
 - *Hard-fail policy*: inconsistencies call =gptel-org-ib-fatal=
   which aborts the FSM run and signals =user-error=.  No
   =ignore-errors= wrappers inside the IB module or IB-related caller
@@ -164,56 +165,47 @@ falls into exactly one of the categories below.
 
 *** TERMINE
 
-- Single empty heading used as the unified terminator for an IB's
-  subtree.
+- Single empty heading used as the unified terminator for a
+  top-level user task.
 - Replaces the pre-IB-4 two-keyword =RESULTS= / =FEEDBACK= scheme.
 - Body MUST be empty.
-- *Universal invariant (no exceptions):* /every/ IB created by gptel
-  has exactly one TERMINE child as its last heading.  This applies
-  uniformly to:
-  - the top-level agent subtree IB,
-  - sub-agent (tool-call) IBs (PENDING/ALLOWED/EXECUTING/EXECUTED
-    state-triad headings),
-  - tool body IBs (BASH, FILE-READ, etc.),
-  - REASONING IBs,
-  - RESPOND IBs.
+- *Universal invariant (CSTR):* one TERMINE per top-level user task,
+  placed as a SIBLING of the =AI-DOING= heading at the task level
+  (same heading depth).  TERMINE is OUTSIDE the IB's narrowing —
+  the IB is narrowed to the =AI-DOING= subtree only, which does NOT
+  include the sibling TERMINE.  This applies uniformly: every
+  top-level task gets exactly one TERMINE.
 
-  There is *one design pattern*: indirect-buffer + TERMINE.  Code
-  paths that historically created an IB without TERMINE (tool /
-  reasoning) are legacy and MUST be migrated to seed TERMINE on
-  creation.
+  Tool IBs (BASH, FILE-READ, etc.), REASONING IBs, and RESPOND IBs
+  do NOT get their own TERMINE — they are children of AI-DOING and
+  their body content goes directly under the heading.  The single
+  task-level TERMINE serves all insertion-point needs for that
+  task.
 
-- Rationale for universality: a TERMINE-terminated IB is the
-  /single/ contract every consumer relies on.  The streaming marker
-  =gptel-org-ib-streaming-marker= can be pinned BEFORE TERMINE with
-  =insertion-type=nil= regardless of IB kind, so the FSM, the
-  auto-corrector, and child-IB insertion all behave identically
-  whether the parent IB is an agent, a tool, or a reasoning block.
-  Having "tool/reasoning IBs without TERMINE" was the asymmetry
-  that produced marker drift, missing post-tool sub-headings, and
-  duplicate-TERMINE artefacts when sub-agents nested inside tool
-  IBs.
+- Rationale for CSTR: the sibling placement means TERMINE is
+  outside the IB's narrowing, so auto-correct (which operates
+  within the narrowed region) never interacts with it.  The
+  streaming marker at =point-max= of the IB's narrowing naturally
+  lands before the sibling TERMINE in the base buffer.  This
+  eliminates the marker-drift, duplicate-TERMINE, and
+  cross-contamination issues of the pre-CSTR "child-per-IB" model.
 
-- *Seeded eagerly at indirect-buffer creation time*, NOT lazily on
-  first streamed content.  Eager seeding guarantees the streaming
-  marker is pinned BEFORE TERMINE from the moment the IB exists,
-  avoiding the marker-drift-past-terminator bug that would
-  otherwise occur when the first output is a tool call (see
-  [[*Heading Creation Rule][Heading Creation Rule]]).
-- *Where TERMINE is seeded:* the generic factory
-  =gptel-org-ib-create= seeds TERMINE for every IB it creates.
-  Agent-layer wrappers (=gptel-org-agent--open-indirect-buffer=,
-  =gptel-org-ib-safe-insert-sibling=,
-  =gptel-org--reasoning-create-indirect-buffer=,
-  =gptel-org--tool-create-indirect-buffer=) inherit TERMINE
-  through the factory and MUST NOT skip seeding.  A defensive
-  =gptel-org-ib-ensure-terminator "TERMINE"= safety net remains in
-  =gptel-org-agent--display-tool-calls= for defense-in-depth.
-- Removed when the owning IB's subtree reaches a terminal state
-  (the tool/agent run completes, the reasoning block finalises, or
-  the parent task transitions to =AI-DONE=).  Removal MUST go
-  through =gptel-org-ib-remove-terminator= which also closes the
-  IB whose narrowing included it.
+- *Seeded conditionally*, NOT eagerly at IB creation time.  The
+  unified primitive =gptel-org-ib-resolve-or-seed-terminator=
+  scans forward from a heading for the next same-or-shallower
+  heading.  If a TERMINE is found, returns a marker to it.  If
+  none exists, seeds one at the task level.  Idempotent — safe to
+  call multiple times.
+- *Where TERMINE is seeded:* the task lifecycle via
+  =gptel-org-ib-resolve-or-seed-terminator=.  The generic IB
+  factory =gptel-org-ib-create= is neutral and does NOT seed
+  TERMINE.  The old =gptel-org-ib-ensure-terminator=,
+  =gptel-org-ib-ensure-sibling-terminator=, and
+  =gptel-org-ib-create-terminator= are deprecated.
+- Removed when the owning task reaches a terminal state (e.g.
+  transitions to =AI-DONE=).  Removal MUST go through
+  =gptel-org-ib-remove-terminator= which also closes any IB whose
+  narrowing overlaps it.
 
 *** Agent tool
 
@@ -236,23 +228,28 @@ falls into exactly one of the categories below.
 
 ** Invariants for insertion
 
-- *Every IB has TERMINE as its last child heading.*  All sibling
-  insertions inside an IB go BEFORE TERMINE.  No exceptions for
-  tool, reasoning, or sub-agent IBs.
+- *TERMINE is a sibling of the task's AI-DOING heading at the task
+  level.*  All new sibling insertions at the task level go BEFORE
+  TERMINE via =gptel-org-ib-resolve-or-seed-terminator=.  No
+  exceptions for tool, reasoning, or sub-agent IBs — they are
+  children of AI-DOING and don't need their own TERMINE.
 - A new AI-DO child is inserted directly under the user's =TODO=,
-  before any existing =TERMINE= sibling.
+  before any existing =TERMINE= sibling (found by
+  =resolve-or-seed-terminator=).
 - A new REASONING / RESPOND / tool / sub-agent heading is inserted
-  inside the active parent IB, before that IB's =TERMINE=.
+  inside the active parent IB (a child of AI-DOING), with sibling
+  boundaries managed by the task-level TERMINE found through
+  =resolve-or-seed-terminator=.
 - Insertion that would place an =AI-DO= deeper than one level under
   =TODO= is a fatal error.
 
 ** Removal rules
 
-- =TERMINE= is removed when its owning IB reaches a terminal state
-  (=AI-DONE= for the parent task IB, terminal state-word for a
-  sub-agent or tool IB, finalisation for a REASONING/RESPOND IB).
-- Removing =TERMINE= MUST also close the IB whose narrowing
-  included it, via the canonical close API (=gptel-org-ib-close=).
+- =TERMINE= is removed when its owning task reaches a terminal
+  state (=AI-DONE= for the parent task, or when the task is
+  finalised).
+- Removing =TERMINE= MUST also close any IB whose narrowing
+  overlaps it, via the canonical close API (=gptel-org-ib-close=).
   =gptel-org-ib-remove-terminator= enforces this contract.
 
 ** Historical note: RESULTS / FEEDBACK
@@ -272,13 +269,16 @@ created by AI-driven code paths — agent subtrees, tool headings,
 reasoning, responses — MUST be inserted via one of the following
 terminator-aware APIs:
 
-- =gptel-org-ib-safe-insert-sibling= (ensure TERMINE + create heading
-  + open IB in one shot)
+- =gptel-org-ib-safe-insert-sibling= (resolve-or-seed terminator +
+  create heading + open IB in one shot)
 - =gptel-org-ib-create-heading= (insert before terminator; fallback
   to =org-end-of-subtree= only when no terminator keyword is
   specified)
+- =gptel-org-ib-resolve-or-seed-terminator= (the unified CSTR
+  primitive: scan for existing TERMINE sibling at task level,
+  seed one if none found — idempotent)
 - =gptel-org-ib-ensure-terminator= / =gptel-org-ib-ensure-sibling-terminator=
-  (find-or-create a child / sibling terminator)
+  (deprecated — use =gptel-org-ib-resolve-or-seed-terminator=)
 - =gptel-org-ib-streaming-marker= (return an FSM =:position= marker
   pinned before the terminator, insertion-type nil)
 
@@ -298,9 +298,10 @@ headings, blank-line corruption between sibling tasks) observed in
 
 The terminator pattern makes new-sibling insertion safe:
 
-- The =TERMINE= terminator is a stable sentinel child of the parent
-  subtree.
-- New siblings are inserted on the line BEFORE the terminator.
+- The =TERMINE= terminator is a stable sentinel sibling at the task
+  level, outside all IBs' narrowing.
+- New siblings are inserted on the line BEFORE the terminator via
+  =gptel-org-ib-resolve-or-seed-terminator=.
 - Each existing sibling IB's end-marker points inside its own
   subtree, which ends BEFORE the new sibling.
 - Inserting text at =gptel-org-ib-streaming-marker= (insertion-type
@@ -312,51 +313,70 @@ and [[*Functions Reference][Functions Reference]] for the full API.
 
 * Architecture
 
-** The TERMINE Terminator Pattern
+** The TERMINE Terminator Pattern (CSTR)
 
-The core innovation.  Each active task's subtree is bounded by an
-empty =TERMINE= child heading that serves as a sentinel.  New
-sibling tasks are inserted BEFORE the terminator so that existing
-sibling indirect buffers narrowed to earlier positions are never
-disturbed.
+The core innovation — Conditional Single-TERMINE Rule (CSTR).  Each
+top-level user task has exactly one =TERMINE= heading placed as a
+SIBLING of =AI-DOING= at the task level (same heading depth),
+OUTSIDE the IB's narrowing.  New sibling tasks are inserted BEFORE
+the terminator so that existing sibling indirect buffers narrowed to
+earlier positions are never disturbed.
 
 Rules:
-1. Each AI task gets its own indirect buffer narrowed to its subtree.
-2. A =TERMINE= child heading bounds each task's writable content.
-3. New sibling tasks are inserted BEFORE the terminator heading.
+1. Each AI task gets its own indirect buffer narrowed to its
+   =AI-DOING= subtree.
+2. A single =TERMINE= sibling heading (at the same depth as
+   =AI-DOING=) bounds the task's writable region.  TERMINE is
+   OUTSIDE the IB's narrowing.
+3. New sibling tasks are inserted BEFORE the terminator heading via
+   =gptel-org-ib-resolve-or-seed-terminator=.
 4. After reordering siblings, the moved task's indirect buffer must
    be recreated.
 5. When the owning task reaches terminal state the =TERMINE= is
-   removed; any IB whose narrowing covered it is closed as part of
-   the removal.
+   removed; any IB whose narrowing overlapped it is closed as part
+   of the removal.
 
 ** Org Structure Example
 
-#+begin_example
-,**** AI-DOING Study feasibility ...  :main@agent:   <- Indirect-buffer 1
-,***** AI-DO Subtask 1                               <- Indirect-buffer 2
-,****** TERMINE                                      <- Terminator for Subtask 1
-,***** AI-DO Subtask 2                               <- Indirect-buffer 3
-,****** TERMINE                                      <- Terminator for Subtask 2
-,***** TERMINE                                      <- Terminator for AI-DOING
-#+end_example
+#+begin_src org
+  ,* DONE Study something                        <- User task
+  ,** AI-DONE Study something ...  :main@agent:   <- Indirect-buffer 1
+  ,*** REASONING ...                              <- Indirect-buffer 2
+  ,*** GATHERED Subtask 1                         <- Indirect-buffer 3
+  ,*** BASH Subtask 2                             <- Indirect-buffer 4
+  ,*** RESPOND Studied something...               <- Indirect-buffer 5
+  ,* DOING Fix something                         <- User task
+  ,** AI-DOING Fix something ...  :main@agent:    <- Indirect-buffer 6
+  ,*** GATHERING Subtask 1                        <- Indirect-buffer 7
+  ,** TERMINE                                     <- Sibling terminator (outside all IBs)
+#+end_src
 
 Key observations:
-- The parent =AI-DOING= task's =TERMINE= is always the LAST child of
-  its subtree.
-- Each =AI-DO= subtask has its own =TERMINE= terminator as a child.
-- When a new =AI-DO Subtask 3= needs to be created, it is inserted
-  on the line BEFORE the parent =TERMINE= — so Subtask 1 and Subtask
-  2's indirect buffers (narrowed to their subtrees) are not affected.
+- =TERMINE= is a sibling at the same level as =AI-DOING= (=**= depth),
+  NOT a child (=***=).  It is OUTSIDE the IB's narrowing — the IB is
+  narrowed to the =AI-DOING= subtree only.
+- There is exactly ONE =TERMINE= per top-level user task (CSTR), not
+  one per IB.  Tool, REASONING, and RESPOND IBs have no TERMINE of
+  their own.
+- When a new =GATHERING Subtask 2= needs to be created, it is
+  inserted on the line BEFORE the sibling =TERMINE= — so existing
+  indirect buffers (narrowed to their subtrees) are not affected.
+- =gptel-org-ib-resolve-or-seed-terminator= is the unified primitive:
+  scans forward for an existing same-or-shallower heading; if the
+  heading is TERMINE, returns a marker to it; otherwise seeds a new
+  TERMINE at the task level.  Idempotent.
+- Streaming text is appended at =point-max= of the IB's narrowing
+  (which is before the sibling TERMINE in the base buffer).
 
 ** Indirect Buffer Lifecycle
 
 #+begin_example
 gptel-org-ib-safe-insert-sibling (high-level agent-layer convenience)
-  → gptel-org-ib-ensure-terminator (on the PARENT subtree)
-    ├─ gptel-org-ib-find-terminator (search for existing)
-    └─ gptel-org-ib-create-terminator (create if missing)
-  → gptel-org-ib-create-heading (insert BEFORE parent's terminator)
+  → gptel-org-ib-resolve-or-seed-terminator (on the task-level parent)
+    │ Scan forward from heading for next same-or-shallower heading:
+    │   - If found and is TERMINE → return marker to it
+    │   - Otherwise → seed new TERMINE sibling at task level
+  → gptel-org-ib-create-heading (insert BEFORE task-level terminator)
   → gptel-org-ib-create (create indirect buffer — neutral, no TERMINE)
     ├─ Compute subtree region
     ├─ Create end-marker with insertion-type=t
@@ -365,9 +385,9 @@ gptel-org-ib-safe-insert-sibling (high-level agent-layer convenience)
     ├─ narrow-to-region [heading-start, end-marker]
     └─ gptel-org-ib-register (construct node, add to registry,
                               splice into parent's children list)
-  → gptel-org-ib-ensure-terminator "TERMINE" inside the new IB
-    (agent-layer seeding — pins the FSM streaming marker before
-     TERMINE with insertion-type=nil from creation time)
+  → TERMINE is a sibling outside the IB's narrowing; IB factory
+    does NOT seed it.  resolve-or-seed-terminator handles TERMINE
+    lifecycle at the task level.
 
 ...task runs, LLM streams into indirect buffer...
 
@@ -460,11 +480,11 @@ The agent wrappers add agent-specific concerns on top.
 - Registry node construction and parent/children linking
 
 After =gptel-org-ib-create= returns, the agent wrapper applies:
-- Seeds the agent-layer =TERMINE= terminator via
-  =gptel-org-ib-ensure-terminator= so the FSM streaming marker is
-  pinned before TERMINE from IB-creation time.  (The generic IB
-  factory is neutral — TERMINE is seeded here because it is an
-  agent-layer convention.)
+- Ensures the task-level =TERMINE= sibling exists via
+  =gptel-org-ib-resolve-or-seed-terminator= so the FSM streaming
+  marker is pinned before TERMINE from IB-creation time.  (The
+  generic IB factory is neutral — TERMINE is seeded at the task
+  level by the lifecycle, not by the factory.)
 - Sets the =gptel-org-agent--flag= buffer-local variable
 - Enables auto-correct mode for heading drift detection
 - Sets up end-marker compatibility for streaming insertion
@@ -493,22 +513,22 @@ depending on whether the subtree is new or existing:
   wrapper around =gptel-org-ib-create=) narrows to the already-existing
   heading.
 
-*** On-demand Terminator Creation
+*** On-demand Terminator Creation (CSTR)
 
-Terminators are NOT eagerly created for every heading.  They are
-created /on demand/ by agent-layer callsites when an agent IB is
-opened.  Consequences:
+Terminators are conditionally seeded via
+=gptel-org-ib-resolve-or-seed-terminator=.  The generic IB factory
+=gptel-org-ib-create= does NOT seed terminators.  Consequences:
 
 - A heading that is never opened as an agent indirect buffer has no
   terminator.
-- Terminators appear only when actually needed for agent IB
-  boundary management.
-- The two seeding callsites are =gptel-org-agent--open-indirect-buffer=
-  (primary agent subtree IB) and =gptel-org-ib-safe-insert-sibling=
-  (child-agent subtree IB); both call =gptel-org-ib-ensure-terminator=.
-- The generic IB factory =gptel-org-ib-create= does NOT seed a
-  terminator — tool and reasoning IBs intentionally have no
-  TERMINE child.
+- A single TERMINE sibling per top-level task appears only when
+  actually needed for agent IB boundary management.
+- The unified primitive =gptel-org-ib-resolve-or-seed-terminator=
+  handles both discovery and seeding at task lifecycle points:
+  AI-DO→AI-DOING transition, display-tool-calls, and recovery.
+- Tool and reasoning IBs get no TERMINE of their own — their body
+  content goes directly under the heading.  The task-level TERMINE
+  handles all sibling-insertion needs.
 
 This avoids cluttering the org tree with sentinel headings that may
 never be needed, while still guaranteeing correct boundaries when
@@ -868,25 +888,25 @@ The registry =gptel-org-ib--registry= maps buffer-name → =gptel-org-ib-node=.
 
 | Function | Purpose |
 |----------+---------|
-| =gptel-org-ib-find-terminator= (keyword &optional bound) | Find terminator child heading matching KEYWORD in current subtree; returns position or nil |
-| =gptel-org-ib-create-terminator= (keyword &optional level) | Create terminator child heading at end of current subtree; returns marker |
-| =gptel-org-ib-ensure-terminator= (keyword) | Idempotent: find existing or create new CHILD terminator; returns marker |
-| =gptel-org-ib-ensure-sibling-terminator= (keyword level) | Idempotent: find existing or create new SIBLING terminator at LEVEL (same level as heading at point).  Search stops at any heading of shallower level to stay within parent scope |
-TEST INSERT
-| =gptel-org-ib-streaming-marker= (&optional terminator-keyword) | Return a marker safe for FSM streaming.  When TERMINATOR-KEYWORD names an existing child terminator, marker is at start of terminator line with insertion-type nil.  Otherwise marker is at =point-max= with insertion-type t |
+| =gptel-org-ib-resolve-or-seed-terminator= (keyword) | *Unified CSTR primitive.*  Scan forward from current heading for next same-or-shallower heading.  If found and matches KEYWORD, return marker to it.  Otherwise seed a new TERMINE sibling at the task level.  Idempotent — safe to call multiple times |
+| =gptel-org-ib-find-terminator= (keyword &optional bound) | (Internal) Find terminator heading matching KEYWORD; returns position or nil |
+| =gptel-org-ib-ensure-terminator= (keyword) | *Obsolete.*  Use =gptel-org-ib-resolve-or-seed-terminator= |
+| =gptel-org-ib-ensure-sibling-terminator= (keyword level) | *Obsolete.*  Use =gptel-org-ib-resolve-or-seed-terminator= |
+| =gptel-org-ib-create-terminator= (keyword &optional level) | *Obsolete.*  Legacy terminator creation |
+| =gptel-org-ib-streaming-marker= (&optional terminator-keyword) | Return a marker safe for FSM streaming.  When TERMINATOR-KEYWORD names an existing terminator (found via =resolve-or-seed-terminator=), marker is pinned before it with insertion-type nil.  Otherwise marker is at =point-max= with insertion-type t |
 
 ** Safe Heading Creation
 
 | Function | Purpose |
 |----------+---------|
-| =gptel-org-ib-insert-child= (parent todo-keyword title &key tags terminator-keyword name create-indirect-buffer) | Single parent-aware insertion entry point.  Inserts a child heading before PARENT's =TERMINE= terminator using a universal newline guard (no backward search).  PARENT is a marker, indirect-buffer, or (deprecated) =:point= keyword.  Returns a plist =(:heading-marker M :indirect-buffer IB-or-nil)=.  When =:create-indirect-buffer= is non-nil (default =t=), also creates an IB narrowed to the new heading |
+| =gptel-org-ib-insert-child= (parent todo-keyword title &key tags terminator-keyword name create-indirect-buffer) | Single parent-aware insertion entry point.  Inserts a child heading before the task-level =TERMINE= sibling (found via =resolve-or-seed-terminator=) using a universal newline guard (no backward search).  PARENT is a marker, indirect-buffer, or (deprecated) =:point= keyword.  Returns a plist =(:heading-marker M :indirect-buffer IB-or-nil)=.  When =:create-indirect-buffer= is non-nil (default =t=), also creates an IB narrowed to the new heading |
 | =gptel-org-ib-create-heading= (todo-keyword title &optional tags terminator-keyword) | *Internal helper.*  Inserts a child heading before the terminator and returns a marker.  Callers should use =gptel-org-ib-insert-child= instead |
 
 ** Indirect Buffer Lifecycle
 
 | Function | Purpose |
 |----------+---------|
-| =gptel-org-ib-create= (base-buffer heading-pos &optional name) | Central entry point: creates IB with clone=t, narrows to subtree, constructs node, splices into parent's children list.  Handles indirect-of-indirect (resolves to root), creates expanding end-marker, decouples fold state.  *Neutral with respect to TERMINE* — does NOT seed any terminator child, so it can serve agent, tool, and reasoning IBs uniformly.  TERMINE seeding is an agent-layer concern handled by =gptel-org-agent--open-indirect-buffer= and =gptel-org-ib-safe-insert-sibling= |
+| =gptel-org-ib-create= (base-buffer heading-pos &optional name) | Central entry point: creates IB with clone=t, narrows to subtree, constructs node, splices into parent's children list.  Handles indirect-of-indirect (resolves to root), creates expanding end-marker, decouples fold state.  *Neutral with respect to TERMINE* — does NOT seed any terminator.  TERMINE is a task-level sibling seeded conditionally by =gptel-org-ib-resolve-or-seed-terminator= at lifecycle points |
 | =gptel-org-ib-close= (indirect-buffer &optional fold) | Close IB: optionally fold subtree in base, unregister (splice out of parent's children, clear markers), kill buffer.  Also cleans up legacy =gptel-org-agent--narrow-end-marker= |
 | =gptel-org-ib-valid-p= (indirect-buffer) | Returns non-nil if IB is live, narrowed, has content, and starts with an org heading |
 | =gptel-org-ib-compute-name= (base-buffer heading-pos tag) | Compute the hashed name =*gptel:<tag>-<hash>*= for the heading at HEADING-POS.  The hash is derived from the outline path and survives reorder |
@@ -912,7 +932,7 @@ TEST INSERT
 
 | Function | Purpose |
 |----------+---------|
-| =gptel-org-ib-insert-child= (parent todo-keyword title &key tags terminator-keyword name create-indirect-buffer) | Unified entry point.  Ensures PARENT =TERMINE= → creates heading before it → (when =:create-indirect-buffer= is non-nil) creates IB narrowed to new heading.  Returns =(:heading-marker M :indirect-buffer IB-or-nil)=.  Use this instead of the deprecated =gptel-org-ib-safe-insert-sibling= |
+| =gptel-org-ib-insert-child= (parent todo-keyword title &key tags terminator-keyword name create-indirect-buffer) | Unified entry point.  Resolves-or-seeds task-level =TERMINE= → creates heading before it → (when =:create-indirect-buffer= is non-nil) creates IB narrowed to new heading.  Returns =(:heading-marker M :indirect-buffer IB-or-nil)=.  Use this instead of the deprecated =gptel-org-ib-safe-insert-sibling= |
 
 ** Internal Helpers
 
@@ -924,14 +944,16 @@ TEST INSERT
 
 * Key Design Decisions
 
-1. *Unified =TERMINE= terminator pattern*: Instead of relying on
+1. *Unified =TERMINE= terminator pattern (CSTR)*: Instead of relying on
    complex marker arithmetic, a single empty org heading (=TERMINE=)
-   serves as a boundary sentinel for every subtree that needs
-   isolation.  Inserting before it is a single, well-defined
-   operation that preserves all existing IB narrowings.  Unifying
-   the former =RESULTS= / =FEEDBACK= pair into one keyword simplified
-   the terminator-management API and eliminated per-call-site
-   decisions about "which keyword do I pass?".
+   serves as a boundary sentinel at the task level — placed as a
+   sibling of =AI-DOING=, outside the IB's narrowing.  Inserting
+   before it is a single, well-defined operation that preserves all
+   existing IB narrowings.  One TERMINE per top-level user task
+   (Conditional Single-TERMINE Rule).  Unifying the former
+   =RESULTS= / =FEEDBACK= pair into one keyword simplified the
+   terminator-management API and eliminated per-call-site decisions
+   about "which keyword do I pass?".
 
 2. *Struct-based registry with explicit parent/children links*: A
    global hash table tracks all active IBs with their metadata as
@@ -975,23 +997,25 @@ TEST INSERT
    recreation call to the module and layer agent-specific concerns
    (flag, auto-correct, fold logic) around it.
 
-9. *Idempotent terminator creation*: =gptel-org-ib-ensure-terminator=
-   finds an existing =TERMINE= or creates one.  Safe to call
-   multiple times without duplicating terminators.
+9. *Idempotent terminator resolution*:
+   =gptel-org-ib-resolve-or-seed-terminator= scans forward for an
+   existing =TERMINE= sibling at the task level.  If found, returns
+   a marker to it.  If not, seeds one.  Safe to call multiple times
+   without duplicating terminators.  Replaces the deprecated
+   =gptel-org-ib-ensure-terminator= and
+   =gptel-org-ib-ensure-sibling-terminator=.
 
-10. *On-demand terminator creation (agent layer only)*: TERMINE
-    terminators are NOT eagerly created for every heading, and the
-    generic IB factory =gptel-org-ib-create= does NOT seed them.
-    They are created on demand by the two agent-layer callsites
-    that own TERMINE lifecycle: =gptel-org-agent--open-indirect-buffer=
-    (primary agent IB) and =gptel-org-ib-safe-insert-sibling=
-    (child-agent IB).  Tool and reasoning IBs get no TERMINE
-    because their body goes directly under the heading.  This
-    avoids cluttering the org tree with sentinel headings that may
-    never be needed, preserves layering (TERMINE is an agent
-    convention, not an IB-module concern), and still guarantees
-    correct boundaries when agent indirect buffers are actually
-    used.
+10. *CSTR unified model (single TERMINE per task)*: TERMINE is a
+    sibling of =AI-DOING= at the task level, outside the IB's
+    narrowing.  The generic IB factory =gptel-org-ib-create= does
+    NOT seed terminators.  They are seeded conditionally by
+    =gptel-org-ib-resolve-or-seed-terminator= at task lifecycle
+    points (AI-DO→AI-DOING transition, display-tool-calls,
+    recovery).  Tool, REASONING, and RESPOND IBs get no TERMINE of
+    their own — the single task-level TERMINE handles all
+    sibling-insertion needs.  This keeps the org tree clean and
+    preserves layering (TERMINE is a task-level convention, not an
+    IB-factory concern).
 
 11. *Per-agent state triads*: Agents declare =:state-words: REQUEST
     DOING DONE= in their org properties drawer.  Sub-agent subtree
@@ -1044,7 +1068,7 @@ TEST INSERT
            '("researcher@agent")   ; tags
            "TERMINE")))            ; terminator keyword
   ;; ib is now an indirect buffer narrowed to the new AI-DO subtree.
-  ;; The parent's TERMINE terminator was preserved as the last child.
+  ;; TERMINE is a sibling of AI-DOING at the task level, outside all IBs.
   (with-current-buffer ib
     ;; LLM can stream into this buffer safely
     (goto-char (point-max))
@@ -1093,14 +1117,14 @@ TEST INSERT
       (gptel-org-ib-close ib))))
 #+end_src
 
-** Step-by-step: Terminator + Heading + IB Creation
+** Step-by-step: Terminator + Heading + IB Creation (CSTR)
 
 #+begin_src elisp
 ;; Low-level approach (gptel-org-ib-safe-insert-sibling does all of this)
 (save-excursion
   (org-back-to-heading t)
-  ;; 1. Ensure TERMINE terminator exists
-  (gptel-org-ib-ensure-terminator "TERMINE")
+  ;; 1. Resolve or seed the task-level TERMINE sibling
+  (gptel-org-ib-resolve-or-seed-terminator "TERMINE")
 
   ;; 2. Create heading before the terminator
   (let ((marker (gptel-org-ib-create-heading
@@ -1185,7 +1209,7 @@ Was: 4 copies of pos-marker creation idiom (2 with trim, 2 without —
 inconsistent).  Now: single helper function used by all 4 call
 sites with consistent behavior.
 
-**** Eager TERMINE seeding in generic IB factory (layering violation → fixed)
+**** Eager TERMINE seeding in generic IB factory → conditionally seeded via resolve-or-seed-terminator (CSTR)
 
 Was: =gptel-org-ib-create= unconditionally seeded a TERMINE child in
 every freshly narrowed subtree.  This violated layering — TERMINE is
@@ -1195,14 +1219,14 @@ directly under the heading.  Observable symptom: tool body inserted
 after an unexpected =***** TERMINE= child under a =**** EVAL= tool
 heading.
 
-Now: =gptel-org-ib-create= is neutral.  TERMINE seeding lives at the
-two agent-layer callsites that own TERMINE lifecycle:
-=gptel-org-agent--open-indirect-buffer= (primary agent IB) and
-=gptel-org-ib-safe-insert-sibling= (child-agent IB).  Tool and
-reasoning IBs get no TERMINE.  The defensive
-=gptel-org-ib-ensure-terminator= safety net in
-=gptel-org-agent--display-tool-calls= is retained for
-defense-in-depth.
+Now (post-CSTR): =gptel-org-ib-create= is neutral.  TERMINE is a
+sibling of =AI-DOING= at the task level, outside the IB's narrowing.
+Seeding is handled by =gptel-org-ib-resolve-or-seed-terminator=, the
+unified CSTR primitive called at task lifecycle points.  Tool,
+REASONING, and RESPOND IBs get no TERMINE of their own.  The
+deprecated =gptel-org-ib-ensure-terminator= and
+=gptel-org-ib-ensure-sibling-terminator= are replaced by
+=resolve-or-seed-terminator=.
 
 *** Defensive Fallback Removal (Registry as Single Source of Truth)
 
