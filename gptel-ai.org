@@ -3983,7 +3983,7 @@ about IB-7).  Ensure:
 **** Verification
 - Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
 
-*** AI-DO Fix inhibit-modification-hooks bypass in RESPOND/REASONING title replacement
+*** AI-DONE Fix inhibit-modification-hooks bypass in RESPOND/REASONING title replacement
 
 **** Origin
 - Found during TERMINE doc audit (CSTR update).  Researcher identified
@@ -4047,32 +4047,28 @@ about IB-7).  Ensure:
 5. Update =gptel-indirect-buffer-ai.org= if needed.
    
 **** TODOs
-***** AI-DO Remove inhibit-modification-hooks from RESPOND title replacement (gptel.el ~L2052)
-****** Mission
-Remove =(inhibit-modification-hooks t)= from the =let= binding at
-=gptel.el= line ~2052 (RESPOND mid-stream title replacement).
-Keep =(inhibit-read-only t)=.
+***** AI-DONE Remove inhibit-modification-hooks from RESPOND title replacement (gptel.el ~L2052)
+****** Outcomes
+Removed =(inhibit-modification-hooks t)= from =let= binding at line ~2052.
+Kept =(inhibit-read-only t)=.  Auto-correct now fires on title replacement;
+safe because heading stars don't change (cheap no-op).  Commit: =dca3c6a=.
 
-***** AI-DO Remove inhibit-modification-hooks from REASONING title replacement (gptel.el ~L2306)
-****** Mission
-Remove =(inhibit-modification-hooks t)= from the =let= binding at
-=gptel.el= line ~2306 (REASONING end-of-stream fallback).
-Keep =(inhibit-read-only t)=.
+***** AI-DONE Remove inhibit-modification-hooks from REASONING title replacement (gptel.el ~L2306)
+****** Outcomes
+Removed =(inhibit-modification-hooks t)= from =let= binding at line ~2306.
+Kept =(inhibit-read-only t)=.  Commit: =dca3c6a=.
 
-***** AI-DO Remove inhibit-modification-hooks from REASONING title replacement (gptel.el ~L2404)
-****** Mission
-Remove =(inhibit-modification-hooks t)= from the =let= binding at
-=gptel.el= line ~2404 (REASONING mid-stream newline).
-Keep =(inhibit-read-only t)=.
+***** AI-DONE Remove inhibit-modification-hooks from REASONING title replacement (gptel.el ~L2404)
+****** Outcomes
+Removed =(inhibit-modification-hooks t)= from =let= binding at line ~2404.
+Kept =(inhibit-read-only t)=.  Commit: =dca3c6a=.
 
-***** AI-DO Verify tests pass and update docs
-****** Mission
-1. Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
-2. If auto-correct docs mention =inhibit-modification-hooks= pattern
-   for title replacement, update them.
-
-**** Verification
-- Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
+***** AI-DONE Verify tests pass and update docs
+****** Outcomes
+1. Tests: 492 ran, 489 passed, 0 unexpected, 3 skipped, 1 expected failure.  All green.
+2. No docs needed updating — the auto-correct docs (gptel-org.el ~L2277-2281)
+   already correctly describe the =inhibit-modification-hooks t= pattern
+   inside the auto-correct itself, not in title replacement.
 
 *** DONE Fix multi-part system message Anthropic cache_control placement
 :PROPERTIES:
