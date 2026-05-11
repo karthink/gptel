@@ -3983,6 +3983,48 @@ about IB-7).  Ensure:
 **** Verification
 - Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
 
+*** AI-DO Fix inhibit-modification-hooks bypass in RESPOND/REASONING title replacement
+
+**** Origin
+- Found during TERMINE doc audit (CSTR update).  Researcher identified
+  that both RESPOND and REASONING heading title retroactive replacement
+  use =inhibit-modification-hooks t=, which suppresses the auto-correct
+  hook (=gptel-org--auto-correct-on-change=).  This violates the core
+  design pattern: "Indirect buffer narrows content, then auto-correct
+  has easy task to maintain org formatting."
+
+**** Discussion highlights
+- RESPOND title replacement: =gptel.el= ~L2047-2054, commit =f899d03=
+  (=IB-4.6b=).  Inserts =* RESPOND /== placeholder, then retroactively
+  =replace-match= the title with =inhibit-modification-hooks t=.
+- REASONING title replacement: =gptel.el= ~L2300-2308, pre-existing
+  pattern (predates RESPOND).  Same =inhibit-modification-hooks= +
+  =replace-match= approach.
+- The auto-correct itself uses =inhibit-modification-hooks t= to prevent
+  recursive triggering, but properly calls =org-element-cache-reset=
+  after.  The title replacement code calls =org-element-cache-reset=
+  too, but the heading-level rebasing that auto-correct provides is
+  still bypassed.
+- This is design debt: every retroactive heading title edit bypasses
+  the auto-correct.  Prefer (a) inserting the final heading title
+  directly (no retroactive replacement), or (b) doing the replacement
+  inside the IB where auto-correct is registered.
+
+**** Mission
+1. Study the title-extraction FSM for both RESPOND and REASONING to
+   understand why retroactive replacement is needed.
+2. Determine if the final title can be determined before heading
+   insertion (option a), or if the replacement must be done inside
+   the IB context (option b).
+3. Implement the fix — eliminate =inhibit-modification-hooks= from
+   the title replacement path, or ensure auto-correct fires after.
+4. Verify existing tests still pass; add test if needed.
+5. Update =gptel-indirect-buffer-ai.org= auto-correct section if the
+   fix changes the hook-suppression guidance.
+
+**** Verification
+- Run: cd quelpa/build/gptel/test && make test 2>&1 | tail -30
+
 *** DONE Fix multi-part system message Anthropic cache_control placement
 :PROPERTIES:
 :GPTEL_PRESET: gptel-coordinator
