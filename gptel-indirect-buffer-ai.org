@@ -159,9 +159,16 @@ falls into exactly one of the categories below.
 *** RESPOND
 
 - Same rules as =REASONING= but keyword is =RESPOND=.
-- Example: =* RESPOND Creating new file...=.
-- The scaffolding is in place; streaming-FSM wiring for RESPOND is a
-  planned extension tracked in =gptel-ai.org= as Phase IB-4.6b.
+- State triad: RESPOND → RESPONDING → RESPONDED (mirrors REASON
+  → REASONING → REASONED).
+- Example: =* RESPONDING Creating new file...=.
+- The streaming-FSM wiring is LIVE as of IB-4.6b:
+  =gptel-curl--stream-insert-response= inserts =* RESPONDING /<title>=
+  (skipping the transient RESPOND state), creates a RESPOND IB via
+  =gptel-org--respond-create-indirect-buffer=, rewinds the tracking
+  marker into the IB, and pushes a =:post= lambda that transitions
+  RESPONDING → RESPONDED + closes the IB on success (gated by
+  =:error= absence and =:responded-transition-done= idempotence flag).
 
 *** TERMINE
 
@@ -225,6 +232,33 @@ falls into exactly one of the categories below.
 - Heading form: =* <TOOL-NAME> <args-summary>= (uppercased tool
   name), optionally prefixed with request state.
 - Example: =* PENDING BASH find . -name ...=.
+
+** Universal pattern: IB + auto-correct + state triad + shared task TERMINE
+
+Every streaming response surface in gptel — agent, sub-agent, tool,
+REASONING, and RESPOND — follows the same four-element pattern:
+
+1. *Indirect buffer* created via =gptel-org-ib-create=, narrowed to
+   the response subtree for isolated streaming writes.
+
+2. *Auto-correct hook* (=gptel-org--auto-correct-on-change=) installed
+   on the IB (by =gptel-org--enable-auto-correct= for agent IBs) for
+   heading-level rebasing, fence conversion, and example-block
+   escaping.  REASONING and RESPOND IBs are read-only passive views
+   and do not install auto-correct (their content flows through the
+   base buffer's tracking marker).
+
+3. *State triad* (REQUEST → DOING → DONE): e.g. GATHER → GATHERING →
+   GATHERED; RESPOND → RESPONDING → RESPONDED; REASON → REASONING →
+   REASONED.  The initial state may be transient (skipped in the
+   streaming path for RESPOND and REASON).  The done state is reached
+   via a =:post= lambda on success only (gated by =:error= absence
+   and an idempotence flag).
+
+4. *Shared task-level TERMINE*: REASONING, RESPOND, and tool IBs do
+   NOT get their own TERMINE; they are children of the =AI-DOING=
+   task and rely on its sibling-level TERMINE for boundary
+   management.  See [[#target-design][Design invariants → TERMINE]].
 
 ** Invariants for insertion
 
@@ -595,6 +629,19 @@ The reasoning IB is simpler than agent IBs:
   isolated write target for streaming content).
 - Short-lived (exists only during streaming, closed on completion or
   error).
+
+*** REASONING state triad (REASON → REASONING → REASONED)
+
+The REASONING display feature follows the universal state triad
+pattern.  The streaming pipeline in
+=gptel--display-reasoning-stream= inserts the heading as =* REASONING
+/<title>= (skipping the transient REASON state) and pushes a =:post=
+cleanup lambda.  On success, the lambda transitions REASONING →
+REASONED (gated by =:error= absence and =:reasoned-transition-done=
+idempotence flag), then defensively closes the reasoning IB.  The
+heading position is captured via lexical closure because
+=:reasoning-heading-pos= is cleared in the end-of-stream branch
+before =:post= fires.
 
 ** Integration with gptel-org.el (TOOL heading display)
 

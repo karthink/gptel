@@ -2314,19 +2314,19 @@ This should be called once when an agent indirect buffer is created."
 
 ;;; Response heading title generation
 
-;; RESPONDING heading scaffolding (IB-4.6b).
+;; RESPOND heading utilities (IB-4.6b, now LIVE).
 ;;
-;; IB-4.6 registers the RESPOND keyword; IB-4.6b upgrades to the
+;; IB-4.6 registers the RESPOND keyword; IB-4.6b upgraded to the
 ;; full state triad (RESPOND → RESPONDING → RESPONDED) with IB
 ;; wrapping.  The shaping helper below uses RESPONDING, which is the
 ;; active streaming state.
 ;;
-;; This helper is scaffolding — nothing in the current response
-;; pipeline calls it directly.  The live streaming path in
-;; `gptel-curl--stream-insert-response' inserts the heading inline
-;; rather than via this function, but this entry point exists so
-;; ad-hoc callers (tests, one-off consumers) can build a well-formed
-;; RESPONDING subtree string.
+;; The live streaming path in `gptel-curl--stream-insert-response'
+;; now inserts the heading inline and creates the RESPOND IB,
+;; following the universal pattern (IB + auto-correct + state triad
+;; + shared TERMINE).  This helper remains as a convenience entry
+;; point for ad-hoc callers (tests, one-off consumers) that need a
+;; well-formed RESPONDING subtree string.
 
 (defun gptel-org--insert-respond-heading (text)
   "Return a `* RESPONDING <title>\\n<body>\\n' string built from TEXT.
@@ -2335,8 +2335,9 @@ RESPONDING keyword and concatenates the returned (HEADING . BODY)
 pair into a single insertable string.  BODY is empty when TEXT has
 no content past its first line.
 
-Scaffolding for IB-4.6b; not yet called by the response streaming
-pipeline.  See the commentary block above for the scope decision."
+Convenience helper; the live streaming pipeline in
+`gptel-curl--stream-insert-response' inserts the heading inline
+rather than via this function."
   (let* ((pair (gptel--format-keyword-heading-org "RESPONDING" text))
          (heading (car pair))
          (body (or (cdr pair) "")))
