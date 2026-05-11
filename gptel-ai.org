@@ -4027,7 +4027,7 @@ Doc updates applied:
 - Final test count: 497 passed, 0 unexpected, 3 skipped (up from 489 passed, 3 skipped)
 - Note: existing =gptel-org-respond-heading-missing-during-streaming= test now PASSING (was known-failure before IB-4.6c)
 
-*** AI-DO Add failing test proving REASONING IB is not narrowed and gets polluted by sibling RESPOND content
+*** AI-DOING Add failing test proving REASONING IB is not narrowed and gets polluted by sibling RESPOND content
 
 **** Origin
 - User-observed bug in live AI session. After streaming a deepseek@agent sub-task, the REASONING indirect buffer's narrowed region extended past its own subtree and included the sibling RESPONDING heading plus its body. The REASONING IB should narrow strictly to the REASONING subtree (heading + body, up to but not including its next same-or-higher level sibling), but it does not — it absorbs the following RESPONDING heading.
