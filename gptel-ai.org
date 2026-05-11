@@ -4409,7 +4409,7 @@ Doc updates applied:
 - =gptel-org.el=: Updated stale commentary (~L2317-2339) to reflect that
   RESPOND wiring is LIVE (was "scaffolding, not called by pipeline").
 
-***** AI-DO Tests for RESPOND IB + REASONING triad
+***** AI-DOING Tests for RESPOND IB + REASONING triad
 - Convert known-failure RESPOND test → passing test
 - Add unit tests for REASONING triad
 - Add integration test for RESPOND IB lifecycle
