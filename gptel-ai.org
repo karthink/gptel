@@ -4322,7 +4322,7 @@ lambda registrations.
   document why the helper does not fit and the site is benign).
 
 **** Outcomes / Results / Follow-up linked tasks
-** Researched TODOs
+* Researched TODOs
 *** AI-DONE Fix TERMINE: move from child-level to sibling-level for proper IB isolation
 
 **** Origin
