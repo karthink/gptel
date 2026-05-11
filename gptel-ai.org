@@ -4163,6 +4163,62 @@ Doc updates applied:
 - Commit the failing test as a documented regression.
 - /Done with a deviation:/ the new test EMPIRICALLY PASSES under the canonical streaming driver — the simple temporal hypothesis is not confirmed.  Full suite: =Ran 500 tests, 497 results as expected, 0 unexpected, 3 skipped=.  Committed as a passing regression (see Outcomes).  A follow-up AI-DO is needed to extend the reproduction conditions before opening a fix task.
 
+*** AI-DO Capture live-reproduction conditions for REASONING IB absorbing RESPONDED sibling
+
+**** Origin
+- Follow-up to sibling [[*Add failing temporal-bug test for REASONING IB end-marker advancing past streaming inserts and absorbing RESPONDING heading][AI-DO Add failing temporal-bug test for REASONING IB end-marker ...]] whose Outcomes record that the canonical =gptel-curl--stream-insert-response= driver did NOT reproduce the bug, and whose Follow-up asks for "conditions closer to the user's live session" before opening a fix task.
+- This task records a *concrete live reproduction* captured by introspecting indirect buffers in =playground-ws.org= after a real gptel request was run with =gptel-org-debug-preserve-state= enabled.
+
+**** Discussion highlights
+- Live request: =Calculate 2 + 2= task in [[file:../siro-ai/playground-ws.org]] under preset =gptel-deepseek=.
+- Captured IB state (base buffer =playground-ws.org=, size 2564):
+
+  | IB | point-min | point-max | Contents | Status |
+  |----|-----------|-----------|----------|--------|
+  | =*gptel:deepseek@agent-0c4be1*= | 1857 | 2216 | =*** AI-DONE Calculate 2 + 2= subtree | correct envelope |
+  | =*gptel:reasoning-16eab8*= | *1885* | *2216* | =**** REASONED= **+** =**** RESPONDED= | *POLLUTED* |
+  | =*gptel:respond-e3a364*= | 2150 | 2216 | =**** RESPONDED 2 + 2 = 4= only | correct |
+
+- Position 2150 is the start of the =**** RESPONDED= heading in the base buffer; the REASONING IB's =point-max= = 2216 overshoots by 66 chars, fully absorbing the RESPONDED heading + body.
+- The =*gptel:respond-e3a364*= IB exists and is correctly narrowed — meaning the live pipeline /does/ open a RESPOND IB, but the REASONING IB was not re-narrowed (its end-marker was not pulled back) when the RESPONDING heading was inserted.
+- This concretely contradicts the canonical-driver test's negative result: in the live session the REASONING IB's =(point-max)= does NOT settle at the position immediately before the =**** RESPONDED= sibling — it sits at the end of the RESPONDED subtree.
+
+**** Mission
+1. Identify what the live session does that the canonical streaming-driver test does NOT, to explain the divergence.
+2. Candidate factors to probe (each can be added as a sub-TODO if it pans out):
+   1. *FSM-driven streaming with partial JSON chunks* via =gptel-curl--parse-stream= rather than =gptel-curl--stream-insert-response= directly. The parser may dispatch reasoning/response chunks in a different temporal interleaving than hand-fed chunks.
+   2. *RESPOND IB creation timing.* In the live capture the RESPOND IB =point-min= = 2150 matches the RESPONDED heading start, but the REASONING IB was not re-narrowed at that point. Investigate whether opening the RESPOND IB is supposed to also adjust the REASONING IB's end-marker / narrowing.
+   3. *=(reasoning . t)= sentinel timing in the live FSM* — the canonical test fires the sentinel synchronously before the response chunk; in the live curl filter the sentinel may arrive interleaved with response chunks, leaving the REASONING IB still "open" when the RESPONDING heading is inserted.
+   4. *gptel-org-debug-preserve-state effect on cleanup* — when =t=, =gptel--display-reasoning-stream= skips the IB-close branch; whether the marker-advancement (=(org-end-of-subtree t)= + =(move-marker tm (point))=) still runs in that branch should be re-verified against the user's enabled debug flag.
+   5. *Tool-call / agent overhead* — the live preset is =gptel-deepseek= via the agent FSM path; the canonical test bypasses the agent entirely. The agent's state-transition wrappers may insert headings at marker positions that the simple driver does not.
+3. For each plausible candidate, design a minimal test addition (or test refactor) that reproduces the live bound divergence (REASONING IB =point-max= > RESPONDED heading start).
+4. Once one candidate reproduces RED, file a separate AI-DO sibling task to FIX the underlying behavior (do NOT fix here).
+
+**** Verification
+- Deliverable is a new failing =ert-deftest= (or modified existing one) in [[file:test/gptel-org-reasoning-ib-test.el]] whose assertion mirrors the live capture: REASONING IB =(point-max)= is strictly greater than the position of the =**** RESPONDED= sibling heading start.
+- Run: =cd quelpa/build/gptel/test && make test 2>&1 | tail -60=. The new test FAILS; all previously-passing tests still pass.
+
+**** TODOs
+***** AI-DO Probe RESPOND-IB-creation re-narrowing of REASONING IB
+- Investigate whether the code that opens the RESPOND IB is supposed to bring the REASONING IB's =point-max= back to "just before RESPONDED heading start", and where that responsibility lives.
+- This is the most direct candidate: the live capture shows both IBs alive simultaneously with the REASONING IB end-marker NOT pulled back when the RESPOND IB was created.
+- Document findings here; do NOT fix.
+
+***** AI-DO Add live-session-faithful test using FSM/parse-stream driver
+- Build a test that drives =gptel-curl--parse-stream= (or the FSM) with realistic chunked JSON for a DeepSeek-style streamed reasoning+response, instead of feeding =(reasoning . "...")= cons cells directly to =gptel-curl--stream-insert-response=.
+- Goal: reproduce the live bound divergence captured here.
+- Assertion: =(point-max)= of the REASONING IB > position of =**** RESPONDED= heading start in the base buffer.
+
+***** AI-DO Verify =gptel-org-debug-preserve-state= does not skip end-marker repositioning
+- Re-read the REASONING-side cleanup path under =gptel-org-debug-preserve-state= = t.
+- Confirm whether =(org-end-of-subtree t)= + marker re-anchoring still runs, or whether only the IB-close skip is intended.  If the marker re-anchoring is gated together with the IB-close, that is a strong candidate cause: the live capture had =gptel-org-debug-preserve-state= enabled.
+- Document findings; do NOT fix.
+
+**** Follow-up
+- Once one of the sub-TODOs reproduces RED, open a separate AI-DO to FIX (likely: re-narrow / move the REASONING IB end-marker back to "before RESPONDED heading start" when the RESPOND IB is opened, OR ensure the REASONING-side cleanup always re-anchors the tracking marker regardless of =gptel-org-debug-preserve-state=).
+
+**** Outcomes / Results / Follow-up linked tasks
+
 *** AI-DONE Fix void-variable =reasoning-captured-pos= error from parallel =let= in streaming REASONING cleanup-fn
 
 **** Origin
