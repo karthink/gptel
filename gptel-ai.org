@@ -4199,20 +4199,55 @@ Doc updates applied:
 - Run: =cd quelpa/build/gptel/test && make test 2>&1 | tail -60=. The new test FAILS; all previously-passing tests still pass.
 
 **** TODOs
-***** AI-DO Probe RESPOND-IB-creation re-narrowing of REASONING IB
+***** AI-DONE Probe RESPOND-IB-creation re-narrowing of REASONING IB
 - Investigate whether the code that opens the RESPOND IB is supposed to bring the REASONING IB's =point-max= back to "just before RESPONDED heading start", and where that responsibility lives.
 - This is the most direct candidate: the live capture shows both IBs alive simultaneously with the REASONING IB end-marker NOT pulled back when the RESPOND IB was created.
 - Document findings here; do NOT fix.
+
+****** Outcomes
+- *Primary gap confirmed.* The RESPOND-IB creation block (=gptel.el= lines 2031-2086, inside =gptel-curl--stream-insert-response=) does NOT touch the REASONING IB at all — no =move-marker=, no =narrow-to-region=, no reference to =gptel-org--reasoning-indirect-buffer=.  Only the tracking-marker is retargeted via =(move-marker tm term-pos)= at =gptel.el:2057-2058=.
+- *Smoking gun (ranked #1).* =gptel-org-ib-close= at =gptel-indirect-buffer.el:1273-1277= is a pure no-op when =gptel-org-debug-preserve-state= is non-nil.  The inline comment at =gptel.el:2382-2384= explicitly relies on closing the IB BEFORE inserting the response separator to prevent narrowing expansion ("/Close reasoning indirect buffer before separator (separator would expand the IB's narrowed region)/").  Under debug-preserve-state the IB stays alive with its =insertion-type=t= end-marker in the shared marker chain (per design notes =gptel-indirect-buffer-ai.org:806-822=).  Subsequent inserts in =gptel-curl--stream-insert-response= happen in the BASE buffer at =tracking-marker= (=gptel.el:2002-2014=), so the still-live IB's end-marker and =zv_marker= advance past separator + RESPONDING heading + body — yielding exactly the live capture (REASONING IB =point-max= = 2216, equal to base buffer end, overshooting RESPONDED start 2150 by 66 chars).
+- *Hypothesis #2 (secondary).* Late-arriving =(reasoning . t)= sentinel in the live FSM.  When a backend (DeepSeek with thinking; some OpenRouter patterns) emits reasoning_content and content in the SAME SSE delta, the content callback may fire BEFORE the =(reasoning . t)= sentinel (=gptel-request.el:3478-3511= vs =3367-3369=).  =gptel-curl--stream-insert-response= then sees =:reasoning-heading-pos= still non-nil and falls through without creating a RESPOND IB, streaming response text into the still-open REASONING IB.
+- *Hypothesis #3 (tertiary).* Tracking-marker buffer-affinity confusion under preserve-state.  =:tracking-marker= has =marker-buffer= = REASONING IB (built via =gptel-org-ib-streaming-marker=).  After the no-op close, =(with-current-buffer (marker-buffer tm) (org-end-of-subtree t) (move-marker tm (point)))= at =gptel.el:2390-2406= runs inside the still-live IB and re-anchors =tm= to the IB's =point-max= — which the streamed content has already pushed forward.  The "/Move tracking-marker past the closed REASONING subtree/" comment is structurally incorrect when the subtree never closed.
+- *Fix options* (all valid; pick one in the follow-up FIX task):
+  1. Split =gptel-org-ib-close= so the end-marker pull-back / narrowing reset always runs; only =kill-buffer= is skipped under preserve-state.
+  2. At =gptel.el:2385=, explicitly move the REASONING IB's end-marker (or =narrow-to-region=) to "just before next sibling heading" regardless of close path.
+  3. Have =gptel-org--respond-create-indirect-buffer= (=gptel-org.el:2608=) pull back the REASONING IB's end-marker as part of opening the RESPOND IB.
+- *Witness divergence vs canonical test.*  Live FSM drives =gptel-curl--parse-stream= with chunked SSE; canonical test fires synchronous =(reasoning . t)= before any response chunk, so even under preserve-state the IB's end-marker is at its untouched original position when the separator insert lands (no prior content to have pushed it forward).
+- Cited file:line:
+  - =gptel.el:2031-2086= — RESPOND-IB creation block (does not touch REASONING IB)
+  - =gptel.el:2002-2014= — insert site in base buffer
+  - =gptel.el:2382-2406= — end-of-reasoning sentinel handler
+  - =gptel.el:2385= — call to =gptel-org--reasoning-close-indirect-buffer=
+  - =gptel-indirect-buffer.el:1273-1277= — =gptel-org-ib-close= preserve-state gate (no-op)
+  - =gptel-indirect-buffer.el:1216-1233= — end-marker creation (insertion-type=t)
+  - =gptel-indirect-buffer.el:725-790= — =gptel-org-ib-streaming-marker=
+  - =gptel-indirect-buffer-ai.org:806-822= — shared marker chain invariant
 
 ***** AI-DO Add live-session-faithful test using FSM/parse-stream driver
 - Build a test that drives =gptel-curl--parse-stream= (or the FSM) with realistic chunked JSON for a DeepSeek-style streamed reasoning+response, instead of feeding =(reasoning . "...")= cons cells directly to =gptel-curl--stream-insert-response=.
 - Goal: reproduce the live bound divergence captured here.
 - Assertion: =(point-max)= of the REASONING IB > position of =**** RESPONDED= heading start in the base buffer.
 
-***** AI-DO Verify =gptel-org-debug-preserve-state= does not skip end-marker repositioning
+***** AI-DONE Verify =gptel-org-debug-preserve-state= does not skip end-marker repositioning
 - Re-read the REASONING-side cleanup path under =gptel-org-debug-preserve-state= = t.
 - Confirm whether =(org-end-of-subtree t)= + marker re-anchoring still runs, or whether only the IB-close skip is intended.  If the marker re-anchoring is gated together with the IB-close, that is a strong candidate cause: the live capture had =gptel-org-debug-preserve-state= enabled.
 - Document findings; do NOT fix.
+
+****** Outcomes
+- *Candidate RULED OUT.*  Marker repositioning is NOT gated by =gptel-org-debug-preserve-state=.
+- =gptel-org-debug-preserve-state= is consulted at exactly two leaf sites:
+  - =gptel-indirect-buffer.el:1273-1277= — skips =kill-buffer= + =gptel-org-ib-unregister= + local-end-marker reset inside =gptel-org-ib-close=.
+  - =gptel-indirect-buffer.el:933= — skips TERMINE-removal inside =gptel-org-ib-remove-terminator=.
+- Inside =gptel--display-reasoning-stream= end-of-stream branch (=gptel.el:2369-2420=) the calls are a FLAT statement sequence — sibling statements, not nested under any preserve-state guard:
+  1. Title finalization (L2372-2381) — runs unconditionally.
+  2. =(gptel-org--reasoning-close-indirect-buffer)= (L2385) — only the kill/unregister leaf is skipped.
+  3. =(when-let* ((reasoning-pos ...) (tm ...)) ... (org-end-of-subtree t) (move-marker tm (point)))= (L2390-2406) — *runs unconditionally; no preserve-state reference*.
+  4. Separator insertion (L2408-2409) — runs unconditionally.
+  5. Subtree fold (L2411-2416) — runs unconditionally.
+  6. =(plist-put info :reasoning-heading-pos nil)= (L2418) — runs unconditionally.
+- *However*, a secondary effect of preserve-state IS the real smoking gun (documented under sibling AI-DONE "Probe RESPOND-IB-creation re-narrowing of REASONING IB"): keeping the IB alive leaves its =insertion-type=t= end-marker in the shared marker chain, so later base-buffer inserts (separator + RESPONDING heading + body) push it forward.  This is mechanistically different from "marker repositioning is gated" — it is "the IB stays alive after repositioning, so its end-marker keeps advancing on subsequent inserts".
+- *Witness:* the existing bounds-invariant test (=test/gptel-org-reasoning-ib-test.el:853-902=) runs =verify-ib-narrowing= twice (preserve-state nil then t) with identical bounds expectations — and passes under both — confirming step 3 above runs in both modes.
 
 **** Follow-up
 - Once one of the sub-TODOs reproduces RED, open a separate AI-DO to FIX (likely: re-narrow / move the REASONING IB end-marker back to "before RESPONDED heading start" when the RESPOND IB is opened, OR ensure the REASONING-side cleanup always re-anchors the tracking marker regardless of =gptel-org-debug-preserve-state=).
