@@ -4027,7 +4027,7 @@ Doc updates applied:
 - Final test count: 497 passed, 0 unexpected, 3 skipped (up from 489 passed, 3 skipped)
 - Note: existing =gptel-org-respond-heading-missing-during-streaming= test now PASSING (was known-failure before IB-4.6c)
 
-*** AI-DOING Add failing test proving REASONING IB is not narrowed and gets polluted by sibling RESPOND content
+*** AI-DONE Add failing test proving REASONING IB is not narrowed and gets polluted by sibling RESPOND content
 
 **** Origin
 - User-observed bug in live AI session. After streaming a deepseek@agent sub-task, the REASONING indirect buffer's narrowed region extended past its own subtree and included the sibling RESPONDING heading plus its body. The REASONING IB should narrow strictly to the REASONING subtree (heading + body, up to but not including its next same-or-higher level sibling), but it does not — it absorbs the following RESPONDING heading.
@@ -4066,6 +4066,15 @@ Doc updates applied:
 
 **** Follow-up
 - Once the failing test is committed, a separate AI-DO will be created to FIX the bounds so this test goes green.
+
+**** Outcomes / Results
+- Added new =ert-deftest= =gptel-org-reasoning-ib-narrowing-bounds-not-polluted-by-respond= to [[file:test/gptel-org-reasoning-ib-test.el]] (inserted before =gptel-org-keyword-registration-triads=).
+- *Diagnostic surprise — the static fixture from the task spec does NOT reproduce the bug.* When REASONING and RESPONDING siblings are both present in the base buffer at IB creation time, =gptel-org--reasoning-create-indirect-buffer= correctly narrows to =[reasoning-pos, responding-pos)=. The new test therefore PASSES (it is committed as a passing baseline regression rather than a red test).
+- *Hypothesis on the real bug — temporal/streaming sequence:* the IB's end-marker has =insertion-type=t= (see =gptel-indirect-buffer.el= around =gptel-org-ib-create=), so during live streaming each insert at the marker's position pushes the marker forward, auto-expanding the narrowing. If a RESPONDING sibling heading is then created at the marker position (i.e., AFTER the IB was opened and AFTER streaming pushed the end-marker), the RESPONDING heading ends up INSIDE the narrowed region. The static fixture cannot reproduce this because both siblings exist at IB-creation time and =org-end-of-subtree= correctly establishes the initial marker before the RESPONDING heading.
+- Test docstring updated to reflect the diagnostic finding: it is now framed as a passing baseline-invariant regression, with an explicit pointer to the temporal follow-up.
+- Full suite: =Ran 498 tests, 495 results as expected, 0 unexpected, 3 skipped= (the 3 skips are pre-existing and unrelated).
+- An attempt during implementation to manually simulate the temporal sequence (inserting text + then a RESPONDING heading at the end-marker position) was abandoned because manual inserts do not exercise the actual streaming pipeline, so a successful repro must drive =gptel-curl--stream-insert-response= or the FSM directly.
+- Follow-up failing-test task: see sibling =AI-DO Add failing temporal-bug test for REASONING IB end-marker advancing past streaming inserts and absorbing RESPONDING heading=.
 
 ** Researched TODOs
 *** AI-DONE Fix TERMINE: move from child-level to sibling-level for proper IB isolation
@@ -5683,3 +5692,4 @@ Pick one of the following implementation options:
   against OpenAI's current pricing page before merge.
 - Consider whether OpenRouter / Azure / compatible backends that
   reuse =gptel--openai-models= need parallel entries.
+  

@@ -718,6 +718,95 @@ the request ended with an error.  IB is still closed (defensive)."
 
 ;;; Keyword registration for state triads
 
+;;; REASONING IB narrowing bounds — static fixture invariant
+
+(ert-deftest gptel-org-reasoning-ib-narrowing-bounds-not-polluted-by-respond ()
+  "Verify REASONING IB narrowing stops at the sibling RESPONDING heading
+when both siblings already exist in the base buffer at IB creation time.
+
+Background: a user observed in a live AI session that the REASONING
+indirect buffer's narrowing wrongly absorbed a sibling RESPONDING
+heading plus its body.  The original task (=gptel-ai.org= → \"Add
+failing test proving REASONING IB is not narrowed and gets polluted by
+sibling RESPOND content\") hypothesised that this would reproduce on a
+static fixture matching the user's reproduction shape.
+
+Diagnostic outcome: it does NOT.  When REASONING and RESPONDING are
+both present at IB creation time, `org-end-of-subtree' correctly
+detects the sibling boundary and the IB narrows to
+[reasoning-pos, responding-pos) as expected.  The live-session bug
+is therefore temporal — it manifests when RESPONDING is created in
+the base buffer AFTER the IB has been opened and streaming has
+pushed the IB end-marker (insertion-type=t) past the original
+subtree end.
+
+This test stands as a passing baseline regression: any future change
+that breaks the static-fixture invariant will trip here.  A separate
+failing test that reproduces the temporal bug via the actual
+streaming pipeline is tracked as a follow-up AI-DO in =gptel-ai.org=."
+  (gptel-org-state-triad-test-with-buffer
+      "* Test Project
+** DOING Calculate 2 + 2
+*** AI-DOING Calculate 2 + 2                               :deepseek@agent:
+**** REASONING THE USER HAS A SIMPLE TASK CALCULATE 2 PLUS 2 WITH STATUS DOING.
+Let me evaluate this using the eval tool — it's a trivial calculation.
+**** RESPONDING 2 + 2 = 4
+2 + 2 = 4
+This is too trivial to warrant delegation.
+*** TERMINE
+|POINT|"
+    (let* ((buf (current-buffer))
+           (reasoning-pos
+            (save-excursion
+              (goto-char (point-min))
+              (should (re-search-forward "^\\*\\*\\*\\* REASONING " nil t))
+              (line-beginning-position)))
+           (responding-pos
+            (save-excursion
+              (goto-char (point-min))
+              (should (re-search-forward "^\\*\\*\\*\\* RESPONDING " nil t))
+              (line-beginning-position))))
+
+      ;; Sanity: both sibling headings exist in the right order.
+      (should reasoning-pos)
+      (should responding-pos)
+      (should (< reasoning-pos responding-pos))
+
+      ;; Create the REASONING indirect buffer via the production wrapper.
+      ;; Expected narrowing: [reasoning-pos, responding-pos) — strictly the
+      ;; REASONING subtree, not pulling in the sibling RESPONDING heading.
+      (should (gptel-org--reasoning-create-indirect-buffer reasoning-pos))
+      (should gptel-org--reasoning-indirect-buffer)
+      (should (buffer-live-p gptel-org--reasoning-indirect-buffer))
+
+      (unwind-protect
+          (with-current-buffer gptel-org--reasoning-indirect-buffer
+            (message "=== REASONING IB CONTENT ===")
+            (message "%s" (buffer-string))
+            (message "point-min=%d point-max=%d (base reasoning=%d responding=%d)"
+                     (point-min) (point-max) reasoning-pos responding-pos)
+
+            ;; Assertion A: IB point-min is the start of the REASONING heading.
+            (should (= (point-min) reasoning-pos))
+
+            ;; Assertion B: IB point-max is at or before the start of the
+            ;; sibling RESPONDING heading — i.e. RESPONDING is NOT inside
+            ;; the IB narrowing.
+            ;; THE BUG: actual point-max is past the RESPONDING heading.
+            (should (<= (point-max) responding-pos))
+
+            ;; Assertion C: REASONING heading text IS visible inside the IB.
+            (goto-char (point-min))
+            (should (re-search-forward "REASONING THE USER" nil t))
+
+            ;; Assertion D: RESPONDING heading line is NOT visible inside
+            ;; the IB.  The bug makes this assertion fail because the IB
+            ;; narrowing extends past the sibling RESPONDING heading.
+            (goto-char (point-min))
+            (should-not (re-search-forward "^\\*\\*\\*\\* RESPONDING" nil t)))
+        (with-current-buffer buf
+          (gptel-org--reasoning-close-indirect-buffer))))))
+
 (ert-deftest gptel-org-keyword-registration-triads ()
   "Verify RESPOND/RESPONDING/RESPONDED and REASON/REASONING/REASONED
 are registered as TODO keywords and recognized by
