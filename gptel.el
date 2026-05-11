@@ -2048,8 +2048,7 @@ Optional RAW disables text properties and transformation."
                          (save-excursion
                            (goto-char rpos)
                            (when (looking-at "^\\(\\*+ RESPOND\\) /$")
-                             (let ((inhibit-read-only t)
-                                   (inhibit-modification-hooks t))
+                             (let ((inhibit-read-only t))
                                (replace-match (concat (match-string 1) " " title))
                                (org-element-cache-reset)))))
                        (plist-put info :respond-title-pending nil)
@@ -2302,8 +2301,7 @@ for streaming responses only."
                             (save-excursion
                               (goto-char reasoning-pos)
                               (when (looking-at "^\\(\\*+ REASONING\\) *$")
-                                (let ((inhibit-read-only t)
-                                      (inhibit-modification-hooks t))
+                                (let ((inhibit-read-only t))
                                   (replace-match (concat (match-string 1) " " (string-trim title-buf)))
                                   (org-element-cache-reset))))))
                         (plist-put info :reasoning-title-pending nil))
@@ -2400,8 +2398,7 @@ for streaming responses only."
                                 (save-excursion
                                   (goto-char reasoning-pos)
                                   (when (looking-at "^\\(\\*+ REASONING\\) *$")
-                                    (let ((inhibit-read-only t)
-                                          (inhibit-modification-hooks t))
+                                    (let ((inhibit-read-only t))
                                       (replace-match (concat (match-string 1) " " title))
                                       (org-element-cache-reset)))))
                               (plist-put info :reasoning-title-pending nil)
