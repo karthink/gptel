@@ -97,6 +97,10 @@ Used to track and clean up the reasoning display buffer.")
   "The indirect buffer currently used for TOOL heading body insertion, if any.
 Used to track and clean up the TOOL display buffer.")
 
+(defvar-local gptel-org--respond-indirect-buffer nil
+  "The indirect buffer currently showing RESPOND content, if any.
+Used to track and clean up the RESPOND display buffer.")
+
 (defvar-local gptel-org--ai-state-keywords nil
   "List of buffer-local TODO keywords registered by gptel for AI content.
 Populated by `gptel-org--ensure-todo-state' each time it registers a
@@ -1180,14 +1184,12 @@ otherwise falls back to tag detection.
 
 In keyword mode, a heading is assistant when its TODO state has the
 \"AI-\" prefix (AI-DO, AI-DOING, AI-DONE, etc.) or is one of the
-special gptel states: REASONING, RESPOND, TOOL, RESULTS, TERMINE,
-PENDING, ALLOWED, DENIED.  All these states contain AI-authored or
-AI-system content.  TERMINE is the generic closed-vocabulary subtree
-terminator that will eventually replace RESULTS/FEEDBACK terminator
-headings.  RESPOND is the assistant response keyword; it is
-pre-registered here so future RESPOND-wrapped response subtrees
-(IB-4.6b) are correctly recognised even before the streaming
-pipeline is wired to emit them.
+special gptel states: REASONING, RESPOND, RESPONDING, RESPONDED,
+TOOL, RESULTS, TERMINE, PENDING, ALLOWED, DENIED.  All these states
+contain AI-authored or AI-system content.  TERMINE is the generic
+closed-vocabulary subtree terminator that will eventually replace
+RESULTS/FEEDBACK terminator headings.  RESPOND/RESPONDING/RESPONDED
+are the assistant response state triad (IB-4.6b).
 Headings without a TODO state (plain headings) return nil here and
 inherit from their parent via `gptel-org--restore-bounds-from-tags'."
   (if gptel-org-use-todo-keywords
@@ -1195,8 +1197,9 @@ inherit from their parent via `gptel-org--restore-bounds-from-tags'."
         (let ((todo (org-get-todo-state)))
           (and todo
                (or (string-prefix-p "AI-" todo)
-                   (member todo '("REASONING" "RESPOND" "TOOL" "RESULTS"
-                                  "TERMINE" "PENDING" "ALLOWED" "DENIED"))
+                   (member todo '("REASONING" "RESPOND" "RESPONDING" "RESPONDED"
+                                  "TOOL" "RESULTS" "TERMINE"
+                                  "PENDING" "ALLOWED" "DENIED"))
                    (member todo gptel-org--ai-state-keywords)))))
     (gptel-org--heading-has-tag-p gptel-org-assistant-tag)))
 
@@ -2308,33 +2311,30 @@ This should be called once when an agent indirect buffer is created."
 
 ;;; Response heading title generation
 
-;; RESPOND heading scaffolding (IB-4.6).
+;; RESPONDING heading scaffolding (IB-4.6b).
 ;;
-;; IB-4.6 registers the RESPOND keyword and shipped the shaping
-;; helper below, but does NOT wire RESPOND into the response
-;; streaming pipeline.  Wrapping all assistant response content in a
-;; =* RESPOND <title>= heading inserted inside the active agent IB
-;; (before the subtree's TERMINE) is a wider architectural change
-;; affecting streaming insertion, response-title application,
-;; auto-corrector, role detection and the agent-pipeline tests.
-;; That full wiring is tracked as IB-4.6b in =gptel-ai.org=.
+;; IB-4.6 registers the RESPOND keyword; IB-4.6b upgrades to the
+;; full state triad (RESPOND → RESPONDING → RESPONDED) with IB
+;; wrapping.  The shaping helper below uses RESPONDING, which is the
+;; active streaming state.
 ;;
 ;; This helper is scaffolding — nothing in the current response
-;; pipeline calls it.  It exists so IB-4.6b can reuse the exact same
-;; shaping logic that IB-4.5 established for REASONING, and so
-;; ad-hoc callers (tests, one-off consumers) have a stable entry
-;; point to build a well-formed RESPOND subtree string.
+;; pipeline calls it directly.  The live streaming path in
+;; `gptel-curl--stream-insert-response' inserts the heading inline
+;; rather than via this function, but this entry point exists so
+;; ad-hoc callers (tests, one-off consumers) can build a well-formed
+;; RESPONDING subtree string.
 
 (defun gptel-org--insert-respond-heading (text)
-  "Return a `* RESPOND <title>\\n<body>\\n' string built from TEXT.
+  "Return a `* RESPONDING <title>\\n<body>\\n' string built from TEXT.
 Thin wrapper over `gptel--format-keyword-heading-org' that uses the
-RESPOND keyword and concatenates the returned (HEADING . BODY)
+RESPONDING keyword and concatenates the returned (HEADING . BODY)
 pair into a single insertable string.  BODY is empty when TEXT has
 no content past its first line.
 
 Scaffolding for IB-4.6b; not yet called by the response streaming
 pipeline.  See the commentary block above for the scope decision."
-  (let* ((pair (gptel--format-keyword-heading-org "RESPOND" text))
+  (let* ((pair (gptel--format-keyword-heading-org "RESPONDING" text))
          (heading (car pair))
          (body (or (cdr pair) "")))
     (concat heading body)))
@@ -2598,6 +2598,93 @@ Safe to call even if no reasoning buffer exists."
       (setq gptel-org--reasoning-indirect-buffer nil))))
 
 
+
+;;; RESPOND indirect buffer display
+
+(defun gptel-org--respond-create-indirect-buffer (respond-heading-pos)
+  "Create an indirect buffer for the RESPONDING heading at RESPOND-HEADING-POS.
+
+Creates an indirect buffer narrowed to the RESPONDING subtree.  The
+buffer auto-expands as streaming content is inserted.  The buffer is
+not displayed in any window — it exists only as an isolated write
+target for streaming response content.
+
+Delegates buffer creation to `gptel-org-ib-create' for consistent
+indirect buffer management (fold decoupling, end-marker, registry
+tracking).  Applies respond-specific setup: read-only mode and
+subtree unfolding.
+
+Returns the indirect buffer, or nil if creation failed."
+  (gptel-org--debug
+   "respond IB create: pos=%S cur-buf=%S base=%S"
+   respond-heading-pos (buffer-name)
+   (when (gptel-org-ib-registered-p (current-buffer)) (buffer-name (gptel-org-ib-base (current-buffer)))))
+  (condition-case err
+      (let* ((base-buf (if (gptel-org-ib-registered-p (current-buffer))
+                           (gptel-org-ib-base (current-buffer))
+                         (current-buffer)))
+             (buf-name (gptel-org-ib-compute-name
+                        base-buf respond-heading-pos "respond"))
+             indirect-buf)
+        (gptel-org--debug
+         "respond IB create: base-buf=%S buf-name=%S"
+         (buffer-name base-buf) buf-name)
+        (setq indirect-buf (gptel-org-ib-create
+                            base-buf respond-heading-pos buf-name))
+        (gptel-org--debug
+         "respond IB create: gptel-org-ib-create returned %S (live=%S)"
+         (when indirect-buf (buffer-name indirect-buf))
+         (when indirect-buf (buffer-live-p indirect-buf)))
+        (with-current-buffer indirect-buf
+          (goto-char (point-min))
+          (when (org-at-heading-p)
+            (org-fold-subtree nil))
+          (setq buffer-read-only t)
+          (add-hook 'kill-buffer-hook
+                    (lambda ()
+                      (let ((this-buf (current-buffer)))
+                        (when-let* ((base (and (gptel-org-ib-registered-p this-buf)
+                                               (gptel-org-ib-base this-buf))))
+                          (with-current-buffer base
+                            (when (eq gptel-org--respond-indirect-buffer
+                                      this-buf)
+                              (setq gptel-org--respond-indirect-buffer nil))))))
+                    nil t))
+        (with-current-buffer base-buf
+          (setq gptel-org--respond-indirect-buffer indirect-buf))
+        (unless (eq (current-buffer) base-buf)
+          (setq gptel-org--respond-indirect-buffer indirect-buf))
+        (gptel-org--debug
+         "respond IB create: success, buffer=%S" (buffer-name indirect-buf))
+        indirect-buf)
+    (error
+     (gptel-org--debug "respond IB: creation failed: %S" err)
+     nil)))
+
+(defun gptel-org--respond-close-indirect-buffer ()
+  "Close the respond indirect buffer if one exists.
+
+Delegates cleanup to `gptel-org-ib-close' for consistent marker and
+registry cleanup.  Handles the tracking variable reset.
+
+Safe to call even if no respond buffer exists."
+  (gptel-org--debug
+   "respond IB close: cur-buf=%S ib-var=%S ib-live=%S"
+   (buffer-name)
+   (when gptel-org--respond-indirect-buffer
+     (buffer-name gptel-org--respond-indirect-buffer))
+   (when gptel-org--respond-indirect-buffer
+     (buffer-live-p gptel-org--respond-indirect-buffer)))
+  (when-let* ((ib gptel-org--respond-indirect-buffer)
+              ((buffer-live-p ib)))
+    (gptel-org--debug
+     "respond IB close: closing %S" (buffer-name ib))
+    (gptel-org-ib-close ib))
+  (setq gptel-org--respond-indirect-buffer nil)
+  (when-let* ((base (and (gptel-org-ib-registered-p (current-buffer))
+                         (gptel-org-ib-base (current-buffer)))))
+    (with-current-buffer base
+      (setq gptel-org--respond-indirect-buffer nil))))
 ;;; TOOL indirect buffer display
 
 (defun gptel-org--tool-create-indirect-buffer (tool-heading-pos)
@@ -2849,18 +2936,24 @@ corrupting subsequent heading updates."
                        org-todo-keywords)
         (push '(sequence "|" "TERMINE") org-todo-keywords)
         (setq changed t))
-      ;; Idempotent upgrade path: splice RESPOND into the keyword
-      ;; sequence if missing.  RESPOND wraps assistant response
-      ;; content (Phase IB-4.6 / IB-4.6b).  The streaming pipeline
-      ;; does not yet emit RESPOND headings, but the keyword is
-      ;; registered up front so that (a) future RESPOND-authored
-      ;; headings fontify correctly and (b) `gptel-org--heading-is-
-      ;; assistant-p' can rely on the state being recognised.
-      (unless (cl-some (lambda (seq)
-                         (and (listp seq)
-                              (member "RESPOND" (cl-remove-if-not #'stringp seq))))
-                       org-todo-keywords)
-        (push '(sequence "|" "RESPOND") org-todo-keywords)
+      ;; Idempotent upgrade path: splice the RESPOND state triad
+      ;; (RESPOND, RESPONDING, RESPONDED) into the keyword sequences
+      ;; if missing.  RESPONDING wraps active streaming response
+      ;; content in an IB; RESPONDED marks its completion on the
+      ;; success path.  RESPOND is the initial/transient state,
+      ;; pre-registered for future use.  All three share the
+      ;; agent-state face for visual consistency.
+      ;; Uses `gptel-org--ensure-todo-state-1' so keyword + face
+      ;; registration is handled in a single idempotent call per
+      ;; state, matching the agent-triad registration pattern.
+      (when (gptel-org--ensure-todo-state-1
+             "RESPOND" gptel-org--agent-state-face t)
+        (setq changed t))
+      (when (gptel-org--ensure-todo-state-1
+             "RESPONDING" gptel-org--agent-state-face nil)
+        (setq changed t))
+      (when (gptel-org--ensure-todo-state-1
+             "RESPONDED" gptel-org--agent-state-face t)
         (setq changed t))
       ;; Register faces in org-todo-keyword-faces if missing
       (unless (assoc ai-kw org-todo-keyword-faces)
@@ -2876,13 +2969,10 @@ corrupting subsequent heading updates."
         (push '("REASONING" . (:foreground "#8FBCBB" :weight light :slant italic))
               org-todo-keyword-faces)
         (setq changed t))
-      ;; RESPOND face: bold blue — assistant response content.  Reuses
-      ;; the agent-state colour so RESPOND reads as "assistant output"
-      ;; at a glance.  Pre-registered for IB-4.6b (not yet wired).
-      (unless (assoc "RESPOND" org-todo-keyword-faces)
-        (push (cons "RESPOND" gptel-org--agent-state-face)
-              org-todo-keyword-faces)
-        (setq changed t))
+      ;; RESPOND / RESPONDING / RESPONDED faces are registered via
+      ;; `gptel-org--ensure-todo-state-1' above (keyword+face
+      ;; atomically).  They all use the agent-state face (bold blue)
+      ;; for visual consistency with agent state triads.
       ;; TOOL face: distinct color for tool execution state
       (unless (assoc "TOOL" org-todo-keyword-faces)
         (push '("TOOL" . (:foreground "#A3BE8C" :weight bold))
