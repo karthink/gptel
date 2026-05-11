@@ -4349,7 +4349,7 @@ Overall outcomes (2 commits: =5fa09c5=, =151a5d9=):
 - Test results: 489 passed, 3 skipped, 0 unexpected failures.
 - Commit: =151a5d9=
 
-***** AI-DO Implement REASONING state triad (REASON → REASONING → REASONED)
+***** AI-DOING Implement REASONING state triad (REASON → REASONING → REASONED)
 - Register =REASON= and =REASONED= keywords with
   =gptel-org--agent-state-face=
 - Update =gptel--display-reasoning-stream= to insert =* REASONING= and
