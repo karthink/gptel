@@ -4157,6 +4157,54 @@ placeholder.  Need tests for:
 - Also added helper: =gptel-test--has-cache-control-p= (recursive predicate)
 - All 6 tests pass (0 failures).
 
+
+*** AI-DO RESPOND state triad: RESPOND → RESPONDING → RESPONDED
+:PROPERTIES:
+:GPTEL_PRESET: gptel-coordinator
+:END:
+
+*** Origin
+- User requested: Update the RESPOND process to use IB with state triad
+- Current state: RESPOND is a single keyword, streaming pipeline inserts
+  =* RESPOND /<title>= and never transitions state
+- Goal: Three-state lifecycle like agent triads (e.g. AGENT→AGENTING→AGENTED)
+
+*** Discussion highlights
+- RESPOND is already pre-registered as a TODO keyword (IB-4.6/IB-4.6b)
+- Streaming pipeline in gptel-curl--stream-insert-response inserts heading
+  on first chunk and extracts title
+- No completion transition exists — heading stays as RESPOND forever
+- gptel-agent already has the state triad pattern (via :state-words property)
+  with ~15 agent triads all following REQUEST→DOING→DONE
+
+*** Decisions
+- RESPOND: initial state (heading placeholder, brief/transient)
+- RESPONDING: active streaming (inserted on first chunk)
+- RESPONDED: complete (transitioned in post-response hook)
+- All three use gptel-org--agent-state-face for consistent appearance
+- On first chunk: insert =* RESPONDING /<title>= directly (skip RESPOND
+  to avoid double org-todo transition flicker during streaming)
+- On completion: change RESPONDING → RESPONDED via :post lambda in info plist
+- On error/abort: leave as RESPONDING (don't transition to RESPONDED)
+
+*** Mission
+1. Register all three keywords (RESPOND, RESPONDING, RESPONDED) in
+   gptel-org--register-todo-keywords with proper faces
+2. Update gptel-org--heading-is-assistant-p to recognize all three
+3. Update gptel-curl--stream-insert-response to insert =* RESPONDING /=
+   instead of =* RESPOND /=
+4. Update title extraction regex to match RESPONDING
+5. Add :post lambda in info plist that transitions RESPONDING→RESPONDED
+   on successful stream completion
+6. Update gptel-org--insert-respond-heading scaffolding to use RESPONDING
+7. Update tests: the known-failure test, unit tests, and agent tests
+8. Update comments/docstrings referencing single RESPOND keyword
+
+*** TODOs
+**** AI-DO Implement RESPOND triad registration and keywords
+**** AI-DO Update streaming pipeline for RESPONDING insertion
+**** AI-DO Add RESPONDING→RESPONDED completion transition
+**** AI-DO Update tests for RESPOND triad
 ** Researched TODOs
 *** AI-DONE Fix TERMINE: move from child-level to sibling-level for proper IB isolation
 
