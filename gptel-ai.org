@@ -4376,7 +4376,7 @@ Overall outcomes (2 commits: =5fa09c5=, =151a5d9=):
   which is correct).
 - Test results: 489 passed, 3 skipped, 0 failures.
 
-***** AI-DO Universal-pattern audit + doc update
+***** AI-DOING Universal-pattern audit + doc update
 - Verify TERMINE/CSTR placement for RESPOND + REASONING IBs
 - Confirm auto-correct fires correctly during RESPOND streaming
 - Update [[file:gptel-indirect-buffer-ai.org]] to document the universal
