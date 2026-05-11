@@ -553,6 +553,74 @@ it to verify the transition and idempotence."
           (should (string= (org-get-todo-state) "REASONED")))))))
 
 
+
+;;; Void-variable reasoning-captured-pos regression test
+
+(ert-deftest gptel-org-reasoning-ib--cleanup-fn-void-variable-bug ()
+  "Regression test: `let*' ensures cleanup-fn captures `reasoning-captured-pos'.
+
+Verifies that the cleanup lambda registered on `info :post' properly
+closes over `reasoning-captured-pos' when constructed with `let*' (not
+`let'), so the REASONING → REASONED transition and IB cleanup proceed
+without a `void-variable' error on the happy path."
+  (gptel-org-state-triad-test-with-buffer
+      "* Test Project
+** AI-DOING Task
+|POINT|"
+    (let* ((buf (current-buffer))
+           (heading-pos
+            (progn
+              (insert "*** REASONING Test reasoning\n")
+              (forward-line -1)
+              (point)))
+           (info (list :buffer buf
+                       :error nil
+                       :reasoned-transition-done nil)))
+
+      (should (gptel-org--reasoning-create-indirect-buffer heading-pos))
+      (should gptel-org--reasoning-indirect-buffer)
+      (should (buffer-live-p gptel-org--reasoning-indirect-buffer))
+
+      ;; Construct the :post lambda matching the production pattern
+      ;; (closure-captured heading-pos, gated on :error + :reasoned-transition-done).
+      ;; With the `let*' fix, reasoning-captured-pos is properly captured.
+      (let* ((reasoning-captured-pos heading-pos)
+             (cleanup-fn
+              (lambda (info)
+                (when (and (not (plist-get info :error))
+                           (not (plist-get info :reasoned-transition-done)))
+                  (plist-put info :reasoned-transition-done t)
+                  (let ((buf (plist-get info :buffer)))
+                    (when (and reasoning-captured-pos buf
+                               (buffer-live-p buf))
+                      (with-current-buffer buf
+                        (save-excursion
+                          (goto-char reasoning-captured-pos)
+                          (when (and (org-at-heading-p)
+                                     (string=
+                                      (org-get-todo-state)
+                                      "REASONING"))
+                            (org-todo "REASONED"))))))
+                  (gptel-org--reasoning-close-indirect-buffer)))))
+        (plist-put info :post
+                   (cons cleanup-fn (plist-get info :post)))
+
+        ;; --- Invoke :post (success path) ---
+        (mapc (lambda (f) (funcall f info)) (plist-get info :post))
+
+        (with-current-buffer buf
+          ;; Heading is now REASONED
+          (goto-char heading-pos)
+          (should (org-at-heading-p))
+          (should (string= (org-get-todo-state) "REASONED"))
+
+          ;; IB is closed
+          (should (or (null gptel-org--reasoning-indirect-buffer)
+                      (not (buffer-live-p
+                            gptel-org--reasoning-indirect-buffer)))))
+
+        ;; :reasoned-transition-done flag is set
+        (should (plist-get info :reasoned-transition-done))))))
 ;;; RESPOND triad idempotence unit test
 
 (ert-deftest gptel-org-respond-triad-idempotence ()

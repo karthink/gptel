@@ -2474,7 +2474,7 @@ for streaming responses only."
                       ;; captured via lexical closure because
                       ;; :reasoning-heading-pos is cleared in the
                       ;; end-of-stream branch before :post fires.
-                      (let ((reasoning-captured-pos heading-pos)
+                      (let* ((reasoning-captured-pos heading-pos)
                             (cleanup-fn
                              (lambda (info)
                                (when (and (not (plist-get info :error))
