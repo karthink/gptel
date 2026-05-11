@@ -4158,54 +4158,6 @@ placeholder.  Need tests for:
 - All 6 tests pass (0 failures).
 
 
-*** AI-DO RESPOND state triad: RESPOND → RESPONDING → RESPONDED
-:PROPERTIES:
-:GPTEL_PRESET: gptel-coordinator
-:END:
-
-*** Origin
-- User requested: Update the RESPOND process to use IB with state triad
-- Current state: RESPOND is a single keyword, streaming pipeline inserts
-  =* RESPOND /<title>= and never transitions state
-- Goal: Three-state lifecycle like agent triads (e.g. AGENT→AGENTING→AGENTED)
-
-*** Discussion highlights
-- RESPOND is already pre-registered as a TODO keyword (IB-4.6/IB-4.6b)
-- Streaming pipeline in gptel-curl--stream-insert-response inserts heading
-  on first chunk and extracts title
-- No completion transition exists — heading stays as RESPOND forever
-- gptel-agent already has the state triad pattern (via :state-words property)
-  with ~15 agent triads all following REQUEST→DOING→DONE
-
-*** Decisions
-- RESPOND: initial state (heading placeholder, brief/transient)
-- RESPONDING: active streaming (inserted on first chunk)
-- RESPONDED: complete (transitioned in post-response hook)
-- All three use gptel-org--agent-state-face for consistent appearance
-- On first chunk: insert =* RESPONDING /<title>= directly (skip RESPOND
-  to avoid double org-todo transition flicker during streaming)
-- On completion: change RESPONDING → RESPONDED via :post lambda in info plist
-- On error/abort: leave as RESPONDING (don't transition to RESPONDED)
-
-*** Mission
-1. Register all three keywords (RESPOND, RESPONDING, RESPONDED) in
-   gptel-org--register-todo-keywords with proper faces
-2. Update gptel-org--heading-is-assistant-p to recognize all three
-3. Update gptel-curl--stream-insert-response to insert =* RESPONDING /=
-   instead of =* RESPOND /=
-4. Update title extraction regex to match RESPONDING
-5. Add :post lambda in info plist that transitions RESPONDING→RESPONDED
-   on successful stream completion
-6. Update gptel-org--insert-respond-heading scaffolding to use RESPONDING
-7. Update tests: the known-failure test, unit tests, and agent tests
-8. Update comments/docstrings referencing single RESPOND keyword
-
-*** TODOs
-**** AI-DO Implement RESPOND triad registration and keywords
-**** AI-DO Update streaming pipeline for RESPONDING insertion
-**** AI-DO Add RESPONDING→RESPONDED completion transition
-**** AI-DO Update tests for RESPOND triad
-
 *** AI-DOING Apply IB + auto-correct + state triad to RESPOND and REASONING
 :PROPERTIES:
 :GPTEL_PRESET: gptel-coordinator
@@ -4308,13 +4260,16 @@ placeholder.  Need tests for:
 - Must land first; RESPOND/REASONING headings need to land at correct depth
   before IB creation wraps them.
 
-***** AI-DO Fold existing RESPOND triad TODO under this parent (or mark dependency)
-- Link: [[file:gptel-ai.org::*AI-DO RESPOND state triad: RESPOND → RESPONDING → RESPONDED][AI-DO RESPOND state triad (line 4161)]]
-- Decide: re-parent its 4 sub-TODOs under this TODO, OR keep it standalone
-  and mark step 2 of this TODO as "see line 4161".
-- Note: the line-4161 TODO has a heading-level bug — its "Origin / Discussion
-  highlights / Decisions / Mission / TODOs" children are at =***= (sibling
-  level) instead of =****= (child level). Fix while folding.
+***** AI-DONE Fold existing RESPOND triad TODO under this parent
+- Link (now removed): formerly =*** AI-DO RESPOND state triad: RESPOND →
+  RESPONDING → RESPONDED= at line 4161.
+- *Outcome*: The standalone line-4161 TODO has been *removed* from the
+  document. Its Origin / Discussion / Decisions / Mission content is
+  superseded by the corresponding sections of this parent TODO (the parent's
+  scope is a strict superset). Its 4 sub-TODOs (registration, streaming
+  pipeline, completion transition, tests) have been absorbed as explicit
+  children under "Implement RESPOND IB wrapping" below.
+- Heading-depth bug (children at =***= instead of =****=) resolved by deletion.
 
 ***** AI-DO Implement RESPOND IB wrapping
 - New function =gptel-org--respond-create-indirect-buffer= mirroring
@@ -4322,6 +4277,21 @@ placeholder.  Need tests for:
 - Wire into =gptel-curl--stream-insert-response=
 - Install auto-correct hook on the new IB
 - Close/widen IB in =:post= lambda
+****** AI-DO Implement RESPOND triad registration and keywords
+- Register =RESPOND=, =RESPONDING=, =RESPONDED= with
+  =gptel-org--agent-state-face=
+- Update =gptel-org--heading-is-assistant-p= to recognize all three
+- Update =gptel-org--insert-respond-heading= scaffolding to use =RESPONDING=
+****** AI-DO Update streaming pipeline for RESPONDING insertion
+- In =gptel-curl--stream-insert-response=: insert =* RESPONDING /<title>=
+  directly on first chunk (skip transient =RESPOND= to avoid double org-todo
+  transition flicker during streaming)
+- Update title extraction regex to match =RESPONDING=
+****** AI-DO Add RESPONDING→RESPONDED completion transition
+- Add =:post= lambda in info plist that transitions =RESPONDING= → =RESPONDED=
+  on successful stream completion
+- On error/abort: leave as =RESPONDING= (do not transition)
+- Close/widen the RESPOND IB inside the same =:post= lambda
 
 ***** AI-DO Implement REASONING state triad (REASON → REASONING → REASONED)
 - Register =REASON= and =REASONED= keywords with
