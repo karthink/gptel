@@ -4376,11 +4376,38 @@ Overall outcomes (2 commits: =5fa09c5=, =151a5d9=):
   which is correct).
 - Test results: 489 passed, 3 skipped, 0 failures.
 
-***** AI-DOING Universal-pattern audit + doc update
+***** AI-DONE Universal-pattern audit + doc update
 - Verify TERMINE/CSTR placement for RESPOND + REASONING IBs
 - Confirm auto-correct fires correctly during RESPOND streaming
 - Update [[file:gptel-indirect-buffer-ai.org]] to document the universal
   pattern explicitly
+****** Outcomes
+Audit findings (all three items PASS):
+1. *TERMINE/CSTR placement*: PASS — =gptel-org--respond-create-indirect-buffer=
+   and =gptel-org--reasoning-create-indirect-buffer= both delegate to
+   =gptel-org-ib-create=, which refuses to seed TERMINE (CSTR-2).  Both IBs
+   are children of AI-DOING and rely on its sibling-level TERMINE.
+2. *Auto-correct during RESPOND streaming*: PASS by design — RESPOND and
+   REASONING IBs are read-only (=buffer-read-only t=).  Auto-correct is
+   intentionally NOT installed for them (documented in the "Differences from
+   Agent Integration" section).  Content flows through the base buffer's
+   tracking marker; the IB is a passive view.
+3. *Recursive modification safety*: PASS — =:post= lambdas run via
+   =gptel--handle-post= in the base buffer.  =org-todo= transitions on
+   base-buffer headings fire =after-change-functions= normally (auto-correct
+   is only in IBs).  Idempotence flags (=:responded-transition-done=,
+   =:reasoned-transition-done=) guard against double-firing.  Org indirect
+   buffers share text properties with the base, so the IB reflects the new
+   keyword — purely cosmetic, no infinite loop risk.
+
+Doc updates applied:
+- =gptel-indirect-buffer-ai.org=: Added "Universal pattern: IB + auto-correct
+  + state triad + shared task TERMINE" section in Design invariants.
+- Updated RESPOND heading in Design invariants to reflect live wiring
+  (removed stale "scaffolding, planned extension" language).
+- Added REASONING state triad paragraph to the REASONING display section.
+- =gptel-org.el=: Updated stale commentary (~L2317-2339) to reflect that
+  RESPOND wiring is LIVE (was "scaffolding, not called by pipeline").
 
 ***** AI-DO Tests for RESPOND IB + REASONING triad
 - Convert known-failure RESPOND test → passing test
