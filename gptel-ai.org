@@ -4349,12 +4349,32 @@ Overall outcomes (2 commits: =5fa09c5=, =151a5d9=):
 - Test results: 489 passed, 3 skipped, 0 unexpected failures.
 - Commit: =151a5d9=
 
-***** AI-DOING Implement REASONING state triad (REASON → REASONING → REASONED)
+***** AI-DONE Implement REASONING state triad (REASON → REASONING → REASONED)
 - Register =REASON= and =REASONED= keywords with
-  =gptel-org--agent-state-face=
+  =gptel-org--reasoning-state-face=
 - Update =gptel--display-reasoning-stream= to insert =* REASONING= and
   transition to =REASONED= on reasoning-end
 - Update =gptel-org--heading-is-assistant-p=
+****** Outcomes
+- Added =gptel-org--reasoning-state-face= defconst (italic blue-grey, matching
+  existing REASONING face) in =gptel-org.el=.
+- Registered =REASON= (done-state, transient/symmetry) and =REASONED=
+  (done-state, stream-success) via =gptel-org--ensure-todo-state-1= in
+  =gptel-org--register-todo-keywords=, mirroring the RESPOND triad pattern.
+- Updated REASONING face registration to use the new defconst.
+- Added =REASON= and =REASONED= to =gptel-org--heading-is-assistant-p= member
+  list and updated docstring.
+- Added =:post= cleanup lambda in =gptel--display-reasoning-stream= that
+  transitions REASONING → REASONED on stream success. The lambda captures
+  =heading-pos= via lexical closure (since =:reasoning-heading-pos= is cleared
+  in the end-of-stream branch before =:post= fires) and gates on =:error=
+  absence with =:reasoned-transition-done= idempotence flag. Also calls
+  =gptel-org--reasoning-close-indirect-buffer= as a defensive idempotent
+  fallback for error/abort paths.
+- No test changes needed — existing tests pass as-is (the test harness doesn't
+  invoke the =:post= machinery, so REASONING stays as REASONING in tests,
+  which is correct).
+- Test results: 489 passed, 3 skipped, 0 failures.
 
 ***** AI-DO Universal-pattern audit + doc update
 - Verify TERMINE/CSTR placement for RESPOND + REASONING IBs
