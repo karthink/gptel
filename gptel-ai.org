@@ -4271,27 +4271,83 @@ placeholder.  Need tests for:
   children under "Implement RESPOND IB wrapping" below.
 - Heading-depth bug (children at =***= instead of =****=) resolved by deletion.
 
-***** AI-DOING Implement RESPOND IB wrapping
+***** AI-DONE Implement RESPOND IB wrapping
 - New function =gptel-org--respond-create-indirect-buffer= mirroring
   =gptel-org--reasoning-create-indirect-buffer=
 - Wire into =gptel-curl--stream-insert-response=
 - Install auto-correct hook on the new IB
 - Close/widen IB in =:post= lambda
-****** AI-DOING Implement RESPOND triad registration and keywords
+
+Overall outcomes (2 commits: =5fa09c5=, =151a5d9=):
+- Full RESPOND state triad (RESPOND → RESPONDING → RESPONDED) registered
+  with org-todo and recognized by =gptel-org--heading-is-assistant-p=.
+- RESPONDING heading inserted on first streaming response chunk with
+  immediate IB creation (gptel-org-ib-create).  Body text streams into
+  the IB before its TERMINE boundary.
+- :post lambda transitions RESPONDING → RESPONDED on success and closes
+  the IB.  Error/abort leaves RESPONDING.
+- Auto-correct hook deployment deemed unnecessary (RESPOND IB carries
+  no user-authored headings to correct — same as REASONING).
+- Test pass: 489/489, no regressions.
+- Follow-on: REASONING state triad (REASON → REASONING → REASONED) is
+  the sibling AI-DO task; tests for RESPOND IB remain as the sibling
+  AI-DO task.  No blockers found.
+****** AI-DONE Implement RESPOND triad registration and keywords
 - Register =RESPOND=, =RESPONDING=, =RESPONDED= with
   =gptel-org--agent-state-face=
 - Update =gptel-org--heading-is-assistant-p= to recognize all three
 - Update =gptel-org--insert-respond-heading= scaffolding to use =RESPONDING=
-****** AI-DOING Update streaming pipeline for RESPONDING insertion
+******* Outcomes
+- =gptel-org.el= L2852–2869: replaced single =RESPOND= sequence with
+  full triad via =gptel-org--ensure-todo-state-1= (atomically registers
+  keyword + face).  =RESPOND= (done-state), =RESPONDING= (open/todo),
+  =RESPONDED= (done-state).  Old separate face registration removed.
+- =gptel-org.el= L96–98: added =gptel-org--respond-indirect-buffer=
+  buffer-local variable.
+- =gptel-org.el= L1191–1192: added =RESPONDING= and =RESPONDED= to
+  =gptel-org--heading-is-assistant-p= member list, updated docstring.
+- =gptel-org.el= L2328–2342: updated
+  =gptel-org--insert-respond-heading= scaffolding + commentary to emit
+  =RESPONDING=.
+- Commit: =5fa09c5=
+****** AI-DONE Update streaming pipeline for RESPONDING insertion
 - In =gptel-curl--stream-insert-response=: insert =* RESPONDING /<title>=
   directly on first chunk (skip transient =RESPOND= to avoid double org-todo
   transition flicker during streaming)
 - Update title extraction regex to match =RESPONDING=
-****** AI-DOING Add RESPONDING→RESPONDED completion transition
+******* Outcomes
+- =gptel.el= L2027–2055: changed heading to =* RESPONDING /\n=, added
+  immediate IB creation via
+  =gptel-org--respond-create-indirect-buffer= after heading insertion.
+  Rewind tracking-marker inside the IB before TERMINE so body text
+  streams into the IB.
+- =gptel.el= L2052: updated title-extraction regex from =RESPOND= to
+  =RESPONDING=.
+- =gptel.el= L203: added =declare-function= entries for
+  =gptel-org--respond-create-indirect-buffer=,
+  =gptel-org--respond-close-indirect-buffer=, =gptel-org--debug=,
+  =gptel-org-ib-streaming-marker=.
+- =gptel-org.el= L2600–2686: added
+  =gptel-org--respond-create-indirect-buffer= and
+  =gptel-org--respond-close-indirect-buffer= (mirror REASONING pattern:
+  read-only, unfolded, kill-buffer-hook cleanup).
+- Commit: =151a5d9=
+****** AI-DONE Add RESPONDING→RESPONDED completion transition
 - Add =:post= lambda in info plist that transitions =RESPONDING= → =RESPONDED=
   on successful stream completion
 - On error/abort: leave as =RESPONDING= (do not transition)
 - Close/widen the RESPOND IB inside the same =:post= lambda
+******* Outcomes
+- =gptel.el= L2047–2073: pushed =:post= cleanup lambda after RESPOND IB
+  creation.  Lambda gates on =:error= absence and
+  =:responded-transition-done= idempotence flag.  Transitions
+  RESPONDING→RESPONDED via =org-todo= on the heading, then calls
+  =gptel-org--respond-close-indirect-buffer=.
+- =test/gptel-org-reasoning-ib-test.el=: updated all RESPOND
+  references to RESPONDING in the
+  =gptel-org-respond-heading-missing-during-streaming= test.
+- Test results: 489 passed, 3 skipped, 0 unexpected failures.
+- Commit: =151a5d9=
 
 ***** AI-DO Implement REASONING state triad (REASON → REASONING → REASONED)
 - Register =REASON= and =REASONED= keywords with
