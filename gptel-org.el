@@ -2507,88 +2507,107 @@ positions of the response."
 
 ;;; Reasoning indirect buffer display
 
-(defun gptel-org--reasoning-create-indirect-buffer (reasoning-heading-pos)
-  "Create an indirect buffer for the REASONING heading at REASONING-HEADING-POS.
+(defun gptel-org--ib-parent-for-position (position)
+  "Return (PARENT-MARKER . CHILD-LEVEL) for a streaming IB at POSITION.
 
-Creates an indirect buffer narrowed to the REASONING subtree.  The
-buffer auto-expands as streaming content is inserted.  The buffer is
-not displayed in any window — it exists only as an isolated write
-target for streaming reasoning content.
+POSITION is a marker in the (base or indirect) buffer where the LLM
+response is being inserted.  Walks back to the nearest enclosing
+org heading (widened) and returns a marker at that heading together
+with (1+ parent-level), suitable for passing as :level to
+`gptel-org-ib-create-task'.
 
-Delegates buffer creation to `gptel-org-ib-create' for consistent
-indirect buffer management (fold decoupling, end-marker, registry
-tracking).  Applies reasoning-specific setup: read-only mode and
-subtree unfolding.
+Signals an error if no enclosing heading exists or POSITION is not
+a marker."
+  (unless (markerp position)
+    (error "gptel-org--ib-parent-for-position: POSITION must be a marker"))
+  (let ((mb (marker-buffer position)))
+    (unless (buffer-live-p mb)
+      (error "gptel-org--ib-parent-for-position: marker buffer is dead"))
+    (with-current-buffer mb
+      (save-excursion
+        (save-restriction
+          (widen)
+          (goto-char position)
+          (unless (org-at-heading-p)
+            (org-back-to-heading t))
+          (cons (point-marker) (1+ (org-current-level))))))))
 
-Returns the indirect buffer, or nil if creation failed."
+(defun gptel-org--reasoning-create-indirect-buffer
+    (parent todo-keyword title level &optional name)
+  "Create an indirect buffer for a REASONING heading via the canonical function.
+
+Delegates to `gptel-org-ib-create-task' with explicit LEVEL and
+:terminator-keyword \"TERMINE\".  Reapplies gptel ignore text
+properties on the heading line (since the canonical function inserts
+the heading directly without text properties) and installs the
+REASONING-specific post-setup: unfold the subtree, mark read-only,
+and add a kill-buffer hook that clears
+`gptel-org--reasoning-indirect-buffer'.
+
+PARENT, TODO-KEYWORD, TITLE, LEVEL, and NAME are forwarded to
+`gptel-org-ib-create-task'.
+
+Returns the full result plist from `gptel-org-ib-create-task'
+\(keys :heading-marker, :terminator-marker, :indirect-buffer) so
+callers can position streaming markers, or nil on failure."
   (gptel-org--debug
-   "reasoning IB create: pos=%S cur-buf=%S base=%S"
-   reasoning-heading-pos (buffer-name)
-   (when (gptel-org-ib-registered-p (current-buffer)) (buffer-name (gptel-org-ib-base (current-buffer)))))
+   "reasoning IB create: parent=%S todo=%S title=%S level=%S name=%S"
+   parent todo-keyword title level name)
   (condition-case err
-      (let* ((base-buf (if (gptel-org-ib-registered-p (current-buffer))
-                           (gptel-org-ib-base (current-buffer))
-                         (current-buffer)))
-             (buf-name (gptel-org-ib-compute-name
-                        base-buf reasoning-heading-pos "reasoning"))
-             indirect-buf)
-        (gptel-org--debug
-         "reasoning IB create: base-buf=%S buf-name=%S"
-         (buffer-name base-buf) buf-name)
-        ;; Seed sibling-level TERMINE so the IB has a stable upper bound,
-        ;; then create the IB.  Inlined from the (now-removed)
-        ;; `gptel-org--ib-create-with-terminator' helper.  Idempotent:
-        ;; re-uses an existing same-or-shallower heading below the
-        ;; REASONING heading as the terminator if present.
-        (let* ((pos (if (markerp reasoning-heading-pos)
-                        (marker-position reasoning-heading-pos)
-                      reasoning-heading-pos))
-               (root-buf (gptel-org-ib-base-buffer base-buf))
-               (ib-level
-                (with-current-buffer root-buf
-                  (save-excursion
-                    (save-restriction
-                      (widen)
-                      (goto-char pos)
-                      (unless (org-at-heading-p)
-                        (gptel-org-ib-fatal
-                         "reasoning IB create: pos %d not at heading in %s"
-                         pos (buffer-name root-buf)))
-                      (org-current-level))))))
-          (gptel-org-ib-resolve-or-seed-terminator root-buf pos ib-level)
-          (setq indirect-buf
-                (gptel-org-ib-create base-buf reasoning-heading-pos buf-name)))
-        (gptel-org--debug
-         "reasoning IB create: gptel-org-ib-create returned %S (live=%S)"
-         (when indirect-buf (buffer-name indirect-buf))
-         (when indirect-buf (buffer-live-p indirect-buf)))
-        (with-current-buffer indirect-buf
-          ;; Unfold the REASONING heading so content is visible
-          (goto-char (point-min))
-          (when (org-at-heading-p)
-            (org-fold-subtree nil))
-          ;; Make buffer read-only for the user (content comes from streaming)
-          (setq buffer-read-only t)
-          ;; Clean up tracking var if user kills the buffer externally
-          (add-hook 'kill-buffer-hook
-                    (lambda ()
-                      (let ((this-buf (current-buffer)))
-                        (when-let* ((base (and (gptel-org-ib-registered-p this-buf)
-                                               (gptel-org-ib-base this-buf))))
-                          (with-current-buffer base
-                            (when (eq gptel-org--reasoning-indirect-buffer
-                                      this-buf)
-                              (setq gptel-org--reasoning-indirect-buffer nil))))))
-                    nil t))
-        ;; Store reference in base buffer
-        (with-current-buffer base-buf
-          (setq gptel-org--reasoning-indirect-buffer indirect-buf))
-        ;; Also store in the current buffer if it's an IB itself
-        (unless (eq (current-buffer) base-buf)
-          (setq gptel-org--reasoning-indirect-buffer indirect-buf))
-        (gptel-org--debug
-         "reasoning IB create: success, buffer=%S" (buffer-name indirect-buf))
-        indirect-buf)
+      (let* ((result (gptel-org-ib-create-task
+                      parent todo-keyword title
+                      :level level
+                      :terminator-keyword "TERMINE"
+                      :name name))
+             (heading-marker (plist-get result :heading-marker))
+             (indirect-buf (plist-get result :indirect-buffer))
+             (root-buf (and heading-marker (marker-buffer heading-marker))))
+        ;; Reapply gptel ignore text properties on the heading line.
+        ;; The canonical create-task inserts the heading via `insert'
+        ;; without text properties, so re-apply them here so the
+        ;; heading is never sent back to the LLM.
+        (when (and heading-marker root-buf (buffer-live-p root-buf))
+          (with-current-buffer root-buf
+            (save-excursion
+              (save-restriction
+                (widen)
+                (goto-char heading-marker)
+                (let ((bol (line-beginning-position))
+                      (after-eol (min (point-max) (1+ (line-end-position)))))
+                  (with-silent-modifications
+                    (add-text-properties
+                     bol after-eol
+                     '(gptel ignore front-sticky (gptel)))))))))
+        ;; Post-setup on the IB
+        (when (and indirect-buf (buffer-live-p indirect-buf))
+          (with-current-buffer indirect-buf
+            ;; Unfold the REASONING heading so content is visible
+            (goto-char (point-min))
+            (when (org-at-heading-p)
+              (org-fold-subtree nil))
+            ;; Make buffer read-only for the user
+            (setq buffer-read-only t)
+            ;; Clean up tracking var if user kills the buffer externally
+            (add-hook 'kill-buffer-hook
+                      (lambda ()
+                        (let ((this-buf (current-buffer)))
+                          (when-let* ((base (and (gptel-org-ib-registered-p this-buf)
+                                                 (gptel-org-ib-base this-buf))))
+                            (with-current-buffer base
+                              (when (eq gptel-org--reasoning-indirect-buffer
+                                        this-buf)
+                                (setq gptel-org--reasoning-indirect-buffer nil))))))
+                      nil t))
+          (let ((base-buf (gptel-org-ib-base-buffer root-buf)))
+            ;; Store reference in base buffer
+            (with-current-buffer base-buf
+              (setq gptel-org--reasoning-indirect-buffer indirect-buf))
+            ;; Also store in the current buffer if it's an IB itself
+            (unless (eq (current-buffer) base-buf)
+              (setq gptel-org--reasoning-indirect-buffer indirect-buf)))
+          (gptel-org--debug
+           "reasoning IB create: success, buffer=%S" (buffer-name indirect-buf)))
+        result)
     (error
      (gptel-org--debug "reasoning IB: creation failed: %S" err)
      nil)))

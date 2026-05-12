@@ -210,6 +210,7 @@
 (defvar gptel-org-assistant-tag)
 (defvar gptel-org--in-prefix-advice)
 (declare-function gptel-org--reasoning-create-indirect-buffer "gptel-org")
+(declare-function gptel-org--ib-parent-for-position "gptel-org")
 (declare-function gptel-org--reasoning-close-indirect-buffer "gptel-org")
 (declare-function gptel-org--respond-create-indirect-buffer "gptel-org")
 (declare-function gptel-org--respond-close-indirect-buffer "gptel-org")
@@ -1939,11 +1940,28 @@ Optional RAW disables text properties and transformation."
                                       (gptel-response-prefix-string))))
                          "\n")))
                (if (derived-mode-p 'org-mode)
-                   ;; Org-mode: use REASONING heading
+                   ;; Org-mode: route through canonical create-task
                    (let* ((heading+body (gptel--reasoning-format-org text))
                           (heading-text (car heading+body))
                           (body-text (cdr heading+body))
-                          (tail gptel-response-separator))
+                          ;; Extract title from "* REASONING <title>\n"
+                          (title
+                           (if (string-match
+                                "\\`\\*+ +REASONING +\\(.*?\\) *\n?\\'"
+                                heading-text)
+                               (match-string 1 heading-text)
+                             ""))
+                          (parent-info
+                           (gptel-org--ib-parent-for-position start-marker))
+                          (parent-marker (car parent-info))
+                          (target-level (cdr parent-info))
+                          (result
+                           (gptel-org--reasoning-create-indirect-buffer
+                            parent-marker "REASONING" title target-level))
+                          (heading-marker
+                           (and result (plist-get result :heading-marker)))
+                          (reasoning-ib
+                           (and result (plist-get result :indirect-buffer))))
                      ;; Body text: ignored or response based on include setting
                      (when body-text
                        (if (eq include 'ignore)
@@ -1953,24 +1971,47 @@ Optional RAW disables text properties and transformation."
                          (add-text-properties
                           0 (length body-text)
                           '(gptel response front-sticky (gptel)) body-text)))
-                     ;; Insert heading via harmonized function
-                     (let ((heading-pos (gptel--org-insert-heading heading-text info)))
-                       ;; Insert body + tail without extra separator
-                       (when body-text
-                         (plist-put info :no-separator t)
-                         (unwind-protect
-                             (gptel--insert-response (concat body-text tail) info t)
-                           (plist-put info :no-separator nil)))
-                       ;; Show in indirect buffer for non-streaming
-                       ;; (no backward search — we know the heading position)
-                       (gptel-org--debug
-                        "reasoning-insert: creating IB at heading-pos=%d" heading-pos)
-                       (gptel-org--reasoning-create-indirect-buffer heading-pos)
-                       ;; Fold the REASONING heading
-                       (save-excursion
-                         (goto-char heading-pos)
-                         (when (org-at-heading-p)
-                           (org-fold-subtree t)))))
+                     ;; Insert body inside the new IB at its streaming
+                     ;; marker (TERMINE), landing the body before TERMINE
+                     ;; in the base buffer.
+                     (when (and body-text reasoning-ib
+                                (buffer-live-p reasoning-ib))
+                       (with-current-buffer reasoning-ib
+                         (let ((inhibit-read-only t))
+                           (save-excursion
+                             (goto-char
+                              (gptel-org-ib-streaming-marker "TERMINE"))
+                             (insert body-text)))))
+                     (gptel-org--debug
+                      "reasoning-insert: created IB heading-pos=%S"
+                      (and heading-marker (marker-position heading-marker)))
+                     ;; Fold the REASONING heading
+                     (when (and heading-marker (marker-position heading-marker))
+                       (with-current-buffer (marker-buffer heading-marker)
+                         (save-excursion
+                           (save-restriction
+                             (widen)
+                             (goto-char heading-marker)
+                             (when (org-at-heading-p)
+                               (org-fold-subtree t))))))
+                     ;; Advance tracking-marker past the new subtree so
+                     ;; subsequent insertion lands after it.
+                     (when (and heading-marker (marker-position heading-marker))
+                       (with-current-buffer (marker-buffer heading-marker)
+                         (save-excursion
+                           (save-restriction
+                             (widen)
+                             (goto-char heading-marker)
+                             (when (org-at-heading-p)
+                               (org-end-of-subtree t)
+                               (let ((end (point)))
+                                 (if tracking-marker
+                                     (move-marker tracking-marker end)
+                                   (let ((new-tm
+                                          (set-marker (make-marker) end)))
+                                     (set-marker-insertion-type new-tm t)
+                                     (plist-put info :tracking-marker
+                                                new-tm))))))))))
                  ;; Markdown: keep existing behavior
                  (let ((blocks
                         (cons (propertize "``` reasoning\n" 'gptel 'ignore
@@ -2439,33 +2480,54 @@ for streaming responses only."
                      (buffer-name)
                      (when (buffer-base-buffer) (buffer-name (buffer-base-buffer)))
                      reasoning-marker tracking-marker start-marker)
-                    (let ((heading-pos (gptel--org-insert-heading "* REASONING \n" info)))
+                    ;; Compute parent + level (mirror `gptel--org-insert-heading'
+                    ;; level logic), then create heading via the canonical
+                    ;; IB creation function.  Empty title placeholder matches
+                    ;; FSM regex "^\\(\\*+ REASONING\\) *$".
+                    (let* ((insert-marker (or tracking-marker start-marker))
+                           (parent-info
+                            (gptel-org--ib-parent-for-position insert-marker))
+                           (parent-marker (car parent-info))
+                           (target-level (cdr parent-info))
+                           (result
+                            (gptel-org--reasoning-create-indirect-buffer
+                             parent-marker "REASONING" "" target-level))
+                           (heading-marker
+                            (and result (plist-get result :heading-marker)))
+                           (reasoning-ib
+                            (and result (plist-get result :indirect-buffer))))
                       (plist-put info :reasoning-title-pending t)
                       (plist-put info :reasoning-title-buffer "")
-                      ;; Store heading position for end-of-stream title/fold operations
-                      (plist-put info :reasoning-heading-pos heading-pos)
-                      ;; Create indirect buffer directly at the known heading position
-                      ;; (no backward search needed — we recorded position before insertion)
+                      ;; Store heading position for end-of-stream title/fold ops
+                      (when heading-marker
+                        (plist-put info :reasoning-heading-pos
+                                   (marker-position heading-marker)))
                       (gptel-org--debug
-                       "reasoning-stream: creating IB at heading-pos=%d" heading-pos)
-                      (let ((reasoning-ib
-                             (gptel-org--reasoning-create-indirect-buffer
-                              heading-pos)))
-                        ;; The reasoning IB now has a TERMINE child
-                        ;; (universal IB invariant).  Seeding TERMINE
-                        ;; pushed tracking-marker (insertion-type t)
-                        ;; past TERMINE.  Rewind it to TERMINE-line
-                        ;; start so subsequent reasoning text streams
-                        ;; BEFORE TERMINE.
-                        (when (and reasoning-ib
-                                   (buffer-live-p reasoning-ib))
-                          (let ((term-pos
-                                 (with-current-buffer reasoning-ib
-                                   (marker-position
-                                    (gptel-org-ib-streaming-marker
-                                     "TERMINE")))))
-                            (when-let* ((tm (plist-get info :tracking-marker)))
-                              (move-marker tm term-pos)))))
+                       "reasoning-stream: created IB heading-pos=%S ib=%S"
+                       (and heading-marker (marker-position heading-marker))
+                       (and reasoning-ib (buffer-name reasoning-ib)))
+                      ;; Position the streaming tracking-marker at TERMINE so
+                      ;; subsequent reasoning body text streams INSIDE the IB
+                      ;; (before TERMINE) rather than after it.
+                      (when (and reasoning-ib (buffer-live-p reasoning-ib))
+                        (let ((term-pos
+                               (with-current-buffer reasoning-ib
+                                 (marker-position
+                                  (gptel-org-ib-streaming-marker
+                                   "TERMINE")))))
+                          (let ((tm (plist-get info :tracking-marker)))
+                            (if tm
+                                (move-marker tm term-pos)
+                              ;; Initialize tracking-marker at TERMINE pos
+                              ;; (the streaming callback would normally do this,
+                              ;; but we bypassed it by inserting directly via
+                              ;; the canonical create-task function).
+                              (let ((new-tm
+                                     (set-marker
+                                      (make-marker) term-pos
+                                      (marker-buffer heading-marker))))
+                                (set-marker-insertion-type new-tm t)
+                                (plist-put info :tracking-marker new-tm))))))
                       ;; Push a :post cleanup lambda that transitions
                       ;; REASONING → REASONED on successful completion
                       ;; and closes the reasoning IB as a defensive
@@ -2474,29 +2536,31 @@ for streaming responses only."
                       ;; captured via lexical closure because
                       ;; :reasoning-heading-pos is cleared in the
                       ;; end-of-stream branch before :post fires.
-                      (let* ((reasoning-captured-pos heading-pos)
-                            (cleanup-fn
-                             (lambda (info)
-                               (when (and (not (plist-get info :error))
-                                          (not (plist-get info :reasoned-transition-done)))
-                                 (plist-put info :reasoned-transition-done t)
-                                 (let ((buf (plist-get info :buffer)))
-                                   (when (and reasoning-captured-pos buf
-                                              (buffer-live-p buf))
-                                     (with-current-buffer buf
-                                       (save-excursion
-                                         (goto-char reasoning-captured-pos)
-                                         (when (and (org-at-heading-p)
-                                                    (string=
-                                                     (org-get-todo-state)
-                                                     "REASONING"))
-                                           (org-todo "REASONED"))))))
-                                 ;; Close the reasoning IB (idempotent — safe if
-                                 ;; already closed by end-of-stream branch on the
-                                 ;; success path, but essential on error/abort
-                                 ;; paths where the final (eq text t) sentinel
-                                 ;; never arrives)
-                                 (gptel-org--reasoning-close-indirect-buffer)))))
+                      (let* ((reasoning-captured-pos
+                              (and heading-marker
+                                   (marker-position heading-marker)))
+                             (cleanup-fn
+                              (lambda (info)
+                                (when (and (not (plist-get info :error))
+                                           (not (plist-get info :reasoned-transition-done)))
+                                  (plist-put info :reasoned-transition-done t)
+                                  (let ((buf (plist-get info :buffer)))
+                                    (when (and reasoning-captured-pos buf
+                                               (buffer-live-p buf))
+                                      (with-current-buffer buf
+                                        (save-excursion
+                                          (goto-char reasoning-captured-pos)
+                                          (when (and (org-at-heading-p)
+                                                     (string=
+                                                      (org-get-todo-state)
+                                                      "REASONING"))
+                                            (org-todo "REASONED"))))))
+                                  ;; Close the reasoning IB (idempotent — safe if
+                                  ;; already closed by end-of-stream branch on the
+                                  ;; success path, but essential on error/abort
+                                  ;; paths where the final (eq text t) sentinel
+                                  ;; never arrives)
+                                  (gptel-org--reasoning-close-indirect-buffer)))))
                         (plist-put info :post (cons cleanup-fn (plist-get info :post))))))
                   ;; Handle title extraction from first line
                   (if (plist-get info :reasoning-title-pending)
