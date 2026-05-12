@@ -4626,12 +4626,20 @@ Tests under =test/= will need parallel updates but are out of scope for the impl
 
 Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canonical returns =(:heading-marker M :terminator-marker T :indirect-buffer IB)= — adds =:terminator-marker= so callers needing to insert further siblings (PENDING tool calls, sub-agents) can pass it forward without re-resolving. The defalias for =insert-child= keeps the same plist shape; new key is additive and backward-compatible.
 
-***** AI-DOING Implement the canonical function and unconditional terminator line-feed
+***** AI-DONE Implement the canonical function and unconditional terminator line-feed
 - Implement the canonical function in =gptel-indirect-buffer.el= following the 5-step algorithm exactly.
 - The line-feed at BOL of terminator is *unconditional* — emit it even if a blank line appears to already be present. Idempotency is the resolver's job, not the line-feed step's job; the existing line-feed will simply add a harmless extra blank line. (Verify in introspect step that this is acceptable.)
 - The terminator-detection step must run in the base buffer and must accept a "desired heading level" argument so the new heading is correctly leveled regardless of point depth.
 - Mark obsolete: =gptel-org-ib-create-heading= (folded into the canonical function); =gptel-org-ib-resolve-or-seed-terminator= (becomes an internal helper, not a public entry point); =gptel-org-ib-ensure-terminator=, =gptel-org-ib-ensure-sibling-terminator=, =gptel-org-ib-create-terminator= (already obsolete; remove if dead).
 - Commit: =refactor(org-ib): introduce canonical IB-creation function (unified algorithm)=
+
+****** Outcomes
+- Added =gptel-org-ib-create-task= ([[file:gptel-indirect-buffer.el::cl-defun gptel-org-ib-create-task]]) — canonical 5-step IB-creation entry point implementing PARENT resolution (marker | IB buffer | =(BUF . POS)= cons), terminator resolve/seed at the desired level, unconditional =\n= at TERM BOL (with =insertion-type=t= flip on the term-marker so it tracks forward), heading insertion at the freshly opened BOL, and IB creation narrowed to =(HEADING-BOL . (1- TERM-BOL))=.  Returns =(:heading-marker M :terminator-marker T :indirect-buffer IB-or-nil)=.
+- Extended =gptel-org-ib-create= with an optional =END-BOUND= parameter — when supplied, the IB is narrowed to =(HEADING-BOL . END-BOUND)= instead of the auto-computed subtree region.  This is what enables the =(1- TERM-BOL)= refinement that defeats the C-level =zv_marker= insertion-type=1 expansion when the next sibling's =\n= is inserted at TERM-BOL.
+- Marked =gptel-org-ib-create-heading= obsolete in 0.11.0 (superseded by the canonical function); pre-existing obsolete markers on =gptel-org-ib-ensure-terminator=, =gptel-org-ib-ensure-sibling-terminator=, =gptel-org-ib-create-terminator= remain.  =gptel-org-ib-insert-child= and =gptel-org-ib-resolve-or-seed-terminator= retain their public signatures; migration to defalias / internal-only status is deferred to the call-site migration sub-task.
+- Test suite (=cd quelpa/build/gptel/test && make test=): 498 passed / 0 unexpected / 3 skipped (pre-existing skips).  No regressions.
+- Byte-compile: 3 warnings, all about deliberate transitional calls to =gptel-org-ib-ensure-terminator= (the non-TERMINE legacy path in both =insert-child= and =create-task=).  These match the existing pattern and will go away with the migration / dead-helper-removal sub-tasks.
+- Commit: =1e20a28= =refactor(org-ib): introduce canonical IB-creation function (unified algorithm)=.
 
 ***** AI-DO Migrate every IB-creation call site to the canonical function
 - Migrate call sites in =gptel-org.el= (REASONING IB, RESPOND IB, TOOL IB) and =gptel-org-agent.el= (agent/sub-agent IB).
