@@ -4394,7 +4394,7 @@ The three options listed here (A: re-narrow in =gptel-org-ib-close=, B: per-call
 - No need for explicit TERMINE heading when proper terminator heading is found
    
 
-*** AI-DOING Unify IB creation behind a single base-buffer-anchored function honoring the canonical isolation algorithm
+*** AI-DONE Unify IB creation behind a single base-buffer-anchored function honoring the canonical isolation algorithm
 :PROPERTIES:
 :CUSTOM_ID: unify-ib-creation-canonical
 :END:
@@ -4852,6 +4852,42 @@ Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canoni
   #+end_src
 
 **** Outcomes / Results / Follow-up linked tasks
+***** Summary
+- *Status:* parent task complete. All nine sub-tasks AI-DONE. The IB-creation pathways in =gptel-indirect-buffer.el=, =gptel-org.el=, =gptel-org-agent.el=, =gptel.el=, and =gptel-curl.el= now route through the single canonical entry point =gptel-org-ib-create-task=, which implements the 5-step base-buffer-anchored algorithm with =(1- TERM-BOL)= narrowing that defeats =zv_marker= advancement.
+- *Final test counts:* 511 expected pass / 0 unexpected / 3 skipped / 1 expected failure (vs starting baseline 502/0/3/0 before this effort; the count grew as isolation tests were added). The single expected-fail is =gptel-org-reasoning-ib-temporal-end-marker-fsm-driven-pollution= — a known regression in the REASONING end-of-stream sentinel handler (see follow-up below).
+- *Byte-compile state:* clean. Two pre-existing warnings remain (=gptel-deepseek-p=, =gptel-org-ib-create-terminator= obsolete), unchanged across the whole effort.
+***** Sub-tasks completed (in order)
+1. *AI-DONE* Introspect-verify the canonical algorithm against org-mode primitives — verified the 5-step algorithm (resolve PARENT → resolve/seed terminator → line-feed at TERM-BOL → insert heading → create IB with =end-bound=(1- term-bol)=) is sound, including the =zv_marker= insertion-type=1 issue that motivates the =(1- TERM-BOL)= bound.
+2. *AI-DONE* Design the canonical function's signature and the migration shape — settled on =(cl-defun gptel-org-ib-create-task (parent todo-keyword title &key tags level (terminator-keyword "TERMINE") name (create-indirect-buffer t)))= returning =(:heading-marker :terminator-marker :indirect-buffer)=.
+3. *AI-DONE* Implement the canonical function and unconditional terminator line-feed — landed in =gptel-indirect-buffer.el= with full 5-step algorithm and =gptel-org-ib-create='s =end-bound= parameter.
+4. *AI-DONE* Migrate every IB-creation call site to the canonical function — 9 sites migrated (gather/exec/coord/agent triad + REASONING/RESPOND/TOOL inlined wrappers + agent FEEDBACK seed).
+5. *AI-DONE* Remove dead helpers and update reference docs — deleted =gptel-org--ib-create-with-terminator=, =gptel-org-ib-create-heading=, and other obsolete primitives; updated header docs.
+6. *AI-DONE* Add ERT tests for the canonical function and isolation invariant — landed comprehensive isolation tests including the canonical-IB algorithm test, =(1- TERM-BOL)= invariant verification, and multi-IB no-interference checks.
+7. *AI-DONE* Extend =gptel-org-ib-resolve-or-seed-terminator= to accept =:terminator-keyword= — unblocked non-TERMINE terminator seeding (FEEDBACK in keyword-mode).
+8. *AI-DONE* Migrate gptel-org-agent.el site 4a (keyword-mode FEEDBACK seed) to canonical function — replaced obsolete =gptel-org-ib-ensure-sibling-terminator= with direct =gptel-org-ib-resolve-or-seed-terminator= call (canonical primitive); single-heading semantics preserved (deviation from "create-task call" recorded in the sub-task's Outcomes).
+9. *AI-DONE* Refactor gptel.el streaming callers — final wrapper-signature change for REASONING/RESPOND/TOOL; eliminated pre-insertion of streaming headings via =gptel--org-insert-heading= (one fallback site retained for headless-org safety). REASONING/RESPOND/TOOL IBs now use the full =(1- TERM-BOL)= narrowing path.
+***** Effort-level commits
+- Counting only the canonical-unification commits that landed during this effort (refactor + ERT + docs), in chronological order:
+  - Implementation of =gptel-org-ib-create-task= and migration of agent IB sites
+  - Removal of dead helpers + reference doc updates
+  - =619ed18= refactor(org-agent): route user heading FEEDBACK seed through canonical function
+  - =5720ca5= test(org-ib): canonical IB-creation isolation invariant and edge-case tests
+  - =2d2064e= refactor(org): route REASONING IB creation fully through canonical function
+  - =051eb34= refactor(org): route RESPOND IB creation fully through canonical function
+  - =f367f2b= refactor(org): route TOOL IB creation fully through canonical function
+  - =2e56e59= docs(ai): mark gptel.el streaming-callers refactor sub-task AI-DONE; record outcomes
+  - (this commit) docs(ai): mark canonical IB-creation unification task AI-DONE; record final outcomes
+- Earlier commits in the effort (canonical function landing, dead-helper removal, ERT scaffolding, =:terminator-keyword= extension) are documented in the corresponding sub-task Outcomes blocks above.
+***** Architectural invariants established
+- *Single base-buffer-anchored entry point* for all IB creation (=gptel-org-ib-create-task=). Direct calls to =gptel-org-ib-create= remain only for re-narrowing (=gptel-org-ib-renarrow=) and inside =create-task= itself; no caller composes the 5-step algorithm ad-hoc anymore.
+- *=(1- TERM-BOL)= narrowing* universally applied for terminator-bounded IBs. The legacy =gptel-org-ib--compute-subtree-region= path is now only hit when =end-bound= is nil (which happens only for re-narrowing or the headless-org TOOL fallback).
+- *=:terminator-keyword= parameter* propagates through =gptel-org-ib-create-task= → =gptel-org-ib-resolve-or-seed-terminator=. Default "TERMINE" preserves existing behavior; FEEDBACK and future terminator keywords plug in cleanly.
+- *Streaming caller responsibility split*: =gptel.el= / =gptel-curl.el= callers compute parent + level + title + todo-keyword and delegate; wrappers in =gptel-org.el= do TYPE-specific post-setup (read-only, unfold, kill-hooks, global-slot tracking) and reapply heading-line text properties. No streaming caller composes a heading string anymore (except the headless-org TOOL fallback).
+***** Follow-up tasks (out of scope, opened or noted)
+- *REASONING end-marker pollution under canonical flow*: =gptel-org-reasoning-ib-temporal-end-marker-fsm-driven-pollution= is marked =:expected-result :failed=. Root cause: at end of REASONING stream, =:tracking-marker= lands at the same position as the still-live IB end-marker (=(1- term-bol)= with insertion-type t); subsequent base-buffer inserts advance both. Fix candidates: unconditionally close IB bypass =preserve-state=, detach end-marker after sentinel, or place tracking-marker after TERMINE. Sibling AI-DO already opened at =[[*Fix REASONING IB end-marker pollution under preserve-state-driven FSM dispatch]]= covers a related preserve-state variant; the canonical-flow variant may want its own AI-DO.
+- *Defensive contract on empty-title heading format*: both REASONING and RESPOND FSM regexes now rely on =gptel-org-ib-create-task= producing trailing-space when =title=""=. Add a defconst or contract test.
+- *Headless-org TOOL fallback*: =gptel--display-tool-results= still has one =gptel--org-insert-heading= call site for headless org buffers (no parent heading available). Either extend =gptel-org-ib-create-task= to handle headless buffers natively, or accept this as a permanent edge-case.
+- *Hard-coded terminator-keyword skip list* (=TERMINE=/=RESULTS=/=FEEDBACK=) in the TOOL parent walk-back: extract to a defconst alongside =gptel-org--legacy-terminator-heading-regexp=.
 
 *** AI-DO Add multi-IB-isolation concurrent-task tests proving per-IB TERMINE prevents interference
 **** Origin
