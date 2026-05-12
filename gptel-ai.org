@@ -4274,7 +4274,7 @@ Doc updates applied:
 - *FSM-faithful RED test landed.* =test/gptel-org-reasoning-ib-test.el::gptel-org-reasoning-ib-temporal-end-marker-fsm-driven-pollution= reproduces the bug; the pre-existing canonical-driver test still passes on the same fixture, confirming the bug is FSM-dispatch-specific. See sibling AI-DONE "Add live-session-faithful test using FSM/parse-stream driver".
 - *Follow-up FIX task* opened at sibling level: [[*Fix REASONING IB end-marker pollution under preserve-state-driven FSM dispatch][AI-DO Fix REASONING IB end-marker pollution under preserve-state-driven FSM dispatch]].
 
-*** AI-DONE Fix REASONING IB end-marker pollution under preserve-state-driven FSM dispatch
+*** AI-DO Fix REASONING IB end-marker pollution under preserve-state-driven FSM dispatch
 **** Origin
 - Follow-up to sibling [[*Capture live-reproduction conditions for REASONING IB absorbing RESPONDED sibling][AI-DONE Capture live-reproduction conditions for REASONING IB absorbing RESPONDED sibling]].
 - Investigations confirmed the smoking gun and a FSM-faithful RED test now reproduces the bug.
@@ -4379,6 +4379,19 @@ Doc updates applied:
 
 ***** Follow-up TODOs
 - See sibling AI-DO "Add multi-IB-isolation concurrent-task tests proving per-IB TERMINE prevents interference" (per :petri: FEEDBACK: "there should be good testing that really tests possible issues that user might see").
+
+***** FEEDBACK The real issue is not fixed                        :petri:
+- THe process to create IB has to follow below rules explicitly. Verify the approach via introspect.
+  1. Find next sibling or parent heading and that will be terminator heading
+     - If heading not found, create TERMINE heading
+  2. Insert Line Feed on the BOL of terminator
+     - Line feed has to be inserted ALWAYS!
+     - This isolate the previous IB that now ends to the inserted line feed
+  3. Insert new correctly leveled heading at the BOL of terminator
+     - Now the new heading can have own IB without polluting previous sibling IB
+- There has to be single IB creation process (Function that every IB creation is using)
+- No need for explicit TERMINE heading when proper terminator heading is found
+   
 
 *** AI-DO Add multi-IB-isolation concurrent-task tests proving per-IB TERMINE prevents interference
 **** Origin
