@@ -2505,50 +2505,6 @@ positions of the response."
 
 
 
-;;; Unified IB creation with TERMINE isolation
-
-(defun gptel-org--ib-create-with-terminator (base-buffer heading-pos &optional name)
-  "Create an indirect buffer at HEADING-POS with sibling-level TERMINE isolation.
-
-Wraps `gptel-org-ib-create' with the unified IB isolation pattern:
-before creating the IB, ensures a sibling-level TERMINE heading
-exists at the same level as the IB heading (via
-`gptel-org-ib-resolve-or-seed-terminator').  This pins the IB's
-narrowing upper bound to TERMINE so that subsequent sibling
-content inserted at the IB boundary cannot pollute the IB's
-narrowed view.
-
-This is the canonical creation path for streaming IBs (REASONING,
-RESPOND, TOOL).  AGENT IBs go through `gptel-org-ib-insert-child'
-which provides equivalent TERMINE seeding.
-
-BASE-BUFFER is the org base buffer (or any registered indirect
-buffer whose base is the org buffer).  HEADING-POS is a position
-or marker pointing at the IB heading in the base buffer.  NAME
-overrides the auto-generated indirect buffer name.
-
-Returns the indirect buffer."
-  (let* ((pos (if (markerp heading-pos)
-                  (marker-position heading-pos)
-                heading-pos))
-         (root-buf (gptel-org-ib-base-buffer base-buffer))
-         (ib-level
-          (with-current-buffer root-buf
-            (save-excursion
-              (save-restriction
-                (widen)
-                (goto-char pos)
-                (unless (org-at-heading-p)
-                  (gptel-org-ib-fatal
-                   "ib-create-with-terminator: pos %d not at heading in %s"
-                   pos (buffer-name root-buf)))
-                (org-current-level))))))
-    ;; Resolve or seed a sibling-level TERMINE so the IB has a stable
-    ;; upper bound.  Idempotent: re-uses an existing same-or-shallower
-    ;; heading below POS as the terminator if present.
-    (gptel-org-ib-resolve-or-seed-terminator root-buf pos ib-level)
-    (gptel-org-ib-create base-buffer heading-pos name)))
-
 ;;; Reasoning indirect buffer display
 
 (defun gptel-org--reasoning-create-indirect-buffer (reasoning-heading-pos)
