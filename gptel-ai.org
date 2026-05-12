@@ -4719,7 +4719,7 @@ Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canoni
 - Run full test suite at each refactor step.
 - Commit per logical change: =refactor(org): route <X> IB creation fully through canonical function=
 
-***** AI-DO Extend gptel-org-ib-resolve-or-seed-terminator to accept :terminator-keyword
+***** AI-DOING Extend gptel-org-ib-resolve-or-seed-terminator to accept :terminator-keyword
 ****** Origin
 - Blocks migration of site 4a (FEEDBACK keyword-mode seed at gptel-org-agent.el:1419) and any future non-TERMINE terminator seeding.
 - =gptel-org-ib-resolve-or-seed-terminator= currently hard-codes the keyword =TERMINE=. =gptel-org-ib-create-task='s non-TERMINE path falls back to the obsolete =gptel-org-ib-ensure-terminator= (3 pre-existing byte-compile warnings; now down to 1 in =gptel-indirect-buffer.el= after deletion of =ib-create-with-terminator=).
