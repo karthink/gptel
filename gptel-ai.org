@@ -4743,7 +4743,7 @@ Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canoni
   - =9aa8f0302fd76cd9e2b1bcab60a60885d6af8337= — =refactor(org-ib): generalize resolve-or-seed-terminator to accept :terminator-keyword=
   - =339831eed5560ce76e521e467afdffd83f940ac7= — =test(org-ib): cover resolve-or-seed-terminator :terminator-keyword arg=
 
-***** AI-DO Migrate gptel-org-agent.el site 4a (keyword-mode FEEDBACK seed) to canonical function
+***** AI-DOING Migrate gptel-org-agent.el site 4a (keyword-mode FEEDBACK seed) to canonical function
 ****** Origin
 - Last remaining non-canonical IB-creation seeding site after the main migration.
 - Currently calls =gptel-org-ib-ensure-sibling-terminator= (obsolete) followed by raw insertion in =gptel-org-agent--insert-user-heading= (gptel-org-agent.el:~1419).
