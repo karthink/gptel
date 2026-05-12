@@ -4699,12 +4699,31 @@ Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canoni
 
 - *Follow-ups discovered*: none new.  Tests still referencing the obsolete helpers (=test/gptel-org-ib-test.el=) are intentionally retained — they exercise the obsolete-but-still-live code paths as a safety net during the transition.  A future task may delete those tests once the obsolete helpers themselves are removed (which requires first completing the queued sibling task =Extend gptel-org-ib-resolve-or-seed-terminator to accept :terminator-keyword=).  No new AI-DO entries needed under the parent canonical-unify task.
 
-***** AI-DOING Add ERT tests for the canonical function and isolation invariant
+***** AI-DONE Add ERT tests for the canonical function and isolation invariant
 - Add ERT tests under =quelpa/build/gptel/test/= covering each edge case enumerated in the introspect-verify sub-task.
 - Critical assertion: after the canonical call, the previous sibling IB's =point-max= must be strictly less than the new heading's BOL — i.e. the line-feed at terminator BOL successfully isolated the regions.
 - These tests are complementary to (not a replacement for) the multi-IB-isolation concurrent-task tests in the sibling AI-DO task ([[*Add multi-IB-isolation concurrent-task tests proving per-IB TERMINE prevents interference][here]]).
 - Run: =cd quelpa/build/gptel/test && make test 2>&1 | tail -60=. Expectation: all new tests PASS; no existing tests regress.
 - Commit: =test(org-ib): canonical IB-creation isolation invariant tests=
+****** Outcomes
+- *Test commit*: =5720ca5 test(org-ib): canonical IB-creation isolation invariant and edge-case tests=.
+- *9 new ERT tests* appended to =test/gptel-org-ib-test.el= under section "Canonical IB Creation (`gptel-org-ib-create-task')" — one per documented edge case:
+  1. =gptel-org-ib-create-task-test-top-of-file= — parent is the sole heading; level-2 heading + TERMINE sibling seeded; plist shape + IB narrowing.
+  2. =gptel-org-ib-create-task-test-end-of-file= — parent has body but no shallower-or-equal heading below; TERMINE seeded at end of parent subtree.
+  3. =gptel-org-ib-create-task-test-natural-sibling-terminator= — natural (non-keyword) sibling below; TERMINE seeded inside parent's subtree, before the natural sibling; heading order asserted via =gptel-org-ib-test--heading-order=.
+  4. =gptel-org-ib-create-task-test-shallower-terminator= — only a shallower-level heading below (parent level 2 + level-1 next-top); fresh =*** TERMINE= seeded at desired-level=3.
+  5. =gptel-org-ib-create-task-test-existing-termine-reused= — pre-existing =** TERMINE= sibling at parent level is matched on the resolver's level<=parent-level scan and reused; exactly ONE TERMINE remains.
+  6. =gptel-org-ib-create-task-test-nested-ib-parent= — PARENT is a registered IB; base buffer resolved via chain-walk; new heading + terminator live in the base buffer (=marker-buffer= asserted equal to base).
+  7. =gptel-org-ib-create-task-test-no-blank-line= — no blank line between parent and existing TERMINE; step 3's unconditional =\n= insertion still produces a clean BOL for the new heading.
+  8. =gptel-org-ib-create-task-test-isolation-invariant= — *THE critical test*.  Creates Task A, writes =UNIQUE-CONTENT-FOR-A= into A's IB, then creates Task B as sibling.  Asserts =A.point-max < B-heading-BOL= in base buffer, plus the content-isolation invariants (A's IB still contains "Task A"/"UNIQUE-CONTENT-FOR-A" and NOT "Task B"; B's IB does NOT contain A's heading/content).  Without the =(1- TERM-BOL)= bound the C-level =zv_marker= (insertion-type=1) of A's clone=t IB would advance past TERM-BOL when step 3 inserts =\n=, pulling B's heading into A's IB — verified to NOT happen.
+  9. =gptel-org-ib-create-task-test-non-default-terminator-keyword= — =:terminator-keyword "FEEDBACK"= seeds =** FEEDBACK= (not TERMINE), the new IB narrows correctly, and the isolation invariant continues to hold across the keyword override.
+- *Test counts*:
+  - Before: =Ran 505 tests, 502 results as expected, 0 unexpected, 3 skipped=.
+  - After:  =Ran 514 tests, 511 results as expected, 0 unexpected, 3 skipped=.
+  - Delta: +9 tests, all pass; no existing regressions.
+- *Critical-isolation assertion details* (from test #8): with the canonical buffer =* Parent\n=, after Task A creation the algorithm produces =* Parent\n** AI-DO Task A\n** TERMINE\n=; A's IB narrows to (Task A BOL .. (1- TERMINE BOL)).  After Task B creation, step 3 inserts =\n= at TERM-BOL and step 4 inserts =** AI-DO Task B\n=; the assertion =(< (with-current-buffer ib-a (point-max)) (marker-position hm-b))= holds — A's narrowing did NOT expand past TERMINE's pre-insertion BOL because its =zv_marker= sits at =(1- TERM-BOL)=, BEFORE the insertion site.
+- *One assertion required loosening during iteration*: initial test #5 asserted =(1+ pre-term-pos) = (marker-position tm)=, but =term-marker= has insertion-type=t (set in step 3) and therefore advances past BOTH the step-3 =\n= AND the step-4 heading text; the resulting position is well past the original TERMINE BOL.  Replaced with structural assertions (=looking-at "^\*\* TERMINE\b"=, exactly-one count, heading-before-terminator ordering, IB narrowing) which exercise the reuse semantics correctly.
+- *Follow-ups discovered (recorded but NOT acted on here)*: when PARENT is passed at a level *above* the new heading's task level (the typical create-task call shape from agent code), the resolver's level<=parent-level boundary scan misses an existing TERMINE that sits *inside* the parent subtree at task-level; this causes the seeder to add a duplicate TERMINE on each repeated call.  This is masked in production by the agent code calling =resolve-or-seed-terminator= a second time with =pos=heading-marker= (task-level) immediately after =insert-child=, which is idempotent.  Not a bug for create-task per se, but worth flagging for any future call-site simplification.
 
 ***** AI-DO Refactor gptel.el streaming callers to enable full canonical migration of REASONING/RESPOND/TOOL IBs
 ****** Origin
