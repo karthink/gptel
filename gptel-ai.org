@@ -4394,7 +4394,7 @@ The three options listed here (A: re-narrow in =gptel-org-ib-close=, B: per-call
 - No need for explicit TERMINE heading when proper terminator heading is found
    
 
-*** AI-DO Unify IB creation behind a single base-buffer-anchored function honoring the canonical isolation algorithm
+*** AI-DOING Unify IB creation behind a single base-buffer-anchored function honoring the canonical isolation algorithm
 :PROPERTIES:
 :CUSTOM_ID: unify-ib-creation-canonical
 :END:
@@ -4412,6 +4412,74 @@ The three options listed here (A: re-narrow in =gptel-org-ib-close=, B: per-call
 - The terminator heading is NOT always a synthetic =TERMINE=. When a real sibling-or-shallower heading already exists below the insertion point, it serves as the natural terminator. A synthetic =TERMINE= must be seeded ONLY when no such heading exists.
 - All IB creation MUST resolve a position in the *base buffer*, even when invoked from inside another IB. A child IB is requested via its parent IB, but the canonical resolver must walk to the base buffer first, locate the natural or synthetic terminator there, then narrow.
 - *The line-feed insertion at BOL of the terminator is the actual isolation mechanism* — it splits the previous IB's narrowed region from the about-to-be-created IB. Without it, an earlier sibling's IB end-marker can drift forward over the new heading line (the very class of bug fixed under preserve-state in the REASONING task).
+
+**** Introspect verification report
+- Date: 2026-05-12
+- Verified by: introspector
+- Edge cases:
+  1. Top-of-file insertion (empty buffer): PASS
+     No terminator found below; TERMINE seeded at EOB; \n + new heading inserted
+     at TERMINE BOL; new heading cleanly precedes it.
+  2. End-of-file insertion (no sibling-or-shallower heading below): PASS
+     Scan finds nothing; TERMINE seeded at end-of-parent-subtree; isolation holds.
+  3. Natural sibling heading exists immediately below (e.g. =** Other=): PASS
+     Natural sibling IS the terminator; no TERMINE seeded; unconditional \n still
+     inserted at its BOL; new heading cleanly precedes it.
+  4. Only a shallower (parent-level) heading exists below (e.g. =* outer=): PASS
+     Shallower heading satisfies the =<= level scan; serves as terminator;
+     \n + new heading inserted cleanly before it.
+  5. Existing terminator is itself a synthetic TERMINE: PASS
+     Same as case 3; =resolve-or-seed-terminator= finds the existing TERMINE;
+     no duplicate seeded; unconditional \n still emitted at its BOL.
+  6. Insertion from inside an IB (parent is an indirect buffer): PASS
+     =make-indirect-buffer= C code enforces no double-indirection: an IB of an IB
+     resolves directly to the root base buffer (verified empirically via
+     =buffer-base-buffer=). =gptel-org-ib-base-buffer= chain-walk is correct.
+  7. No blank line between insertion point and terminator: PASS
+     Unconditional \n at TERMINE BOL is the blank-line factory; the new heading
+     occupies the line after it regardless of prior blank-line state.
+  8. =gptel-org-debug-preserve-state= / previous IB kept alive: PASS with CAVEAT
+     See marker insertion-type analysis below.
+- Marker insertion-type analysis:
+  - =make-indirect-buffer= C source: when =clone=nil=, the new =zv_marker= is
+    explicitly set to =insertion_type=1= (advances on insert at boundary).
+    When =clone=t= (gptel's path), =clone_per_buffer_values= copies the base
+    buffer's =zv_marker= which also has =insertion_type=1=. Empirically verified:
+    any narrowed =clone=t= IB expands =point-max= when text is inserted *at* its
+    end position.
+  - =point-max-marker= returns a *copy* with =insertion-type=nil=; this does NOT
+    reflect the internal =zv_marker='s type. Do not use it to diagnose expansion.
+  - =org-tree-to-indirect-buffer= avoids expansion by narrowing to
+    =(TERMINE_BOL - 1)=: the =zv_marker= sits one char before TERMINE's BOL, so
+    inserts *at* TERMINE_BOL are past the marker and never trigger advancement.
+    Verified: prev-ib =point-max= did not change when \n was inserted at TERMINE_BOL.
+  - The canonical algorithm step 5 as stated — "narrow to =(heading-bol . terminator-bol)=" —
+    causes the previous IB's internal =zv_marker= (=insertion_type=1=, clone=t default) to
+    advance when \n is inserted at TERMINE_BOL, pulling the new heading inside the
+    previous IB's narrowed region: *ISOLATION FAILS*.
+  - *The fix*: narrow to =(heading-bol . (1- terminator-bol))= (org-tree style, one char
+    before TERMINE's BOL). Verified: prev-ib narrowed to =(task-a-bol . TERMINE_BOL-1)=;
+    insert \n at TERMINE_BOL; insert =** NewTask= at TERMINE_BOL+1;
+    prev-ib =point-max= (28) < new heading BOL (30): *ISOLATION HOLDS*.
+  - The =preserve-state= scenario is identical: IB narrows to TERMINE_BOL-1;
+    inserts at TERMINE_BOL and beyond do not touch it, even when IB is still live.
+- Recommendations / caveats discovered:
+  1. *CRITICAL*: Refine step 5 narrowing bound: use =(1- terminator-bol)= not =terminator-bol=.
+     Rationale: the internal =zv_marker= of any =clone=t= IB has =insertion_type=1= and
+     will advance over any insert *at* its position. One position before TERMINE ensures
+     all inserts at TERMINE_BOL are past the =zv_marker=.
+  2. Alternative fix: use =narrow-to-region= with an explicit =nil=-type Lisp marker.
+     Empirically verified to work, but more fragile; the =org-tree= style offset is simpler.
+  3. =gptel-org-ib-create= currently sets =end-marker= =insertion-type=t= for streaming
+     expansion. This must NOT be the marker used to bound the previous IB's narrowing
+     when the next sibling IB is created. Either close/renarrow the previous IB first,
+     or adopt the =(1- terminator-bol)= bound.
+  4. Step 4 precision: after inserting \n at TERMINE_BOL (pos =T=), TERMINE shifts to
+     =T+1=. The new heading must be inserted at =T+1= (the new TERMINE BOL), NOT at =T=
+     (which is the \n character itself).
+  5. =buffer-base-buffer= chain-walk is correct and validated by C-level
+     no-double-indirection invariant: =make-indirect-buffer= always points new IBs
+     directly at the root base buffer.
 
 **** Decisions
 - Algorithm (mandatory, single function — no other IB-creation path is allowed):
@@ -4433,7 +4501,7 @@ The three options listed here (A: re-narrow in =gptel-org-ib-close=, B: per-call
 
 The sub-tasks below are designed to be executed bottom-up: verify the algorithm before refactoring, refactor before adding new tests, and only then commit.
 
-***** AI-DO Introspect-verify the canonical algorithm against org-mode primitives
+***** AI-DONE Introspect-verify the canonical algorithm against org-mode primitives
 - Use =introspector= to walk through the 5-step algorithm on a constructed org-mode buffer and verify behavior for each edge case:
   - Top-of-file insertion (no prior content)
   - End-of-file insertion (no terminator below)
