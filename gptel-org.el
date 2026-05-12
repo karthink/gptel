@@ -2806,9 +2806,27 @@ Returns the indirect buffer, or nil if creation failed."
         (gptel-org--debug
          "tool IB create: base-buf=%S buf-name=%S"
          (buffer-name base-buf) buf-name)
-        ;; Delegate creation to the indirect buffer module
-        (setq indirect-buf (gptel-org--ib-create-with-terminator
-                            base-buf tool-heading-pos buf-name))
+        ;; Seed sibling-level TERMINE so the IB has a stable upper bound,
+        ;; then create the IB.  Inlined from the (now-removed)
+        ;; `gptel-org--ib-create-with-terminator' helper.
+        (let* ((pos (if (markerp tool-heading-pos)
+                        (marker-position tool-heading-pos)
+                      tool-heading-pos))
+               (root-buf (gptel-org-ib-base-buffer base-buf))
+               (ib-level
+                (with-current-buffer root-buf
+                  (save-excursion
+                    (save-restriction
+                      (widen)
+                      (goto-char pos)
+                      (unless (org-at-heading-p)
+                        (gptel-org-ib-fatal
+                         "tool IB create: pos %d not at heading in %s"
+                         pos (buffer-name root-buf)))
+                      (org-current-level))))))
+          (gptel-org-ib-resolve-or-seed-terminator root-buf pos ib-level)
+          (setq indirect-buf
+                (gptel-org-ib-create base-buf tool-heading-pos buf-name)))
         (gptel-org--debug
          "tool IB create: gptel-org-ib-create returned %S (live=%S)"
          (when indirect-buf (buffer-name indirect-buf))
