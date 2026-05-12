@@ -4274,7 +4274,7 @@ Doc updates applied:
 - *FSM-faithful RED test landed.* =test/gptel-org-reasoning-ib-test.el::gptel-org-reasoning-ib-temporal-end-marker-fsm-driven-pollution= reproduces the bug; the pre-existing canonical-driver test still passes on the same fixture, confirming the bug is FSM-dispatch-specific. See sibling AI-DONE "Add live-session-faithful test using FSM/parse-stream driver".
 - *Follow-up FIX task* opened at sibling level: [[*Fix REASONING IB end-marker pollution under preserve-state-driven FSM dispatch][AI-DO Fix REASONING IB end-marker pollution under preserve-state-driven FSM dispatch]].
 
-*** AI-DO Fix REASONING IB end-marker pollution under preserve-state-driven FSM dispatch
+*** AI-DONE Fix REASONING IB end-marker pollution under preserve-state-driven FSM dispatch
 **** Origin
 - Follow-up to sibling [[*Capture live-reproduction conditions for REASONING IB absorbing RESPONDED sibling][AI-DONE Capture live-reproduction conditions for REASONING IB absorbing RESPONDED sibling]].
 - Investigations confirmed the smoking gun and a FSM-faithful RED test now reproduces the bug.
@@ -4297,11 +4297,12 @@ Doc updates applied:
 - The fix must work regardless of =gptel-org-debug-preserve-state= value — debug mode should not silently break invariants; it should only preserve buffers for inspection.
 
 **** Mission
-- Choose ONE of the fix options below (or a hybrid) and implement.
-- Verify the new test =gptel-org-reasoning-ib-temporal-end-marker-fsm-driven-pollution= passes and zero pre-existing tests regress.
-- Commit fix; commit test-status flip (the test stays as a regression guard).
+- Implement the unified IB-creation function described in *Final fix plan* below.  Every IB creation site (REASONING, RESPOND, TOOL, AGENT, AI-DO child) must go through a single shared 3-step process that explicitly isolates the previous sibling IB by inserting an LF at the terminator's BOL before inserting the new heading.
+- Retire =gptel-org--ib-create-with-terminator= and the per-IB sibling-level TERMINE seeding (commit =a16e148=) — it is superseded by the unified function.  Keep the =gptel-org-ib-close= preserve-state marker neutralisation (commit =50f9bb0=) as defense-in-depth.
+- Verify the FSM-driven RED test =gptel-org-reasoning-ib-temporal-end-marker-fsm-driven-pollution= passes, zero pre-existing tests regress, and the multi-IB-isolation tests (sibling AI-DO) cover concurrent task execution.
 
-**** Fix options (pick one as a sub-AI-DO; the others may be added as alternative TODOs if the first is contraindicated)
+**** Fix options — SUPERSEDED (kept for history; Final fix plan below is the chosen direction)
+The three options listed here (A: re-narrow in =gptel-org-ib-close=, B: per-callsite pull-back, C: pull-back during RESPOND IB open) all addressed the symptom rather than the structural design.  The :petri: FEEDBACK at the end of this task rejected the first implementation (per-IB TERMINE seeding, Flavor 1) and prescribed the unified IB-creation contract captured in *Final fix plan*.
 
 ***** AI-DO Option A — Always re-narrow + pull back end-marker in =gptel-org-ib-close=, regardless of preserve-state
 - Split =gptel-org-ib-close= (=gptel-indirect-buffer.el:1265-1308=) into two branches around the =gptel-org-debug-preserve-state= check:
@@ -4325,10 +4326,10 @@ Doc updates applied:
 - There is rule how to do IB such way
   - First find sibling or parent heading below the current pointer if not exists then create TERMINE
   - Insert LF on BOL of the termination heading
-  - Go to created empty line and create IB
+  - Go to BOL of terminator heading and insert heading and create IB
   - Introspect this if this is not clear
 - All IB process should look similar, no matter if it is reasoning, respond, tool, agent or ai-do IB heading
-- The narrowed IB is very critical aand it needs to work as that approach enable multiple task execution same time without disturbing each others
+- The narrowed IB is very critical and it needs to work as that approach enable multiple task execution same time without disturbing each others
   - For that reason, there should be good testing that really test possible issues that user might see
 
 **** Verification
