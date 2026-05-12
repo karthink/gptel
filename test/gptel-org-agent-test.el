@@ -2249,9 +2249,17 @@ in the coordinator's indirect buffer."
                 (should (= 5 gptel-org--ref-level)))
 
               ;; Step 1: Insert TOOL heading in gatherer's buffer (simulates
-              ;; Bash tool result returned to gatherer)
+              ;; Bash tool result returned to gatherer).
+              ;; Note: with the canonical IB-creation algorithm, a
+              ;; sub-agent IB is narrowed to (HEADING-BOL . (1- TERM-BOL))
+              ;; — its point-max sits one position before TERMINE's BOL,
+              ;; which (when the agent body is empty) is mid-line of the
+              ;; agent heading.  Production code inserts via streaming
+              ;; markers / dedicated tool IBs; this artificial test
+              ;; ensures a BOL by prepending a newline if needed.
               (with-current-buffer gatherer-indirect
                 (goto-char (point-max))
+                (unless (bolp) (insert "\n"))
                 (let ((tool-text "* TOOL (Bash :command \"date\")\n(:name \"Bash\" :args (:command \"date\"))\n#+begin_tool\nThu Apr 16 19:01:57 EEST 2026\n#+end_tool\n"))
                   (insert tool-text)))
 
@@ -2266,9 +2274,12 @@ in the coordinator's indirect buffer."
               (setq gatherer-indirect nil)
 
               ;; Step 3: Insert TOOL heading in coordinator's buffer (simulates
-              ;; Agent tool result returned to coordinator after gatherer completed)
+              ;; Agent tool result returned to coordinator after gatherer completed).
+              ;; Defensive bolp check (see Step 1 comment): ensures the
+              ;; inserted heading starts at BOL regardless of IB narrowing.
               (with-current-buffer coord-indirect
                 (goto-char (point-max))
+                (unless (bolp) (insert "\n"))
                 (let ((tool-text "* TOOL (Agent :subagent_type \"gatherer\" :description \"Run date command\")\n(:name \"Agent\" :args (:subagent_type \"gatherer\"))\n#+begin_tool\nGatherer result for task: Run date command\n\nThu Apr 16 19:01:57 EEST 2026\n#+end_tool\n"))
                   (insert tool-text)))
 
