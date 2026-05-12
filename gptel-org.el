@@ -2697,8 +2697,27 @@ Returns the indirect buffer, or nil if creation failed."
         (gptel-org--debug
          "respond IB create: base-buf=%S buf-name=%S"
          (buffer-name base-buf) buf-name)
-        (setq indirect-buf (gptel-org--ib-create-with-terminator
-                            base-buf respond-heading-pos buf-name))
+        ;; Seed sibling-level TERMINE so the IB has a stable upper bound,
+        ;; then create the IB.  Inlined from the (now-removed)
+        ;; `gptel-org--ib-create-with-terminator' helper.
+        (let* ((pos (if (markerp respond-heading-pos)
+                        (marker-position respond-heading-pos)
+                      respond-heading-pos))
+               (root-buf (gptel-org-ib-base-buffer base-buf))
+               (ib-level
+                (with-current-buffer root-buf
+                  (save-excursion
+                    (save-restriction
+                      (widen)
+                      (goto-char pos)
+                      (unless (org-at-heading-p)
+                        (gptel-org-ib-fatal
+                         "respond IB create: pos %d not at heading in %s"
+                         pos (buffer-name root-buf)))
+                      (org-current-level))))))
+          (gptel-org-ib-resolve-or-seed-terminator root-buf pos ib-level)
+          (setq indirect-buf
+                (gptel-org-ib-create base-buf respond-heading-pos buf-name)))
         (gptel-org--debug
          "respond IB create: gptel-org-ib-create returned %S (live=%S)"
          (when indirect-buf (buffer-name indirect-buf))
