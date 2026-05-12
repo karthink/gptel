@@ -4224,10 +4224,25 @@ Doc updates applied:
   - =gptel-indirect-buffer.el:725-790= — =gptel-org-ib-streaming-marker=
   - =gptel-indirect-buffer-ai.org:806-822= — shared marker chain invariant
 
-***** AI-DO Add live-session-faithful test using FSM/parse-stream driver
+***** AI-DONE Add live-session-faithful test using FSM/parse-stream driver
 - Build a test that drives =gptel-curl--parse-stream= (or the FSM) with realistic chunked JSON for a DeepSeek-style streamed reasoning+response, instead of feeding =(reasoning . "...")= cons cells directly to =gptel-curl--stream-insert-response=.
 - Goal: reproduce the live bound divergence captured here.
 - Assertion: =(point-max)= of the REASONING IB > position of =**** RESPONDED= heading start in the base buffer.
+
+****** Outcomes
+- *Result:* NEW TEST FAILED (RED — bug reproduced).
+- *Test name:* =gptel-org-reasoning-ib-temporal-end-marker-fsm-driven-pollution= in =test/gptel-org-reasoning-ib-test.el=.
+- *Failed assertion:* =(should (<= ib-max responded-pos))= → =(<= 245 218)= → nil.
+- *Captured numbers:*
+  - REASONING IB =point-min= = 117, =point-max= = 245
+  - =**** RESPONDING= heading start in base buffer = 218
+  - Overshoot = 245 − 218 = 27 chars (entire RESPONDING subtree absorbed)
+  - Live capture reference: ib-max=2216 vs respond-pos=2150, overshoot=66 chars — same mechanism, smaller fixture.
+- *Sanity comparison.* The pre-existing canonical-driver test =gptel-org-reasoning-ib-temporal-end-marker-not-polluted-by-respond= run on the IDENTICAL fixture immediately after PASSED (ib-max=222 ≤ responding-pos=223 — clean).  Same fixture, same =gptel-org-debug-preserve-state= = t, different driver → only the FSM path (=gptel-curl--stream-filter=) reproduces.  This confirms the bug is tied to the FSM/curl-filter dispatch path, not to =gptel-curl--stream-insert-response= called with hand-fed cons cells.
+- *Test count:* 501 total. 497 pre-existing pass, 3 pre-existing skips (=media-link-parsing-md-1=, =media-link-parsing-md-2=, =persist-restore-bounds=), 1 NEW failing (the test added here). Zero regressions.
+- *Implementation detail.* First run hit =void-function nil= because the test's =info= plist omitted =:callback=. Production code reads =(plist-get info :callback)= inside =gptel--display-reasoning-stream=. Fixed by passing =:callback #'gptel-curl--stream-insert-response= explicitly.
+- *Remaining differentiator from canonical test.*  The differentiator between the (passing) canonical-driver test and the (failing) FSM-driver test is the =info= plist state mutated by =parse-stream= / =stream-filter= over the chunk sequence — most likely =:reasoning-block= transitioning to t in the same chunk that delivers content. That state is what the FSM provides and the hand-fed driver does not. Pinpointing the exact key/state is left to the FIX task.
+- *Commit:* =20db86b6db3f94e08b65b571c026f369424f8b49= — =test(reasoning-ib): add FSM-faithful failing test for REASONING IB absorbing RESPONDED sibling=.
 
 ***** AI-DONE Verify =gptel-org-debug-preserve-state= does not skip end-marker repositioning
 - Re-read the REASONING-side cleanup path under =gptel-org-debug-preserve-state= = t.
@@ -4251,6 +4266,72 @@ Doc updates applied:
 
 **** Follow-up
 - Once one of the sub-TODOs reproduces RED, open a separate AI-DO to FIX (likely: re-narrow / move the REASONING IB end-marker back to "before RESPONDED heading start" when the RESPOND IB is opened, OR ensure the REASONING-side cleanup always re-anchors the tracking marker regardless of =gptel-org-debug-preserve-state=).
+
+**** Outcomes / Results / Follow-up linked tasks
+- All three sub-AI-DOs are DONE.
+- *Smoking gun identified.* Under =gptel-org-debug-preserve-state= = t, =gptel-org-ib-close= (=gptel-indirect-buffer.el:1273-1277=) is a no-op, leaving the REASONING IB alive with its =insertion-type=t= end-marker in the shared marker chain. Subsequent base-buffer inserts (separator + RESPONDING heading + body) push the marker forward, absorbing the RESPONDED subtree. The RESPOND-IB creation block (=gptel.el:2031-2086=) never re-narrows the REASONING IB. See sibling AI-DONE "Probe RESPOND-IB-creation re-narrowing of REASONING IB" for full ranked hypotheses and citations.
+- *Preserve-state-as-gate ruled out.* Marker repositioning at =gptel.el:2390-2406= runs regardless of preserve-state — confirmed by bounds-invariant test running both modes with identical expectations. See sibling AI-DONE "Verify gptel-org-debug-preserve-state does not skip end-marker repositioning".
+- *FSM-faithful RED test landed.* =test/gptel-org-reasoning-ib-test.el::gptel-org-reasoning-ib-temporal-end-marker-fsm-driven-pollution= reproduces the bug; the pre-existing canonical-driver test still passes on the same fixture, confirming the bug is FSM-dispatch-specific. See sibling AI-DONE "Add live-session-faithful test using FSM/parse-stream driver".
+- *Follow-up FIX task* opened at sibling level: [[*Fix REASONING IB end-marker pollution under preserve-state-driven FSM dispatch][AI-DO Fix REASONING IB end-marker pollution under preserve-state-driven FSM dispatch]].
+
+*** AI-DO Fix REASONING IB end-marker pollution under preserve-state-driven FSM dispatch
+**** Origin
+- Follow-up to sibling [[*Capture live-reproduction conditions for REASONING IB absorbing RESPONDED sibling][AI-DONE Capture live-reproduction conditions for REASONING IB absorbing RESPONDED sibling]].
+- Investigations confirmed the smoking gun and a FSM-faithful RED test now reproduces the bug.
+- This task is the FIX. Do NOT extend the diagnosis — the diagnosis is closed in the sibling.
+
+**** Discussion highlights
+- Bug mechanism (confirmed):
+  1. =gptel-org-debug-preserve-state= = t makes =gptel-org-ib-close= a no-op (=gptel-indirect-buffer.el:1273-1277=).
+  2. REASONING IB stays alive with its =insertion-type=t= end-marker in the shared marker chain (per =gptel-indirect-buffer-ai.org:806-822=).
+  3. The end-of-reasoning code at =gptel.el:2382-2409= relies on the IB being closed BEFORE separator insert to prevent narrowing expansion (inline comment at L2382-2384). Under preserve-state this protection is bypassed.
+  4. Subsequent inserts in =gptel-curl--stream-insert-response= go to the BASE buffer at =tracking-marker= (=gptel.el:2002-2014=), advancing the still-live IB's =end-marker= and =zv_marker= past separator + RESPONDING heading + body.
+  5. The RESPOND-IB creation block (=gptel.el:2031-2086=) never pulls the REASONING IB end-marker back.
+- Witness:
+  - Live capture: REASONING IB =point-max= = 2216, RESPONDED start = 2150, overshoot 66 chars.
+  - FSM-faithful test: =point-max= = 245, RESPONDING start = 218, overshoot 27 chars.
+  - Canonical-driver test on identical fixture: clean (=point-max= = 222 ≤ 223). FSM-dispatch-specific.
+
+**** Decisions
+- Fix should also keep the FSM-driven RED test passing AND keep the canonical-driver temporal test passing.
+- The fix must work regardless of =gptel-org-debug-preserve-state= value — debug mode should not silently break invariants; it should only preserve buffers for inspection.
+
+**** Mission
+- Choose ONE of the fix options below (or a hybrid) and implement.
+- Verify the new test =gptel-org-reasoning-ib-temporal-end-marker-fsm-driven-pollution= passes and zero pre-existing tests regress.
+- Commit fix; commit test-status flip (the test stays as a regression guard).
+
+**** Fix options (pick one as a sub-AI-DO; the others may be added as alternative TODOs if the first is contraindicated)
+
+***** AI-DO Option A — Always re-narrow + pull back end-marker in =gptel-org-ib-close=, regardless of preserve-state
+- Split =gptel-org-ib-close= (=gptel-indirect-buffer.el:1265-1308=) into two branches around the =gptel-org-debug-preserve-state= check:
+  - ALWAYS run: =narrow-to-region= reset OR explicit =(set-marker (gptel-org-ib--end-marker ib) ...)= pulling the end-marker to "just before next sibling heading" (or to base buffer's end-of-subtree of the IB's heading).
+  - SKIP under preserve-state: only =kill-buffer= + =gptel-org-ib-unregister= + local-end-marker nil-out.
+- Pros: minimal scope; preserves the existing call-site invariant comment at =gptel.el:2382-2384=.
+- Cons: changes the semantics of "preserve-state" — IB stays alive but its end-marker no longer tracks live inserts. Decide whether that's acceptable for debug introspection.
+
+***** AI-DO Option B — Add explicit pull-back at the end-of-reasoning call site in =gptel--display-reasoning-stream=
+- At =gptel.el:2385=, BEFORE the call to =gptel-org--reasoning-close-indirect-buffer=, explicitly pull the REASONING IB's end-marker back via =(set-marker end-marker reasoning-pos-end)= (computed in base buffer from =reasoning-pos= + =org-end-of-subtree=).
+- Pros: localizes the fix to the reasoning lifecycle, leaves =gptel-org-ib-close= unchanged.
+- Cons: duplicates marker-management logic that arguably belongs in the IB module.
+
+***** AI-DO Option C — Pull back REASONING IB end-marker as part of RESPOND IB opening
+- In =gptel-org--respond-create-indirect-buffer= (=gptel-org.el:2608=), as a precondition, look up the active REASONING IB and pull its end-marker back to "just before the RESPONDING heading position".
+- Pros: ties the fix to the moment a sibling IB is opened — symmetric with the design intent.
+- Cons: cross-cutting; couples respond-IB-creation to reasoning-IB lifecycle.
+
+**** Verification
+- Run: =cd quelpa/build/gptel/test && make test 2>&1 | tail -60=
+- Expectation:
+  - =gptel-org-reasoning-ib-temporal-end-marker-fsm-driven-pollution= PASSES.
+  - =gptel-org-reasoning-ib-temporal-end-marker-not-polluted-by-respond= still PASSES.
+  - All other previously-passing tests still pass; the 3 pre-existing skips remain skipped.
+
+**** TODOs
+- Pick option A, B, or C (or document why a hybrid is necessary).
+- Implement chosen fix in =quelpa/build/gptel/= production source only.
+- Re-run tests, confirm GREEN.
+- Commit fix.
 
 **** Outcomes / Results / Follow-up linked tasks
 
