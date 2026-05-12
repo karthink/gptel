@@ -1414,20 +1414,36 @@ in the conversation."
                       (save-excursion
                         (goto-char agent-heading-pos)
                         (if keyword-mode
-                            ;; Sibling FEEDBACK at agent-level.
+                            ;; Sibling FEEDBACK at user-level (= agent-level).
+                            ;; The keyword-mode FEEDBACK heading IS the
+                            ;; terminator (single heading serves both as the
+                            ;; user prompt location and as the IB upper bound),
+                            ;; so we route through the canonical primitive
+                            ;; `gptel-org-ib-resolve-or-seed-terminator' with
+                            ;; `:terminator-keyword' = the user keyword.  This
+                            ;; is the same primitive that
+                            ;; `gptel-org-ib-create-task' uses in its step 2;
+                            ;; we call it directly here because the
+                            ;; keyword-mode pattern does not need create-task's
+                            ;; step 4 (content-heading insertion before the
+                            ;; terminator) — that would produce a duplicate
+                            ;; FEEDBACK heading.  Idempotent: a second call
+                            ;; returns the same marker without inserting.
                             (let ((kw (or (bound-and-true-p gptel-org-user-keyword) "FEEDBACK")))
-                              (gptel-org-ib-ensure-sibling-terminator kw user-level)
+                              (gptel-org-ib-resolve-or-seed-terminator
+                               base-buffer agent-heading-pos user-level
+                               :terminator-keyword kw)
                               (gptel-org--debug
-                               "insert-user-heading: ensured %s sibling at level %d"
+                               "insert-user-heading: resolved/seeded %s sibling at level %d"
                                kw user-level))
                           ;; Tag mode: CHILD :user: heading via
                           ;; unified parent-aware insert-child API.
-                          (let ((result (gptel-org-ib-insert-child
-                                         (point-marker)
-                                         nil ""
-                                         :tags (list user-tag)
-                                         :create-indirect-buffer nil))
-                                (m (plist-get result :heading-marker)))
+                          (let* ((result (gptel-org-ib-insert-child
+                                          (point-marker)
+                                          nil ""
+                                          :tags (list user-tag)
+                                          :create-indirect-buffer nil))
+                                 (m (plist-get result :heading-marker)))
                             (gptel-org--debug
                              "insert-user-heading: created :%s: child heading at level %d (marker %S)"
                              user-tag user-level m)))))                    ;; Clean up marker
