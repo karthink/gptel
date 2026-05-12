@@ -388,7 +388,7 @@ received."
           (_ (error "Unexpected event-type %S" event-type)))))
     (list :role role :content (vconcat (nreverse contents)))))
 
-(cl-defmethod gptel--parse-buffer ((_backend gptel-bedrock) &optional max-entries)
+(cl-defmethod gptel--parse-buffer ((backend gptel-bedrock) &optional max-entries)
   "Parse current buffer and return a list of prompt objects for Bedrock.
 
 MAX-ENTRIES is the maximum number of prompts to include."
@@ -399,20 +399,41 @@ MAX-ENTRIES is the maximum number of prompts to include."
                 (let* ((content (if include-media
                                  (gptel-bedrock--parse-multipart
                                   (gptel--parse-media-links major-mode beg end))
-                                 `[(:text ,(gptel--trim-prefixes
-                                           (buffer-substring-no-properties beg end)))]))
-                       (prompt (list :role role :content content)))
-                  (push prompt prompts))))
+                                 (when-let* ((text (gptel--trim-prefixes
+                                                    (buffer-substring-no-properties beg end))))
+                                   `[(:text ,text)]))))
+                  (when (and content (> (length content) 0))
+                    (push (list :role role :content content) prompts)))))
 
       (if (or gptel-mode gptel-track-response)
           (while (and (> max-entries 0)
                       (/= prev-pt (point-min))
                       (goto-char (previous-single-property-change
                                   (point) 'gptel nil (point-min))))
-            (capture-prompt (pcase (get-char-property (point) 'gptel)
-                              ('response "assistant")
-                              ('nil "user"))
-                            (point) prev-pt)
+            (pcase (get-char-property (point) 'gptel)
+              ('response (capture-prompt "assistant" (point) prev-pt))
+              (`(tool . ,id)
+               (save-excursion
+                 (condition-case nil
+                     (let* ((tool-call (read (current-buffer)))
+                            (name (plist-get tool-call :name))
+                            (arguments (plist-get tool-call :args)))
+                       (plist-put tool-call :id id)
+                       (plist-put tool-call :result
+                                  (string-trim (buffer-substring-no-properties
+                                                (point) prev-pt)))
+                       (push (gptel--parse-tool-results backend (list tool-call))
+                             prompts)
+                       (push (list :role "assistant"
+                                   :content `[(:toolUse ( :toolUseId ,id
+                                                          :name ,name
+                                                          :input ,arguments))])
+                             prompts))
+                   ((end-of-file invalid-read-syntax)
+                    (message "Could not parse tool-call %s on line %s"
+                             id (line-number-at-pos (point)))))))
+              ('ignore)
+              ('nil (capture-prompt "user" (point) prev-pt)))
             (setq prev-pt (point))
             (cl-decf max-entries))
         (capture-prompt "user" (point-min) (point-max)))
