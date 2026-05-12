@@ -4665,7 +4665,7 @@ Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canoni
   - Site 4a (keyword-mode FEEDBACK seed, gptel-org-agent.el:1419) — blocked on extending =gptel-org-ib-resolve-or-seed-terminator= to accept a =:terminator-keyword= argument.
   - Sites 9/10/11 — inlined but not fully migrated to =create-task= with explicit =:level=; full migration requires refactoring =gptel.el= streaming callers to stop pre-inserting headings.
 
-***** AI-DO Remove dead helpers and update reference docs
+***** AI-DOING Remove dead helpers and update reference docs
 - After migration, confirm via Grep that no caller invokes the obsoleted helpers. Remove dead helper bodies.
 - Update [[file:gptel-indirect-buffer-ai.org]]:
   - Universal pattern section: state the canonical function is the SOLE entry point.
