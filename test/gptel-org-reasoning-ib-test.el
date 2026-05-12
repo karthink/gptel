@@ -657,19 +657,28 @@ the :responded-transition-done flag prevents double transition."
 ** AI-DOING Task
 |POINT|"
     (let* ((buf (current-buffer))
+           ;; New API: `gptel-org--respond-create-indirect-buffer'
+           ;; CREATES the RESPONDING heading itself, given a parent and
+           ;; level.  Compute parent (AI-DOING at level 2) + child level
+           ;; from current point via the canonical helper.
+           (parent-info
+            (gptel-org--ib-parent-for-position (point-marker)))
+           (parent-marker (car parent-info))
+           (child-level (cdr parent-info))
+           (result
+            (gptel-org--respond-create-indirect-buffer
+             parent-marker "RESPONDING" "Test respond" child-level))
            (heading-pos
-            (progn
-              ;; Insert at level *** (sibling of AI-DOING at **).
-              (insert "*** RESPONDING Test respond\n")
-              (forward-line -1)
-              (point)))
+            (and result
+                 (marker-position (plist-get result :heading-marker))))
            (info (list :buffer buf
                        :error nil
                        :respond-heading-pos heading-pos
                        :responded-transition-done nil)))
 
-      ;; Create respond IB
-      (should (gptel-org--respond-create-indirect-buffer heading-pos))
+      ;; IB was created as part of the canonical create-task call
+      (should result)
+      (should heading-pos)
       (should gptel-org--respond-indirect-buffer)
       (should (buffer-live-p gptel-org--respond-indirect-buffer))
 
@@ -716,8 +725,13 @@ the :responded-transition-done flag prevents double transition."
         ;; Re-create IB so we can verify the second invocation does not
         ;; touch it.  The cleanup is fully gated by
         ;; `:responded-transition-done', so the close call inside the
-        ;; gate is also skipped.
-        (should (gptel-org--respond-create-indirect-buffer heading-pos))
+        ;; gate is also skipped.  The new API inserts a new RESPONDING
+        ;; heading; the original heading at heading-pos (now RESPONDED)
+        ;; is unaffected because insertion happens at TERMINE position
+        ;; (after heading-pos).
+        (should (gptel-org--respond-create-indirect-buffer
+                 parent-marker "RESPONDING" "Test respond 2"
+                 child-level))
         (should (buffer-live-p gptel-org--respond-indirect-buffer))
 
         (mapc (lambda (f) (funcall f info)) (plist-get info :post))
@@ -745,19 +759,24 @@ the request ended with an error.  IB is still closed (defensive)."
 ** AI-DOING Task
 |POINT|"
     (let* ((buf (current-buffer))
+           ;; New API: the function CREATES the RESPONDING heading.
+           (parent-info
+            (gptel-org--ib-parent-for-position (point-marker)))
+           (parent-marker (car parent-info))
+           (child-level (cdr parent-info))
+           (result
+            (gptel-org--respond-create-indirect-buffer
+             parent-marker "RESPONDING" "Test respond" child-level))
            (heading-pos
-            (progn
-              ;; Insert at level *** (sibling of AI-DOING at **).
-              (insert "*** RESPONDING Test respond\n")
-              (forward-line -1)
-              (point)))
+            (and result
+                 (marker-position (plist-get result :heading-marker))))
            (info (list :buffer buf
                        :error t                    ; ← ERROR path
                        :respond-heading-pos heading-pos
                        :responded-transition-done nil)))
 
-      ;; Create respond IB
-      (should (gptel-org--respond-create-indirect-buffer heading-pos))
+      (should result)
+      (should heading-pos)
       (should gptel-org--respond-indirect-buffer)
       (should (buffer-live-p gptel-org--respond-indirect-buffer))
 

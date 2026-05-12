@@ -2076,25 +2076,65 @@ Optional RAW disables text properties and transformation."
              (plist-put info :respond-heading-inserted t)
              (plist-put info :respond-title-pending t)
              (plist-put info :respond-title-buffer "")
-             (let ((heading-pos (gptel--org-insert-heading "* RESPONDING /\n" info)))
-               (plist-put info :respond-heading-pos heading-pos)
-               ;; Create RESPOND indirect buffer at the heading position
-               ;; and rewind the tracking-marker inside it so body text
-               ;; streams into the IB (before its TERMINE boundary).
+             ;; Compute parent + target-level for the RESPONDING heading,
+             ;; then create it + the IB via the canonical IB creation
+             ;; function.  Empty title placeholder matches FSM regex
+             ;; "^\\(\\*+ RESPONDING\\) *$".
+             ;;
+             ;; Insertion-marker choice: prefer `tracking-marker' (it
+             ;; reflects the latest streaming position).  After REASONING
+             ;; ends, tracking-marker has been advanced past the REASONING
+             ;; subtree, so walking back from it lands on the REASONING
+             ;; heading — which is exactly what `gptel-org-ib-create-task'
+             ;; needs as a same-level sibling anchor so the terminator
+             ;; resolver searches forward from REASONING and finds the
+             ;; existing sibling TERMINE (instead of duplicating it).
+             ;; With no prior REASONING, tracking-marker is still at the
+             ;; user-prompt body position and walks back to the user-prompt
+             ;; heading.
+             ;;
+             ;; Level: honour `:next-heading-sibling-level' (set by the
+             ;; end-of-reasoning handler so RESPOND lands as a same-level
+             ;; sibling of REASONING), else use the default parent+1.
+             (let* ((sibling-hint
+                     (plist-get info :next-heading-sibling-level))
+                    (insert-marker (or tracking-marker start-marker))
+                    (parent-info
+                     (gptel-org--ib-parent-for-position insert-marker))
+                    (default-parent (car parent-info))
+                    (default-level (cdr parent-info))
+                    (target-level (or sibling-hint default-level))
+                    (parent-marker default-parent)
+                    (result
+                     (gptel-org--respond-create-indirect-buffer
+                      parent-marker "RESPONDING" "" target-level))
+                    (heading-marker
+                     (and result (plist-get result :heading-marker)))
+                    (respond-ib
+                     (and result (plist-get result :indirect-buffer)))
+                    (heading-pos
+                     (and heading-marker (marker-position heading-marker))))
+               ;; Consume the sibling-level hint so subsequent
+               ;; insertions don't pick it up.
+               (when sibling-hint
+                 (plist-put info :next-heading-sibling-level nil))
+               (when heading-pos
+                 (plist-put info :respond-heading-pos heading-pos))
                (gptel-org--debug
-                "respond-stream: creating IB at heading-pos=%d" heading-pos)
-               (let ((respond-ib
-                      (gptel-org--respond-create-indirect-buffer
-                       heading-pos)))
-                 (when (and respond-ib
-                            (buffer-live-p respond-ib))
-                   (let ((term-pos
-                          (with-current-buffer respond-ib
-                            (marker-position
-                             (gptel-org-ib-streaming-marker
-                              "TERMINE")))))
-                     (when-let* ((tm (plist-get info :tracking-marker)))
-                       (move-marker tm term-pos))))
+                "respond-stream: created IB heading-pos=%S ib=%S"
+                heading-pos
+                (and respond-ib (buffer-name respond-ib)))
+               ;; Rewind the tracking-marker into the IB at its TERMINE
+               ;; boundary so body text streams INSIDE the IB (before
+               ;; TERMINE) rather than after it.
+               (when (and respond-ib (buffer-live-p respond-ib))
+                 (let ((term-pos
+                        (with-current-buffer respond-ib
+                          (marker-position
+                           (gptel-org-ib-streaming-marker
+                            "TERMINE")))))
+                   (when-let* ((tm (plist-get info :tracking-marker)))
+                     (move-marker tm term-pos))))
                ;; Push a :post cleanup lambda that transitions
                ;; RESPONDING → RESPONDED on successful completion
                ;; and closes the RESPOND IB.  Gated on :error absence
@@ -2121,7 +2161,7 @@ Optional RAW disables text properties and transformation."
                           ;; Close the RESPOND IB (idempotent — safe if
                           ;; already closed)
                           (gptel-org--respond-close-indirect-buffer)))))
-                 (plist-put info :post (cons cleanup-fn (plist-get info :post)))))))
+                 (plist-put info :post (cons cleanup-fn (plist-get info :post))))))
            (if (and (not raw)
                     (plist-get info :respond-title-pending))
                ;; Title extraction FSM
@@ -2136,7 +2176,7 @@ Optional RAW disables text properties and transformation."
                                    (rpos (plist-get info :respond-heading-pos)))
                          (save-excursion
                            (goto-char rpos)
-                           (when (looking-at "^\\(\\*+ RESPONDING\\) /$")
+                           (when (looking-at "^\\(\\*+ RESPONDING\\) *$")
                              (let ((inhibit-read-only t))
                                (replace-match (concat (match-string 1) " " title))
                                (org-element-cache-reset)))))
