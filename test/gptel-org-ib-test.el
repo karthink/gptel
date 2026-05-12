@@ -755,6 +755,103 @@ in the base buffer, falls back to `point-max' with insertion-type t."
       (should (= 1 (how-many "^\\*\\* TERMINE" (point-min) (point-max)))))))
 
 
+(ert-deftest gptel-org-ib-test-resolve-or-seed-default-keyword-is-termine ()
+  "Default :terminator-keyword (\"TERMINE\") seeds a TERMINE heading.
+Regression check: existing callers that omit :terminator-keyword get
+the historical TERMINE-seeding behaviour."
+  (gptel-org-ib-test-with-buffer
+      "* Top\n** Agent :agent:\nbody\n"
+    (goto-char (point-min))
+    (re-search-forward "^\\*\\* Agent")
+    (beginning-of-line)
+    (let* ((base (current-buffer))
+           (pos (point))
+           (m (gptel-org-ib-resolve-or-seed-terminator base pos 2)))
+      (should (markerp m))
+      (save-excursion
+        (goto-char m)
+        (should (org-at-heading-p))
+        (should (= 2 (org-current-level)))
+        (should (looking-at "^\\*\\* TERMINE\\b")))
+      (goto-char (point-min))
+      (should (= 1 (how-many "^\\*\\* TERMINE\\b"
+                             (point-min) (point-max)))))))
+
+(ert-deftest gptel-org-ib-test-resolve-or-seed-custom-keyword-seeds ()
+  "Non-default :terminator-keyword seeds a heading with that keyword."
+  (gptel-org-ib-test-with-buffer
+      "* Top\n** Agent :agent:\nbody\n"
+    (goto-char (point-min))
+    (re-search-forward "^\\*\\* Agent")
+    (beginning-of-line)
+    (let* ((base (current-buffer))
+           (pos (point))
+           (m (gptel-org-ib-resolve-or-seed-terminator
+               base pos 2 :terminator-keyword "FEEDBACK")))
+      (should (markerp m))
+      (save-excursion
+        (goto-char m)
+        (should (org-at-heading-p))
+        (should (= 2 (org-current-level)))
+        (should (looking-at "^\\*\\* FEEDBACK\\b")))
+      ;; No spurious TERMINE was created.
+      (goto-char (point-min))
+      (should (= 0 (how-many "^\\*+ TERMINE\\b"
+                             (point-min) (point-max))))
+      (should (= 1 (how-many "^\\*+ FEEDBACK\\b"
+                             (point-min) (point-max)))))))
+
+(ert-deftest gptel-org-ib-test-resolve-or-seed-custom-keyword-reuses-existing ()
+  "An existing terminator with the requested keyword is found and reused."
+  (gptel-org-ib-test-with-buffer
+      "* Top\n** Agent :agent:\nbody\n** FEEDBACK\n"
+    (goto-char (point-min))
+    (re-search-forward "^\\*\\* Agent")
+    (beginning-of-line)
+    (let* ((base (current-buffer))
+           (pos (point))
+           (m1 (gptel-org-ib-resolve-or-seed-terminator
+                base pos 2 :terminator-keyword "FEEDBACK"))
+           (m2 (gptel-org-ib-resolve-or-seed-terminator
+                base pos 2 :terminator-keyword "FEEDBACK")))
+      (should (markerp m1))
+      (should (markerp m2))
+      (should (= (marker-position m1) (marker-position m2)))
+      (save-excursion
+        (goto-char m1)
+        (should (looking-at "^\\*\\* FEEDBACK\\b")))
+      ;; Still exactly one FEEDBACK heading; no duplicate seeded.
+      (goto-char (point-min))
+      (should (= 1 (how-many "^\\*+ FEEDBACK\\b"
+                             (point-min) (point-max)))))))
+
+(ert-deftest gptel-org-ib-test-resolve-or-seed-different-keyword-not-reused ()
+  "An existing terminator with a DIFFERENT keyword does not match.
+A fresh terminator with the requested keyword is seeded instead."
+  (gptel-org-ib-test-with-buffer
+      "* Top\n** Agent :agent:\nbody\n** TERMINE\n"
+    (goto-char (point-min))
+    (re-search-forward "^\\*\\* Agent")
+    (beginning-of-line)
+    (let* ((base (current-buffer))
+           (pos (point))
+           (m (gptel-org-ib-resolve-or-seed-terminator
+               base pos 2 :terminator-keyword "FEEDBACK")))
+      (should (markerp m))
+      (save-excursion
+        (goto-char m)
+        (should (org-at-heading-p))
+        (should (= 2 (org-current-level)))
+        (should (looking-at "^\\*\\* FEEDBACK\\b")))
+      ;; Both terminators coexist: the pre-existing TERMINE was not
+      ;; touched, and a fresh FEEDBACK was seeded.
+      (goto-char (point-min))
+      (should (= 1 (how-many "^\\*+ TERMINE\\b"
+                             (point-min) (point-max))))
+      (should (= 1 (how-many "^\\*+ FEEDBACK\\b"
+                             (point-min) (point-max)))))))
+
+
 ;;; ---- Safe Heading Creation (Insert Before Terminator) --------------------
 
 (ert-deftest gptel-org-ib-test-create-heading-before-terminator ()
