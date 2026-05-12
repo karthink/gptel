@@ -2159,5 +2159,442 @@ inserted as needed)."
          (should (looking-at-p "^\\*\\* AI-DOING Child")))))))
 
 
+;;; ---- Canonical IB Creation (`gptel-org-ib-create-task') ------------------
+;;;
+;;; `gptel-org-ib-create-task' is the canonical 5-step IB-creation entry
+;;; point.  These tests exercise each documented edge case AND, most
+;;; importantly, the critical isolation invariant: after creating two
+;;; sibling tasks A then B, the first IB's `point-max' must be strictly
+;;; less than the new sibling's heading BOL in the base buffer.  That is
+;;; the empirical signature of step 5's `(1- TERM-BOL)' bound: the
+;;; C-level `zv_marker' of any clone=t IB has insertion-type=1 and
+;;; would advance over inserts AT its position; narrowing one position
+;;; before TERM-BOL ensures the `\\n' inserted at TERM-BOL during
+;;; sibling B's creation does NOT pull IB A's narrowing past A's task
+;;; boundary.
+
+(ert-deftest gptel-org-ib-create-task-test-top-of-file ()
+  "Top-of-file: parent is the only heading; TERMINE is seeded.
+
+The canonical function inserts a level-2 heading and seeds `** TERMINE'
+as its sibling.  Returns plist with markerp `:heading-marker', markerp
+`:terminator-marker', and a live `:indirect-buffer'.  IB narrowing
+holds at (heading-BOL . (1- TERM-BOL))."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (org-back-to-heading t)
+     (let* ((parent-marker (point-marker))
+            (result (gptel-org-ib-create-task
+                     parent-marker "AI-DO" "Task A"))
+            (hm (plist-get result :heading-marker))
+            (tm (plist-get result :terminator-marker))
+            (ib (plist-get result :indirect-buffer)))
+       ;; Plist shape.
+       (should (markerp hm))
+       (should (markerp tm))
+       (should (buffer-live-p ib))
+       ;; New heading at level 2, AI-DO keyword, expected title.
+       (save-excursion
+         (goto-char hm)
+         (should (org-at-heading-p))
+         (should (= 2 (org-current-level)))
+         (should (equal "AI-DO" (org-get-todo-state)))
+         (should (string-match-p "Task A" (org-get-heading t t t t))))
+       ;; Terminator at level 2 with TERMINE keyword.
+       (save-excursion
+         (goto-char tm)
+         (should (org-at-heading-p))
+         (should (= 2 (org-current-level)))
+         (should (looking-at "^\\*\\* TERMINE\\b")))
+       ;; Exactly one TERMINE in the base buffer.
+       (save-excursion
+         (goto-char (point-min))
+         (should (= 1 (how-many "^\\*+ TERMINE\\b"
+                                (point-min) (point-max)))))
+       ;; Isolation invariant on a single IB: narrowing is exactly
+       ;; (heading-BOL . (1- TERM-BOL)).
+       (with-current-buffer ib
+         (should (= (point-min) (marker-position hm)))
+         (should (= (point-max) (1- (marker-position tm)))))))))
+
+(ert-deftest gptel-org-ib-create-task-test-end-of-file ()
+  "End-of-file insertion: parent has body, no sibling-or-shallower below.
+
+Resolver finds no boundary heading; TERMINE is seeded at the end of
+the parent subtree.  IB narrowing holds."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\nFirst body paragraph.\nSecond body line.\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (org-back-to-heading t)
+     (let* ((parent-marker (point-marker))
+            (result (gptel-org-ib-create-task
+                     parent-marker "AI-DO" "Task A"))
+            (hm (plist-get result :heading-marker))
+            (tm (plist-get result :terminator-marker))
+            (ib (plist-get result :indirect-buffer)))
+       (should (markerp hm))
+       (should (markerp tm))
+       (should (buffer-live-p ib))
+       (save-excursion
+         (goto-char tm)
+         (should (= 2 (org-current-level)))
+         (should (looking-at "^\\*\\* TERMINE\\b")))
+       ;; Body content remains in the buffer, BEFORE the new heading.
+       (save-excursion
+         (goto-char (point-min))
+         (let ((body-pos (re-search-forward "First body paragraph"))
+               (head-pos (progn (re-search-forward "^\\*\\* AI-DO Task A")
+                                (match-beginning 0))))
+           (should (< body-pos head-pos))))
+       ;; IB narrowing.
+       (with-current-buffer ib
+         (should (= (point-min) (marker-position hm)))
+         (should (= (point-max) (1- (marker-position tm)))))))))
+
+(ert-deftest gptel-org-ib-create-task-test-natural-sibling-terminator ()
+  "Natural (non-keyword) sibling exists below the parent.
+
+The resolver scans for a boundary heading at <= parent-level.  The
+natural sibling at parent-level becomes the scan boundary, but since
+its text does NOT begin with TERMINATOR-KEYWORD, the resolver seeds a
+fresh TERMINE at desired-level (= parent-level + 1) at the end of the
+parent subtree, BEFORE the natural sibling.  IB narrowing holds, and
+the natural sibling remains untouched after the new task."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n* Other Top\nother body\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (org-back-to-heading t)
+     (let* ((parent-marker (point-marker))
+            (result (gptel-org-ib-create-task
+                     parent-marker "AI-DO" "Task A"))
+            (hm (plist-get result :heading-marker))
+            (tm (plist-get result :terminator-marker))
+            (ib (plist-get result :indirect-buffer)))
+       (should (markerp hm))
+       (should (markerp tm))
+       (should (buffer-live-p ib))
+       ;; Order in base buffer: Parent, AI-DO (Task A), TERMINE, Other Top.
+       (let ((order (gptel-org-ib-test--heading-order)))
+         (should (equal "Parent"    (nth 0 order)))
+         (should (equal "AI-DO"     (nth 1 order)))
+         (should (equal "TERMINE"   (nth 2 order)))
+         (should (equal "Other Top" (nth 3 order))))
+       ;; TERMINE is strictly BEFORE the natural sibling.
+       (save-excursion
+         (goto-char (point-min))
+         (let ((tm-pos (marker-position tm))
+               (other-pos (progn (re-search-forward "^\\* Other Top")
+                                 (match-beginning 0))))
+           (should (< tm-pos other-pos))))
+       (with-current-buffer ib
+         (should (= (point-min) (marker-position hm)))
+         (should (= (point-max) (1- (marker-position tm)))))))))
+
+(ert-deftest gptel-org-ib-create-task-test-shallower-terminator ()
+  "Only a shallower (parent-level-or-less) heading exists below the parent.
+
+Parent is at level 2, with a level-1 heading below it.  The shallower
+heading is the scan boundary but does not match TERMINE keyword, so
+a fresh `*** TERMINE' is seeded at desired-level=3 inside the parent
+subtree.  IB narrowing holds."
+  (gptel-org-ib-test-with-buffer
+      "* Grandparent\n** Parent\nbody\n* Next Top\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (re-search-forward "^\\*\\* Parent")
+     (beginning-of-line)
+     (let* ((parent-marker (point-marker))
+            (result (gptel-org-ib-create-task
+                     parent-marker "AI-DO" "Task A"))
+            (hm (plist-get result :heading-marker))
+            (tm (plist-get result :terminator-marker))
+            (ib (plist-get result :indirect-buffer)))
+       (should (markerp hm))
+       (should (markerp tm))
+       (should (buffer-live-p ib))
+       ;; New heading and TERMINE at level 3 (parent-level + 1).
+       (save-excursion (goto-char hm) (should (= 3 (org-current-level))))
+       (save-excursion
+         (goto-char tm)
+         (should (= 3 (org-current-level)))
+         (should (looking-at "^\\*\\*\\* TERMINE\\b")))
+       ;; Order: Grandparent, Parent, AI-DO Task A, TERMINE, Next Top.
+       (let ((order (gptel-org-ib-test--heading-order)))
+         (should (equal "Grandparent" (nth 0 order)))
+         (should (equal "Parent"      (nth 1 order)))
+         (should (equal "AI-DO"       (nth 2 order)))
+         (should (equal "TERMINE"     (nth 3 order)))
+         (should (equal "Next Top"    (nth 4 order))))
+       (with-current-buffer ib
+         (should (= (point-min) (marker-position hm)))
+         (should (= (point-max) (1- (marker-position tm)))))))))
+
+(ert-deftest gptel-org-ib-create-task-test-existing-termine-reused ()
+  "Existing terminator with the same keyword is reused (no duplicate seeded).
+
+Parent at level 2 with a sibling `** TERMINE' already present.  The
+resolver finds the existing TERMINE during its level<=parent-level
+scan, returns its marker, and step 2 does not seed a duplicate.
+There remains exactly ONE TERMINE in the buffer."
+  (gptel-org-ib-test-with-buffer
+      "* Top\n** Parent\nbody\n** TERMINE\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (re-search-forward "^\\*\\* Parent")
+     (beginning-of-line)
+     (let* ((parent-marker (point-marker))
+            (result (gptel-org-ib-create-task
+                     parent-marker "AI-DO" "Task A"))
+            (hm (plist-get result :heading-marker))
+            (tm (plist-get result :terminator-marker))
+            (ib (plist-get result :indirect-buffer)))
+       (should (markerp hm))
+       (should (markerp tm))
+       (should (buffer-live-p ib))
+       ;; The terminator marker still points at a TERMINE heading.
+       (save-excursion
+         (goto-char tm)
+         (should (looking-at "^\\*\\* TERMINE\\b")))
+       ;; Exactly ONE TERMINE in the buffer — no duplicate seeded.
+       (save-excursion
+         (goto-char (point-min))
+         (should (= 1 (how-many "^\\*+ TERMINE\\b"
+                                (point-min) (point-max)))))
+       ;; The reused TERMINE is the same level (2) as the original;
+       ;; new heading is at desired-level (3) and is inserted before it.
+       (save-excursion (goto-char tm) (should (= 2 (org-current-level))))
+       (save-excursion (goto-char hm) (should (= 3 (org-current-level))))
+       ;; New heading precedes the reused TERMINE in the base buffer.
+       (should (< (marker-position hm) (marker-position tm)))
+       (with-current-buffer ib
+         (should (= (point-min) (marker-position hm)))
+         (should (= (point-max) (1- (marker-position tm)))))))))
+
+(ert-deftest gptel-org-ib-create-task-test-nested-ib-parent ()
+  "Parent is itself a registered IB; base buffer is resolved via chain-walk.
+
+When PARENT is an indirect buffer, create-task resolves it to its
+heading marker via the registry, then walks to the base buffer for
+all subsequent insertions.  The new heading and TERMINE live in the
+base buffer (not the IB), at parent-level + 1."
+  (gptel-org-ib-test-with-buffer
+      "* Top\n** Parent :agent:\n"
+    (gptel-org-ib-test-with-cleanup
+     (let* ((base (current-buffer))
+            (parent-ib (save-excursion
+                         (goto-char (point-min))
+                         (re-search-forward "^\\*\\* Parent")
+                         (beginning-of-line)
+                         (gptel-org-ib-create base (point)))))
+       (should (buffer-live-p parent-ib))
+       (let* ((result (gptel-org-ib-create-task
+                       parent-ib "AI-DO" "Task A"))
+              (hm (plist-get result :heading-marker))
+              (tm (plist-get result :terminator-marker))
+              (child-ib (plist-get result :indirect-buffer)))
+         (should (markerp hm))
+         (should (markerp tm))
+         (should (buffer-live-p child-ib))
+         (should-not (eq parent-ib child-ib))
+         ;; New heading lives in the base buffer at level 3
+         ;; (parent at level 2 + 1).
+         (should (eq (marker-buffer hm) base))
+         (should (eq (marker-buffer tm) base))
+         (with-current-buffer base
+           (save-excursion
+             (goto-char hm)
+             (should (org-at-heading-p))
+             (should (= 3 (org-current-level)))
+             (should (equal "AI-DO" (org-get-todo-state))))
+           (save-excursion
+             (goto-char tm)
+             (should (= 3 (org-current-level)))
+             (should (looking-at "^\\*\\*\\* TERMINE\\b"))))
+         (with-current-buffer child-ib
+           (should (= (point-min) (marker-position hm)))
+           (should (= (point-max) (1- (marker-position tm))))))))))
+
+(ert-deftest gptel-org-ib-create-task-test-no-blank-line ()
+  "No blank line between parent and the natural sibling/terminator below.
+
+The unconditional `\\n' insertion at TERM BOL in step 3 still produces
+clean isolation: the new heading begins on its own line, and the
+terminator remains at its expected level.  IB narrowing holds."
+  (gptel-org-ib-test-with-buffer
+      ;; Note: NO blank line between `** Parent' and `** TERMINE'.
+      "* Top\n** Parent\n** TERMINE\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (re-search-forward "^\\*\\* Parent")
+     (beginning-of-line)
+     (let* ((parent-marker (point-marker))
+            (result (gptel-org-ib-create-task
+                     parent-marker "AI-DO" "Task A"))
+            (hm (plist-get result :heading-marker))
+            (tm (plist-get result :terminator-marker))
+            (ib (plist-get result :indirect-buffer)))
+       (should (markerp hm))
+       (should (markerp tm))
+       (should (buffer-live-p ib))
+       ;; New heading begins at column 0 (`^\\*+').
+       (save-excursion
+         (goto-char hm)
+         (should (org-at-heading-p))
+         (should (= 0 (current-column)))
+         (should (looking-at "^\\*\\*\\* AI-DO Task A\\b")))
+       ;; Order: Top, Parent, AI-DO Task A, TERMINE.
+       (let ((order (gptel-org-ib-test--heading-order)))
+         (should (equal "Top"     (nth 0 order)))
+         (should (equal "Parent"  (nth 1 order)))
+         (should (equal "AI-DO"   (nth 2 order)))
+         (should (equal "TERMINE" (nth 3 order))))
+       ;; Only ONE TERMINE — pre-existing was reused.
+       (save-excursion
+         (goto-char (point-min))
+         (should (= 1 (how-many "^\\*+ TERMINE\\b"
+                                (point-min) (point-max)))))
+       (with-current-buffer ib
+         (should (= (point-min) (marker-position hm)))
+         (should (= (point-max) (1- (marker-position tm)))))))))
+
+(ert-deftest gptel-org-ib-create-task-test-isolation-invariant ()
+  "CRITICAL: two sibling tasks A then B; A's IB stays isolated from B.
+
+The hard guarantee of step 5's `(1- TERM-BOL)' bound: when task B is
+created as a sibling of task A, step 3 inserts `\\n' at the terminator
+BOL.  The C-level `zv_marker' of A's clone=t IB has insertion-type=1
+and WOULD advance over an insert AT its position — so narrowing must
+be set one position BEFORE TERM-BOL.
+
+Assertion: after creating B, A's IB `point-max' is strictly less than
+B's heading BOL in the base buffer.  If the `1-' were removed, A's
+narrowing would expand past TERM-BOL and pull B's heading into A's
+IB, violating isolation.  This is the smoking-gun test for the
+isolation invariant."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (org-back-to-heading t)
+     (let* ((parent-marker (point-marker))
+            ;; Create task A first.
+            (result-a (gptel-org-ib-create-task
+                       parent-marker "AI-DO" "Task A"))
+            (hm-a (plist-get result-a :heading-marker))
+            (ib-a (plist-get result-a :indirect-buffer)))
+       (should (buffer-live-p ib-a))
+       ;; Add unique content into A's IB so we can verify it survives.
+       (with-current-buffer ib-a
+         (goto-char (point-max))
+         (insert "\nUNIQUE-CONTENT-FOR-A\n"))
+       ;; Now create task B as a sibling of A (same parent).
+       (let* ((result-b (gptel-org-ib-create-task
+                         parent-marker "AI-DO" "Task B"))
+              (hm-b (plist-get result-b :heading-marker))
+              (ib-b (plist-get result-b :indirect-buffer)))
+         (should (buffer-live-p ib-b))
+         (should-not (eq ib-a ib-b))
+         ;; Both IBs are valid.
+         (should (gptel-org-ib-valid-p ib-a))
+         (should (gptel-org-ib-valid-p ib-b))
+         ;; --- THE CRITICAL ASSERTION -----------------------------------
+         ;; A's IB point-max (in base-buffer coords via marker translation)
+         ;; must be strictly less than B's heading BOL.
+         (let* ((a-pmax-base
+                 (with-current-buffer ib-a
+                   ;; point-max in IB corresponds 1:1 to base-buffer
+                   ;; position because clone=t indirect buffers share
+                   ;; positions with their base.
+                   (point-max)))
+                (b-bol-base (marker-position hm-b)))
+           (should (< a-pmax-base b-bol-base)))
+         ;; --- Content isolation -----------------------------------------
+         ;; A's IB still shows A's heading + unique content, NOT B.
+         (with-current-buffer ib-a
+           (let ((content (buffer-substring-no-properties
+                           (point-min) (point-max))))
+             (should (string-match-p "Task A" content))
+             (should (string-match-p "UNIQUE-CONTENT-FOR-A" content))
+             (should-not (string-match-p "Task B" content))))
+         ;; B's IB does NOT include A's heading or content.
+         (with-current-buffer ib-b
+           (let ((content (buffer-substring-no-properties
+                           (point-min) (point-max))))
+             (should (string-match-p "Task B" content))
+             (should-not (string-match-p "Task A" content))
+             (should-not (string-match-p "UNIQUE-CONTENT-FOR-A" content))))
+         ;; --- Ordering invariant: A's heading < A's pmax < B's heading -
+         (should (< (marker-position hm-a)
+                    (with-current-buffer ib-a (point-max))))
+         (should (< (with-current-buffer ib-a (point-max))
+                    (marker-position hm-b))))))))
+
+(ert-deftest gptel-org-ib-create-task-test-non-default-terminator-keyword ()
+  "Non-default :terminator-keyword (e.g. \"FEEDBACK\") seeds + reuses.
+
+First call seeds `** FEEDBACK' (NOT `** TERMINE').  A second call to
+create-task with the same FEEDBACK keyword reuses the existing FEEDBACK
+heading rather than seeding a duplicate.  IB narrowing holds for both."
+  (gptel-org-ib-test-with-buffer
+      "* Parent\n"
+    (gptel-org-ib-test-with-cleanup
+     (goto-char (point-min))
+     (org-back-to-heading t)
+     (let* ((parent-marker (point-marker))
+            (result-a (gptel-org-ib-create-task
+                       parent-marker "AI-DO" "Task A"
+                       :terminator-keyword "FEEDBACK"))
+            (tm-a (plist-get result-a :terminator-marker))
+            (ib-a (plist-get result-a :indirect-buffer)))
+       (should (markerp tm-a))
+       (should (buffer-live-p ib-a))
+       ;; Terminator is FEEDBACK, not TERMINE.
+       (save-excursion
+         (goto-char tm-a)
+         (should (looking-at "^\\*\\* FEEDBACK\\b")))
+       (save-excursion
+         (goto-char (point-min))
+         (should (= 0 (how-many "^\\*+ TERMINE\\b"
+                                (point-min) (point-max))))
+         (should (= 1 (how-many "^\\*+ FEEDBACK\\b"
+                                (point-min) (point-max)))))
+       ;; IB-A narrowing: point-min = heading BOL, point-max = (1- TERM-BOL).
+       (let ((hm-a (plist-get result-a :heading-marker)))
+         (with-current-buffer ib-a
+           (should (= (point-min) (marker-position hm-a)))
+           (should (= (point-max) (1- (marker-position tm-a))))))
+       ;; Now create Task B as a sibling.  This keyword-override path
+       ;; mirrors the historical behaviour exercised by
+       ;; `safe-insert-sibling-multiple-undisturbed' with FEEDBACK
+       ;; markers: the canonical function honours the supplied keyword
+       ;; (no TERMINE is created) and Task B's terminator is a FEEDBACK
+       ;; heading.  The isolation invariant must continue to hold.
+       (let* ((result-b (gptel-org-ib-create-task
+                         parent-marker "AI-DO" "Task B"
+                         :terminator-keyword "FEEDBACK"))
+              (tm-b (plist-get result-b :terminator-marker))
+              (ib-b (plist-get result-b :indirect-buffer)))
+         (should (markerp tm-b))
+         (should (buffer-live-p ib-b))
+         (save-excursion
+           (goto-char tm-b)
+           (should (looking-at "^\\*\\* FEEDBACK\\b")))
+         ;; No TERMINE was ever seeded (the keyword override was honored).
+         (save-excursion
+           (goto-char (point-min))
+           (should (= 0 (how-many "^\\*+ TERMINE\\b"
+                                  (point-min) (point-max)))))
+         ;; Isolation invariant continues to hold across the
+         ;; alternative keyword as well.
+         (let ((a-pmax-base (with-current-buffer ib-a (point-max)))
+               (b-bol-base (marker-position
+                            (plist-get result-b :heading-marker))))
+           (should (< a-pmax-base b-bol-base))))))))
+
+
 (provide 'gptel-org-ib-test)
 ;;; gptel-org-ib-test.el ends here
