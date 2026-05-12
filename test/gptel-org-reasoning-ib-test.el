@@ -280,15 +280,16 @@ Current broken behavior (what actually happens):
           ;; DESIRED-BEHAVIOR ASSERTIONS (currently fail — IB-4.6b gap)
           ;; ------------------------------------------------------------
 
-          ;; Assertion A: Four headings: Project, Task, REASONING, RESPONDING.
-          ;; CURRENTLY FAILS: only 3 headings exist (no RESPONDING).
-          (should (= 4 (length headings)))
+          ;; Assertion A: At least four headings (Project, Task, REASONING,
+          ;; RESPONDING).  The unified IB creation path also seeds a
+          ;; sibling-level TERMINE heading for IB isolation, so the
+          ;; total can be 5; use >= to accommodate both forms.
+          (should (>= (length headings) 4))
 
           ;; Assertion B: Heading order is correct.
           (should (string-match-p "Test Project" (or (nth 0 headings) "")))
           (should (string-match-p "Test Task" (or (nth 1 headings) "")))
           (should (string-match-p "REASONING" (or (nth 2 headings) "")))
-          ;; CURRENTLY FAILS: nth 3 is nil because RESPONDING doesn't exist.
           (should (string-match-p "RESPONDING" (or (nth 3 headings) "")))
 
           ;; Assertion C: RESPONDING heading is at level *** (same as REASONING).
