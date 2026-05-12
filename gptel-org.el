@@ -2750,84 +2750,82 @@ Safe to call even if no respond buffer exists."
       (setq gptel-org--respond-indirect-buffer nil))))
 ;;; TOOL indirect buffer display
 
-(defun gptel-org--tool-create-indirect-buffer (tool-heading-pos)
-  "Create an indirect buffer for the TOOL heading at TOOL-HEADING-POS.
+(defun gptel-org--tool-create-indirect-buffer
+    (parent todo-keyword title level &optional name)
+  "Create an indirect buffer for a TOOL heading via the canonical function.
 
-Creates an indirect buffer narrowed to the TOOL subtree.  The buffer
-auto-expands as body content is inserted.  The buffer is not displayed
-in any window — it exists only as an isolated write target for TOOL
-body content, providing the indirect-buffer context needed for
-auto-correct hooks and ref-level handling.
+Delegates to `gptel-org-ib-create-task' with explicit LEVEL and
+:terminator-keyword \"TERMINE\".  Reapplies gptel ignore text
+properties on the heading line (since the canonical function inserts
+the heading directly without text properties) and installs the
+TOOL-specific post-setup: add a kill-buffer hook that clears
+`gptel-org--tool-indirect-buffer'.
 
-Modeled after `gptel-org--reasoning-create-indirect-buffer'.  Unlike
-the reasoning buffer, the TOOL IB is not set read-only (callers insert
-body content into it) and the subtree is not unfolded.
+Unlike `gptel-org--reasoning-create-indirect-buffer' /
+`gptel-org--respond-create-indirect-buffer', the TOOL IB is NOT
+marked read-only (callers insert body content into it) and the
+subtree is NOT auto-unfolded.
 
-Delegates buffer creation to `gptel-org-ib-create' for consistent
-indirect buffer management (fold decoupling, end-marker, registry
-tracking).
+PARENT, TODO-KEYWORD, TITLE, LEVEL, and NAME are forwarded to
+`gptel-org-ib-create-task'.
 
-Returns the indirect buffer, or nil if creation failed."
+Returns the full result plist from `gptel-org-ib-create-task'
+\(keys :heading-marker, :terminator-marker, :indirect-buffer) so
+callers can position streaming markers, or nil on failure."
   (gptel-org--debug
-   "tool IB create: pos=%S cur-buf=%S base=%S"
-   tool-heading-pos (buffer-name)
-   (when (gptel-org-ib-registered-p (current-buffer)) (buffer-name (gptel-org-ib-base (current-buffer)))))
+   "tool IB create: parent=%S todo=%S title=%S level=%S name=%S"
+   parent todo-keyword title level name)
   (condition-case err
-      (let* ((base-buf (if (gptel-org-ib-registered-p (current-buffer))
-                           (gptel-org-ib-base (current-buffer))
-                         (current-buffer)))
-             (buf-name (gptel-org-ib-compute-name
-                        base-buf tool-heading-pos "tool"))
-             indirect-buf)
-        (gptel-org--debug
-         "tool IB create: base-buf=%S buf-name=%S"
-         (buffer-name base-buf) buf-name)
-        ;; Seed sibling-level TERMINE so the IB has a stable upper bound,
-        ;; then create the IB.  Inlined from the (now-removed)
-        ;; `gptel-org--ib-create-with-terminator' helper.
-        (let* ((pos (if (markerp tool-heading-pos)
-                        (marker-position tool-heading-pos)
-                      tool-heading-pos))
-               (root-buf (gptel-org-ib-base-buffer base-buf))
-               (ib-level
-                (with-current-buffer root-buf
-                  (save-excursion
-                    (save-restriction
-                      (widen)
-                      (goto-char pos)
-                      (unless (org-at-heading-p)
-                        (gptel-org-ib-fatal
-                         "tool IB create: pos %d not at heading in %s"
-                         pos (buffer-name root-buf)))
-                      (org-current-level))))))
-          (gptel-org-ib-resolve-or-seed-terminator root-buf pos ib-level)
-          (setq indirect-buf
-                (gptel-org-ib-create base-buf tool-heading-pos buf-name)))
-        (gptel-org--debug
-         "tool IB create: gptel-org-ib-create returned %S (live=%S)"
-         (when indirect-buf (buffer-name indirect-buf))
-         (when indirect-buf (buffer-live-p indirect-buf)))
-        (with-current-buffer indirect-buf
-          ;; Clean up tracking var if user kills the buffer externally
-          (add-hook 'kill-buffer-hook
-                    (lambda ()
-                      (let ((this-buf (current-buffer)))
-                        (when-let* ((base (and (gptel-org-ib-registered-p this-buf)
-                                               (gptel-org-ib-base this-buf))))
-                          (with-current-buffer base
-                            (when (eq gptel-org--tool-indirect-buffer
-                                      this-buf)
-                              (setq gptel-org--tool-indirect-buffer nil))))))
-                    nil t))
-        ;; Store reference in base buffer
-        (with-current-buffer base-buf
-          (setq gptel-org--tool-indirect-buffer indirect-buf))
-        ;; Also store in the current buffer if it's an IB itself
-        (unless (eq (current-buffer) base-buf)
-          (setq gptel-org--tool-indirect-buffer indirect-buf))
-        (gptel-org--debug
-         "tool IB create: success, buffer=%S" (buffer-name indirect-buf))
-        indirect-buf)
+      (let* ((result (gptel-org-ib-create-task
+                      parent todo-keyword title
+                      :level level
+                      :terminator-keyword "TERMINE"
+                      :name name))
+             (heading-marker (plist-get result :heading-marker))
+             (indirect-buf (plist-get result :indirect-buffer))
+             (root-buf (and heading-marker (marker-buffer heading-marker))))
+        ;; Reapply gptel ignore text properties on the heading line.
+        ;; The canonical create-task inserts the heading via `insert'
+        ;; without text properties, so re-apply them here so the
+        ;; heading is never sent back to the LLM.
+        (when (and heading-marker root-buf (buffer-live-p root-buf))
+          (with-current-buffer root-buf
+            (save-excursion
+              (save-restriction
+                (widen)
+                (goto-char heading-marker)
+                (let ((bol (line-beginning-position))
+                      (after-eol (min (point-max) (1+ (line-end-position)))))
+                  (with-silent-modifications
+                    (add-text-properties
+                     bol after-eol
+                     '(gptel ignore front-sticky (gptel)))))))))
+        ;; Post-setup on the IB.  Note: NO read-only marking and NO
+        ;; auto-unfold here (callers insert body content into the IB
+        ;; transiently).
+        (when (and indirect-buf (buffer-live-p indirect-buf))
+          (with-current-buffer indirect-buf
+            ;; Clean up tracking var if user kills the buffer externally
+            (add-hook 'kill-buffer-hook
+                      (lambda ()
+                        (let ((this-buf (current-buffer)))
+                          (when-let* ((base (and (gptel-org-ib-registered-p this-buf)
+                                                 (gptel-org-ib-base this-buf))))
+                            (with-current-buffer base
+                              (when (eq gptel-org--tool-indirect-buffer
+                                        this-buf)
+                                (setq gptel-org--tool-indirect-buffer nil))))))
+                      nil t))
+          (let ((base-buf (gptel-org-ib-base-buffer root-buf)))
+            ;; Store reference in base buffer
+            (with-current-buffer base-buf
+              (setq gptel-org--tool-indirect-buffer indirect-buf))
+            ;; Also store in the current buffer if it's an IB itself
+            (unless (eq (current-buffer) base-buf)
+              (setq gptel-org--tool-indirect-buffer indirect-buf)))
+          (gptel-org--debug
+           "tool IB create: success, buffer=%S" (buffer-name indirect-buf)))
+        result)
     (error
      (gptel-org--debug "tool IB: creation failed: %S" err)
      nil)))

@@ -218,9 +218,14 @@
 (declare-function gptel-org--tool-close-indirect-buffer "gptel-org")
 (declare-function gptel-org--debug "gptel-org")
 (declare-function gptel-org-ib-streaming-marker "gptel-indirect-buffer")
+(declare-function gptel-org-ib-registered-p "gptel-indirect-buffer")
+(declare-function gptel-org-ib-get "gptel-indirect-buffer")
 (declare-function org-at-heading-p "org")
 (declare-function org-get-tags "org")
 (declare-function org-end-of-subtree "org")
+(declare-function org-back-to-heading "org")
+(declare-function org-up-heading-safe "org")
+(declare-function org-current-level "org")
 (declare-function outline-next-heading "outline")
 (define-obsolete-function-alias
   'gptel-set-topic 'gptel-org-set-topic "0.7.5")
@@ -2982,7 +2987,6 @@ for tool call results.  INFO contains the state of the request."
                            (truncate-string-to-width
                             full-title
                             (floor (* (window-width) 0.6)) 0 nil " ...")))
-                         (heading-line (concat stars " " truncated-title "\n"))
                          (_ (when (eq gptel-log-level 'debug)
                               (gptel--log
                                (format "display-tool-results: creating heading=\"%s %s\" ref-level=%S in-agent-indirect=%S start-marker=%S tracking-marker=%S buffer=%S inhibit-mod-hooks=%S"
@@ -3028,67 +3032,190 @@ for tool call results.  INFO contains the state of the request."
                            (and (boundp 'gptel-org--tool-state-face)
                                 gptel-org--tool-state-face)
                            t))))
-                    ;; Step 1: insert separator + heading via the normal
-                    ;; callback path (at tracking-marker in target-buffer).
-                    ;; The callback updates :tracking-marker on info.
-                    ;; Remember the heading's starting position via a
-                    ;; marker so body insertion and fold can locate it
-                    ;; without relying on a state-keyword regex (the
-                    ;; keyword varies per tool name now).
-                    (let* ((heading-start-pos
-                            (gptel--org-insert-heading heading-line info))
-                           (new-tm (plist-get info :tracking-marker))
-                           (heading-marker
-                              (and heading-start-pos
-                                   (with-current-buffer target-buffer
-                                     (copy-marker heading-start-pos nil)))))
-                        ;; Stash on info so the fold step below can
-                        ;; reuse it without another regex search.
-                        (plist-put info :tool-heading-marker heading-marker)
-                        ;; Step 2: body goes through a TOOL indirect
-                        ;; buffer so tool body writes are isolated from
-                        ;; the agent IB (per the "indirect buffer rule"
-                        ;; — each AI-emitted block gets its own IB
-                        ;; scope).  Open a TOOL IB narrowed to the
-                        ;; subtree at heading-marker, insert the body
-                        ;; there, and close the IB.  Because IB and
-                        ;; base share the same underlying storage, the
-                        ;; tracking-marker in target-buffer
-                        ;; (insertion-type t) is advanced by the body
-                        ;; insertion.
-                        (with-current-buffer target-buffer
-                          (save-excursion
-                            (if (and heading-marker
-                                     (marker-position heading-marker))
-                                (let ((tool-ib
-                                       (gptel-org--tool-create-indirect-buffer
-                                        (marker-position heading-marker))))
-                                  (unwind-protect
-                                      (if (and tool-ib (buffer-live-p tool-ib))
-                                          (with-current-buffer tool-ib
-                                            (save-excursion
-                                              ;; Insert BEFORE the
-                                              ;; tool IB's TERMINE
-                                              ;; child (universal
-                                              ;; invariant — every IB
-                                              ;; has TERMINE as its
-                                              ;; last child, see
-                                              ;; gptel-indirect-buffer-ai.org).
-                                              (goto-char
-                                               (gptel-org-ib-streaming-marker
-                                                "TERMINE"))
-                                              (insert prop-body)))
-                                        ;; IB creation failed — fall back to
-                                        ;; direct insertion at new-tm
-                                        (save-excursion
-                                          (when new-tm (goto-char new-tm))
-                                          (insert prop-body)))
-                                    (gptel-org--tool-close-indirect-buffer)))
-                              ;; No heading position (shouldn't happen) —
-                              ;; fall back to direct insertion.
+                    ;; Step 1: create the TOOL heading + IB via the
+                    ;; canonical IB-creation function.
+                    ;;
+                    ;; Title encoding: the canonical function formats
+                    ;; the heading as "<stars> <todo-keyword> <title>".
+                    ;; Pass `tool-state' (e.g. BASH, GREP) as the
+                    ;; todo-keyword and the truncated args-portion as
+                    ;; the title.  Strip the leading "<tool-state> "
+                    ;; prefix from `truncated-title' so we don't
+                    ;; double-emit the keyword.
+                    ;;
+                    ;; Parent computation: TWO strategies, in order
+                    ;; of preference:
+                    ;;
+                    ;; (a) When TARGET-BUFFER is a registered IB
+                    ;;     (the common agent-IB case), use the IB's
+                    ;;     own :heading-marker as parent.  This is
+                    ;;     the SEMANTIC parent regardless of what
+                    ;;     the streaming markers point at; it
+                    ;;     correctly handles the case where the
+                    ;;     marker has drifted onto a TERMINE child,
+                    ;;     and the multi-tool case where prior tool
+                    ;;     insertions advanced the tracking-marker
+                    ;;     past TERMINE.
+                    ;;
+                    ;; (b) Otherwise, walk back from the current
+                    ;;     insertion marker to the nearest non-
+                    ;;     terminator heading, then walk up to
+                    ;;     level (ref-level - 1).  Returns nil if
+                    ;;     no real parent heading exists in the
+                    ;;     buffer (e.g. a freshly-created org
+                    ;;     buffer with no headings) — in that case
+                    ;;     we fall back to the legacy
+                    ;;     `gptel--org-insert-heading' path below.
+                    (let* ((title-arg
+                            (cond
+                             ((string-empty-p args-title) "")
+                             ((string-prefix-p
+                               (concat tool-state " ") truncated-title)
+                              (substring truncated-title
+                                         (1+ (length tool-state))))
+                             (t
+                              ;; Truncation cut into tool-state itself
+                              ;; (very narrow window) — fall back to
+                              ;; empty title so the heading at least
+                              ;; renders with the keyword.
+                              "")))
+                           (insert-marker (or tracking-marker start-marker))
+                           (target-parent-level (max 0 (1- ref-level)))
+                           (parent-marker
+                            (or
+                             ;; (a) Use registered IB's heading-marker
+                             (and (buffer-live-p target-buffer)
+                                  (gptel-org-ib-registered-p target-buffer)
+                                  (let ((entry (gptel-org-ib-get
+                                                (buffer-name target-buffer))))
+                                    (plist-get entry :heading-marker)))
+                             ;; (b) Walk back from insert-marker
+                             (condition-case nil
+                                 (with-current-buffer
+                                     (marker-buffer insert-marker)
+                                   (save-excursion
+                                     (save-restriction
+                                       (widen)
+                                       (goto-char insert-marker)
+                                       (unless (org-at-heading-p)
+                                         (org-back-to-heading t))
+                                       (catch 'done
+                                         ;; Skip terminator-like keywords
+                                         ;; (TERMINE/RESULTS/FEEDBACK) so
+                                         ;; we don't nest under a
+                                         ;; terminator child.
+                                         (while (and (org-current-level)
+                                                     (member
+                                                      (org-get-todo-state)
+                                                      '("TERMINE" "RESULTS"
+                                                        "FEEDBACK")))
+                                           (unless (org-up-heading-safe)
+                                             (throw 'done nil)))
+                                         ;; Walk up to target-parent-level
+                                         ;; (or top-most heading).
+                                         (while (and (org-current-level)
+                                                     (> (org-current-level)
+                                                        target-parent-level)
+                                                     (org-up-heading-safe)))
+                                         (and (org-at-heading-p)
+                                              (point-marker))))))
+                               (error nil)))))
+                      (if parent-marker
+                          ;; Canonical path: heading + IB via create-task
+                          (let* ((result
+                                  (gptel-org--tool-create-indirect-buffer
+                                   parent-marker tool-state title-arg ref-level))
+                                 (heading-marker
+                                  (and result
+                                       (plist-get result :heading-marker)))
+                                 (tool-ib
+                                  (and result
+                                       (plist-get result :indirect-buffer)))
+                                 (term-marker
+                                  (and result
+                                       (plist-get result :terminator-marker))))
+                            ;; Stash heading-marker on info so the fold
+                            ;; step below can reuse it.
+                            (when heading-marker
+                              (plist-put info :tool-heading-marker
+                                         (copy-marker heading-marker nil)))
+                            ;; Insert body into the IB before its
+                            ;; TERMINE boundary, then close the IB.
+                            (with-current-buffer target-buffer
                               (save-excursion
-                                (when new-tm (goto-char new-tm))
-                                (insert prop-body))))))))
+                                (if (and tool-ib (buffer-live-p tool-ib))
+                                    (unwind-protect
+                                        (with-current-buffer tool-ib
+                                          (save-excursion
+                                            ;; Insert BEFORE the IB's
+                                            ;; TERMINE boundary
+                                            ;; (universal invariant —
+                                            ;; see
+                                            ;; gptel-indirect-buffer-ai.org).
+                                            (goto-char
+                                             (gptel-org-ib-streaming-marker
+                                              "TERMINE"))
+                                            (insert prop-body)))
+                                      (gptel-org--tool-close-indirect-buffer))
+                                  ;; IB creation failed — fall back to
+                                  ;; direct insertion at heading-marker.
+                                  (save-excursion
+                                    (cond
+                                     ((and heading-marker
+                                           (marker-position heading-marker))
+                                      (goto-char heading-marker)
+                                      (forward-line 1)
+                                      (insert prop-body))
+                                     (tracking-marker
+                                      (goto-char tracking-marker)
+                                      (insert prop-body)))))))
+                            ;; Advance tracking-marker to TERMINE so
+                            ;; the next iteration's parent lookup
+                            ;; (and downstream code reading
+                            ;; :tracking-marker) sees a position past
+                            ;; the just-inserted tool subtree.
+                            (when (and term-marker (marker-position term-marker))
+                              (let ((tm (plist-get info :tracking-marker))
+                                    (term-pos (marker-position term-marker)))
+                                (cond
+                                 (tm (move-marker tm term-pos))
+                                 (t
+                                  (let ((new-tm
+                                         (set-marker
+                                          (make-marker) term-pos
+                                          (marker-buffer term-marker))))
+                                    (set-marker-insertion-type new-tm t)
+                                    (plist-put info :tracking-marker
+                                               new-tm)))))))
+                        ;; Fallback: no parent heading available
+                        ;; (e.g. fresh org buffer with no headings).
+                        ;; Use the legacy `gptel--org-insert-heading'
+                        ;; path with direct body insertion.  No IB,
+                        ;; no TERMINE; just place the heading at
+                        ;; tracking-marker as a top-level (or
+                        ;; ref-level-deep) heading.
+                        (let* ((full-title-fb
+                                (if (string-empty-p args-title)
+                                    tool-state
+                                  (concat tool-state " " title-arg)))
+                               (heading-line
+                                (concat (make-string ref-level ?*) " "
+                                        full-title-fb "\n"))
+                               (heading-start-pos
+                                (gptel--org-insert-heading
+                                 heading-line info))
+                               (new-tm (plist-get info :tracking-marker))
+                               (heading-marker
+                                (and heading-start-pos
+                                     (with-current-buffer target-buffer
+                                       (copy-marker heading-start-pos nil)))))
+                          (when heading-marker
+                            (plist-put info :tool-heading-marker
+                                       heading-marker))
+                          (with-current-buffer target-buffer
+                            (save-excursion
+                              (when new-tm (goto-char new-tm))
+                              (insert prop-body)))))))
                 ;; TODO(tool) else branch is handling all front-ends as markdown.
                 ;; At least escape markdown.
                 (funcall
@@ -3135,7 +3262,7 @@ for tool call results.  INFO contains the state of the request."
                      (when hm (set-marker hm nil))
                      (plist-put info :tool-heading-marker nil))
                  (forward-line -1)
-                 (when (looking-at-p "^```") (gptel-markdown-cycle-block))))))))))
+                 (when (looking-at-p "^```") (gptel-markdown-cycle-block)))))))))))
 
 (defun gptel--tool-heading-ref-level (target-buffer info-buf start-marker tracking-marker)
   "Compute the correct heading level for a TOOL heading.

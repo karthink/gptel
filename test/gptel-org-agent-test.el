@@ -2154,11 +2154,14 @@ insertion and nil after)."
                     (gptel-org-agent--open-indirect-buffer base-buf coord-marker))
               ;; Spy on tool IB creation: advice around
               ;; `gptel-org--tool-create-indirect-buffer' captures the
-              ;; buffer created during the call.
+              ;; indirect buffer extracted from the result plist
+              ;; returned by the wrapper.
               (let ((spy (lambda (orig &rest args)
-                           (let ((ib (apply orig args)))
+                           (let* ((result (apply orig args))
+                                  (ib (and result
+                                           (plist-get result :indirect-buffer))))
                              (when ib (setq ib-seen ib))
-                             ib))))
+                             result))))
                 (advice-add 'gptel-org--tool-create-indirect-buffer
                             :around spy)
                 (unwind-protect
