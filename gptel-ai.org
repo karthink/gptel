@@ -4515,13 +4515,116 @@ The sub-tasks below are designed to be executed bottom-up: verify the algorithm 
 - *Constraint:* introspect must NOT load gptel code from =~/.emacs.d/elpa= and must NOT rely on current-session gptel internals. Use only stock Emacs / org-mode APIs to reason about the algorithm's behavior on hypothetical buffer states.
 - Output: a written verification report appended to the *Discussion highlights* (or as a child heading) confirming the algorithm holds, with any edge-case caveats discovered.
 
-***** AI-DO Design the canonical function's signature and the migration shape
-- Decide the exact function name and signature. Candidate: =(gptel-org-ib-create-task PARENT LEVEL TODO-KEYWORD TITLE &key TAGS NAME TERMINATOR-KEYWORD)=.
-- PARENT semantics: marker | indirect-buffer | base-buffer position. Always resolved to a base-buffer position internally.
-- Return value: plist =(:base-marker M :terminator-marker T :indirect-buffer IB)=.
-- Catalog every existing call site that creates a heading + IB, plus every "raw" =org-insert-heading= / =org-end-of-subtree= + insert pattern that bypasses the canonical helpers. Use Grep + researcher.
-- Decide migration strategy: in-place rewrite of =gptel-org-ib-insert-child= as the canonical (rename/keep alias), versus a fresh function with =insert-child= becoming a thin shim.
-- Output: design note as a child heading.
+***** AI-DONE Design the canonical function's signature and the migration shape
+
+****** Design note
+
+Two existing IB-creation paths must collapse into one:
+
+| Path | Heading insert | Terminator seed | IB create | Used by |
+|------+----------------+-----------------+-----------+---------|
+| =gptel-org-ib-insert-child= | yes (via =create-heading=) | yes (via =resolve-or-seed-terminator=) | yes (via =gptel-org-ib-create=) | AGENT subtrees, sub-agents, user heading (tag mode), PENDING tool calls |
+| =gptel-org--ib-create-with-terminator= | *no — caller pre-inserts heading* | yes (sibling-level, after heading) | yes | REASONING, RESPOND, TOOL IBs (gptel-org.el) |
+
+The non-canonical second path forces callers in gptel-org.el to do raw heading insertion outside the canonical helpers, defeating the isolation algorithm. Both paths must converge on the single canonical function that does heading insertion + terminator resolution + IB creation atomically.
+
+******* Function: =gptel-org-ib-create-task=
+
+#+begin_src elisp
+(cl-defun gptel-org-ib-create-task (parent todo-keyword title
+                                    &key
+                                    tags
+                                    level
+                                    (terminator-keyword "TERMINE")
+                                    name
+                                    (create-indirect-buffer t))
+  "Canonical 5-step IB-creation entry point.
+
+PARENT identifies the insertion anchor; resolved to a base-buffer
+position internally:
+  - marker: a marker into any (base or indirect) buffer
+  - buffer: a registered gptel indirect buffer (parent is its
+    heading)
+  - cons (BUF . POS): explicit base-buffer position pair
+
+TODO-KEYWORD is the org TODO keyword for the new heading (e.g.
+\"AI-DO\", \"REASONING\", \"RESPOND\", \"GATHER\"); may be nil for
+a heading without a keyword.
+
+TITLE is the heading text (may be empty string).
+
+Keyword arguments:
+  :tags                List of tag strings.  Applied via
+                       `org-set-tags'.
+  :level               Explicit level for the new heading.  When
+                       nil, defaults to parent-level + 1.
+                       Callers needing same-level insertion (e.g.
+                       REASONING heading at the same level as the
+                       containing AI-DOING) pass this explicitly.
+  :terminator-keyword  Terminator heading keyword.  Default
+                       \"TERMINE\".  When nil, no terminator
+                       seeding is performed and the function
+                       falls back to end-of-subtree insertion
+                       (legacy compatibility only).
+  :name                Optional override for the IB name.
+  :create-indirect-buffer  Default t.  Pass nil to insert only
+                       the heading without creating an IB.
+
+Returns a plist:
+  (:heading-marker M :terminator-marker T :indirect-buffer IB-or-nil)"
+  ...)
+#+end_src
+
+******* The 5-step algorithm (refined per introspect findings)
+
+1. *Resolve base-buffer position.* From =PARENT=, derive =(ROOT-BUF . PARENT-POS)= where =ROOT-BUF= is the result of =gptel-org-ib-base-buffer= (chain walk via =buffer-base-buffer=). For an IB =PARENT=, look up the registered node and use its =:heading-marker= position translated into =ROOT-BUF=.
+2. *Resolve/seed terminator* in =ROOT-BUF= at =DESIRED-LEVEL= (= =:level= or parent-level + 1). Call =gptel-org-ib-resolve-or-seed-terminator ROOT-BUF PARENT-POS DESIRED-LEVEL=. Returns a marker =TERM= to the terminator heading (natural sibling-or-shallower if present, otherwise a seeded =TERMINE= at =DESIRED-LEVEL=).
+3. *Unconditional line-feed* at BOL of =TERM=. Goto =(marker-position TERM)=, =(insert "\n")=. =TERM= itself shifts forward by 1 (its marker advances naturally because of how org-mode generally configures insertion-type after =resolve-or-seed-terminator='s =point-marker= call — verify); the line just inserted becomes the new BOL of the terminator's previous physical line.
+4. *Insert the new heading* at the new BOL of =TERM= (i.e. =(marker-position TERM)= after step 3). Build the heading line =(make-string LEVEL ?*) " " TODO-KEYWORD " " TITLE=, insert, then apply tags via =org-set-tags=. Capture =HEADING-MARKER= = a marker at the heading BOL.
+5. *Create the IB* narrowed to =(HEADING-BOL . (1- (marker-position TERM)))=. CRITICAL per introspect finding: the upper bound is =1- TERM-BOL=, NOT =TERM-BOL=. This avoids the C-level =zv_marker= (=insertion_type=1=) advancing when the next sibling's =\n= is inserted at =TERM-BOL=, which would otherwise expand this IB's narrowing past its task boundary.
+
+The IB is created via =gptel-org-ib-create= internally, but with the narrowing bound refined to =(1- TERM-BOL)=. =gptel-org-ib-create='s current behavior of computing =region= via =gptel-org-ib--compute-subtree-region= must be replaced/augmented by an explicit terminator-marker-derived bound when called from the canonical function.
+
+******* Migration strategy
+
+*Chosen approach:* in-place rewrite of =gptel-org-ib-insert-child= → renamed =gptel-org-ib-create-task= with the new keyword =:level=. Existing keyword args (=:tags=, =:terminator-keyword=, =:name=, =:create-indirect-buffer=) are preserved as-is. =gptel-org-ib-insert-child= becomes a *thin defalias* for one release cycle to minimise churn in test files (many tests use =insert-child=), then deprecated.
+
+Rationale: =insert-child= already does heading + terminator + IB and accepts a parent marker/IB. Its semantics are 90% of the canonical function. Adding =:level= (defaulting to parent-level + 1) gives the explicit-level callers (REASONING/RESPOND/TOOL in gptel-org.el) what they need without forcing them to compute and pre-insert their own heading.
+
+*Internal changes inside the function:*
+- Step 5 narrowing bound changes from current =org-end-of-subtree=-derived region to =(1- terminator-bol)=. This requires either:
+  - (a) extending =gptel-org-ib-create= to accept an optional explicit =end-bound= argument that overrides =compute-subtree-region=, OR
+  - (b) keeping =gptel-org-ib-create= as-is for the legacy code path, and having the canonical function call a refined internal IB-creation helper that takes the explicit terminator marker.
+
+Chosen: *(a) — extend =gptel-org-ib-create=* with an optional =end-bound= parameter (a marker or position). When supplied, narrowing uses =(1- end-bound)=. When nil, legacy =compute-subtree-region= behavior is preserved (so non-canonical callers, if any remain transiently during migration, do not break). After full migration, all callers go through =gptel-org-ib-create-task= and the legacy path can be removed.
+
+*Functions to be obsoleted:*
+- =gptel-org-ib-create-heading= — folded into =gptel-org-ib-create-task= (becomes internal step 4). Tests using it directly must migrate.
+- =gptel-org-ib-insert-child= — thin defalias to =gptel-org-ib-create-task= (transition only); remove in a follow-up.
+- =gptel-org--ib-create-with-terminator= — direct callers in gptel-org.el (REASONING/RESPOND/TOOL) migrate to =gptel-org-ib-create-task= with =:level= and the heading insertion absorbed; this function is then deleted.
+- =gptel-org-ib-ensure-terminator=, =gptel-org-ib-ensure-sibling-terminator=, =gptel-org-ib-create-terminator= — already obsolete; verify dead and remove. Note: =gptel-org-ib-ensure-sibling-terminator= is still used in =gptel-org-agent.el= L1419 (user heading tag-mode insert) — that call site must also migrate.
+
+******* Call sites to migrate (from canonical to =gptel-org-ib-create-task=)
+
+| File | Line | Current call | New call shape |
+|------+------+--------------+----------------|
+| gptel-org-agent.el | 243 | =insert-child effective-parent ...= | =create-task effective-parent ...= (default level) |
+| gptel-org-agent.el | 392 | =insert-child parent-marker ...= (handover) | =create-task parent-marker ...= |
+| gptel-org-agent.el | 943 | =resolve-or-seed-terminator ... + raw insert= (reasoning) | =create-task ... :level explicit= |
+| gptel-org-agent.el | 1419 | =ensure-sibling-terminator + raw insert= (user heading tag mode) | =create-task ... :level explicit= |
+| gptel-org-agent.el | 1695 | =insert-child parent-marker ...= (setup-task-subtree) | =create-task parent-marker ...= |
+| gptel-org-agent.el | 1726 | =resolve-or-seed-terminator ...= (task-level seed) | absorbed into the =create-task= above (idempotent re-resolve OK) |
+| gptel-org-agent.el | 2122 | =resolve-or-seed-terminator + ...= (pending insertion) | =create-task ...= |
+| gptel-org-agent.el | 2187 | =insert-child parent-marker pending-kw ...= | =create-task parent-marker pending-kw ...= |
+| gptel-org.el | 2549–2550 | =ib-create-with-terminator + raw heading insert= (REASONING) | =create-task ... :level explicit :terminator-keyword "TERMINE"= |
+| gptel-org.el | ~2681 | (same pattern for RESPOND) | =create-task ... :level explicit= |
+| gptel-org.el | ~2772 | (same pattern for TOOL) | =create-task ... :level explicit= |
+
+Tests under =test/= will need parallel updates but are out of scope for the implementation sub-task — they continue to work via the =insert-child= defalias until the test-update sub-task migrates them.
+
+******* Return-value evolution
+
+Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canonical returns =(:heading-marker M :terminator-marker T :indirect-buffer IB)= — adds =:terminator-marker= so callers needing to insert further siblings (PENDING tool calls, sub-agents) can pass it forward without re-resolving. The defalias for =insert-child= keeps the same plist shape; new key is additive and backward-compatible.
 
 ***** AI-DO Implement the canonical function and unconditional terminator line-feed
 - Implement the canonical function in =gptel-indirect-buffer.el= following the 5-step algorithm exactly.
