@@ -4743,7 +4743,7 @@ Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canoni
   - =9aa8f0302fd76cd9e2b1bcab60a60885d6af8337= — =refactor(org-ib): generalize resolve-or-seed-terminator to accept :terminator-keyword=
   - =339831eed5560ce76e521e467afdffd83f940ac7= — =test(org-ib): cover resolve-or-seed-terminator :terminator-keyword arg=
 
-***** AI-DOING Migrate gptel-org-agent.el site 4a (keyword-mode FEEDBACK seed) to canonical function
+***** AI-DONE Migrate gptel-org-agent.el site 4a (keyword-mode FEEDBACK seed) to canonical function
 ****** Origin
 - Last remaining non-canonical IB-creation seeding site after the main migration.
 - Currently calls =gptel-org-ib-ensure-sibling-terminator= (obsolete) followed by raw insertion in =gptel-org-agent--insert-user-heading= (gptel-org-agent.el:~1419).
@@ -4752,6 +4752,46 @@ Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canoni
 - After resolve-or-seed-terminator accepts =:terminator-keyword=, replace the ensure-sibling-terminator + raw insert at site 4a with a single =gptel-org-ib-create-task= call with =:level= equal to the user heading's level and =:terminator-keyword= equal to the keyword-mode FEEDBACK keyword.
 - Also fix the pre-existing =let= vs =let*= scope bug at gptel-org-agent.el:1425 in =gptel-org-agent--insert-user-heading= (=m='s initializer references =result= from the same =let=, should be =let*=). This is unrelated to the migration but currently masked by the byte-compile noise from the obsolete call; cleaning it up makes the migration verifier-clean.
 - Commit: =refactor(org-agent): route user heading FEEDBACK seed through canonical function=
+****** Outcomes
+- *Commit:* =619ed18= =refactor(org-agent): route user heading FEEDBACK seed through canonical function=.
+- *What was replaced:* the obsolete =gptel-org-ib-ensure-sibling-terminator= call at the keyword-mode branch of =gptel-org-agent--insert-user-heading= (gptel-org-agent.el:~1419) → direct call to the canonical primitive =gptel-org-ib-resolve-or-seed-terminator= with =base-buffer=, =agent-heading-pos=, =user-level=, and =:terminator-keyword kw= (where =kw= = =gptel-org-user-keyword= or "FEEDBACK").
+- *Deviation from spec — recorded:* the mission stated "single =gptel-org-ib-create-task= call".  =create-task= unconditionally runs steps 3 and 4 (line-feed at TERM BOL, then insert a content heading at the freshly opened BOL).  In the keyword-mode pattern the FEEDBACK heading is *single-role*: the heading IS the terminator and the user prompt location.  Calling =create-task= with =todo-keyword="FEEDBACK"= and =:terminator-keyword="FEEDBACK"= would seed a FEEDBACK terminator and then insert a *second* "** FEEDBACK" content heading before it — producing two FEEDBACK headings on the first call (and three on the second), directly violating the existing =gptel-org-agent-test-insert-user-heading-after-indirect-response= one-heading invariant.  =resolve-or-seed-terminator= is the same step-2 primitive that =create-task= invokes internally; calling it directly preserves the single-heading semantics while still routing through canonical code.  If a future enhancement to =create-task= adds an "absorb-terminator-as-content-heading" mode for same-keyword same-level cases, this site can be re-migrated then.
+- *let → let* fix:* the tag-mode branch's =(let ((result …) (m (plist-get result :heading-marker))) …)= was rewritten to =let*=.  =m='s initializer was referencing =result= bound in the same =let=, which byte-compile flagged as "Unused lexical variable =result=" + "reference to free variable =result=" — these warnings disappear with =let*=.
+- *Byte-compile delta* (=emacs -Q --batch -L . -f batch-byte-compile gptel-org-agent.el=):
+  - *Before* (3 warnings in =gptel-org-agent--insert-user-heading=):
+    - =Warning: ‘gptel-org-ib-ensure-sibling-terminator’ is an obsolete function (as of 0.10.0)=
+    - =Warning: Unused lexical variable ‘result’=
+    - =Warning: reference to free variable ‘result’=
+  - *After* (0 warnings in =gptel-org-agent--insert-user-heading=).  All 3 site-4a warnings eliminated.
+  - Other pre-existing warnings (free variables =gptel--done-cleanup-functions=, =gptel-org-agent--pending-tool-calls=, =gptel-log-level=; undefined functions =gptel--fsm-summary=, =gptel--log=, =org-element-property=) are unchanged — pre-existing and unrelated.
+- *Test counts* (=cd quelpa/build/gptel/test && make test=): =Ran 505 tests, 502 results as expected, 0 unexpected, 3 skipped= — baseline preserved (the 3 skips are pre-existing: =media-link-parsing-md-1=, =media-link-parsing-md-2=, =persist-restore-bounds=).
+- *Production caller status of =gptel-org-ib-ensure-sibling-terminator=:* zero production callers remain after this commit (only =test/gptel-org-ib-test.el= still references it, 4 refs).  The helper is now test-only and eligible for deletion in a future dead-helper-removal sub-task — out of scope here.
+- *Before/after snippet (keyword-mode branch):*
+  Before:
+  #+begin_src elisp
+  (if keyword-mode
+      ;; Sibling FEEDBACK at agent-level.
+      (let ((kw (or (bound-and-true-p gptel-org-user-keyword) "FEEDBACK")))
+        (gptel-org-ib-ensure-sibling-terminator kw user-level)
+        (gptel-org--debug
+         "insert-user-heading: ensured %s sibling at level %d"
+         kw user-level))
+    ...)
+  #+end_src
+  After:
+  #+begin_src elisp
+  (if keyword-mode
+      ;; Sibling FEEDBACK at user-level (= agent-level).
+      ;; … [explanatory comment about single-heading semantics] …
+      (let ((kw (or (bound-and-true-p gptel-org-user-keyword) "FEEDBACK")))
+        (gptel-org-ib-resolve-or-seed-terminator
+         base-buffer agent-heading-pos user-level
+         :terminator-keyword kw)
+        (gptel-org--debug
+         "insert-user-heading: resolved/seeded %s sibling at level %d"
+         kw user-level))
+    ...)
+  #+end_src
 
 **** Outcomes / Results / Follow-up linked tasks
 
