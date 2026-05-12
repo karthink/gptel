@@ -263,15 +263,23 @@ REASONING, and RESPOND — follows the same four-element pattern:
    narrowing upper bound so subsequent inserts of sibling content
    cannot pollute the narrowing — even when
    `gptel-org-debug-preserve-state' is non-nil and the IB is kept
-   alive past its logical close point.  AGENT IBs use
-   `gptel-org-ib-insert-child' which seeds TERMINE at 1+ parent
-   level; REASONING/RESPOND/TOOL use
-   `gptel-org--ib-create-with-terminator' which seeds TERMINE at
-   the IB's own level after the heading is already inserted.
-   See [[#target-design][Design invariants → TERMINE]] and the AI-DONE task
-   "Fix REASONING IB end-marker pollution under preserve-state-
-   driven FSM dispatch" in gptel-ai.org for the bug this pattern
-   eliminates.
+   alive past its logical close point.
+
+   *Sole IB-creation entry point:* =gptel-org-ib-create-task=
+   (defined in =gptel-indirect-buffer.el=) is the canonical 5-step
+   IB-creation function — it resolves PARENT to the base buffer,
+   resolves/seeds the sibling-level TERMINE at the desired level,
+   inserts the universal terminator line-feed, inserts the heading
+   at the new TERMINE BOL, and creates the IB narrowed to
+   =(HEADING-BOL . (1- TERM-BOL))=.  All IB-creating call sites —
+   AGENT/sub-agent via =gptel-org-ib-insert-child= (now a thin
+   compatibility wrapper that delegates to =create-task= with
+   =:terminator-keyword nil=) and REASONING/RESPOND/TOOL via
+   inlined calls in =gptel-org.el= — go through this single
+   algorithm.  See [[#target-design][Design invariants → TERMINE]] and the
+   AI-DONE task "Fix REASONING IB end-marker pollution under
+   preserve-state-driven FSM dispatch" in gptel-ai.org for the bug
+   this pattern eliminates.
 
 ** Invariants for insertion
 
@@ -967,23 +975,89 @@ The registry =gptel-org-ib--registry= maps buffer-name → =gptel-org-ib-node=.
 | =gptel-org-ib-find-user-task-heading= () | Walk up from current heading past all agent headings (=*@agent= tags) to find the user-level task heading.  Returns position and moves point on success, nil on failure.  Used by the handover mechanism to place new headings at user task level |
 | =gptel-org-ib-resolve-agent-heading= (indirect-buffer) | Resolve the agent heading position for INDIRECT-BUFFER in the base buffer.  In indirect buffers, =point-min= IS the agent heading.  Returns position or nil |
 
-** Terminator Heading Management
+** Canonical IB Creation
+
+=gptel-org-ib-create-task= is the *sole entry point* for creating
+an IB and its heading.  All call sites — AGENT/sub-agent
+(via =gptel-org-ib-insert-child= compatibility wrapper) and
+REASONING/RESPOND/TOOL (inlined in =gptel-org.el=) — funnel
+through this function.
+
+*Signature*:
+
+#+begin_src elisp
+(cl-defun gptel-org-ib-create-task (parent todo-keyword title
+                                    &key
+                                    tags
+                                    level
+                                    (terminator-keyword "TERMINE")
+                                    name
+                                    (create-indirect-buffer t))
+  ...)
+#+end_src
+
+PARENT is a marker, a registered IB buffer, or an explicit
+=(BUF . POS)= cons; all are resolved to the base buffer
+internally.  =:level= defaults to parent-level + 1 (callers
+needing same-level insertion pass it explicitly).
+=:terminator-keyword= defaults to ="TERMINE"=; pass =nil= for
+the legacy end-of-subtree fallback (no terminator).
+=:create-indirect-buffer= controls whether step 5 runs.
+
+*5-step algorithm*:
+
+1. Resolve PARENT to =(ROOT-BUF . PARENT-POS)= in the base
+   buffer (via =gptel-org-ib-base-buffer=) and capture
+   =PARENT-LEVEL=.
+2. Resolve or seed terminator at =DESIRED-LEVEL= (=:level= or
+   =PARENT-LEVEL + 1=) via
+   =gptel-org-ib-resolve-or-seed-terminator=, returning marker
+   =TERM=.
+3. Unconditional =\n= insert at BOL of =TERM= (the universal
+   isolation boundary that finalises the previous sibling's
+   region and opens a clean BOL for the new heading).
+4. Insert the new heading at the new BOL of =TERM= and apply
+   =:tags= via =org-set-tags=.
+5. Create the IB narrowed to =(HEADING-BOL . (1- TERM-BOL))=
+   via =gptel-org-ib-create=.
+
+*Return value* — plist:
+
+| Key                 | Value                                          |
+|---------------------+------------------------------------------------|
+| =:heading-marker=   | Marker at BOL of the new heading in base buffer |
+| =:terminator-marker= | Marker at TERMINE BOL (=nil= in legacy path)   |
+| =:indirect-buffer=  | The created IB, or =nil= when =:create-indirect-buffer= is nil |
+
+*The =(1- TERM-BOL)= narrowing bound* — critical detail: an IB
+created with clone=t inherits a C-level =zv_marker= whose
+=insertion-type= is 1, meaning text inserted /at/ =zv_marker='s
+position would advance the marker (expanding the narrowing).
+When the next sibling's leading =\n= is inserted at TERM-BOL by
+a subsequent =create-task= call, narrowing the current IB to
+exactly =TERM-BOL= would let that =\n= bleed into the IB's view.
+Narrowing one position before TERM-BOL — i.e. at
+=(1- TERM-BOL)= — ensures the next sibling's insert is strictly
+outside this IB's narrowing.
+
+*Compatibility wrapper*:
 
 | Function | Purpose |
 |----------+---------|
-| =gptel-org-ib-resolve-or-seed-terminator= (keyword) | *Unified CSTR primitive.*  Scan forward from current heading for next same-or-shallower heading.  If found and matches KEYWORD, return marker to it.  Otherwise seed a new TERMINE sibling at the task level.  Idempotent — safe to call multiple times |
+| =gptel-org-ib-insert-child= (parent todo-keyword title &key tags terminator-keyword name create-indirect-buffer) | Thin wrapper that delegates to =gptel-org-ib-create-task= with =:terminator-keyword nil= preserved (legacy end-of-subtree semantics).  Retained so AGENT/sub-agent call sites continue to work unchanged.  Returns the same plist shape =(:heading-marker M :terminator-marker T :indirect-buffer IB)= |
+
+*Supporting primitives* (used internally by =create-task= and by
+streaming callers):
+
+| Function | Purpose |
+|----------+---------|
+| =gptel-org-ib-resolve-or-seed-terminator= (base-buffer pos &optional task-level) | *Unified CSTR primitive.*  In =BASE-BUFFER= at =POS=, scan forward for next same-or-shallower heading.  If it is a TERMINE sibling at =TASK-LEVEL=, return marker to it.  Otherwise seed a new TERMINE sibling at =TASK-LEVEL=.  Idempotent.  Returns a marker into the base buffer |
 | =gptel-org-ib-find-terminator= (keyword &optional bound) | (Internal) Find terminator heading matching KEYWORD; returns position or nil |
-| =gptel-org-ib-ensure-terminator= (keyword) | *Obsolete.*  Use =gptel-org-ib-resolve-or-seed-terminator= |
-| =gptel-org-ib-ensure-sibling-terminator= (keyword level) | *Obsolete.*  Use =gptel-org-ib-resolve-or-seed-terminator= |
-| =gptel-org-ib-create-terminator= (keyword &optional level) | *Obsolete.*  Legacy terminator creation |
 | =gptel-org-ib-streaming-marker= (&optional terminator-keyword) | Return a marker safe for FSM streaming.  When TERMINATOR-KEYWORD names an existing terminator (found via =resolve-or-seed-terminator=), marker is pinned before it with insertion-type nil.  Otherwise marker is at =point-max= with insertion-type t |
-
-** Safe Heading Creation
-
-| Function | Purpose |
-|----------+---------|
-| =gptel-org-ib-insert-child= (parent todo-keyword title &key tags terminator-keyword name create-indirect-buffer) | Single parent-aware insertion entry point.  Inserts a child heading before the task-level =TERMINE= sibling (found via =resolve-or-seed-terminator=) using a universal newline guard (no backward search).  PARENT is a marker, indirect-buffer, or (deprecated) =:point= keyword.  Returns a plist =(:heading-marker M :indirect-buffer IB-or-nil)=.  When =:create-indirect-buffer= is non-nil (default =t=), also creates an IB narrowed to the new heading |
-| =gptel-org-ib-create-heading= (todo-keyword title &optional tags terminator-keyword) | *Internal helper.*  Inserts a child heading before the terminator and returns a marker.  Callers should use =gptel-org-ib-insert-child= instead |
+| =gptel-org-ib-ensure-terminator= (keyword) | *Obsolete (0.10.0).*  Used internally by =create-task= as a non-TERMINE fallback when =:terminator-keyword= is set to a non-"TERMINE" string.  New code: use =gptel-org-ib-resolve-or-seed-terminator= (a follow-up task extends it to accept =:terminator-keyword=) |
+| =gptel-org-ib-ensure-sibling-terminator= (keyword level) | *Obsolete (0.10.0).*  One remaining production caller (gptel-org-agent.el keyword-mode FEEDBACK seed) is blocked on the same follow-up.  Use =gptel-org-ib-resolve-or-seed-terminator= |
+| =gptel-org-ib-create-terminator= (keyword &optional level) | *Obsolete (0.10.0).*  Used only by =gptel-org-ib-ensure-terminator= internally.  New code: use =gptel-org-ib-resolve-or-seed-terminator= |
+| =gptel-org-ib-create-heading= (todo-keyword title &optional tags terminator-keyword) | *Obsolete (0.11.0).*  Use =gptel-org-ib-create-task= instead |
 
 ** Indirect Buffer Lifecycle
 
@@ -1202,21 +1276,38 @@ The registry =gptel-org-ib--registry= maps buffer-name → =gptel-org-ib-node=.
 
 ** Step-by-step: Terminator + Heading + IB Creation (CSTR)
 
+The canonical 5-step algorithm is encapsulated in a single
+call to =gptel-org-ib-create-task=:
+
 #+begin_src elisp
-;; Low-level approach (gptel-org-ib-safe-insert-sibling does all of this)
-(save-excursion
-  (org-back-to-heading t)
-  ;; 1. Resolve or seed the task-level TERMINE sibling
-  (gptel-org-ib-resolve-or-seed-terminator "TERMINE")
-
-  ;; 2. Create heading before the terminator
-  (let ((marker (gptel-org-ib-create-heading
-                 "AI-DO" "Analyze data" '("gatherer@agent") "TERMINE")))
-
-    ;; 3. Create indirect buffer for the new heading
-    (let ((ib (gptel-org-ib-create (current-buffer) marker)))
-      ;; ib is ready for use
-      ib)))
+;; Point (or PARENT marker) is on the parent heading in the base buffer
+(let* ((result (gptel-org-ib-create-task
+                (point-marker)               ; PARENT
+                "AI-DO"                      ; TODO-KEYWORD
+                "Analyze data"               ; TITLE
+                :tags '("gatherer@agent")    ; org tags
+                ;; :level nil → default to parent-level + 1
+                ;; :terminator-keyword "TERMINE" (default)
+                ;; :create-indirect-buffer t  (default)
+                ))
+       (heading (plist-get result :heading-marker))
+       (term    (plist-get result :terminator-marker))
+       (ib      (plist-get result :indirect-buffer)))
+  ;; Internally, create-task performed:
+  ;;   1. Resolved PARENT (point-marker) to (BASE-BUF . PARENT-POS)
+  ;;      via gptel-org-ib-base-buffer; captured PARENT-LEVEL.
+  ;;   2. Called gptel-org-ib-resolve-or-seed-terminator on
+  ;;      BASE-BUF at PARENT-POS at DESIRED-LEVEL = parent-level+1,
+  ;;      yielding marker TERM at the sibling-level TERMINE.
+  ;;   3. Inserted an unconditional \n at TERM's BOL (the
+  ;;      universal isolation boundary).
+  ;;   4. Inserted "* AI-DO Analyze data" at TERM's new BOL and
+  ;;      applied tags via org-set-tags.
+  ;;   5. Called gptel-org-ib-create with end-bound = (1- TERM-BOL),
+  ;;      narrowing IB to (HEADING-BOL . (1- TERM-BOL)).  The 1-
+  ;;      is required to defeat clone=t's zv_marker insertion-type=1
+  ;;      advance when the next sibling's \n is inserted at TERM-BOL.
+  ib)
 #+end_src
 
 * Related Documents
