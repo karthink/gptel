@@ -4719,7 +4719,7 @@ Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canoni
 - Run full test suite at each refactor step.
 - Commit per logical change: =refactor(org): route <X> IB creation fully through canonical function=
 
-***** AI-DOING Extend gptel-org-ib-resolve-or-seed-terminator to accept :terminator-keyword
+***** AI-DONE Extend gptel-org-ib-resolve-or-seed-terminator to accept :terminator-keyword
 ****** Origin
 - Blocks migration of site 4a (FEEDBACK keyword-mode seed at gptel-org-agent.el:1419) and any future non-TERMINE terminator seeding.
 - =gptel-org-ib-resolve-or-seed-terminator= currently hard-codes the keyword =TERMINE=. =gptel-org-ib-create-task='s non-TERMINE path falls back to the obsolete =gptel-org-ib-ensure-terminator= (3 pre-existing byte-compile warnings; now down to 1 in =gptel-indirect-buffer.el= after deletion of =ib-create-with-terminator=).
@@ -4729,6 +4729,19 @@ Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canoni
 - Add ERT tests covering non-TERMINE terminator seeding.
 - After this lands, migrate site 4a (separate task — see follow-up 3 below).
 - Commit: =refactor(org-ib): generalize resolve-or-seed-terminator to accept :terminator-keyword=
+****** Outcomes
+- Signature change in =gptel-indirect-buffer.el=:
+  - Before: =(defun gptel-org-ib-resolve-or-seed-terminator (base-buffer pos &optional task-level) ...)= — keyword hard-coded to "TERMINE" in both the existing-match scan and the seeded heading text.
+  - After: =(cl-defun gptel-org-ib-resolve-or-seed-terminator (base-buffer pos &optional task-level &key (terminator-keyword "TERMINE")) ...)=. Positional callers (=base pos= or =base pos task-level=) are unchanged; default behaviour is preserved.
+- Existing-match check now compares the boundary heading's literal text against the requested keyword via regex =^\*+ +KEYWORD\b= (matching =gptel-org-ib-find-terminator='s strategy). This is independent of the buffer's =org-todo-keywords= configuration — necessary because the agent test fixture (=gptel-org-agent-test-with-buffer=) does not register "TERMINE" as a TODO state, and the prior plan of using =org-get-todo-state= broke 5 pre-existing tests in =gptel-org-agent-test.el=.
+- Wire-in: =gptel-org-ib-create-task='s non-TERMINE branch now calls =(gptel-org-ib-resolve-or-seed-terminator root-buf parent-pos desired-level :terminator-keyword terminator-keyword)= directly, replacing the =with-current-buffer ... (gptel-org-ib-ensure-terminator terminator-keyword)= block. The seeder still places the new terminator at end-of-parent-subtree at =desired-level= — same shape (sibling at parent+1) as the obsolete child-terminator produced.
+- Byte-compile warning: =gptel-org-ib-ensure-terminator= obsolete-function warning in =gptel-indirect-buffer.el= ELIMINATED. =emacs -Q --batch -L . -f batch-byte-compile gptel-indirect-buffer.el= now produces zero warnings.
+- Test counts:
+  - Before: 501 ran, 498 expected pass, 0 unexpected, 3 skipped.
+  - After: 505 ran, 502 expected pass, 0 unexpected, 3 skipped (4 new tests in =gptel-org-ib-test.el=: =default-keyword-is-termine=, =custom-keyword-seeds=, =custom-keyword-reuses-existing=, =different-keyword-not-reused=).
+- Commits (local; not pushed):
+  - =9aa8f0302fd76cd9e2b1bcab60a60885d6af8337= — =refactor(org-ib): generalize resolve-or-seed-terminator to accept :terminator-keyword=
+  - =339831eed5560ce76e521e467afdffd83f940ac7= — =test(org-ib): cover resolve-or-seed-terminator :terminator-keyword arg=
 
 ***** AI-DO Migrate gptel-org-agent.el site 4a (keyword-mode FEEDBACK seed) to canonical function
 ****** Origin
