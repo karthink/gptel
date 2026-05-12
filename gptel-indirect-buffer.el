@@ -664,22 +664,34 @@ or nil if not found."
 
 ;;; Unified Terminator Resolution (CSTR-1)
 
-(defun gptel-org-ib-resolve-or-seed-terminator (base-buffer pos &optional task-level)
-  "Resolve or create a TERMINE heading for the subtree at POS in BASE-BUFFER.
+(cl-defun gptel-org-ib-resolve-or-seed-terminator
+    (base-buffer pos &optional task-level
+                &key (terminator-keyword "TERMINE"))
+  "Resolve or create a TERMINATOR-KEYWORD heading for the subtree at POS.
 
 Operates entirely in BASE-BUFFER.  Starting from POS, scans forward
-for the next heading whose level is <= the level at POS.  If found,
-returns a marker to it.  If not found and TASK-LEVEL is given, seeds
-a TERMINE heading at TASK-LEVEL at the end of the task subtree and
-returns a marker to it.
+for the next heading whose level is <= the level at POS.  If that
+boundary heading's literal text begins with TERMINATOR-KEYWORD,
+returns a marker to it.  Otherwise — or if no boundary heading
+exists — and if TASK-LEVEL is given, seeds a TERMINATOR-KEYWORD
+heading at TASK-LEVEL at the end of the task subtree and returns a
+marker to it.
 
 Idempotent: a second call with the same args returns the same marker.
 
 BASE-BUFFER is the org base buffer.
 POS is a position or marker in BASE-BUFFER pointing at a heading.
-TASK-LEVEL is the level for seeding a TERMINE if none is found.
+TASK-LEVEL is the level for seeding a terminator if none is found.
   When nil, no seeding is performed and nil is returned if no
-  terminator exists.
+  matching terminator exists.
+
+Keyword argument:
+  :terminator-keyword  Heading-text keyword for the terminator
+                       (default \"TERMINE\").  Used both for the
+                       existing-match check (matched against the
+                       literal heading text — independent of the
+                       buffer's `org-todo-keywords' configuration)
+                       and for seeding a fresh terminator.
 
 Returns a marker to the terminator heading, or nil if none exists
 and TASK-LEVEL is nil."
@@ -696,28 +708,42 @@ and TASK-LEVEL is nil."
                (found
                 (save-excursion
                   (forward-line 1)
-                  (let ((result nil))
-                    (while (and (not result)
+                  (let ((result nil)
+                        (done nil))
+                    (while (and (not done)
                                 (re-search-forward org-heading-regexp nil t))
                       (beginning-of-line)
-                      (when (<= (org-current-level) level-at-pos)
-                        (setq result (point)))
-                      (unless result
-                        (forward-line 1)))
+                      (cond
+                       ((<= (org-current-level) level-at-pos)
+                        ;; First boundary heading reached.  Match only
+                        ;; if the heading text begins with
+                        ;; TERMINATOR-KEYWORD (matched on the literal
+                        ;; stars+keyword form so the check does not
+                        ;; depend on the keyword being registered as
+                        ;; an `org-todo-keywords' entry in the buffer).
+                        ;; Otherwise treat as not-found so the caller
+                        ;; can seed a fresh terminator at task-level.
+                        (when (looking-at
+                               (format "^\\*+ +%s\\b"
+                                       (regexp-quote terminator-keyword)))
+                          (setq result (point)))
+                        (setq done t))
+                       (t (forward-line 1))))
                     result))))
           (cond
            (found
             (copy-marker found))
            (task-level
-            ;; Walk up to the task heading, then go to end of its subtree
-            ;; and seed a TERMINE there.
+            ;; Walk up to the task heading, then go to end of its
+            ;; subtree and seed a TERMINATOR-KEYWORD heading there.
             (goto-char pos)
             (while (and (> (org-current-level) task-level)
                         (org-up-heading-safe)))
             (org-end-of-subtree t)
             (gptel-org-ib-ensure-bol)
             (let ((start (point)))
-              (insert (make-string task-level ?*) " TERMINE\n")
+              (insert (make-string task-level ?*)
+                      " " terminator-keyword "\n")
               (goto-char start)
               (point-marker)))
            (t nil)))))))
@@ -1768,16 +1794,15 @@ must rely on the default \"TERMINE\" terminator."
                 (gptel-org-ib-resolve-or-seed-terminator
                  root-buf parent-pos desired-level)))
          (t
-          ;; Non-TERMINE terminator: fall back to legacy ensure-terminator,
-          ;; operating in the base buffer at the parent heading.
-          (with-current-buffer root-buf
-            (save-excursion
-              (save-restriction
-                (widen)
-                (goto-char parent-pos)
-                (setq term-marker
-                      (gptel-org-ib-ensure-terminator
-                       terminator-keyword)))))))
+          ;; Non-TERMINE terminator: delegate to the unified primitive
+          ;; with the requested keyword.  The seeder places the
+          ;; terminator at DESIRED-LEVEL at the end of the parent
+          ;; subtree — semantically equivalent to the child-terminator
+          ;; shape produced by the obsolete `gptel-org-ib-ensure-terminator'.
+          (setq term-marker
+                (gptel-org-ib-resolve-or-seed-terminator
+                 root-buf parent-pos desired-level
+                 :terminator-keyword terminator-keyword))))
         ;; --- Steps 3 & 4: line-feed at TERM BOL, then insert heading ----
         (cond
          (term-marker
