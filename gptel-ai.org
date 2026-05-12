@@ -4320,6 +4320,17 @@ Doc updates applied:
 - Pros: ties the fix to the moment a sibling IB is opened — symmetric with the design intent.
 - Cons: cross-cutting; couples respond-IB-creation to reasoning-IB lifecycle.
 
+***** FEEDBACK The solution should be aligned to the design pattern :petri:
+- Basically when new IB is created, that should be done such way that it always isolate previous IB
+- There is rule how to do IB such way
+  - First find sibling or parent heading below the current pointer if not exists then create TERMINE
+  - Insert LF on BOL of the termination heading
+  - Go to created empty line and create IB
+  - Introspect this if this is not clear
+- All IB process should look similar, no matter if it is reasoning, respond, tool, agent or ai-do IB heading
+- The narrowed IB is very critical aand it needs to work as that approach enable multiple task execution same time without disturbing each others
+  - For that reason, there should be good testing that really test possible issues that user might see
+
 **** Verification
 - Run: =cd quelpa/build/gptel/test && make test 2>&1 | tail -60=
 - Expectation:
