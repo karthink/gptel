@@ -1272,9 +1272,18 @@ Removes the entry from the tracking registry, cleans up markers,
 and kills the buffer."
   (when (buffer-live-p indirect-buffer)
     (if gptel-org-debug-preserve-state
-        (gptel-org--debug
-         "org-ib close: SKIPPING close of %S (gptel-org-debug-preserve-state is non-nil)"
-         (buffer-name indirect-buffer))
+        (let ((buf-name (buffer-name indirect-buffer)))
+          (gptel-org--debug
+           "org-ib close: PRESERVING buffer %S (preserve-state); neutralizing markers"
+           buf-name)
+          ;; Defense-in-depth: even under preserve-state, neutralize the
+          ;; end-marker so subsequent base-buffer inserts at the IB
+          ;; boundary cannot drag the still-live IB's narrowing across
+          ;; sibling content.  See AI-DO "Fix REASONING IB end-marker
+          ;; pollution under preserve-state-driven FSM dispatch" in
+          ;; gptel-ai.org for rationale.
+          (when-let* ((entry (gptel-org-ib-get buf-name)))
+            (gptel-org-ib-unregister buf-name)))
       (let* ((buf-name (buffer-name indirect-buffer))
              (entry (gptel-org-ib-get buf-name))
              (base-buf (plist-get entry :base))
