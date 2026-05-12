@@ -3,6 +3,7 @@
 (require 'ert)
 (require 'gptel)
 (require 'gptel-org)
+(require 'gptel-test-backends)
 
 ;;; Helpers
 
@@ -1085,6 +1086,192 @@ diagnostic finding."
               (setq gptel-org--respond-indirect-buffer nil))))))
     (verify-temporal-ib-narrowing nil)
     (verify-temporal-ib-narrowing t)))
+
+;;; FSM-driven temporal end-marker pollution (live capture reproduction)
+
+(ert-deftest gptel-org-reasoning-ib-temporal-end-marker-fsm-driven-pollution ()
+  "FSM-faithful failing test for REASONING IB absorbing the RESPONDED sibling.
+
+This test reproduces the live capture recorded in gptel-ai.org L4166:
+
+  base buffer `playground-ws.org' size 2564
+  `*gptel:reasoning-...*'  point-min=1885  point-max=2216  (POLLUTED)
+  `*gptel:respond-...*'    point-min=2150  point-max=2216  (correct)
+  position 2150 = start of `**** RESPONDED' heading in base buffer
+  REASONING IB end-marker overshoots by 66 chars (entire RESPONDED
+  subtree absorbed)
+  `gptel-org-debug-preserve-state' was t when captured.
+
+The smoking gun (deep research, see gptel-ai.org):
+
+- `gptel-org-ib-close' (gptel-indirect-buffer.el L1265+) is a NO-OP
+  when `gptel-org-debug-preserve-state' is non-nil.
+- The inline comment at gptel.el L2382-2384 explicitly relies on
+  closing the IB BEFORE separator insert to prevent narrowing
+  expansion.
+- Under preserve-state the IB stays alive with `insertion-type=t'
+  end-marker in the shared marker chain.
+- Subsequent base-buffer inserts at the tracking-marker push the
+  still-live IB's end-marker forward.
+
+The canonical sibling temporal test
+`gptel-org-reasoning-ib-temporal-end-marker-not-polluted-by-respond'
+drives `gptel-curl--stream-insert-response' directly with hand-fed
+cons cells and does NOT reproduce the bug.  This test drives the FSM
+path (`gptel-curl--stream-filter') with synthetic SSE bytes that
+mirror a real DeepSeek-style chunked response — this is the path the
+live capture actually executed.
+
+ASSERTION (under the bug, FAILS):
+
+  (<= (with-current-buffer reasoning-ib (point-max)) responded-pos)
+
+If the assertion fails the test is RED and the live-capture bug is
+reproduced from CI.  If the assertion passes the test is a negative
+result — see Outcomes in gptel-ai.org."
+  (let ((gptel-org-debug-preserve-state t))
+    (gptel-org-state-triad-test-with-buffer
+        "* Test Project
+** DOING Calculate 2 + 2
+*** AI-DOING Calculate 2 + 2                               :deepseek@agent:
+|POINT|"
+      (let* ((base-buf (current-buffer))
+             (start-marker (set-marker (make-marker) (point)))
+             (proc-buf (generate-new-buffer " *gptel-fsm-test-proc*"))
+             (proc (make-process :name "gptel-fsm-test"
+                                 :command nil
+                                 :buffer proc-buf))
+             (fsm (gptel-make-fsm))
+             (backend (alist-get 'deepseek gptel-test-backends))
+             ;; Mirror real DeepSeek SSE: pure-reasoning deltas, then a
+             ;; pure-content delta.  parse-stream sets info
+             ;; :reasoning-block=t on the first content delta because
+             ;; :reasoning has been a plist-member of info and the
+             ;; delta's :content is non-blank.  `gptel-curl--stream-filter'
+             ;; then fires `(reasoning . t)' sentinel followed by the
+             ;; content string in the SAME filter call.  This is the
+             ;; production FSM ordering — not the hand-fed cons-cell
+             ;; ordering of the sibling temporal test.
+             (chunks
+              '("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"THE USER HAS A SIMPLE TASK CALCULATE 2 PLUS 2.\\n\"}}]}\n\n"
+                "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"Let me evaluate this.\\n\"}}]}\n\n"
+                "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"Final answer: 4.\"}}]}\n\n"
+                "data: {\"choices\":[{\"delta\":{\"content\":\"2 + 2 = 4\\n\"}}]}\n\n"
+                "data: [DONE]\n\n"))
+             (info (list :backend backend
+                         :buffer base-buf
+                         :position start-marker
+                         :include-reasoning t
+                         :http-status "200"
+                         :status "HTTP/2 200"
+                         ;; The callback the FSM dispatches per chunk
+                         ;; AND the callback that
+                         ;; `gptel--display-reasoning-stream' itself
+                         ;; re-funcalls via `(plist-get info :callback)'
+                         ;; when emitting the separator after the
+                         ;; reasoning sentinel.  Must be set explicitly.
+                         :callback #'gptel-curl--stream-insert-response
+                         :data (list :stream t))))
+        (setf (gptel-fsm-info fsm) info
+              (alist-get proc gptel--request-alist) (list fsm))
+        (unwind-protect
+            (progn
+              ;; Feed chunks one-at-a-time to mirror process-filter arrival.
+              (dolist (chunk chunks)
+                (gptel-curl--stream-filter proc chunk))
+
+              ;; --- Locate sibling headings in base buffer ---
+              (let* ((reasoning-pos
+                      (save-excursion
+                        (goto-char (point-min))
+                        (and (re-search-forward
+                              "^\\*\\*\\*\\* \\(REASON\\(ING\\|ED\\)?\\) "
+                              nil t)
+                             (line-beginning-position))))
+                     (responded-pos
+                      (save-excursion
+                        (goto-char (point-min))
+                        (and (re-search-forward
+                              "^\\*\\*\\*\\* \\(RESPONDING\\|RESPONDED\\|RESPOND\\) "
+                              nil t)
+                             (line-beginning-position)))))
+                (message "=== FSM-DRIVEN TEMPORAL TEST: base buffer ===")
+                (message "%s" (buffer-substring-no-properties
+                               (point-min) (point-max)))
+                (message "reasoning-pos=%S responded-pos=%S"
+                         reasoning-pos responded-pos)
+                (should reasoning-pos)
+                (should responded-pos)
+                (should (< reasoning-pos responded-pos))
+
+                ;; --- Locate REASONING IB ---
+                ;; Prefer the tracked variable; fall back to scanning
+                ;; indirect buffers named `*gptel:reasoning-*' whose base
+                ;; is our base-buf.  Live capture had the IB ALIVE under
+                ;; preserve-state=t — if absent here, that itself is a
+                ;; divergence worth reporting.
+                (let* ((tracked-ib (buffer-local-value
+                                    'gptel-org--reasoning-indirect-buffer
+                                    base-buf))
+                       (ib (or (and tracked-ib (buffer-live-p tracked-ib)
+                                    tracked-ib)
+                               (cl-find-if
+                                (lambda (b)
+                                  (and (buffer-live-p b)
+                                       (string-prefix-p
+                                        "*gptel:reasoning-"
+                                        (buffer-name b))
+                                       (eq (buffer-base-buffer b) base-buf)))
+                                (buffer-list)))))
+                  (should ib)
+                  (with-current-buffer ib
+                    (let ((ib-min (point-min))
+                          (ib-max (point-max)))
+                      (message "=== FSM-DRIVEN REASONING IB ===")
+                      (message "%s" (buffer-string))
+                      (message
+                       "ib-min=%d ib-max=%d (base reasoning=%d responded=%d)"
+                       ib-min ib-max reasoning-pos responded-pos)
+
+                      ;; Assertion A: IB starts at REASONING heading.
+                      (should (= ib-min reasoning-pos))
+
+                      ;; Assertion B (THE BUG): IB end-marker must not
+                      ;; have absorbed the RESPONDED/RESPONDING sibling
+                      ;; subtree.  Live capture: ib-max=2216 > 2150.
+                      (should (<= ib-max responded-pos))
+
+                      ;; Assertion C: RESPONDED heading not visible
+                      ;; through the IB narrowing.
+                      (goto-char (point-min))
+                      (should-not
+                       (re-search-forward
+                        "^\\*\\*\\*\\* \\(RESPONDING\\|RESPONDED\\|RESPOND\\)"
+                        nil t)))))))
+          ;; --- Cleanup ---
+          ;; `gptel-org-ib-close' is a no-op under preserve-state=t, so
+          ;; kill IBs directly.  Order matters: unhook FSM from alist
+          ;; before deleting process so no stray filter call can re-enter.
+          (setf (alist-get proc gptel--request-alist nil t) nil)
+          (when (process-live-p proc) (delete-process proc))
+          (when (buffer-live-p proc-buf) (kill-buffer proc-buf))
+          ;; Kill any indirect buffers whose base is base-buf.  We can't
+          ;; rely on the buffer-local tracking var: under preserve-state
+          ;; the var may still be set even after the sentinel ran.
+          (dolist (b (buffer-list))
+            (when (and (buffer-live-p b)
+                       (eq (buffer-base-buffer b) base-buf)
+                       (let ((n (buffer-name b)))
+                         (or (string-prefix-p "*gptel:reasoning-" n)
+                             (string-prefix-p "*gptel:respond" n))))
+              (kill-buffer b)))
+          ;; Reset buffer-local tracking vars in base-buf (the temp
+          ;; buffer outlives this unwind by the macro's with-temp-buffer
+          ;; for one more form, but defensively clear so the assertions
+          ;; never observe stale state if the test is re-run).
+          (with-current-buffer base-buf
+            (setq gptel-org--reasoning-indirect-buffer nil)
+            (setq gptel-org--respond-indirect-buffer nil)))))))
 
 (ert-deftest gptel-org-keyword-registration-triads ()
   "Verify RESPOND/RESPONDING/RESPONDED and REASON/REASONING/REASONED
