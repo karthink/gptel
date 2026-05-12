@@ -255,25 +255,39 @@ REASONING, and RESPOND — follows the same four-element pattern:
    via a =:post= lambda on success only (gated by =:error= absence
    and an idempotence flag).
 
-4. *Shared task-level TERMINE*: REASONING, RESPOND, and tool IBs do
-   NOT get their own TERMINE; they are children of the =AI-DOING=
-   task and rely on its sibling-level TERMINE for boundary
-   management.  See [[#target-design][Design invariants → TERMINE]].
+4. *Per-IB sibling-level TERMINE*: EVERY IB (REASONING, RESPOND,
+   tool, AGENT) seeds (or resolves) its own sibling-level TERMINE
+   on creation via `gptel-org-ib-resolve-or-seed-terminator'.
+   The TERMINE lives outside the IB's narrowing as a sibling at
+   the same heading depth as the IB heading.  This pins the IB's
+   narrowing upper bound so subsequent inserts of sibling content
+   cannot pollute the narrowing — even when
+   `gptel-org-debug-preserve-state' is non-nil and the IB is kept
+   alive past its logical close point.  AGENT IBs use
+   `gptel-org-ib-insert-child' which seeds TERMINE at 1+ parent
+   level; REASONING/RESPOND/TOOL use
+   `gptel-org--ib-create-with-terminator' which seeds TERMINE at
+   the IB's own level after the heading is already inserted.
+   See [[#target-design][Design invariants → TERMINE]] and the AI-DONE task
+   "Fix REASONING IB end-marker pollution under preserve-state-
+   driven FSM dispatch" in gptel-ai.org for the bug this pattern
+   eliminates.
 
 ** Invariants for insertion
 
-- *TERMINE is a sibling of the task's AI-DOING heading at the task
-  level.*  All new sibling insertions at the task level go BEFORE
-  TERMINE via =gptel-org-ib-resolve-or-seed-terminator=.  No
-  exceptions for tool, reasoning, or sub-agent IBs — they are
-  children of AI-DOING and don't need their own TERMINE.
+- *Every IB has a sibling-level TERMINE heading immediately
+  following it at the same heading depth.*  All new sibling
+  insertions at the IB's level go BEFORE TERMINE via
+  =gptel-org-ib-resolve-or-seed-terminator=.  This applies
+  uniformly to AGENT, REASONING, RESPOND, and tool IBs.
 - A new AI-DO child is inserted directly under the user's =TODO=,
   before any existing =TERMINE= sibling (found by
   =resolve-or-seed-terminator=).
-- A new REASONING / RESPOND / tool / sub-agent heading is inserted
-  inside the active parent IB (a child of AI-DOING), with sibling
-  boundaries managed by the task-level TERMINE found through
-  =resolve-or-seed-terminator=.
+- A new REASONING / RESPOND / tool / sub-agent IB seeds its own
+  sibling-level TERMINE at creation time, and inserts streaming
+  content BEFORE that TERMINE.  Multi-IB lifecycles (REASONING
+  closing before RESPOND opens) work correctly because each IB's
+  TERMINE bounds its narrowing independently.
 - Insertion that would place an =AI-DO= deeper than one level under
   =TODO= is a fatal error.
 
@@ -374,33 +388,46 @@ Rules:
 
 #+begin_src org
   ,* DONE Study something                        <- User task
-  ,** AI-DONE Study something ...  :main@agent:   <- Indirect-buffer 1
-  ,*** REASONING ...                              <- Indirect-buffer 2
-  ,*** GATHERED Subtask 1                         <- Indirect-buffer 3
-  ,*** BASH Subtask 2                             <- Indirect-buffer 4
-  ,*** RESPOND Studied something...               <- Indirect-buffer 5
+  ,** AI-DONE Study something ...  :main@agent:   <- IB 1 (bounded by ** TERMINE)
+  ,*** REASONING ...                              <- IB 2 (bounded by *** TERMINE_R)
+  ,*** TERMINE_R                                  <- REASONING's sibling terminator
+  ,*** GATHERED Subtask 1                         <- IB 3 (bounded by *** TERMINE_G)
+  ,*** TERMINE_G                                  <- GATHERED's sibling terminator
+  ,*** BASH Subtask 2                             <- IB 4 (bounded by *** TERMINE_B)
+  ,*** TERMINE_B                                  <- BASH's sibling terminator
+  ,*** RESPOND Studied something...               <- IB 5 (bounded by *** TERMINE_RS)
+  ,*** TERMINE_RS                                 <- RESPOND's sibling terminator
   ,* DOING Fix something                         <- User task
-  ,** AI-DOING Fix something ...  :main@agent:    <- Indirect-buffer 6
-  ,*** GATHERING Subtask 1                        <- Indirect-buffer 7
-  ,** TERMINE                                     <- Sibling terminator (outside all IBs)
+  ,** AI-DOING Fix something ...  :main@agent:    <- IB 6 (bounded by ** TERMINE)
+  ,*** GATHERING Subtask 1                        <- IB 7 (bounded by *** TERMINE_GA)
+  ,*** TERMINE_GA                                 <- GATHERING's sibling terminator
+  ,** TERMINE                                     <- AGENT IB sibling terminator
 #+end_src
 
 Key observations:
-- =TERMINE= is a sibling at the same level as =AI-DOING= (=**= depth),
-  NOT a child (=***=).  It is OUTSIDE the IB's narrowing — the IB is
-  narrowed to the =AI-DOING= subtree only.
-- There is exactly ONE =TERMINE= per top-level user task (CSTR), not
-  one per IB.  Tool, REASONING, and RESPOND IBs have no TERMINE of
-  their own.
-- When a new =GATHERING Subtask 2= needs to be created, it is
-  inserted on the line BEFORE the sibling =TERMINE= — so existing
-  indirect buffers (narrowed to their subtrees) are not affected.
-- =gptel-org-ib-resolve-or-seed-terminator= is the unified primitive:
-  scans forward for an existing same-or-shallower heading; if the
-  heading is TERMINE, returns a marker to it; otherwise seeds a new
-  TERMINE at the task level.  Idempotent.
+- =TERMINE= is a sibling at the same level as the IB heading it
+  bounds.  AGENT IB at =**= depth has a =**= TERMINE sibling;
+  REASONING/RESPOND/tool IBs at =***= depth each have their own
+  =***= TERMINE sibling.  Each TERMINE is OUTSIDE its IB's
+  narrowing.
+- There is ONE TERMINE per IB (not one per task) — the universal
+  isolation pattern.  =gptel-org-ib-resolve-or-seed-terminator=
+  with the IB's own level as TASK-LEVEL is the primitive.
+- When a new sibling heading needs to be created at any level, it
+  is inserted on the line BEFORE the corresponding sibling TERMINE
+  — so existing indirect buffers (narrowed to their subtrees) are
+  not affected.
+- =gptel-org-ib-resolve-or-seed-terminator= is the unified
+  primitive: scans forward from POS for the next heading at level
+  <= level-at-pos; if found, returns a marker to it; otherwise (if
+  TASK-LEVEL is given) seeds a new TERMINE at TASK-LEVEL.
+  Idempotent.
 - Streaming text is appended at =point-max= of the IB's narrowing
-  (which is before the sibling TERMINE in the base buffer).
+  (which is before the IB's sibling TERMINE in the base buffer).
+- This per-IB isolation is what makes multi-IB lifecycles
+  (REASONING closing before RESPOND opens) robust against
+  end-marker pollution, even with
+  =gptel-org-debug-preserve-state= non-nil.
 
 ** Indirect Buffer Lifecycle
 
@@ -419,9 +446,18 @@ gptel-org-ib-safe-insert-sibling (high-level agent-layer convenience)
     ├─ narrow-to-region [heading-start, end-marker]
     └─ gptel-org-ib-register (construct node, add to registry,
                               splice into parent's children list)
-  → TERMINE is a sibling outside the IB's narrowing; IB factory
-    does NOT seed it.  resolve-or-seed-terminator handles TERMINE
-    lifecycle at the task level.
+  → TERMINE is a sibling outside the IB's narrowing.  The IB
+    factory `gptel-org-ib-create' itself does NOT seed TERMINE;
+    callers wrap it:
+    - AGENT IBs: `gptel-org-ib-insert-child' seeds TERMINE at
+      1+ parent level before calling `gptel-org-ib-create'.
+    - REASONING / RESPOND / TOOL IBs:
+      `gptel-org--ib-create-with-terminator' (gptel-org.el) seeds
+      TERMINE at the IB's own level before calling
+      `gptel-org-ib-create'.
+    Both paths use `gptel-org-ib-resolve-or-seed-terminator', so
+    seeding is idempotent and re-uses an existing same-or-
+    shallower terminator below the heading position.
 
 ...task runs, LLM streams into indirect buffer...
 
