@@ -1092,6 +1092,10 @@ Returns a marker to the newly created heading."
        todo-keyword title child-level (line-number-at-pos marker) terminator-keyword)
       marker)))
 
+(make-obsolete 'gptel-org-ib-create-heading
+               "use `gptel-org-ib-create-task' instead"
+               "0.11.0")
+
 
 ;;; ---- Buffer Name Generator ------------------------------------------------
 
@@ -1161,17 +1165,29 @@ Returns the first tag matching the `*@agent' pattern, or the string
         (or (cl-find-if #'gptel-org-agent--agent-tag-p tags)
             "agent")))))
 
-(defun gptel-org-ib-create (base-buffer heading-pos &optional name)
+(defun gptel-org-ib-create (base-buffer heading-pos &optional name end-bound)
   "Create an indirect buffer narrowed to the subtree at HEADING-POS.
 
 BASE-BUFFER is the org buffer.  HEADING-POS is a position or marker
 pointing to the heading.  NAME overrides the auto-generated buffer
 name.
 
+END-BOUND is an optional explicit upper narrowing bound (marker or
+position in BASE-BUFFER's root).  When supplied, the IB is narrowed
+to (HEADING-BOL . END-BOUND) instead of the auto-computed subtree
+region.  This is used by `gptel-org-ib-create-task' to set the
+narrowing one position before the terminator's BOL, avoiding
+expansion via the C-level `zv_marker' insertion-type=1 when the
+next sibling's `\\n' is inserted at the terminator boundary.
+
+When END-BOUND is nil (legacy behavior), the subtree region is
+computed via `gptel-org-ib--compute-subtree-region'.
+
 This is the central entry point for creating task-isolated indirect
 buffers.  It:
   1. Resolves HEADING-POS to a position (handles markers).
-  2. Computes the subtree region in BASE-BUFFER.
+  2. Computes the subtree region in BASE-BUFFER (unless END-BOUND
+     is supplied, in which case it is used directly).
   3. Creates an end-marker with insertion-type t for auto-expansion.
   4. Creates an indirect buffer with clone=t.
   5. Decouples org-fold state from the base buffer.
@@ -1206,10 +1222,17 @@ Returns the indirect buffer."
                        (gptel-org-ib-compute-name
                         root-buf pos resolved-tag)))
          ;; Compute subtree region (TERMINE already seeded, so
-         ;; org-end-of-subtree stops at the TERMINE line)
-         (region (gptel-org-ib--compute-subtree-region root-buf pos))
-         (beg (car region))
-         (end (cdr region))
+         ;; org-end-of-subtree stops at the TERMINE line).
+         ;; When END-BOUND is supplied, skip the auto-computation and
+         ;; use the explicit bound — this lets the canonical
+         ;; IB-creation function pin narrowing one position before
+         ;; the terminator's BOL.
+         (region (unless end-bound
+                   (gptel-org-ib--compute-subtree-region root-buf pos)))
+         (beg (if region (car region) pos))
+         (end (if end-bound
+                  (if (markerp end-bound) (marker-position end-bound) end-bound)
+                (cdr region)))
          ;; Create end-marker with insertion-type t so narrowing expands
          ;; as text is inserted at the boundary
          (end-marker (with-current-buffer root-buf
@@ -1669,6 +1692,255 @@ is nil)."
       (list :heading-marker heading-marker
             :indirect-buffer indirect-buf))))
 
+
+;;; ---- Canonical IB Creation -----------------------------------------------
+
+(cl-defun gptel-org-ib-create-task (parent todo-keyword title
+                                    &key
+                                    tags
+                                    level
+                                    (terminator-keyword "TERMINE")
+                                    name
+                                    (create-indirect-buffer t))
+  "Canonical 5-step IB-creation entry point.
+
+PARENT identifies the insertion anchor; resolved to a base-buffer
+position internally:
+  - marker: a marker into any (base or indirect) buffer
+  - buffer: a registered gptel indirect buffer (parent is its heading)
+  - cons (BUF . POS): explicit base-buffer position pair
+
+TODO-KEYWORD is the org TODO keyword for the new heading (e.g.
+\"AI-DO\", \"REASONING\", \"RESPOND\", \"GATHER\"); may be nil for
+a heading without a keyword.
+
+TITLE is the heading text (may be empty string).
+
+Keyword arguments:
+  :tags                List of tag strings.  Applied via
+                       `org-set-tags'.
+  :level               Explicit level for the new heading.  When
+                       nil, defaults to parent-level + 1.
+                       Callers needing same-level insertion (e.g.
+                       REASONING heading at the same level as the
+                       containing AI-DOING) pass this explicitly.
+  :terminator-keyword  Terminator heading keyword.  Default
+                       \"TERMINE\".  When nil, no terminator
+                       seeding is performed and the function
+                       falls back to end-of-subtree insertion
+                       (legacy compatibility only).
+  :name                Optional override for the IB name.
+  :create-indirect-buffer  Default t.  Pass nil to insert only
+                       the heading without creating an IB.
+
+Returns a plist:
+  (:heading-marker M :terminator-marker T :indirect-buffer IB-or-nil)
+
+Implements the canonical 5-step algorithm:
+
+  1. Resolve PARENT to (ROOT-BUF . PARENT-POS) where ROOT-BUF
+     is the base buffer via `gptel-org-ib-base-buffer'.
+  2. Resolve/seed terminator at DESIRED-LEVEL (= :level or
+     parent-level+1) via
+     `gptel-org-ib-resolve-or-seed-terminator'.  Returns marker TERM.
+  3. Unconditionally insert `\\n' at BOL of TERM (the
+     isolation boundary that finalises the previous sibling's
+     region and gives the new heading a clean BOL).
+  4. Insert the new heading at the new BOL of TERM (the line
+     just opened by step 3), then apply TAGS via `org-set-tags'.
+  5. Create the indirect buffer narrowed to (HEADING-BOL .
+     (1- TERM-BOL)).  The 1- is REQUIRED: the C-level
+     `zv_marker' of any clone=t IB has insertion-type=1 and
+     would advance over inserts AT its position.  Narrowing
+     one position before TERM-BOL ensures inserts at TERM-BOL
+     (next sibling's \\n) do not expand this IB's narrowing.
+
+When CREATE-INDIRECT-BUFFER is nil, only steps 1-4 are
+performed; the IB is not created and `:indirect-buffer' is nil
+in the result.
+
+When TERMINATOR-KEYWORD is nil, step 2 is skipped: the
+function falls back to inserting the heading at
+`org-end-of-subtree' (legacy behavior).  This path exists
+only for backward compatibility during migration; new callers
+must rely on the default \"TERMINE\" terminator."
+  ;; --- Step 1: resolve PARENT -------------------------------------------
+  (let (parent-context-buffer parent-marker explicit-cons-pos)
+    (cond
+     ((markerp parent)
+      (unless (and (marker-buffer parent) (marker-position parent))
+        (gptel-org-ib-fatal
+         "create-task: parent marker has no live buffer/position"))
+      (setq parent-context-buffer (marker-buffer parent)
+            parent-marker parent))
+     ((bufferp parent)
+      (unless (buffer-live-p parent)
+        (gptel-org-ib-fatal
+         "create-task: parent buffer %S is not live" parent))
+      (let* ((info (gptel-org-ib-get (buffer-name parent))))
+        (unless info
+          (gptel-org-ib-fatal
+           "create-task: buffer %S is not a registered gptel IB"
+           (buffer-name parent)))
+        (let ((hm (plist-get info :heading-marker)))
+          (unless (and (markerp hm) (marker-position hm))
+            (gptel-org-ib-fatal
+             "create-task: IB %S has no live :heading-marker"
+             (buffer-name parent)))
+          (setq parent-context-buffer parent
+                parent-marker hm))))
+     ((consp parent)
+      (let ((buf (car parent))
+            (pos (cdr parent)))
+        (unless (and (bufferp buf) (buffer-live-p buf))
+          (gptel-org-ib-fatal
+           "create-task: cons PARENT car %S is not a live buffer" buf))
+        (unless (integerp pos)
+          (gptel-org-ib-fatal
+           "create-task: cons PARENT cdr %S is not an integer position" pos))
+        (setq parent-context-buffer buf
+              explicit-cons-pos pos)))
+     (t
+      (gptel-org-ib-fatal
+       "create-task: unsupported PARENT %S (must be a marker, registered IB buffer, or (BUF . POS) cons)"
+       parent)))
+    ;; --- Step 1 (cont.): resolve to base buffer + parent-pos ------------
+    (let* ((root-buf (gptel-org-ib-base-buffer parent-context-buffer))
+           (parent-pos
+            (or explicit-cons-pos
+                (cond
+                 ;; Marker into base buffer directly
+                 ((and parent-marker
+                       (eq (marker-buffer parent-marker) root-buf))
+                  (marker-position parent-marker))
+                 ;; Marker into an indirect buffer, or IB heading marker
+                 ;; recorded in registry — already in base buffer.
+                 ((and parent-marker
+                       (eq (marker-buffer parent-marker)
+                           (or (buffer-base-buffer
+                                (marker-buffer parent-marker))
+                               root-buf)))
+                  (marker-position parent-marker))
+                 (parent-marker (marker-position parent-marker))
+                 (t (gptel-org-ib-fatal
+                     "create-task: unable to resolve parent position")))))
+           parent-level
+           desired-level)
+      ;; Validate parent-pos in root-buf is at a heading; capture level.
+      (with-current-buffer root-buf
+        (save-excursion
+          (save-restriction
+            (widen)
+            (goto-char parent-pos)
+            (unless (org-at-heading-p)
+              (gptel-org-ib-fatal
+               "create-task: parent-pos %d not at heading in base buffer %s"
+               parent-pos (buffer-name root-buf)))
+            (setq parent-level (org-current-level)))))
+      (setq desired-level (or level (1+ parent-level)))
+      (gptel-org--debug
+       "org-ib create-task: parent-pos=%d parent-level=%d desired-level=%d todo=%S title=%S"
+       parent-pos parent-level desired-level todo-keyword title)
+      (let (term-marker heading-marker indirect-buf)
+        ;; --- Step 2: resolve or seed terminator ---------------------------
+        (cond
+         ((null terminator-keyword)
+          ;; Legacy path: no terminator; insert at end of parent subtree.
+          (setq term-marker nil))
+         ((string= terminator-keyword "TERMINE")
+          (setq term-marker
+                (gptel-org-ib-resolve-or-seed-terminator
+                 root-buf parent-pos desired-level)))
+         (t
+          ;; Non-TERMINE terminator: fall back to legacy ensure-terminator,
+          ;; operating in the base buffer at the parent heading.
+          (with-current-buffer root-buf
+            (save-excursion
+              (save-restriction
+                (widen)
+                (goto-char parent-pos)
+                (setq term-marker
+                      (gptel-org-ib-ensure-terminator
+                       terminator-keyword)))))))
+        ;; --- Steps 3 & 4: line-feed at TERM BOL, then insert heading ----
+        (cond
+         (term-marker
+          (with-current-buffer root-buf
+            (save-excursion
+              (save-restriction
+                (widen)
+                (let ((inhibit-read-only t))
+                  ;; Set term-marker insertion-type to t so it advances
+                  ;; past the inserted \n and ends up at the new BOL of
+                  ;; TERMINE after step 3.
+                  (set-marker-insertion-type term-marker t)
+                  ;; Step 3: unconditional \n at BOL of TERM.  Idempotency
+                  ;; is the resolver's job; the LF is unconditional.
+                  (goto-char (marker-position term-marker))
+                  (insert "\n")
+                  (gptel-org--debug
+                   "org-ib create-task: step3 inserted \\n; term now at %d (line %d)"
+                   (marker-position term-marker)
+                   (line-number-at-pos (marker-position term-marker)))
+                  ;; Step 4: insert new heading at the new TERMINE BOL.
+                  (goto-char (marker-position term-marker))
+                  (let* ((stars (make-string desired-level ?*))
+                         (heading-text
+                          (if todo-keyword
+                              (format "%s %s %s" stars todo-keyword title)
+                            (format "%s %s" stars title))))
+                    (insert heading-text "\n")
+                    ;; Move back to the heading line.
+                    (forward-line -1)
+                    (beginning-of-line)
+                    (when tags
+                      (org-set-tags tags))
+                    (setq heading-marker (point-marker))))))))
+         (t
+          ;; Legacy fallback path: no terminator.  Insert at end of
+          ;; parent subtree.
+          (with-current-buffer root-buf
+            (save-excursion
+              (save-restriction
+                (widen)
+                (let ((inhibit-read-only t))
+                  (goto-char parent-pos)
+                  (org-end-of-subtree t)
+                  (gptel-org-ib-ensure-bol)
+                  (let* ((stars (make-string desired-level ?*))
+                         (heading-text
+                          (if todo-keyword
+                              (format "%s %s %s" stars todo-keyword title)
+                            (format "%s %s" stars title)))
+                         (start (point)))
+                    (insert heading-text "\n")
+                    (goto-char start)
+                    (when tags
+                      (org-set-tags tags))
+                    (setq heading-marker (point-marker)))))))))
+        ;; --- Step 5: create IB narrowed to (heading-bol . (1- term-bol)) -
+        (when create-indirect-buffer
+          (let ((end-bound
+                 (when term-marker
+                   ;; 1- TERM-BOL: avoid expansion via clone=t zv_marker
+                   ;; (insertion-type=1) when next sibling's \n is
+                   ;; inserted at TERM-BOL.
+                   (1- (marker-position term-marker)))))
+            (with-current-buffer parent-context-buffer
+              (save-excursion
+                (setq indirect-buf
+                      (gptel-org-ib-create parent-context-buffer
+                                           heading-marker
+                                           name
+                                           end-bound))))
+            (gptel-org--debug
+             "org-ib create-task: step5 created IB %S heading-marker=%d end-bound=%S"
+             (and indirect-buf (buffer-name indirect-buf))
+             (marker-position heading-marker)
+             end-bound)))
+        (list :heading-marker heading-marker
+              :terminator-marker term-marker
+              :indirect-buffer indirect-buf)))))
 
 
 ;;; ---- Debug Support -------------------------------------------------------
