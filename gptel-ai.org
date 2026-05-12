@@ -4665,7 +4665,7 @@ Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canoni
   - Site 4a (keyword-mode FEEDBACK seed, gptel-org-agent.el:1419) — blocked on extending =gptel-org-ib-resolve-or-seed-terminator= to accept a =:terminator-keyword= argument.
   - Sites 9/10/11 — inlined but not fully migrated to =create-task= with explicit =:level=; full migration requires refactoring =gptel.el= streaming callers to stop pre-inserting headings.
 
-***** AI-DOING Remove dead helpers and update reference docs
+***** AI-DONE Remove dead helpers and update reference docs
 - After migration, confirm via Grep that no caller invokes the obsoleted helpers. Remove dead helper bodies.
 - Update [[file:gptel-indirect-buffer-ai.org]]:
   - Universal pattern section: state the canonical function is the SOLE entry point.
@@ -4673,6 +4673,31 @@ Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canoni
   - Step-by-step CSTR example: replace with a single call to the canonical function.
 - Delegate doc update to =implementer=.
 - Commit: =docs(ib): document canonical IB-creation function as sole entry point=
+
+****** Outcomes
+- *Dead-helper audit*: Grepped =gptel-org-ib-{create-heading,ensure-terminator,ensure-sibling-terminator,create-terminator,resolve-or-seed-terminator}= across all =.el= files in =quelpa/build/gptel/= (production + test).  Results:
+
+  | Helper                                  | Production callers                                                      | Test callers                           | Decision                  |
+  |-----------------------------------------+-------------------------------------------------------------------------+----------------------------------------+---------------------------|
+  | =gptel-org-ib-create-heading=           | None                                                                    | =test/gptel-org-ib-test.el= (4 refs); =test/gptel-org-agent-test.el= (1 doc comment) | KEEP obsolete (test-only) |
+  | =gptel-org-ib-ensure-terminator=        | =gptel-indirect-buffer.el:1779= (non-TERMINE fallback inside =create-task=) | =test/gptel-org-ib-test.el= (3 refs)   | KEEP — still in production |
+  | =gptel-org-ib-ensure-sibling-terminator= | =gptel-org-agent.el:1419= (keyword-mode FEEDBACK seed)                  | =test/gptel-org-ib-test.el= (4 refs)   | KEEP — still in production |
+  | =gptel-org-ib-create-terminator=        | =gptel-indirect-buffer.el:900= (internal to =ensure-terminator=)        | =test/gptel-org-ib-test.el= (1 ref)    | KEEP — used transitively  |
+  | =gptel-org-ib-resolve-or-seed-terminator= | =gptel-indirect-buffer.el:755,1768=; =gptel-org-agent.el:943,1726,2122=; =gptel-org.el:2558,2674,2783= | =test/gptel-org-ib-test.el= (multiple direct tests) | KEEP public (follow-up task =Extend gptel-org-ib-resolve-or-seed-terminator to accept :terminator-keyword= will handle eventual rename) |
+
+  *Net result: zero helper bodies deleted in this sub-task.*  Every helper still has at least one live caller (production or test), so none qualified for deletion per the parent-task policy.  No =refactor(org-ib): remove dead helper …= commit was produced.
+
+- *Doc update* (commit =afa12dc=, =docs(ib): document canonical IB-creation function as sole entry point=) — three sections of [[file:gptel-indirect-buffer-ai.org]] rewritten:
+  1. *Universal pattern: IB + auto-correct + state triad + shared task TERMINE* (item 4) — removed reference to the deleted =gptel-org--ib-create-with-terminator=.  Added explicit statement that =gptel-org-ib-create-task= is the sole entry point and that =insert-child= is a thin compatibility wrapper.
+  2. *Functions Reference* — collapsed "Terminator Heading Management" and "Safe Heading Creation" subsections into a single *Canonical IB Creation* subsection that documents =create-task='s cl-defun signature, the 5-step algorithm, the return-value plist (=:heading-marker= / =:terminator-marker= / =:indirect-buffer=), and the rationale for the =(1- TERM-BOL)= narrowing bound (defeats clone=t zv_marker insertion-type=1).  Obsolete helpers retained as a "Supporting primitives" subtable for migration guidance, with each row labelled =Obsolete (0.10.0)= or =(0.11.0)= and pointing to the canonical replacement.
+  3. *Usage Examples → Step-by-step CSTR* — replaced the multi-step =resolve-or-seed-terminator= + =create-heading= + =ib-create= example with a single =gptel-org-ib-create-task= call and an inline comment block describing what each of the 5 internal steps does.
+
+- *Test result*: =cd quelpa/build/gptel/test && make test 2>&1 | tail -30= → =Ran 501 tests, 498 results as expected, 0 unexpected, 3 skipped= (baseline preserved, no regression).  No =verifier= delegation was needed.
+
+- *Commits in this sub-task*:
+  - =afa12dc= docs(ib): document canonical IB-creation function as sole entry point
+
+- *Follow-ups discovered*: none new.  Tests still referencing the obsolete helpers (=test/gptel-org-ib-test.el=) are intentionally retained — they exercise the obsolete-but-still-live code paths as a safety net during the transition.  A future task may delete those tests once the obsolete helpers themselves are removed (which requires first completing the queued sibling task =Extend gptel-org-ib-resolve-or-seed-terminator to accept :terminator-keyword=).  No new AI-DO entries needed under the parent canonical-unify task.
 
 ***** AI-DO Add ERT tests for the canonical function and isolation invariant
 - Add ERT tests under =quelpa/build/gptel/test/= covering each edge case enumerated in the introspect-verify sub-task.
