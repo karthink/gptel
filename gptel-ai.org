@@ -4699,7 +4699,7 @@ Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canoni
 
 - *Follow-ups discovered*: none new.  Tests still referencing the obsolete helpers (=test/gptel-org-ib-test.el=) are intentionally retained — they exercise the obsolete-but-still-live code paths as a safety net during the transition.  A future task may delete those tests once the obsolete helpers themselves are removed (which requires first completing the queued sibling task =Extend gptel-org-ib-resolve-or-seed-terminator to accept :terminator-keyword=).  No new AI-DO entries needed under the parent canonical-unify task.
 
-***** AI-DO Add ERT tests for the canonical function and isolation invariant
+***** AI-DOING Add ERT tests for the canonical function and isolation invariant
 - Add ERT tests under =quelpa/build/gptel/test/= covering each edge case enumerated in the introspect-verify sub-task.
 - Critical assertion: after the canonical call, the previous sibling IB's =point-max= must be strictly less than the new heading's BOL — i.e. the line-feed at terminator BOL successfully isolated the regions.
 - These tests are complementary to (not a replacement for) the multi-IB-isolation concurrent-task tests in the sibling AI-DO task ([[*Add multi-IB-isolation concurrent-task tests proving per-IB TERMINE prevents interference][here]]).
