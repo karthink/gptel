@@ -4641,7 +4641,7 @@ Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canoni
 - Byte-compile: 3 warnings, all about deliberate transitional calls to =gptel-org-ib-ensure-terminator= (the non-TERMINE legacy path in both =insert-child= and =create-task=).  These match the existing pattern and will go away with the migration / dead-helper-removal sub-tasks.
 - Commit: =1e20a28= =refactor(org-ib): introduce canonical IB-creation function (unified algorithm)=.
 
-***** AI-DO Migrate every IB-creation call site to the canonical function
+***** AI-DOING Migrate every IB-creation call site to the canonical function
 - Migrate call sites in =gptel-org.el= (REASONING IB, RESPOND IB, TOOL IB) and =gptel-org-agent.el= (agent/sub-agent IB).
 - Replace any remaining =gptel-org-ib-create-heading= / =gptel-org-ib-create= direct invocation pairs with the single canonical call.
 - After each call site is migrated, run the test suite (=cd quelpa/build/gptel/test && make test 2>&1 | tail -30=) and commit atomically.
