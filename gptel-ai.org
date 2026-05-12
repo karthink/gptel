@@ -4626,7 +4626,7 @@ Tests under =test/= will need parallel updates but are out of scope for the impl
 
 Current =insert-child= returns =(:heading-marker M :indirect-buffer IB)=. Canonical returns =(:heading-marker M :terminator-marker T :indirect-buffer IB)= — adds =:terminator-marker= so callers needing to insert further siblings (PENDING tool calls, sub-agents) can pass it forward without re-resolving. The defalias for =insert-child= keeps the same plist shape; new key is additive and backward-compatible.
 
-***** AI-DO Implement the canonical function and unconditional terminator line-feed
+***** AI-DOING Implement the canonical function and unconditional terminator line-feed
 - Implement the canonical function in =gptel-indirect-buffer.el= following the 5-step algorithm exactly.
 - The line-feed at BOL of terminator is *unconditional* — emit it even if a blank line appears to already be present. Idempotency is the resolver's job, not the line-feed step's job; the existing line-feed will simply add a harmless extra blank line. (Verify in introspect step that this is acceptable.)
 - The terminator-detection step must run in the base buffer and must accept a "desired heading level" argument so the new heading is correctly leveled regardless of point depth.
