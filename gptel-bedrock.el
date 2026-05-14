@@ -721,12 +721,30 @@ export-credentials.  BEARER-TOKEN is the token used for authentication."
                        (match-string 1 output))))
     version))
 
+(defun gptel-bedrock--base-url (protocol host endpoint)
+  "Return Bedrock base URL from PROTOCOL, HOST and ENDPOINT.
+
+HOST is usually a bare host name, but may include a scheme and path
+for proxies.  ENDPOINT is an optional path prefix prepended before
+Bedrock's /model/... runtime route."
+  (let* ((host (replace-regexp-in-string "/+\\'" "" host))
+         (endpoint (replace-regexp-in-string
+                    "\\`/+" "" (or endpoint "")))
+         (base (cond
+                ((string-match-p "\\`https?://" host) host)
+                (protocol (concat protocol "://" host))
+                (t host))))
+    (if (string-empty-p endpoint)
+        base
+      (concat base "/" (replace-regexp-in-string "/+\\'" "" endpoint)))))
+
 ;;;###autoload
 (cl-defun gptel-make-bedrock
     (name &key
           region
+          host endpoint
           (models gptel--bedrock-models)
-	  (model-region nil)
+          (model-region nil)
           stream curl-args request-params
           aws-profile aws-bearer-token
           (protocol "https"))
@@ -735,6 +753,10 @@ export-credentials.  BEARER-TOKEN is the token used for authentication."
 Keyword arguments:
 
 REGION - AWS region name (e.g. \"us-east-1\")
+HOST - API host, defaults to bedrock-runtime.REGION.amazonaws.com.
+  This may include a scheme and path when using a proxy.
+ENDPOINT - optional path prefix prepended before Bedrock's /model/...
+  runtime route.
 MODELS - The list of models supported by this backend
 MODEL-REGION - one of apac, eu, us or nil
 AWS-PROFILE - the aws profile to use for aws configure export-credentials
@@ -746,9 +768,11 @@ parameters (as plist keys) and values supported by the API."
   (declare (indent 1))
   (unless (or aws-bearer-token (getenv "AWS_BEARER_TOKEN_BEDROCK"))
     (unless (and gptel-use-curl (version<= "8.9" (gptel-bedrock--curl-version)))
-      (error "Bedrock-backend requires curl >= 8.9, but gptel-use-curl := %s, curl-version := %s"
-             gptel-use-curl (gptel-bedrock--curl-version))))
-  (let ((host (format "bedrock-runtime.%s.amazonaws.com" region)))
+      (error (concat "Bedrock-backend requires curl >= 8.9, "
+                     "but gptel-use-curl := %s, curl-version := %s")
+             gptel-use-curl
+             (gptel-bedrock--curl-version))))
+  (let ((host (or host (format "bedrock-runtime.%s.amazonaws.com" region))))
     (setf (alist-get name gptel--known-backends nil nil #'equal)
           (gptel--make-bedrock
            :name name
@@ -757,16 +781,31 @@ parameters (as plist keys) and values supported by the API."
            :models (gptel--process-models models)
            :model-region model-region
            :protocol protocol
-           :endpoint "" ; Url is dynamically constructed based on other args
+           :endpoint (or endpoint "")
            :stream stream
            :coding-system (and stream 'binary)
-           :curl-args (lambda () (append curl-args (gptel-bedrock--curl-args region aws-profile aws-bearer-token)))
+           :curl-args
+           (lambda ()
+             (append curl-args
+                     (gptel-bedrock--curl-args
+                      region aws-profile aws-bearer-token)))
            :request-params request-params
            :url
-           (lambda (_info)
-             (concat protocol "://" host
-                     "/model/" (gptel-bedrock--get-model-id gptel-model model-region)
-                     "/" (if stream "converse-stream" "converse")))))))
+           (lambda (info)
+             (let* ((backend (plist-get info :backend))
+                    (protocol
+                     (if backend (gptel-backend-protocol backend) protocol))
+                    (host (if backend (gptel-backend-host backend) host))
+                    (endpoint
+                     (if backend (gptel-backend-endpoint backend) endpoint))
+                    (model-region (if (gptel-bedrock-p backend)
+                                      (gptel-bedrock-model-region backend)
+                                    model-region))
+                    (stream (if backend (gptel-backend-stream backend) stream)))
+               (concat (gptel-bedrock--base-url protocol host endpoint)
+                       "/model/"
+                       (gptel-bedrock--get-model-id gptel-model model-region)
+                       "/" (if stream "converse-stream" "converse"))))))))
 
 (provide 'gptel-bedrock)
 ;;; gptel-bedrock.el ends here
