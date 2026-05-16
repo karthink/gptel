@@ -452,17 +452,30 @@ the final contents of buffer B (the edited LLM response)."
               ((buffer-live-p ov-buf)))
     (letrec ((newbuf (gptel--rewrite-prepare-buffer ovs))
              (cwc (current-window-configuration))
+             (response-bounds
+              (cl-loop
+               for ov in ovs
+               collect (let ((start (make-marker))
+                             (end (make-marker)))
+                         (set-marker start (overlay-start ov) newbuf)
+                         (set-marker end (+ (overlay-start ov)
+                                            (length (overlay-get ov 'gptel-rewrite)))
+                                     newbuf)
+                         (set-marker-insertion-type end t)
+                         (cons start end))))
              (hideshow
               (lambda (&optional restore)
-                (dolist (ov ovs)
-                  (when-let* ((overlay-buffer ov))
-                    (let ((response (and restore
-                                         (with-current-buffer newbuf
-                                           (buffer-string)))))
-                      (overlay-put ov 'face (and restore 'gptel-rewrite-highlight-face))
-                      (overlay-put ov 'display response)
-                      (when restore
-                        (overlay-put ov 'gptel-rewrite response)))))))
+                (cl-loop
+                 for ov in ovs
+                 for (start . end) in response-bounds
+                 do (when-let* ((overlay-buffer ov))
+                      (let ((response (and restore
+                                           (with-current-buffer newbuf
+                                             (buffer-substring start end)))))
+                        (overlay-put ov 'face (and restore 'gptel-rewrite-highlight-face))
+                        (overlay-put ov 'display response)
+                        (when restore
+                          (overlay-put ov 'gptel-rewrite response)))))))
              (gptel--ediff-restore
               (lambda ()
                 (when (window-configuration-p cwc)
