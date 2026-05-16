@@ -502,9 +502,7 @@ the final contents of buffer B (the edited LLM response)."
       (funcall hideshow)
       (add-hook 'ediff-quit-hook gptel--ediff-restore 50)
       (add-hook 'ediff-startup-hook gptel--ediff-setup)
-      (let ((ediff-window-setup-function #'ediff-setup-windows-plain)
-            (ediff-split-window-function #'split-window-horizontally))
-        (ediff-buffers ov-buf newbuf)))))
+      (ediff-buffers ov-buf newbuf))))
 
 (defun gptel--rewrite-merge-git (beg end new-str)
   "Produce a merge conflict region between BEG and END.
