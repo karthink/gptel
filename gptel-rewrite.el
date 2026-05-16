@@ -423,8 +423,8 @@ SWITCHES are diff arguments."
         (setq-local diff-jump-to-old-file t))
       (display-buffer diff-buf))))
 
-(defcustom gptel-rewrite-ediff-extra-bindings '(("C-c C-a". accept-a)
-                                                ("C-c C-b". accept-b))
+(defcustom gptel-rewrite-ediff-extra-bindings '(("C-c C-a" . accept-a)
+                                                ("C-c C-b" . accept-b))
   "An alist of extra bindings to use in gptel ediff buffers.
 
 The symbols `accept-a' and `accept-b' are special and mean to
