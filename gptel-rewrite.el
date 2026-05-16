@@ -456,8 +456,7 @@ the final contents of buffer B (the edited LLM response)."
               (lambda (&optional restore)
                 (dolist (ov ovs)
                   (when-let* ((overlay-buffer ov))
-                    (let ((disp (overlay-get ov 'display))
-                          (response (and restore
+                    (let ((response (and restore
                                          (with-current-buffer newbuf
                                            (buffer-string)))))
                       (overlay-put ov 'face (and restore 'gptel-rewrite-highlight-face))
