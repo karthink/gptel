@@ -2910,10 +2910,11 @@ PROCESS and _STATUS are process parameters."
     (kill-buffer proc-buf)))
 
 (defun gptel-curl--stream-filter (process output)
-  (let* ((fsm (car (alist-get process gptel--request-alist)))
-         (proc-info (gptel-fsm-info fsm))
-         (callback (or (plist-get proc-info :callback)
-                       #'gptel-curl--stream-insert-response)))
+  ;; fsm can be nil if `gptel--request-alist' has already been cleaned up.
+  (when-let* ((fsm (car (alist-get process gptel--request-alist)))
+              (proc-info (gptel-fsm-info fsm))
+              (callback (or (plist-get proc-info :callback)
+                            #'gptel-curl--stream-insert-response)))
     (when (buffer-live-p (marker-buffer (plist-get proc-info :position)))
       (with-current-buffer (process-buffer process)
         ;; Insert output
