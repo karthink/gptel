@@ -1917,6 +1917,9 @@ INTERACTIVEP is t when gptel is called interactively."
                                     (region-end)))
              t))))
   (with-current-buffer (get-buffer-create name)
+    ;; Automatically abort gptel buffers before killing them in order to prevent
+    ;; errors.
+    (add-hook 'kill-buffer-hook (lambda () (gptel-abort (current-buffer))) nil t)
     (cond                               ;Set major mode
      ((eq major-mode gptel-default-mode))
      ((eq gptel-default-mode 'text-mode)
