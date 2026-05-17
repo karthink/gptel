@@ -10,9 +10,14 @@
   removed from the default list of OpenAI models.  These models are
   either deprecated or no longer available.
 
+- The minimum required version of the =transient= package is now 0.7.8.
+
 ** New models and backends
 
 - Bedrock backend: Add support for =claude-opus-4-7=.
+
+- Gemini backend: Add support for =gemini-3.1-flash-lite= and deprecate
+  the preview version.
 
 ** New features and UI changes
 
@@ -31,6 +36,12 @@
   name.
 
 ** Notable bug fixes
+
+- Improved error messages: Curl request failures now include more
+  diagnostic information.
+
+- Fix bounds issues when using the gptel transient menu with =evil-mode=
+  visual selections.
 
 * 0.9.9.5 2026-05-03
 
