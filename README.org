@@ -65,10 +65,11 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
     - [[#doom-emacs][Doom Emacs]]
     - [[#spacemacs][Spacemacs]]
   - [[#setup][Setup]]
-    - [[#chatgpt][ChatGPT]]
+    - [[#openai][OpenAI]]
     - [[#other-llm-backends][Other LLM backends]]
       - [[#optional-securing-api-keys-with-authinfo][(Optional) Securing API keys with =authinfo=]]
       - [[#optional-reading-api-keys-from-environment-variables][(Optional) Reading API keys from environment variables]]
+      - [[#openai-chatgpt-pluspro-subscription][OpenAI (ChatGPT plus/pro subscription)]]
       - [[#azure][Azure]]
       - [[#gpt4all][GPT4All]]
       - [[#ollama][Ollama]]
@@ -200,7 +201,8 @@ gptel supports a number of LLM providers:
 #+html: <div align="center">
 | LLM Backend          | Requires                   |
 |----------------------+----------------------------|
-| ChatGPT              | [[https://platform.openai.com/account/api-keys][API key]]                    |
+| OpenAI               | [[https://platform.openai.com/account/api-keys][API key]]                    |
+| OpenAI subscription  | ChatGPT plus/pro sub       |
 | Anthropic (Claude)   | [[https://www.anthropic.com/api][API key]]                    |
 | Gemini               | [[https://makersuite.google.com/app/apikey][API key]]                    |
 | Ollama               | [[https://ollama.ai/][Ollama running locally]]     |
@@ -230,7 +232,7 @@ gptel supports a number of LLM providers:
 | Moonshot (Kimi)      | API key ([[https://platform.moonshot.cn/console][CN]] or [[https://platform.moonshot.ai/console][Global]])     |
 #+html: </div>
 
-*** ChatGPT
+*** OpenAI
 Procure an [[https://platform.openai.com/account/api-keys][OpenAI API key]].
 
 Optional: Set =gptel-api-key= to the key. Alternatively, you may choose a more secure method such as:
@@ -240,7 +242,7 @@ Optional: Set =gptel-api-key= to the key. Alternatively, you may choose a more s
 
 *** Other LLM backends
 
-ChatGPT is configured out of the box.  If you want to use other LLM backends (like Ollama, Claude/Anthropic or Gemini) you need to register and configure them first.
+An OpenAI backend is configured out of the box.  If you want to use other LLM backends (like Ollama, Claude/Anthropic or Gemini) you need to register and configure them first.
 
 As an example, registering a backend typically looks like the following:
 
@@ -299,6 +301,40 @@ If no environment variable is provided:
 
 it will try to guess the key from the backend type, /i.e./ try to use
 =GEMINI_API_KEY= when using the Gemini backend, and so on.
+
+#+html: </details>
+#+html: <details><summary>
+**** OpenAI (ChatGPT plus/pro subscription)
+#+html: </summary>
+
+Includes access to OpenAI Codex models. Register a backend with
+
+#+begin_src emacs-lisp
+(gptel-make-openai-oauth "OpenAI-sub") ;Any name of your choosing
+#+end_src
+
+You will be prompted to log into OpenAI as required.  (You can also log in manually with =M-x gptel-openai-oauth-login=.)
+
+If you are using it through a proxy, you can specify the host name, protocol etc:
+
+#+begin_src emacs-lisp
+(gptel-make-openai-oauth "OpenAI-sub"
+  :host "my.openai-proxy.tld"
+  :protocol "http")
+#+end_src
+
+Refer to the documentation of =gptel-make-openai-oauth= to set more parameters.
+
+You can pick this backend from the menu when using gptel. (see [[#usage][Usage]]).
+
+***** (Optional) Set as the default gptel backend
+
+The above makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above:
+
+#+begin_src emacs-lisp
+(setq gptel-model 'gpt-5.4-mini
+      gptel-backend (gptel-make-openai-oauth "OpenAI-sub"))
+#+end_src
 
 #+html: </details>
 #+html: <details><summary>
@@ -1136,7 +1172,8 @@ You can do this as follows:
 (gptel-make-gh-copilot "Copilot" :host "api.business.githubcopilot.com")
 #+end_src
 
-You will be informed to login into =GitHub= as required.
+You will be informed to login into =GitHub= as required.  (You can also log in manually with =M-x gptel-gh-login=.)
+
 You can pick this backend from the menu when using gptel (see [[#usage][Usage]]).
 
 ***** (Optional) Set as the default gptel backend

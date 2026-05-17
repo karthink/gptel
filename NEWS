@@ -16,6 +16,11 @@
 
 ** New features and UI changes
 
+- OpenAI subscription support: gptel now supports authentication with
+  OpenAI ChatGPT Plus/Pro accounts.  This allows using the ChatGPT Codex
+  endpoint without an API key.  See =gptel-make-openai-oauth= and the
+  README for details.
+
 - When running ~gptel-rewrite~, reasoning text was previously always
   completely omitted from the response.  This was required to avoid
   mixing with the final, rewritten text, but it meant there was no way
