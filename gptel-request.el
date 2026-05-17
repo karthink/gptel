@@ -2865,7 +2865,7 @@ PROCESS and _STATUS are process parameters."
            (info (gptel-fsm-info fsm))
            (http-status (plist-get info :http-status)))
       (when gptel-log-level (gptel-curl--log-response proc-buf info)) ;logging
-      (when (buffer-live-p (marker-buffer (plist-get info :position)))
+      (when (buffer-live-p (plist-get info :buffer))
         (cond
          ;; Curl exited with a non-zero status: connection-level failure
          ((not (zerop exit-status))
@@ -2915,7 +2915,7 @@ PROCESS and _STATUS are process parameters."
               (proc-info (gptel-fsm-info fsm))
               (callback (or (plist-get proc-info :callback)
                             #'gptel-curl--stream-insert-response)))
-    (when (buffer-live-p (marker-buffer (plist-get proc-info :position)))
+    (when (buffer-live-p (plist-get proc-info :buffer))
       (with-current-buffer (process-buffer process)
         ;; Insert output
         (save-excursion
@@ -3022,7 +3022,7 @@ PROCESS and _STATUS are process parameters."
                 (proc-info (gptel-fsm-info fsm))
                 (proc-callback (plist-get proc-info :callback)))
       (when gptel-log-level (gptel-curl--log-response proc-buf proc-info)) ;logging
-      (when (buffer-live-p (marker-buffer (plist-get info :position)))
+      (when (buffer-live-p (plist-get proc-info :buffer))
         (let ((exit-status (process-exit-status process)))
           (if (zerop exit-status)
               (pcase-let ((`(,response ,http-status ,http-msg ,error)
