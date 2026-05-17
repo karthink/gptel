@@ -15,6 +15,16 @@
 - Bedrock backend: Add support for =claude-opus-4-7=.
 
 ** New features and UI changes
+
+- When running ~gptel-rewrite~, reasoning text was previously always
+  completely omitted from the response.  This was required to avoid
+  mixing with the final, rewritten text, but it meant there was no way
+  to examine the reasoning stream.
+
+  Now reasoning text is retained and redirected to another buffer if --
+  and only if -- ~gptel-include-reasoning~ is a string denoting a buffer
+  name.
+
 ** Notable bug fixes
 
 * 0.9.9.5 2026-05-03
