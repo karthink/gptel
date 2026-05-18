@@ -1214,10 +1214,7 @@ AWS has numerous credential provisions; we follow this order precedence,
 - (env. varible) ~AWS_PROFILE~
 - (env. varible) ~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~ and ~AWS_SESSION_TOKEN~
 
-NOTE: Unless ~AWS_BEARER_TOKEN_BEDROCK~ token is used, the Bedrock backend needs curl >= 8.9 in order for the sigv4 signing to work properly,
-https://github.com/curl/curl/issues/11794
-
-An error will be signalled if ~gptel-use-curl~ is ~NIL~.
+*NOTE:* The Bedrock backend requires ~gptel-use-curl~ to be set to ~t~.  When authenticating with an AWS profile or IAM credentials, =curl= computes a SigV4 signature and version 8.10 or newer is required (see [[https://github.com/curl/curl/issues/11794][curl issue #11794]]). Bearer token authentication does not have this requirement.
 
 You can pick this backend from the menu when using gptel (see [[#usage][Usage]]).
 
