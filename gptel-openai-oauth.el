@@ -28,10 +28,14 @@
 (defconst gptel--openai-oauth-client-id "app_EMoamEEZ73f0CkXaXp7hrann")
 (defconst gptel--openai-oauth-url "https://auth.openai.com")
 
+(defvar gptel--openai-oauth-storage-method 'file)
+
 ;; TODO: Change system to be able to store more than one backend token.
 (defvar gptel--openai-oauth-token-file
   (expand-file-name ".cache/gptel-openai/openai-oauth-token"
                     user-emacs-directory))
+
+(defvar gptel--openai-keyring-label "gptel OpenAI OAuth")
 
 ;;;; OpenAI OAuth backend
 (cl-defstruct (gptel-openai-oauth (:constructor gptel--make-openai-oauth)
@@ -150,7 +154,9 @@ it in BACKEND."
                  :access_token access_token
                  :refresh_token refresh_token
                  :id_token (gptel-oauth--jwt-payload id_token))))
-      (gptel-oauth--write-token gptel--openai-oauth-token-file token-processed)
+      (if (eq gptel--openai-oauth-storage-method 'keyring)
+          (gptel-oauth--keyring-save gptel--openai-keyring-label token-processed)
+        (gptel-oauth--write-token gptel--openai-oauth-token-file token-processed))
       (setf (gptel-openai-oauth-token backend) token-processed)
       token-plist)))
 
@@ -175,8 +181,11 @@ If BACKEND is nil, use `gptel-backend'.  Restore, refresh, or
 reauthenticate as needed."
   (unless backend (setq backend gptel-backend))
   (unless (gptel-openai-oauth-token backend)
-    (if-let* ((token-plist (gptel-oauth--read-token
-                            gptel--openai-oauth-token-file)))
+    (if-let* ((token-plist (if (eq gptel--openai-oauth-storage-method 'keyring)
+                               (gptel-oauth--keyring-load
+                                gptel--openai-keyring-label)
+                               (gptel-oauth--read-token
+                                gptel--openai-oauth-token-file))))
         (setf (gptel-openai-oauth-token backend) token-plist)
       (gptel-openai-oauth-login backend)))
   

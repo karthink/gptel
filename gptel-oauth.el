@@ -73,7 +73,7 @@ Returns nil if FILE does not exist or cannot be read."
   ;; old secrets.
   (dolist (item (secrets-search-items gptel-oauth--keyring-collection :service label))
     (secrets-delete-item gptel--keyring-collection item))
-  (secrets-create-item gptel--keyring-collection
+  (secrets-create-item gptel-oauth--keyring-collection
                        label
                        (gptel--json-encode token)
                        :application "Emacs"
