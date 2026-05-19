@@ -12,6 +12,11 @@
 
 - The minimum required version of the =transient= package is now 0.7.8.
 
+- ~gptel-temperaure~ now defaults to nil, meaning the API's default
+  value will be used.  This is because some backends don't support
+  providing the temperature, those that do don't agree on the scale and
+  what a temperature of 1 means.
+
 ** New models and backends
 
 - Bedrock backend: Add support for =claude-opus-4-7=.
