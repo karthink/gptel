@@ -466,6 +466,17 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 0.10
      :output-cost 0.40
      :cutoff-date "2025-01")
+    (gemini-3.5-flash
+     :description "Most intelligent Gemini model for sustained frontier performance in agentic and coding tasks"
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"
+                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 1048               ; 65536 output token limit
+     :input-cost 1.50
+     :output-cost 9.00
+     :cutoff-date "2025-01")
     (gemini-3.1-pro-preview
      :description "Most intelligent Gemini model with SOTA reasoning and multimodal understanding"
      :capabilities (tool-use json media audio video)
