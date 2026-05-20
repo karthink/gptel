@@ -54,6 +54,9 @@
 - Fix bounds issues when using the gptel transient menu with =evil-mode=
   visual selections.
 
+- Fix org-mode parsing issues involving =tab-width= when sending
+  queries.
+
 * 0.9.9.5 2026-05-03
 
 ** Breaking changes
