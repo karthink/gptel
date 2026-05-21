@@ -575,6 +575,12 @@ INFO is the async communication channel for the rewrite request."
                (plist-get info :status) (plist-get info :buffer))
       (gptel--rewrite-callback 'abort info))
 
+     ((eq (car-safe response) 'reasoning) ;Reasoning redirection to other buffer
+      (and-let* ((rbuf (plist-get info :include-reasoning)))
+        (and (stringp rbuf) (buffer-live-p (get-buffer rbuf))
+             (gptel--display-reasoning-stream (cdr response) info)))
+      t)
+
      ((consp response))             ;reasoning or tool call result -- don't care
 
      (t
@@ -650,6 +656,7 @@ By default, gptel uses the directive associated with the `rewrite'
 ;;;###autoload (autoload 'gptel-rewrite "gptel-rewrite" nil t)
 (transient-define-prefix gptel-rewrite ()
   "Rewrite or refactor text region using an LLM."
+  :environment #'gptel--transient-fix-evil-visual
   [:description
    (lambda ()
      (gptel--describe-directive

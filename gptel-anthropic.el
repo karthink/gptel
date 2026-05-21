@@ -655,52 +655,7 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 15
      :output-cost 75
      :cutoff-date "2025-03")
-    (claude-3-7-sonnet-20250219
-     :description "Hybrid model capable of standard thinking and extended thinking modes"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2025-02")
-    (claude-3-5-sonnet-20241022
-     :description "Highest level of intelligence and capability"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2024-04")
-    (claude-3-5-sonnet-20240620
-     :description "Highest level of intelligence and capability (earlier version)"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 200
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2024-04")
-    (claude-3-5-haiku-20241022
-     :description "Intelligence at blazing speeds"
-     :capabilities (tool-use cache)
-     :context-window 200
-     :input-cost 1.00
-     :output-cost 5.00
-     :cutoff-date "2024-07")
-    (claude-3-opus-20240229
-     :description "Top-level performance, intelligence, fluency, and understanding"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 200
-     :input-cost 15
-     :output-cost 75
-     :cutoff-date "2023-08")
-    (claude-3-haiku-20240307
-     :description "Fast and most compact model for near-instant responsiveness"
-     :capabilities (tool-use cache)
-     :context-window 200
-     :input-cost 0.25
-     :output-cost 1.25
-     :cutoff-date "2023-08"))
+
   "List of available Anthropic models and associated properties.
 Keys:
 
@@ -724,7 +679,7 @@ Keys:
 Information about the Anthropic models was obtained from the following
 comparison table:
 
-URL `https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table'")
+URL `https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table'"))
 
 ;;;###autoload
 (cl-defun gptel-make-anthropic

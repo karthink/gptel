@@ -276,11 +276,12 @@ call `gptel-send' with a prefix argument."
   :type '(choice (natnum :tag "Specify Token count")
                  (const :tag "Default" nil)))
 
-(defcustom gptel-temperature 1.0
+(defcustom gptel-temperature nil
   "\"Temperature\" of the LLM response.
 
-This is a number between 0.0 and 2.0 that controls the randomness
-of the response, with 2.0 being the most random.
+This is a number between 0.0 and 2.0 that controls the randomness of the
+response, with 2.0 being the most random.  It can also be nil for the
+LLM API's default value.
 
 To set the temperature for a chat session interactively call
 `gptel-send' with a prefix argument."
@@ -1021,15 +1022,22 @@ MODE-SYM is typically a major-mode symbol."
 
 (defvar url-http-end-of-headers)
 (defvar url-http-response-status)
-(cl-defun gptel--url-retrieve (url &key method data headers)
+;; TODO: Handle and return HTTP errors
+(cl-defun gptel--url-retrieve (url &key method data headers
+                                   (content-type "application/json"))
   "Retrieve URL synchronously with METHOD, DATA and HEADERS."
   (declare (indent 1))
   (let ((url-request-method (if (eq method 'post) "POST" "GET"))
-        (url-request-data (when (eq method 'post) (encode-coding-string (gptel--json-encode data) 'utf-8)))
+        (url-request-data
+         (when (eq method 'post)
+           (encode-coding-string
+            (pcase content-type
+              ("application/json" (gptel--json-encode data))
+              (_ data))
+            'utf-8)))
         (url-mime-accept-string "application/json")
         (url-request-extra-headers
-         `(("content-type" . "application/json")
-           ,@headers)))
+         `(("content-type" . ,content-type) ,@headers)))
     (with-current-buffer (url-retrieve-synchronously url 'silent)
       (goto-char url-http-end-of-headers)
       (gptel--json-read))))
@@ -2690,7 +2698,10 @@ See `gptel-curl--get-response' for its contents.")
                 (string-trim resp))
               http-status http-msg))
        ((and-let* ((error-data
-                    (cond ((plistp response) (plist-get response :error))
+                    (cond ((plistp response) (or (plist-get response :error)     ; generic
+                                                 (plist-get response :detail)    ; openai-oauth
+                                                 (plist-get response :message)   ; bedrock
+                                                 (plist-get response :Message))) ; bedrock
                           ((arrayp response)
                            (cl-some (lambda (el) (plist-get el :error)) response)))))
           (list nil http-status http-msg error-data)))
@@ -2911,7 +2922,11 @@ PROCESS and _STATUS are process parameters."
                                           (condition-case nil (gptel--json-read)
                                             (error 'json-read-error))))
                          (error-data
-                          (cond ((plistp response) (plist-get response :error))
+                          (cond ((plistp response)
+                                 (or (plist-get response :error)     ; generic
+                                     (plist-get response :detail)    ; openai-oauth
+                                     (plist-get response :message)   ; bedrock
+                                     (plist-get response :Message))) ; bedrock
                                 ((arrayp response)
                                  (cl-some (lambda (el) (plist-get el :error)) response)))))
               (cond
@@ -3105,7 +3120,10 @@ PROC-INFO is a plist with contextual information."
                       (string-trim resp))
                     http-status http-msg))
              ((and-let* ((error-data
-                          (cond ((plistp response) (plist-get response :error))
+                          (cond ((plistp response) (or (plist-get response :error)     ; generic
+                                                       (plist-get response :detail)    ; openai-oauth
+                                                       (plist-get response :message)   ; bedrock
+                                                       (plist-get response :Message))) ; bedrock
                                 ((arrayp response)
                                  (cl-some (lambda (el) (plist-get el :error)) response)))))
                 (list nil http-status http-msg error-data)))
