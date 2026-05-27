@@ -7,8 +7,12 @@
 - The models =claude-3-7-sonnet-20250219=, =claude-3-5-sonnet-20241022=,
   =claude-3-5-sonnet-20240620=, =claude-3-5-haiku-20241022=,
   =claude-3-opus-20240229= and =claude-3-haiku-20240307= have been
-  removed from the default list of OpenAI models.  These models are
+  removed from the default list of Anthropic models.  These models are
   either deprecated or no longer available.
+
+- The models =gemini-3.1-flash-lite-preview= and =gemini-3-pro-preview=
+  have been removed from the default list of Gemini models.  These
+  models are no longer available.
 
 - The minimum required version of the =transient= package is now 0.7.8.
 
@@ -21,8 +25,10 @@
 
 - Bedrock backend: Add support for =claude-opus-4-7=.
 
-- Gemini backend: Add support for =gemini-3.1-flash-lite= and deprecate
-  the preview version.
+- GitHub Copilot backend: Add support for =gemini-3.5-flash=.
+
+- Gemini backend: Add support for =gemini-3.5-flash=,
+  =gemini-3.1-flash-lite= and deprecate the preview version.
 
 ** New features and UI changes
 
