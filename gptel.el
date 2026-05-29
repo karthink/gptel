@@ -933,7 +933,8 @@ Search between BEG and END."
         (concat
          (propertize
           " " 'display
-          (if (fboundp 'string-pixel-width)
+          (if (and (fboundp 'string-pixel-width)
+                   (display-graphic-p))
               `(space :align-to (- right (,(string-pixel-width rhs))))
             `(space :align-to (- right ,(+ 5 (string-width rhs))))))
          rhs))))
