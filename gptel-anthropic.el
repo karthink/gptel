@@ -617,6 +617,7 @@ Media files, if present, are placed in `gptel-context'."
     (claude-opus-4-8
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
+     :reasoning-effort (member low medium high xhigh max)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 1000
      :input-cost 5
