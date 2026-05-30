@@ -1181,10 +1181,10 @@ The GitHub OAuth token is stored by default in a cleartext file based on the pat
 #+begin_src emacs-lisp
   (setq
    ;; Prompt user to provide the token as a password
-   gptel-gh-github-token-load-function (lambda (github-username) (read-passwd (format "Copilot token for '%s': " github-username)))
+   gptel-gh-github-token-load-function (lambda (account-hint) (read-passwd (format "Copilot token for '%s': " account-hint)))
 
    ;; Display a message when a new token has been stored, so that it can be copied from the message history
-   gptel-gh-github-token-save-function (lambda (github-username token) (message "New token for '%s' saved: %s" github-username token))
+   gptel-gh-github-token-save-function (lambda (account-hint token) (message "New token for '%s' saved: %s" account-hint token))
 #+end_src
 
 ***** (Optional) Set as the default gptel backend

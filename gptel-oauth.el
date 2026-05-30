@@ -121,6 +121,29 @@ If your browser does not open automatically, browse to %s: "
        (format "(One-time code %s copied) Press ENTER after authorizing: "
                user-code)))))
 
+;;; Username validation
+
+(defun gptel-oauth--validate-username (username &optional allow-empty)
+  "Validate USERNAME format for account identification.
+
+When ALLOW-EMPTY is non-nil, an empty string is considered valid
+for representing a default account.  Otherwise, empty strings are rejected.
+
+Valid usernames may contain alphanumeric characters, hyphens, and underscores,
+but cannot begin or end with a hyphen or underscore."
+  (cond
+   ;; Ensure that the username is a string
+   ((not (stringp username)) (user-error "Provided username is not a string"))
+
+   ;; Handle empty string case
+   ((= (length username) 0)
+    (if allow-empty t
+      (user-error "Username cannot be empty")))
+
+   ;; We have some characters, ensure they conform to reasonable rules
+   ((string-match-p "\\`[0-9A-Za-z]\\(?:[0-9A-Za-z]\\|-[0-9A-Za-z]\\|_[0-9A-Za-z]\\)*\\'" username) t)
+   (t (user-error "Username '%s' contains invalid characters" username))))
+
 ;;; URL / JWT helpers
 
 (defun gptel-oauth--jwt-payload (jwt-string)

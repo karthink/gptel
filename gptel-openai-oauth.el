@@ -33,11 +33,22 @@
   (expand-file-name ".cache/gptel-openai/openai-oauth-token"
                     user-emacs-directory))
 
+(defcustom gptel-openai-oauth-token-load-function 'gptel--openai-oauth-restore-token-from-file
+  "Function to load the current OpenAI OAuth token. Default behavior is file-based based on `gptel--openai-oauth-token-file'."
+  :type 'function
+  :group 'gptel)
+
+(defcustom gptel-openai-oauth-token-save-function 'gptel--openai-oauth-save-token-to-file
+  "Function to save the new OpenAI OAuth token. Default behavior is file-based based on `gptel--openai-oauth-token-file'."
+  :type 'function
+  :group 'gptel)
+
 ;;;; OpenAI OAuth backend
 (cl-defstruct (gptel-openai-oauth (:constructor gptel--make-openai-oauth)
                                   (:copier nil)
                                   (:include gptel-openai-responses))
-  token)
+  token
+  account-hint)
 
 (cl-defmethod gptel--request-data ((_backend gptel-openai-oauth) _prompts)
   "Return request data for the OpenAI OAuth backend.
@@ -155,7 +166,7 @@ it in BACKEND."
                  :access_token access_token
                  :refresh_token refresh_token
                  :id_token (gptel-oauth--jwt-payload id_token))))
-      (gptel-oauth--write-token gptel--openai-oauth-token-file token-processed)
+      (gptel--openai-oauth-save-token backend token-processed)
       (setf (gptel-openai-oauth-token backend) token-processed)
       token-plist)))
 
@@ -180,10 +191,10 @@ If BACKEND is nil, use `gptel-backend'.  Restore, refresh, or
 reauthenticate as needed."
   (unless backend (setq backend gptel-backend))
   (unless (gptel-openai-oauth-token backend)
-    (if-let* ((token-plist (gptel-oauth--read-token
-                            gptel--openai-oauth-token-file)))
-        (setf (gptel-openai-oauth-token backend) token-plist)
-      (gptel-openai-oauth-login backend)))
+    (let ((account-hint (gptel-openai-oauth-account-hint backend)))
+      (if-let* ((token-plist (gptel--openai-oauth-load-token account-hint)))
+          (setf (gptel-openai-oauth-token backend) token-plist)
+        (gptel-openai-oauth-login backend)))
   
   (let ((token-plist (gptel-openai-oauth-token backend)))
     (if-let* ((expiry (plist-get token-plist :expires_at))
@@ -193,6 +204,70 @@ reauthenticate as needed."
       (if-let* ((refresh (plist-get token-plist :refresh_token)))
           (gptel--openai-oauth-refresh backend refresh)
         (gptel-openai-oauth-login backend)))))
+
+(defun gptel--openai-oauth-get-registered-account-hints ()
+  "Get list of registered OpenAI account hints from backends."
+  (when-let* ((oauth-backends (seq-filter
+                             (lambda (b)
+                               (gptel-openai-oauth-p b))
+                             (mapcar #'cdr gptel--known-backends)))
+            (account-hints (mapcar
+                       (lambda (b)
+                         (let ((hint (gptel-openai-oauth-account-hint b)))
+                           (if (string= hint "")
+                               "[Default account]"
+                             hint)))
+                       oauth-backends)))
+    (seq-uniq account-hints)))
+
+(defun gptel--openai-oauth-get-backends-by-account-hint (account-hint)
+  "Get all OpenAI OAuth backends for a specific account hint."
+  (seq-filter (lambda (b) (and (gptel-openai-oauth-p b)
+                                (string= (gptel-openai-oauth-account-hint b)
+                                         account-hint)))
+              (mapcar #'cdr gptel--known-backends)))
+
+(defun gptel--openai-oauth-validate-account-hint (account-hint)
+  "Validate OpenAI account hint format.
+
+An empty string is considered valid for the default account."
+  (gptel-oauth--validate-username account-hint t))
+
+(defun gptel--openai-oauth-generate-token-filename (account-hint)
+  "Generate token filename for a given OpenAI account hint."
+  (gptel--openai-oauth-validate-account-hint account-hint)
+  (if (= (length account-hint) 0)
+      gptel--openai-oauth-token-file
+    (concat gptel--openai-oauth-token-file "_" account-hint)))
+
+(defun gptel--openai-oauth-restore-token-from-file (account-hint)
+  "Restore OpenAI OAuth token from file."
+  (gptel-oauth--read-token (gptel--openai-oauth-generate-token-filename account-hint)))
+
+(defun gptel--openai-oauth-save-token-to-file (account-hint token)
+  "Save OpenAI OAuth token to file."
+  (gptel-oauth--write-token (gptel--openai-oauth-generate-token-filename account-hint) token))
+
+(defun gptel--openai-oauth-load-token (account-hint)
+  "Load OpenAI OAuth token using customizable load function."
+  (if (gptel-openai-oauth-token gptel-backend)
+      (gptel-openai-oauth-token gptel-backend)
+    (let ((token (funcall gptel-openai-oauth-token-load-function account-hint)))
+      (if (string= token "")
+          ;; Empty string should be interpreted as no data. Return nil so that a
+          ;; proper login is performed.
+          nil
+        ;; Iterate over the known backends for the same account hint and set the token
+        (dolist (b (gptel--openai-oauth-get-backends-by-account-hint account-hint) token)
+          (setf (gptel-openai-oauth-token b) token)))))))
+
+(defun gptel--openai-oauth-save-token (backend token)
+  "Save OpenAI OAuth token using customizable save function."
+  ;; Update the token for all connected backends with same account hint
+  (let ((account-hint (gptel-openai-oauth-account-hint backend)))
+    (dolist (b (gptel--openai-oauth-get-backends-by-account-hint account-hint))
+      (setf (gptel-openai-oauth-token b) token))
+    (funcall gptel-openai-oauth-token-save-function account-hint token)))
 
 (defun gptel--openai-oauth-header (_info)
   "Return authentication headers for the current OpenAI OAuth backend.
@@ -221,6 +296,7 @@ before constructing the headers."
           (host "chatgpt.com")
           (protocol "https")
           (endpoint "/backend-api/codex/responses")
+          (account-hint "")
           (models 
            '(gpt-5.2 gpt-5.3-codex gpt-5.3-codex-spark gpt-5.4-mini gpt-5.4 gpt-5.5)))
   "Register a ChatGPT Plus/Pro OAuth backend for gptel with NAME.
@@ -229,8 +305,15 @@ This backend uses ChatGPT OAuth tokens (not OpenAI API keys) and
 targets the Codex endpoint on chatgpt.com.  Run
 `gptel-openai-oauth-login' once to authenticate.
 
-For keyword argument meanings, see `gptel-make-openai'."
+Keyword arguments:
+
+ACCOUNT-HINT (optional) is an indicator of which OpenAI account to associate
+the backend with. This enables backends to be logged in as a separate user. Note
+that this is only a hint and will be used when a token is saved/loaded.
+
+For other keyword argument meanings, see `gptel-make-openai'."
   (declare (indent 1))
+  (gptel--openai-oauth-validate-account-hint account-hint)
   (let ((backend (gptel--make-openai-oauth
                   :curl-args curl-args
                   :name name
@@ -242,6 +325,7 @@ For keyword argument meanings, see `gptel-make-openai'."
                   :endpoint endpoint
                   :stream stream
                   :request-params request-params
+                  :account-hint account-hint
                   :url (if protocol
                            (concat protocol "://" host endpoint)
                          (concat host endpoint)))))
