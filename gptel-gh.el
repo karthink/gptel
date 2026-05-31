@@ -296,45 +296,29 @@
 (defconst gptel--gh-client-id "Iv1.b507a08c87ecfe98")
 (defconst gptel--gh-default-username-placeholder "[Default account]")
 
-(defun gptel--gh-get-registered-account-hints ()
-  (when-let* ((gh-backends (seq-filter
-                          (lambda (b)
-                            (gptel--gh-p b))
-                          (mapcar #'cdr gptel--known-backends)))
-            (account-hints (mapcar
-                        (lambda (b)
-                          (let ((hint (gptel--gh-account-hint b)))
-                            (if (string= hint "")
-                                gptel--gh-default-username-placeholder
-                              hint)))
-                        gh-backends)))
-      (seq-uniq account-hints)))
-
 (defun gptel--gh-get-backends-by-account-hint (account-hint)
-  (seq-filter (lambda (b) (and (gptel--gh-p b)
-                               (string= (gptel--gh-account-hint b)
-                                        account-hint)))
-              (mapcar #'cdr gptel--known-backends)))
+  "Get all GitHub Copilot backends for a specific account hint."
+  (gptel-oauth--get-backends-by #'gptel--gh-p #'gptel--gh-account-hint account-hint))
 
 (defun gptel--gh-load-token (account-hint)
   "Function that ensures that the GitHub OAuth token cache is used and is set."
-  (if (gptel--gh-github-token gptel-backend)
-      (gptel--gh-github-token gptel-backend)
-    (let ((token (funcall gptel-gh-github-token-load-function account-hint)))
-      (if (string= token "")
-          ;; Empty string should be interpreted as no data. Return nil so that a
-          ;; proper login is performed.
-          nil
-        ;; Iterate over the known backends for the same account hint and set the GitHub token
-        (dolist (b (gptel--gh-get-backends-by-account-hint account-hint) token)
-          (setf (gptel--gh-github-token b) token))))))
+  (gptel-oauth--load-token
+   #'gptel--gh-p
+   #'gptel--gh-account-hint
+   #'gptel--gh-github-token
+   (lambda (b token) (setf (gptel--gh-github-token b) token))
+   gptel-gh-github-token-load-function
+   account-hint))
 
 (defun gptel--gh-save-token (account-hint token)
   "Function that updates the GitHub OAuth token cache and calls the save function."
-  ;; Update the token for all connected backends
-  (dolist (b (gptel--gh-get-backends-by-account-hint account-hint))
-    (setf (gptel--gh-github-token b) token))
-  (funcall gptel-gh-github-token-save-function account-hint token))
+  (gptel-oauth--save-token
+   #'gptel--gh-p
+   #'gptel--gh-account-hint
+   (lambda (b token) (setf (gptel--gh-github-token b) token))
+   gptel-gh-github-token-save-function
+   account-hint
+   token))
 
 ;; https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 (defun gptel--gh-uuid ()
@@ -355,29 +339,20 @@
       (setq hex (nconc hex (list (aref hex-chars (random 16))))))
     (apply #'string hex)))
 
-(defun gptel--gh-validate-account-hint (account-hint)
-  "Ensures that the given ACCOUNT-HINT conforms to the rules from GitHub:
-
-'Username may only contain alphanumeric characters or single hyphens,
-and cannot begin or end with a hyphen.'
-
-An empty string value is considered to be a general account to be used.
-"
-  (gptel-oauth--validate-username account-hint t))
-
 (defun gptel--gh-generate-token-filename (account-hint)
-  (gptel--gh-validate-account-hint account-hint)
-  (if (= (length account-hint) 0)
-      gptel-gh-github-token-file
-    (concat gptel-gh-github-token-file "_" account-hint)))
+  "Generate token filename for GitHub backend with ACCOUNT-HINT."
+  (gptel-oauth--generate-token-filename
+   gptel-gh-github-token-file
+   #'gptel-oauth--validate-account-hint
+   account-hint))
 
 (defun gptel--gh-restore-token-from-file (account-hint)
-  "Restore GitHub token from the file gptel-gh-github-token-file."
-  (gptel-oauth--read-token (gptel--gh-generate-token-filename account-hint)))
+  "Restore GitHub token from file using ACCOUNT-HINT."
+  (gptel-oauth--restore-token-from-file #'gptel--gh-generate-token-filename account-hint))
 
 (defun gptel--gh-save-token-to-file (account-hint token)
-  "Save GitHub token to the file gptel-gh-github-token-file."
-  (gptel-oauth--write-token (gptel--gh-generate-token-filename account-hint) token))
+  "Save GitHub TOKEN to file using ACCOUNT-HINT."
+  (gptel-oauth--save-token-to-file #'gptel--gh-generate-token-filename account-hint token))
 
 (defun gptel-gh-login (account-hint)
   "Login to GitHub Copilot API.
@@ -389,19 +364,11 @@ It must match an existing backend.
 
 In SSH sessions, the URL and code will be displayed for manual entry
 instead of attempting to open a browser automatically."
-  (interactive (list (let* ((known-account-hints (gptel--gh-get-registered-account-hints))
-                            (chosen-account-hint (cond
-                                              ((= 0 (length known-account-hints))
-                                               (user-error "No GitHub copilot backends registered"))
-                                              ((= 1 (length known-account-hints))
-                                              (car known-account-hints))
-                                              (t
-                                               (completing-read "Choose GitHub account: "
-                                                                known-account-hints nil t nil
-                                                                nil nil nil)))))
-                       (if (string= chosen-account-hint gptel--gh-default-username-placeholder)
-                           ""
-                         chosen-account-hint))))
+  (interactive (list (gptel-oauth--read-account-hint
+                      #'gptel--gh-p #'gptel--gh-account-hint
+                      "Choose GitHub account: "
+                      gptel--gh-default-username-placeholder
+                      "No GitHub copilot backends registered")))
   (let ((gh-backends (gptel--gh-get-backends-by-account-hint account-hint)))
     ;; It shall only be possible to login when there exists a corresponding backend
     (if (= (length gh-backends) 0)
@@ -413,17 +380,8 @@ instead of attempting to open a browser automatically."
                    :headers gptel--gh-auth-common-headers
                    :data `( :client_id ,gptel--gh-client-id
                             :scope "read:user"))))
-;;       (let ((account-text (if (string= account-hint "")
-;;                                "Login for the default account."
-;;                              (format "Login for '%s'." account-hint))))
-;;           ;; Local session: auto-open browser
-;;           (read-from-minibuffer
-;;            (format "%s Your one-time code %s is copied. \
-;; Press ENTER to open GitHub in your browser. \
-;; If your browser does not open automatically, browse to %s."
-;;                    username-text user_code verification_uri)))
 
-      (gptel-oauth--device-auth-prompt user_code verification_uri)
+      (gptel-oauth--device-auth-prompt user_code verification_uri account-hint)
       (let ((github-token
              (plist-get
               (gptel--url-retrieve
@@ -610,7 +568,7 @@ parameters (as plist keys) and values supported by the API.  Use
 these to set parameters that gptel does not provide user options
 for."
   (declare (indent 1))
-  (gptel--gh-validate-account-hint account-hint)
+  (gptel-oauth--validate-account-hint account-hint)
   (let* ((url (lambda (_info)
                 (concat protocol "://" host
                         (if (gptel--model-capable-p 'responses-api gptel-model)
