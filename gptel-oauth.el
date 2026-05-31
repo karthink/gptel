@@ -76,8 +76,7 @@ Returns nil if FILE does not exist or cannot be read."
   (secrets-create-item gptel-oauth--keyring-collection
                        label
                        (gptel--json-encode token)
-                       :application "Emacs"
-                       :service label)
+                       :application "Emacs")
   token)
 
 ;;; PKCE Implementation
