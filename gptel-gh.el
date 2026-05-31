@@ -278,12 +278,12 @@
   :type 'string
   :group 'gptel)
 
-(defcustom gptel-gh-github-token-load-function 'gptel--gh-restore-github-token-from-file
+(defcustom gptel-gh-github-token-load-function 'gptel--gh-restore-token-from-file
   "Function to load the current github token. Default behavior is file-based based on `gptel-gh-github-token-file'."
   :type 'function
   :group 'gptel)
 
-(defcustom gptel-gh-github-token-save-function 'gptel--gh-save-github-token-from-file
+(defcustom gptel-gh-github-token-save-function 'gptel--gh-save-token-to-file
   "Function to save the new github token. Default behavior is file-based based on `gptel-gh-github-token-file'."
   :type 'function
   :group 'gptel)
