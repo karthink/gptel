@@ -143,7 +143,7 @@ but cannot begin or end with a hyphen or underscore."
    ((= (length account-hint) 0) t)
 
    ;; We have some characters, ensure they conform to reasonable rules
-   ((string-match-p "\\`[0-9A-Za-z]\(?:[0-9A-Za-z]\|-[0-9A-Za-z]\|_[0-9A-Za-z]\)*\'" account-hint) t)
+   ((string-match-p "\\`[0-9A-Za-z]\\(?:[0-9A-Za-z]\\|-[0-9A-Za-z]\\|_[0-9A-Za-z]\\)*\\'" account-hint) t)
    (t (user-error "Account hint '%s' contains invalid characters" account-hint))))
 
 ;;; Backend and token management helpers
