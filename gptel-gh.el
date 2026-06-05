@@ -431,19 +431,19 @@ Then we need a session token."
 
 (cl-defmethod gptel-curl--parse-stream ((backend gptel--gh) info)
   (let ((model (plist-get info :model)))
-   (if (gptel--model-capable-p 'responses-api model)
-       ;; Defer to gptel-openai-responses backend
-       (gptel-curl--parse-stream
-        (gptel--gh-responses-backend backend) info)
-     (cl-call-next-method))))
+    (if (gptel--model-capable-p 'responses-api model)
+        ;; Defer to gptel-openai-responses backend
+        (gptel-curl--parse-stream
+         (gptel--gh-responses-backend backend) info)
+      (cl-call-next-method))))
 
 (cl-defmethod gptel--parse-response ((backend gptel--gh) response info)
   (let ((model (plist-get info :model)))
     (if (gptel--model-capable-p 'responses-api model)
-       ;; Defer to gptel-openai-responses backend
-       (gptel--parse-response
-        (gptel--gh-responses-backend backend) response info)
-     (cl-call-next-method))))
+        ;; Defer to gptel-openai-responses backend
+        (gptel--parse-response
+         (gptel--gh-responses-backend backend) response info)
+      (cl-call-next-method))))
 
 (cl-defmethod gptel--request-data ((backend gptel--gh) prompts)
   (if (gptel--model-capable-p 'responses-api gptel-model)

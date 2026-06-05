@@ -187,7 +187,7 @@ TOKEN is the token plist to save."
   (gptel-oauth--write-token (funcall filename-fn account-hint) token))
 
 (defun gptel-oauth--load-token (predicate account-hint-accessor token-getter token-setter
-                                     load-function account-hint)
+                                          load-function account-hint)
   "Load token using custom LOAD-FUNCTION, with propagation to matching backends.
 
 PREDICATE is a function to identify backend type.
