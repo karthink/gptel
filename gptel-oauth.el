@@ -201,17 +201,17 @@ Returns the token plist, or nil if no token found.
 If a cached token exists in gptel-backend, returns that immediately.
 Otherwise, loads via LOAD-FUNCTION and propagates to all backends
 matching PREDICATE and ACCOUNT-HINT."
-  (when-let* ((backend gptel-backend)
+  (if-let* ((backend gptel-backend)
              ((funcall predicate backend))
              (cached-token (funcall token-getter backend)))
-    (return cached-token))
-  (let ((token (funcall load-function account-hint)))
-    (if (string= token "")
-        ;; Empty string means no data
-        nil
-      ;; Propagate to all matching backends
-      (dolist (b (gptel-oauth--get-backends-by predicate account-hint-accessor account-hint) token)
-        (funcall token-setter b token)))))
+      cached-token
+    (let ((token (funcall load-function account-hint)))
+      (if (string= token "")
+          ;; Empty string means no data
+          nil
+        ;; Propagate to all matching backends
+        (dolist (b (gptel-oauth--get-backends-by predicate account-hint-accessor account-hint) token)
+          (funcall token-setter b token))))))
 
 (defun gptel-oauth--save-token (predicate account-hint-accessor token-setter
                                      save-function account-hint token)
