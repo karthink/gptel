@@ -58,6 +58,23 @@ Returns nil if FILE does not exist or cannot be read."
             (read (current-buffer))
           (error nil))))))
 
+;;; Token Storage Customization
+
+(defcustom gptel-oauth-token-load-function nil
+  "Function to load OAuth tokens.
+Default is nil, meaning use backend-specific defaults.
+When set, this function is called with ACCOUNT-HINT and should return
+the token plist or nil.  Backends can customize this before use."
+  :type '(or null function)
+  :group 'gptel)
+
+(defcustom gptel-oauth-token-save-function nil
+  "Function to save OAuth tokens.
+Default is nil, meaning use backend-specific defaults.
+When set, this function is called with ACCOUNT-HINT and TOKEN."
+  :type '(or null function)
+  :group 'gptel)
+
 ;;; PKCE Implementation
 
 (defun gptel-oauth--base64url-encode (str)

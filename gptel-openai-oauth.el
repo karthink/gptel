@@ -33,16 +33,6 @@
   (expand-file-name ".cache/gptel-openai/openai-oauth-token"
                     user-emacs-directory))
 
-(defcustom gptel-openai-oauth-token-load-function 'gptel--openai-oauth-restore-token-from-file
-  "Function to load the current OpenAI OAuth token. Default behavior is file-based based on `gptel--openai-oauth-token-file'."
-  :type 'function
-  :group 'gptel)
-
-(defcustom gptel-openai-oauth-token-save-function 'gptel--openai-oauth-save-token-to-file
-  "Function to save the new OpenAI OAuth token. Default behavior is file-based based on `gptel--openai-oauth-token-file'."
-  :type 'function
-  :group 'gptel)
-
 ;;;; OpenAI OAuth backend
 (cl-defstruct (gptel-openai-oauth (:constructor gptel--make-openai-oauth)
                                   (:copier nil)
@@ -230,7 +220,7 @@ reauthenticate as needed."
    #'gptel-openai-oauth-account-hint
    #'gptel-openai-oauth-token
    (lambda (b token) (setf (gptel-openai-oauth-token b) token))
-   gptel-openai-oauth-token-load-function
+   (or gptel-oauth-token-load-function 'gptel--openai-oauth-restore-token-from-file)
    account-hint)))
 
 (defun gptel--openai-oauth-save-token (account-hint token)
@@ -239,7 +229,7 @@ reauthenticate as needed."
    #'gptel-openai-oauth-p
    #'gptel-openai-oauth-account-hint
    (lambda (b token) (setf (gptel-openai-oauth-token b) token))
-   gptel-openai-oauth-token-save-function
+   (or gptel-oauth-token-save-function 'gptel--openai-oauth-save-token-to-file)
    account-hint
    token))
 

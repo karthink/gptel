@@ -278,16 +278,6 @@
   :type 'string
   :group 'gptel)
 
-(defcustom gptel-gh-github-token-load-function 'gptel--gh-restore-token-from-file
-  "Function to load the current github token. Default behavior is file-based based on `gptel-gh-github-token-file'."
-  :type 'function
-  :group 'gptel)
-
-(defcustom gptel-gh-github-token-save-function 'gptel--gh-save-token-to-file
-  "Function to save the new github token. Default behavior is file-based based on `gptel-gh-github-token-file'."
-  :type 'function
-  :group 'gptel)
-
 (defconst gptel--gh-auth-common-headers
   `(("editor-plugin-version" . "gptel/*")
     ("editor-version" . ,(concat "emacs/" emacs-version))
@@ -307,7 +297,7 @@
    #'gptel--gh-account-hint
    #'gptel--gh-github-token
    (lambda (b token) (setf (gptel--gh-github-token b) token))
-   gptel-gh-github-token-load-function
+   (or gptel-oauth-token-load-function 'gptel--gh-restore-token-from-file)
    account-hint))
 
 (defun gptel--gh-save-token (account-hint token)
@@ -316,7 +306,7 @@
    #'gptel--gh-p
    #'gptel--gh-account-hint
    (lambda (b token) (setf (gptel--gh-github-token b) token))
-   gptel-gh-github-token-save-function
+   (or gptel-oauth-token-save-function 'gptel--gh-save-token-to-file)
    account-hint
    token))
 
