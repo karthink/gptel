@@ -23,7 +23,10 @@
 
 ** New models and backends
 
-- Bedrock backend: Add support for =claude-opus-4-7=.
+- Bedrock backend: Add support for =claude-opus-4-7= and
+  =claude-opus-4-8=.
+
+- Anthropic backend: Add support for =claude-opus-4-8=.
 
 - GitHub Copilot backend: Add support for =gemini-3.5-flash=.
 
@@ -53,6 +56,9 @@
 
 - Fix bounds issues when using the gptel transient menu with =evil-mode=
   visual selections.
+
+- Fix org-mode parsing issues involving =tab-width= when sending
+  queries.
 
 * 0.9.9.5 2026-05-03
 

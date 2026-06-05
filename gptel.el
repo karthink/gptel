@@ -2244,7 +2244,7 @@ NAME and ARG-VALUES are the name and arguments for the call."
                                (prin1-to-string
                                 (replace-regexp-in-string
                                  "\n" "⮐" (truncate-string-to-width
-                                           arg (floor (window-width) 2)
+                                           arg 256
                                            nil nil t))))
                               (t (prin1-to-string arg))))
                       arg-values " ")
