@@ -231,7 +231,7 @@ matching PREDICATE and ACCOUNT-HINT."
           (funcall token-setter b token))))))
 
 (defun gptel-oauth--save-token (predicate account-hint-accessor token-setter
-                                     save-function account-hint token)
+                                          save-function account-hint token)
   "Save TOKEN for ACCOUNT-HINT, with propagation to matching backends.
 
 PREDICATE is a function to identify backend type.
@@ -257,13 +257,13 @@ DEFAULT-PLACEHOLDER is the string to use for backends with empty account hints.
 Returns a list of unique account hint strings, or nil if no matching backends exist.
 Empty account hints are replaced with DEFAULT-PLACEHOLDER."
   (when-let* ((backends (seq-filter predicate (mapcar #'cdr gptel--known-backends)))
-             (account-hints (mapcar
-                             (lambda (b)
-                               (let ((hint (funcall account-hint-accessor b)))
-                                 (if (string= hint "")
-                                     default-placeholder
-                                   hint)))
-                             backends)))
+              (account-hints (mapcar
+                              (lambda (b)
+                                (let ((hint (funcall account-hint-accessor b)))
+                                  (if (string= hint "")
+                                      default-placeholder
+                                    hint)))
+                              backends)))
     (seq-uniq account-hints)))
 
 (defun gptel-oauth--read-account-hint (predicate account-hint-accessor prompt-text default-placeholder &optional error-msg)
@@ -279,16 +279,16 @@ Returns the selected account hint as a string, with DEFAULT-PLACEHOLDER
 converted to empty string."
   (let* ((known-account-hints (or (gptel-oauth--get-registered-account-hints
                                    predicate account-hint-accessor default-placeholder)
-                                '()))
+                                  '()))
          (chosen-account-hint (cond
-                              ((= 0 (length known-account-hints))
-                               (user-error (or error-msg
-                                           "No backends registered")))
-                              ((= 1 (length known-account-hints))
-                               (car known-account-hints))
-                              (t
-                               (completing-read prompt-text
-                                                known-account-hints nil t)))))
+                               ((= 0 (length known-account-hints))
+                                (user-error (or error-msg
+                                                "No backends registered")))
+                               ((= 1 (length known-account-hints))
+                                (car known-account-hints))
+                               (t
+                                (completing-read prompt-text
+                                                 known-account-hints nil t)))))
     (if (string= chosen-account-hint default-placeholder)
         ""
       chosen-account-hint)))
