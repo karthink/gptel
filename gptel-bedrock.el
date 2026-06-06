@@ -781,7 +781,7 @@ parameters (as plist keys) and values supported by the API."
            :models (gptel--process-models models)
            :model-region model-region
            :protocol protocol
-           :endpoint endpoint
+           :endpoint (or endpoint "")
            :stream stream
            :coding-system (and stream 'binary)
            :curl-args
