@@ -21,6 +21,11 @@
   providing the temperature, those that do don't agree on the scale and
   what a temperature of 1 means.
 
+- Due to the introduction of ~gptel-system-prompt~ (see below), opening
+  a text/markdown gptel chat file before loading gptel can cause an
+  error.  To fix this, please ensure that gptel is loaded before opening
+  any saved text/markdown chat files.  This only needs to be done once.
+
 ** New models and backends
 
 - Bedrock backend: Add support for =claude-opus-4-7= and
@@ -34,6 +39,11 @@
   =gemini-3.1-flash-lite= and deprecate the preview version.
 
 ** New features and UI changes
+
+- You can now set gptel's system prompt directly via
+  ~gptel-system-prompt~.  Previously this required setting an internal
+  gptel variable (~gptel--system-message~, now obsolete), or defining a
+  mapping in ~gptel-directives~ and picking from the list interactively.
 
 - OpenAI subscription support: gptel now supports authentication with
   OpenAI ChatGPT Plus/Pro accounts.  This allows using the ChatGPT Codex
