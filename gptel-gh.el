@@ -23,9 +23,9 @@
 (require 'map)
 (eval-and-compile
   (require 'gptel-request)
+  (require 'gptel-oauth)
   (require 'gptel-openai)
   (require 'gptel-openai-responses))
-(require 'browse-url)
 
 ;;; Github Copilot
 (defconst gptel--gh-models
@@ -126,6 +126,14 @@
      :input-cost 0.33
      :output-cost 0.33
      :cutoff-date "2025-08")
+    (gpt-5.5
+     :description "GitHub Copilot GPT-5.5"
+     :capabilities (media tool-use json url responses-api)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 400
+     :input-cost 1
+     :output-cost 1
+     :cutoff-date "2026-04")
     (claude-haiku-4.5
      :description "Near-frontier intelligence at blazing speeds with extended thinking"
      :capabilities (media tool-use cache)
@@ -224,6 +232,17 @@
      :input-cost 1
      :output-cost 1
      :cutoff-date "2025-01")
+    (gemini-3.5-flash
+     :description "Most intelligent Gemini model for sustained frontier performance in agentic and coding tasks"
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"
+                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 109
+     :input-cost 1
+     :output-cost 1
+     :cutoff-date "2025-01")
     (grok-code-fast-1
      :description "Fast reasoning model for agentic coding"
      :capabilities '(tool-use json reasoning)
@@ -274,27 +293,6 @@
       (setq hex (nconc hex (list (aref hex-chars (random 16))))))
     (apply #'string hex)))
 
-(defun gptel--gh-restore (file)
-  "Restore saved object from FILE."
-  (when (file-exists-p file)
-    ;; We set the coding system to `utf-8-auto-dos' when reading so that
-    ;; files with CR EOL can still be read properly
-    (let ((coding-system-for-read 'utf-8-auto-dos))
-      (with-temp-buffer
-        (set-buffer-multibyte nil)
-        (insert-file-contents-literally file)
-        (goto-char (point-min))
-        (read (current-buffer))))))
-
-(defun gptel--gh-save (file obj)
-  "Save OBJ to FILE."
-  (let ((print-length nil)
-        (print-level nil)
-        (coding-system-for-write 'utf-8-unix))
-    (make-directory (file-name-directory file) t)
-    (write-region (prin1-to-string obj) nil file nil :silent)
-    obj))
-
 (defun gptel-gh-login ()
   "Login to GitHub Copilot API.
 
@@ -316,11 +314,7 @@ instead of attempting to open a browser automatically."
                        (mapcar #'cdr gptel--known-backends)))
           ;; No GitHub backend found
           (t (user-error "No GitHub Copilot backend found.  \
-Please set one up with `gptel-make-gh-copilot' first"))))
-        ;; Detect SSH sessions
-        (in-ssh-session (or (getenv "SSH_CLIENT")
-                            (getenv "SSH_CONNECTION")
-                            (getenv "SSH_TTY"))))
+Please set one up with `gptel-make-gh-copilot' first")))))
     (pcase-let (((map :device_code :user_code :verification_uri)
                  (gptel--url-retrieve
                      "https://github.com/login/device/code"
@@ -328,36 +322,19 @@ Please set one up with `gptel-make-gh-copilot' first"))))
                    :headers gptel--gh-auth-common-headers
                    :data `( :client_id ,gptel--gh-client-id
                             :scope "read:user"))))
-      (gui-set-selection 'CLIPBOARD user_code)
-      (if in-ssh-session
-          ;; SSH session: display URL and code, don't auto-open browser
-          (progn
-            (message "GitHub Device Code: %s (copied to clipboard)" user_code)
-            (read-from-minibuffer
-             (format "Code %s is copied. Visit https://github.com/login/device \
-in your local browser, enter the code, and authorize.  Press ENTER after authorizing. "
-                     user_code)))
-        ;; Local session: auto-open browser
-        (read-from-minibuffer
-         (format "Your one-time code %s is copied. \
-Press ENTER to open GitHub in your browser. \
-If your browser does not open automatically, browse to %s."
-                 user_code verification_uri))
-        (browse-url verification_uri)
-        (read-from-minibuffer "Press ENTER after authorizing. "))
+      (gptel-oauth--device-auth-prompt user_code verification_uri)
       ;; Use gh-backend for token storage
-      (thread-last
-        (plist-get
-         (gptel--url-retrieve
-             "https://github.com/login/oauth/access_token"
-           :method 'post
-           :headers gptel--gh-auth-common-headers
-           :data `( :client_id ,gptel--gh-client-id
-                    :device_code ,device_code
-                    :grant_type "urn:ietf:params:oauth:grant-type:device_code"))
-         :access_token)
-        (gptel--gh-save gptel-gh-github-token-file)
-        (setf (gptel--gh-github-token gh-backend))))
+      (let ((resp-body (gptel--url-retrieve
+                           "https://github.com/login/oauth/access_token"
+                         :method 'post
+                         :headers gptel--gh-auth-common-headers
+                         :data `( :client_id ,gptel--gh-client-id
+                                  :device_code ,device_code
+                                  :grant_type "urn:ietf:params:oauth:grant-type:device_code"))))
+        (thread-last
+            (plist-get resp-body :access_token)
+          (gptel-oauth--write-token gptel-gh-github-token-file)
+          (setf (gptel--gh-github-token gh-backend)))))
     ;; Check gh-backend for success
     (if (and (gptel--gh-github-token gh-backend)
              (not (string-empty-p
@@ -378,8 +355,8 @@ If your browser does not open automatically, browse to %s."
         (progn
           (setf (gptel--gh-github-token gptel-backend) nil)
           (user-error "Error: You might not have access to GitHub Copilot Chat!"))
-      (thread-last
-        (gptel--gh-save gptel-gh-token-file token)
+      (thread-last token
+        (gptel-oauth--write-token gptel-gh-token-file)
         (setf (gptel--gh-token gptel-backend))))))
 
 (defun gptel--gh-auth ()
@@ -388,7 +365,7 @@ If your browser does not open automatically, browse to %s."
 We first need github authorization (github token).
 Then we need a session token."
   (unless (gptel--gh-github-token gptel-backend)
-    (let ((token (gptel--gh-restore gptel-gh-github-token-file)))
+    (let ((token (gptel-oauth--read-token gptel-gh-github-token-file)))
       (if token
           (setf (gptel--gh-github-token gptel-backend) token)
         (gptel-gh-login))))
@@ -396,7 +373,7 @@ Then we need a session token."
   (when (null (gptel--gh-token gptel-backend))
     ;; try to load token from `gptel-gh-token-file'
     (setf (gptel--gh-token gptel-backend)
-          (gptel--gh-restore gptel-gh-token-file)))
+          (gptel-oauth--read-token gptel-gh-token-file)))
 
   (pcase-let (((map :token :expires_at)
                (gptel--gh-token gptel-backend)))

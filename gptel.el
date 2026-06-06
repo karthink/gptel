@@ -3,8 +3,8 @@
 ;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
-;; Version: 0.9.9.4
-;; Package-Requires: ((emacs "27.1") (transient "0.7.4") (compat "30.1.0.0"))
+;; Version: 0.9.9.5
+;; Package-Requires: ((emacs "27.1") (transient "0.7.8") (compat "30.1.0.0"))
 ;; Keywords: convenience, tools
 ;; URL: https://github.com/karthink/gptel
 
@@ -188,7 +188,7 @@
 ;; usage.
 
 ;;; Code:
-(defconst gptel-version "0.9.9.4")
+(defconst gptel-version "0.9.9.5")
 
 (declare-function markdown-mode "markdown-mode")
 (declare-function gptel-menu "gptel-transient")
@@ -841,6 +841,7 @@ Search between BEG and END."
         (and link-ovs (mapc #'delete-overlay link-ovs))))
     `(jit-lock-bounds ,beg . ,end)))
 
+;;;; Header line formatting
 (defvar gptel--header-line-info
   '(:eval
     (let* ((model (gptel--model-name gptel-model))
@@ -862,13 +863,11 @@ Search between BEG and END."
                   finally return
                   (propertize
                    (buttonize
-                    (concat "[Context: "
-                            (and (> bufs 0) (format "%d buf" bufs))
+                    (concat "[" (and (> bufs 0) (format "%d buf" bufs))
                             (and (> bufs 1) "s")
                             (and (> bufs 0) (> files 0) ", ")
                             (and (> files 0) (format "%d file" files))
-                            (and (> files 1) "s")
-                            "]")
+                            (and (> files 1) "s") "]")
                     (lambda (&rest _)
                       (require 'gptel-context)
                       (gptel-context--buffer-setup)))
@@ -888,12 +887,12 @@ Search between BEG and END."
             (and (gptel--model-capable-p 'media)
                  (if gptel-track-media
                      (propertize
-                      (buttonize "[Sending media]" toggle-track-media)
+                      (buttonize "[Media: Send]" toggle-track-media)
                       'mouse-face 'highlight
                       'help-echo
                       "Sending media from links/urls when supported.\nClick to toggle")
                    (propertize
-                    (buttonize "[Ignoring media]" toggle-track-media)
+                    (buttonize "[Media: No]" toggle-track-media)
                     'mouse-face 'highlight
                     'help-echo
                     "Ignoring media from links/urls.\nClick to toggle"))))
@@ -907,10 +906,25 @@ Search between BEG and END."
                                   (len (format "[%d tools]" len)))
                                 toggle-tools)
                      'mouse-face 'highlight
-                     'help-echo "Select tools"))))
+                     'help-echo "Select tools")))
+           (usage
+            (and-let* ((idx (car-safe gptel--token-usage-strings))
+                       (entry (or (nth (1+ idx) gptel--token-usage-strings)
+                                  "[usage...]"))
+                       (noinfo "[No info]")
+                       (toggle-usage
+                        (lambda (strings) (interactive)
+                          (and (car-safe strings)
+                               (cl-callf (lambda (pos) (% (1+ pos) 2)) (car strings))))))
+              (buttonize entry toggle-usage gptel--token-usage-strings
+                         (concat "Token usage (C = cached tokens)\nLast request: "
+                                 (or (cadr gptel--token-usage-strings) noinfo)
+                                 "\nThis buffer:  "
+                                 (or (caddr gptel--token-usage-strings) noinfo))))))
       (let ((rhs (concat
-                  tools (and track-media " ") track-media
-                  (and context " ") context " " system " "
+                  usage (and usage " ") tools (and tools " ")
+                  track-media (and track-media " ")
+                  context (and context " ") system " "
                   (propertize
                    (buttonize (concat "[" model "]")
                               (lambda (&rest _) (gptel-menu)))
@@ -919,7 +933,8 @@ Search between BEG and END."
         (concat
          (propertize
           " " 'display
-          (if (fboundp 'string-pixel-width)
+          (if (and (fboundp 'string-pixel-width)
+                   (display-graphic-p))
               `(space :align-to (- right (,(string-pixel-width rhs))))
             `(space :align-to (- right ,(+ 5 (string-width rhs))))))
          rhs))))
@@ -938,6 +953,55 @@ context, tools, system prompt, model and more."
          (propertize " Ready" 'face 'success)
          gptel--header-line-info)))
 
+;;;; Token usage display UI
+(defvar-local gptel--token-usage nil
+  "Token usage details for gptel.
+
+This is a list of two plists, the token usage for the ongoing/last
+request and for the buffer/session:
+
+  ((:input ... :output ... :cache ... :cached ...)
+   (:input ... :output ... :cache ... :cached ...))")
+
+(defvar-local gptel--token-usage-strings nil
+  "Token usage strings formatted for display.
+
+This is a list (IDX REQUEST BUFFER), where IDX is the usage type to
+display (0 or 1), and REQUEST and BUFFER are the token usage for the
+last request and the buffer/session.")
+
+(defun gptel--format-token-usage (token-plist)
+  "Format TOKEN-PLIST (token usage) for display."
+  (when token-plist
+    (let ((input (plist-get token-plist :input))
+          (output (plist-get token-plist :output))
+          (cached (plist-get token-plist :cached)))
+      (concat
+       "[" (and input
+                (concat (file-size-human-readable input 'si)
+                        (and (numberp cached) (/= cached 0)
+                             (format ", C%s"
+                                     (file-size-human-readable cached 'si)))
+                        "↑"))
+       (and output (concat " " (file-size-human-readable output 'si) "↓")) "]"))))
+
+(defun gptel--update-token-usage (tokens &optional tokens-full)
+  "Update token usage information for buffer from TOKENS.
+
+TOKENS is the token usage for the current turn.
+TOKENS-FULL is the cumulative token usage for the request (so far)."
+  (when tokens
+    (let ((tokens-full (or tokens-full tokens)))
+      (if (not gptel--token-usage)
+          (setq gptel--token-usage (list tokens-full (copy-sequence tokens-full)))
+        (setcar gptel--token-usage tokens-full)
+        (cl-callf gptel--sum-plists (nth 1 gptel--token-usage) tokens))
+      (unless gptel--token-usage-strings ;show buffer usage by default
+        (setq gptel--token-usage-strings (list 1)))
+      (setcdr gptel--token-usage-strings
+              (mapcar #'gptel--format-token-usage gptel--token-usage)))))
+
+;;;; Minor mode
 ;;;###autoload
 (define-minor-mode gptel-mode
   "Minor mode for interacting with LLMs."
@@ -1176,7 +1240,8 @@ See `gptel-request--transitions' for details.")
   `((WAIT ,#'gptel--handle-wait ,#'gptel--update-wait)
     (TYPE ,#'gptel--handle-pre-insert)
     (ERRS ,#'gptel--handle-error ,#'gptel--fsm-last)
-    (TPRE ,#'gptel--handle-pre-tool ,#'gptel--fsm-transition)
+    (TPRE ,#'gptel--handle-token-usage ,#'gptel--handle-pre-tool
+          ,#'gptel--fsm-transition)
     (TOOL ,#'gptel--update-tool-call ,#'gptel--handle-tool-use
           ,#'gptel--update-tool-ask)
     (TRET ,#'gptel--handle-post-tool ,#'gptel--handle-tool-result)
@@ -1328,7 +1393,9 @@ No state transition here since that's handled by the process sentinels."
             (save-excursion (goto-char tracking-marker)
                             (insert gptel-response-separator
                                     (gptel-prompt-prefix-string))))
-          (gptel--update-status  " Ready" 'success))))
+          (gptel--update-status  " Ready" 'success)
+          (gptel--update-token-usage (plist-get info :tokens)
+                                     (plist-get info :tokens-full)))))
     ;; Run hook in visible window to set window-point, BUG #269
     (if-let* ((gptel-window (get-buffer-window gptel-buffer 'visible)))
         (with-selected-window gptel-window
@@ -1377,8 +1444,9 @@ Perform UI updates and run post-response hooks."
            (marker-position start-marker) (marker-position tracking-marker))))
       (with-current-buffer gptel-buffer
         (when gptel-mode
-          (gptel--update-status
-           (format " Error: %s" status) 'error))))))
+          (gptel--update-status (format " Error: %s" status) 'error)
+          (gptel--update-token-usage (plist-get info :tokens)
+                                     (plist-get info :tokens-full)))))))
 
 (defun gptel--handle-abort (fsm)
   "Perform UI update on `gptel-abort' for FSM."
@@ -1399,7 +1467,22 @@ Perform UI updates and run post-response hooks."
          'gptel-post-response-functions
          (marker-position start-marker) (marker-position tracking-marker))))
     (with-current-buffer gptel-buffer
-      (when gptel-mode (gptel--update-status  " Abort" 'error)))))
+      (when gptel-mode
+        (gptel--update-status  " Abort" 'error)
+        (gptel--update-token-usage (plist-get info :tokens)
+                                   (plist-get info :tokens-full))))))
+
+;; NOTE: Some other FSM handlers do this internally instead of calling this
+;; dedicated function.
+(defun gptel--handle-token-usage (fsm)
+  "Update token usage in gptel buffers for FSM."
+  (let* ((info (gptel-fsm-info fsm))
+         (buffer (plist-get info :buffer)))
+    (when (and (buffer-live-p buffer)
+               (buffer-local-value 'gptel-mode buffer))
+      (with-current-buffer buffer
+        (gptel--update-token-usage (plist-get info :tokens)
+                                   (plist-get info :tokens-full))))))
 
 (defun gptel--handle-pre-tool (fsm)
   "Run `gptel-pre-tool-call-functions' for FSM."
@@ -1434,8 +1517,9 @@ Perform UI updates and run post-response hooks."
                          (plist-put info :status "Stopped by hook")
                          (plist-put info :error reason))
                      ;; if hook-func returns :confirm, add the check
-                     (when (plist-get hook-func-result :confirm)
-                       (plist-put tool-call :confirm t))
+                     (when-let* ((confirm-tail
+                                  (plist-member hook-func-result :confirm)))
+                       (plist-put tool-call :confirm (cadr confirm-tail)))
                      ;; if hook-func returns :args or :name, replace in the call
                      (when (or (plist-get hook-func-result :args)
                                (plist-get hook-func-result :name))
@@ -1546,8 +1630,11 @@ Perform UI updates and run post-response hooks."
   "Update gptel's status in FSM when there are pending tool-calls."
   (when (plist-get (gptel-fsm-info fsm) :tool-pending)
     (plist-put (gptel-fsm-info fsm) :tool-pending nil)
-    (when gptel-mode
-      (gptel--update-status " Run tools?" 'mode-line-emphasis))))
+    (let* ((info (gptel-fsm-info fsm))
+           (buf (plist-get info :buffer)))
+      (with-current-buffer buf
+        (when gptel-mode
+          (gptel--update-status " Run tools?" 'mode-line-emphasis))))))
 
 
 ;;; Send queries, handle responses
@@ -1980,9 +2067,7 @@ USE-MINIBUFFER is non-nil)."
             (pcase (car choice)
               (?y (gptel--accept-tool-calls tool-calls))
               (?n (gptel--reject-tool-calls))
-              (?i (gptel--inspect-tool-calls
-                   ;; TODO Verify that the query buffer is the correct source to send
-                   tool-calls (plist-get info :buffer)))))
+              (?i (gptel--inspect-tool-calls tool-calls info))))
         ;; Prompt for confirmation from the response buffer
         (let* ((backend-name (gptel-backend-name (plist-get info :backend)))
                (actions-string
@@ -2047,6 +2132,9 @@ USE-MINIBUFFER is non-nil)."
           (when preview-handlers
             (overlay-put ov 'previews
                          (nconc (overlay-get ov 'previews) preview-handlers)))
+          ;; Including INFO is required for tool call inspection (state
+          ;; management and updates)
+          (overlay-put ov 'info info)
           (overlay-put ov 'mouse-face 'highlight)
           (overlay-put ov 'gptel-tool
                        (nconc (overlay-get ov 'gptel-tool) tool-calls))
@@ -2156,7 +2244,7 @@ NAME and ARG-VALUES are the name and arguments for the call."
                                (prin1-to-string
                                 (replace-regexp-in-string
                                  "\n" "⮐" (truncate-string-to-width
-                                           arg (floor (window-width) 2)
+                                           arg 256
                                            nil nil t))))
                               (t (prin1-to-string arg))))
                       arg-values " ")
@@ -2309,10 +2397,10 @@ This is a bug, please report it!"))))
 (defun gptel--inspect-reject-tool-calls (&optional _)
   "Cancel tool-calls and return to query buffer."
   (interactive)
-  (quit-window t)
   (apply #'gptel--reject-tool-calls
    (thread-first (gptel-fsm-info gptel--fsm-last)
-                 (plist-get :tool-display))))
+                 (plist-get :tool-display)))
+  (quit-window t))
 
 (defun gptel--inspect-quit-tool-calls (&optional _)
   "Quit inspection window and return to query buffer."
@@ -2339,19 +2427,18 @@ This is a bug, please report it!"))))
           (setq highlight-ov context-ov)))))
   "Highlight tool call under cursor in gptel tool call inspection buffers.")
 
-(defun gptel--inspect-tool-calls (&optional tool-calls loc)
+(defun gptel--inspect-tool-calls (tool-calls info &optional tool-overlay)
   "Set up and switch to a buffer to inspect pending tool-calls.
 
-TOOL-CALLS is the alist of tool calls.  LOC is the source of the query;
-either the query buffer or the tool call dispatch overlay in the query
-buffer.  If it is an overlay, it will be cleaned up when dispatching on
-TOOL-CALLS."
+TOOL-CALLS is the alist of tool calls.  INFO is the request context
+plist.  TOOL-OVERLAY is the tool call dispatch overlay (if any) in the
+query buffer."
   (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
                                            (point) 'gptel-tool)))
-                 (list resp o)))
+                 (list resp (overlay-get o 'info) o)))
   (with-current-buffer (get-buffer-create "*gptel-tool-calls*")
-    (let ((inhibit-read-only t) tool-use
-          (tool-overlay (and (overlayp loc) loc)))
+    (let ((inhibit-read-only t)
+          (tool-use (plist-get info :tool-use)))
       (remove-overlays)
       (erase-buffer)
       (unless (derived-mode-p 'lisp-data-mode)
@@ -2359,14 +2446,9 @@ TOOL-CALLS."
         (add-hook 'post-command-hook #'gptel--inspect-tool-post-command nil t))
       ;; NOTE: This needs to be called after setting the major mode, as
       ;; buffer-local variables are wiped out.
-      (setq gptel--fsm-last
-            (buffer-local-value 'gptel--fsm-last
-                                (if tool-overlay (overlay-buffer loc) loc))
-            tool-use (plist-get (gptel-fsm-info gptel--fsm-last) :tool-use))
-      ;; For access from the dispatch functions, add tool-calls and the location
-      ;; (if it's an overlay) to INFO.  Overlays will be cleaned up.
-      (plist-put (gptel-fsm-info gptel--fsm-last)
-                 :tool-display (list tool-calls tool-overlay))
+      ;; Required to store state for accepting/rejecting calls
+      (setq gptel--fsm-last (gptel-make-fsm :info info))
+      (plist-put info :tool-display (list tool-calls tool-overlay)) ;NOTE: INFO is never nil
       (insert ";; Inspect or edit tool calls.
 ;; Adding or deleting tool calls is not supported.\n\n")
       (cl-loop for tool-spec-args-cb in tool-calls
@@ -2617,7 +2699,7 @@ example) apply the preset buffer-locally."
                  (not (stringp (symbol-value sym)))
                  (user-error "Composing non-string system messages is not implemented"))
             (setq val (gptel--modify-value (symbol-value sym) val)))
-          (if (and (symbolp val) (not (functionp val)))
+          (if (and val (symbolp val) (not (functionp val)))
               (if-let* ((directive (alist-get val gptel-directives)))
                   (funcall setter sym directive)
                 (user-error "gptel preset: Cannot find directive %s" val))

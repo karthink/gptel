@@ -1,6 +1,6 @@
 ;;; gptel-bedrock.el --- AWS Bedrock support for gptel  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 Karthik Chikmagalur
+;; Copyright (C) 2025-2026 Karthik Chikmagalur
 
 ;; Keywords: comm, convenience
 
@@ -46,17 +46,18 @@ This function accumulates token counts across multiple turns in a
 multi-turn request (e.g., during tool use where results are fed
 back to the LLM)."
   (when usage
-    (let* ((tokens (plist-get info :tokens))
-           (input (+ (or (plist-get usage :inputTokens) 0)
-                     (or (plist-get tokens :input) 0)))
-           (output (+ (or (plist-get usage :outputTokens) 0)
-                      (or (plist-get tokens :output) 0)))
-           (cached (+ (or (plist-get usage :cacheReadInputTokens) 0)
-                      (or (plist-get tokens :cached) 0)))
-           (cache (+ (or (plist-get usage :cacheWriteInputTokens) 0)
-                     (or (plist-get tokens :cache) 0))))
-      (list :input input :output output
-            :cache cache :cached cached))))
+    (let ((input (or (plist-get usage :inputTokens) 0))
+          (output (or (plist-get usage :outputTokens) 0))
+          (cached (or (plist-get usage :cacheReadInputTokens) 0))
+          (cache (or (plist-get usage :cacheWriteInputTokens) 0)))
+      ;; Total input is input + cache (creation) + cached.  We combine input and
+      ;; cache (not cached!) because gptel's UI doesn't distinguish between them.
+      (let ((tokens (list :input (+ input cache) :output output
+                          :cached cached :cache cache)))
+        (plist-put info :tokens tokens) ;Tokens for this turn
+        (plist-put info :tokens-full    ;Tokens for full request
+                   (gptel--sum-plists (plist-get info :tokens-full)
+                                      tokens))))))
 
 (defconst gptel-bedrock--prompt-type
   ;; For documentation purposes only -- this describes the type of prompt objects that get passed
@@ -83,11 +84,17 @@ back to the LLM)."
   (let ((base-request-data
          (nconc
           `(:messages [,@prompts] :inferenceConfig (:maxTokens ,(or gptel-max-tokens 500)))
-          (when gptel--system-message `(:system [(:text ,gptel--system-message)]))
+          (when gptel--system-message
+            `(:system [(:text ,gptel--system-message)
+                       ,@(when (or (eq gptel-cache t) (memq 'system gptel-cache))
+                           '((:cachePoint (:type "default"))))]))
           (when gptel-temperature `(:temperature ,gptel-temperature))
           (when (and gptel-use-tools gptel-tools)
             `(:toolConfig (:toolChoice ,(if (eq gptel-use-tools 'force) '(:any '()) '(:auto '()))
-                           :tools ,(gptel--parse-tools backend gptel-tools)))))))
+                           :tools ,(let ((tools (gptel--parse-tools backend gptel-tools)))
+                                     (if (or (eq gptel-cache t) (memq 'tool gptel-cache))
+                                         (vconcat tools [(:cachePoint (:type "default"))])
+                                       tools))))))))
 
     ;; Finally, merge all potential :request-params sources.
     (gptel--merge-plists
@@ -116,8 +123,7 @@ TOOLS is a list of `gptel-tool' structs, which see."
 
 Mutate state INFO with response metadata."
   (plist-put info :stop-reason (plist-get response :stopReason))
-  (plist-put info :tokens (gptel--bedrock-update-tokens
-                           (plist-get response :usage) info))
+  (gptel--bedrock-update-tokens (plist-get response :usage) info)
 
   (let* ((message (map-nested-elt response '(:output :message)))
          (content-strs (thread-last (plist-get message :content)
@@ -198,8 +204,7 @@ INFO is a plist containing the request context."
               (push event (car acc-cell)))
             (pcase event-type
               ("metadata"
-               (plist-put info :tokens (gptel--bedrock-update-tokens
-                                        (map-nested-elt event '(:payload :usage)) info)))
+               (gptel--bedrock-update-tokens (map-nested-elt event '(:payload :usage)) info))
               ("contentBlockDelta"
                (when-let ((delta-text (map-nested-elt event '(:payload :delta :text))))
                  (push delta-text strings)))
@@ -410,10 +415,46 @@ MAX-ENTRIES is the maximum number of prompts to include."
                       (/= prev-pt (point-min))
                       (goto-char (previous-single-property-change
                                   (point) 'gptel nil (point-min))))
-            (capture-prompt (pcase (get-char-property (point) 'gptel)
-                              ('response "assistant")
-                              ('nil "user"))
-                            (point) prev-pt)
+            ;; Skip blank regions (e.g. response separators) to avoid
+            ;; capturing empty content that JSON-encodes as {}.
+            (unless (save-excursion (skip-syntax-forward " ") (>= (point) prev-pt))
+              (pcase (get-char-property (point) 'gptel)
+                ('response
+                 (capture-prompt "assistant" (point) prev-pt))
+                (`(tool . ,id)
+                 ;; Reconstruct the toolUse (assistant) and toolResult (user)
+                 ;; message pair from the serialized tool call text in the buffer.
+                 (save-excursion
+                   (condition-case nil
+                       (let* ((tool-call (read (current-buffer)))
+                              (name (plist-get tool-call :name))
+                              (args (plist-get tool-call :args))
+                              (result (string-trim
+                                       (buffer-substring-no-properties
+                                        (point) prev-pt))))
+                         ;; user message: toolResult (pushed first, ends up second)
+                         (push (list :role "user"
+                                     :content
+                                     `[(:toolResult (:toolUseId ,id
+                                                     :status "success"
+                                                     :content [(:text ,result)]))])
+                               prompts)
+                         ;; assistant message: toolUse (pushed second, ends up first)
+                         (push (list :role "assistant"
+                                     :content
+                                     `[(:toolUse (:toolUseId ,id
+                                                  :name ,name
+                                                  :input ,args))])
+                               prompts))
+                     ((end-of-file invalid-read-syntax)
+                      (message "gptel: Could not parse tool-call %s on line %s"
+                               id (line-number-at-pos (point)))))))
+                ('ignore)
+                ('nil
+                 (let ((text (gptel--trim-prefixes
+                              (buffer-substring-no-properties (point) prev-pt))))
+                   (unless (or (null text) (string-blank-p text))
+                     (capture-prompt "user" (point) prev-pt))))))
             (setq prev-pt (point))
             (cl-decf max-entries))
         (capture-prompt "user" (point-min) (point-max)))
@@ -468,7 +509,7 @@ The output is a vector of entries in Bedrock API format."
              `(:image (:format ,(cdr format) :source (:bytes ,(gptel--base64-encode media)))))
             ((setq format (assoc mime gptel-bedrock--doc-formats))
              `(:document (:format ,(cdr format)
-                          :name ,(file-name-nondirectory media)
+                          :name ,(file-name-sans-extension (file-name-nondirectory media))
                           :source (:bytes ,(gptel--base64-encode media)))))
             (t (error "Unsupported MIME type %s for AWS Bedrock" mime))))
           (textfile `(:text ,(with-temp-buffer
@@ -601,6 +642,8 @@ Convenient to use with `cl-multiple-value-bind'"
   ;; https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
   '((claude-sonnet-4-6           . "anthropic.claude-sonnet-4-6")
     (claude-opus-4-6             . "anthropic.claude-opus-4-6-v1")
+    (claude-opus-4-7             . "anthropic.claude-opus-4-7")
+    (claude-opus-4-8             . "anthropic.claude-opus-4-8")
     (claude-sonnet-4-5-20250929  . "anthropic.claude-sonnet-4-5-20250929-v1:0")
     (claude-haiku-4-5-20251001   . "anthropic.claude-haiku-4-5-20251001-v1:0")
 	(claude-opus-4-5-20251101    . "anthropic.claude-opus-4-5-20251101-v1:0")
@@ -672,7 +715,8 @@ export-credentials.  BEARER-TOKEN is the token used for authentication."
 
 (defun gptel-bedrock--curl-version ()
   "Check Curl version required for gptel-bedrock."
-  (let* ((output (shell-command-to-string "curl --version"))
+  (let* ((output (shell-command-to-string
+                  (concat (gptel--curl-path) " --version")))
          (version (and (string-match "^curl \\([0-9.]+\\)" output)
                        (match-string 1 output))))
     version))

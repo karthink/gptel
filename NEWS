@@ -1,6 +1,66 @@
 # -*- mode: org; -*-
 
-* 0.9.9.5-pre
+* 0.9.9.6-pre
+
+** Breaking changes
+
+- The models =claude-3-7-sonnet-20250219=, =claude-3-5-sonnet-20241022=,
+  =claude-3-5-sonnet-20240620=, =claude-3-5-haiku-20241022=,
+  =claude-3-opus-20240229= and =claude-3-haiku-20240307= have been
+  removed from the default list of Anthropic models.  These models are
+  either deprecated or no longer available.
+
+- The models =gemini-3.1-flash-lite-preview= and =gemini-3-pro-preview=
+  have been removed from the default list of Gemini models.  These
+  models are no longer available.
+
+- The minimum required version of the =transient= package is now 0.7.8.
+
+- ~gptel-temperaure~ now defaults to nil, meaning the API's default
+  value will be used.  This is because some backends don't support
+  providing the temperature, those that do don't agree on the scale and
+  what a temperature of 1 means.
+
+** New models and backends
+
+- Bedrock backend: Add support for =claude-opus-4-7= and
+  =claude-opus-4-8=.
+
+- Anthropic backend: Add support for =claude-opus-4-8=.
+
+- GitHub Copilot backend: Add support for =gemini-3.5-flash=.
+
+- Gemini backend: Add support for =gemini-3.5-flash=,
+  =gemini-3.1-flash-lite= and deprecate the preview version.
+
+** New features and UI changes
+
+- OpenAI subscription support: gptel now supports authentication with
+  OpenAI ChatGPT Plus/Pro accounts.  This allows using the ChatGPT Codex
+  endpoint without an API key.  See =gptel-make-openai-oauth= and the
+  README for details.
+
+- When running ~gptel-rewrite~, reasoning text was previously always
+  completely omitted from the response.  This was required to avoid
+  mixing with the final, rewritten text, but it meant there was no way
+  to examine the reasoning stream.
+
+  Now reasoning text is retained and redirected to another buffer if --
+  and only if -- ~gptel-include-reasoning~ is a string denoting a buffer
+  name.
+
+** Notable bug fixes
+
+- Improved error messages: Curl request failures now include more
+  diagnostic information.
+
+- Fix bounds issues when using the gptel transient menu with =evil-mode=
+  visual selections.
+
+- Fix org-mode parsing issues involving =tab-width= when sending
+  queries.
+
+* 0.9.9.5 2026-05-03
 
 ** Breaking changes
 
@@ -57,6 +117,9 @@
 
 ** New models and backends
 
+- Deepseek backend: Add support for =deepseek-v4-flash=,
+  =deepseek-v4-pro=.
+
 - Anthropic backend: Add support for =claude-opus-4.7=.
 
 - xAI backend: Add support for =grok-4-1-fast-reasoning=,
@@ -64,18 +127,29 @@
   =grok-4-fast-non-reasoning=.
 
 - GitHub Copilot backend: Add support for =claude-opus-4.7=,
-  =gpt-5.1-codex-, =gpt-5.1-codex-mini, =claude-sonnet-4.6= and
-  =gemini-3.1-pro-preview=, =gpt-5.3-codex=, =gpt-5.4=, and
-  =gpt-5.4-mini=.
+  =gpt-5.1-codex-, =gpt-5.1-codex-mini, =claude-sonnet-4.6=,
+  =gemini-3.1-pro-preview=, =gpt-5.3-codex=, =gpt-5.4=,
+  =gpt-5.4-mini=, and =gpt-5.5=.
 
 - Gemini backend: Add support for =gemini-3.1-flash-lite-preview=;
   add deprecation notice for =gemini-3-pro-preview=.
 
-- OpenAI backend: Add support for =gpt-5.3-chat-latest=, =gpt-5.4=,
-  =gpt-5.4-pro=, =gpt-5.4-mini=, =gpt-5.4-nano=. =gpt-5.2=,
-  =gpt-5-mini=, =gpt-5-nano= and =o3-pro=.
+- OpenAI backend: Add support for =gpt-5.5=, =gpt-5.5-pro=,
+  =gpt-5.3-chat-latest=, =gpt-5.4=, =gpt-5.4-pro=, =gpt-5.4-mini=,
+  =gpt-5.4-nano=. =gpt-5.2=, =gpt-5-mini=, =gpt-5-nano= and =o3-pro=.
 
 ** New features and UI changes
+
+- gptel now displays token usage in the header-line when using
+  gptel-mode.  This includes the tokens sent, cached tokens sent (if
+  any) and tokens received.  The displayed totals are per-request or per
+  session/buffer, and you can switch between the two by clicking the
+  display.  Hovering the mouse over the display will show both in a
+  tooltip.
+
+  Displaying costs in currency instead of tokens is not yet supported
+  because many backends do not provide all the required information
+  (tiered pricing schemes, cache creation details, etc).
 
 - New command ~gptel-preset~ to choose a gptel preset to apply, or save
   gptel's current settings as a preset.
@@ -97,7 +171,7 @@
   2. When using ~gptel-request~ for scripting purposes, you can fully
      isolate the call from the effects of gptel's environment with
      #+begin_src emacs-lisp
-     (gptel-with-preset 'gptel-backend
+     (gptel-with-preset 'gptel-default
        (gptel-request prompt ...))
      #+end_src
      Presets can also inherit from =gptel-default= to build a bespoke
@@ -186,9 +260,12 @@
   Note that this is a bug fix. It's how the API has been documented and
   was supposed to work in the first place.
 
-* 0.9.9.4
+* 0.9.9.4 2026-02-21
 
 ** Breaking changes
+- gptel now requires Transient 0.7.8 or higher. Transient is a built-in package
+  and Emacs does not update it by default.  Ensure that
+  =package-install-upgrade-built-in= is non-nil, or update Transient manually.
 
 - The models =gpt-5-codex=, =o3=, =o3-mini=, =o4-mini=,
   =claude-3.5-sonnet=, =claude-3.7-sonnet=, =claude-3.7-sonnet-thought=,
@@ -265,7 +342,7 @@
   call tools within their "reasoning" phase are now correctly handled
   by gptel.
 
-* 0.9.9.3
+* 0.9.9.3 2025-11-09
 
 ** Breaking changes
 

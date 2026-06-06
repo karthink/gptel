@@ -1,6 +1,6 @@
 ;;; gptel-ollama.el --- Ollama support for gptel     -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023-2025  Karthik Chikmagalur
+;; Copyright (C) 2023-2026  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthikchikmagalur@gmail.com>
 ;; Keywords: hypermedia
@@ -45,12 +45,13 @@ This function accumulates token counts across multiple turns in a
 multi-turn request (e.g., during tool use where results are fed
 back to the LLM)."
   (when usage
-    (let* ((tokens (plist-get info :tokens))
-           (input (+ (or (plist-get usage :prompt_eval_count) 0)
-                     (or (plist-get tokens :input) 0)))
-           (output (+ (or (plist-get usage :eval_count) 0)
-                      (or (plist-get tokens :output) 0))))
-      (list :input input :output output))))
+    (let* ((input  (or (plist-get usage :prompt_eval_count) 0))
+           (output (or (plist-get usage :eval_count) 0))
+           (tokens (list :input input :output output)))
+      (plist-put info :tokens tokens)
+      (plist-put info :tokens-full
+                 (gptel--sum-plists (plist-get info :tokens-full)
+                                    tokens)))))
 
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-ollama) info)
   "Parse response stream for the Ollama API."
@@ -85,7 +86,7 @@ back to the LLM)."
                   (plist-put info :reasoning-block t)
                 (plist-put info :reasoning-block nil)))
             (unless (eq done :json-false)
-              (plist-put info :tokens (gptel--ollama-update-tokens content info))
+              (gptel--ollama-update-tokens content info)
               (goto-char (point-max)))))
       (error (goto-char pt)))
     (apply #'concat (nreverse content-strs))))
@@ -95,7 +96,7 @@ back to the LLM)."
 
 Store response metadata in state INFO."
   (plist-put info :stop-reason (plist-get response :done_reason))
-  (plist-put info :tokens (gptel--ollama-update-tokens response info))
+  (gptel--ollama-update-tokens response info)
   (let* ((message (plist-get response :message))
          (reasoning (plist-get message :thinking))
          (content (plist-get message :content)))

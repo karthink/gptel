@@ -1,6 +1,6 @@
 ;;; gptel-request.el --- LLM request library for gptel         -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023-2025  Karthik Chikmagalur
+;; Copyright (C) 2023-2026  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur;; <karthikchikmagalur@gmail.com>
 ;; Keywords: convenience
@@ -276,11 +276,12 @@ call `gptel-send' with a prefix argument."
   :type '(choice (natnum :tag "Specify Token count")
                  (const :tag "Default" nil)))
 
-(defcustom gptel-temperature 1.0
+(defcustom gptel-temperature nil
   "\"Temperature\" of the LLM response.
 
-This is a number between 0.0 and 2.0 that controls the randomness
-of the response, with 2.0 being the most random.
+This is a number between 0.0 and 2.0 that controls the randomness of the
+response, with 2.0 being the most random.  It can also be nil for the
+LLM API's default value.
 
 To set the temperature for a chat session interactively call
 `gptel-send' with a prefix argument."
@@ -946,6 +947,22 @@ Later plists in the sequence take precedence over earlier ones."
         (setq rtn (plist-put rtn p v))))
     rtn))
 
+;; MAYBE: Can be generalized to gptel--combine-plists, taking a "combiner"
+;; function and default-value as arguments.
+(defun gptel--sum-plists (&rest plists)
+  "Sum the values of keys across PLISTS.
+
+All values must be numeric or nil.  Returns a new plist."
+  (let ((rtn (copy-sequence (pop plists)))
+        k v ls)
+    (while plists
+      (setq ls (pop plists))
+      (while ls
+        (setq k (pop ls) v (pop ls))
+        (setq rtn (plist-put rtn k (+ (or (plist-get rtn k) 0)
+                                      (or v 0))))))
+    rtn))
+
 (defun gptel--file-binary-p (path)
   "Check if file at PATH is readable and binary."
   ;; HACK Image files with ICC color profiles are characterized as ASCII
@@ -987,15 +1004,22 @@ MODE-SYM is typically a major-mode symbol."
 
 (defvar url-http-end-of-headers)
 (defvar url-http-response-status)
-(cl-defun gptel--url-retrieve (url &key method data headers)
+;; TODO: Handle and return HTTP errors
+(cl-defun gptel--url-retrieve (url &key method data headers
+                                   (content-type "application/json"))
   "Retrieve URL synchronously with METHOD, DATA and HEADERS."
   (declare (indent 1))
   (let ((url-request-method (if (eq method 'post) "POST" "GET"))
-        (url-request-data (when (eq method 'post) (encode-coding-string (gptel--json-encode data) 'utf-8)))
+        (url-request-data
+         (when (eq method 'post)
+           (encode-coding-string
+            (pcase content-type
+              ("application/json" (gptel--json-encode data))
+              (_ data))
+            'utf-8)))
         (url-mime-accept-string "application/json")
         (url-request-extra-headers
-         `(("content-type" . "application/json")
-           ,@headers)))
+         `(("content-type" . ,content-type) ,@headers)))
     (with-current-buffer (url-retrieve-synchronously url 'silent)
       (goto-char url-http-end-of-headers)
       (gptel--json-read))))
@@ -1802,7 +1826,7 @@ MACHINE is an instance of `gptel-fsm'"
   ;; a second network request: gptel tests for the presence of these flags to
   ;; handle state transitions.  (NOTE: Don't add :uuid to this.)
   (let ((info (gptel-fsm-info fsm)))
-    (dolist (key '(:tool-result :tool-use :error :http-status :reasoning))
+    (dolist (key '(:tool-result :tool-use :error :http-status :reasoning :tokens))
       (when (plist-get info key)
         (plist-put info key nil))))
   (funcall
@@ -1865,7 +1889,7 @@ injects the results into the prompt data and transitions the FSM."
                (let ((confirm))         ;Check if tool requires confirmation
                  (cond      ;:confirm in tool-call (from hooks) takes precedence
                   ((and-let* ((call-confirm (plist-member tool-call :confirm)))
-                     (setq confirm (cadr call-confirm))))
+                     (prog1 t (setq confirm (cadr call-confirm)))))
                   ((and gptel-confirm-tool-calls ;global and tool-specific setting
                         (or (eq gptel-confirm-tool-calls t) ;always confirm, or
                             (and-let* ((confirm (gptel-tool-confirm tool-spec)))
@@ -2138,7 +2162,7 @@ be used to rerun or continue the request at a later time."
            ((consp prompt)
             ;; (gptel--parse-list gptel-backend prompt)
             (gptel--with-buffer-copy buffer nil nil
-              ;; TEMP Decide on the annoated prompt-list format
+              ;; TEMP Decide on the annotated prompt-list format
               (gptel--parse-list-and-insert prompt)
               (setq major-mode 'fundamental-mode) ;Avoid mode-specific behavior
               (current-buffer)))))
@@ -2346,8 +2370,10 @@ conversation.
 
 PROMPTS is typically the input to `gptel-request', either a list of strings
 representing a conversation with alternate prompt/response turns, or a list of
-lists with explicit roles (prompt/response/tool).  See the documentation of
-`gptel-request' for the latter."
+lists with explicit roles (prompt/response/tool).
+
+See `gptel-request' for the former.  Support for the latter format is
+experimental."
   (if (stringp (car prompts))           ; Simple format, list of strings
       (cl-loop for text in prompts
                for response = nil then (not response)
@@ -2367,9 +2393,9 @@ lists with explicit roles (prompt/response/tool).  See the documentation of
          (insert gptel-response-separator
                  (propertize
                   (concat
-                   "(:name " (plist-get call :name) " :args "
-                   (prin1-to-string (plist-get call :args)) ")\n\n"
-                   (plist-get call :result))
+                   (prin1-to-string `( :name ,(plist-get call :name)
+                                       :args ,(plist-get call :args)))
+                   "\n\n" (plist-get call :result))
                   'gptel `(tool . ,(plist-get call :id)))))))))
 
 (cl-defgeneric gptel--parse-list (backend prompt-list)
@@ -2653,7 +2679,10 @@ See `gptel-curl--get-response' for its contents.")
                 (string-trim resp))
               http-status http-msg))
        ((and-let* ((error-data
-                    (cond ((plistp response) (plist-get response :error))
+                    (cond ((plistp response) (or (plist-get response :error)     ; generic
+                                                 (plist-get response :detail)    ; openai-oauth
+                                                 (plist-get response :message)   ; bedrock
+                                                 (plist-get response :Message))) ; bedrock
                           ((arrayp response)
                            (cl-some (lambda (el) (plist-get el :error)) response)))))
           (list nil http-status http-msg error-data)))
@@ -2874,7 +2903,11 @@ PROCESS and _STATUS are process parameters."
                                           (condition-case nil (gptel--json-read)
                                             (error 'json-read-error))))
                          (error-data
-                          (cond ((plistp response) (plist-get response :error))
+                          (cond ((plistp response)
+                                 (or (plist-get response :error)     ; generic
+                                     (plist-get response :detail)    ; openai-oauth
+                                     (plist-get response :message)   ; bedrock
+                                     (plist-get response :Message))) ; bedrock
                                 ((arrayp response)
                                  (cl-some (lambda (el) (plist-get el :error)) response)))))
               (cond
@@ -3068,7 +3101,10 @@ PROC-INFO is a plist with contextual information."
                       (string-trim resp))
                     http-status http-msg))
              ((and-let* ((error-data
-                          (cond ((plistp response) (plist-get response :error))
+                          (cond ((plistp response) (or (plist-get response :error)     ; generic
+                                                       (plist-get response :detail)    ; openai-oauth
+                                                       (plist-get response :message)   ; bedrock
+                                                       (plist-get response :Message))) ; bedrock
                                 ((arrayp response)
                                  (cl-some (lambda (el) (plist-get el :error)) response)))))
                 (list nil http-status http-msg error-data)))

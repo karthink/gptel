@@ -1,6 +1,6 @@
 ;;; gptel-org.el --- Org functions for gptel         -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024  Karthik Chikmagalur
+;; Copyright (C) 2024-2026  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthikchikmagalur@gmail.com>
 ;; Keywords:
@@ -285,6 +285,8 @@ depend on the value of `gptel-org-branching-context', which see."
                 (gptel-org--strip-elements))
               (setq org-complex-heading-regexp ;For org-element-context to run
                     (buffer-local-value 'org-complex-heading-regexp org-buf))
+              (setq tab-width      ;Match source indentation for list parsing
+                    (buffer-local-value 'tab-width org-buf))
               (current-buffer))))
       ;; Create prompt the usual way
       (let ((org-buf (current-buffer))
@@ -298,6 +300,8 @@ depend on the value of `gptel-org-branching-context', which see."
                 (gptel-org--strip-elements))
           (setq org-complex-heading-regexp ;For org-element-context to run
                 (buffer-local-value 'org-complex-heading-regexp org-buf))
+          (setq tab-width      ;Match source indentation for list parsing
+                (buffer-local-value 'tab-width org-buf))
           (current-buffer))))))
 
 (defun gptel-org--strip-elements ()
@@ -603,6 +607,7 @@ gptel model and backend names, the system message, active tools, the
 response temperature, max tokens and number of conversation turns to
 send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
   (interactive (list (point) t))
+  (require 'gptel)
   (let ((preset-spec (and gptel--preset (gptel-get-preset gptel--preset))))
     (if preset-spec
         (org-entry-put pt "GPTEL_PRESET" (gptel--to-string gptel--preset))

@@ -1,6 +1,6 @@
 ;;; gptel-gemini.el ---  Gemini suppport for gptel  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023-2025  Karthik Chikmagalur
+;; Copyright (C) 2023-2026  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthikchikmagalur@gmail.com>
 
@@ -45,13 +45,16 @@
   "Update token usage information from USAGE.
 USAGE is part of the response, INFO is the request plist."
   (when usage
-    (let* ((tokens (plist-get info :tokens))
-           (input (+ (plist-get usage :promptTokenCount)
-                     (or (plist-get tokens :input) 0)))
-           (output (+ (- (plist-get usage :totalTokenCount)
-                         (plist-get usage :promptTokenCount))
-                      (or (plist-get tokens :output) 0))))
-      (list :input input :output output))))
+    (let* ((input (or (plist-get usage :promptTokenCount) 0))
+           (output (- (or (plist-get usage :totalTokenCount) 0) input))
+           (cached (or (plist-get usage :cachedContentTokenCount) 0))
+           (tokens (list :input (- input cached) :output output :cached cached)))
+      ;; promptTokenCount includes the cached tokens, but we capture and display
+      ;; the two exclusively in the UI.
+      (plist-put info :tokens tokens)
+      (plist-put info :tokens-full
+                 (gptel--sum-plists (plist-get info :tokens-full)
+                                    tokens)))))
 
 ;; TODO: Using alt=sse in the query url generates an OpenAI style streaming
 ;; response, with more immediate updates.  Maybe we should switch to that and
@@ -89,9 +92,7 @@ list."
          (stop-reason (plist-get cand0 :finishReason)))
     (when stop-reason
       (plist-put info :stop-reason stop-reason)
-      (when (string= stop-reason "STOP")
-        (plist-put info :tokens (gptel--gemini-update-tokens
-                                 (plist-get response :usageMetadata) info))))
+      (gptel--gemini-update-tokens (plist-get response :usageMetadata) info))
     (cl-loop
      for part across parts
      for tx = (plist-get part :text)
@@ -465,6 +466,17 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 0.10
      :output-cost 0.40
      :cutoff-date "2025-01")
+    (gemini-3.5-flash
+     :description "Most intelligent Gemini model for sustained frontier performance in agentic and coding tasks"
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"
+                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 1048               ; 65536 output token limit
+     :input-cost 1.50
+     :output-cost 9.00
+     :cutoff-date "2025-01")
     (gemini-3.1-pro-preview
      :description "Most intelligent Gemini model with SOTA reasoning and multimodal understanding"
      :capabilities (tool-use json media audio video)
@@ -476,8 +488,8 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 2.0                    ; 4.0 for >200k tokens
      :output-cost 12.00                 ; 18.0 for >200k tokens
      :cutoff-date "2025-01")
-    (gemini-3.1-flash-lite-preview
-     :description "Nost cost-efficient multimodal Gemini model, offering the fastest performance for high-frequency, lightweight tasks"
+    (gemini-3.1-flash-lite
+     :description "Most cost-efficient multimodal Gemini model, offering the fastest performance for high-frequency, lightweight tasks"
      :capabilities (tool-use json media audio video)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html"
@@ -486,17 +498,6 @@ Media files, if present, are placed in `gptel-context'."
      :context-window 1048
      :input-cost 0.25
      :output-cost 1.50
-     :cutoff-date "2025-01")
-    (gemini-3-pro-preview
-     :description "DEPRECATED: The model will be shut down on March 9, 2026. Please use gemini-3.1-pro-preview instead"
-     :capabilities (tool-use json media audio video)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 1048               ; 65536 output token limit
-     :input-cost 2.0                    ; 4.0 for >200k tokens
-     :output-cost 12.00                 ; 18.0 for >200k tokens
      :cutoff-date "2025-01")
     (gemini-3-flash-preview
      :description "Most intelligent Gemini model built for speed"
