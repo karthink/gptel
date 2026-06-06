@@ -66,17 +66,19 @@ Returns nil if FILE does not exist or cannot be read."
   (when-let* ((secret (secrets-get-secret gptel-oauth--keyring-collection label)))
     (gptel--json-read-string secret)))
 
-(defun gptel-oauth--keyring-save (label token)
+(defun gptel-oauth--keyring-save (label token &rest attributes)
   "Save TOKEN to the OS keyring."
   ;; Delete any tokens that already exist. There should only be one unless
   ;; `secrets-create-item' has been called multiple times without cleaning up
   ;; old secrets.
   (dolist (item (secrets-search-items gptel-oauth--keyring-collection :service label))
     (secrets-delete-item gptel-oauth--keyring-collection item))
-  (secrets-create-item gptel-oauth--keyring-collection
-                       label
-                       (gptel--json-encode token)
-                       :application "Emacs")
+  (apply #'secrets-create-item
+         gptel-oauth--keyring-collection
+         label
+         (gptel--json-encode token)
+         :application "Emacs"
+         attributes)
   token)
 
 ;;; PKCE Implementation
