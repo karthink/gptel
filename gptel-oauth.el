@@ -68,11 +68,10 @@ Returns nil if FILE does not exist or cannot be read."
 
 (defun gptel-oauth--keyring-save (label token &rest attributes)
   "Save TOKEN to the OS keyring."
-  ;; Delete any tokens that already exist. There should only be one unless
-  ;; `secrets-create-item' has been called multiple times without cleaning up
-  ;; old secrets.
-  (dolist (item (secrets-search-items gptel-oauth--keyring-collection :service label))
-    (secrets-delete-item gptel-oauth--keyring-collection item))
+  ;; Delete the existing token if it exists. It isn't necessary to search
+  ;; because there should only be one and `secrets-delete-item' is a NOP when a
+  ;; label doesn't exist.
+  (secrets-delete-item gptel-oauth--keyring-collection label)
   (apply #'secrets-create-item
          gptel-oauth--keyring-collection
          label
