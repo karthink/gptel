@@ -645,7 +645,7 @@ Media files, if present, are placed in `gptel-context'."
      :context-window 200
      :input-cost 15
      :output-cost 75
-     :cutoff-date "2025-03")
+     :cutoff-date "2025-03"))
 
   "List of available Anthropic models and associated properties.
 Keys:
@@ -670,7 +670,7 @@ Keys:
 Information about the Anthropic models was obtained from the following
 comparison table:
 
-URL `https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table'"))
+URL `https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table'")
 
 ;;;###autoload
 (cl-defun gptel-make-anthropic
