@@ -1289,7 +1289,7 @@ Now the chat should be able to automatically use search. Try "what's new today" 
 #+html: </details>
 ** Usage
 
-gptel provides a few powerful, general purpose and flexible commands.  You can dynamically tweak their behavior to the needs of your task with /directives/, redirection options and more.  There is a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel -- but =gptel-send= might be all you need.
+gptel provides a few powerful, general purpose and flexible commands.  You can dynamically tweak their behavior to the needs of your task with /directives/ (system prompts), redirection options and more.  There is a [[https://www.youtube.com/watch?v=bsRnh_brggM][video demo]] showing various uses of gptel -- but =gptel-send= might be all you need.
 
 |-------------------+---------------------------------------------------------------------------------------------------|
 | *To send queries* | Description                                                                                       |
@@ -1320,11 +1320,12 @@ gptel provides a few powerful, general purpose and flexible commands.  You can d
 | =gptel-org-set-properties= | Write gptel configuration as Org properties, for per-heading chat configuration.        |
 |----------------------------+-----------------------------------------------------------------------------------------|
 
-|------------------+-------------------------------------------------------------------------------------------|
-| *GitHub Copilot* |                                                                                           |
-|------------------+-------------------------------------------------------------------------------------------|
-| =gptel-gh-login= | Authenticate with GitHub Copilot. (Automatically handled, but can be forced if required.) |
-|------------------+-------------------------------------------------------------------------------------------|
+|----------------------------+-------------------------------------------------------------------------------------------|
+| *Oauth connections*        |                                                                                           |
+|----------------------------+-------------------------------------------------------------------------------------------|
+| =gptel-gh-login=           | Authenticate with GitHub Copilot. (Automatically handled, but can be forced if required.) |
+| =gptel-openai-oauth-login= | Authenticate with OpenAI (Codex). (Automatically handled, but can be forced if required.) |
+|----------------------------+-------------------------------------------------------------------------------------------|
 
 *** In any buffer:
 
@@ -1357,7 +1358,7 @@ You can also define a "preset" bundle of options that are applied together, see 
 
 2. In the gptel buffer, send your prompt with =M-x gptel-send=, bound to =C-c RET=.
 
-3. Set chat parameters (LLM provider, model, directives etc) for the session by calling =gptel-send= with a prefix argument (=C-u C-c RET=):
+3. Set chat parameters (LLM provider, model, system prompt etc) for the session by calling =gptel-send= with a prefix argument (=C-u C-c RET=):
    
 #+html: <img src="https://github.com/karthink/gptel/assets/8607532/eb4867e5-30ac-455f-999f-e17123afb810" align="center" alt="Image showing gptel's menu with some of the available query options.">
 
@@ -1639,7 +1640,7 @@ Note: using this option requires Org 9.7 or higher to be available.  The [[https
   
 ***** Save gptel parameters to Org headings (reproducible chats)
 
-You can declare the gptel model, backend, temperature, system message and other parameters as Org properties with the command =gptel-org-set-properties=.  gptel queries under the corresponding heading will always use these settings, allowing you to create mostly reproducible LLM chat notebooks, and to have simultaneous chats with different models, model settings and directives under different Org headings.
+You can declare the gptel model, backend, temperature, system message and other parameters as Org properties with the command =gptel-org-set-properties=.  gptel queries under the corresponding heading will always use these settings, allowing you to create mostly reproducible LLM chat notebooks, and to have simultaneous chats with different models, model settings and directives (system prompts) under different Org headings.
 
 *** Introspection (examine, debug or modify requests)
 
@@ -1847,7 +1848,8 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-backend=       | Default LLM Backend.                                    |
 | =gptel-model=         | Default model to use, depends on the backend.           |
 | =gptel-stream=        | Enable streaming responses, if the backend supports it. |
-| =gptel-directives=    | Alist of system directives, can switch on the fly.      |
+| =gptel-system-prompt= | Default system prompt used by gptel, can be a function. |
+| =gptel-directives=    | Alist of system prompts, can switch on the fly.         |
 | =gptel-max-tokens=    | Maximum token count (in query + response).              |
 | =gptel-temperature=   | Randomness in response text, 0 to 2.                    |
 | =gptel-cache=         | Cache prompts, system message or tools (Anthropic only) |
