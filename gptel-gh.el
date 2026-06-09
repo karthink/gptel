@@ -370,7 +370,7 @@ instead of attempting to open a browser automatically."
   (let ((gh-backends (gptel--gh-get-backends-by-account-hint account-hint)))
     ;; It shall only be possible to login when there exists a corresponding backend
     (if (= (length gh-backends) 0)
-        (user-error "No GitHub CoPilot backend found for account hint '%s'" account-hint))
+        (user-error "No GitHub Copilot backend found for account hint '%s'" account-hint))
     (pcase-let (((map :device_code :user_code :verification_uri)
                  (gptel--url-retrieve
                      "https://github.com/login/device/code"
