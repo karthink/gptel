@@ -232,6 +232,17 @@
      :input-cost 1
      :output-cost 1
      :cutoff-date "2025-01")
+    (gemini-3.5-flash
+     :description "Most intelligent Gemini model for sustained frontier performance in agentic and coding tasks"
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"
+                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 109
+     :input-cost 1
+     :output-cost 1
+     :cutoff-date "2025-01")
     (grok-code-fast-1
      :description "Fast reasoning model for agentic coding"
      :capabilities '(tool-use json reasoning)

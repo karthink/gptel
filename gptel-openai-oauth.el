@@ -49,6 +49,11 @@ Removes unsupported temperature settings from the payload."
        '(gptel gptel-openai-oauth)
        "Codex models do not support setting request temperature, ignoring `gptel-temperature'")
       (cl-remf prompts-plist :temperature))
+    (when (plist-member prompts-plist :max_output_tokens)
+      (display-warning
+       '(gptel gptel-openai-oauth)
+       "Codex models do not support setting request max_output_tokens, ignoring `gptel-max-tokens'")
+      (cl-remf prompts-plist :max_output_tokens))
     prompts-plist))
 
 ;;;; OpenAI OAuth login
@@ -217,7 +222,7 @@ before constructing the headers."
           (protocol "https")
           (endpoint "/backend-api/codex/responses")
           (models 
-           '(gpt-5.2 gpt-5.3-codex gpt-5.3-codex-spark gpt-5.4-mini gpt-5.4)))
+           '(gpt-5.2 gpt-5.3-codex gpt-5.3-codex-spark gpt-5.4-mini gpt-5.4 gpt-5.5)))
   "Register a ChatGPT Plus/Pro OAuth backend for gptel with NAME.
 
 This backend uses ChatGPT OAuth tokens (not OpenAI API keys) and

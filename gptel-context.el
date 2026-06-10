@@ -409,20 +409,20 @@ This modifies the buffer."
       ('system
        (if (gptel--model-capable-p 'nosystem)
            (gptel-context--wrap-in-buffer context-string 'user)
-         (if gptel--system-message
-             (cl-etypecase gptel--system-message
+         (if gptel-system-prompt
+             (cl-etypecase gptel-system-prompt
                (string
-                (setq gptel--system-message
-                      (concat context-string "\n\n" gptel--system-message)))
+                (setq gptel-system-prompt
+                      (concat context-string "\n\n" gptel-system-prompt)))
                (function
-                (setq gptel--system-message
-                      (gptel--parse-directive gptel--system-message 'raw))
+                (setq gptel-system-prompt
+                      (gptel--parse-directive gptel-system-prompt 'raw))
                 (gptel-context--wrap-in-buffer context-string))
                (list
-                (setq gptel--system-message ;cons a new list to avoid mutation
-                      (cons (concat context-string "\n\n" (car gptel--system-message))
-                            (cdr gptel--system-message)))))
-           (setq gptel--system-message context-string))))
+                (setq gptel-system-prompt ;cons a new list to avoid mutation
+                      (cons (concat context-string "\n\n" (car gptel-system-prompt))
+                            (cdr gptel-system-prompt)))))
+           (setq gptel-system-prompt context-string))))
       ('user
        (goto-char (point-max))
        (text-property-search-backward 'gptel nil t)

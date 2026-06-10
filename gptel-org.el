@@ -34,7 +34,7 @@
 (defvar org-entry-property-inherited-from)
 (defvar gptel-backend)
 (defvar gptel--known-backends)
-(defvar gptel--system-message)
+(defvar gptel-system-prompt)
 (defvar gptel-model)
 (defvar gptel-temperature)
 (defvar gptel-max-tokens)
@@ -285,6 +285,8 @@ depend on the value of `gptel-org-branching-context', which see."
                 (gptel-org--strip-elements))
               (setq org-complex-heading-regexp ;For org-element-context to run
                     (buffer-local-value 'org-complex-heading-regexp org-buf))
+              (setq tab-width      ;Match source indentation for list parsing
+                    (buffer-local-value 'tab-width org-buf))
               (current-buffer))))
       ;; Create prompt the usual way
       (let ((org-buf (current-buffer))
@@ -298,6 +300,8 @@ depend on the value of `gptel-org-branching-context', which see."
                 (gptel-org--strip-elements))
           (setq org-complex-heading-regexp ;For org-element-context to run
                 (buffer-local-value 'org-complex-heading-regexp org-buf))
+          (setq tab-width      ;Match source indentation for list parsing
+                (buffer-local-value 'tab-width org-buf))
           (current-buffer))))))
 
 (defun gptel-org--strip-elements ()
@@ -500,12 +504,12 @@ parameters.
 
 ARGS are the original function call arguments."
   (if (derived-mode-p 'org-mode)
-      (pcase-let ((`( ,gptel--preset ,gptel--system-message ,gptel-backend
+      (pcase-let ((`( ,gptel--preset ,gptel-system-prompt ,gptel-backend
                       ,gptel-model ,gptel-temperature ,gptel-max-tokens
                       ,gptel--num-messages-to-send ,gptel-tools)
                    (seq-mapn (lambda (a b) (or a b))
                              (gptel-org--entry-properties)
-                             (list gptel--preset gptel--system-message gptel-backend
+                             (list gptel--preset gptel-system-prompt gptel-backend
                                    gptel-model gptel-temperature gptel-max-tokens
                                    gptel--num-messages-to-send gptel-tools))))
         (apply send-fun args))
@@ -571,7 +575,7 @@ ARGS are the original function call arguments."
                  '(gptel presets)
                  (format "Could not activate gptel preset `%s' in buffer \"%s\""
                          preset (buffer-name)))))
-            (when system (setq-local gptel--system-message system))
+            (when system (setq-local gptel-system-prompt system))
             (if backend (setq-local gptel-backend backend)
               (message
                (substitute-command-keys
@@ -603,6 +607,7 @@ gptel model and backend names, the system message, active tools, the
 response temperature, max tokens and number of conversation turns to
 send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
   (interactive (list (point) t))
+  (require 'gptel)
   (let ((preset-spec (and gptel--preset (gptel-get-preset gptel--preset))))
     (if preset-spec
         (org-entry-put pt "GPTEL_PRESET" (gptel--to-string gptel--preset))
@@ -620,7 +625,7 @@ send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
     (if (gptel--preset-mismatch-value preset-spec :backend gptel-backend)
         (org-entry-put pt "GPTEL_BACKEND" (gptel-backend-name gptel-backend)))
     ;; System message
-    (let ((parsed (car-safe (gptel--parse-directive gptel--system-message))))
+    (let ((parsed (car-safe (gptel--parse-directive gptel-system-prompt))))
       (if (gptel--preset-mismatch-value preset-spec :system parsed)
           (when parsed
             (org-entry-put pt "GPTEL_SYSTEM" (string-replace "\n" "\\n" parsed)))
