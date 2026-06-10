@@ -89,12 +89,12 @@ This is intended to be fast but imperfect.  See
         (cond
          ((memq key '(:description :parents)) 'nil)
          ((eq key :system)
-          (or (equal gptel--system-message val)
+          (or (equal gptel-system-prompt val)
               (functionp val)    ; Ignore functions, modify-specs for speed here
               (and (consp val) (keywordp (car val)))
               (and-let* (((symbolp val))
                          (p (assq val gptel-directives)))
-                (equal gptel--system-message (cdr p)))
+                (equal gptel-system-prompt (cdr p)))
               (throw 'mismatch t)))
          ((eq key :backend)
           (or (if (stringp val)
@@ -313,9 +313,9 @@ not support system messages."
               (propertize (gptel--model-name gptel-model)
                           'face 'warning)
               (propertize "]" 'face 'transient-heading))
-    (if gptel--system-message
+    (if gptel-system-prompt
         (gptel--describe-directive
-         gptel--system-message (max (- (window-width) 12) 14) "⮐ ")
+         gptel-system-prompt (max (- (window-width) 12) 14) "⮐ ")
       "[No system message set]")))
 
 (defun gptel--tools-init-value (obj)
@@ -1021,7 +1021,7 @@ Customize `gptel-directives' for task-specific prompts."
     (lambda (_) (transient-parse-suffixes
             'gptel-system-prompt
             (gptel--setup-directive-menu
-             'gptel--system-message "Directive" t)))
+             'gptel-system-prompt "Directive" t)))
     :pad-keys t])
 
 ;; ** Prefix for saving and applying presets
@@ -1566,7 +1566,7 @@ Or in an extended conversation:
   ;; result as the :scope.
   :reader (lambda (prompt initial history)
             (let* ((directive
-                    (car-safe (gptel--parse-directive gptel--system-message 'raw)))
+                    (car-safe (gptel--parse-directive gptel-system-prompt 'raw)))
                    (cycle-prefix (lambda () (interactive)
                                    (gptel--read-with-prefix directive)))
                    (minibuffer-local-map
@@ -1874,7 +1874,7 @@ This sets the variable `gptel-include-tool-results', which see."
              :system
              (if system-extra
                  (gptel--merge-additional-directive system-extra)
-               gptel--system-message)
+               gptel-system-prompt)
              :callback callback
              :transforms gptel-prompt-transform-functions
              :fsm (gptel-make-fsm :handlers gptel-send--handlers)
@@ -1924,7 +1924,7 @@ and applies only to the next gptel request, see
 FULL defaults to the active, full system message.  It may be a
 string, a list of prompts or a function, see `gptel-directives'
 for details."
-  (setq full (or full gptel--system-message))
+  (setq full (or full gptel-system-prompt))
   (cl-typecase full
     (string (concat full "\n\n" additional))
     (cons (let ((copy (copy-sequence full)))
@@ -1992,8 +1992,8 @@ This uses the prompts in the variable
               nil t)))
         (when-let* ((prompt (gethash choice gptel--crowdsourced-prompts)))
           (gptel--set-with-scope
-           'gptel--system-message prompt gptel--set-buffer-locally)
-          (gptel--edit-directive 'gptel--system-message
+           'gptel-system-prompt prompt gptel--set-buffer-locally)
+          (gptel--edit-directive 'gptel-system-prompt
             :callback (lambda (_) (call-interactively #'gptel-menu)))))
     (message "No prompts available.")))
 
@@ -2007,12 +2007,12 @@ generated from functions."
   :format " %k   %d"
   :key "s"
   (interactive
-   (list (and (functionp gptel--system-message)
+   (list (and (functionp gptel-system-prompt)
               (not (y-or-n-p
                     "Active directive is dynamically generated: Edit its current value instead?")))))
   (if cancel (progn (message "Edit canceled")
                     (call-interactively #'gptel-menu))
-    (gptel--edit-directive 'gptel--system-message
+    (gptel--edit-directive 'gptel-system-prompt
       :setup #'activate-mark
       :callback (lambda (_) (call-interactively #'gptel-menu)))))
 

@@ -226,8 +226,8 @@ Mutate state INFO with response metadata."
             :stream ,(or gptel-stream :json-false)))
         (o-model-p (memq gptel-model '(o1 o1-preview o1-mini o3-mini o3 o4-mini))))
     ;; System message becomes instructions
-    (when gptel--system-message
-      (plist-put prompts-plist :instructions gptel--system-message))
+    (when gptel-system-prompt
+      (plist-put prompts-plist :instructions gptel-system-prompt))
     ;; Temperature
     (when (and gptel-temperature (not o-model-p))
       (plist-put prompts-plist :temperature gptel-temperature))

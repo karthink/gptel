@@ -140,9 +140,9 @@ list."
                                 (:category "HARM_CATEGORY_HATE_SPEECH"
                                            :threshold "BLOCK_NONE")]))
         params)
-    (if gptel--system-message
+    (if gptel-system-prompt
         (plist-put prompts-plist :systemInstruction
-                   `(:parts [(:text ,gptel--system-message)])))
+                   `(:parts [(:text ,gptel-system-prompt)])))
     (when gptel-use-tools
       (when (eq gptel-use-tools 'force)
         (plist-put prompts-plist :toolConfig

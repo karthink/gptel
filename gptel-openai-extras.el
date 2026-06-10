@@ -94,9 +94,9 @@
 	   :use_context ,(or (gptel-privategpt-context gptel-backend) :json-false)
 	   :include_sources ,(or (gptel-privategpt-sources gptel-backend) :json-false)
            :stream ,(or gptel-stream :json-false))))
-    (when (and gptel--system-message
+    (when (and gptel-system-prompt
                (not (gptel--model-capable-p 'nosystem)))
-      (plist-put prompts-plist :system gptel--system-message))
+      (plist-put prompts-plist :system gptel-system-prompt))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-max-tokens

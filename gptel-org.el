@@ -34,7 +34,7 @@
 (defvar org-entry-property-inherited-from)
 (defvar gptel-backend)
 (defvar gptel--known-backends)
-(defvar gptel--system-message)
+(defvar gptel-system-prompt)
 (defvar gptel-model)
 (defvar gptel-temperature)
 (defvar gptel-reasoning-effort)
@@ -505,12 +505,12 @@ parameters.
 
 ARGS are the original function call arguments."
   (if (derived-mode-p 'org-mode)
-      (pcase-let ((`( ,gptel--preset ,gptel--system-message ,gptel-backend
+      (pcase-let ((`( ,gptel--preset ,gptel-system-prompt ,gptel-backend
                       ,gptel-model ,gptel-temperature ,gptel-reasoning-effort
                       ,gptel-max-tokens ,gptel--num-messages-to-send ,gptel-tools)
                    (seq-mapn (lambda (a b) (or a b))
                              (gptel-org--entry-properties)
-                             (list gptel--preset gptel--system-message gptel-backend
+                             (list gptel--preset gptel-system-prompt gptel-backend
                                    gptel-model gptel-temperature
                                    gptel-reasoning-effort gptel-max-tokens
                                    gptel--num-messages-to-send gptel-tools))))
@@ -578,7 +578,7 @@ ARGS are the original function call arguments."
                  '(gptel presets)
                  (format "Could not activate gptel preset `%s' in buffer \"%s\""
                          preset (buffer-name)))))
-            (when system (setq-local gptel--system-message system))
+            (when system (setq-local gptel-system-prompt system))
             (if backend (setq-local gptel-backend backend)
               (message
                (substitute-command-keys
@@ -629,7 +629,7 @@ send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
     (if (gptel--preset-mismatch-value preset-spec :backend gptel-backend)
         (org-entry-put pt "GPTEL_BACKEND" (gptel-backend-name gptel-backend)))
     ;; System message
-    (let ((parsed (car-safe (gptel--parse-directive gptel--system-message))))
+    (let ((parsed (car-safe (gptel--parse-directive gptel-system-prompt))))
       (if (gptel--preset-mismatch-value preset-spec :system parsed)
           (when parsed
             (org-entry-put pt "GPTEL_SYSTEM" (string-replace "\n" "\\n" parsed)))

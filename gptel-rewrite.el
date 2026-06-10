@@ -577,9 +577,9 @@ INFO is the async communication channel for the rewrite request."
       (gptel--rewrite-callback 'abort info))
 
      ((eq (car-safe response) 'reasoning) ;Reasoning redirection to other buffer
-      (and-let* ((rbuf (plist-get info :include-reasoning)))
-        (and (stringp rbuf) (buffer-live-p (get-buffer rbuf))
-             (gptel--display-reasoning-stream (cdr response) info)))
+      (and-let* ((rbuf (plist-get info :include-reasoning))
+                 ((stringp rbuf)))
+        (gptel--display-reasoning-stream (cdr response) info))
       t)
 
      ((consp response))             ;reasoning or tool call result -- don't care

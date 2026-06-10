@@ -84,8 +84,8 @@ back to the LLM)."
   (let ((base-request-data
          (nconc
           `(:messages [,@prompts] :inferenceConfig (:maxTokens ,(or gptel-max-tokens 500)))
-          (when gptel--system-message
-            `(:system [(:text ,gptel--system-message)
+          (when gptel-system-prompt
+            `(:system [(:text ,gptel-system-prompt)
                        ,@(when (or (eq gptel-cache t) (memq 'system gptel-cache))
                            '((:cachePoint (:type "default"))))]))
           (when gptel-temperature `(:temperature ,gptel-temperature))

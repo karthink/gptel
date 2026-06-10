@@ -121,9 +121,9 @@ Store response metadata in state INFO."
 
 (cl-defmethod gptel--request-data ((backend gptel-ollama) prompts)
   "JSON encode PROMPTS for sending to Ollama."
-  (when gptel--system-message
+  (when gptel-system-prompt
     (push (list :role "system"
-                :content gptel--system-message)
+                :content gptel-system-prompt)
           prompts))
   (let* ((prompts-plist
           (gptel--merge-plists

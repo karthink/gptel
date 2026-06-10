@@ -767,11 +767,14 @@ send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
           (if (gptel--preset-mismatch-value preset-spec :backend gptel-backend)
               (add-file-local-variable 'gptel--backend-name
                                        (gptel-backend-name gptel-backend)))
+          ;; System message compat
+          ;; TODO(v1.0): Remove this fix for duplicate system prompts
+          (delete-file-local-variable 'gptel--system-message)
           ;; System message
-          (let ((parsed (car-safe (gptel--parse-directive gptel--system-message))))
+          (let ((parsed (car-safe (gptel--parse-directive gptel-system-prompt))))
             (if (gptel--preset-mismatch-value preset-spec :system parsed)
-                (add-file-local-variable 'gptel--system-message parsed)
-              (delete-file-local-variable 'gptel--system-message)))
+                (add-file-local-variable 'gptel-system-prompt parsed)
+              (delete-file-local-variable 'gptel-system-prompt)))
           ;; Tools
           (let ((tool-names (mapcar #'gptel-tool-name gptel-tools)))
             (if (gptel--preset-mismatch-value preset-spec :tools tool-names)
@@ -849,8 +852,8 @@ Search between BEG and END."
             (propertize
              (buttonize
               (format "[Prompt: %s]"
-                      (or (car-safe (rassoc gptel--system-message gptel-directives))
-                          (gptel--describe-directive gptel--system-message 15)))
+                      (or (car-safe (rassoc gptel-system-prompt gptel-directives))
+                          (gptel--describe-directive gptel-system-prompt 15)))
               (lambda (&rest _) (gptel-system-prompt)))
              'mouse-face 'highlight
              'help-echo "System message for session"))
@@ -2639,10 +2642,10 @@ to registering the preset, elisp code to do the same is copied to the
                           description)
            :backend ,(gptel-backend-name gptel-backend)
            :model ',gptel-model
-           :system ,(if-let* ((directive (car-safe (rassoc gptel--system-message
-                                                    gptel-directives))))
+           :system ,(if-let* ((directive (car-safe (rassoc gptel-system-prompt
+                                                           gptel-directives))))
                          `',directive
-                      gptel--system-message)
+                      gptel-system-prompt)
            :tools ',(mapcar #'gptel-tool-name gptel-tools)
            :stream ,gptel-stream
            :temperature ,gptel-temperature
@@ -2689,9 +2692,10 @@ example) apply the preset buffer-locally."
    (lambda (key val)
      (pcase key
        ((or :parents :description :pre :post) nil)
-       ((or :system :system-message :rewrite-directive)
+       ;; TODO(v1.0): Remove :system-message from this list
+       ((or :system :system-prompt :system-message :rewrite-directive)
         (let ((sym (if (eq key :rewrite-directive)
-                       'gptel--rewrite-directive 'gptel--system-message)))
+                       'gptel--rewrite-directive 'gptel-system-prompt)))
           (when (consp val)
             ;; Possibly complain about trying to compose a system message string
             ;; with a non-string
@@ -2760,7 +2764,7 @@ PRESET is the name of a preset, or a spec (plist) of the form
         (:parents
          (setq syms
                (nconc syms (mapcan #'gptel--preset-syms (ensure-list val)))))
-        (:system (push 'gptel--system-message syms))
+        (:system (push 'gptel-system-prompt syms))
         (_ (if-let* ((var (or (intern-soft
                                (concat "gptel-" (substring (symbol-name key) 1)))
                               (intern-soft

@@ -216,9 +216,9 @@ Mutate state INFO with response metadata."
 
 (cl-defmethod gptel--request-data ((backend gptel-openai) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
-  (when gptel--system-message
+  (when gptel-system-prompt
     (push (list :role "system"
-                :content gptel--system-message)
+                :content gptel-system-prompt)
           prompts))
   (let ((prompts-plist
          (list :model (gptel--model-name gptel-model)
