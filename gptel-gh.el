@@ -174,6 +174,14 @@
      :input-cost 3
      :output-cost 3
      :cutoff-date "2025-03")
+    (claude-fable-5
+     :description "Most capable model for complex reasoning and advanced coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 1000
+     :input-cost 10
+     :output-cost 50
+     :cutoff-date "2026-01")
     (claude-sonnet-4
      :description "High-performance model with exceptional reasoning and efficiency"
      :capabilities (media tool-use cache)
