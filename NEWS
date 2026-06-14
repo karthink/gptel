@@ -34,7 +34,8 @@
 - Anthropic backend: Add support for =claude-opus-4-8= and
   =claude-fable-5=.
 
-- GitHub Copilot backend: Add support for =gemini-3.5-flash=.
+- GitHub Copilot backend: Add support for =gemini-3.5-flash= and
+  =claude-opus-4.8=.
 
 - Gemini backend: Add support for =gemini-3.5-flash=,
   =gemini-3.1-flash-lite= and deprecate the preview version.
