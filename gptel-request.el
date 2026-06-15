@@ -2207,7 +2207,8 @@ be used to rerun or continue the request at a later time."
          (prompt-buffer
           (cond                       ;prompt from buffer or explicitly supplied
            ((null prompt)           ;Send text up to end of word (for evil-mode users)
-            (gptel--create-prompt-buffer (gptel--at-word-end (point))))
+            (with-current-buffer buffer
+              (gptel--create-prompt-buffer (gptel--at-word-end (point)))))
            ((stringp prompt)
             (gptel--with-buffer-copy buffer nil nil
               (insert prompt)

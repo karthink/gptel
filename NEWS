@@ -26,6 +26,16 @@
   error.  To fix this, please ensure that gptel is loaded before opening
   any saved text/markdown chat files.  This only needs to be done once.
 
+- ~gptel-menu~'s option to redirect a response to a gptel buffer (the
+  "g" option) now works differently.  The prompt is inserted into the
+  gptel buffer as before, but the request is sent /from the gptel
+  buffer/, with the full context of the conversation.  Before now, the
+  gptel buffer only served as the destination for the response, and the
+  query was sent without any context.
+
+  This means that you can continue a conversation in any gptel
+  buffer from anywhere in Emacs without having to switch to it first.
+
 ** New models and backends
 
 - Bedrock backend: Add support for =claude-opus-4-7= and
