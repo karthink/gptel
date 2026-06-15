@@ -286,7 +286,8 @@
 
 (defconst gptel--gh-auth-common-headers
   `(("editor-plugin-version" . "gptel/*")
-    ("editor-version" . ,(concat "emacs/" emacs-version))))
+    ("editor-version" . ,(concat "emacs/" emacs-version))
+    ("User-Agent" . ,(format "Emacs %s" emacs-version))))
 
 (defconst gptel--gh-client-id "Iv1.b507a08c87ecfe98")
 
