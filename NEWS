@@ -35,6 +35,12 @@
 
   This means that you can continue a conversation in any gptel
   buffer from anywhere in Emacs without having to switch to it first.
+- The models =grok-4-1-fast-reasoning=, =grok-4-1-fast-non-reasoning=,
+  =grok-code-fast-1=, =grok-4-fast-reasoning=,
+  =grok-4-fast-non-reasoning=, =grok-4=, =grok-3-mini=, =grok-3= and
+  =grok-2-vision-1212= have been removed from the default list of Grok
+  (xAI) models.  These models are either no longer available or aliased
+  to one of two available Grok models, =grok-4.3= and =grok-build-0.1=.
 
 ** New models and backends
 
@@ -49,6 +55,8 @@
 
 - Gemini backend: Add support for =gemini-3.5-flash=,
   =gemini-3.1-flash-lite= and deprecate the preview version.
+
+- xAI backend: Add support for =grok-4.3= and =grok-build-0.1=.
 
 ** New features and UI changes
 
