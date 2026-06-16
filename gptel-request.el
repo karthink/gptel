@@ -973,6 +973,20 @@ and \"apikey\" as USER."
     (string s)
     (otherwise (prin1-to-string s))))
 
+(defsubst gptel--sanitize-raw-bytes (s)
+  "Replace raw bytes in string S with \"?\" so it is JSON-serializable.
+
+When a tool result contains non-UTF-8 bytes (for example from reading a
+binary file via a shell command), Emacs represents them as \"raw-byte\"
+codepoints in the #x3FFF80..#x3FFFFF range.  Passing such a string to
+`json-serialize' signals (wrong-type-argument json-value-p ...), which
+tears down the request and leaves it unrecoverable.  Replace those raw
+bytes with \"?\".  Legitimate Unicode is preserved, and ASCII control
+characters are left intact since `json-serialize' escapes them as
+\\uXXXX."
+  (replace-regexp-in-string
+   "[\x3FFF80-\x3FFFFF]" "?" (string-to-multibyte s)))
+
 (defsubst gptel--intern (s)
   "Intern S, if possible."
   (cl-etypecase s
@@ -1903,7 +1917,7 @@ injects the results into the prompt data and transitions the FSM."
          ;; MAYBE(tool-hooks): Use plist-member for valid nil :result?
          (remaining (cl-loop for call in (plist-get info :tool-use)
                              count (not (plist-get call :result)))))
-    (let ((result (gptel--to-string result)))
+    (let ((result (gptel--sanitize-raw-bytes (gptel--to-string result))))
       ;; FIXME(tool-hooks): If a hook has changed the tool that was called
       ;; tool-spec needs to be updated.
       (push (list tool-spec (plist-get tool-call :args) result)
