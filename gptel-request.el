@@ -1567,7 +1567,8 @@ In both cases, the first matching gptel-tool is returned.
 
 - as a string representing a category, like \"filesystem\".
 In this case a list of all gptel-tools with this category is
-returned."
+returned.
+- as a gptel-tool object, which is returned as-is."
   (or (cl-etypecase path
         (cons (let ((tc (map-nested-elt gptel--known-tools path)))
                 (if (consp tc) (map-values tc) tc)))
@@ -1575,7 +1576,8 @@ returned."
                     (map-values (cdr category))
                   (cl-loop for (_ . tools) in gptel--known-tools
                            if (assoc path tools)
-                           return (cdr it)))))
+                           return (cdr it))))
+        (gptel-tool path))
       (error "No tool matches for %S" path)))
 
 (defun gptel-make-tool (&rest slots)
