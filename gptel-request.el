@@ -968,6 +968,22 @@ and \"apikey\" as USER."
     (string s)
     (otherwise (prin1-to-string s))))
 
+(defun gptel--sanitize-raw-bytes (s)
+  "Return string S if it is UTF-8 encodable, else a sanitized copy.
+
+Tool results may contain raw bytes that are not valid UTF-8 (e.g. from
+reading a binary file), which `json-serialize' rejects.  Decode UTF-8
+sequences that arrived undecoded, and replace any remaining raw bytes
+with the Unicode replacement character."
+  (if (not (memq 'eight-bit (find-charset-string s)))
+      s
+    ;; Flatten S to bytes and decode it, recovering valid UTF-8 sequences.
+    (let ((s (decode-coding-string (encode-coding-string s 'utf-8) 'utf-8)))
+      ;; Raw bytes are left as codepoints in the #x3FFF80..#x3FFFFF range.
+      (if (unencodable-char-position 0 nil 'utf-8 nil s)
+          (replace-regexp-in-string "[\x3FFF80-\x3FFFFF]" "\ufffd" s t t)
+        s))))
+
 (defsubst gptel--intern (s)
   "Intern S, if possible."
   (cl-etypecase s
@@ -1918,7 +1934,7 @@ injects the results into the prompt data and transitions the FSM."
          ;; MAYBE(tool-hooks): Use plist-member for valid nil :result?
          (remaining (cl-loop for call in (plist-get info :tool-use)
                              count (not (plist-get call :result)))))
-    (let ((result (gptel--to-string result)))
+    (let ((result (gptel--sanitize-raw-bytes (gptel--to-string result))))
       ;; FIXME(tool-hooks): If a hook has changed the tool that was called
       ;; tool-spec needs to be updated.
       (push (list tool-spec (plist-get tool-call :args) result)
