@@ -405,8 +405,13 @@ reauthenticate as needed."
    #'gptel-openai-oauth-account-hint
    #'gptel-openai-oauth-token
    (lambda (b token) (setf (gptel-openai-oauth-token b) token))
-   (or gptel-oauth-token-load-function 'gptel--openai-oauth-restore-token-from-file)
-   account-hint)))
+   #'gptel-openai-oauth--get-load-token-function
+   account-hint))
+
+(defun gptel-openai-oauth--get-load-token-function (account-hint)
+  (if #'gptel-oauth-token-load-function
+      (gptel-oauth-token-load-function 'gptel-openai-oauth account-hint)
+    (gptel--openai-oauth-restore-token-from-file account-hint))))
 
 (defun gptel--openai-oauth-save-token (account-hint token)
   "Save OpenAI OAuth token using customizable save function."
@@ -414,9 +419,14 @@ reauthenticate as needed."
    #'gptel-openai-oauth-p
    #'gptel-openai-oauth-account-hint
    (lambda (b token) (setf (gptel-openai-oauth-token b) token))
-   (or gptel-oauth-token-save-function 'gptel--openai-oauth-save-token-to-file)
+   #'gptel-openai-oauth--get-save-token-function
    account-hint
    token))
+
+(defun gptel-openai-oauth--get-save-token-function (account-hint token)
+  (if #'gptel-oauth-token-save-function
+      (gptel-oauth-token-save-function 'gptel-openai-oauth account-hint token)
+    (gptel--openai-oauth-save-token-to-file account-hint token)))
 
 ;;;; Oauth backend management
 
