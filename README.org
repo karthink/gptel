@@ -311,16 +311,48 @@ it will try to guess the key from the backend type, /i.e./ try to use
 :END:
 #+html: </summary>
 
-For OAuth-based backends (GitHub Copilot, OpenAI OAuth), tokens are stored by default in cleartext files. You can customize this behavior by setting the variables =gptel-oauth-token-load-function= and =gptel-oauth-token-save-function=. These are global variables that affect all OAuth backends. For example, if tokens are stored in a password manager:
+For OAuth-based backends (GitHub Copilot, OpenAI OAuth), tokens are stored by default in cleartext files. You can customize this behavior by setting the variables =gptel-oauth-token-load-function= and =gptel-oauth-token-save-function=. These are global variables that affect all OAuth backends.
+
+**Important**: Different backends use different token formats:
+- =GitHub Copilot= (=gptel-gh=): tokens are simple strings
+- =OpenAI OAuth= (=gptel-openai-oauth=): tokens are plists with multiple fields
+
+Here's an example configuration for manual copy/paste workflow:
 
 #+begin_src emacs-lisp
   (setq
-   ;; Prompt user to provide the token as a password
-   ;; backend-type is a symbol like 'gptel-gh or 'gptel-openai-oauth
-   gptel-oauth-token-load-function (lambda (backend-type account-hint) (read-passwd (format "Token for '%s' (%s): " account-hint backend-type)))
+   ;; Load function - prompt user to paste token
+   ;; For GitHub: paste the access token string
+   ;; For OpenAI OAuth: paste the plist (use %S format from save messages)
+   gptel-oauth-token-load-function
+   (lambda (backend-type account-hint)
+     (pcase backend-type
+       ('gptel-gh
+        ;; GitHub: tokens are strings
+        (read-passwd (format "GitHub token for '%s': " account-hint)))
+       ('gptel-openai-oauth
+        ;; OpenAI OAuth: tokens are plists - convert string to plist
+        (let ((token-str (read-passwd (format "OpenAI OAuth token plist for '%s': " account-hint))))
+          (when (and token-str (not (string-empty-p token-str)))
+            (condition-case nil
+                (read token-str)  ;; Convert string to plist
+              (error
+               (message "Invalid OpenAI OAuth token format!")
+               nil)))))
+       (_ nil)))
 
-   ;; Display a message when a new token has been stored, so that it can be copied from the message history
-   gptel-oauth-token-save-function (lambda (backend-type account-hint token) (message "New token for '%s' (%s) saved" account-hint backend-type)))
+   ;; Save function - display token for copying to password manager
+   gptel-oauth-token-save-function
+   (lambda (backend-type account-hint token)
+     (pcase backend-type
+       ('gptel-gh
+        ;; GitHub: display string token
+        (message "GitHub token for '%s': %s" account-hint token))
+       ('gptel-openai-oauth
+        ;; OpenAI OAuth: display plist (use %S for copy/paste format)
+        (message "OpenAI OAuth token for '%s': %S" account-hint token))
+       (_
+        (message "Unknown backend type: %s" backend-type)))))
 #+end_src
 
 #+html: </details>
