@@ -305,8 +305,13 @@
    #'gptel--gh-account-hint
    #'gptel--gh-github-token
    (lambda (b token) (setf (gptel--gh-github-token b) token))
-   (or gptel-oauth-token-load-function 'gptel--gh-restore-token-from-file)
+   #'gptel-gh--get-load-token-function
    account-hint))
+
+(defun gptel-gh--get-load-token-function (account-hint)
+  (if #'gptel-oauth-token-load-function
+      (gptel-oauth-token-load-function 'gptel-gh account-hint)
+    (gptel--gh-restore-token-from-file account-hint)))
 
 (defun gptel--gh-save-token (account-hint token)
   "Function that updates the GitHub OAuth token cache and calls the save function."
@@ -314,9 +319,14 @@
    #'gptel--gh-p
    #'gptel--gh-account-hint
    (lambda (b token) (setf (gptel--gh-github-token b) token))
-   (or gptel-oauth-token-save-function 'gptel--gh-save-token-to-file)
+   #'gptel-gh--get-save-token-function
    account-hint
    token))
+
+(defun gptel-gh--get-save-token-function (account-hint token)
+  (if #'gptel-oauth-token-save-function
+      (gptel-oauth-token-save-function 'gptel-gh account-hint token)
+    (gptel--gh-save-token-to-file account-hint token))
 
 ;; https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 (defun gptel--gh-uuid ()
