@@ -227,9 +227,7 @@ matching PREDICATE and ACCOUNT-HINT."
              (cached-token (funcall token-getter backend)))
       cached-token
     (let ((token (funcall load-function account-hint)))
-      (if (string= token "")
-          ;; Empty string means no data
-          nil
+      (when (and token (not (equal token "")))
         ;; Propagate to all matching backends
         (dolist (b (gptel-oauth--get-backends-by predicate account-hint-accessor account-hint) token)
           (funcall token-setter b token))))))
