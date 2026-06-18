@@ -263,6 +263,30 @@ to the LLM, and after a text insertion."
   :type 'hook
   :group 'gptel)
 
+(defcustom gptel-post-tool-insert-functions nil
+  "Abnormal hook run after gptel inserts a tool result block into a buffer.
+
+Each function is called with two arguments: the beginning and end
+buffer positions of the inserted block.
+
+This hook runs only when gptel inserts tool result blocks into a
+buffer, such as via `gptel-send'.  It is not part of the
+`gptel-request' API."
+  :type 'hook
+  :group 'gptel)
+
+(defcustom gptel-post-reasoning-insert-functions nil
+  "Abnormal hook run after gptel inserts a reasoning block into a buffer.
+
+Each function is called with two arguments: the beginning and end
+buffer positions of the inserted block.
+
+This hook runs after the block has been closed and folded.  It runs
+only when gptel inserts reasoning blocks into a buffer, such as via
+`gptel-send'.  It is not part of the `gptel-request' API."
+  :type 'hook
+  :group 'gptel)
+
 (defcustom gptel-pre-tool-call-functions nil
   "Abnormal hook called before each tool call.
 
@@ -1768,7 +1792,10 @@ kill ring instead."
 INFO is a plist containing information relevant to this buffer.
 See `gptel--url-get-response' for details.
 
-Optional RAW disables text properties and transformation."
+Optional RAW disables text properties and transformation.
+
+For string RESPONSE, return a cons cell with the bounds of the
+inserted response text."
   (let* ((gptel-buffer (plist-get info :buffer))
          (start-marker (plist-get info :position))
          (tracking-marker (plist-get info :tracking-marker)))
@@ -1792,10 +1819,13 @@ Optional RAW disables text properties and transformation."
                  (setq response (funcall transformer response)))
                (add-text-properties
                 0 (length response) '(gptel response front-sticky (gptel)) response))
-             (insert response)
-             (plist-put info :tracking-marker (setq tracking-marker (point-marker)))
-             ;; for uniformity with streaming responses
-             (set-marker-insertion-type tracking-marker t)))))
+             (let ((response-start (point)))
+               (insert response)
+               (let ((response-end (point)))
+                 (plist-put info :tracking-marker (setq tracking-marker (point-marker)))
+                 ;; for uniformity with streaming responses
+                 (set-marker-insertion-type tracking-marker t)
+                 (cons response-start response-end)))))))
       (`(reasoning . ,text)
        (when-let* ((include (plist-get info :include-reasoning)))
          (if (stringp include)
@@ -1803,28 +1833,45 @@ Optional RAW disables text properties and transformation."
                                    (plist-get info :include-reasoning))
                (save-excursion (goto-char (point-max)) (insert text)))
            (with-current-buffer (marker-buffer start-marker)
-             (let ((separator         ;Separate from response prefix if required
-                    (and (not tracking-marker) gptel-mode
-                         (not (string-suffix-p "\n" (gptel-response-prefix-string)))
-                         "\n"))
-                   (blocks (if (derived-mode-p 'org-mode)
-                               `("#+begin_reasoning\n" . ,(concat "\n#+end_reasoning"
-                                                           gptel-response-separator))
-                             ;; TODO(reasoning) remove properties and strip instead
-                             (cons (propertize "``` reasoning\n" 'gptel 'ignore
-                                               'keymap gptel--markdown-block-map)
-                                   (concat (propertize "\n```" 'gptel 'ignore
-                                                       'keymap gptel--markdown-block-map)
-                                           gptel-response-separator)))))
+             (let* ((separator         ;Separate from response prefix if required
+                     (and (not tracking-marker) gptel-mode
+                          (not (string-suffix-p "\n" (gptel-response-prefix-string)))
+                          "\n"))
+                    (open-block
+                     (if (derived-mode-p 'org-mode)
+                         "#+begin_reasoning\n"
+                       ;; TODO(reasoning) remove properties and strip instead
+                       (propertize "``` reasoning\n" 'gptel 'ignore
+                                   'keymap gptel--markdown-block-map)))
+                    (close-block
+                     (if (derived-mode-p 'org-mode)
+                         "\n#+end_reasoning"
+                       ;; TODO(reasoning) remove properties and strip instead
+                       (propertize "\n```" 'gptel 'ignore
+                                   'keymap gptel--markdown-block-map)))
+                    (block-start)
+                    (block-end))
                (if (eq include 'ignore)
                    (progn
                      (add-text-properties
                       0 (length text) '(gptel ignore front-sticky (gptel)) text)
-                     (gptel--insert-response
-                      (concat (car blocks) text (cdr blocks)) info t))
-                 (gptel--insert-response (concat separator (car blocks)) info t)
+                     (when-let* ((bounds (gptel--insert-response
+                                          (concat open-block text close-block
+                                                  gptel-response-separator)
+                                          info t)))
+                       (setq block-start (car bounds)
+                             block-end (+ (car bounds)
+                                          (length open-block)
+                                          (length text)
+                                          (length close-block)))))
+                 (when-let* ((bounds (gptel--insert-response
+                                      (concat separator open-block) info t)))
+                   (setq block-start (- (cdr bounds) (length open-block))))
                  (gptel--insert-response text info)
-                 (gptel--insert-response (cdr blocks) info t))
+                 (when-let* ((bounds (gptel--insert-response
+                                      (concat close-block gptel-response-separator)
+                                      info t)))
+                   (setq block-end (+ (car bounds) (length close-block)))))
                (save-excursion
                  (goto-char (plist-get info :tracking-marker))
                  (if (derived-mode-p 'org-mode) ;fold block
@@ -1832,7 +1879,10 @@ Optional RAW disables text properties and transformation."
                             (when (looking-at "^#\\+end_reasoning")
                               (org-cycle)))
                    (when (re-search-backward "^```" start-marker t)
-                     (gptel-markdown-cycle-block)))))))))
+                     (gptel-markdown-cycle-block))))
+               (when (and block-start block-end)
+                 (run-hook-with-args 'gptel-post-reasoning-insert-functions
+                                     block-start block-end)))))))
       (`(tool-call . ,tool-calls)
        (gptel--display-tool-calls tool-calls info))
       (`(tool-result . ,tool-results)
@@ -1844,7 +1894,10 @@ Optional RAW disables text properties and transformation."
 INFO is a mutable plist containing information relevant to this buffer.
 See `gptel--url-get-response' for details.
 
-Optional RAW disables text properties and transformation."
+Optional RAW disables text properties and transformation.
+
+For string RESPONSE, return a cons cell with the bounds of the
+inserted response text."
   (pcase response
     ((pred stringp)
      (let ((start-marker (plist-get info :position))
@@ -1871,8 +1924,11 @@ Optional RAW disables text properties and transformation."
               0 (length response) '(gptel response front-sticky (gptel))
               response))
            ;; (run-hooks 'gptel-pre-stream-hook)
-           (insert response)
-           (run-hooks 'gptel-post-stream-hook)))))
+           (let ((response-start (point)))
+             (insert response)
+             (let ((response-end (point)))
+               (run-hooks 'gptel-post-stream-hook)
+               (cons response-start response-end)))))))
     (`(reasoning . ,text)
      (gptel--display-reasoning-stream text info))
     (`(tool-call . ,tool-calls)
@@ -1957,16 +2013,25 @@ for streaming responses only."
              (tracking-marker (plist-get info :tracking-marker))
              (start-marker (plist-get info :position)))
         (with-current-buffer (marker-buffer start-marker)
-          (if (eq text t)               ;end of stream
-              (progn
-                (gptel-curl--stream-insert-response
-                 (concat (if (derived-mode-p 'org-mode)
-                             "\n#+end_reasoning"
-                           ;; TODO(reasoning) remove properties and strip instead
-                           (propertize "\n```" 'gptel 'ignore
-                                       'keymap gptel--markdown-block-map))
-                         gptel-response-separator)
-                 info t)
+          (let* ((open-block
+                  (if (derived-mode-p 'org-mode)
+                      "#+begin_reasoning\n"
+                    ;; TODO(reasoning) remove properties and strip instead
+                    (propertize "``` reasoning\n" 'gptel 'ignore
+                                'keymap gptel--markdown-block-map)))
+                 (close-block
+                  (if (derived-mode-p 'org-mode)
+                      "\n#+end_reasoning"
+                    ;; TODO(reasoning) remove properties and strip instead
+                    (propertize "\n```" 'gptel 'ignore
+                                'keymap gptel--markdown-block-map))))
+            (if (eq text t)             ;end of stream
+              (let ((block-start (plist-get info :reasoning-block-start))
+                    (block-end))
+                (when-let* ((bounds (gptel-curl--stream-insert-response
+                                     (concat close-block gptel-response-separator)
+                                     info t)))
+                  (setq block-end (+ (car bounds) (length close-block))))
                 (ignore-errors          ;fold block
                   (save-excursion
                     (goto-char tracking-marker)
@@ -1975,7 +2040,12 @@ for streaming responses only."
                                (when (looking-at "^#\\+end_reasoning")
                                  (org-cycle)))
                       (when (re-search-backward "^```" start-marker t)
-                        (gptel-markdown-cycle-block))))))
+                        (gptel-markdown-cycle-block)))))
+                (when (and (markerp block-start) block-end)
+                  (run-hook-with-args 'gptel-post-reasoning-insert-functions
+                                      (marker-position block-start) block-end))
+                (when (markerp block-start) (set-marker block-start nil))
+                (plist-put info :reasoning-block-start nil))
             (unless (and reasoning-marker tracking-marker
                          (= reasoning-marker tracking-marker))
               (let ((separator        ;Separate from response prefix if required
@@ -1983,14 +2053,10 @@ for streaming responses only."
                           (not (string-suffix-p
                                 "\n" (gptel-response-prefix-string)))
                           "\n")))
-                (gptel-curl--stream-insert-response
-                 (concat separator
-                         (if (derived-mode-p 'org-mode)
-                             "#+begin_reasoning\n"
-                           ;; TODO(reasoning) remove properties and strip instead
-                           (propertize "``` reasoning\n" 'gptel 'ignore
-                                       'keymap gptel--markdown-block-map)))
-                 info t)))
+                (when-let* ((bounds (gptel-curl--stream-insert-response
+                                     (concat separator open-block) info t)))
+                  (plist-put info :reasoning-block-start
+                             (copy-marker (- (cdr bounds) (length open-block)) nil)))))
             (if (eq include 'ignore)
                 (progn
                   (add-text-properties
@@ -2001,7 +2067,7 @@ for streaming responses only."
           (if reasoning-marker
               (move-marker reasoning-marker tracking-marker)
             (plist-put info :reasoning-marker
-                       (copy-marker tracking-marker nil))))))))
+                       (copy-marker tracking-marker nil)))))))))
 
 (defvar gptel--tool-preview-alist nil
   "Alist mapping tool names to preview functions for tools.
@@ -2167,73 +2233,74 @@ for tool call results.  INFO contains the state of the request."
                  (cl-remove-if-not #'gptel-tool-include (plist-get info :tools)))
          if (or (eq gptel-include-tool-results t)
                 (member (gptel-tool-name tool) include-names))
-         do (funcall
-             (plist-get info :callback)
-             (let* ((name (gptel-tool-name tool))
-                    (separator        ;Separate from response prefix if required
-                     (cond ((not tracking-marker)
-                            (and gptel-mode
-                                 (not (string-suffix-p
-                                       "\n" (gptel-response-prefix-string)))
-                                 "\n")) ;start of response
-                           ((not tool-marker) gptel-response-separator)
-                           ((and (not (= tracking-marker tool-marker))
-                                 (not (eq (char-before tracking-marker) ?\n)))
-                            gptel-response-separator)))
-                    (tool-use
-                     ;; TODO(tool) also check args since there may be more than
-                     ;; one call/result for the same tool
-                     (cl-find-if
-                      (lambda (tu) (equal (plist-get tu :name) name))
-                      (plist-get info :tool-use)))
-                    (id (plist-get tool-use :id))
-                    (display-call (format "(%s %s)" name
-                                          (string-trim (prin1-to-string args) "(" ")")))
-                    (call (prin1-to-string `(:name ,name :args ,args)))
-                    (truncated-call
-                     (string-replace "\n" " "
-                                     (truncate-string-to-width
-                                      display-call
-                                      (floor (* (window-width) 0.6)) 0 nil " ...)"))))
-               (if (derived-mode-p 'org-mode)
-                   (concat
-                    separator
-                    "#+begin_tool "
-                    truncated-call
-                    (propertize
-                     (org-escape-code-in-string (concat "\n" call "\n\n" result))
-                     'gptel `(tool . ,id))
-                    "\n#+end_tool\n")
-                 ;; TODO(tool) else branch is handling all front-ends as markdown.
-                 ;; At least escape markdown.
-                 (concat
-                  separator
-                  ;; TODO(tool) remove properties and strip instead of ignoring
-                  (propertize (format "``` tool %s" truncated-call)
-                              'gptel 'ignore 'keymap gptel--markdown-block-map)
-                  (propertize
-                   ;; TODO(tool) escape markdown in result
-                   (concat "\n" call "\n\n" result)
-                   'gptel `(tool . ,id))
-                  ;; TODO(tool) remove properties and strip instead of ignoring
-                  (propertize "\n```\n" 'gptel 'ignore
-                              'keymap gptel--markdown-block-map))))
-             info
-             'raw)
-         ;; tool-result insertion has updated the tracking marker
-         (unless tracking-marker
-           (setq tracking-marker (plist-get info :tracking-marker)))
-         (if tool-marker
-             (move-marker tool-marker tracking-marker)
-           (setq tool-marker (copy-marker tracking-marker nil))
-           (plist-put info :tool-marker tool-marker))
-         (ignore-errors                 ;fold drawer
-           (save-excursion
-             (goto-char tracking-marker)
-             (forward-line -1)
-             (if (derived-mode-p 'org-mode)
-                 (when (looking-at-p "^#\\+end_tool") (org-cycle))
-               (when (looking-at-p "^```") (gptel-markdown-cycle-block))))))))))
+         do (let* ((name (gptel-tool-name tool))
+                   (separator        ;Separate from response prefix if required
+                    (cond ((not tracking-marker)
+                           (and gptel-mode
+                                (not (string-suffix-p
+                                      "\n" (gptel-response-prefix-string)))
+                                "\n")) ;start of response
+                          ((not tool-marker) gptel-response-separator)
+                          ((and (not (= tracking-marker tool-marker))
+                                (not (eq (char-before tracking-marker) ?\n)))
+                           gptel-response-separator)))
+                   (tool-use
+                    ;; TODO(tool) also check args since there may be more than
+                    ;; one call/result for the same tool
+                    (cl-find-if
+                     (lambda (tu) (equal (plist-get tu :name) name))
+                     (plist-get info :tool-use)))
+                   (id (plist-get tool-use :id))
+                   (display-call (format "(%s %s)" name
+                                         (string-trim (prin1-to-string args) "(" ")")))
+                   (call (prin1-to-string `(:name ,name :args ,args)))
+                   (truncated-call
+                    (string-replace "\n" " "
+                                    (truncate-string-to-width
+                                     display-call
+                                     (floor (* (window-width) 0.6)) 0 nil " ...)")))
+                   (block
+                    (if (derived-mode-p 'org-mode)
+                        (concat
+                         "#+begin_tool "
+                         truncated-call
+                         (propertize
+                          (org-escape-code-in-string (concat "\n" call "\n\n" result))
+                          'gptel `(tool . ,id))
+                         "\n#+end_tool\n")
+                      ;; TODO(tool) else branch is handling all front-ends as markdown.
+                      ;; At least escape markdown.
+                      (concat
+                       ;; TODO(tool) remove properties and strip instead of ignoring
+                       (propertize (format "``` tool %s" truncated-call)
+                                   'gptel 'ignore 'keymap gptel--markdown-block-map)
+                       (propertize
+                        ;; TODO(tool) escape markdown in result
+                        (concat "\n" call "\n\n" result)
+                        'gptel `(tool . ,id))
+                       ;; TODO(tool) remove properties and strip instead of ignoring
+                       (propertize "\n```\n" 'gptel 'ignore
+                                   'keymap gptel--markdown-block-map))))
+                   (bounds (funcall (plist-get info :callback)
+                                    (concat separator block) info 'raw)))
+              ;; tool-result insertion has updated the tracking marker
+              (unless tracking-marker
+                (setq tracking-marker (plist-get info :tracking-marker)))
+              (if tool-marker
+                  (move-marker tool-marker tracking-marker)
+                (setq tool-marker (copy-marker tracking-marker nil))
+                (plist-put info :tool-marker tool-marker))
+              (ignore-errors            ;fold drawer
+                (save-excursion
+                  (goto-char tracking-marker)
+                  (forward-line -1)
+                  (if (derived-mode-p 'org-mode)
+                      (when (looking-at-p "^#\\+end_tool") (org-cycle))
+                    (when (looking-at-p "^```") (gptel-markdown-cycle-block)))))
+              (when (consp bounds)
+                (run-hook-with-args 'gptel-post-tool-insert-functions
+                                    (- (cdr bounds) (length block))
+                                    (cdr bounds)))))))))
 
 (defun gptel--format-tool-call (name arg-values)
   "Format a tool call for display in the buffer.
