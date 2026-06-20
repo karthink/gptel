@@ -179,16 +179,15 @@ ACCOUNT-HINT is the account hint string to match against."
                                (string= (funcall account-hint-accessor b) account-hint)))
               (mapcar #'cdr gptel--known-backends)))
 
-(defun gptel-oauth--generate-token-filename (base-file validator account-hint)
-  "Generate token filename for ACCOUNT-HINT using BASE-FILE and VALIDATOR.
+(defun gptel-oauth--generate-token-filename (base-file account-hint)
+  "Generate token filename for ACCOUNT-HINT using BASE-FILE.
 
 BASE-FILE is the base token filename without account hint suffix.
-VALIDATOR is a function that validates ACCOUNT-HINT and signals an error if invalid.
 ACCOUNT-HINT is the account hint string.
 
 If ACCOUNT-HINT is empty, returns BASE-FILE.
 Otherwise, returns BASE-FILE with '_' and ACCOUNT-HINT appended."
-  (funcall validator account-hint)
+  (gptel-oauth--validate-account-hint account-hint)
   (if (= (length account-hint) 0)
       base-file
     (concat base-file "_" account-hint)))
