@@ -69,6 +69,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
     - [[#other-llm-backends][Other LLM backends]]
       - [[#optional-securing-api-keys-with-authinfo][(Optional) Securing API keys with =authinfo=]]
       - [[#optional-reading-api-keys-from-environment-variables][(Optional) Reading API keys from environment variables]]
+      - [[#optional-custom-oauth-token-storage][(Optional) Custom OAuth token storage]]
       - [[#openai-chatgpt-pluspro-subscription][OpenAI (ChatGPT plus/pro subscription)]]
       - [[#azure][Azure]]
       - [[#gpt4all][GPT4All]]
@@ -304,6 +305,58 @@ it will try to guess the key from the backend type, /i.e./ try to use
 
 #+html: </details>
 #+html: <details><summary>
+**** (Optional) Custom OAuth token storage
+:PROPERTIES:
+:CUSTOM_ID: optional-custom-oauth-token-storage
+:END:
+#+html: </summary>
+
+For OAuth-based backends (GitHub Copilot, OpenAI OAuth), tokens are stored by default in cleartext files. You can customize this behavior by setting the variables =gptel-oauth-token-load-function= and =gptel-oauth-token-save-function=. These are global variables that affect all OAuth backends.
+
+**Important**: Different backends use different token formats:
+- =GitHub Copilot= (=gptel-gh=): tokens are simple strings
+- =OpenAI OAuth= (=gptel-openai-oauth=): tokens are plists with multiple fields
+
+Here's an example configuration for manual copy/paste workflow:
+
+#+begin_src emacs-lisp
+  (setq
+   ;; Load function - prompt user to paste token
+   ;; For GitHub: paste the access token string
+   ;; For OpenAI OAuth: paste the plist (use %S format from save messages)
+   gptel-oauth-token-load-function
+   (lambda (backend-type account-hint)
+     (pcase backend-type
+       ('gptel-gh
+        ;; GitHub: tokens are strings
+        (read-passwd (format "GitHub token for '%s': " account-hint)))
+       ('gptel-openai-oauth
+        ;; OpenAI OAuth: tokens are plists - convert string to plist
+        (let ((token-str (read-passwd (format "OpenAI OAuth token plist for '%s': " account-hint))))
+          (when (and token-str (not (string-empty-p token-str)))
+            (condition-case nil
+                (read token-str)  ;; Convert string to plist
+              (error
+               (message "Invalid OpenAI OAuth token format!")
+               nil)))))
+       (_ nil)))
+
+   ;; Save function - display token for copying to password manager
+   gptel-oauth-token-save-function
+   (lambda (backend-type account-hint token)
+     (pcase backend-type
+       ('gptel-gh
+        ;; GitHub: display string token
+        (message "GitHub token for '%s': %s" account-hint token))
+       ('gptel-openai-oauth
+        ;; OpenAI OAuth: display plist (use %S for copy/paste format)
+        (message "OpenAI OAuth token for '%s': %S" account-hint token))
+       (_
+        (message "Unknown backend type: %s" backend-type)))))
+#+end_src
+
+#+html: </details>
+#+html: <details><summary>
 **** OpenAI (ChatGPT plus/pro subscription)
 #+html: </summary>
 
@@ -314,6 +367,8 @@ Includes access to OpenAI Codex models. Register a backend with
 #+end_src
 
 You will be prompted to log into OpenAI as required.  (You can also log in manually with =M-x gptel-openai-oauth-login=.)
+
+To customize token storage (e.g., use a password manager), see [[#optional-custom-oauth-token-storage][Custom OAuth token storage]].
 
 If you are using it through a proxy, you can specify the host name, protocol etc:
 
@@ -1176,6 +1231,8 @@ You will be informed to login into =GitHub= as required.  (You can also log in m
 
 You can pick this backend from the menu when using gptel (see [[#usage][Usage]]).
 
+The GitHub OAuth token is stored by default in a cleartext file based on the path stored in =gptel-gh-github-token-file=. To customize token storage (e.g., use a password manager), see [[#optional-custom-oauth-token-storage][Custom OAuth token storage]].
+
 ***** (Optional) Set as the default gptel backend
 
 The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
@@ -1841,6 +1898,13 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 | =gptel-curl-extra-args= | Extra arguments passed to Curl.                                    |
 | =gptel-api-key=         | Variable/function that returns the API key for the active backend. |
 |-------------------------+--------------------------------------------------------------------|
+
+|--------------------------------+----------------------------------------------------------------|
+| *OAuth token options*          |                                                                |
+|--------------------------------+----------------------------------------------------------------|
+| =gptel-oauth-token-load-function= | Function to load OAuth tokens (override file-based storage)   |
+| =gptel-oauth-token-save-function= | Function to save OAuth tokens (override file-based storage)   |
+|--------------------------------+----------------------------------------------------------------|
 
 |-----------------------+---------------------------------------------------------|
 | *LLM request options* | /(Note: not supported uniformly across LLMs)/           |
