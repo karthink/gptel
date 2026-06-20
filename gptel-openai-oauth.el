@@ -192,7 +192,7 @@ reauthenticate as needed."
         t
       (if-let* ((refresh (plist-get token-plist :refresh_token)))
           (gptel--openai-oauth-refresh backend refresh)
-        (gptel-openai-oauth-login (gptel-openai-oauth-account-hint backend)))))
+        (gptel-openai-oauth-login (gptel-openai-oauth-account-hint backend))))))
 
 (defun gptel--openai-oauth-get-backends-by-account-hint (account-hint)
   "Get all OpenAI OAuth backends for a specific account hint."
