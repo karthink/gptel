@@ -202,7 +202,6 @@ reauthenticate as needed."
   "Generate token filename for OpenAI OAuth backend with ACCOUNT-HINT."
   (gptel-oauth--generate-token-filename
    gptel--openai-oauth-token-file
-   #'gptel-oauth--validate-account-hint
    account-hint))
 
 (defun gptel--openai-oauth-load-token (account-hint)
