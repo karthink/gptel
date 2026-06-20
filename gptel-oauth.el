@@ -193,13 +193,6 @@ Otherwise, returns BASE-FILE with '_' and ACCOUNT-HINT appended."
       base-file
     (concat base-file "_" account-hint)))
 
-(defun gptel-oauth--save-token-to-file (filename-fn account-hint token)
-  "Save TOKEN using FILENAME-FN to generate filename from ACCOUNT-HINT.
-
-FILENAME-FN is a function that takes ACCOUNT-HINT and returns a filename.
-TOKEN is the token plist to save."
-  (gptel-oauth--write-token (funcall filename-fn account-hint) token))
-
 (defun gptel-oauth--load-token (predicate account-hint-accessor token-getter token-setter
                                           load-function account-hint)
   "Load token using custom LOAD-FUNCTION, with propagation to matching backends.
