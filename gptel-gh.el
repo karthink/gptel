@@ -318,7 +318,7 @@
 (defun gptel-gh--get-save-token-function (account-hint token)
   (if #'gptel-oauth-token-save-function
       (gptel-oauth-token-save-function 'gptel-gh account-hint token)
-    (gptel--gh-save-token-to-file account-hint token))
+    (gptel--gh-save-token-to-file account-hint token)))
 
 ;; https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 (defun gptel--gh-uuid ()
