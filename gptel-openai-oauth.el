@@ -390,10 +390,6 @@ reauthenticate as needed."
    #'gptel-oauth--validate-account-hint
    account-hint))
 
-(defun gptel--openai-oauth-save-token-to-file (account-hint token)
-  "Save OpenAI OAuth TOKEN to file using ACCOUNT-HINT."
-  (gptel-oauth--save-token-to-file #'gptel--openai-oauth-generate-token-filename account-hint token))
-
 (defun gptel--openai-oauth-load-token (account-hint)
   "Load OpenAI OAuth token using customizable load function."
   (gptel-oauth--load-token
@@ -422,7 +418,7 @@ reauthenticate as needed."
 (defun gptel-openai-oauth--get-save-token-function (account-hint token)
   (if #'gptel-oauth-token-save-function
       (gptel-oauth-token-save-function 'gptel-openai-oauth account-hint token)
-    (gptel--openai-oauth-save-token-to-file account-hint token)))
+    (gptel-oauth--write-token (gptel--openai-oauth-generate-token-filename account-hint) token)))
 
 ;;;; Oauth backend management
 
