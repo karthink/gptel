@@ -351,7 +351,6 @@
   "Generate token filename for GitHub backend with ACCOUNT-HINT."
   (gptel-oauth--generate-token-filename
    gptel-gh-github-token-file
-   #'gptel-oauth--validate-account-hint
    account-hint))
 
 (defun gptel-gh-login (account-hint)
