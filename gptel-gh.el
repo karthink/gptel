@@ -326,7 +326,7 @@
 (defun gptel-gh--get-save-token-function (account-hint token)
   (if #'gptel-oauth-token-save-function
       (gptel-oauth-token-save-function 'gptel-gh account-hint token)
-    (gptel--gh-save-token-to-file account-hint token)))
+    (gptel-oauth--write-token (gptel--gh-generate-token-filename account-hint) token)))
 
 ;; https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 (defun gptel--gh-uuid ()
@@ -353,10 +353,6 @@
    gptel-gh-github-token-file
    #'gptel-oauth--validate-account-hint
    account-hint))
-
-(defun gptel--gh-save-token-to-file (account-hint token)
-  "Save GitHub TOKEN to file using ACCOUNT-HINT."
-  (gptel-oauth--save-token-to-file #'gptel--gh-generate-token-filename account-hint token))
 
 (defun gptel-gh-login (account-hint)
   "Login to GitHub Copilot API.
