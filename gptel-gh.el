@@ -311,7 +311,7 @@
 (defun gptel-gh--get-load-token-function (account-hint)
   (if #'gptel-oauth-token-load-function
       (gptel-oauth-token-load-function 'gptel-gh account-hint)
-    (gptel--gh-restore-token-from-file account-hint)))
+    (gptel-oauth--read-token (gptel--gh-generate-token-filename account-hint))))
 
 (defun gptel--gh-save-token (account-hint token)
   "Function that updates the GitHub OAuth token cache and calls the save function."
@@ -353,10 +353,6 @@
    gptel-gh-github-token-file
    #'gptel-oauth--validate-account-hint
    account-hint))
-
-(defun gptel--gh-restore-token-from-file (account-hint)
-  "Restore GitHub token from file using ACCOUNT-HINT."
-  (gptel-oauth--restore-token-from-file #'gptel--gh-generate-token-filename account-hint))
 
 (defun gptel--gh-save-token-to-file (account-hint token)
   "Save GitHub TOKEN to file using ACCOUNT-HINT."
