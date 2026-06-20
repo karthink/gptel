@@ -390,10 +390,6 @@ reauthenticate as needed."
    #'gptel-oauth--validate-account-hint
    account-hint))
 
-(defun gptel--openai-oauth-restore-token-from-file (account-hint)
-  "Restore OpenAI OAuth token from file using ACCOUNT-HINT."
-  (gptel-oauth--restore-token-from-file #'gptel--openai-oauth-generate-token-filename account-hint))
-
 (defun gptel--openai-oauth-save-token-to-file (account-hint token)
   "Save OpenAI OAuth TOKEN to file using ACCOUNT-HINT."
   (gptel-oauth--save-token-to-file #'gptel--openai-oauth-generate-token-filename account-hint token))
@@ -411,7 +407,7 @@ reauthenticate as needed."
 (defun gptel-openai-oauth--get-load-token-function (account-hint)
   (if #'gptel-oauth-token-load-function
       (gptel-oauth-token-load-function 'gptel-openai-oauth account-hint)
-    (gptel--openai-oauth-restore-token-from-file account-hint))))
+    (gptel-oauth--read-token (gptel--openai-oauth-generate-token-filename account-hint))))
 
 (defun gptel--openai-oauth-save-token (account-hint token)
   "Save OpenAI OAuth token using customizable save function."
