@@ -847,6 +847,7 @@ Also format the value of OBJ in the transient menu."
      :if (lambda () (and gptel-expert-commands
                     (or gptel-mode gptel-track-response))))
     (gptel--infix-temperature :if (lambda () gptel-expert-commands))
+    (gptel--infix-reasoning-effort :if (lambda () gptel-expert-commands))
     (gptel--infix-use-context)
     (gptel--infix-include-reasoning)
     (gptel--infix-use-tools)
@@ -1331,6 +1332,102 @@ responses."
   :key "-T"
   :prompt "Temperature controls the response randomness (0.0-2.0, leave empty for API default): "
   :reader 'gptel--transient-read-number)
+
+(defun gptel--transient-read-reasoning-effort (prompt _initial-input history)
+  "Read the reasoning effort from the minibuffer.
+
+PROMPT, _INITIAL-INPUT and HISTORY are as in the transient reader
+documention.  Return nil if user does not provide a number, for default."
+  ;; Workaround for buggy transient behaviour when dealing with
+  ;; non-string values.  See: https://github.com/magit/transient/issues/172
+  (when-let* ((history-symbol (or (car-safe history) history))
+              (val (and (symbolp history-symbol) (symbol-value history-symbol))))
+    (unless (stringp (car val))
+      (setcar val (prin1-to-string (car val)))))
+  (if-let* ((effort-type (get gptel-model :reasoning-effort))
+            (allowed-types '(or member integer)))
+      (cl-labels
+          ((compute-effort-options (type target-type fun)
+             (cond
+              ((eq (car type) 'or)
+               (remq
+                nil
+                (mapcan (lambda (type2)
+                          (copy-sequence (compute-effort-options type2 target-type fun)))
+                        (cdr type))))
+              ((eq (car type) target-type)
+               (funcall fun type))
+              ((memq (car type) allowed-types)
+               nil)
+              (t
+               (error "Unknown reasoning effort type %S" type))))
+           (compute-effort-choices (type)
+             (compute-effort-options type 'member #'cdr))
+           (compute-effort-ranges (type)
+             (compute-effort-options type 'integer (lambda (type2)
+                                                     (list (cdr type2)))))
+           (describe-effort-ranges (ranges)
+             (let ((n (length ranges)))
+               (cond
+                ((= n 0)
+                 "")
+                ((= n 1)
+                 (format "%d-%d" (caar ranges) (cadar ranges)))
+                ((= n 2)
+                 (format "%s or %s"
+                         (describe-effort-ranges (list (car ranges)))
+                         (describe-effort-ranges (list (cadr ranges)))))
+                (t
+                 (format "%s, %s"
+                         (describe-effort-ranges (list (car ranges)))
+                         (describe-effort-ranges (cdr ranges))))))))
+        (let* ((effort-choices (cons 'default (compute-effort-choices effort-type)))
+               (effort-ranges (compute-effort-ranges effort-type))
+               (effort-ranges-desc (format " (%s)" (describe-effort-ranges effort-ranges)))
+               ;; Modify the prompt. Based on code from `read-number'.
+               (prompt (if (string-match "\\(\\):[ \t]*\\'" prompt)
+                           (replace-match effort-ranges-desc t t prompt 1)
+                         (replace-regexp-in-string "[ \t]*\\'"
+                                                   effort-ranges-desc
+                                                   prompt
+                                                   t
+                                                   t)))
+               ;; Display the completion candidates in the order listed instead of
+               ;; allowing the completion framework to sort them. This is cleaner
+               ;; since they are listed in increasing order of reasoning effort.
+               (table (lambda (string predicate action)
+                        (if (eq action 'metadata)
+                            (let ((current-metadata (cdr (completion-metadata
+                                                          (minibuffer-contents)
+                                                          effort-choices
+                                                          predicate))))
+                              `(metadata
+                                ,@(map-merge 'alist
+                                             current-metadata
+                                             '((display-sort-function . identity)
+                                               (cycle-sort-function . identity)))))
+                          (complete-with-action action effort-choices string predicate))))
+               (effort (completing-read prompt
+                                        table
+                                        nil
+                                        (lambda (result)
+                                          (or (equal result "default")
+                                              (cl-typep (read result) effort-type))))))
+          ;; Allow the user to restore the value to nil.
+          (and (not (string= effort "default"))
+               (read effort))))
+    (user-error "Reasoning effort is not supported for this model")))
+
+(transient-define-infix gptel--infix-reasoning-effort ()
+  "Reasoning effort of request."
+  :description "Reasoning effort"
+  :display-nil "default"
+  :class 'gptel-lisp-variable
+  :variable 'gptel-reasoning-effort
+  :set-value #'gptel--set-with-scope
+  :key "-r"
+  :prompt "Reasoning effort controls how hard the LLM \"thinks\": "
+  :reader 'gptel--transient-read-reasoning-effort)
 
 (transient-define-infix gptel--infix-track-response ()
   "Distinguish between user messages and LLM responses.
