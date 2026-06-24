@@ -1589,14 +1589,14 @@ This sets the variable `gptel-confirm-tool-calls', which see."
 (transient-define-infix gptel--infix-include-tool-results ()
   "Whether tool call results should be included in the response.
 
-This is a three-way toggle between these behaviors:
+This sets the variable `gptel-include-tool-results', which see.
+The possible values are:
 
 - All tool results are included.
+- Only the call parameters are included (result omitted).
 - No tool results are included.
 - Decided per-tool, according to the value of the tool spec's
-  :include slot.
-
-This sets the variable `gptel-include-tool-results', which see."
+  :include slot."
   :key "-i"
   :description "Include results   "
   :class 'gptel-lisp-variable
@@ -1605,11 +1605,13 @@ This sets the variable `gptel-include-tool-results', which see."
   :display-nil "never"
   :display-map '((nil . "never")
                  (t   . "always")
+                 (call . "call only")
                  (auto . "auto"))
   :prompt "Include tool results in LLM response? "
   :reader (lambda (prompt &rest _)
             (let* ((choices '(("never"   . nil)
                               ("always" . t)
+                              ("call only" . call)
                               ("tool decides" . auto)))
                    (pref (completing-read prompt choices nil t)))
               (cdr (assoc pref choices)))))

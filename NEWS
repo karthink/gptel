@@ -60,6 +60,10 @@
 
 ** New features and UI changes
 
+- The =:include= slot and the global option ~gptel-include-tool-results~
+  now also accept the symbol =call=: when set, only the call parameters
+  are inserted into the buffer; the result is omitted.
+
 - You can now set gptel's system prompt directly via
   ~gptel-system-prompt~.  Previously this required setting an internal
   gptel variable (~gptel--system-message~, now obsolete), or defining a

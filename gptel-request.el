@@ -1461,8 +1461,13 @@ confirmation only when the corresponding tool spec has a non-nil
 (defcustom gptel-include-tool-results 'auto
   "Whether tool call results should be included in the buffer.
 
-If set to t or nil, results of tool calls are always or never
-included in the LLM response, respectively.
+If set to t, call parameters and results are always included in the
+LLM response.
+
+If set to nil, tool calls are never shown in the buffer.
+
+If set to the symbol `call', only the call parameters are included
+in the buffer; results are omitted.
 
 If set to the symbol auto (the default), a tool call result is
 included only when the corresponding tool spec has a non-nil
@@ -1470,6 +1475,7 @@ included only when the corresponding tool spec has a non-nil
   :type '(choice
           (const :tag "Tool decides" auto)
           (const :tag "Always" t)
+          (const :tag "Call params only" call)
           (const :tag "Never" nil)))
 
 (defcustom gptel-tools nil
@@ -1500,7 +1506,10 @@ feed the LLM the results.  You can add tools via
   (async nil :type boolean :documentation "Whether the function runs asynchronously")
   (category nil :type string :documentation "Use to group tools by purpose")
   (confirm nil :type boolean :documentation "Seek confirmation before running tool?")
-  (include t :type boolean :documentation "Include tool results in buffer?"))
+  (include t :type (choice (const :tag "Include call and result" t)
+                           (const :tag "Include call only, no result" call)
+                           (const :tag "Exclude" nil))
+           :documentation "Include tool results in buffer?"))
 
 (defun gptel--preprocess-tool-args (spec)
   "Convert symbol :type values in tool SPEC to strings destructively."
@@ -1629,7 +1638,11 @@ user should be prompted.
 INCLUDE: Whether the tool results should be included as part of
 the LLM output.  This is useful for logging and as context for
 subsequent requests in the same buffer.  This is primarily useful
-in chat buffers.
+in chat buffers.  Possible values:
+
+- t (default): Include both the call parameters and the result.
+- symbol `call': Include only the call parameters, not the result.
+- nil: Exclude the tool call from the buffer entirely.
 
 Here is an example definition:
 
