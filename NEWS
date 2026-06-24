@@ -64,6 +64,13 @@
 
 ** New features and UI changes
 
+- The gptel tool's =:include= slot and the global option
+  ~gptel-include-tool-results~ now also accept the symbol =call=: when
+  set, only the call parameters are inserted into the buffer; the result
+  is omitted.  This is useful when the tool results are large or not
+  very human-readable, yet it is important for you or the LLM to track
+  what calls have been made.
+
 - You can now set gptel's system prompt directly via
   ~gptel-system-prompt~.  Previously this required setting an internal
   gptel variable (~gptel--system-message~, now obsolete), or defining a
