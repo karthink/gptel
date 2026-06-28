@@ -67,18 +67,20 @@ back to the LLM)."
                 (tool-calls (map-nested-elt content '(:message :tool_calls))))
             (when (and response (not (eq response :null)))
               (push response content-strs))
-            (when (and tool-calls (not (eq tool-calls :null)))
+	    (when (and tool-calls (not (eq tool-calls :null)))
               (gptel--inject-prompt
                (plist-get info :backend) (plist-get info :data)
                `(:role "assistant" :content :null :tool_calls ,(vconcat tool-calls)))
-              (cl-loop
-               for tool-call across tool-calls  ;replace ":arguments" with ":args"
-               for call-spec = (copy-sequence (plist-get tool-call :function))
-               do (plist-put call-spec :args
-                             (plist-get call-spec :arguments))
-               (plist-put call-spec :arguments nil)
-               collect call-spec into tool-use
-               finally (plist-put info :tool-use tool-use)))
+              (let ((new-calls
+                     (cl-loop
+                      for tool-call across tool-calls  ;replace ":arguments" with ":args"
+                      for call-spec = (copy-sequence (plist-get tool-call :function))
+                      do (plist-put call-spec :args
+                                    (plist-get call-spec :arguments))
+                      (plist-put call-spec :arguments nil)
+                      collect call-spec)))
+                (plist-put info :tool-use
+                           (append (plist-get info :tool-use) new-calls))))
             (if (and reasoning (not (eq reasoning :null)))
                 (plist-put info :reasoning
                            (concat (plist-get info :reasoning) reasoning))
@@ -108,14 +110,16 @@ Store response metadata in state INFO."
              (prompts (plist-get data :messages)))
         (plist-put data :messages (vconcat prompts `(,message))))
       ;; Then capture the tool call data for running the tool
-      (cl-loop
-       for tool-call across tool-calls  ;replace ":arguments" with ":args"
-       for call-spec = (copy-sequence (plist-get tool-call :function))
-       do (plist-put call-spec :args
-                     (plist-get call-spec :arguments))
-       (plist-put call-spec :arguments nil)
-       collect call-spec into tool-use
-       finally (plist-put info :tool-use tool-use)))
+      (let ((new-calls
+             (cl-loop
+              for tool-call across tool-calls  ;replace ":arguments" with ":args"
+              for call-spec = (copy-sequence (plist-get tool-call :function))
+              do (plist-put call-spec :args
+                            (plist-get call-spec :arguments))
+              (plist-put call-spec :arguments nil)
+              collect call-spec)))
+        (plist-put info :tool-use
+                   (append (plist-get info :tool-use) new-calls))))
     (when (and content (not (or (eq content :null) (string-empty-p content))))
       content)))
 
