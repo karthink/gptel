@@ -797,7 +797,8 @@ binary-encoded.")
 ;; Since we want this known at compile time, when markdown-mode is not
 ;; guaranteed to be available, we have to hardcode it.
 (defconst gptel-markdown--link-regex
-  "\\(?:\\(?1:!\\)?\\(?2:\\[\\)\\(?3:\\^?\\(?:\\\\\\]\\|[^]]\\)*\\|\\)\\(?4:\\]\\)\\(?5:(\\)\\s-*\\(?6:[^)]*?\\)\\(?:\\s-+\\(?7:\"[^\"]*\"\\)\\)?\\s-*\\(?8:)\\)\\|\\(<\\)\\([a-z][a-z0-9.+-]\\{1,31\\}:[^]	\n<>,;()]+\\)\\(>\\)\\)"
+  "\\(?:\\(?1:!\\)?\\(?2:\\[\\)\\(?3:\\^?\\(?:\\\\\\]\\|[^]]\\)*\\|\\)\\(?4:\\]\\)\\(?5:(\\)\\s-*\\(?6:[^)]*?\\)\\(?:\\s-+\\(?7:\"[^\"]*\"\\)\\)?\\s-*\\(?8:)\\)\\|\\(<\\)\\([a-z][a-z0-9.+-]\\{1,31\\}:[^]	\n
+<>,;()]+\\)\\(>\\)\\)"
   "Link regex for `gptel-mode' in Markdown mode.")
 
 (defvar gptel--mode-description-alist
@@ -2293,8 +2294,9 @@ be used to rerun or continue the request at a later time."
   "Realize the query payload for FSM from its prompt buffer.
 
 Initiate the request when done."
-  (let ((info (gptel-fsm-info fsm)))
-    (with-current-buffer (plist-get info :data)
+  (let* ((info (gptel-fsm-info fsm))
+         (prompt-buffer (plist-get info :data)))
+    (with-current-buffer prompt-buffer
       (let* ((directive (gptel--parse-directive gptel-system-prompt 'raw))
              ;; DIRECTIVE contains both the system message and the template prompts
              (gptel-system-prompt
@@ -2335,8 +2337,9 @@ Initiate the request when done."
         (when (and gptel-use-tools gptel-tools)
           (plist-put info :tools gptel-tools))
         (plist-put info :data
-                   (gptel--request-data gptel-backend full-prompt)))
-      (kill-buffer (current-buffer)))
+                   (gptel--request-data gptel-backend full-prompt))))
+    (when (buffer-live-p prompt-buffer)
+      (kill-buffer prompt-buffer))
     ;; INIT -> WAIT
     (unless (plist-get info :dry-run) (gptel--fsm-transition fsm))
     fsm))
@@ -2904,7 +2907,9 @@ PROC-INFO is the plist containing process metadata."
   (with-current-buffer proc-buf
     (save-excursion
       (goto-char (point-min))
-      (when (re-search-forward "?\n?\n" nil t)
+      (when (re-search-forward "
+?\n
+?\n" nil t)
         (when (eq gptel-log-level 'debug)
           (gptel--log (gptel--json-encode
                        (buffer-substring-no-properties
