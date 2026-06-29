@@ -2748,46 +2748,30 @@ See `gptel-curl--get-response' for its contents.")
 
 ;;; Curl request response handling
 
-(defun gptel-curl--get-args (info uuid include-headers)
+(defun gptel-curl--get-args (info uuid)
   "Produce list of arguments for calling Curl.
 
-INFO contains the request data, UUID is a unique identifier.
-
-If INCLUDE-HEADERS is non-nil, include headers with the -H option."
-  (let* ((data (plist-get info :data))
-         ;; We have to let-bind the following three since their dynamic
+INFO contains the request data, UUID is a unique identifier."
+  (let* (;; We have to let-bind the following three since their dynamic
          ;; values are used for key lookup and url resolution
          (gptel-backend (plist-get info :backend))
          (gptel-model (plist-get info :model))
          (gptel-stream (plist-get info :stream))
          (url (let ((backend-url (gptel-backend-url gptel-backend)))
-                (gptel--maybe-funcall backend-url info)))
-         (data-json (decode-coding-string (gptel--json-encode data) 'utf-8 t)))
-    (when gptel-log-level (gptel--log data-json "request body"))
+                (gptel--maybe-funcall backend-url info))))
     (append
      gptel-curl--common-args
      gptel-curl-extra-args
-     (if include-headers
-         (cl-loop
-          for (key . val) in
-          (append '(("Content-Type" . "application/json"))
-                  (when-let* ((header (gptel-backend-header gptel-backend)))
-                    (gptel--maybe-funcall header info)))
-          collect (format "-H%s: %s" key val))
-       (list "-H@-"))
+     (cl-loop
+      for (key . val) in
+      (append '(("Content-Type" . "application/json"))
+              (when-let* ((header (gptel-backend-header gptel-backend)))
+                (gptel--maybe-funcall header info)))
+      collect (format "-H%s: %s" key val))
      (and-let* ((curl-args (gptel-backend-curl-args gptel-backend)))
        (gptel--maybe-funcall curl-args))
      (list (format "-w(%s . %%{size_header})" uuid))
-     (if (< (string-bytes data-json) gptel-curl-file-size-threshold)
-         (list (format "-d%s" data-json))
-       (let* ((write-region-inhibit-fsync t)
-              (file-name-handler-alist nil)
-              (inhibit-message t)
-              (temp-filename (make-temp-file "gptel-curl-data" nil ".json" data-json))
-              (cleanup-fn (lambda (&rest _) (when (file-exists-p temp-filename)
-                                         (delete-file temp-filename)))))
-         (plist-put info :post (cons cleanup-fn (plist-get info :post)))
-         (list "--data-binary" (format "@%s" temp-filename))))
+     (list "--data-binary" "@-")
      (when (not (string-empty-p gptel-proxy))
        (list "--proxy" gptel-proxy
              "--proxy-negotiate"
@@ -2815,13 +2799,15 @@ the response is inserted into the current buffer after point."
                             (recent-keys))))
          (info (gptel-fsm-info fsm))
          (backend (plist-get info :backend))
-         (args (gptel-curl--get-args info uuid nil))
+         (data (encode-coding-string (gptel--json-encode (plist-get info :data)) 'utf-8-unix t))
+         (args (gptel-curl--get-args info uuid))
          (stream (plist-get info :stream))
          (process (make-process
                    :name "gptel-curl"
                    :buffer (gptel--temp-buffer " *gptel-curl*")
                    :command (cons (gptel--curl-path) args)
                    :connection-type 'pipe)))
+    (when gptel-log-level (gptel--log data "request body"))
     (with-current-buffer (process-buffer process)
       (cond
        ((eq (gptel-backend-coding-system backend) 'binary)
@@ -2847,9 +2833,8 @@ the response is inserted into the current buffer after point."
                       "request headers")
           (gptel--log (mapconcat #'shell-quote-argument
                                  (cons (gptel--curl-path) args) " \\\n")
-                      "request Curl command" 'no-json))
-        (dolist (header headers)
-          (process-send-string process (concat (car header) ": " (cdr header) "\n"))))
+                      "request Curl command" 'no-json)))
+      (process-send-string process data)
       (process-send-eof process)
       (if (plist-get info :uuid)        ;not the first run, set only the uuid
           (plist-put info :uuid uuid)
