@@ -42,6 +42,10 @@
   (xAI) models.  These models are either no longer available or aliased
   to one of two available Grok models, =grok-4.3= and =grok-build-0.1=.
 
+- gptel now sends both request data and headers to Curl via stdin, so no
+  temporary files will be created regardless of request
+  size. ~gptel-curl-file-size-threshold~ is now obsolete.
+
 ** New models and backends
 
 - Bedrock backend: Add support for =claude-opus-4-7= and
