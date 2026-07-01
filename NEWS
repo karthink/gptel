@@ -90,6 +90,9 @@
   and only if -- ~gptel-include-reasoning~ is a string denoting a buffer
   name.
 
+- The OpenAI OAuth backend now supports authorization code-based OAuth,
+  and defaults to this flow except when connecting to Emacs over SSH.
+
 ** Notable bug fixes
 
 - Improved error messages: Curl request failures now include more
