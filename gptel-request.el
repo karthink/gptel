@@ -1948,7 +1948,11 @@ injects the results into the prompt data and transitions the FSM."
                      (funcall (plist-get info :callback)
                               (gptel--json-encode (plist-get tool-call :args))
                               info)
-                   (message "Unknown tool called by model: %s" name))
+		   (message "Unknown tool called by model: %s" name)
+                   (funcall process-tool-result
+                            (format "Error: Tool '%s' is not available. Available tools: %s"
+                                    name (mapconcat #'gptel-tool-name
+                                                    (plist-get info :tools) ", "))))
                (let ((confirm))         ;Check if tool requires confirmation
                  (cond      ;:confirm in tool-call (from hooks) takes precedence
                   ((and-let* ((call-confirm (plist-member tool-call :confirm)))
