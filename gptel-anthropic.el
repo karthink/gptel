@@ -579,6 +579,7 @@ Media files, if present, are placed in `gptel-context'."
   '((claude-sonnet-5
      :description "The best combination of speed and intelligence"
      :capabilities (media tool-use cache)
+     :reasoning-effort (member low medium high xhigh max)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
      :context-window 1000
      :input-cost 3
