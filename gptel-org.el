@@ -400,7 +400,9 @@ first nil value in REST is guaranteed to be correct."
                         (member link-type '("http" "https" "ftp")) 'url)))
               (path (org-element-property :path link))
               (user-check (funcall gptel-org-validate-link link))
-              (readablep (or (eq resource-type 'url) (file-remote-p path)
+              (readablep (or (eq resource-type 'url)
+                             (file-remote-p default-directory)
+                             (file-remote-p path)
                              (file-readable-p path)))
               (mime-valid
                (or (eq resource-type 'url)

@@ -133,7 +133,11 @@ information if the stream contains it."
                  (when-let* ((resp (plist-get data :response)))
                    (plist-put info :stop-reason (plist-get resp :status))
                    (gptel--openai-responses-update-tokens
-                    (plist-get resp :usage) info)))))))
+                    (plist-get resp :usage) info)))
+                ;; Errors in streaming responses show up as data events with
+                ;; HTTP status 200, so we have to catch them here
+                ("error" (when-let* ((err (plist-get data :error)))
+                           (plist-put info :error err)))))))
       (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 

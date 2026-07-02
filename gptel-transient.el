@@ -1728,8 +1728,8 @@ This sets the variable `gptel-include-tool-results', which see."
         (backend gptel-backend)
         (model gptel-model)
         (backend-name (gptel-backend-name gptel-backend))
-        (buffer) (position)
-        (callback) (gptel-buffer-name)
+        (request-buffer) (position)
+        (callback) (response-buffer-name)
         (system-extra (gptel--get-directive args))
         (dry-run (and (member "I" args) t))
         ;; Input redirection: grab prompt from elsewhere?
@@ -1775,14 +1775,13 @@ This sets the variable `gptel-include-tool-results', which see."
                         (concat "%s response error: %s."
                                 (and accum "  Partial response copied to kill-ring."))
                                 backend-name (plist-get info :status)))))))))
-     ((setq gptel-buffer-name           ;Send to gptel buffer
+     ((setq response-buffer-name           ;Send to gptel buffer
             (cl-some (lambda (s) (and (stringp s) (string-prefix-p "g" s)
                                  (substring s 1)))
                      args))
       (setq redirect-output t)
-      (let* ((reduced-prompt            ;For inserting into the gptel buffer as
-                                        ;context, not the prompt used for the
-                                        ;request itself
+      (let* ((reduced-prompt ;For inserting into the gptel buffer, prompt itself
+                             ;will be discarded
               (or prompt
                   (if (use-region-p)
                       (buffer-substring-no-properties (region-beginning)
@@ -1796,7 +1795,7 @@ This sets the variable `gptel-include-tool-results', which see."
                           t))
                        (point))
                      (gptel--at-word-end (point))))))
-             (gptel-buffer (get-buffer gptel-buffer-name))
+             (gptel-buffer (get-buffer response-buffer-name))
              (gptel-buffer-mode
               (if (buffer-live-p gptel-buffer)
                   (buffer-local-value 'major-mode gptel-buffer)
@@ -1826,8 +1825,8 @@ This sets the variable `gptel-include-tool-results', which see."
         (cond
          ((buffer-live-p gptel-buffer)
           ;; Insert into existing gptel session
-          (setq buffer gptel-buffer)
-          (with-current-buffer buffer
+          (setq request-buffer gptel-buffer)
+          (with-current-buffer request-buffer
             (goto-char (point-max))
             (unless (or buffer-read-only
                         (get-char-property (point) 'read-only))
@@ -1837,8 +1836,8 @@ This sets the variable `gptel-include-tool-results', which see."
             (when (and gptel-mode (not dry-run))
               (gptel--update-status " Waiting..." 'warning))))
          ;; Insert into new gptel session
-         (t (setq buffer
-                  (gptel gptel-buffer-name
+         (t (setq request-buffer
+                  (gptel response-buffer-name
                          (condition-case nil
                              (gptel--get-api-key)
                            ((error user-error)
@@ -1849,25 +1848,30 @@ This sets the variable `gptel-include-tool-results', which see."
                                             gptel-backend))))))
                          reduced-prompt))
             ;; Set backend and model in new session from current buffer
-            (with-current-buffer buffer
+            (with-current-buffer request-buffer
               (setq gptel-backend backend)
               (setq gptel-model model)
               (unless dry-run
                 (gptel--update-status " Waiting..." 'warning))
-              (setq position (point-marker)))))))
-     ((setq gptel-buffer-name           ;Send to specified buffer
+              (setq position (point-marker))))))
+      ;; Redirection to gptel buffers happens in the context of the gptel buffer
+      ;; where we have already inserted the (reduced)-prompt, so we should not
+      ;; specify a prompt string
+      (setq prompt nil))
+     ((setq response-buffer-name           ;Send to specified buffer
             (cl-some (lambda (s) (and (stringp s) (string-prefix-p "b" s)
                                  (substring s 1)))
                      args))
       (setq redirect-output t)
-      (setq buffer (get-buffer-create gptel-buffer-name))
-      (with-current-buffer buffer (setq position (point-marker)))))
+      (with-current-buffer (get-buffer-create response-buffer-name)
+        (setq position (point-marker)))))
 
     ;; MAYBE: This is no a good way to handle two-part (region + instruction) prompts
     ;; If the prompt is a cons (region-text . instructions), collapse it
     (when (consp prompt) (setq prompt (concat (car prompt) "\n\n" (cdr prompt))))
 
     (prog1 (gptel-request prompt
+             :buffer (or request-buffer (current-buffer))
              :position position
              :in-place in-place
              :stream stream
@@ -1906,13 +1910,13 @@ This sets the variable `gptel-include-tool-results', which see."
                (list (buffer-substring-no-properties beg end))))
             (kill-region beg end))))
 
-      (when (and redirect-output gptel-buffer-name)
+      (when (and redirect-output response-buffer-name)
         (message (concat "Prompt sent to buffer: "
-                         (propertize gptel-buffer-name 'face 'help-key-binding)))
+                         (propertize response-buffer-name 'face 'help-key-binding)))
         (display-buffer
-         buffer '((display-buffer-reuse-window
-                   display-buffer-pop-up-window)
-                  (reusable-frames . visible)))))))
+         request-buffer '((display-buffer-reuse-window
+                           display-buffer-pop-up-window)
+                          (reusable-frames . visible)))))))
 
 (defun gptel--merge-additional-directive (additional &optional full)
   "Merge ADDITIONAL gptel directive with the full system message.

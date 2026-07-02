@@ -166,6 +166,22 @@
      :input-cost 3
      :output-cost 3
      :cutoff-date "2025-03")
+    (claude-opus-4.8
+     :description "Most capable model for complex reasoning and advanced coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 128
+     :input-cost 3
+     :output-cost 3
+     :cutoff-date "2025-03")
+    (claude-fable-5
+     :description "Most capable model for complex reasoning and advanced coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 1000
+     :input-cost 10
+     :output-cost 50
+     :cutoff-date "2026-01")
     (claude-sonnet-4
      :description "High-performance model with exceptional reasoning and efficiency"
      :capabilities (media tool-use cache)
@@ -270,7 +286,8 @@
 
 (defconst gptel--gh-auth-common-headers
   `(("editor-plugin-version" . "gptel/*")
-    ("editor-version" . ,(concat "emacs/" emacs-version))))
+    ("editor-version" . ,(concat "emacs/" emacs-version))
+    ("User-Agent" . ,(format "Emacs %s" emacs-version))))
 
 (defconst gptel--gh-client-id "Iv1.b507a08c87ecfe98")
 
