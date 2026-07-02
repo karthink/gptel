@@ -566,7 +566,15 @@ Media files, if present, are placed in `gptel-context'."
 ;;         (plist-get (car (last prompts)) :content)))
 
 (defconst gptel--anthropic-models
-  '((claude-sonnet-4-6
+  '((claude-sonnet-5
+     :description "The best combination of speed and intelligence"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 1000
+     :input-cost 3
+     :output-cost 15
+     :cutoff-date "2026-01")
+    (claude-sonnet-4-6
      :description "The best combination of speed and intelligence"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
