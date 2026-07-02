@@ -206,6 +206,14 @@
      :input-cost 1
      :output-cost 1
      :cutoff-date "2025-03")
+    (claude-sonnet-5
+     :description "The best combination of speed and intelligence"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 264
+     :input-cost 1
+     :output-cost 1
+     :cutoff-date "2026-01")
     (gemini-2.5-pro
      :description "Next gen, high speed, multimodal for a diverse variety of tasks"
      :capabilities (tool-use json media)

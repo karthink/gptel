@@ -51,7 +51,7 @@
   =claude-opus-4-8= and =claude-fable-5=.
 
 - GitHub Copilot backend: Add support for =gemini-3.5-flash=,
-  =claude-opus-4.8= and =claude-fable-5=.
+  =claude-opus-4.8=, =claude-sonnet-5= and =claude-fable-5=.
 
 - Gemini backend: Add support for =gemini-3.5-flash=,
   =gemini-3.1-flash-lite= and deprecate the preview version.
