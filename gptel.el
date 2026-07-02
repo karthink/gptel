@@ -2165,7 +2165,7 @@ for tool call results.  INFO contains the state of the request."
          with include-names =
          (mapcar #'gptel-tool-name
                  (cl-remove-if-not #'gptel-tool-include (plist-get info :tools)))
-         if (or (eq gptel-include-tool-results t)
+         if (or (memq gptel-include-tool-results '(t call))
                 (member (gptel-tool-name tool) include-names))
          do (funcall
              (plist-get info :callback)
@@ -2194,14 +2194,24 @@ for tool call results.  INFO contains the state of the request."
                      (string-replace "\n" " "
                                      (truncate-string-to-width
                                       display-call
-                                      (floor (* (window-width) 0.6)) 0 nil " ...)"))))
+                                      (floor (* (window-width) 0.6)) 0 nil " ...)")))
+                    (include-tool-results
+                     (if (eq gptel-include-tool-results 'auto)
+                         (gptel-tool-include tool)
+                       gptel-include-tool-results))
+                    (include-tool-call-only (eq include-tool-results 'call))
+                    (result-text
+                     (if include-tool-call-only
+                         "(Cached tool result — available during original generation but not replayed)"
+                       result)))
                (if (derived-mode-p 'org-mode)
                    (concat
                     separator
                     "#+begin_tool "
                     truncated-call
                     (propertize
-                     (org-escape-code-in-string (concat "\n" call "\n\n" result))
+                     (org-escape-code-in-string
+                      (concat "\n" call "\n\n" result-text))
                      'gptel `(tool . ,id))
                     "\n#+end_tool\n")
                  ;; TODO(tool) else branch is handling all front-ends as markdown.
@@ -2213,7 +2223,7 @@ for tool call results.  INFO contains the state of the request."
                               'gptel 'ignore 'keymap gptel--markdown-block-map)
                   (propertize
                    ;; TODO(tool) escape markdown in result
-                   (concat "\n" call "\n\n" result)
+                   (concat "\n" call "\n\n" result-text)
                    'gptel `(tool . ,id))
                   ;; TODO(tool) remove properties and strip instead of ignoring
                   (propertize "\n```\n" 'gptel 'ignore
