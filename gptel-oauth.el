@@ -33,9 +33,7 @@
 ;;; Token Storage
 
 (defun gptel-oauth--write-token (file token)
-  "Write TOKEN to FILE.
-
-TOKEN is a plist suitable for later restoration from FILE."
+  "Write TOKEN to FILE."
   (let ((print-length nil)
         (print-level nil)
         (coding-system-for-write 'utf-8-unix))
@@ -44,7 +42,7 @@ TOKEN is a plist suitable for later restoration from FILE."
     token))
 
 (defun gptel-oauth--read-token (file)
-  "Read a token plist from FILE.
+  "Read a token from FILE.
 
 Returns nil if FILE does not exist or cannot be read."
   (when (file-exists-p file)
