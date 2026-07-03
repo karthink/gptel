@@ -2809,8 +2809,7 @@ INFO contains the request data, UUID is a unique identifier."
          (url (let ((backend-url (gptel-backend-url gptel-backend)))
                 (gptel--maybe-funcall backend-url info)))
          (data (plist-get info :data))
-         (data-json (gptel--json-encode data))
-         (data (encode-coding-string data-json 'utf-8-unix t))
+         (data-json (encode-coding-string (gptel--json-encode data) 'utf-8-unix t))
          (headers
           (append '(("Content-Type" . "application/json"))
                   (when-let* ((header (gptel-backend-header gptel-backend)))
@@ -2834,7 +2833,7 @@ INFO contains the request data, UUID is a unique identifier."
       (when (eq gptel-log-level 'debug)
         (gptel--log config "request config"))
       (gptel--log data-json "request body"))
-    (concat config "\n" data)))
+    (concat config "\n" data-json)))
 
 ;;;###autoload
 (defun gptel-curl-get-response (fsm)
