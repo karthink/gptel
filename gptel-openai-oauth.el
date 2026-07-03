@@ -389,6 +389,18 @@ reauthenticate as needed."
    gptel--openai-oauth-token-file
    account-hint))
 
+(defun gptel--openai-oauth-validate-token-p (token)
+  "Check if OpenAI OAuth TOKEN is valid.
+
+Returns t if TOKEN is a valid plist containing :access_token,
+:refresh_token, :expires_at, and :id_token."
+  (and token
+       (plistp token)
+       (plist-member token :access_token)
+       (plist-member token :refresh_token)
+       (plist-member token :expires_at)
+       (plist-member token :id_token)))
+
 (defun gptel--openai-oauth-load-token (account-hint)
   "Load OpenAI OAuth token using customizable load function."
   (gptel-oauth--load-token
@@ -400,9 +412,16 @@ reauthenticate as needed."
    account-hint))
 
 (defun gptel-openai-oauth--get-load-token-function (account-hint)
-  (if #'gptel-oauth-token-load-function
-      (gptel-oauth-token-load-function 'gptel-openai-oauth account-hint)
-    (gptel-oauth--read-token (gptel--openai-oauth-generate-token-filename account-hint))))
+  "Load OpenAI OAuth token from file, ensuring it is a valid plist."
+  (let ((token (if #'gptel-oauth-token-load-function
+                  (gptel-oauth-token-load-function 'gptel-openai-oauth account-hint)
+                (gptel-oauth--read-token (gptel--openai-oauth-generate-token-filename account-hint)))))
+    ;; Filter out nil and empty values (empty files do not contain tokens)
+    (when (and token (not (equal token "")))
+      (unless (gptel--openai-oauth-validate-token-p token)
+        (message "Ignoring invalid OpenAI OAuth token format in file: missing required fields, got %S" token)
+        (setq token nil))
+      token)))
 
 (defun gptel--openai-oauth-save-token (account-hint token)
   "Save OpenAI OAuth token using customizable save function."
@@ -415,6 +434,9 @@ reauthenticate as needed."
    token))
 
 (defun gptel-openai-oauth--get-save-token-function (account-hint token)
+  "Save OpenAI OAuth TOKEN to file for ACCOUNT-HINT, ensuring it is a valid plist."
+  (unless (gptel--openai-oauth-validate-token-p token)
+    (user-error "Cannot save invalid OpenAI OAuth token: expected plist with all required fields, got %S" token))
   (if #'gptel-oauth-token-save-function
       (gptel-oauth-token-save-function 'gptel-openai-oauth account-hint token)
     (gptel-oauth--write-token (gptel--openai-oauth-generate-token-filename account-hint) token)))
