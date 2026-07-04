@@ -206,8 +206,8 @@ If a cached token exists in gptel-backend, returns that immediately.
 Otherwise, loads via LOAD-FUNCTION and propagates to all backends
 matching PREDICATE and ACCOUNT-HINT."
   (if-let* ((backend gptel-backend)
-             ((funcall predicate backend))
-             (cached-token (funcall token-getter backend)))
+            ((funcall predicate backend))
+            (cached-token (funcall token-getter backend)))
       cached-token
     (let ((token (funcall load-function account-hint)))
       (when (and token (not (equal token "")))
