@@ -166,6 +166,22 @@
      :input-cost 3
      :output-cost 3
      :cutoff-date "2025-03")
+    (claude-opus-4.8
+     :description "Most capable model for complex reasoning and advanced coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 128
+     :input-cost 3
+     :output-cost 3
+     :cutoff-date "2025-03")
+    (claude-fable-5
+     :description "Most capable model for complex reasoning and advanced coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 1000
+     :input-cost 10
+     :output-cost 50
+     :cutoff-date "2026-01")
     (claude-sonnet-4
      :description "High-performance model with exceptional reasoning and efficiency"
      :capabilities (media tool-use cache)
@@ -190,6 +206,14 @@
      :input-cost 1
      :output-cost 1
      :cutoff-date "2025-03")
+    (claude-sonnet-5
+     :description "The best combination of speed and intelligence"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 264
+     :input-cost 1
+     :output-cost 1
+     :cutoff-date "2026-01")
     (gemini-2.5-pro
      :description "Next gen, high speed, multimodal for a diverse variety of tasks"
      :capabilities (tool-use json media)
@@ -232,6 +256,17 @@
      :input-cost 1
      :output-cost 1
      :cutoff-date "2025-01")
+    (gemini-3.5-flash
+     :description "Most intelligent Gemini model for sustained frontier performance in agentic and coding tasks"
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"
+                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 109
+     :input-cost 1
+     :output-cost 1
+     :cutoff-date "2025-01")
     (grok-code-fast-1
      :description "Fast reasoning model for agentic coding"
      :capabilities '(tool-use json reasoning)
@@ -259,7 +294,8 @@
 
 (defconst gptel--gh-auth-common-headers
   `(("editor-plugin-version" . "gptel/*")
-    ("editor-version" . ,(concat "emacs/" emacs-version))))
+    ("editor-version" . ,(concat "emacs/" emacs-version))
+    ("User-Agent" . ,(format "Emacs %s" emacs-version))))
 
 (defconst gptel--gh-client-id "Iv1.b507a08c87ecfe98")
 

@@ -84,11 +84,17 @@ back to the LLM)."
   (let ((base-request-data
          (nconc
           `(:messages [,@prompts] :inferenceConfig (:maxTokens ,(or gptel-max-tokens 500)))
-          (when gptel--system-message `(:system [(:text ,gptel--system-message)]))
+          (when gptel-system-prompt
+            `(:system [(:text ,gptel-system-prompt)
+                       ,@(when (or (eq gptel-cache t) (memq 'system gptel-cache))
+                           '((:cachePoint (:type "default"))))]))
           (when gptel-temperature `(:temperature ,gptel-temperature))
           (when (and gptel-use-tools gptel-tools)
             `(:toolConfig (:toolChoice ,(if (eq gptel-use-tools 'force) '(:any '()) '(:auto '()))
-                           :tools ,(gptel--parse-tools backend gptel-tools)))))))
+                           :tools ,(let ((tools (gptel--parse-tools backend gptel-tools)))
+                                     (if (or (eq gptel-cache t) (memq 'tool gptel-cache))
+                                         (vconcat tools [(:cachePoint (:type "default"))])
+                                       tools))))))))
 
     ;; Finally, merge all potential :request-params sources.
     (gptel--merge-plists
@@ -503,7 +509,7 @@ The output is a vector of entries in Bedrock API format."
              `(:image (:format ,(cdr format) :source (:bytes ,(gptel--base64-encode media)))))
             ((setq format (assoc mime gptel-bedrock--doc-formats))
              `(:document (:format ,(cdr format)
-                          :name ,(file-name-nondirectory media)
+                          :name ,(file-name-sans-extension (file-name-nondirectory media))
                           :source (:bytes ,(gptel--base64-encode media)))))
             (t (error "Unsupported MIME type %s for AWS Bedrock" mime))))
           (textfile `(:text ,(with-temp-buffer
@@ -637,6 +643,7 @@ Convenient to use with `cl-multiple-value-bind'"
   '((claude-sonnet-4-6           . "anthropic.claude-sonnet-4-6")
     (claude-opus-4-6             . "anthropic.claude-opus-4-6-v1")
     (claude-opus-4-7             . "anthropic.claude-opus-4-7")
+    (claude-opus-4-8             . "anthropic.claude-opus-4-8")
     (claude-sonnet-4-5-20250929  . "anthropic.claude-sonnet-4-5-20250929-v1:0")
     (claude-haiku-4-5-20251001   . "anthropic.claude-haiku-4-5-20251001-v1:0")
 	(claude-opus-4-5-20251101    . "anthropic.claude-opus-4-5-20251101-v1:0")
