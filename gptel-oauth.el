@@ -210,10 +210,9 @@ matching PREDICATE and ACCOUNT-HINT."
             (cached-token (funcall token-getter backend)))
       cached-token
     (let ((token (funcall load-function account-hint)))
-      (when (and token (not (equal token "")))
-        ;; Propagate to all matching backends
-        (dolist (b (gptel-oauth--get-backends-by predicate account-hint-accessor account-hint) token)
-          (funcall token-setter b token))))))
+      ;; Propagate to all matching backends
+      (dolist (b (gptel-oauth--get-backends-by predicate account-hint-accessor account-hint) token)
+        (funcall token-setter b token)))))
 
 (defun gptel-oauth--save-token (predicate account-hint-accessor token-setter
                                           save-function account-hint token)
