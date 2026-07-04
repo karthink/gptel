@@ -229,21 +229,21 @@ Mutate state INFO with response metadata."
             :messages [,@prompts]))
         (cachep (and (or (eq gptel-cache t) (memq 'system gptel-cache))
                      (gptel--model-capable-p 'cache))))
-    (when gptel--system-message
-      ;; gptel--system-message is a string or a list of strings
+    (when gptel-system-prompt
+      ;; gptel-system-prompt is a string or a list of strings
       (plist-put
        prompts-plist :system
        (cond
-        ((consp gptel--system-message)  ;multi-part system message
+        ((consp gptel-system-prompt)    ;multi-part system message
          (vconcat (mapcar (lambda (part)
                             (nconc (list :type "text" :text part)
                                    (and cachep
                                         (list :cache_control
                                               '(:type "ephemeral")))))
-                          gptel--system-message)))
-        (cachep `[(:type "text" :text ,gptel--system-message
+                          gptel-system-prompt)))
+        (cachep `[(:type "text" :text ,gptel-system-prompt
                          :cache_control (:type "ephemeral"))])
-        (t gptel--system-message))))
+        (t gptel-system-prompt))))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-use-tools
@@ -566,7 +566,15 @@ Media files, if present, are placed in `gptel-context'."
 ;;         (plist-get (car (last prompts)) :content)))
 
 (defconst gptel--anthropic-models
-  '((claude-sonnet-4-6
+  '((claude-sonnet-5
+     :description "The best combination of speed and intelligence"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 1000
+     :input-cost 3
+     :output-cost 15
+     :cutoff-date "2026-01")
+    (claude-sonnet-4-6
      :description "The best combination of speed and intelligence"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
@@ -598,6 +606,22 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 3
      :output-cost 15
      :cutoff-date "2025-03")
+    (claude-fable-5
+     :description "Most capable model for complex reasoning and advanced coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 1000
+     :input-cost 10
+     :output-cost 50
+     :cutoff-date "2026-01")
+    (claude-opus-4-8
+     :description "Most capable model for complex reasoning and advanced coding"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 1000
+     :input-cost 5
+     :output-cost 25
+     :cutoff-date "2026-01")
     (claude-opus-4-7
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
@@ -637,53 +661,8 @@ Media files, if present, are placed in `gptel-context'."
      :context-window 200
      :input-cost 15
      :output-cost 75
-     :cutoff-date "2025-03")
-    (claude-3-7-sonnet-20250219
-     :description "Hybrid model capable of standard thinking and extended thinking modes"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2025-02")
-    (claude-3-5-sonnet-20241022
-     :description "Highest level of intelligence and capability"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2024-04")
-    (claude-3-5-sonnet-20240620
-     :description "Highest level of intelligence and capability (earlier version)"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 200
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2024-04")
-    (claude-3-5-haiku-20241022
-     :description "Intelligence at blazing speeds"
-     :capabilities (tool-use cache)
-     :context-window 200
-     :input-cost 1.00
-     :output-cost 5.00
-     :cutoff-date "2024-07")
-    (claude-3-opus-20240229
-     :description "Top-level performance, intelligence, fluency, and understanding"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 200
-     :input-cost 15
-     :output-cost 75
-     :cutoff-date "2023-08")
-    (claude-3-haiku-20240307
-     :description "Fast and most compact model for near-instant responsiveness"
-     :capabilities (tool-use cache)
-     :context-window 200
-     :input-cost 0.25
-     :output-cost 1.25
-     :cutoff-date "2023-08"))
+     :cutoff-date "2025-03"))
+
   "List of available Anthropic models and associated properties.
 Keys:
 

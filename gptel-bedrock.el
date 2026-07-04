@@ -84,11 +84,17 @@ back to the LLM)."
   (let ((base-request-data
          (nconc
           `(:messages [,@prompts] :inferenceConfig (:maxTokens ,(or gptel-max-tokens 500)))
-          (when gptel--system-message `(:system [(:text ,gptel--system-message)]))
+          (when gptel-system-prompt
+            `(:system [(:text ,gptel-system-prompt)
+                       ,@(when (or (eq gptel-cache t) (memq 'system gptel-cache))
+                           '((:cachePoint (:type "default"))))]))
           (when gptel-temperature `(:temperature ,gptel-temperature))
           (when (and gptel-use-tools gptel-tools)
             `(:toolConfig (:toolChoice ,(if (eq gptel-use-tools 'force) '(:any '()) '(:auto '()))
-                           :tools ,(gptel--parse-tools backend gptel-tools)))))))
+                           :tools ,(let ((tools (gptel--parse-tools backend gptel-tools)))
+                                     (if (or (eq gptel-cache t) (memq 'tool gptel-cache))
+                                         (vconcat tools [(:cachePoint (:type "default"))])
+                                       tools))))))))
 
     ;; Finally, merge all potential :request-params sources.
     (gptel--merge-plists
@@ -409,10 +415,46 @@ MAX-ENTRIES is the maximum number of prompts to include."
                       (/= prev-pt (point-min))
                       (goto-char (previous-single-property-change
                                   (point) 'gptel nil (point-min))))
-            (capture-prompt (pcase (get-char-property (point) 'gptel)
-                              ('response "assistant")
-                              ('nil "user"))
-                            (point) prev-pt)
+            ;; Skip blank regions (e.g. response separators) to avoid
+            ;; capturing empty content that JSON-encodes as {}.
+            (unless (save-excursion (skip-syntax-forward " ") (>= (point) prev-pt))
+              (pcase (get-char-property (point) 'gptel)
+                ('response
+                 (capture-prompt "assistant" (point) prev-pt))
+                (`(tool . ,id)
+                 ;; Reconstruct the toolUse (assistant) and toolResult (user)
+                 ;; message pair from the serialized tool call text in the buffer.
+                 (save-excursion
+                   (condition-case nil
+                       (let* ((tool-call (read (current-buffer)))
+                              (name (plist-get tool-call :name))
+                              (args (plist-get tool-call :args))
+                              (result (string-trim
+                                       (buffer-substring-no-properties
+                                        (point) prev-pt))))
+                         ;; user message: toolResult (pushed first, ends up second)
+                         (push (list :role "user"
+                                     :content
+                                     `[(:toolResult (:toolUseId ,id
+                                                     :status "success"
+                                                     :content [(:text ,result)]))])
+                               prompts)
+                         ;; assistant message: toolUse (pushed second, ends up first)
+                         (push (list :role "assistant"
+                                     :content
+                                     `[(:toolUse (:toolUseId ,id
+                                                  :name ,name
+                                                  :input ,args))])
+                               prompts))
+                     ((end-of-file invalid-read-syntax)
+                      (message "gptel: Could not parse tool-call %s on line %s"
+                               id (line-number-at-pos (point)))))))
+                ('ignore)
+                ('nil
+                 (let ((text (gptel--trim-prefixes
+                              (buffer-substring-no-properties (point) prev-pt))))
+                   (unless (or (null text) (string-blank-p text))
+                     (capture-prompt "user" (point) prev-pt))))))
             (setq prev-pt (point))
             (cl-decf max-entries))
         (capture-prompt "user" (point-min) (point-max)))
@@ -467,7 +509,7 @@ The output is a vector of entries in Bedrock API format."
              `(:image (:format ,(cdr format) :source (:bytes ,(gptel--base64-encode media)))))
             ((setq format (assoc mime gptel-bedrock--doc-formats))
              `(:document (:format ,(cdr format)
-                          :name ,(file-name-nondirectory media)
+                          :name ,(file-name-sans-extension (file-name-nondirectory media))
                           :source (:bytes ,(gptel--base64-encode media)))))
             (t (error "Unsupported MIME type %s for AWS Bedrock" mime))))
           (textfile `(:text ,(with-temp-buffer
@@ -600,6 +642,8 @@ Convenient to use with `cl-multiple-value-bind'"
   ;; https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
   '((claude-sonnet-4-6           . "anthropic.claude-sonnet-4-6")
     (claude-opus-4-6             . "anthropic.claude-opus-4-6-v1")
+    (claude-opus-4-7             . "anthropic.claude-opus-4-7")
+    (claude-opus-4-8             . "anthropic.claude-opus-4-8")
     (claude-sonnet-4-5-20250929  . "anthropic.claude-sonnet-4-5-20250929-v1:0")
     (claude-haiku-4-5-20251001   . "anthropic.claude-haiku-4-5-20251001-v1:0")
 	(claude-opus-4-5-20251101    . "anthropic.claude-opus-4-5-20251101-v1:0")
