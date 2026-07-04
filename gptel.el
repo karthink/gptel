@@ -1752,7 +1752,7 @@ kill ring instead."
           (plist-put (gptel-fsm-info gptel--fsm-last) :data data)
           (if copy                 ;Copy Curl command instead of sending request
               (let ((args (gptel-curl--get-args (gptel-fsm-info gptel--fsm-last)
-                                                (md5 (format "%s" (random))) t)))
+                                                (md5 (format "%s" (random))))))
                 (kill-new
                  (mapconcat #'shell-quote-argument
                             (cons (gptel--curl-path) args) " \\\n"))
