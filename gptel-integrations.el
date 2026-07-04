@@ -269,14 +269,14 @@ from all connected servers if it is nil."
      server-names servers)))
 
 (defun gptel-mcp--activate-tools (tools &optional filter-spec)
-  "Activate TOOLS or all MCP tools in current gptel session.
+  "Activate tools from TOOLS according to the FILTER-SPEC.
 If FILTER-SPEC is present, activate only those tools in the FILTER-SPEC.
 Each spec in the FILTER-SPEC list can be one of the following forms:
   - server name (string). In this case all tools of the server are activated.
   - cons of the form (\"server-name\" . t). Same as above for programmatic consistency.
   - list of the form (\"server-name\" \"tool1\" \"tool2\" ...). In this
     case only the listed tools are activated.
-If FILTER-SPEC is nil, return TOOLS unchanged."
+If FILTER-SPEC is nil, activate all TOOLS."
   (let ((tools (if filter-spec
                    (cl-remove-if-not
                     (lambda (tool)
