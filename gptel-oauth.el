@@ -62,7 +62,7 @@ Returns nil if FILE does not exist or cannot be read."
   "Function to load OAuth tokens.
 Default is nil, meaning use backend-specific defaults.
 When set, this function is called with BACKEND-TYPE and ACCOUNT-HINT
-and should return the token plist or nil.  BACKEND-TYPE is a symbol
+and should return the token or nil.  BACKEND-TYPE is a symbol
 indicating which OAuth backend (e.g., 'gptel-gh, 'gptel-openai-oauth).
 Backends can customize this before use."
   :type '(or null function)
@@ -201,7 +201,7 @@ TOKEN-SETTER is a function that takes a backend and a token and sets the backend
 LOAD-FUNCTION is the customizable function to load token from storage.
 ACCOUNT-HINT is the account hint for this load operation.
 
-Returns the token plist, or nil if no token found.
+Returns the token or nil if no token found.
 If a cached token exists in gptel-backend, returns that immediately.
 Otherwise, loads via LOAD-FUNCTION and propagates to all backends
 matching PREDICATE and ACCOUNT-HINT."
@@ -224,7 +224,7 @@ ACCOUNT-HINT-ACCESSOR extracts account hint from a backend.
 TOKEN-SETTER is a function that takes a backend and a token and sets the backend's token.
 SAVE-FUNCTION is the customizable function to save token to storage.
 ACCOUNT-HINT is the account hint to save token for.
-TOKEN is the token plist to save.
+TOKEN is the token to save.
 
 Updates token on all backends matching PREDICATE and ACCOUNT-HINT,
 then calls SAVE-FUNCTION."
