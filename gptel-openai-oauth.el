@@ -22,7 +22,7 @@
 ;;
 
 ;;; Code:
-(eval-when-compile (require 'cl-lib))
+(require 'cl-lib)
 (require 'gptel-openai-responses)
 (require 'gptel-oauth)
 
