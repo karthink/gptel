@@ -2726,14 +2726,12 @@ example) apply the preset buffer-locally."
         (setq val (gptel--modify-value gptel-tools val))
         (let* ((tools
                 (flatten-list
-                 (cl-loop for tool-name in (ensure-list val)
-                          for tool = (cl-etypecase tool-name
-                                       (gptel-tool tool-name)
-                                       (string (ignore-errors
-                                                 (gptel-get-tool tool-name))))
+                 (cl-loop for tool-spec in (ensure-list val)
+                          for tool = (ignore-errors
+                                       (gptel-get-tool tool-spec))
                           do (unless tool
                                (user-error "gptel preset: Cannot find tool %S"
-                                           tool-name))
+                                           tool-spec))
                           collect tool))))
           (funcall setter 'gptel-tools (cl-delete-duplicates tools :test #'eq))))
        ((and (let sym (or (intern-soft
@@ -2843,7 +2841,8 @@ See also `gptel--preset-mismatch-p'."
                 for tool in preset-tools
                 for tool-name =
                 (or (and (stringp tool) tool)
-                    (ignore-errors (gptel-tool-name tool)))
+                    (ignore-errors (gptel-tool-name
+                                    (gptel-get-tool tool))))
                 if (not (member tool-name uniq-tool-names))
                 collect tool-name into uniq-tool-names
                 finally return

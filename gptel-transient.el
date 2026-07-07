@@ -105,7 +105,8 @@ This is intended to be fast but imperfect.  See
           (setq val (cl-loop ; Check against tool names, not tools (faster with sorting)
                      for tool in (ensure-list (gptel--modify-value gptel-tools val))
                      for tool-name = (or (and (stringp tool) tool)
-                                         (ignore-errors (gptel-tool-name tool)))
+                                         (ignore-errors
+                                           (gptel-tool-name (gptel-get-tool tool))))
                      if (not (member tool-name uniq-tool-names))
                      collect tool-name into uniq-tool-names
                      finally return uniq-tool-names))
