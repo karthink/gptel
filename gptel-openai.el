@@ -503,6 +503,30 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 30
      :output-cost 180
      :cutoff-date "2025-08")
+    (gpt-5.6-sol
+     :description "The best model for coding and agentic tasks"
+     :capabilities (media tool-use json url responses-api)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 5
+     :output-cost 30
+     :cutoff-date "2026-02")
+    (gpt-5.6-terra
+     :description "Faster, more cost-efficient version of GPT-5.6"
+     :capabilities (media tool-use json url responses-api)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 2.5
+     :output-cost 15
+     :cutoff-date "2026-02")
+    (gpt-5.6-luna
+     :description "Fastest, cheapest version of GPT-5.6"
+     :capabilities (media tool-use json url responses-api)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 1
+     :output-cost 6
+     :cutoff-date "2026-02")
     (gpt-5.5
      :description "The best model for coding and agentic tasks"
      :capabilities (media tool-use json url responses-api)
