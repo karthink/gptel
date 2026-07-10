@@ -413,7 +413,7 @@ Returns t if TOKEN is a valid plist containing :access_token,
 
 (defun gptel-openai-oauth--get-load-token-function (account-hint)
   "Load OpenAI OAuth token from file, ensuring it is a valid plist."
-  (let ((token (if #'gptel-oauth-token-load-function
+  (let ((token (if gptel-oauth-token-load-function
                   (funcall gptel-oauth-token-load-function 'gptel-openai-oauth account-hint)
                 (gptel-oauth--read-token (gptel--openai-oauth-generate-token-filename account-hint)))))
     ;; Filter out nil and empty values (empty files do not contain tokens)
@@ -437,7 +437,7 @@ Returns t if TOKEN is a valid plist containing :access_token,
   "Save OpenAI OAuth TOKEN to file for ACCOUNT-HINT, ensuring it is a valid plist."
   (unless (gptel--openai-oauth-validate-token-p token)
     (user-error "Cannot save invalid OpenAI OAuth token: expected plist with all required fields, got %S" token))
-  (if #'gptel-oauth-token-save-function
+  (if gptel-oauth-token-save-function
       (funcall gptel-oauth-token-save-function 'gptel-openai-oauth account-hint token)
     (gptel-oauth--write-token (gptel--openai-oauth-generate-token-filename account-hint) token)))
 
