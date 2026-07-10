@@ -315,7 +315,7 @@
 (defun gptel-gh--get-load-token-function (account-hint)
   "Load GitHub token from file, ensuring it is a string."
   (let ((token (if #'gptel-oauth-token-load-function
-                  (gptel-oauth-token-load-function 'gptel-gh account-hint)
+                  (funcall gptel-oauth-token-load-function 'gptel-gh account-hint)
                 (gptel-oauth--read-token (gptel--gh-generate-token-filename account-hint)))))
     ;; Filter out nil and empty values (empty files do not contain tokens)
     (when (and token (not (equal token "")))
@@ -339,7 +339,7 @@
   (unless (gptel--gh-validate-token-p token)
     (user-error "Cannot save invalid GitHub token: expected string, got %S" token))
   (if #'gptel-oauth-token-save-function
-      (gptel-oauth-token-save-function 'gptel-gh account-hint token)
+      (funcall gptel-oauth-token-save-function 'gptel-gh account-hint token)
     (gptel-oauth--write-token (gptel--gh-generate-token-filename account-hint) token)))
 
 ;; https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
