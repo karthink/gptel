@@ -72,13 +72,15 @@ back to the LLM)."
                (plist-get info :backend) (plist-get info :data)
                `(:role "assistant" :content :null :tool_calls ,(vconcat tool-calls)))
               (cl-loop
-               for tool-call across tool-calls  ;replace ":arguments" with ":args"
+               for tool-call across tool-calls ;replace ":arguments" with ":args"
                for call-spec = (copy-sequence (plist-get tool-call :function))
                do (plist-put call-spec :args
                              (plist-get call-spec :arguments))
                (plist-put call-spec :arguments nil)
                collect call-spec into tool-use
-               finally (plist-put info :tool-use tool-use)))
+               finally
+               (plist-put info :tool-use
+                          (append (plist-get info :tool-use) tool-use))))
             (if (and reasoning (not (eq reasoning :null)))
                 (plist-put info :reasoning
                            (concat (plist-get info :reasoning) reasoning))

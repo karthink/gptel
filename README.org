@@ -175,7 +175,7 @@ In =config.el=
 
 "your key" can be the API key itself, or (safer) a function that returns the key.  Setting =gptel-api-key= is optional, you will be asked for a key if it's not found.
 
-Alternatively, Doom Emacs provides a built-in =:tools llm= [[https://github.com/doomemacs/doomemacs/tree/master/modules/tools/llm][module]] powered by gptel.  Enable it in your =init.el= in the =doom!= block:
+Alternatively, Doom Emacs provides a built-in =:tools llm= [[https://github.com/doomemacs/modules/tree/main/modules/tools/llm][module]] powered by gptel.  Enable it in your =init.el= in the =doom!= block:
 
 #+begin_src emacs-lisp
 (doom! :tools llm)

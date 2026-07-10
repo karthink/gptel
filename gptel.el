@@ -1752,7 +1752,7 @@ kill ring instead."
           (plist-put (gptel-fsm-info gptel--fsm-last) :data data)
           (if copy                 ;Copy Curl command instead of sending request
               (let ((args (gptel-curl--get-args (gptel-fsm-info gptel--fsm-last)
-                                                (md5 (format "%s" (random))) t)))
+                                                (md5 (format "%s" (random))))))
                 (kill-new
                  (mapconcat #'shell-quote-argument
                             (cons (gptel--curl-path) args) " \\\n"))
@@ -2165,7 +2165,7 @@ for tool call results.  INFO contains the state of the request."
          with include-names =
          (mapcar #'gptel-tool-name
                  (cl-remove-if-not #'gptel-tool-include (plist-get info :tools)))
-         if (or (eq gptel-include-tool-results t)
+         if (or (memq gptel-include-tool-results '(t call))
                 (member (gptel-tool-name tool) include-names))
          do (funcall
              (plist-get info :callback)
@@ -2194,14 +2194,20 @@ for tool call results.  INFO contains the state of the request."
                      (string-replace "\n" " "
                                      (truncate-string-to-width
                                       display-call
-                                      (floor (* (window-width) 0.6)) 0 nil " ...)"))))
+                                      (floor (* (window-width) 0.6)) 0 nil " ...)")))
+                    (result-final       ;Check if the results should be excluded
+                     (if (or (eq gptel-include-tool-results 'call)
+                             (and (eq gptel-include-tool-results 'auto)
+                                  (eq (gptel-tool-include tool) 'call)))
+                         "(Cached tool result — available during original generation but not replayed)"
+                       result)))
                (if (derived-mode-p 'org-mode)
                    (concat
                     separator
                     "#+begin_tool "
                     truncated-call
                     (propertize
-                     (org-escape-code-in-string (concat "\n" call "\n\n" result))
+                     (org-escape-code-in-string (concat "\n" call "\n\n" result-final))
                      'gptel `(tool . ,id))
                     "\n#+end_tool\n")
                  ;; TODO(tool) else branch is handling all front-ends as markdown.
@@ -2213,7 +2219,7 @@ for tool call results.  INFO contains the state of the request."
                               'gptel 'ignore 'keymap gptel--markdown-block-map)
                   (propertize
                    ;; TODO(tool) escape markdown in result
-                   (concat "\n" call "\n\n" result)
+                   (concat "\n" call "\n\n" result-final)
                    'gptel `(tool . ,id))
                   ;; TODO(tool) remove properties and strip instead of ignoring
                   (propertize "\n```\n" 'gptel 'ignore
@@ -2721,14 +2727,12 @@ example) apply the preset buffer-locally."
         (setq val (gptel--modify-value gptel-tools val))
         (let* ((tools
                 (flatten-list
-                 (cl-loop for tool-name in (ensure-list val)
-                          for tool = (cl-etypecase tool-name
-                                       (gptel-tool tool-name)
-                                       (string (ignore-errors
-                                                 (gptel-get-tool tool-name))))
+                 (cl-loop for tool-spec in (ensure-list val)
+                          for tool = (ignore-errors
+                                       (gptel-get-tool tool-spec))
                           do (unless tool
                                (user-error "gptel preset: Cannot find tool %S"
-                                           tool-name))
+                                           tool-spec))
                           collect tool))))
           (funcall setter 'gptel-tools (cl-delete-duplicates tools :test #'eq))))
        ((and (let sym (or (intern-soft
@@ -2838,7 +2842,8 @@ See also `gptel--preset-mismatch-p'."
                 for tool in preset-tools
                 for tool-name =
                 (or (and (stringp tool) tool)
-                    (ignore-errors (gptel-tool-name tool)))
+                    (ignore-errors (gptel-tool-name
+                                    (gptel-get-tool tool))))
                 if (not (member tool-name uniq-tool-names))
                 collect tool-name into uniq-tool-names
                 finally return

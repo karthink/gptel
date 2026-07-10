@@ -22,6 +22,7 @@
 ;;
 
 ;;; Code:
+(require 'cl-lib)
 (require 'gptel-openai-responses)
 (require 'gptel-oauth)
 
@@ -32,6 +33,21 @@
 (defvar gptel--openai-oauth-token-file
   (expand-file-name ".cache/gptel-openai/openai-oauth-token"
                     user-emacs-directory))
+
+(defcustom gptel-openai-oauth-login-method 'authorization-code
+  "OAuth login method used by `gptel-openai-oauth-login'.
+
+The `authorization-code' method uses OAuth 2.0 Authorization Code
+Flow with PKCE and a localhost callback.  It is not supported when
+Emacs is running over SSH.  The `device' method uses OAuth 2.0
+Device Authorization Grant."
+  :type '(choice (const :tag "Authorization Code Flow with PKCE" authorization-code)
+                 (const :tag "Device Authorization Grant" device))
+  :group 'gptel)
+
+(defconst gptel--openai-oauth-redirect-port 1455)
+(defconst gptel--openai-oauth-redirect-timeout 300)
+(defconst gptel--openai-oauth-redirect-path "/auth/callback")
 
 ;;;; OpenAI OAuth backend
 (cl-defstruct (gptel-openai-oauth (:constructor gptel--make-openai-oauth)
@@ -56,7 +72,8 @@ Removes unsupported temperature settings from the payload."
       (cl-remf prompts-plist :max_output_tokens))
     prompts-plist))
 
-;;;; OpenAI OAuth login
+;;;; OpenAI OAuth methods
+;;;;; OpenAI device-based Oauth
 
 (defconst gptel--openai-oauth-poll-interval 2)
 (defconst gptel--openai-oauth-poll-timeout 30)
@@ -99,24 +116,8 @@ request times out."
     (or response
         (user-error "Timed out waiting for OpenAI OAuth device authorization"))))
 
-(defun gptel-openai-oauth-login (&optional backend)
-  "Authenticate BACKEND using the OpenAI device flow.
-
-If BACKEND is nil, use `gptel-backend'.  Interactively, prompt
-for or infer an OpenAI OAuth backend."
-  ;; TODO: Handle the case when there are multiple openai-oauth backends
-  ;; defined.  We want to pick the one to log into.
-  (interactive (list
-                (cond
-                 ((gptel-openai-oauth-p gptel-backend)
-                  gptel-backend)
-                 ((cl-find-if #'gptel-openai-oauth-p gptel--known-backends
-                              :key #'cdr))
-                 (t (user-error "No OpenAI OAuth backend found.  \
-Please set one up with `gptel-make-openai-oauth' first")))))
-  (unless backend (setq backend gptel-backend))
-  (unless (gptel-openai-oauth-p backend)
-    (user-error "%s is not an OpenAI OAuth backend" (gptel-backend-name backend)))
+(defun gptel--openai-oauth-login-with-device-code (backend)
+  "Authenticate BACKEND using OpenAI Device Authorization Grant."
   (pcase-let (((map :device_auth_id :user_code)
                (gptel--url-retrieve
                    (concat gptel--openai-oauth-url "/api/accounts/deviceauth/usercode")
@@ -140,6 +141,191 @@ Please set one up with `gptel-make-openai-oauth' first")))))
                     :content-type "application/x-www-form-urlencoded")))
       ;; TODO Handle case where access_token was not granted
       (gptel--openai-oauth-persist backend token-plist))))
+
+;;;;; OpenAI authorization-code-based Oauth
+
+(defun gptel--openai-oauth-authorization-url (redirect-uri verifier state)
+  "Return an OpenAI authorization URL for REDIRECT-URI.
+
+VERIFIER is used to derive the PKCE code challenge.  STATE is
+included in the authorization request and checked in the callback."
+  (concat
+   gptel--openai-oauth-url "/oauth/authorize?"
+   (url-build-query-string
+    `(("response_type" "code")
+      ("client_id" ,gptel--openai-oauth-client-id)
+      ("redirect_uri" ,(url-hexify-string redirect-uri))
+      ("scope" "openid profile email offline_access")
+      ("code_challenge" ,(gptel-oauth--generate-code-challenge verifier))
+      ("code_challenge_method" "S256")
+      ("id_token_add_organizations" "true")
+      ("prompt" "login")
+      ("codex_cli_simplified_flow" "true")
+      ("state" ,state)
+      ("originator" "gptel")))))
+
+(defun gptel--openai-oauth-callback-request (request)
+  "Parse callback REQUEST and return a plist with :path and :query."
+  (when (string-match "\\`GET \\([^ ]+\\) HTTP/" request)
+    (let* ((target (match-string 1 request))
+           (query-start (string-search "?" target))
+           (path (if query-start
+                     (substring target 0 query-start)
+                   target))
+           (query (and query-start
+                       (substring target (1+ query-start)))))
+      (list :path path
+            :query (and query (url-parse-query-string query))))))
+
+(defun gptel--openai-oauth-send-callback-response (process status title body)
+  "Send PROCESS an HTTP response with STATUS, TITLE and BODY."
+  (let ((payload (format "<!doctype html><meta charset=\"utf-8\"><title>%s</title><p>%s</p>"
+                         title body)))
+    (process-send-string
+     process
+     (format "HTTP/1.1 %s %s\r\nContent-Type: text/html; \
+charset=utf-8\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s"
+             status title (string-bytes payload) payload))))
+
+;; TODO: Support over SSH connections can be added by (i) not starting a server,
+;; and (ii) asking the user to copy the callback URL from the browser's URL bar
+;; into Emacs.
+(defun gptel--openai-oauth-read-code (authorization-url state)
+  "Open AUTHORIZATION-URL and wait for a localhost callback matching STATE."
+  (when (or (getenv "SSH_CLIENT")
+            (getenv "SSH_CONNECTION")
+            (getenv "SSH_TTY"))
+    (user-error
+     (concat "OpenAI authorization-code login requires a local browser "
+             "callback and is not supported over SSH.  Set "
+             "`gptel-openai-oauth-login-method' to `device' and retry")))
+  (let ((deadline (+ (float-time) gptel--openai-oauth-redirect-timeout))
+        code error server)
+    (cl-labels
+        ((finish (process status title body &optional result failure)
+           (gptel--openai-oauth-send-callback-response process status title body)
+           (when result (setq code result))
+           (when failure (setq error failure))
+           (delete-process process))
+         (filter (process string)
+           (let ((request (concat (or (process-get process :gptel-request) "")
+                                  string)))
+             (process-put process :gptel-request request)
+             (when (string-match-p "\r\n\r\n" request)
+               (pcase-let* ((`(:path ,path :query ,query)
+                             (gptel--openai-oauth-callback-request request))
+                            (callback-state (cadr (assoc "state" query)))
+                            (callback-code (cadr (assoc "code" query)))
+                            (callback-error (cadr (assoc "error" query)))
+                            (callback-error-description
+                             (cadr (assoc "error_description" query))))
+                 (cond
+                  ((not (equal path gptel--openai-oauth-redirect-path))
+                   (finish process "404" "Not Found"
+                           "This is not an OpenAI OAuth callback."))
+                  (callback-error
+                   (finish process "400" "OpenAI OAuth Error"
+                           "OpenAI OAuth authorization failed.  You may close this tab."
+                           nil
+                           (or callback-error-description callback-error)))
+                  ((not (equal callback-state state))
+                   (finish process "400" "OpenAI OAuth Error"
+                           "OpenAI OAuth state did not match.  You may close this tab."
+                           nil "OpenAI OAuth state did not match"))
+                  (callback-code
+                   (finish process "200" "OpenAI OAuth Complete"
+                           "OpenAI OAuth authorization succeeded.  You may close this tab."
+                           callback-code))
+                  (t
+                   (finish process "400" "OpenAI OAuth Error"
+                           "OpenAI OAuth callback did not include a code.  You may close this tab."
+                           nil "OpenAI OAuth callback did not include a code"))))))))
+      (unwind-protect
+          (progn
+            (setq server
+                  (make-network-process
+                   :name "gptel-openai-oauth-callback"
+                   :server t
+                   :host "localhost"
+                   :service gptel--openai-oauth-redirect-port
+                   :filter #'filter
+                   :noquery t))
+            (message "OpenAI OAuth authorization URL: %s" authorization-url)
+            (ignore-errors (gui-set-selection 'CLIPBOARD authorization-url))
+            (read-from-minibuffer
+             (format "OpenAI OAuth URL copied to clipboard.  \
+Press ENTER to open the authorization page.  \
+If your browser does not open automatically, browse to %s: "
+                     authorization-url))
+            (browse-url authorization-url)
+            (while (and (not code) (not error) (< (float-time) deadline))
+              (accept-process-output nil 1))
+            (cond
+             (code code)
+             (error (user-error "%s" error))
+             (t (user-error "Timed out waiting for OpenAI OAuth callback"))))
+        (when (process-live-p server)
+          (delete-process server))))))
+
+(defun gptel--openai-oauth-login-with-authorization-code (backend)
+  "Authenticate BACKEND using OpenAI Authorization Code Flow with PKCE."
+  (let* ((redirect-uri (format "http://localhost:%d%s"
+                               gptel--openai-oauth-redirect-port
+                               gptel--openai-oauth-redirect-path))
+         (verifier (gptel-oauth--generate-code-verifier))
+         (state (secure-hash 'sha256 (format "%s%s" (float-time) (random))))
+         (authorization-url
+          (gptel--openai-oauth-authorization-url redirect-uri verifier state))
+         (code (gptel--openai-oauth-read-code authorization-url state))
+         (token-plist
+          (gptel--url-retrieve (concat gptel--openai-oauth-url "/oauth/token")
+            :method 'post
+            :data (url-build-query-string
+                   `(("grant_type" "authorization_code")
+                     ("client_id" ,gptel--openai-oauth-client-id)
+                     ("code" ,code)
+                     ("code_verifier" ,verifier)
+                     ("redirect_uri" ,(url-hexify-string redirect-uri))))
+            :content-type "application/x-www-form-urlencoded")))
+    (gptel--openai-oauth-persist backend token-plist)))
+
+;;;; OpenAI Oauth login and token handling
+
+(defun gptel--openai-oauth-default-backend ()
+  "Return the current or first registered OpenAI OAuth backend."
+  (cond
+   ((gptel-openai-oauth-p gptel-backend)
+    gptel-backend)
+   ((cdr (cl-find-if #'gptel-openai-oauth-p gptel--known-backends
+                     :key #'cdr)))
+   (t (user-error "No OpenAI OAuth backend found.  \
+Please set one up with `gptel-make-openai-oauth' first"))))
+
+(defun gptel-openai-oauth-login (&optional backend method)
+  "Authenticate BACKEND using OpenAI OAuth.
+
+If BACKEND is nil, use `gptel-backend' when it is an OpenAI OAuth
+backend, otherwise use the first registered OpenAI OAuth backend.
+METHOD can be `authorization-code' for OAuth 2.0 Authorization
+Code Flow with PKCE or `device' for OAuth 2.0 Device
+Authorization Grant.  If METHOD is nil, use
+`gptel-openai-oauth-login-method'."
+  (interactive (list (gptel--openai-oauth-default-backend)))
+  (unless backend (setq backend (gptel--openai-oauth-default-backend)))
+  (unless (gptel-openai-oauth-p backend)
+    (user-error "%s is not an OpenAI OAuth backend" (gptel-backend-name backend)))
+  (let ((token-plist
+         (pcase (or method gptel-openai-oauth-login-method)
+           ('authorization-code
+            (gptel--openai-oauth-login-with-authorization-code backend))
+           ('device
+            (gptel--openai-oauth-login-with-device-code backend))
+           (login-method
+            (user-error "Unknown OpenAI OAuth login method: %S" login-method)))))
+    (when (and (called-interactively-p 'interactive)
+               (plist-get token-plist :access_token))
+      (message "Successfully logged in to OpenAI OAuth."))
+    token-plist))
 
 (defun gptel--openai-oauth-persist (backend token-plist)
   "Persist TOKEN-PLIST for BACKEND.
@@ -194,6 +380,8 @@ reauthenticate as needed."
           (gptel--openai-oauth-refresh backend refresh)
         (gptel-openai-oauth-login backend)))))
 
+;;;; Oauth backend management
+
 (defun gptel--openai-oauth-header (_info)
   "Return authentication headers for the current OpenAI OAuth backend.
 
@@ -221,7 +409,7 @@ before constructing the headers."
           (host "chatgpt.com")
           (protocol "https")
           (endpoint "/backend-api/codex/responses")
-          (models 
+          (models
            '(gpt-5.2 gpt-5.3-codex gpt-5.3-codex-spark gpt-5.4-mini gpt-5.4 gpt-5.5)))
   "Register a ChatGPT Plus/Pro OAuth backend for gptel with NAME.
 
