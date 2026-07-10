@@ -228,6 +228,9 @@ Mutate state INFO with response metadata."
       (plist-put prompts-plist :stream_options '(:include_usage t)))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
+    (when gptel-reasoning-effort
+      (plist-put prompts-plist (list :reasoning_effort
+                                     (symbol-name gptel-reasoning-effort))))
     (when gptel-use-tools
       (when (eq gptel-use-tools 'force)
         (plist-put prompts-plist :tool_choice "required"))
@@ -474,6 +477,7 @@ Media files, if present, are placed in `gptel-context'."
   '((gpt-5.4-mini
      :description "Faster, more cost-efficient version of GPT-5.4"
      :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member none low medium high xhigh)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 0.75
@@ -482,6 +486,7 @@ Media files, if present, are placed in `gptel-context'."
     (gpt-5.4-nano
      :description "Fastest, cheapest version of GPT-5.4"
      :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member none low medium high xhigh)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 0.20
@@ -490,6 +495,7 @@ Media files, if present, are placed in `gptel-context'."
     (gpt-5.4
      :description "The best model for coding and agentic tasks"
      :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member none low medium high xhigh)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 1050
      :input-cost 2.50
@@ -498,14 +504,44 @@ Media files, if present, are placed in `gptel-context'."
     (gpt-5.4-pro
      :description "Maximum performance model for reasoning tasks"
      :capabilities (media tool-use json url responses-api)
+     ;; The pro version of the model does not support none and low.
+     :reasoning-effort (member medium high xhigh)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 1050
      :input-cost 30
      :output-cost 180
      :cutoff-date "2025-08")
+    (gpt-5.6-sol
+     :description "The best model for coding and agentic tasks"
+     :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member none low medium high xhigh max)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 5
+     :output-cost 30
+     :cutoff-date "2026-02")
+    (gpt-5.6-terra
+     :description "Faster, more cost-efficient version of GPT-5.6"
+     :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member none low medium high xhigh max)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 2.5
+     :output-cost 15
+     :cutoff-date "2026-02")
+    (gpt-5.6-luna
+     :description "Fastest, cheapest version of GPT-5.6"
+     :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member none low medium high xhigh max)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 1
+     :output-cost 6
+     :cutoff-date "2026-02")
     (gpt-5.5
      :description "The best model for coding and agentic tasks"
      :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member none low medium high xhigh)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 1050
      :input-cost 5
@@ -514,6 +550,8 @@ Media files, if present, are placed in `gptel-context'."
     (gpt-5.5-pro
      :description "Maximum performance model for reasoning tasks"
      :capabilities (media tool-use json url responses-api)
+     ;; The pro version of the model does not support none and low.
+     :reasoning-effort (member medium high xhigh)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 1050
      :input-cost 30
@@ -522,6 +560,7 @@ Media files, if present, are placed in `gptel-context'."
     (gpt-5.3-chat-latest
      :description "Answers right away"
      :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member medium)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 1.75
@@ -530,6 +569,7 @@ Media files, if present, are placed in `gptel-context'."
     (gpt-5.2
      :description "The best model for coding and agentic tasks"
      :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member none low medium high xhigh)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 1.75
@@ -538,6 +578,7 @@ Media files, if present, are placed in `gptel-context'."
     (gpt-5.1
      :description "The best model for coding and agentic tasks"
      :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member none low medium high)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 1.25
@@ -546,6 +587,7 @@ Media files, if present, are placed in `gptel-context'."
     (gpt-5-mini
      :description "Faster, more cost-efficient version of GPT-5"
      :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member minimal low medium high)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 0.25
@@ -554,6 +596,7 @@ Media files, if present, are placed in `gptel-context'."
     (gpt-5-nano
      :description "Fastest, cheapest version of GPT-5"
      :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member minimal low medium high)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 0.05
@@ -562,6 +605,7 @@ Media files, if present, are placed in `gptel-context'."
     (gpt-5
      :description "Flagship model for coding, reasoning, and agentic tasks across domains"
      :capabilities (media tool-use json url responses-api)
+     :reasoning-effort (member minimal low medium high)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
      :input-cost 1.25
@@ -633,6 +677,7 @@ Media files, if present, are placed in `gptel-context'."
     (o4-mini
      :description "Fast, effective reasoning with efficient performance in coding and visual tasks"
      :capabilities (reasoning media tool-use json url responses-api)
+     :reasoning-effort (member low medium high)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 1.10
@@ -640,6 +685,7 @@ Media files, if present, are placed in `gptel-context'."
      :cutoff-date "2024-05")
     (o3-mini
      :description "High intelligence at the same cost and latency targets of o1-mini"
+     :reasoning-effort (member low medium high)
      :context-window 200
      :input-cost 1.10
      :output-cost 4.40
@@ -648,6 +694,7 @@ Media files, if present, are placed in `gptel-context'."
     (o3
      :description "Well-rounded and powerful model across domains"
      :capabilities (reasoning media tool-use json url responses-api)
+     :reasoning-effort (member low medium high)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 2
@@ -656,6 +703,7 @@ Media files, if present, are placed in `gptel-context'."
     (o3-pro
      :description "Maximum performance model for reasoning tasks"
      :capabilities (reasoning media tool-use json url responses-api)
+     :reasoning-effort (member low medium high)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 20
@@ -663,6 +711,7 @@ Media files, if present, are placed in `gptel-context'."
      :cutoff-date "2024-05")
     (o1-mini
      :description "Faster and cheaper reasoning model good at coding, math, and science"
+     :reasoning-effort (member low medium high)
      :context-window 128
      :input-cost 1.10
      :output-cost 4.40
@@ -671,6 +720,7 @@ Media files, if present, are placed in `gptel-context'."
     (o1
      :description "Reasoning model designed to solve hard problems across domains"
      :capabilities (media reasoning responses-api)
+     :reasoning-effort (member low medium high)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 200
      :input-cost 15
