@@ -314,7 +314,7 @@
 
 (defun gptel-gh--get-load-token-function (account-hint)
   "Load GitHub token from file, ensuring it is a string."
-  (let ((token (if #'gptel-oauth-token-load-function
+  (let ((token (if gptel-oauth-token-load-function
                   (funcall gptel-oauth-token-load-function 'gptel-gh account-hint)
                 (gptel-oauth--read-token (gptel--gh-generate-token-filename account-hint)))))
     ;; Filter out nil and empty values (empty files do not contain tokens)
@@ -338,7 +338,7 @@
   "Save GitHub TOKEN to file for ACCOUNT-HINT, ensuring it is a string."
   (unless (gptel--gh-validate-token-p token)
     (user-error "Cannot save invalid GitHub token: expected string, got %S" token))
-  (if #'gptel-oauth-token-save-function
+  (if gptel-oauth-token-save-function
       (funcall gptel-oauth-token-save-function 'gptel-gh account-hint token)
     (gptel-oauth--write-token (gptel--gh-generate-token-filename account-hint) token)))
 
