@@ -1902,7 +1902,7 @@ MACHINE is an instance of `gptel-fsm'"
   ;; a second network request: gptel tests for the presence of these flags to
   ;; handle state transitions.  (NOTE: Don't add :uuid to this.)
   (let ((info (gptel-fsm-info fsm)))
-    (dolist (key '(:tool-result :tool-use :error :http-status :reasoning :tokens))
+    (dolist (key '(:tool-result :tool-use :error :http-status :reasoning :reasoning-block :reasoning-chunks :reasoning-marker :tokens))
       (when (plist-get info key)
         (plist-put info key nil))))
   (funcall
