@@ -362,8 +362,16 @@ For the meanings of the keyword arguments, see `gptel-make-openai'."
           (protocol "https")
           (endpoint "/v1/chat/completions")
           (models
-           '((grok-4.3
-              :description "Our most advanced flagship model, leading the industry in non-hallucination rate, agentic tool calling, and instruction following capabilities."
+           '((grok-4.5
+              :description "Most advanced flagship model, leading in agentic tool calling and instruction following capabilities."
+              :capabilities (tool-use json media reasoning)
+              :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+              :context-window 500
+              :input-cost 2
+              :output-cost 6)
+
+             (grok-4.3
+              :description "Advanced flagship model, leading in agentic tool calling and instruction following capabilities."
               :capabilities (tool-use json media reasoning)
               :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
               :context-window 1000
