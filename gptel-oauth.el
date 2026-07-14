@@ -27,6 +27,7 @@
 ;;; Code:
 
 (require 'browse-url)
+(require 'secrets)
 (require 'url-http)
 (require 'gptel-request)
 
@@ -57,6 +58,27 @@ Returns nil if FILE does not exist or cannot be read."
         (condition-case nil
             (read (current-buffer))
           (error nil))))))
+
+(defvar gptel-oauth--keyring-collection "default")
+
+(defun gptel-oauth--keyring-load (label)
+  "Load OpenAI OAuth tokens from the OS keyring."
+  (when-let* ((secret (secrets-get-secret gptel-oauth--keyring-collection label)))
+    (gptel--json-read-string secret)))
+
+(defun gptel-oauth--keyring-save (label token &rest attributes)
+  "Save TOKEN to the OS keyring."
+  ;; Delete the existing token if it exists. It isn't necessary to search
+  ;; because there should only be one and `secrets-delete-item' is a NOP when a
+  ;; label doesn't exist.
+  (secrets-delete-item gptel-oauth--keyring-collection label)
+  (apply #'secrets-create-item
+         gptel-oauth--keyring-collection
+         label
+         (gptel--json-encode token)
+         :application "Emacs"
+         attributes)
+  token)
 
 ;;; PKCE Implementation
 
