@@ -54,54 +54,6 @@
      :input-cost 0
      :output-cost 0
      :cutoff-date "2024-06")
-    (gpt-5.1
-     :description "The best model for coding and agentic tasks"
-     :capabilities (media tool-use json url responses-api)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 1
-     :output-cost 1
-     :cutoff-date "2024-09")
-    (gpt-5.1-codex
-     :description "Flagship model for coding, reasoning, and agentic tasks across domains"
-     :capabilities (media tool-use json url responses-api)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 1
-     :output-cost 1
-     :cutoff-date "2024-09")
-    (gpt-5.1-codex-max
-     :description "Flagship model for coding, reasoning, and agentic tasks across domains"
-     :capabilities (media tool-use json url responses-api)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 1
-     :output-cost 1
-     :cutoff-date "2024-09")
-    (gpt-5.1-codex-mini
-     :description "Flagship model for coding, reasoning, and agentic tasks across domains"
-     :capabilities (media tool-use json url responses-api)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 1
-     :output-cost 1
-     :cutoff-date "2024-09")
-    (gpt-5.2
-     :description "The best model for coding and agentic tasks"
-     :capabilities (media tool-use json url responses-api)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 1
-     :output-cost 1
-     :cutoff-date "2025-08")
-    (gpt-5.2-codex
-     :description "The best model for coding and agentic tasks"
-     :capabilities (media tool-use json url responses-api)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 272
-     :input-cost 1
-     :output-cost 1
-     :cutoff-date "2025-08")
     (gpt-5.3-codex
      :description "The most capable agentic coding model to date"
      :capabilities (media tool-use json url responses-api)
@@ -182,14 +134,6 @@
      :input-cost 10
      :output-cost 50
      :cutoff-date "2026-01")
-    (claude-sonnet-4
-     :description "High-performance model with exceptional reasoning and efficiency"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 128
-     :input-cost 1
-     :output-cost 1
-     :cutoff-date "2025-03")
     (claude-sonnet-4.5
      :description "High-performance model with exceptional reasoning and efficiency"
      :capabilities (media tool-use cache)
@@ -234,17 +178,6 @@
      :input-cost 0.33
      :output-cost 0.33
      :cutoff-date "2025-01")
-    (gemini-3-pro-preview
-     :description "Most intelligent Gemini model with SOTA reasoning and multimodal understanding"
-     :capabilities (tool-use json media audio video)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 109
-     :input-cost 1
-     :output-cost 1
-     :cutoff-date "2025-01")
     (gemini-3.1-pro-preview
      :description "Most intelligent Gemini model with SOTA reasoning and multimodal understanding"
      :capabilities (tool-use json media audio video)
@@ -266,14 +199,7 @@
      :context-window 109
      :input-cost 1
      :output-cost 1
-     :cutoff-date "2025-01")
-    (grok-code-fast-1
-     :description "Fast reasoning model for agentic coding"
-     :capabilities '(tool-use json reasoning)
-     :context-window 109
-     :input-cost 0.25
-     :output-cost 1.5
-     :cutoff-date "2025-08")))
+     :cutoff-date "2025-01")))
 
 (cl-defstruct (gptel--gh (:include gptel-openai)
                          (:copier nil)
