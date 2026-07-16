@@ -980,6 +980,39 @@ and \"apikey\" as USER."
     (string s)
     (otherwise (prin1-to-string s))))
 
+(defun gptel--sanitize-raw-bytes (s)
+  "Replace raw bytes in string S with \"?\" so it is JSON-serializable.
+
+When a tool result contains non-UTF-8 bytes (for example from reading a
+binary file via a shell command), Emacs represents them as \"raw-byte\"
+codepoints in the #x3FFF80..#x3FFFFF range (or, in a unibyte string, as
+raw bytes >= 128).  Passing such a string to `json-serialize' signals
+\(wrong-type-argument json-value-p ...), which tears down the request
+and leaves it unrecoverable.  Replace those raw bytes with \"?\".
+Legitimate Unicode is preserved, and ASCII control characters are left
+intact since `json-serialize' escapes them as \\uXXXX.
+
+If S contains no raw bytes it is returned unchanged, without copying.
+Otherwise a single fresh multibyte string is allocated and mutated in
+place, so this is O(N) time and at most one allocation of size N."
+  ;; `find-charset-string' reports `eight-bit' for both unibyte strings
+  ;; containing bytes >= 128 and multibyte strings containing raw-byte
+  ;; codepoints, and is a fast C-level scan.  When the charset set does
+  ;; not include `eight-bit', the string is already JSON-safe.
+  (if (not (memq 'eight-bit (find-charset-string s)))
+      s
+    (let* ((s (if (multibyte-string-p s)
+                  (copy-sequence s)
+                ;; Unibyte -> multibyte so we can `aset' with ?? and end
+                ;; up with a multibyte character.  Allocates once.
+                (string-to-multibyte s)))
+           (end (length s))
+           (pos (unencodable-char-position 0 end 'utf-8 nil s)))
+      (while pos
+        (aset s pos ??)
+        (setq pos (unencodable-char-position (1+ pos) end 'utf-8 nil s)))
+      s)))
+
 (defsubst gptel--intern (s)
   "Intern S, if possible."
   (cl-etypecase s
@@ -1925,7 +1958,7 @@ injects the results into the prompt data and transitions the FSM."
          ;; MAYBE(tool-hooks): Use plist-member for valid nil :result?
          (remaining (cl-loop for call in (plist-get info :tool-use)
                              count (not (plist-get call :result)))))
-    (let ((result (gptel--to-string result)))
+    (let ((result (gptel--sanitize-raw-bytes (gptel--to-string result))))
       ;; FIXME(tool-hooks): If a hook has changed the tool that was called
       ;; tool-spec needs to be updated.
       (push (list tool-spec (plist-get tool-call :args) result)
