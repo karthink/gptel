@@ -532,20 +532,33 @@ Otherwise move ARG times, defaulting to 1."
   (interactive)
   (save-excursion
     (forward-line 0)
-    (let (start end (parity 0))
+    (let (start end (parity 0)
+           ;; Check if this is a gptel structural fence (reasoning/tool block).
+          ;; If so, only count fences with the `gptel' text property when
+          ;; matching parity, so that model output containing ``` inside
+          ;; the block doesn't break the fold.
+          (gptel-block (get-char-property (point) 'gptel)))
       (cond            ;Find start and end of block, with possible nested blocks
        ((looking-at-p "^``` *\n")       ;end of block, find corresponding start
         (setq parity -1 end (line-end-position))
         (while (and (not (= parity 0)) (not (bobp)) (forward-line -1))
-          (cond ((looking-at-p "^``` *\n") (cl-decf parity))
-                ((looking-at-p "^``` ?[a-z]") (cl-incf parity))))
+          (cond ((and (looking-at-p "^``` *\n")
+                      (or (not gptel-block) (get-char-property (point) 'gptel)))
+                 (cl-decf parity))
+                ((and (looking-at-p "^``` ?[a-z]")
+                      (or (not gptel-block) (get-char-property (point) 'gptel)))
+                 (cl-incf parity))))
         (when (= parity 0) (setq start (point))))
 
        ((looking-at-p "^``` ?[a-z]") ;beginning of block, find corresponding end
         (setq parity 1 start (point))
         (while (and (not (= parity 0)) (not (eobp)) (forward-line 1))
-          (cond ((looking-at-p "^``` *\n") (cl-decf parity))
-                ((looking-at-p "^``` ?[a-z]") (cl-incf parity))))
+          (cond ((and (looking-at-p "^``` *\n")
+                      (or (not gptel-block) (get-char-property (point) 'gptel)))
+                 (cl-decf parity))
+                ((and (looking-at-p "^``` ?[a-z]")
+                      (or (not gptel-block) (get-char-property (point) 'gptel)))
+                 (cl-incf parity))))
         (when (= parity 0) (setq end (line-end-position)))))
       (when (and start end)
         (goto-char start)

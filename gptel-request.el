@@ -1902,7 +1902,9 @@ MACHINE is an instance of `gptel-fsm'"
   ;; a second network request: gptel tests for the presence of these flags to
   ;; handle state transitions.  (NOTE: Don't add :uuid to this.)
   (let ((info (gptel-fsm-info fsm)))
-    (dolist (key '(:tool-result :tool-use :error :http-status :reasoning :tokens))
+    (dolist (key '(:tool-result :tool-use :tool-calls-captured :error :http-status :reasoning :tokens
+                   :partial_json :reasoning-block :reasoning-chunks
+                   :signature :partial_text :partial_reasoning))
       (when (plist-get info key)
         (plist-put info key nil))))
   (funcall
@@ -1936,7 +1938,9 @@ injects the results into the prompt data and transitions the FSM."
       ;; FIXME: Make the implicit addition to :tool-use explicit
       (plist-put tool-call :result result)) ;for the LLM
     ;; All tools have run
-    (when (<= (cl-decf remaining) 0) (gptel--fsm-transition fsm))))
+    (when (and (plist-get info :tool-use)        ; Guard against nil :tool-use
+               (<= (cl-decf remaining) 0))
+      (gptel--fsm-transition fsm))))
 
 (defun gptel--handle-tool-use (fsm)
   "Run tool calls captured in FSM, and advance the state machine with the results."
