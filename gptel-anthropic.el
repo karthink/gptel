@@ -38,7 +38,8 @@
 ;;; Anthropic (Messages API)
 (cl-defstruct (gptel-anthropic (:constructor gptel--make-anthropic)
                                (:copier nil)
-                               (:include gptel-backend)))
+                               (:include gptel-backend))
+  (uses-vertex-ai nil))
 
 (defun gptel--anthropic-update-tokens (usage info)
   "Update token usage information from USAGE.
@@ -223,12 +224,16 @@ Mutate state INFO with response metadata."
 (cl-defmethod gptel--request-data ((backend gptel-anthropic) prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
   (let ((prompts-plist
-         `( :model ,(gptel--model-name gptel-model)
-            :stream ,(or gptel-stream :json-false)
+         `( :stream ,(or gptel-stream :json-false)
             :max_tokens ,(or gptel-max-tokens 4096)
             :messages [,@prompts]))
         (cachep (and (or (eq gptel-cache t) (memq 'system gptel-cache))
                      (gptel--model-capable-p 'cache))))
+    ;; The Vertex AI API specifies the model in the endpoint URL, not
+    ;; in the request body.  Thus, let's not specify the model in the
+    ;; requet body if we are using the Vertex AI API.
+    (when (not (gptel-anthropic-uses-vertex-ai backend))
+      (plist-put prompts-plist :model (gptel--model-name gptel-model)))
     (when gptel-system-prompt
       ;; gptel-system-prompt is a string or a list of strings
       (plist-put
@@ -699,7 +704,8 @@ URL `https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-tab
           (models gptel--anthropic-models)
           (host "api.anthropic.com")
           (protocol "https")
-          (endpoint "/v1/messages"))
+          (endpoint "/v1/messages")
+          (uses-vertex-ai nil))
   "Register an Anthropic API-compatible backend for gptel with NAME.
 
 Keyword arguments:
@@ -736,6 +742,11 @@ PROTOCOL (optional) specifies the protocol, https by default.
 ENDPOINT (optional) is the API endpoint for completions, defaults to
 \"/v1/messages\".
 
+USES-VERTEX-AI (optional) is a boolean to toggle support for using
+anthropic models through the Google Cloud Platform.  That platform uses
+the Vertex AI API which specifies the model in the endpoint URL rather
+than in the body of the request.  This is set to nil by default.
+
 HEADER (optional) is for additional headers to send with each
 request.  It should be an alist or a function that retuns an
 alist, like:
@@ -762,7 +773,8 @@ for."
                   :request-params request-params
                   :url (if protocol
                            (concat protocol "://" host endpoint)
-                         (concat host endpoint)))))
+                         (concat host endpoint))
+                  :uses-vertex-ai uses-vertex-ai)))
     (prog1 backend
       (setf (alist-get name gptel--known-backends
                        nil nil #'equal)
