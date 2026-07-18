@@ -101,8 +101,10 @@ information if the stream contains it.  Not my best work, I know."
                       (plist-put info :reasoning
                                  (concat (plist-get info :reasoning) thinking))
                     (if-let* ((signature (plist-get delta :signature)))
-                        (plist-put info :signature
-                                   (concat (plist-get info :signature) signature))))))))
+                        (progn
+                          (plist-put info :signature signature)
+                          (plist-put info :reasoning-metadata
+                                     (list :signature signature)))))))))
 
            ((looking-at "content_block_start") ;Is the following block text or tool-use?
             (forward-line 1) (forward-char 5)
@@ -115,6 +117,10 @@ information if the stream contains it.  Not my best work, I know."
                                                    :input nil) ;ensure :input key is always present
                                              (plist-get info :tool-use))))
                 ("thinking" (plist-put info :reasoning (plist-get cblock :thinking))
+                 (when-let* ((signature (plist-get cblock :signature)))
+                   (plist-put info :signature signature)
+                   (plist-put info :reasoning-metadata
+                              (list :signature signature)))
                  (plist-put info :reasoning-block 'in)))))
 
            ((looking-at "content_block_stop")
@@ -200,6 +206,8 @@ Mutate state INFO with response metadata."
     info :reasoning
     (concat (plist-get info :reasoning)
             (plist-get cblock :thinking)))
+   (when-let* ((signature (plist-get cblock :signature)))
+     (plist-put info :reasoning-metadata (list :signature signature)))
    finally do
    (when tool-use
      ;; First, add the tool call to the prompts list
@@ -426,6 +434,48 @@ for details.  This implementation handles the Anthropic API."
              '(:cache_control (:type "ephemeral"))))
     full-prompt))
 
+(defun gptel--anthropic-thinking-block (text metadata)
+  "Return an Anthropic thinking block for TEXT and METADATA."
+  (nconc (list :type "thinking" :thinking text)
+         (when-let* ((signature (plist-get metadata :signature)))
+           (list :signature signature))))
+
+(defun gptel--anthropic-attach-reasoning (prompts text metadata)
+  "Attach Anthropic reasoning TEXT with METADATA to PROMPTS."
+  (let* ((signature (plist-get metadata :signature))
+         (message (and (equal (plist-get (car prompts) :role) "assistant")
+                       (car prompts)))
+         (content (and message (plist-get message :content)))
+         (first-block (and (vectorp content) (> (length content) 0)
+                           (aref content 0)))
+         (merge-block (and first-block
+                           (equal (plist-get first-block :type) "thinking")
+                           (equal (plist-get first-block :signature)
+                                  signature)
+                           first-block))
+         (text (if merge-block text (gptel--trim-prefixes text))))
+    (unless (string-blank-p text)
+      (cond
+       (merge-block
+        (plist-put merge-block :thinking
+                   (concat text (plist-get merge-block :thinking))))
+       (message
+        (plist-put
+         message :content
+         (vconcat
+          (vector (gptel--anthropic-thinking-block text metadata))
+          (cond
+           ((stringp content) (vector (list :type "text" :text content)))
+           ((vectorp content) content)
+           (content (vector content))
+           (t [])))))
+       (t
+        (push (list :role "assistant"
+                    :content
+                    (vector (gptel--anthropic-thinking-block text metadata)))
+              prompts)))))
+  prompts)
+
 (cl-defmethod gptel--parse-buffer ((backend gptel-anthropic) &optional max-entries)
   (let ((prompts) (prev-pt (point)))
     (if (or gptel-mode gptel-track-response)
@@ -446,6 +496,12 @@ for details.  This implementation handles the Anthropic API."
                              (buffer-substring-no-properties (point) prev-pt))))
                  (when (not (string-blank-p content))
                    (push (list :role "assistant" :content content) prompts))))
+              (`(reasoning . ,metadata)
+               (setq prompts
+                     (gptel--anthropic-attach-reasoning
+                      prompts
+                      (buffer-substring-no-properties (point) prev-pt)
+                      metadata)))
               (`(tool . ,id)
                (save-excursion
                  (condition-case nil

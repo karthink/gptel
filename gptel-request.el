@@ -2693,8 +2693,12 @@ the response is inserted into the current buffer after point."
                              (plist-put info :status http-msg)
                              (gptel--fsm-transition fsm) ;WAIT -> TYPE
                              (when error (plist-put info :error error))
-                             (when response ;Look for a reasoning block
-                               (if (string-match-p "^\\s-*<think>" response)
+                             (when (or response
+                                       (plist-get info :reasoning)
+                                       (plist-get info :reasoning-items))
+                               ;; Look for a reasoning block
+                               (if (and (stringp response)
+                                        (string-match-p "^\\s-*<think>" response))
                                    (when-let* ((idx (string-search "</think>" response)))
                                      (with-demoted-errors "gptel callback error: %S"
                                        (funcall callback
@@ -2703,9 +2707,7 @@ the response is inserted into the current buffer after point."
                                                 info))
                                      (setq response (string-trim-left
                                                      (substring response (+ idx 8)))))
-                                 (when-let* ((reasoning (plist-get info :reasoning))
-                                             ((stringp reasoning)))
-                                   (funcall callback (cons 'reasoning reasoning) info))))
+                                 (gptel--dispatch-reasoning callback info)))
                              (when (or response (not (member http-status '("200" "100"))))
                                (with-demoted-errors "gptel callback error: %S"
                                  (funcall callback response info)))
@@ -2731,6 +2733,23 @@ RESPONSE is the parsed JSON of the response, as a plist.
 
 PROC-INFO is a plist with process information and other context.
 See `gptel-curl--get-response' for its contents.")
+
+(defun gptel--dispatch-reasoning (callback info)
+  "Call CALLBACK for reasoning content stored in INFO.
+
+Backends that need per-block metadata can set :reasoning-items to
+a list of (TEXT . META) cells.  Simpler backends can set :reasoning and
+optionally :reasoning-metadata."
+  (if-let* ((items (plist-get info :reasoning-items)))
+      (progn
+        (dolist (item items)
+          (plist-put info :reasoning-metadata (cdr item))
+          (funcall callback (cons 'reasoning (car item)) info))
+        (plist-put info :reasoning-items nil)
+        (plist-put info :reasoning-metadata nil))
+    (when-let* ((reasoning (plist-get info :reasoning))
+                ((stringp reasoning)))
+      (funcall callback (cons 'reasoning reasoning) info))))
 
 (defun gptel--url-parse-response (backend proc-info)
   "Parse response from BACKEND with PROC-INFO."
@@ -3142,9 +3161,9 @@ PROCESS and _STATUS are process parameters."
                                proc-info))
                     (setq response
                           (string-trim-left (substring response (+ idx 8)))))
-                (when-let* ((reasoning (plist-get proc-info :reasoning))
-                            ((stringp reasoning)))
-                  (funcall proc-callback (cons 'reasoning reasoning) proc-info)))
+                (when (or (plist-get proc-info :reasoning)
+                          (plist-get proc-info :reasoning-items))
+                  (gptel--dispatch-reasoning proc-callback proc-info)))
               ;; Call callback with response text
               (when (or response (not (member http-status '("200" "100"))))
                 (with-demoted-errors "gptel callback error: %S"
