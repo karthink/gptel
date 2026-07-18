@@ -313,7 +313,7 @@ it will try to guess the key from the backend type, /i.e./ try to use
 
 For OAuth-based backends (GitHub Copilot, OpenAI OAuth), tokens are stored by default in cleartext files. You can customize this behavior by setting the variables =gptel-oauth-token-load-function= and =gptel-oauth-token-save-function=. These are global variables that affect all OAuth backends.
 
-**Important**: Different backends use different token formats:
+*Important*: Different backends use different token formats:
 - =GitHub Copilot= (=gptel-gh=): tokens are simple strings
 - =OpenAI OAuth= (=gptel-openai-oauth=): tokens are plists with multiple fields
 
