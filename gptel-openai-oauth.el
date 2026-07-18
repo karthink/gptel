@@ -53,7 +53,8 @@ Device Authorization Grant."
 (cl-defstruct (gptel-openai-oauth (:constructor gptel--make-openai-oauth)
                                   (:copier nil)
                                   (:include gptel-openai-responses))
-  token)
+  token
+  account-hint)
 
 (cl-defmethod gptel--request-data ((_backend gptel-openai-oauth) _prompts)
   "Return request data for the OpenAI OAuth backend.
@@ -291,41 +292,39 @@ If your browser does not open automatically, browse to %s: "
 
 ;;;; OpenAI Oauth login and token handling
 
-(defun gptel--openai-oauth-default-backend ()
-  "Return the current or first registered OpenAI OAuth backend."
-  (cond
-   ((gptel-openai-oauth-p gptel-backend)
-    gptel-backend)
-   ((cdr (cl-find-if #'gptel-openai-oauth-p gptel--known-backends
-                     :key #'cdr)))
-   (t (user-error "No OpenAI OAuth backend found.  \
-Please set one up with `gptel-make-openai-oauth' first"))))
+(defun gptel-openai-oauth-login (&optional account-hint method)
+  "Authenticate using the OpenAI device flow for ACCOUNT-HINT.
 
-(defun gptel-openai-oauth-login (&optional backend method)
-  "Authenticate BACKEND using OpenAI OAuth.
-
-If BACKEND is nil, use `gptel-backend' when it is an OpenAI OAuth
-backend, otherwise use the first registered OpenAI OAuth backend.
+If ACCOUNT-HINT is nil, use the default account.  Interactively, prompt
+for an account hint from registered backends.
 METHOD can be `authorization-code' for OAuth 2.0 Authorization
 Code Flow with PKCE or `device' for OAuth 2.0 Device
 Authorization Grant.  If METHOD is nil, use
 `gptel-openai-oauth-login-method'."
-  (interactive (list (gptel--openai-oauth-default-backend)))
-  (unless backend (setq backend (gptel--openai-oauth-default-backend)))
-  (unless (gptel-openai-oauth-p backend)
-    (user-error "%s is not an OpenAI OAuth backend" (gptel-backend-name backend)))
-  (let ((token-plist
-         (pcase (or method gptel-openai-oauth-login-method)
-           ('authorization-code
-            (gptel--openai-oauth-login-with-authorization-code backend))
-           ('device
-            (gptel--openai-oauth-login-with-device-code backend))
-           (login-method
-            (user-error "Unknown OpenAI OAuth login method: %S" login-method)))))
-    (when (and (called-interactively-p 'interactive)
-               (plist-get token-plist :access_token))
-      (message "Successfully logged in to OpenAI OAuth."))
-    token-plist))
+  (interactive (list
+                (gptel-oauth--read-account-hint
+                 #'gptel-openai-oauth-p #'gptel-openai-oauth-account-hint
+                 "Choose OpenAI account: "
+                 "[Default account]"
+                 "No OpenAI OAuth backends registered.  \
+Please set one up with `gptel-make-openai-oauth' first")))
+  (let ((oauth-backends (gptel--openai-oauth-get-backends-by-account-hint account-hint)))
+    ;; It shall only be possible to login when there exists a corresponding backend
+    (unless oauth-backends
+      (user-error "No OpenAI OAuth backend found for account hint '%s'" account-hint))
+    (let* ((backend (car oauth-backends))
+           (token-plist
+            (pcase (or method gptel-openai-oauth-login-method)
+              ('authorization-code
+               (gptel--openai-oauth-login-with-authorization-code backend))
+              ('device
+               (gptel--openai-oauth-login-with-device-code backend))
+              (login-method
+               (user-error "Unknown OpenAI OAuth login method: %S" login-method)))))
+      (when (and (called-interactively-p 'interactive)
+                 (plist-get token-plist :access_token))
+        (message "Successfully logged in to OpenAI OAuth."))
+      token-plist)))
 
 (defun gptel--openai-oauth-persist (backend token-plist)
   "Persist TOKEN-PLIST for BACKEND.
@@ -341,7 +340,7 @@ it in BACKEND."
                  :access_token access_token
                  :refresh_token refresh_token
                  :id_token (gptel-oauth--jwt-payload id_token))))
-      (gptel-oauth--write-token gptel--openai-oauth-token-file token-processed)
+      (gptel--openai-oauth-save-token (gptel-openai-oauth-account-hint backend) token-processed)
       (setf (gptel-openai-oauth-token backend) token-processed)
       token-plist)))
 
@@ -366,10 +365,10 @@ If BACKEND is nil, use `gptel-backend'.  Restore, refresh, or
 reauthenticate as needed."
   (unless backend (setq backend gptel-backend))
   (unless (gptel-openai-oauth-token backend)
-    (if-let* ((token-plist (gptel-oauth--read-token
-                            gptel--openai-oauth-token-file)))
-        (setf (gptel-openai-oauth-token backend) token-plist)
-      (gptel-openai-oauth-login backend)))
+    (let ((account-hint (gptel-openai-oauth-account-hint backend)))
+      (if-let* ((token-plist (gptel--openai-oauth-load-token account-hint)))
+          (setf (gptel-openai-oauth-token backend) token-plist)
+        (gptel-openai-oauth-login account-hint))))
   
   (let ((token-plist (gptel-openai-oauth-token backend)))
     (if-let* ((expiry (plist-get token-plist :expires_at))
@@ -378,7 +377,69 @@ reauthenticate as needed."
         t
       (if-let* ((refresh (plist-get token-plist :refresh_token)))
           (gptel--openai-oauth-refresh backend refresh)
-        (gptel-openai-oauth-login backend)))))
+        (gptel-openai-oauth-login (gptel-openai-oauth-account-hint backend))))))
+
+(defun gptel--openai-oauth-get-backends-by-account-hint (account-hint)
+  "Get all OpenAI OAuth backends for a specific account hint."
+  (gptel-oauth--get-backends-by #'gptel-openai-oauth-p #'gptel-openai-oauth-account-hint account-hint))
+
+(defun gptel--openai-oauth-generate-token-filename (account-hint)
+  "Generate token filename for OpenAI OAuth backend with ACCOUNT-HINT."
+  (gptel-oauth--generate-token-filename
+   gptel--openai-oauth-token-file
+   account-hint))
+
+(defun gptel--openai-oauth-validate-token-p (token)
+  "Check if OpenAI OAuth TOKEN is valid.
+
+Returns t if TOKEN is a valid plist containing :access_token,
+:refresh_token, :expires_at, and :id_token."
+  (and token
+       (plistp token)
+       (plist-member token :access_token)
+       (plist-member token :refresh_token)
+       (plist-member token :expires_at)
+       (plist-member token :id_token)))
+
+(defun gptel--openai-oauth-load-token (account-hint)
+  "Load OpenAI OAuth token using customizable load function."
+  (gptel-oauth--load-token
+   #'gptel-openai-oauth-p
+   #'gptel-openai-oauth-account-hint
+   #'gptel-openai-oauth-token
+   (lambda (b token) (setf (gptel-openai-oauth-token b) token))
+   #'gptel-openai-oauth--get-load-token-function
+   account-hint))
+
+(defun gptel-openai-oauth--get-load-token-function (account-hint)
+  "Load OpenAI OAuth token from file, ensuring it is a valid plist."
+  (let ((token (if gptel-oauth-token-load-function
+                  (funcall gptel-oauth-token-load-function 'gptel-openai-oauth account-hint)
+                (gptel-oauth--read-token (gptel--openai-oauth-generate-token-filename account-hint)))))
+    ;; Filter out nil and empty values (empty files do not contain tokens)
+    (when (and token (not (equal token "")))
+      (unless (gptel--openai-oauth-validate-token-p token)
+        (message "Ignoring invalid OpenAI OAuth token format in file: missing required fields, got %S" token)
+        (setq token nil))
+      token)))
+
+(defun gptel--openai-oauth-save-token (account-hint token)
+  "Save OpenAI OAuth token using customizable save function."
+  (gptel-oauth--save-token
+   #'gptel-openai-oauth-p
+   #'gptel-openai-oauth-account-hint
+   (lambda (b token) (setf (gptel-openai-oauth-token b) token))
+   #'gptel-openai-oauth--get-save-token-function
+   account-hint
+   token))
+
+(defun gptel-openai-oauth--get-save-token-function (account-hint token)
+  "Save OpenAI OAuth TOKEN to file for ACCOUNT-HINT, ensuring it is a valid plist."
+  (unless (gptel--openai-oauth-validate-token-p token)
+    (user-error "Cannot save invalid OpenAI OAuth token: expected plist with all required fields, got %S" token))
+  (if gptel-oauth-token-save-function
+      (funcall gptel-oauth-token-save-function 'gptel-openai-oauth account-hint token)
+    (gptel-oauth--write-token (gptel--openai-oauth-generate-token-filename account-hint) token)))
 
 ;;;; Oauth backend management
 
@@ -409,6 +470,7 @@ before constructing the headers."
           (host "chatgpt.com")
           (protocol "https")
           (endpoint "/backend-api/codex/responses")
+          (account-hint "")
           (models
            '( gpt-5.2 gpt-5.3-codex gpt-5.3-codex-spark gpt-5.4-mini
               gpt-5.4 gpt-5.5 gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna)))
@@ -418,8 +480,15 @@ This backend uses ChatGPT OAuth tokens (not OpenAI API keys) and
 targets the Codex endpoint on chatgpt.com.  Run
 `gptel-openai-oauth-login' once to authenticate.
 
-For keyword argument meanings, see `gptel-make-openai'."
+Keyword arguments:
+
+ACCOUNT-HINT (optional) is an indicator of which OpenAI account to associate
+the backend with. This enables backends to be logged in as a separate user. Note
+that this is only a hint and will be used when a token is saved/loaded.
+
+For other keyword argument meanings, see `gptel-make-openai'."
   (declare (indent 1))
+  (gptel-oauth--validate-account-hint account-hint)
   (let ((backend (gptel--make-openai-oauth
                   :curl-args curl-args
                   :name name
@@ -431,6 +500,7 @@ For keyword argument meanings, see `gptel-make-openai'."
                   :endpoint endpoint
                   :stream stream
                   :request-params request-params
+                  :account-hint account-hint
                   :url (if protocol
                            (concat protocol "://" host endpoint)
                          (concat host endpoint)))))
