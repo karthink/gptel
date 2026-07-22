@@ -314,12 +314,12 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
           (endpoint "/v1/chat/completions")
           (models '((deepseek-reasoner
                      :capabilities (tool reasoning)
-                     :context-window 128
+                     :context-window 1000
                      :input-cost 0.14
                      :output-cost 0.28)
                     (deepseek-chat
                      :capabilities (tool)
-                     :context-window 128
+                     :context-window 1000
                      :input-cost 0.14
                      :output-cost 0.28)
 		    (deepseek-v4-flash
