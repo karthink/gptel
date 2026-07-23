@@ -218,7 +218,7 @@ which see."
             " " 'display
             (if (and (fboundp 'string-pixel-width)
                      (display-graphic-p))
-                `(space :align-to (- right (,(string-pixel-width hint-str))))
+                `(space :align-to (- right ,(string-pixel-width hint-str)))
               `(space :align-to (- right ,(+ 1 (string-width hint-str))))))
            (propertize hint-str 'face '(warning default)))) ;status element 3
     (overlay-put ov 'before-string (apply #'concat (overlay-get ov 'status)))))

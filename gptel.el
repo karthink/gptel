@@ -938,7 +938,7 @@ Search between BEG and END."
           " " 'display
           (if (and (fboundp 'string-pixel-width)
                    (display-graphic-p))
-              `(space :align-to (- right (,(string-pixel-width rhs))))
+              `(space :align-to (- right ,(string-pixel-width rhs)))
             `(space :align-to (- right ,(+ 5 (string-width rhs))))))
          rhs))))
   "Information segment for the header-line in `gptel-mode'.")
