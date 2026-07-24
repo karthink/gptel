@@ -303,6 +303,22 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
               (setcdr index (cdr rest))))
           (setq index (cdr index)))))))
 
+(cl-defmethod gptel--request-data :around ((_backend gptel-deepseek) prompts)
+  "Modify how structured output JSON schema is specified.
+
+This method works by wrapping the main implementation, passing PROMPTS."
+  (let ((prompts-plist (cl-call-next-method)))
+    (when gptel--schema
+      (let ((response-format
+             (prin1-to-string (plist-get prompts-plist :response_format))))
+        (plist-put prompts-plist :response_format (list :type "json_object"))
+        (cl-callf (lambda (system)
+                    (concat system
+                            "\n\n<response_format>Required JSON schema for response:\n\n"
+                            response-format "\n</response_format>"))
+            (plist-get (aref (plist-get prompts-plist :messages) 0) :content))))
+    prompts-plist))
+
 ;;;###autoload
 (cl-defun gptel-make-deepseek
     (name &key curl-args stream key request-params

@@ -97,6 +97,11 @@
 - The OpenAI OAuth backend now supports authorization code-based OAuth,
   and defaults to this flow except when connecting to Emacs over SSH.
 
+- The DeepSeek and z.ai backends now support structured (JSON) outputs.
+  No changes are required in how the schema should be specified on the
+  gptel side, however it is recommended to use (the pre-existing)
+  ~gptel-make-deepseek~ to create both DeepSeek and z.ai/GLM backends.
+
 ** Notable bug fixes
 
 - Improved error messages: Curl request failures now include more
