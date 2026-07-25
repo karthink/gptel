@@ -325,6 +325,22 @@ to either `high' or `max'."
       (plist-put plist :reasoning_effort (symbol-name gptel-reasoning-effort)))
     plist))
 
+(cl-defmethod gptel--request-data :around ((_backend gptel-deepseek) prompts)
+  "Modify how structured output JSON schema is specified.
+
+This method works by wrapping the main implementation, passing PROMPTS."
+  (let ((prompts-plist (cl-call-next-method)))
+    (when gptel--schema
+      (let ((response-format
+             (prin1-to-string (plist-get prompts-plist :response_format))))
+        (plist-put prompts-plist :response_format (list :type "json_object"))
+        (cl-callf (lambda (system)
+                    (concat system
+                            "\n\n<response_format>Required JSON schema for response:\n\n"
+                            response-format "\n</response_format>"))
+            (plist-get (aref (plist-get prompts-plist :messages) 0) :content))))
+    prompts-plist))
+
 ;;;###autoload
 (cl-defun gptel-make-deepseek
     (name &key curl-args stream key request-params
@@ -388,8 +404,16 @@ For the meanings of the keyword arguments, see `gptel-make-openai'."
           (protocol "https")
           (endpoint "/v1/chat/completions")
           (models
-           '((grok-4.3
-              :description "Our most advanced flagship model, leading the industry in non-hallucination rate, agentic tool calling, and instruction following capabilities."
+           '((grok-4.5
+              :description "Most advanced flagship model, leading in agentic tool calling and instruction following capabilities."
+              :capabilities (tool-use json media reasoning)
+              :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+              :context-window 500
+              :input-cost 2
+              :output-cost 6)
+
+             (grok-4.3
+              :description "Advanced flagship model, leading in agentic tool calling and instruction following capabilities."
               :capabilities (tool-use json media reasoning)
               :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
               :context-window 1000

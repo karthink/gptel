@@ -4,6 +4,16 @@
 
 ** Breaking changes
 
+- The models =deepseek-chat= and =deepseek-reasoner= have been
+  removed from the default list of Deepseek models.  These models are
+  either deprecated or no longer available.
+
+- The models =gptel-5-1=, =gpt-5.1-codex=, =gpt-5.1-codex-max=,
+  =gpt-5.1-codex-mini=, =gpt-5.2=, =gpt-5.2-codex=, =claude-sonnet-4=,
+  =gemini-3-pro-preview= and =grok-code-fast-1= have been removed from
+  the default list of Copilot models. These models are either deprecated
+  or no longer available.
+
 - The models =claude-3-7-sonnet-20250219=, =claude-3-5-sonnet-20241022=,
   =claude-3-5-sonnet-20240620=, =claude-3-5-haiku-20241022=,
   =claude-3-opus-20240229= and =claude-3-haiku-20240307= have been
@@ -54,13 +64,19 @@
 - Anthropic backend: Add support for =claude-sonnet-5=,
   =claude-opus-4-8= and =claude-fable-5=.
 
-- GitHub Copilot backend: Add support for =gemini-3.5-flash=,
+- GitHub Copilot backend: Add support for =gemini-3.6-flash=,
+  =gemini-3.5-flash=,
   =claude-opus-4.8=, =claude-sonnet-5= and =claude-fable-5=.
 
-- Gemini backend: Add support for =gemini-3.5-flash=,
+- Gemini backend: Add support for =gemini-3.6-flash=,
+  =gemini-3.5-flash=, =gemini-3.5-flash-lite=,
   =gemini-3.1-flash-lite= and deprecate the preview version.
 
-- xAI backend: Add support for =grok-4.3= and =grok-build-0.1=.
+- OpenAI backend: Add support for =gpt-5.6-sol=, =gpt-5.6-terra= and
+  =gpt-5.6-luna=.
+
+- xAI backend: Add support for =grok-4.3=, =grok-build-0.1= and
+  =grok-4.5=.
 
 ** New features and UI changes
 
@@ -92,6 +108,11 @@
 
 - The OpenAI OAuth backend now supports authorization code-based OAuth,
   and defaults to this flow except when connecting to Emacs over SSH.
+
+- The DeepSeek and z.ai backends now support structured (JSON) outputs.
+  No changes are required in how the schema should be specified on the
+  gptel side, however it is recommended to use (the pre-existing)
+  ~gptel-make-deepseek~ to create both DeepSeek and z.ai/GLM backends.
 
 ** Notable bug fixes
 

@@ -415,6 +415,8 @@ This modifies the buffer."
                 (setq gptel-system-prompt
                       (concat context-string "\n\n" gptel-system-prompt)))
                (function
+                ;; FIXME: This parses the directive in the prompt construction
+                ;; buffer, which is wrong.  Wrap in a function instead.
                 (setq gptel-system-prompt
                       (gptel--parse-directive gptel-system-prompt 'raw))
                 (gptel-context--wrap-in-buffer context-string))
