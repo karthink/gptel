@@ -298,8 +298,12 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
             ;; and not tool calls
             (when-let* ((content1 (plist-get p1 :content))
                         (content2 (plist-get p2 :content)))
-              (plist-put p1 :content
-                         (concat content1 "\n" content2))
+              (plist-put
+               p1 :content
+               (if (vectorp content1)
+                   ;; Case [(:type "text" :text "...")]
+                   (vconcat content1 [(:type "text" :text "\n")] content2)
+                 (concat content1 "\n" content2))) ;all strings
               (setcdr index (cdr rest))))
           (setq index (cdr index)))))))
 
