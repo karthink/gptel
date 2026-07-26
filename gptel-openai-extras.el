@@ -322,7 +322,8 @@ to either `high' or `max'."
                                  (if (eq gptel-reasoning-effort 'disabled)
                                      "disabled"
                                    "enabled")))
-      (plist-put plist :reasoning_effort (symbol-name gptel-reasoning-effort)))
+      (unless (eq gptel-reasoning-effort 'disabled)
+        (plist-put plist :reasoning_effort (symbol-name gptel-reasoning-effort))))
     plist))
 
 (cl-defmethod gptel--request-data :around ((_backend gptel-deepseek) prompts)
