@@ -114,6 +114,10 @@
   gptel side, however it is recommended to use (the pre-existing)
   ~gptel-make-deepseek~ to create both DeepSeek and z.ai/GLM backends.
 
+- The Anthropic backend now supports tool calls and structured (JSON)
+  outputs simultaenously in a request.  Previously the two were
+  incompatible.
+
 ** Notable bug fixes
 
 - Improved error messages: Curl request failures now include more

@@ -1957,10 +1957,15 @@ injects the results into the prompt data and transitions the FSM."
                                                           fsm tool-spec tool-call)))
              (if (null tool-spec)
                  (if (equal name gptel--ersatz-json-tool) ;Could be a JSON response
-                     ;; Handle structured JSON output supplied as tool call
-                     (funcall (plist-get info :callback)
-                              (gptel--json-encode (plist-get tool-call :args))
-                              info)
+                     (progn ;Handle structured JSON output supplied as tool call
+                       (funcall (plist-get info :callback)
+                                (gptel--json-encode (plist-get tool-call :args)) info)
+                       (plist-put info :tool-use ;Remove this tool call from the list
+                                  (cl-remove-if (lambda (tc) (equal (plist-get tc :name)
+                                                               gptel--ersatz-json-tool))
+                                                (plist-get info :tool-use)))
+                       (when (plist-get info :stream)
+                         (funcall (plist-get info :callback) t info)))
 		   (message "Unknown tool called by model: %s" name)
                    (funcall process-tool-result
                             (format "Error: Tool '%s' is not available. Available tools: %s"
