@@ -859,19 +859,60 @@ when including context from these major modes.")
     `(let ((json-object-type 'plist))
       (json-read-from-string ,str))))
 
+(defun gptel--sanitize-string (str)
+  "Replace eight-bit raw byte characters in STR with \\xNN hex escapes.
+
+Eight-bit characters are Emacs' internal representation of bytes
+that could not be decoded from a multibyte encoding.  They occupy
+character codes #x3FFF80 through #x3FFFFF and prevent valid
+UTF-8 JSON serialization."
+  (if (stringp str)
+      (replace-regexp-in-string
+       "[\x3FFF80-\x3FFFFF]"
+       (lambda (c)
+         (let ((byte (- (string-to-char c) #x3FFF80)))
+           (if (= byte 0)
+               "\\0"
+             (format "\\x%02x" byte))))
+       str
+       t t)
+    str))
+
+(defun gptel--sanitize-for-json (obj)
+  "Recursively sanitize strings in OBJ for JSON encoding.
+
+Walks nested plists, vectors, and lists, replacing eight-bit raw
+byte characters with \\xNN hex escapes in every string."
+  (cond
+   ((stringp obj) (gptel--sanitize-string obj))
+   ((consp obj)
+    (let ((tail obj))
+      (while (consp tail)
+        (setcar tail (gptel--sanitize-for-json (car tail)))
+        (setq tail (cdr tail))))
+    obj)
+   ((vectorp obj)
+    (cl-loop for i below (length obj)
+             do (aset obj i (gptel--sanitize-for-json (aref obj i))))
+    obj)
+   (t obj)))
+
 (defmacro gptel--json-encode (object)
-  "Serialize OBJECT as JSON."
+  "Sanitize and serialize OBJECT as JSON.
+
+Eight-bit raw byte characters are replaced with \\xNN hex
+escapes before encoding, preventing UTF-8 serialization errors."
   (if (fboundp 'json-serialize)
-      `(json-serialize ,object
-        :null-object :null
-        :false-object :json-false)
+      `( json-serialize (gptel--sanitize-for-json ,object)
+         :null-object :null
+         :false-object :json-false)
     (require 'json)
     (defvar json-false)
     (defvar json-null)
     (declare-function json-encode "json" (object))
     `(let ((json-false :json-false)
            (json-null  :null))
-      (json-encode ,object))))
+       (json-encode (gptel--sanitize-for-json ,object)))))
 
 (defmacro gptel--maybe-funcall (func-or-sym &rest args)
   "If FUNC-OR-SYM is a function, call it with ARGS.
