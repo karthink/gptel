@@ -154,6 +154,16 @@
   starting MCP servers.  Previously all tools provided by an MCP server
   would be added automatically.  See ~gptel-mcp-connect~ for details.
 
+- When tool calls require confirmation, you can now choose to reject
+  them and continue the conversation instead of stopping it entirely.
+  Choosing "Reject (continue)" feeds a rejection message back to the
+  LLM for each tool call, allowing the model to adapt and proceed
+  without running the tools.
+
+  This option is available in the tool call dispatch overlay (~C-c C-r~),
+  the minibuffer confirmation prompt (=r=), and the tool call inspection
+  buffer (~C-c C-r~ or the "Reject" button in the header line).
+
 ** Notable bug fixes
 
 - Improved error messages: Curl request failures now include more
