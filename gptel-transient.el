@@ -1820,9 +1820,9 @@ The possible values are:
         (message (concat "Prompt sent to buffer: "
                          (propertize response-buffer-name 'face 'help-key-binding)))
         (display-buffer
-         request-buffer '((display-buffer-reuse-window
-                           display-buffer-pop-up-window)
-                          (reusable-frames . visible)))))))
+         response-buffer-name '((display-buffer-reuse-window
+                                 display-buffer-pop-up-window)
+                                (reusable-frames . visible)))))))
 
 (defun gptel--merge-additional-directive (additional &optional full)
   "Merge ADDITIONAL gptel directive with the full system message.
