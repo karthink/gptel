@@ -516,16 +516,16 @@ Media files, if present, are placed in `gptel-context'."
      :capabilities (media tool-use json url responses-api)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 1050
-     :input-cost 2.5
-     :output-cost 15
+     :input-cost 2
+     :output-cost 12
      :cutoff-date "2026-02")
     (gpt-5.6-luna
      :description "Fastest, cheapest version of GPT-5.6"
      :capabilities (media tool-use json url responses-api)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 1050
-     :input-cost 1
-     :output-cost 6
+     :input-cost 0.20
+     :output-cost 1.20
      :cutoff-date "2026-02")
     (gpt-5.5
      :description "The best model for coding and agentic tasks"
