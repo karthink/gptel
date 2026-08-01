@@ -86,6 +86,30 @@
      :input-cost 1
      :output-cost 1
      :cutoff-date "2026-04")
+    (gpt-5.6-sol
+     :description "Complex reasoning over large codebases and long-running agentic work"
+     :capabilities (media tool-use json url responses-api)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 5
+     :output-cost 30
+     :cutoff-date "2026-02")
+    (gpt-5.6-terra
+     :description "Balanced everyday interactive and agentic coding"
+     :capabilities (media tool-use json url responses-api)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 2.5
+     :output-cost 15
+     :cutoff-date "2026-02")
+    (gpt-5.6-luna
+     :description "Quick, cost-efficient responses for smaller, faster coding tasks"
+     :capabilities (media tool-use json url responses-api)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 1
+     :output-cost 6
+     :cutoff-date "2026-02")
     (claude-haiku-4.5
      :description "Near-frontier intelligence at blazing speeds with extended thinking"
      :capabilities (media tool-use cache)
@@ -126,6 +150,14 @@
      :input-cost 3
      :output-cost 3
      :cutoff-date "2025-03")
+    (claude-opus-5
+     :description "Complex agentic coding and enterprise work"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 1000
+     :input-cost 5
+     :output-cost 25
+     :cutoff-date "2026-05")
     (claude-fable-5
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
