@@ -1886,40 +1886,36 @@ Optional RAW disables text properties and transformation."
          (move-marker rm tm (marker-buffer tm)))))))
 
 ;;;###autoload
-(defun gptel (name &optional _ initial interactivep)
+(defun gptel (name &optional _key initial interactivep)
   "Switch to or start a chat session with NAME.
 
-Ask for API-KEY if `gptel-api-key' is unset.
+Ask for KEY if required by the chat backend.
 
 If region is active, use it as the INITIAL prompt.  Returns the
 buffer created or switched to.
 
 INTERACTIVEP is t when gptel is called interactively."
   (interactive
-   (progn
-     (gptel--sanitize-model :backend (default-value 'gptel-backend)
-                            :shoosh t)
-     (let* ((backend (default-value 'gptel-backend))
-            (backend-name
-             (format "*%s*" (gptel-backend-name backend))))
-       (list (read-buffer
-              "Create or choose gptel buffer: "
-              backend-name nil          ; DEFAULT and REQUIRE-MATCH
-              (lambda (b)                    ; PREDICATE
-                ;; NOTE: buffer check is required (#450)
-                (and-let* ((buf (get-buffer (or (car-safe b) b))))
-                  (buffer-local-value 'gptel-mode buf))))
-             (condition-case nil
-                 (gptel--get-api-key
-                  (gptel-backend-key backend))
-               ((error user-error)
-                (setq gptel-api-key
-                      (read-passwd
-                       (format "%s API key: " backend-name)))))
-             (and (use-region-p)
-                  (buffer-substring (region-beginning)
-                                    (region-end)))
-             t))))
+   (let* ((backend (default-value 'gptel-backend))
+          (backend-name
+           (format "*%s*" (if backend (gptel-backend-name backend) "gptel"))))
+     (list (read-buffer
+            "Create or choose gptel buffer: "
+            backend-name nil            ; DEFAULT and REQUIRE-MATCH
+            (lambda (b)                 ; PREDICATE
+              ;; NOTE: buffer check is required (#450)
+              (and-let* ((buf (get-buffer (or (car-safe b) b))))
+                (buffer-local-value 'gptel-mode buf))))
+           (condition-case nil
+               (gptel--get-api-key
+                (gptel-backend-key backend))
+             ((error user-error)
+              (setq gptel-api-key
+                    (read-passwd
+                     (format "%s API key: " backend-name)))))
+           (and (use-region-p) (buffer-substring (region-beginning)
+                                                 (region-end)))
+           t)))
   (with-current-buffer (get-buffer-create name)
     (cond                               ;Set major mode
      ((eq major-mode gptel-default-mode))

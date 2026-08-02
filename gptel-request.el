@@ -2613,12 +2613,14 @@ PROMPTS is the plist of previous user queries and LLM responses.")
 
 If SHOOSH is true, don't issue a warning."
   (unless backend
+    (setq gptel-backend
+          (or (cdar gptel--known-backends) ;First available backend
+              (gptel-make-openai "ChatGPT" :key 'gptel-api-key :stream t))
+          backend gptel-backend)
     (unless shoosh
       (display-warning
-       'gptel "No gptel-backend defined: defaulting to ChatGPT"))
-    (setq gptel-backend
-          (gptel-make-openai "ChatGPT" :key 'gptel-api-key :stream t)
-          backend gptel-backend))
+       'gptel (format "No gptel-backend defined: defaulting to %s"
+                      (gptel-backend-name gptel-backend)))))
   (let ((available (gptel-backend-models backend)))
     (when (stringp model)
       (unless shoosh
@@ -2637,7 +2639,7 @@ If SHOOSH is true, don't issue a warning."
            (format (concat "Preferred `gptel-model' \"%s\" not"
                            "supported in \"%s\", using \"%s\" instead")
                    model (gptel-backend-name backend) fallback)))
-        (setq-local gptel-model fallback)))))
+        (setq gptel-model fallback)))))
 
 
 ;;; url-retrieve response handling
