@@ -43,6 +43,11 @@
                                       (:copier nil)
                                       (:include gptel-backend)))
 
+;; Azure with Responses API dual-backend support
+(cl-defstruct (gptel--azure (:include gptel-openai)
+                            (:copier nil)
+                            (:constructor gptel--make-azure))
+  responses-backend)
 
 (defun gptel--openai-update-tokens (usage info)
   "Update token usage information from USAGE.
@@ -819,6 +824,68 @@ for."
                   backend))))
 
 ;;; Azure
+;; Azure Responses API dispatch methods
+(cl-defmethod gptel-curl--parse-stream ((backend gptel--azure) info)
+  (let ((model (plist-get info :model)))
+   (if (gptel--model-capable-p 'responses-api model)
+       ;; Defer to gptel-openai-responses backend
+       (gptel-curl--parse-stream
+        (gptel--azure-responses-backend backend) info)
+     (cl-call-next-method))))
+
+(cl-defmethod gptel--parse-response ((backend gptel--azure) response info)
+  (let ((model (plist-get info :model)))
+    (if (gptel--model-capable-p 'responses-api model)
+       ;; Defer to gptel-openai-responses backend
+       (gptel--parse-response
+        (gptel--azure-responses-backend backend) response info)
+     (cl-call-next-method))))
+
+(cl-defmethod gptel--request-data ((backend gptel--azure) prompts)
+  (if (gptel--model-capable-p 'responses-api gptel-model)
+      (gptel--request-data (gptel--azure-responses-backend backend) prompts)
+    (cl-call-next-method)))
+
+(cl-defmethod gptel--parse-schema ((backend gptel--azure) schema)
+  (if (gptel--model-capable-p 'responses-api gptel-model)
+      (gptel--parse-schema (gptel--azure-responses-backend backend) schema)
+    (cl-call-next-method)))
+
+(cl-defmethod gptel--parse-tools ((backend gptel--azure) tools)
+  (if (gptel--model-capable-p 'responses-api gptel-model)
+      (gptel--parse-tools (gptel--azure-responses-backend backend) tools)
+    (cl-call-next-method)))
+
+(cl-defmethod gptel--inject-tool-call ((backend gptel--azure) data tool-call new-call)
+  (if (gptel--model-capable-p 'responses-api gptel-model)
+      (gptel--inject-tool-call (gptel--azure-responses-backend backend) data tool-call new-call)
+    (cl-call-next-method)))
+
+(cl-defmethod gptel--parse-tool-results ((backend gptel--azure) tool-use)
+  (if (gptel--model-capable-p 'responses-api gptel-model)
+      (gptel--parse-tool-results (gptel--azure-responses-backend backend) tool-use)
+    (cl-call-next-method)))
+
+(cl-defmethod gptel--inject-prompt ((backend gptel--azure) data new-prompt &optional position)
+  (if (gptel--model-capable-p 'responses-api gptel-model)
+      (gptel--inject-prompt (gptel--azure-responses-backend backend) data new-prompt position)
+    (cl-call-next-method)))
+
+(cl-defmethod gptel--parse-list ((backend gptel--azure) prompt-list)
+  (if (gptel--model-capable-p 'responses-api gptel-model)
+      (gptel--parse-list (gptel--azure-responses-backend backend) prompt-list)
+    (cl-call-next-method)))
+
+(cl-defmethod gptel--parse-buffer ((backend gptel--azure) &optional max-entries)
+  (if (gptel--model-capable-p 'responses-api gptel-model)
+      (gptel--parse-buffer (gptel--azure-responses-backend backend) max-entries)
+    (cl-call-next-method)))
+
+(cl-defmethod gptel--inject-media ((backend gptel--azure) prompts)
+  (if (gptel--model-capable-p 'responses-api gptel-model)
+      (gptel--inject-media (gptel--azure-responses-backend backend) prompts)
+    (cl-call-next-method)))
+
 ;;;###autoload
 (cl-defun gptel-make-azure
     (name &key curl-args host
@@ -835,6 +902,28 @@ CURL-ARGS (optional) is a list of additional Curl arguments.
 HOST is the API host.
 
 MODELS is a list of available model names, as symbols.
+Additionally, you can specify supported LLM capabilities like
+vision or tool-use by appending a plist to the model with more
+information, in the form
+
+ (model-name . plist)
+
+For a list of currently recognized plist keys, see
+`gptel--openai-models'.  An example of a model specification
+including both kinds of specs:
+
+:models
+\\='(gpt-3.5-turbo                         ;Simple specs
+  gpt-4-turbo
+  (gpt-4o-mini                          ;Full spec
+   :description
+   \"Affordable and intelligent small model for lightweight tasks\"
+   :capabilities (media tool-use json url responses-api)
+   :mime-types
+   (\"image/jpeg\" \"image/png\" \"image/gif\" \"image/webp\")))
+
+Models with the `responses-api' capability will use the OpenAI
+Responses API instead of the Completions API.
 
 STREAM is a boolean to toggle streaming responses, defaults to
 false.
@@ -844,9 +933,11 @@ PROTOCOL (optional) specifies the protocol, https by default.
 ENDPOINT is the API endpoint for completions.
 
 HEADER (optional) is for additional headers to send with each
-request.  It should be an alist or a function that retuns an
+request.  It should be an alist or a function that returns an
 alist, like:
  ((\"Content-Type\" . \"application/json\"))
+
+Azure uses the `api-key' header for authentication by default.
 
 KEY (optional) is a variable whose value is the API key, or
 function that returns the key.
@@ -864,24 +955,41 @@ Example:
   :protocol \"https\"
   :host \"RESOURCE_NAME.openai.azure.com\"
   :endpoint
-  \"/openai/deployments/DEPLOYMENT_NAME/completions?api-version=2023-05-15\"
+  \"/openai/deployments/DEPLOYMENT_NAME/chat/completions?api-version=2023-05-15\"
   :stream t
   :models \\='(gpt-3.5-turbo gpt-4))"
   (declare (indent 1))
-  (let ((backend (gptel--make-openai
-                  :curl-args curl-args
-                  :name name
-                  :host host
-                  :header header
-                  :key key
-                  :models (gptel--process-models models)
-                  :protocol protocol
-                  :endpoint endpoint
-                  :stream stream
-                  :request-params request-params
-                  :url (if protocol
-                           (concat protocol "://" host endpoint)
-                         (concat host endpoint)))))
+  (let* ((responses-endpoint
+          (replace-regexp-in-string
+           "chat/completions" "responses" endpoint))
+         (url (lambda (_info)
+                (concat protocol "://" host
+                        (if (gptel--model-capable-p 'responses-api gptel-model)
+                            responses-endpoint endpoint))))
+         (backend (gptel--make-azure
+                   :curl-args curl-args
+                   :name name
+                   :host host
+                   :header header
+                   :key key
+                   :models (gptel--process-models models)
+                   :protocol protocol
+                   :endpoint endpoint
+                   :stream stream
+                   :request-params request-params
+                   :url url
+                   :responses-backend
+                   (gptel--make-openai-responses
+                    :name name
+                    :host host
+                    :header header
+                    :key key
+                    :protocol protocol
+                    :endpoint responses-endpoint
+                    :stream stream
+                    :request-params request-params
+                    :curl-args curl-args
+                    :url url))))
     (prog1 backend
       (setf (alist-get name gptel--known-backends
                        nil nil #'equal)
