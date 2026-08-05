@@ -112,10 +112,9 @@ when appropriate for the current session."
            (format "(One-time code %s copied) Visit %s in your local browser, \
 enter the code and authorize.  Press ENTER after authorizing: "
                    user-code verification-uri)))
-      (read-from-minibuffer
-       (format "(One-time code %s copied) Press ENTER to open the authorization page. \
+      (message "One-time code %s copied. \
 If your browser does not open automatically, browse to %s: "
-               user-code verification-uri))
+               user-code verification-uri)
       (browse-url verification-uri)
       (read-from-minibuffer
        (format "(One-time code %s copied) Press ENTER after authorizing: "

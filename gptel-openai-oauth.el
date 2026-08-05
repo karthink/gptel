@@ -250,13 +250,10 @@ charset=utf-8\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s"
                    :service gptel--openai-oauth-redirect-port
                    :filter #'filter
                    :noquery t))
-            (message "OpenAI OAuth authorization URL: %s" authorization-url)
             (ignore-errors (gui-set-selection 'CLIPBOARD authorization-url))
-            (read-from-minibuffer
-             (format "OpenAI OAuth URL copied to clipboard.  \
-Press ENTER to open the authorization page.  \
+            (message "OpenAI OAuth URL copied to clipboard.  \
 If your browser does not open automatically, browse to %s: "
-                     authorization-url))
+                    authorization-url)
             (browse-url authorization-url)
             (while (and (not code) (not error) (< (float-time) deadline))
               (accept-process-output nil 1))
