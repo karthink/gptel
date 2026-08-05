@@ -67,7 +67,8 @@ back to the LLM)."
                 (tool-calls (map-nested-elt content '(:message :tool_calls))))
             (when (and response (not (eq response :null)))
               (push response content-strs))
-            (when (and tool-calls (not (eq tool-calls :null)))
+            (when (and tool-calls (not (eq tool-calls :null))
+                       (not (plist-get info :tool-calls-captured)))
               (gptel--inject-prompt
                (plist-get info :backend) (plist-get info :data)
                `(:role "assistant" :content :null :tool_calls ,(vconcat tool-calls)))
@@ -80,7 +81,8 @@ back to the LLM)."
                collect call-spec into tool-use
                finally
                (plist-put info :tool-use
-                          (append (plist-get info :tool-use) tool-use))))
+                          (append (plist-get info :tool-use) tool-use))
+               (plist-put info :tool-calls-captured t)))
             (if (and reasoning (not (eq reasoning :null)))
                 (plist-put info :reasoning
                            (concat (plist-get info :reasoning) reasoning))
