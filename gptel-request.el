@@ -2234,6 +2234,7 @@ be used to rerun or continue the request at a later time."
            ((markerp position) position)
            ((integerp position)
             (set-marker (make-marker) position buffer))))
+         (gptel-system-prompt system) ;Required for copying into the prompt buffer
          (gptel--schema schema)
          (prompt-buffer
           (cond                       ;prompt from buffer or explicitly supplied
@@ -2252,16 +2253,21 @@ be used to rerun or continue the request at a later time."
               (gptel--parse-list-and-insert prompt)
               (setq major-mode 'fundamental-mode) ;Avoid mode-specific behavior
               (current-buffer)))))
-         (system-list (gptel--parse-directive system 'raw)) ;eval function-valued system prompts
          (info (list :data prompt-buffer
                      :buffer buffer
                      :position start-marker)))
     (when transforms (plist-put info :transforms transforms))
-    (with-current-buffer prompt-buffer
-      (setq gptel-system-prompt         ;guaranteed to be buffer-local
-            ;; Retain single-part system messages as strings to avoid surprises
-            ;; when applying presets
-            (if (cdr system-list) system-list (car system-list))))
+    ;; Evaluate function valued system prompts in the request buffer, but then
+    ;; set it in the prompt construction buffer
+    (when-let* ((system (buffer-local-value 'gptel-system-prompt prompt-buffer))
+                ((functionp system)))
+      (let ((system-list (with-current-buffer buffer
+                           (gptel--parse-directive system 'raw))))
+        (with-current-buffer prompt-buffer ;and then set the result in the prompt buffer
+          (setq gptel-system-prompt        ;guaranteed to be buffer-local
+                ;; Retain single-part system messages as strings to avoid surprises
+                ;; when applying presets
+                (if (cdr system-list) system-list (car system-list))))))
     (when stream (plist-put info :stream stream))
     ;; This context should not be confused with the context aggregation context!
     (when callback (plist-put info :callback callback))
