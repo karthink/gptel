@@ -92,9 +92,20 @@
   gptel variable (~gptel--system-message~, now obsolete), or defining a
   mapping in ~gptel-directives~ and picking from the list interactively.
 
+- ~gptel-send~ now respects the value of the =GPTEL_PRESET= Org property
+  in Org mode.  This property can specify a list of presets
+  (space-separated) that will be applied in sequence when calling
+  ~gptel-send~ from inside the entry to which it applies.  For example,
+  a value of
+  #+begin_src org
+  :GPTEL_PRESET: webtools short-answers
+  #+end_src
+  will cause the presets "webtools" and "short-answers" to be applied,
+  assuming they exist.
+
 - OpenAI subscription support: gptel now supports authentication with
   OpenAI ChatGPT Plus/Pro accounts.  This allows using the ChatGPT Codex
-  endpoint without an API key.  See =gptel-make-openai-oauth= and the
+  endpoint without an API key.  See ~gptel-make-openai-oauth~ and the
   README for details.
 
 - When running ~gptel-rewrite~, reasoning text was previously always
