@@ -88,7 +88,6 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#deepseek][DeepSeek]]
       - [[#sambanova-deepseek][Sambanova (Deepseek)]]
       - [[#cerebras][Cerebras]]
-      - [[#github-models][Github Models]]
       - [[#novita-ai][Novita AI]]
       - [[#xai][xAI]]
       - [[#aiml-api][AI/ML API]]
@@ -224,7 +223,6 @@ gptel supports a number of LLM providers:
 | DeepSeek             | [[https://platform.deepseek.com/api_keys][API key]]                    |
 | Sambanova (Deepseek) | [[https://cloud.sambanova.ai/apis][API key]]                    |
 | Cerebras             | [[https://cloud.cerebras.ai/][API key]]                    |
-| Github Models        | [[https://github.com/settings/tokens][Token]]                      |
 | Novita AI            | [[https://novita.ai/model-api/product/llm-api?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][Token]]                      |
 | xAI                  | [[https://console.x.ai?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][API key]]                    |
 | GitHub CopilotChat   | GitHub account             |
@@ -1003,47 +1001,6 @@ The above code makes the backend available to select.  If you want it to be the 
         :key "your-api-key"
         :models '(llama3.1-70b
                   llama3.1-8b)))
-#+end_src
-
-#+html: </details>
-#+html: <details><summary>
-**** Github Models
-#+html: </summary>
-
-NOTE:  [[https://docs.github.com/en/github-models/about-github-models][GitHub Models]] is /not/ GitHub Copilot!  If you want to use GitHub Copilot chat via gptel, look at the instructions for GitHub CopilotChat below instead.
-
-Register a backend with
-
-#+begin_src emacs-lisp
-  ;; Github Models offers an OpenAI compatible API
-  (gptel-make-openai "Github Models" ;Any name you want
-    :host "models.inference.ai.azure.com"
-    :endpoint "/chat/completions?api-version=2024-05-01-preview"
-    :stream t
-    :key "your-github-token"
-    :models '(gpt-4o))
-#+end_src
-
-You will need to create a github [[https://github.com/settings/personal-access-tokens][token]].
-
-For all the available models, check the [[https://github.com/marketplace/models][marketplace]].
-
-You can pick this backend from the menu when using (see [[#usage][Usage]]).
-
-***** (Optional) Set as the default gptel backend
-
-The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
-
-#+begin_src emacs-lisp
-  ;; OPTIONAL configuration
-  (setq gptel-model  'gpt-4o
-        gptel-backend
-        (gptel-make-openai "Github Models" ;Any name you want
-          :host "models.inference.ai.azure.com"
-          :endpoint "/chat/completions?api-version=2024-05-01-preview"
-          :stream t
-          :key "your-github-token"
-          :models '(gpt-4o))
 #+end_src
 
 #+html: </details>
