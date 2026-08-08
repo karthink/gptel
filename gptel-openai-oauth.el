@@ -23,6 +23,7 @@
 
 ;;; Code:
 (require 'cl-lib)
+(require 'gptel-openai)
 (require 'gptel-openai-responses)
 (require 'gptel-oauth)
 
