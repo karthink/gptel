@@ -270,9 +270,7 @@ Mutate state INFO with response metadata."
       (plist-put prompts-plist :tools
                  (vconcat
                   (list (gptel--parse-schema backend gptel--schema))
-                  (plist-get prompts-plist :tools)))
-      (plist-put prompts-plist :tool_choice
-                 `(:type "tool" :name ,gptel--ersatz-json-tool)))
+                  (plist-get prompts-plist :tools))))
     ;; Merge request params with model and backend params.
     (gptel--merge-plists
      prompts-plist
@@ -640,6 +638,14 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 10
      :output-cost 50
      :cutoff-date "2026-01")
+    (claude-opus-5
+     :description "Complex agentic coding and enterprise work"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 1000
+     :input-cost 5
+     :output-cost 25
+     :cutoff-date "2026-05")
     (claude-opus-4-8
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)

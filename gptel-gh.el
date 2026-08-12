@@ -50,82 +50,114 @@
      :description "Faster, more cost-efficient version of GPT-5"
      :capabilities (media tool-use json url responses-api)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 0
-     :output-cost 0
-     :cutoff-date "2024-06")
+     :context-window 192
+     :input-cost 0.25
+     :output-cost 2
+     :cutoff-date "2024-05")
     (gpt-5.3-codex
      :description "The most capable agentic coding model to date"
      :capabilities (media tool-use json url responses-api)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
-     :input-cost 1
-     :output-cost 1
+     :input-cost 1.75
+     :output-cost 14
      :cutoff-date "2025-08")
     (gpt-5.4
      :description "Best intelligence at scale for agentic, coding, and professional workflows"
      :capabilities (media tool-use json url responses-api)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 1
-     :output-cost 1
+     :context-window 1050
+     :input-cost 2.5
+     :output-cost 15
      :cutoff-date "2025-08")
     (gpt-5.4-mini
      :description "Strongest mini model yet for coding, computer use, and subagent"
      :capabilities (media tool-use json url responses-api)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
      :context-window 400
-     :input-cost 0.33
-     :output-cost 0.33
+     :input-cost 0.75
+     :output-cost 4.5
      :cutoff-date "2025-08")
     (gpt-5.5
      :description "GitHub Copilot GPT-5.5"
      :capabilities (media tool-use json url responses-api)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 1
-     :output-cost 1
-     :cutoff-date "2026-04")
+     :context-window 1050
+     :input-cost 5
+     :output-cost 30
+     :cutoff-date "2025-12")
+    (gpt-5.6-sol
+     :description "Complex reasoning over large codebases and long-running agentic work"
+     :capabilities (media tool-use json url responses-api)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 5
+     :output-cost 30
+     :cutoff-date "2026-02")
+    (gpt-5.6-terra
+     :description "Balanced everyday interactive and agentic coding"
+     :capabilities (media tool-use json url responses-api)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 2
+     :output-cost 12
+     :cutoff-date "2026-02")
+    (gpt-5.6-luna
+     :description "Quick, cost-efficient responses for smaller, faster coding tasks"
+     :capabilities (media tool-use json url responses-api)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 0.2
+     :output-cost 1.2
+     :cutoff-date "2026-02")
     (claude-haiku-4.5
      :description "Near-frontier intelligence at blazing speeds with extended thinking"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 128
-     :input-cost 0.33
-     :output-cost 0.33
+     :context-window 200
+     :input-cost 1
+     :output-cost 5
      :cutoff-date "2025-02")
     (claude-opus-4.5
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 128
-     :input-cost 3
-     :output-cost 3
-     :cutoff-date "2025-03")
+     :context-window 200
+     :input-cost 5
+     :output-cost 25
+     :cutoff-date "2025-05")
     (claude-opus-4.6
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 128
-     :input-cost 3
-     :output-cost 3
-     :cutoff-date "2025-03")
+     :context-window 1000
+     :input-cost 5
+     :output-cost 25
+     :cutoff-date "2025-05")
     (claude-opus-4.7
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 128
-     :input-cost 3
-     :output-cost 3
-     :cutoff-date "2025-03")
+     :context-window 1000
+     :input-cost 5
+     :output-cost 25
+     :cutoff-date "2026-01")
     (claude-opus-4.8
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 128
-     :input-cost 3
-     :output-cost 3
-     :cutoff-date "2025-03")
+     :context-window 1000
+     :input-cost 5
+     :output-cost 25
+     :cutoff-date "2026-01")
+    (claude-opus-5
+     :description "Complex agentic coding and enterprise work"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 1000
+     :input-cost 5
+     :output-cost 25
+     :cutoff-date "2026-05")
     (claude-fable-5
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
@@ -138,46 +170,26 @@
      :description "High-performance model with exceptional reasoning and efficiency"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 128
-     :input-cost 1
-     :output-cost 1
-     :cutoff-date "2025-03")
+     :context-window 200
+     :input-cost 3
+     :output-cost 15
+     :cutoff-date "2025-07")
     (claude-sonnet-4.6
      :description "High-performance model with exceptional reasoning and efficiency"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 128
-     :input-cost 1
-     :output-cost 1
-     :cutoff-date "2025-03")
+     :context-window 1000
+     :input-cost 3
+     :output-cost 15
+     :cutoff-date "2025-08")
     (claude-sonnet-5
      :description "The best combination of speed and intelligence"
      :capabilities (media tool-use cache)
      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 264
-     :input-cost 1
-     :output-cost 1
+     :context-window 1000
+     :input-cost 2
+     :output-cost 10
      :cutoff-date "2026-01")
-    (gemini-2.5-pro
-     :description "Next gen, high speed, multimodal for a diverse variety of tasks"
-     :capabilities (tool-use json media)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html")
-     :context-window 109
-     :input-cost 1
-     :output-cost 1
-     :cutoff-date "2025-01")
-    (gemini-3-flash-preview
-     :description "Most intelligent Gemini model built for speed"
-     :capabilities (tool-use json media audio video)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 109
-     :input-cost 0.33
-     :output-cost 0.33
-     :cutoff-date "2025-01")
     (gemini-3.1-pro-preview
      :description "Most intelligent Gemini model with SOTA reasoning and multimodal understanding"
      :capabilities (tool-use json media audio video)
@@ -185,32 +197,32 @@
                   "application/pdf" "text/plain" "text/csv" "text/html"
                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 109
-     :input-cost 1
-     :output-cost 1
+     :context-window 1000
+     :input-cost 2
+     :output-cost 12
+     :cutoff-date "2025-01")
+    (gemini-3.5-flash
+     :description "Gemini model for sustained frontier performance in agentic and coding tasks"
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"
+                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 1000
+     :input-cost 1.5
+     :output-cost 9
      :cutoff-date "2025-01")
     (gemini-3.6-flash
-     :description "Most intelligent Gemini model built for speed, combining frontier intelligence with superior search and grounding"
+     :description "Gemini model built for speed, frontier intelligence with superior search and grounding"
      :capabilities (tool-use json media audio video)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html"
                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 109
-     :input-cost 1
-     :output-cost 1
-     :cutoff-date "2026-07")
-    (gemini-3.5-flash
-     :description "Most intelligent Gemini model for sustained frontier performance in agentic and coding tasks"
-     :capabilities (tool-use json media audio video)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 109
-     :input-cost 1
-     :output-cost 1
-     :cutoff-date "2025-01")))
+     :context-window 100
+     :input-cost 1.5
+     :output-cost 7.5
+     :cutoff-date "2026-03")))
 
 (cl-defstruct (gptel--gh (:include gptel-openai)
                          (:copier nil)

@@ -1884,7 +1884,8 @@ The possible values are:
                gptel-system-prompt)
              :callback callback
              :transforms gptel-prompt-transform-functions
-             :fsm (gptel-make-fsm :handlers gptel-send--handlers)
+             :fsm (gptel-make-fsm :table gptel-send--transitions
+                                  :handlers gptel-send--handlers)
              :dry-run dry-run)
 
       (unless dry-run
@@ -1917,9 +1918,9 @@ The possible values are:
         (message (concat "Prompt sent to buffer: "
                          (propertize response-buffer-name 'face 'help-key-binding)))
         (display-buffer
-         request-buffer '((display-buffer-reuse-window
-                           display-buffer-pop-up-window)
-                          (reusable-frames . visible)))))))
+         response-buffer-name '((display-buffer-reuse-window
+                                 display-buffer-pop-up-window)
+                                (reusable-frames . visible)))))))
 
 (defun gptel--merge-additional-directive (additional &optional full)
   "Merge ADDITIONAL gptel directive with the full system message.
