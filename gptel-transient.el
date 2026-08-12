@@ -1787,7 +1787,8 @@ The possible values are:
                gptel-system-prompt)
              :callback callback
              :transforms gptel-prompt-transform-functions
-             :fsm (gptel-make-fsm :handlers gptel-send--handlers)
+             :fsm (gptel-make-fsm :table gptel-send--transitions
+                                  :handlers gptel-send--handlers)
              :dry-run dry-run)
 
       (unless dry-run
