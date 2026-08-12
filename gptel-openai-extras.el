@@ -94,9 +94,9 @@
 	   :use_context ,(or (gptel-privategpt-context gptel-backend) :json-false)
 	   :include_sources ,(or (gptel-privategpt-sources gptel-backend) :json-false)
            :stream ,(or gptel-stream :json-false))))
-    (when (and gptel--system-message
+    (when (and gptel-system-prompt
                (not (gptel--model-capable-p 'nosystem)))
-      (plist-put prompts-plist :system gptel--system-message))
+      (plist-put prompts-plist :system gptel-system-prompt))
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
     (when gptel-max-tokens
@@ -298,10 +298,30 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
             ;; and not tool calls
             (when-let* ((content1 (plist-get p1 :content))
                         (content2 (plist-get p2 :content)))
-              (plist-put p1 :content
-                         (concat content1 "\n" content2))
+              (plist-put
+               p1 :content
+               (if (vectorp content1)
+                   ;; Case [(:type "text" :text "...")]
+                   (vconcat content1 [(:type "text" :text "\n")] content2)
+                 (concat content1 "\n" content2))) ;all strings
               (setcdr index (cdr rest))))
           (setq index (cdr index)))))))
+
+(cl-defmethod gptel--request-data :around ((_backend gptel-deepseek) prompts)
+  "Modify how structured output JSON schema is specified.
+
+This method works by wrapping the main implementation, passing PROMPTS."
+  (let ((prompts-plist (cl-call-next-method)))
+    (when gptel--schema
+      (let ((response-format
+             (prin1-to-string (plist-get prompts-plist :response_format))))
+        (plist-put prompts-plist :response_format (list :type "json_object"))
+        (cl-callf (lambda (system)
+                    (concat system
+                            "\n\n<response_format>Required JSON schema for response:\n\n"
+                            response-format "\n</response_format>"))
+            (plist-get (aref (plist-get prompts-plist :messages) 0) :content))))
+    prompts-plist))
 
 ;;;###autoload
 (cl-defun gptel-make-deepseek
@@ -312,17 +332,7 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
           (host "api.deepseek.com")
           (protocol "https")
           (endpoint "/v1/chat/completions")
-          (models '((deepseek-reasoner
-                     :capabilities (tool reasoning)
-                     :context-window 128
-                     :input-cost 0.14
-                     :output-cost 0.28)
-                    (deepseek-chat
-                     :capabilities (tool)
-                     :context-window 128
-                     :input-cost 0.14
-                     :output-cost 0.28)
-		    (deepseek-v4-flash
+          (models '((deepseek-v4-flash
                      :capabilities (tool reasoning)
                      :context-window 1000
                      :input-cost 0.14
@@ -330,8 +340,8 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
                     (deepseek-v4-pro
                      :capabilities (tool reasoning)
                      :context-window 1000
-                     :input-cost 1.74
-                     :output-cost 3.48))))
+                     :input-cost 0.435
+                     :output-cost 0.87))))
   "Register a DeepSeek backend for gptel with NAME.
 
 For the meanings of the keyword arguments, see `gptel-make-openai'."
@@ -362,69 +372,29 @@ For the meanings of the keyword arguments, see `gptel-make-openai'."
           (protocol "https")
           (endpoint "/v1/chat/completions")
           (models
-           '((grok-4-1-fast-reasoning
-              :description "Fast tool-calling model"
-              :capabilities (tool-use json reasoning)
-              :context-window 2000
-              :input-cost 0.2
-              :output-cost 0.5)
-
-             (grok-4-1-fast-non-reasoning
-              :description "Fast tool-calling model (non-reasoning)"
-              :capabilities (tool-use json)
-              :context-window 2000
-              :input-cost 0.2
-              :output-cost 0.5)
-
-             (grok-code-fast-1
-              :description "Fast reasoning model for agentic coding"
-              :capabilities (tool-use json reasoning)
-              :context-window 256
-              :input-cost 0.2
-              :output-cost 1.5)
-
-             (grok-4-fast-reasoning
-              :description "Fast tool-calling model"
-              :capabilities (tool-use json reasoning)
-              :context-window 2000
-              :input-cost 0.2
-              :output-cost 0.5)
-
-             (grok-4-fast-non-reasoning
-              :description "Fast tool-calling model (non-reasoning)"
-              :capabilities (tool-use json)
-              :context-window 2000
-              :input-cost 0.2
-              :output-cost 0.5)
-
-             (grok-4
-              :description "Grok Flagship model"
-              :capabilities (tool-use json reasoning)
-              :context-window 256
-              :input-cost 3
-              :output-cost 15)
-
-             (grok-3-mini
-              :description "Mini Grok 3"
-              :capabilities (tool-use json reasoning)
-              :context-window 131
-              :input-cost 0.3
-              :output-cost 0.5)
-
-             (grok-3
-              :description "Grok 3"
-              :capabilities (tool-use json reasoning)
-              :context-window 131
-              :input-cost 3
-              :output-cost 15)
-
-             (grok-2-vision-1212
-              :description "Grok 2 Vision"
-              :capabilities (tool-use json media)
+           '((grok-4.5
+              :description "Most advanced flagship model, leading in agentic tool calling and instruction following capabilities."
+              :capabilities (tool-use json media reasoning)
               :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-              :context-window 32
+              :context-window 500
               :input-cost 2
-              :output-cost 10))))
+              :output-cost 6)
+
+             (grok-4.3
+              :description "Advanced flagship model, leading in agentic tool calling and instruction following capabilities."
+              :capabilities (tool-use json media reasoning)
+              :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+              :context-window 1000
+              :input-cost 1.25
+              :output-cost 2.5)
+
+             (grok-build-0.1
+              :description "xAI's fast coding model trained specifically for agentic coding. Currently in early access."
+              :capabilities (tool-use json media reasoning)
+              :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+              :context-window 256
+              :input-cost 1
+              :output-cost 2))))
   "Register an xAI backend for gptel with NAME.
 
 Keyword arguments:

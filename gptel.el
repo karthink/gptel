@@ -4,7 +4,7 @@
 
 ;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
 ;; Version: 0.9.9.5
-;; Package-Requires: ((emacs "27.1") (transient "0.7.4") (compat "30.1.0.0"))
+;; Package-Requires: ((emacs "27.1") (transient "0.7.8") (compat "30.1.0.0"))
 ;; Keywords: convenience, tools
 ;; URL: https://github.com/karthink/gptel
 
@@ -35,7 +35,7 @@
 ;; gptel supports:
 ;;
 ;; - The services ChatGPT, Azure, Gemini, Anthropic AI, Together.ai, Perplexity,
-;;   AI/ML API, Anyscale, OpenRouter, Groq, PrivateGPT, DeepSeek, Cerebras, Github Models,
+;;   AI/ML API, Anyscale, OpenRouter, Groq, PrivateGPT, DeepSeek, Cerebras,
 ;;   GitHub Copilot chat, AWS Bedrock, Novita AI, xAI, Sambanova, Mistral Le
 ;;   Chat and Kagi (FastGPT & Summarizer).
 ;; - Local models via Ollama, Llama.cpp, Llamafiles or GPT4All
@@ -71,8 +71,8 @@
 ;; - For Azure: define a gptel-backend with `gptel-make-azure'.
 ;; - For Gemini: define a gptel-backend with `gptel-make-gemini'.
 ;; - For Anthropic (Claude): define a gptel-backend with `gptel-make-anthropic'.
-;; - For AI/ML API, Together.ai, Anyscale, Groq, OpenRouter, DeepSeek, Cerebras
-;;   or Github Models: define a gptel-backend with `gptel-make-openai'.
+;; - For AI/ML API, Together.ai, Anyscale, Groq, OpenRouter, DeepSeek or
+;;   Cerebras: define a gptel-backend with `gptel-make-openai'.
 ;; - For PrivateGPT: define a backend with `gptel-make-privategpt'.
 ;; - For Perplexity: define a backend with `gptel-make-perplexity'.
 ;; - For Deepseek: define a backend with `gptel-make-deepseek'.
@@ -767,11 +767,14 @@ send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
           (if (gptel--preset-mismatch-value preset-spec :backend gptel-backend)
               (add-file-local-variable 'gptel--backend-name
                                        (gptel-backend-name gptel-backend)))
+          ;; System message compat
+          ;; TODO(v1.0): Remove this fix for duplicate system prompts
+          (delete-file-local-variable 'gptel--system-message)
           ;; System message
-          (let ((parsed (car-safe (gptel--parse-directive gptel--system-message))))
+          (let ((parsed (car-safe (gptel--parse-directive gptel-system-prompt))))
             (if (gptel--preset-mismatch-value preset-spec :system parsed)
-                (add-file-local-variable 'gptel--system-message parsed)
-              (delete-file-local-variable 'gptel--system-message)))
+                (add-file-local-variable 'gptel-system-prompt parsed)
+              (delete-file-local-variable 'gptel-system-prompt)))
           ;; Tools
           (let ((tool-names (mapcar #'gptel-tool-name gptel-tools)))
             (if (gptel--preset-mismatch-value preset-spec :tools tool-names)
@@ -849,8 +852,8 @@ Search between BEG and END."
             (propertize
              (buttonize
               (format "[Prompt: %s]"
-                      (or (car-safe (rassoc gptel--system-message gptel-directives))
-                          (gptel--describe-directive gptel--system-message 15)))
+                      (or (car-safe (rassoc gptel-system-prompt gptel-directives))
+                          (gptel--describe-directive gptel-system-prompt 15)))
               (lambda (&rest _) (gptel-system-prompt)))
              'mouse-face 'highlight
              'help-echo "System message for session"))
@@ -933,7 +936,8 @@ Search between BEG and END."
         (concat
          (propertize
           " " 'display
-          (if (fboundp 'string-pixel-width)
+          (if (and (fboundp 'string-pixel-width)
+                   (display-graphic-p))
               `(space :align-to (- right (,(string-pixel-width rhs))))
             `(space :align-to (- right ,(+ 5 (string-width rhs))))))
          rhs))))
@@ -1748,7 +1752,7 @@ kill ring instead."
           (plist-put (gptel-fsm-info gptel--fsm-last) :data data)
           (if copy                 ;Copy Curl command instead of sending request
               (let ((args (gptel-curl--get-args (gptel-fsm-info gptel--fsm-last)
-                                                (md5 (format "%s" (random))) t)))
+                                                (md5 (format "%s" (random))))))
                 (kill-new
                  (mapconcat #'shell-quote-argument
                             (cons (gptel--curl-path) args) " \\\n"))
@@ -1882,40 +1886,36 @@ Optional RAW disables text properties and transformation."
          (move-marker rm tm (marker-buffer tm)))))))
 
 ;;;###autoload
-(defun gptel (name &optional _ initial interactivep)
+(defun gptel (name &optional _key initial interactivep)
   "Switch to or start a chat session with NAME.
 
-Ask for API-KEY if `gptel-api-key' is unset.
+Ask for KEY if required by the chat backend.
 
 If region is active, use it as the INITIAL prompt.  Returns the
 buffer created or switched to.
 
 INTERACTIVEP is t when gptel is called interactively."
   (interactive
-   (progn
-     (gptel--sanitize-model :backend (default-value 'gptel-backend)
-                            :shoosh t)
-     (let* ((backend (default-value 'gptel-backend))
-            (backend-name
-             (format "*%s*" (gptel-backend-name backend))))
-       (list (read-buffer
-              "Create or choose gptel buffer: "
-              backend-name nil          ; DEFAULT and REQUIRE-MATCH
-              (lambda (b)                    ; PREDICATE
-                ;; NOTE: buffer check is required (#450)
-                (and-let* ((buf (get-buffer (or (car-safe b) b))))
-                  (buffer-local-value 'gptel-mode buf))))
-             (condition-case nil
-                 (gptel--get-api-key
-                  (gptel-backend-key backend))
-               ((error user-error)
-                (setq gptel-api-key
-                      (read-passwd
-                       (format "%s API key: " backend-name)))))
-             (and (use-region-p)
-                  (buffer-substring (region-beginning)
-                                    (region-end)))
-             t))))
+   (let* ((backend (default-value 'gptel-backend))
+          (backend-name
+           (format "*%s*" (if backend (gptel-backend-name backend) "gptel"))))
+     (list (read-buffer
+            "Create or choose gptel buffer: "
+            backend-name nil            ; DEFAULT and REQUIRE-MATCH
+            (lambda (b)                 ; PREDICATE
+              ;; NOTE: buffer check is required (#450)
+              (and-let* ((buf (get-buffer (or (car-safe b) b))))
+                (buffer-local-value 'gptel-mode buf))))
+           (condition-case nil
+               (gptel--get-api-key
+                (gptel-backend-key backend))
+             ((error user-error)
+              (setq gptel-api-key
+                    (read-passwd
+                     (format "%s API key: " backend-name)))))
+           (and (use-region-p) (buffer-substring (region-beginning)
+                                                 (region-end)))
+           t)))
   (with-current-buffer (get-buffer-create name)
     (cond                               ;Set major mode
      ((eq major-mode gptel-default-mode))
@@ -2161,7 +2161,7 @@ for tool call results.  INFO contains the state of the request."
          with include-names =
          (mapcar #'gptel-tool-name
                  (cl-remove-if-not #'gptel-tool-include (plist-get info :tools)))
-         if (or (eq gptel-include-tool-results t)
+         if (or (memq gptel-include-tool-results '(t call))
                 (member (gptel-tool-name tool) include-names))
          do (funcall
              (plist-get info :callback)
@@ -2190,14 +2190,20 @@ for tool call results.  INFO contains the state of the request."
                      (string-replace "\n" " "
                                      (truncate-string-to-width
                                       display-call
-                                      (floor (* (window-width) 0.6)) 0 nil " ...)"))))
+                                      (floor (* (window-width) 0.6)) 0 nil " ...)")))
+                    (result-final       ;Check if the results should be excluded
+                     (if (or (eq gptel-include-tool-results 'call)
+                             (and (eq gptel-include-tool-results 'auto)
+                                  (eq (gptel-tool-include tool) 'call)))
+                         "(Cached tool result — available during original generation but not replayed)"
+                       result)))
                (if (derived-mode-p 'org-mode)
                    (concat
                     separator
                     "#+begin_tool "
                     truncated-call
                     (propertize
-                     (org-escape-code-in-string (concat "\n" call "\n\n" result))
+                     (org-escape-code-in-string (concat "\n" call "\n\n" result-final))
                      'gptel `(tool . ,id))
                     "\n#+end_tool\n")
                  ;; TODO(tool) else branch is handling all front-ends as markdown.
@@ -2209,7 +2215,7 @@ for tool call results.  INFO contains the state of the request."
                               'gptel 'ignore 'keymap gptel--markdown-block-map)
                   (propertize
                    ;; TODO(tool) escape markdown in result
-                   (concat "\n" call "\n\n" result)
+                   (concat "\n" call "\n\n" result-final)
                    'gptel `(tool . ,id))
                   ;; TODO(tool) remove properties and strip instead of ignoring
                   (propertize "\n```\n" 'gptel 'ignore
@@ -2243,7 +2249,7 @@ NAME and ARG-VALUES are the name and arguments for the call."
                                (prin1-to-string
                                 (replace-regexp-in-string
                                  "\n" "⮐" (truncate-string-to-width
-                                           arg (floor (window-width) 2)
+                                           arg 256
                                            nil nil t))))
                               (t (prin1-to-string arg))))
                       arg-values " ")
@@ -2396,10 +2402,10 @@ This is a bug, please report it!"))))
 (defun gptel--inspect-reject-tool-calls (&optional _)
   "Cancel tool-calls and return to query buffer."
   (interactive)
-  (quit-window t)
   (apply #'gptel--reject-tool-calls
    (thread-first (gptel-fsm-info gptel--fsm-last)
-                 (plist-get :tool-display))))
+                 (plist-get :tool-display)))
+  (quit-window t))
 
 (defun gptel--inspect-quit-tool-calls (&optional _)
   "Quit inspection window and return to query buffer."
@@ -2638,10 +2644,10 @@ to registering the preset, elisp code to do the same is copied to the
                           description)
            :backend ,(gptel-backend-name gptel-backend)
            :model ',gptel-model
-           :system ,(if-let* ((directive (car-safe (rassoc gptel--system-message
-                                                    gptel-directives))))
+           :system ,(if-let* ((directive (car-safe (rassoc gptel-system-prompt
+                                                           gptel-directives))))
                          `',directive
-                      gptel--system-message)
+                      gptel-system-prompt)
            :tools ',(mapcar #'gptel-tool-name gptel-tools)
            :stream ,gptel-stream
            :temperature ,gptel-temperature
@@ -2687,9 +2693,10 @@ example) apply the preset buffer-locally."
    (lambda (key val)
      (pcase key
        ((or :parents :description :pre :post) nil)
-       ((or :system :system-message :rewrite-directive)
+       ;; TODO(v1.0): Remove :system-message from this list
+       ((or :system :system-prompt :system-message :rewrite-directive)
         (let ((sym (if (eq key :rewrite-directive)
-                       'gptel--rewrite-directive 'gptel--system-message)))
+                       'gptel--rewrite-directive 'gptel-system-prompt)))
           (when (consp val)
             ;; Possibly complain about trying to compose a system message string
             ;; with a non-string
@@ -2715,14 +2722,12 @@ example) apply the preset buffer-locally."
         (setq val (gptel--modify-value gptel-tools val))
         (let* ((tools
                 (flatten-list
-                 (cl-loop for tool-name in (ensure-list val)
-                          for tool = (cl-etypecase tool-name
-                                       (gptel-tool tool-name)
-                                       (string (ignore-errors
-                                                 (gptel-get-tool tool-name))))
+                 (cl-loop for tool-spec in (ensure-list val)
+                          for tool = (ignore-errors
+                                       (gptel-get-tool tool-spec))
                           do (unless tool
                                (user-error "gptel preset: Cannot find tool %S"
-                                           tool-name))
+                                           tool-spec))
                           collect tool))))
           (funcall setter 'gptel-tools (cl-delete-duplicates tools :test #'eq))))
        ((and (let sym (or (intern-soft
@@ -2758,7 +2763,7 @@ PRESET is the name of a preset, or a spec (plist) of the form
         (:parents
          (setq syms
                (nconc syms (mapcan #'gptel--preset-syms (ensure-list val)))))
-        (:system (push 'gptel--system-message syms))
+        (:system (push 'gptel-system-prompt syms))
         (_ (if-let* ((var (or (intern-soft
                                (concat "gptel-" (substring (symbol-name key) 1)))
                               (intern-soft
@@ -2832,7 +2837,8 @@ See also `gptel--preset-mismatch-p'."
                 for tool in preset-tools
                 for tool-name =
                 (or (and (stringp tool) tool)
-                    (ignore-errors (gptel-tool-name tool)))
+                    (ignore-errors (gptel-tool-name
+                                    (gptel-get-tool tool))))
                 if (not (member tool-name uniq-tool-names))
                 collect tool-name into uniq-tool-names
                 finally return

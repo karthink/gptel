@@ -84,11 +84,17 @@ back to the LLM)."
   (let ((base-request-data
          (nconc
           `(:messages [,@prompts] :inferenceConfig (:maxTokens ,(or gptel-max-tokens 500)))
-          (when gptel--system-message `(:system [(:text ,gptel--system-message)]))
+          (when gptel-system-prompt
+            `(:system [(:text ,gptel-system-prompt)
+                       ,@(when (or (eq gptel-cache t) (memq 'system gptel-cache))
+                           '((:cachePoint (:type "default"))))]))
           (when gptel-temperature `(:temperature ,gptel-temperature))
           (when (and gptel-use-tools gptel-tools)
             `(:toolConfig (:toolChoice ,(if (eq gptel-use-tools 'force) '(:any '()) '(:auto '()))
-                           :tools ,(gptel--parse-tools backend gptel-tools)))))))
+                           :tools ,(let ((tools (gptel--parse-tools backend gptel-tools)))
+                                     (if (or (eq gptel-cache t) (memq 'tool gptel-cache))
+                                         (vconcat tools [(:cachePoint (:type "default"))])
+                                       tools))))))))
 
     ;; Finally, merge all potential :request-params sources.
     (gptel--merge-plists
@@ -409,10 +415,46 @@ MAX-ENTRIES is the maximum number of prompts to include."
                       (/= prev-pt (point-min))
                       (goto-char (previous-single-property-change
                                   (point) 'gptel nil (point-min))))
-            (capture-prompt (pcase (get-char-property (point) 'gptel)
-                              ('response "assistant")
-                              ('nil "user"))
-                            (point) prev-pt)
+            ;; Skip blank regions (e.g. response separators) to avoid
+            ;; capturing empty content that JSON-encodes as {}.
+            (unless (save-excursion (skip-syntax-forward " ") (>= (point) prev-pt))
+              (pcase (get-char-property (point) 'gptel)
+                ('response
+                 (capture-prompt "assistant" (point) prev-pt))
+                (`(tool . ,id)
+                 ;; Reconstruct the toolUse (assistant) and toolResult (user)
+                 ;; message pair from the serialized tool call text in the buffer.
+                 (save-excursion
+                   (condition-case nil
+                       (let* ((tool-call (read (current-buffer)))
+                              (name (plist-get tool-call :name))
+                              (args (plist-get tool-call :args))
+                              (result (string-trim
+                                       (buffer-substring-no-properties
+                                        (point) prev-pt))))
+                         ;; user message: toolResult (pushed first, ends up second)
+                         (push (list :role "user"
+                                     :content
+                                     `[(:toolResult (:toolUseId ,id
+                                                     :status "success"
+                                                     :content [(:text ,result)]))])
+                               prompts)
+                         ;; assistant message: toolUse (pushed second, ends up first)
+                         (push (list :role "assistant"
+                                     :content
+                                     `[(:toolUse (:toolUseId ,id
+                                                  :name ,name
+                                                  :input ,args))])
+                               prompts))
+                     ((end-of-file invalid-read-syntax)
+                      (message "gptel: Could not parse tool-call %s on line %s"
+                               id (line-number-at-pos (point)))))))
+                ('ignore)
+                ('nil
+                 (let ((text (gptel--trim-prefixes
+                              (buffer-substring-no-properties (point) prev-pt))))
+                   (unless (or (null text) (string-blank-p text))
+                     (capture-prompt "user" (point) prev-pt))))))
             (setq prev-pt (point))
             (cl-decf max-entries))
         (capture-prompt "user" (point-min) (point-max)))
@@ -467,7 +509,7 @@ The output is a vector of entries in Bedrock API format."
              `(:image (:format ,(cdr format) :source (:bytes ,(gptel--base64-encode media)))))
             ((setq format (assoc mime gptel-bedrock--doc-formats))
              `(:document (:format ,(cdr format)
-                          :name ,(file-name-nondirectory media)
+                          :name ,(file-name-sans-extension (file-name-nondirectory media))
                           :source (:bytes ,(gptel--base64-encode media)))))
             (t (error "Unsupported MIME type %s for AWS Bedrock" mime))))
           (textfile `(:text ,(with-temp-buffer
@@ -601,6 +643,7 @@ Convenient to use with `cl-multiple-value-bind'"
   '((claude-sonnet-4-6           . "anthropic.claude-sonnet-4-6")
     (claude-opus-4-6             . "anthropic.claude-opus-4-6-v1")
     (claude-opus-4-7             . "anthropic.claude-opus-4-7")
+    (claude-opus-4-8             . "anthropic.claude-opus-4-8")
     (claude-sonnet-4-5-20250929  . "anthropic.claude-sonnet-4-5-20250929-v1:0")
     (claude-haiku-4-5-20251001   . "anthropic.claude-haiku-4-5-20251001-v1:0")
 	(claude-opus-4-5-20251101    . "anthropic.claude-opus-4-5-20251101-v1:0")
@@ -678,12 +721,30 @@ export-credentials.  BEARER-TOKEN is the token used for authentication."
                        (match-string 1 output))))
     version))
 
+(defun gptel-bedrock--base-url (protocol host endpoint)
+  "Return Bedrock base URL from PROTOCOL, HOST and ENDPOINT.
+
+HOST is usually a bare host name, but may include a scheme and path
+for proxies.  ENDPOINT is an optional path prefix prepended before
+Bedrock's /model/... runtime route."
+  (let* ((host (replace-regexp-in-string "/+\\'" "" host))
+         (endpoint (replace-regexp-in-string
+                    "\\`/+" "" (or endpoint "")))
+         (base (cond
+                ((string-match-p "\\`https?://" host) host)
+                (protocol (concat protocol "://" host))
+                (t host))))
+    (if (string-empty-p endpoint)
+        base
+      (concat base "/" (replace-regexp-in-string "/+\\'" "" endpoint)))))
+
 ;;;###autoload
 (cl-defun gptel-make-bedrock
     (name &key
           region
+          host endpoint
           (models gptel--bedrock-models)
-	  (model-region nil)
+          (model-region nil)
           stream curl-args request-params
           aws-profile aws-bearer-token
           (protocol "https"))
@@ -692,6 +753,10 @@ export-credentials.  BEARER-TOKEN is the token used for authentication."
 Keyword arguments:
 
 REGION - AWS region name (e.g. \"us-east-1\")
+HOST - API host, defaults to bedrock-runtime.REGION.amazonaws.com.
+  This may include a scheme and path when using a proxy.
+ENDPOINT - optional path prefix prepended before Bedrock's /model/...
+  runtime route.
 MODELS - The list of models supported by this backend
 MODEL-REGION - one of apac, eu, us or nil
 AWS-PROFILE - the aws profile to use for aws configure export-credentials
@@ -703,9 +768,11 @@ parameters (as plist keys) and values supported by the API."
   (declare (indent 1))
   (unless (or aws-bearer-token (getenv "AWS_BEARER_TOKEN_BEDROCK"))
     (unless (and gptel-use-curl (version<= "8.9" (gptel-bedrock--curl-version)))
-      (error "Bedrock-backend requires curl >= 8.9, but gptel-use-curl := %s, curl-version := %s"
-             gptel-use-curl (gptel-bedrock--curl-version))))
-  (let ((host (format "bedrock-runtime.%s.amazonaws.com" region)))
+      (error (concat "Bedrock-backend requires curl >= 8.9, "
+                     "but gptel-use-curl := %s, curl-version := %s")
+             gptel-use-curl
+             (gptel-bedrock--curl-version))))
+  (let ((host (or host (format "bedrock-runtime.%s.amazonaws.com" region))))
     (setf (alist-get name gptel--known-backends nil nil #'equal)
           (gptel--make-bedrock
            :name name
@@ -714,16 +781,31 @@ parameters (as plist keys) and values supported by the API."
            :models (gptel--process-models models)
            :model-region model-region
            :protocol protocol
-           :endpoint "" ; Url is dynamically constructed based on other args
+           :endpoint (or endpoint "")
            :stream stream
            :coding-system (and stream 'binary)
-           :curl-args (lambda () (append curl-args (gptel-bedrock--curl-args region aws-profile aws-bearer-token)))
+           :curl-args
+           (lambda ()
+             (append curl-args
+                     (gptel-bedrock--curl-args
+                      region aws-profile aws-bearer-token)))
            :request-params request-params
            :url
-           (lambda (_info)
-             (concat protocol "://" host
-                     "/model/" (gptel-bedrock--get-model-id gptel-model model-region)
-                     "/" (if stream "converse-stream" "converse")))))))
+           (lambda (info)
+             (let* ((backend (plist-get info :backend))
+                    (protocol
+                     (if backend (gptel-backend-protocol backend) protocol))
+                    (host (if backend (gptel-backend-host backend) host))
+                    (endpoint
+                     (if backend (gptel-backend-endpoint backend) endpoint))
+                    (model-region (if (gptel-bedrock-p backend)
+                                      (gptel-bedrock-model-region backend)
+                                    model-region))
+                    (stream (if backend (gptel-backend-stream backend) stream)))
+               (concat (gptel-bedrock--base-url protocol host endpoint)
+                       "/model/"
+                       (gptel-bedrock--get-model-id gptel-model model-region)
+                       "/" (if stream "converse-stream" "converse"))))))))
 
 (provide 'gptel-bedrock)
 ;;; gptel-bedrock.el ends here

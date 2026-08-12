@@ -140,6 +140,13 @@ It is set to (#x8000 - #x1000 - 2) to account for other (non-data) Curl
 command line arguments."
   :type 'natnum)
 
+(make-obsolete-variable
+ 'gptel-curl-file-size-threshold
+ "gptel now sends request contents via stdin, no longer subject to command-line
+argument limits. `gptel-curl-file-size-threshold' and the related temporary-file
+mechanism are no longer needed."
+ "0.9.9.6")
+
 (define-obsolete-variable-alias 'gptel-prompt-filter-hook
   'gptel-prompt-transform-functions "0.9.9")
 
@@ -233,35 +240,81 @@ Also inserted before and after non-consecutive tool calls."
     (chat        . "You are a large language model and a conversation partner. Respond concisely."))
   "System prompts or directives for the LLM.
 
-Each entry in this alist maps a symbol naming the directive to
-the directive itself.  By default, gptel uses the directive with
-the key \\+`default'.
+Each entry in this alist maps a symbol naming the prompt/directive to
+the directive itself.  By default, gptel uses the directive with the key
+\\+`default'.
 
-To set the directive for a chat session interactively call
-`gptel-send' with a prefix argument, or call `gptel-menu'.
+To set the system prompt for a chat session from this list
+interactively, call `gptel-send' with a prefix argument, or call
+`gptel-menu'.
 
-A \"directive\" is typically the system message (also called
-system prompt or system instruction) sent at the beginning of
-each request to the LLM.  It is used to set general instructions,
-expectations and the overall tone.
+A \"directive\" is typically the system prompt (also called system
+message or system instruction) sent at the beginning of each request to
+the LLM.  It is used to set general instructions, expectations and the
+overall tone.
 
-gptel's idea of the directive is more general.  A directive in
-`gptel-directives' can be
-
-- A string, interpreted as the system message.
-
-- A list of strings, whose first (possibly nil) element is
-  interpreted as the system message, and the remaining elements
-  as (possibly nil) alternating user prompts and LLM responses.
-  This can be used to template the initial part of a conversation.
-
-- A function that returns a string or a list of strings,
-  interpreted as the above.  This can be used to dynamically
-  generate a system message and/or conversation template based on
-  the current context.  See the definition of
-  `gptel--rewrite-directive-default' for an example."
+A directive in `gptel-directives' can be a string (included as-is), a
+list of strings (system prompt + conversation template) or a function
+returning a string or list of strings.  See `gptel-system-prompt' for
+details."
   :safe #'always
   :type '(alist :key-type symbol :value-type string))
+
+(define-obsolete-variable-alias 'gptel--system-message 'gptel-system-prompt
+  "0.9.9.6")
+(put 'gptel--system-message 'safe-local-variable
+     #'(lambda (v) (or (string-or-null-p v)
+                  (and (listp v)
+                       (cl-every #'string-or-null-p v)))))
+
+(defcustom gptel-system-prompt
+  (or (alist-get 'default gptel-directives)
+      "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
+  "System prompt used by gptel.
+
+A system prompt is used to provide the LLM with general instructions,
+set expectations, or establish an overall tone.  It is also commonly
+referred to as the \"system message\" or \"directive\".
+
+This is typically a string, but can be specified more generally as well.
+It can be
+
+- A string, included with gptel requests as-is.
+
+- nil, to not include any system prompt.
+
+- A list of strings, whose first (possibly nil) element is interpreted
+  as the system prompt, and the remaining elements as (possibly nil)
+  alternating user prompts and LLM responses.  This can be used to
+  template the initial part of a conversation.
+
+- A function of no arguments that returns a string or a list of strings,
+  interpreted as the above.  When sending a request, this will be used
+  to dynamically generate a system message and/or conversation template
+  based on the current context.  See the definition of
+  `gptel--rewrite-directive-default' for an example.
+
+If you alternate between a few different system prompts, you can save
+them all in `gptel-directives' and pick between them in `gptel-menu'.
+This way system prompts can be set globally, per-buffer or for the next
+request only.
+
+The system prompt is typically one part of the configuration required
+for custom LLM tasks.  You can include system prompts along with other
+settings in gptel presets (see `gptel-make-preset') with the :system
+key.
+
+By default this system prompt is used when using gptel programmatically
+with `gptel-request'.  It can be overridden by supplying an explicit
+`:system' argument to this function."
+  :group 'gptel
+  :type '(choice (string :tag "Prompt string")
+                 (const :tag "No system prompt" nil)
+                 (repeat :tag "Conversation template" string)
+                 (function :tag "Dynamic prompt (function)"))
+  :safe #'(lambda (v) (or (string-or-null-p v)
+                     (and (listp v)
+                          (cl-every #'string-or-null-p v)))))
 
 (defcustom gptel-max-tokens nil
   "Max tokens per response.
@@ -276,11 +329,12 @@ call `gptel-send' with a prefix argument."
   :type '(choice (natnum :tag "Specify Token count")
                  (const :tag "Default" nil)))
 
-(defcustom gptel-temperature 1.0
+(defcustom gptel-temperature nil
   "\"Temperature\" of the LLM response.
 
-This is a number between 0.0 and 2.0 that controls the randomness
-of the response, with 2.0 being the most random.
+This is a number between 0.0 and 2.0 that controls the randomness of the
+response, with 2.0 being the most random.  It can also be nil for the
+LLM API's default value.
 
 To set the temperature for a chat session interactively call
 `gptel-send' with a prefix argument."
@@ -1003,15 +1057,22 @@ MODE-SYM is typically a major-mode symbol."
 
 (defvar url-http-end-of-headers)
 (defvar url-http-response-status)
-(cl-defun gptel--url-retrieve (url &key method data headers)
+;; TODO: Handle and return HTTP errors
+(cl-defun gptel--url-retrieve (url &key method data headers
+                                   (content-type "application/json"))
   "Retrieve URL synchronously with METHOD, DATA and HEADERS."
   (declare (indent 1))
   (let ((url-request-method (if (eq method 'post) "POST" "GET"))
-        (url-request-data (when (eq method 'post) (encode-coding-string (gptel--json-encode data) 'utf-8)))
+        (url-request-data
+         (when (eq method 'post)
+           (encode-coding-string
+            (pcase content-type
+              ("application/json" (gptel--json-encode data))
+              (_ data))
+            'utf-8)))
         (url-mime-accept-string "application/json")
         (url-request-extra-headers
-         `(("content-type" . "application/json")
-           ,@headers)))
+         `(("content-type" . ,content-type) ,@headers)))
     (with-current-buffer (url-retrieve-synchronously url 'silent)
       (goto-char url-http-end-of-headers)
       (gptel--json-read))))
@@ -1058,7 +1119,7 @@ If positions START and END are provided, insert that part of BUF first."
 For BUF, START, END and BODY-THUNK see `gptel--with-buffer-copy'."
   (let ((temp-buffer (gptel--temp-buffer " *gptel-prompt*")))
     (with-current-buffer temp-buffer
-      (dolist (sym '( gptel-backend gptel--system-message gptel-model
+      (dolist (sym '( gptel-backend gptel-system-prompt gptel-model
                       gptel-mode gptel-track-response gptel-track-media
                       gptel-use-tools gptel-tools gptel-use-curl gptel--schema
                       gptel-use-context gptel-context gptel--num-messages-to-send
@@ -1152,15 +1213,6 @@ FILE is assumed to exist and be a regular file."
 
 ;;;; Directive handling
 
-(defvar gptel--system-message
-  (or (alist-get 'default gptel-directives)
-      "You are a large language model living in Emacs and a helpful assistant. Respond concisely.")
-  "The system message used by gptel.")
-(put 'gptel--system-message 'safe-local-variable
-     #'(lambda (v) (or (string-or-null-p v)
-                       (and (listp v)
-                            (cl-every #'string-or-null-p v)))))
-
 (defun gptel--describe-directive (directive width &optional replacement)
   "Find description for DIRECTIVE, truncated  to WIDTH.
 
@@ -1211,6 +1263,23 @@ returned as a list of strings."
                            (gptel--parse-list
                             gptel-backend (cdr directive))))))))
 
+;;;; Error handling
+(defun gptel--parse-response-plist-error (response)
+  "Extract errors from RESPONSE when it is a plist.
+
+Return nil if no error occurred."
+  (or (plist-get response :error)     ; generic
+      (plist-get response :detail)    ; openai-oauth
+      (plist-get response :message)   ; bedrock
+      (plist-get response :Message))) ; bedrock
+
+(defun gptel--parse-response-error (response)
+  "Extract errors from RESPONSE.
+
+Return nil if no error occurred."
+  (cond ((plistp response) (gptel--parse-response-plist-error response))
+        ((arrayp response)
+         (cl-some #'gptel--parse-response-plist-error response))))
 
 ;;; Logging
 
@@ -1399,15 +1468,21 @@ confirmation only when the corresponding tool spec has a non-nil
 (defcustom gptel-include-tool-results 'auto
   "Whether tool call results should be included in the buffer.
 
-If set to t or nil, results of tool calls are always or never
-included in the LLM response, respectively.
+If set to t, tool calls and results are always included in the LLM
+response.
 
-If set to the symbol auto (the default), a tool call result is
-included only when the corresponding tool spec has a non-nil
-:include slot.  See `gptel-make-tool'."
+If set to nil, tool calls are never shown in the buffer.
+
+If set to the symbol `call', only the tool call parameters are included
+in the buffer; results are omitted.
+
+If set to the symbol auto (the default), this is left up to the tool: a
+tool call is included only when the corresponding tool spec has a
+non-nil :include slot.  See `gptel-make-tool'."
   :type '(choice
           (const :tag "Tool decides" auto)
           (const :tag "Always" t)
+          (const :tag "Call only, no results" call)
           (const :tag "Never" nil)))
 
 (defcustom gptel-tools nil
@@ -1438,7 +1513,10 @@ feed the LLM the results.  You can add tools via
   (async nil :type boolean :documentation "Whether the function runs asynchronously")
   (category nil :type string :documentation "Use to group tools by purpose")
   (confirm nil :type boolean :documentation "Seek confirmation before running tool?")
-  (include t :type boolean :documentation "Include tool results in buffer?"))
+  (include t :type (choice (const :tag "Include call and result" t)
+                           (const :tag "Include call only, no result" call)
+                           (const :tag "Exclude" nil))
+           :documentation "Include tool call in buffer?"))
 
 (defun gptel--preprocess-tool-args (spec)
   "Convert symbol :type values in tool SPEC to strings destructively."
@@ -1505,7 +1583,8 @@ In both cases, the first matching gptel-tool is returned.
 
 - as a string representing a category, like \"filesystem\".
 In this case a list of all gptel-tools with this category is
-returned."
+returned.
+- as a gptel-tool object, which is returned as-is."
   (or (cl-etypecase path
         (cons (let ((tc (map-nested-elt gptel--known-tools path)))
                 (if (consp tc) (map-values tc) tc)))
@@ -1513,7 +1592,8 @@ returned."
                     (map-values (cdr category))
                   (cl-loop for (_ . tools) in gptel--known-tools
                            if (assoc path tools)
-                           return (cdr it)))))
+                           return (cdr it))))
+        (gptel-tool path))
       (error "No tool matches for %S" path)))
 
 (defun gptel-make-tool (&rest slots)
@@ -1565,7 +1645,11 @@ user should be prompted.
 INCLUDE: Whether the tool results should be included as part of
 the LLM output.  This is useful for logging and as context for
 subsequent requests in the same buffer.  This is primarily useful
-in chat buffers.
+in chat buffers.  Possible values:
+
+- t (default): Include both the call parameters and the result.
+- symbol `call': Include only the call parameters, not the result.
+- nil: Exclude the tool call from the buffer entirely.
 
 Here is an example definition:
 
@@ -1873,11 +1957,20 @@ injects the results into the prompt data and transitions the FSM."
                                                           fsm tool-spec tool-call)))
              (if (null tool-spec)
                  (if (equal name gptel--ersatz-json-tool) ;Could be a JSON response
-                     ;; Handle structured JSON output supplied as tool call
-                     (funcall (plist-get info :callback)
-                              (gptel--json-encode (plist-get tool-call :args))
-                              info)
-                   (message "Unknown tool called by model: %s" name))
+                     (progn ;Handle structured JSON output supplied as tool call
+                       (funcall (plist-get info :callback)
+                                (gptel--json-encode (plist-get tool-call :args)) info)
+                       (plist-put info :tool-use ;Remove this tool call from the list
+                                  (cl-remove-if (lambda (tc) (equal (plist-get tc :name)
+                                                               gptel--ersatz-json-tool))
+                                                (plist-get info :tool-use)))
+                       (when (plist-get info :stream)
+                         (funcall (plist-get info :callback) t info)))
+		   (message "Unknown tool called by model: %s" name)
+                   (funcall process-tool-result
+                            (format "Error: Tool '%s' is not available. Available tools: %s"
+                                    name (mapconcat #'gptel-tool-name
+                                                    (plist-get info :tools) ", "))))
                (let ((confirm))         ;Check if tool requires confirmation
                  (cond      ;:confirm in tool-call (from hooks) takes precedence
                   ((and-let* ((call-confirm (plist-member tool-call :confirm)))
@@ -1952,7 +2045,7 @@ callback (for the user), and transition the request state."
                (buffer (current-buffer))
                position context dry-run
                (stream nil) (in-place nil)
-               (system gptel--system-message)
+               (system gptel-system-prompt)
                schema transforms (fsm (gptel-make-fsm)))
   "Request a response from the `gptel-backend' for PROMPT.
 
@@ -2077,7 +2170,7 @@ SYSTEM is the system message or extended chat directive sent to
 the LLM.  This can be a string, a list of strings or a function
 that returns either; see `gptel-directives' for more
 information. If SYSTEM is omitted, the value of
-`gptel--system-message' for the current buffer is used.
+`gptel-system-prompt' in the current buffer is used.
 
 The following keywords are mainly for internal use:
 
@@ -2142,11 +2235,13 @@ be used to rerun or continue the request at a later time."
            ((integerp position)
             (set-marker (make-marker) position buffer))))
          (buffer (marker-buffer start-marker))
+         (gptel-system-prompt system) ;Required for copying into the prompt buffer
          (gptel--schema schema)
          (prompt-buffer
           (cond                       ;prompt from buffer or explicitly supplied
            ((null prompt)           ;Send text up to end of word (for evil-mode users)
-            (gptel--create-prompt-buffer (gptel--at-word-end (point))))
+            (with-current-buffer buffer
+              (gptel--create-prompt-buffer (gptel--at-word-end (point)))))
            ((stringp prompt)
             (gptel--with-buffer-copy buffer nil nil
               (insert prompt)
@@ -2159,16 +2254,21 @@ be used to rerun or continue the request at a later time."
               (gptel--parse-list-and-insert prompt)
               (setq major-mode 'fundamental-mode) ;Avoid mode-specific behavior
               (current-buffer)))))
-         (system-list (gptel--parse-directive system 'raw)) ;eval function-valued system prompts
          (info (list :data prompt-buffer
                      :buffer buffer
                      :position start-marker)))
     (when transforms (plist-put info :transforms transforms))
-    (with-current-buffer prompt-buffer
-      (setq gptel--system-message       ;guaranteed to be buffer-local
-            ;; Retain single-part system messages as strings to avoid surprises
-            ;; when applying presets
-            (if (cdr system-list) system-list (car system-list))))
+    ;; Evaluate function valued system prompts in the request buffer, but then
+    ;; set it in the prompt construction buffer
+    (when-let* ((system (buffer-local-value 'gptel-system-prompt prompt-buffer))
+                ((functionp system)))
+      (let ((system-list (with-current-buffer buffer
+                           (gptel--parse-directive system 'raw))))
+        (with-current-buffer prompt-buffer ;and then set the result in the prompt buffer
+          (setq gptel-system-prompt        ;guaranteed to be buffer-local
+                ;; Retain single-part system messages as strings to avoid surprises
+                ;; when applying presets
+                (if (cdr system-list) system-list (car system-list))))))
     (when stream (plist-put info :stream stream))
     ;; This context should not be confused with the context aggregation context!
     (when callback (plist-put info :callback callback))
@@ -2231,9 +2331,9 @@ be used to rerun or continue the request at a later time."
 Initiate the request when done."
   (let ((info (gptel-fsm-info fsm)))
     (with-current-buffer (plist-get info :data)
-      (let* ((directive (gptel--parse-directive gptel--system-message 'raw))
+      (let* ((directive (gptel--parse-directive gptel-system-prompt 'raw))
              ;; DIRECTIVE contains both the system message and the template prompts
-             (gptel--system-message
+             (gptel-system-prompt
               (unless (gptel--model-capable-p 'nosystem) (car directive)))
              ;; TODO(tool) Limit tool use to capable models after documenting :capabilities
              ;; (gptel-use-tools (and (gptel--model-capable-p 'tool-use) gptel-use-tools))
@@ -2434,6 +2534,7 @@ first nil value in REST is guaranteed to be correct."
                         (member link-type '("http" "https" "ftp")) 'url)))
               (user-check (funcall gptel-markdown-validate-link link))
               (readablep (or (member link-type '("http" "https" "ftp"))
+                             (file-remote-p default-directory)
                              (file-remote-p path)
                              (file-readable-p path)))
               (mime-valid
@@ -2519,12 +2620,14 @@ PROMPTS is the plist of previous user queries and LLM responses.")
 
 If SHOOSH is true, don't issue a warning."
   (unless backend
+    (setq gptel-backend
+          (or (cdar gptel--known-backends) ;First available backend
+              (gptel-make-openai "ChatGPT" :key 'gptel-api-key :stream t))
+          backend gptel-backend)
     (unless shoosh
       (display-warning
-       'gptel "No gptel-backend defined: defaulting to ChatGPT"))
-    (setq gptel-backend
-          (gptel-make-openai "ChatGPT" :key 'gptel-api-key :stream t)
-          backend gptel-backend))
+       'gptel (format "No gptel-backend defined: defaulting to %s"
+                      (gptel-backend-name gptel-backend)))))
   (let ((available (gptel-backend-models backend)))
     (when (stringp model)
       (unless shoosh
@@ -2543,7 +2646,7 @@ If SHOOSH is true, don't issue a warning."
            (format (concat "Preferred `gptel-model' \"%s\" not"
                            "supported in \"%s\", using \"%s\" instead")
                    model (gptel-backend-name backend) fallback)))
-        (setq-local gptel-model fallback)))))
+        (setq gptel-model fallback)))))
 
 
 ;;; url-retrieve response handling
@@ -2671,10 +2774,7 @@ See `gptel-curl--get-response' for its contents.")
                          ((not (string-blank-p resp))))
                 (string-trim resp))
               http-status http-msg))
-       ((and-let* ((error-data
-                    (cond ((plistp response) (plist-get response :error))
-                          ((arrayp response)
-                           (cl-some (lambda (el) (plist-get el :error)) response)))))
+       ((and-let* ((error-data (gptel--parse-response-error response)))
           (list nil http-status http-msg error-data)))
        ((eq response 'json-read-error)
         (list nil http-status (concat "(" http-msg ") Malformed JSON in response.") "json-read-error"))
@@ -2686,51 +2786,85 @@ See `gptel-curl--get-response' for its contents.")
 
 ;;; Curl request response handling
 
-(defun gptel-curl--get-args (info uuid include-headers)
+(defun gptel-curl--get-config-args (info)
+  "Return extra Curl arguments for INFO."
+  (let ((gptel-backend (plist-get info :backend))
+        (gptel-model (plist-get info :model))
+        (gptel-stream (plist-get info :stream)))
+    (append
+     gptel-curl--common-args
+     gptel-curl-extra-args
+     (and-let* ((curl-args (gptel-backend-curl-args gptel-backend)))
+       (gptel--maybe-funcall curl-args)))))
+
+(defun gptel-curl--get-args (info uuid)
   "Produce list of arguments for calling Curl.
 
-INFO contains the request data, UUID is a unique identifier.
-
-If INCLUDE-HEADERS is non-nil, include headers with the -H option."
-  (let* ((data (plist-get info :data))
-         ;; We have to let-bind the following three since their dynamic
+INFO contains the request data, UUID is a unique identifier."
+  (let* (;; We have to let-bind the following three since their dynamic
          ;; values are used for key lookup and url resolution
          (gptel-backend (plist-get info :backend))
          (gptel-model (plist-get info :model))
          (gptel-stream (plist-get info :stream))
          (url (let ((backend-url (gptel-backend-url gptel-backend)))
                 (gptel--maybe-funcall backend-url info)))
+         (data (plist-get info :data))
          (data-json (decode-coding-string (gptel--json-encode data) 'utf-8 t)))
-    (when gptel-log-level (gptel--log data-json "request body"))
+    (when gptel-log-level
+      (gptel--log data-json "request body"))
     (append
-     gptel-curl--common-args
-     gptel-curl-extra-args
-     (if include-headers
-         (cl-loop
-          for (key . val) in
-          (append '(("Content-Type" . "application/json"))
-                  (when-let* ((header (gptel-backend-header gptel-backend)))
-                    (gptel--maybe-funcall header info)))
-          collect (format "-H%s: %s" key val))
-       (list "-H@-"))
-     (and-let* ((curl-args (gptel-backend-curl-args gptel-backend)))
-       (gptel--maybe-funcall curl-args))
+     (gptel-curl--get-config-args info)
+     (cl-loop
+      for (key . val) in
+      (append '(("Content-Type" . "application/json"))
+              (when-let* ((header (gptel-backend-header gptel-backend)))
+                (gptel--maybe-funcall header info)))
+      collect (format "-H%s: %s" key val))
      (list (format "-w(%s . %%{size_header})" uuid))
-     (if (< (string-bytes data-json) gptel-curl-file-size-threshold)
-         (list (format "-d%s" data-json))
-       (let* ((write-region-inhibit-fsync t)
-              (file-name-handler-alist nil)
-              (inhibit-message t)
-              (temp-filename (make-temp-file "gptel-curl-data" nil ".json" data-json))
-              (cleanup-fn (lambda (&rest _) (when (file-exists-p temp-filename)
-                                         (delete-file temp-filename)))))
-         (plist-put info :post (cons cleanup-fn (plist-get info :post)))
-         (list "--data-binary" (format "@%s" temp-filename))))
+     (list (format "-d%s" data-json))
      (when (not (string-empty-p gptel-proxy))
        (list "--proxy" gptel-proxy
              "--proxy-negotiate"
              "--proxy-user" ":"))
      (list url))))
+
+(defun gptel-curl--get-config (info uuid)
+  "Produce config text for calling Curl.
+
+INFO contains the request data, UUID is a unique identifier."
+  (let* (;; We have to let-bind the following three since their dynamic
+         ;; values are used for key lookup and url resolution
+         (gptel-backend (plist-get info :backend))
+         (gptel-model (plist-get info :model))
+         (gptel-stream (plist-get info :stream))
+         (url (let ((backend-url (gptel-backend-url gptel-backend)))
+                (gptel--maybe-funcall backend-url info)))
+         (data (plist-get info :data))
+         (data-json (encode-coding-string (gptel--json-encode data) 'utf-8-unix t))
+         (headers
+          (append '(("Content-Type" . "application/json"))
+                  (when-let* ((header (gptel-backend-header gptel-backend)))
+                    (gptel--maybe-funcall header info))))
+         (items
+          (nconc
+           (cl-loop for (key . val) in headers
+                    collect (cons "header" (format "%s: %s" key val)))
+           (when (not (string-empty-p gptel-proxy))
+             (list (cons "proxy" gptel-proxy) "proxy-negotiate" (cons "proxy-user" ":")))
+           (list
+            (cons "url" url)
+            (cons "write-out" (format "(%s . %%{size_header})" uuid))
+            (cons "data-binary" '@-))))
+         (config (cl-loop for item in items
+                          concat (cl-etypecase item
+                                   (string (format "%s" item))
+                                   (cons (format "%s = %S" (car item) (cdr item))))
+                          concat "\n")))
+    (when gptel-log-level
+      (when (eq gptel-log-level 'debug)
+        (gptel--log config "request config"))
+      (gptel--log data-json "request body"))
+    (concat config "\n" data-json)))
 
 ;;;###autoload
 (defun gptel-curl-get-response (fsm)
@@ -2748,18 +2882,21 @@ plist with the following keys, among others:
 
 Call CALLBACK with the response and INFO afterwards.  If omitted
 the response is inserted into the current buffer after point."
-  (let* ((uuid (md5 (format "%s%s%s%s"
-                            (random) (emacs-pid) (user-full-name)
-                            (recent-keys))))
+  (let* ((uuid (md5 (format "%s%s%s%s" (random)
+                            (emacs-pid) (user-full-name) (recent-keys))))
          (info (gptel-fsm-info fsm))
          (backend (plist-get info :backend))
-         (args (gptel-curl--get-args info uuid nil))
          (stream (plist-get info :stream))
+         (command (nconc (list (gptel--curl-path))
+                         (gptel-curl--get-config-args info)
+                         (list "--config" "-")))
          (process (make-process
                    :name "gptel-curl"
                    :buffer (gptel--temp-buffer " *gptel-curl*")
-                   :command (cons (gptel--curl-path) args)
+                   :command command
                    :connection-type 'pipe)))
+    (when (eq gptel-log-level 'debug)
+      (gptel--log (format "%s" command) "request command"))
     (with-current-buffer (process-buffer process)
       (cond
        ((eq (gptel-backend-coding-system backend) 'binary)
@@ -2767,27 +2904,12 @@ the response is inserted into the current buffer after point."
         (set-buffer-multibyte nil)
         (set-process-coding-system process 'binary 'binary))
        (t
-	;; Don't try to convert cr-lf to cr on Windows so that curl's "header size
-	;; in bytes" stays correct. Explicitly set utf-8 for non-win systems too,
-	;; for cases when buffer coding system is not set to utf-8.
-	(set-process-coding-system process 'utf-8-unix 'utf-8-unix)))
+        ;; Don't try to convert cr-lf to cr on Windows so that curl's "header size
+        ;; in bytes" stays correct. Explicitly set utf-8 for non-win systems too,
+        ;; for cases when buffer coding system is not set to utf-8.
+        (set-process-coding-system process 'utf-8-unix 'utf-8-unix)))
       (set-process-query-on-exit-flag process nil)
-      (let* ((gptel-backend backend) ;Required for header function's environment
-             (gptel-model (plist-get info :model))
-             (headers
-              (append '(("Content-Type" . "application/json"))
-                      (when-let* ((header (gptel-backend-header backend)))
-                        (gptel--maybe-funcall header info)))))
-        (when (eq gptel-log-level 'debug)
-          (gptel--log (gptel--json-encode
-                       (mapcar (lambda (pair) (cons (intern (car pair)) (cdr pair)))
-                               headers))
-                      "request headers")
-          (gptel--log (mapconcat #'shell-quote-argument
-                                 (cons (gptel--curl-path) args) " \\\n")
-                      "request Curl command" 'no-json))
-        (dolist (header headers)
-          (process-send-string process (concat (car header) ": " (cdr header) "\n"))))
+      (process-send-string process (gptel-curl--get-config info uuid))
       (process-send-eof process)
       (if (plist-get info :uuid)        ;not the first run, set only the uuid
           (plist-put info :uuid uuid)
@@ -2893,10 +3015,7 @@ PROCESS and _STATUS are process parameters."
                            (response (progn (goto-char header-size)
                                             (condition-case nil (gptel--json-read)
                                               (error 'json-read-error))))
-                           (error-data
-                            (cond ((plistp response) (plist-get response :error))
-                                  ((arrayp response)
-                                   (cl-some (lambda (el) (plist-get el :error)) response)))))
+                           (error-data (gptel--parse-response-error response)))
                 (cond
                  (error-data
                   (plist-put info :error error-data))
@@ -3090,10 +3209,7 @@ PROC-INFO is a plist with contextual information."
                                ((not (string-blank-p resp))))
                       (string-trim resp))
                     http-status http-msg))
-             ((and-let* ((error-data
-                          (cond ((plistp response) (plist-get response :error))
-                                ((arrayp response)
-                                 (cl-some (lambda (el) (plist-get el :error)) response)))))
+             ((and-let* ((error-data (gptel--parse-response-error response)))
                 (list nil http-status http-msg error-data)))
              ((eq response 'json-read-error)
               (list nil http-status (concat "(" http-msg ") Malformed JSON in response.")
