@@ -585,9 +585,9 @@ ARGS are the original function call arguments."
         (progn
           (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
             (gptel--restore-props (read bounds)))
-          (pcase-let ((`(,preset ,system ,backend ,model ,temperature ,tokens ,num ,tools)
+          (pcase-let ((`(,presets ,system ,backend ,model ,temperature ,tokens ,num ,tools)
                        (gptel-org--entry-properties (point-min))))
-            (when preset
+            (dolist (preset presets)
               (if (gptel-get-preset preset)
                   (progn (gptel--apply-preset
                           preset (lambda (sym val) (set (make-local-variable sym) val)))
