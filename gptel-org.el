@@ -531,8 +531,8 @@ ARGS are the original function call arguments."
           (seq-mapn (lambda (a b) (or a b))
                     (gptel-org--entry-properties)
                     (list gptel-org--presets gptel-system-prompt gptel-backend
-                          gptel-model gptel-temperature gptel-max-tokens
-                          gptel--num-messages-to-send gptel-tools))
+                          gptel-model gptel-temperature gptel-reasoning-effort
+                          gptel-max-tokens gptel--num-messages-to-send gptel-tools))
         (apply send-fun args))
     (apply send-fun args)))
 
