@@ -1901,16 +1901,17 @@ MACHINE is an instance of `gptel-fsm'"
   ;; Reset some flags in info.  This is necessary when reusing fsm's context for
   ;; a second network request: gptel tests for the presence of these flags to
   ;; handle state transitions.  (NOTE: Don't add :uuid to this.)
-  (let ((info (gptel-fsm-info fsm)))
+  (let ((req-info (gptel-fsm-info fsm)))
     (dolist (key '(:tool-result :tool-use :error :http-status :reasoning :tokens))
-      (when (plist-get info key)
-        (plist-put info key nil))))
-  (funcall
-   (if gptel-use-curl
-       #'gptel-curl-get-response
-     #'gptel--url-get-response)
-   fsm)
-  (run-hooks 'gptel-post-request-hook))
+      (when (plist-get req-info key)
+        (plist-put req-info key nil)))
+    (funcall
+     (if gptel-use-curl
+         #'gptel-curl-get-response
+       #'gptel--url-get-response)
+     fsm)
+    (with-current-buffer (plist-get req-info :buffer)
+      (run-hooks 'gptel-post-request-hook))))
 
 (defun gptel--process-tool-call (fsm tool-spec tool-call result)
   "Add tool RESULT to a TOOL-CALL and transition FSM if required.
