@@ -38,9 +38,10 @@
   "OAuth login method used by `gptel-openai-oauth-login'.
 
 The `authorization-code' method uses OAuth 2.0 Authorization Code
-Flow with PKCE and a localhost callback.  It is not supported when
-Emacs is running over SSH.  The `device' method uses OAuth 2.0
-Device Authorization Grant."
+Flow with PKCE and a localhost callback.  When Emacs is running
+over SSH the callback URL has to be copied from the browser into
+Emacs manually.  The `device' method uses OAuth 2.0 Device
+Authorization Grant."
   :type '(choice (const :tag "Authorization Code Flow with PKCE" authorization-code)
                  (const :tag "Device Authorization Grant" device))
   :group 'gptel)
@@ -164,108 +165,12 @@ included in the authorization request and checked in the callback."
       ("state" ,state)
       ("originator" "gptel")))))
 
-(defun gptel--openai-oauth-callback-request (request)
-  "Parse callback REQUEST and return a plist with :path and :query."
-  (when (string-match "\\`GET \\([^ ]+\\) HTTP/" request)
-    (let* ((target (match-string 1 request))
-           (query-start (string-search "?" target))
-           (path (if query-start
-                     (substring target 0 query-start)
-                   target))
-           (query (and query-start
-                       (substring target (1+ query-start)))))
-      (list :path path
-            :query (and query (url-parse-query-string query))))))
-
-(defun gptel--openai-oauth-send-callback-response (process status title body)
-  "Send PROCESS an HTTP response with STATUS, TITLE and BODY."
-  (let ((payload (format "<!doctype html><meta charset=\"utf-8\"><title>%s</title><p>%s</p>"
-                         title body)))
-    (process-send-string
-     process
-     (format "HTTP/1.1 %s %s\r\nContent-Type: text/html; \
-charset=utf-8\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s"
-             status title (string-bytes payload) payload))))
-
-;; TODO: Support over SSH connections can be added by (i) not starting a server,
-;; and (ii) asking the user to copy the callback URL from the browser's URL bar
-;; into Emacs.
 (defun gptel--openai-oauth-read-code (authorization-url state)
-  "Open AUTHORIZATION-URL and wait for a localhost callback matching STATE."
-  (when (or (getenv "SSH_CLIENT")
-            (getenv "SSH_CONNECTION")
-            (getenv "SSH_TTY"))
-    (user-error
-     (concat "OpenAI authorization-code login requires a local browser "
-             "callback and is not supported over SSH.  Set "
-             "`gptel-openai-oauth-login-method' to `device' and retry")))
-  (let ((deadline (+ (float-time) gptel--openai-oauth-redirect-timeout))
-        code error server)
-    (cl-labels
-        ((finish (process status title body &optional result failure)
-           (gptel--openai-oauth-send-callback-response process status title body)
-           (when result (setq code result))
-           (when failure (setq error failure))
-           (delete-process process))
-         (filter (process string)
-           (let ((request (concat (or (process-get process :gptel-request) "")
-                                  string)))
-             (process-put process :gptel-request request)
-             (when (string-match-p "\r\n\r\n" request)
-               (pcase-let* ((`(:path ,path :query ,query)
-                             (gptel--openai-oauth-callback-request request))
-                            (callback-state (cadr (assoc "state" query)))
-                            (callback-code (cadr (assoc "code" query)))
-                            (callback-error (cadr (assoc "error" query)))
-                            (callback-error-description
-                             (cadr (assoc "error_description" query))))
-                 (cond
-                  ((not (equal path gptel--openai-oauth-redirect-path))
-                   (finish process "404" "Not Found"
-                           "This is not an OpenAI OAuth callback."))
-                  (callback-error
-                   (finish process "400" "OpenAI OAuth Error"
-                           "OpenAI OAuth authorization failed.  You may close this tab."
-                           nil
-                           (or callback-error-description callback-error)))
-                  ((not (equal callback-state state))
-                   (finish process "400" "OpenAI OAuth Error"
-                           "OpenAI OAuth state did not match.  You may close this tab."
-                           nil "OpenAI OAuth state did not match"))
-                  (callback-code
-                   (finish process "200" "OpenAI OAuth Complete"
-                           "OpenAI OAuth authorization succeeded.  You may close this tab."
-                           callback-code))
-                  (t
-                   (finish process "400" "OpenAI OAuth Error"
-                           "OpenAI OAuth callback did not include a code.  You may close this tab."
-                           nil "OpenAI OAuth callback did not include a code"))))))))
-      (unwind-protect
-          (progn
-            (setq server
-                  (make-network-process
-                   :name "gptel-openai-oauth-callback"
-                   :server t
-                   :host "localhost"
-                   :service gptel--openai-oauth-redirect-port
-                   :filter #'filter
-                   :noquery t))
-            (message "OpenAI OAuth authorization URL: %s" authorization-url)
-            (ignore-errors (gui-set-selection 'CLIPBOARD authorization-url))
-            (read-from-minibuffer
-             (format "OpenAI OAuth URL copied to clipboard.  \
-Press ENTER to open the authorization page.  \
-If your browser does not open automatically, browse to %s: "
-                     authorization-url))
-            (browse-url authorization-url)
-            (while (and (not code) (not error) (< (float-time) deadline))
-              (accept-process-output nil 1))
-            (cond
-             (code code)
-             (error (user-error "%s" error))
-             (t (user-error "Timed out waiting for OpenAI OAuth callback"))))
-        (when (process-live-p server)
-          (delete-process server))))))
+  "Open AUTHORIZATION-URL and return an authorization code matching STATE."
+  (gptel-oauth--read-code authorization-url
+                          gptel--openai-oauth-redirect-path state
+                          gptel--openai-oauth-redirect-port
+                          gptel--openai-oauth-redirect-timeout))
 
 (defun gptel--openai-oauth-login-with-authorization-code (backend)
   "Authenticate BACKEND using OpenAI Authorization Code Flow with PKCE."
