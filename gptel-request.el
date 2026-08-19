@@ -170,11 +170,11 @@ to send the output of shell commands to the LLM.
 
 Transform functions can be synchronous or asynchronous.
 
-Synchronous hook functions must accept zero or one argument: the INFO
-plist for the current request.
+Synchronous hook functions must accept zero or one argument: the state
+ machine (see `gptel-fsm') for the current request.
 
 Asynchronous hook functions must accept two arguments: a callback to
-call after the transformation is complete, and the INFO plist for the
+call after the transformation is complete, and the state machine for the
 current request.
 
 Note that while this set of handlers can certainly be set with a global
