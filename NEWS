@@ -4,6 +4,11 @@
 
 ** Breaking changes
 
+- The Github Models setup instructions have been removed from the
+  README, and the Github Models mentions in gptel.el's commentary
+  header removed.  GitHub Models was fully retired on 2026-07-30 and
+  its API is no longer available.
+
 - The models =deepseek-chat= and =deepseek-reasoner= have been
   removed from the default list of Deepseek models.  These models are
   either deprecated or no longer available.
@@ -62,7 +67,7 @@
   =claude-opus-4-8=.
 
 - Anthropic backend: Add support for =claude-sonnet-5=,
-  =claude-opus-4-8= and =claude-fable-5=.
+  =claude-opus-4-8=, =claude-opus-5= and =claude-fable-5=.
 
 - GitHub Copilot backend: Add support for =gemini-3.6-flash=,
   =gemini-3.5-flash=, =gpt-5.6-sol=, =gpt-5.6-terra=, =gpt-5.6-luna=,

@@ -585,9 +585,9 @@ ARGS are the original function call arguments."
         (progn
           (when-let* ((bounds (org-entry-get (point-min) "GPTEL_BOUNDS")))
             (gptel--restore-props (read bounds)))
-          (pcase-let ((`(,preset ,system ,backend ,model ,temperature ,tokens ,num ,tools)
+          (pcase-let ((`(,presets ,system ,backend ,model ,temperature ,tokens ,num ,tools)
                        (gptel-org--entry-properties (point-min))))
-            (when preset
+            (dolist (preset presets)
               (if (gptel-get-preset preset)
                   (progn (gptel--apply-preset
                           preset (lambda (sym val) (set (make-local-variable sym) val)))
@@ -688,8 +688,9 @@ send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
                            ;; first value of ((prop . ((beg end val)...))...)
                            (offset (caadar bounds))
                            (offset-marker (set-marker (make-marker) offset)))
-                 (org-entry-put (point-min) "GPTEL_BOUNDS"
-                                (prin1-to-string (gptel--get-buffer-bounds)))
+                 (let ((print-length))
+                   (org-entry-put (point-min) "GPTEL_BOUNDS"
+                                  (prin1-to-string (gptel--get-buffer-bounds))))
                  (when (and (not (= (marker-position offset-marker) offset))
                             (> attempts 0))
                    (funcall write-bounds (1- attempts)))))))
