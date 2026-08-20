@@ -424,6 +424,80 @@ see `gptel-make-openai'."
     backend))
 
 
+;;; OrcaRouter
+;;;###autoload
+(cl-defstruct (gptel-orcarouter (:include gptel-openai)
+                                (:copier nil)
+                                (:constructor gptel--make-orcarouter)))
+
+(cl-defmethod gptel--request-data :around ((_backend gptel-orcarouter) _prompts)
+  "Modify how structured output JSON schema is specified.
+
+This method works by wrapping the main implementation, passing PROMPTS.
+OrcaRouter is a multi-vendor gateway whose smart-routed upstreams
+currently honor `json_object' rather than `json_schema', so translate
+the schema into a `json_object' request plus a system-prompt hint."
+  (let ((prompts-plist (cl-call-next-method)))
+    (when gptel--schema
+      (let ((response-format
+             (prin1-to-string (plist-get prompts-plist :response_format))))
+        (plist-put prompts-plist :response_format (list :type "json_object"))
+        (cl-callf (lambda (system)
+                    (concat system
+                            "\n\n<response_format>Required JSON schema for response:\n\n"
+                            response-format "\n</response_format>"))
+            (plist-get (aref (plist-get prompts-plist :messages) 0) :content))))
+    prompts-plist))
+
+;;;###autoload
+(cl-defun gptel-make-orcarouter
+    (name &key curl-args stream key request-params
+          (header (lambda (_info)
+                    (when-let* ((key (gptel--get-api-key)))
+                      `(("Authorization" . ,(concat "Bearer " key))))))
+          (host "api.orcarouter.ai")
+          (protocol "https")
+          (endpoint "/v1/chat/completions")
+          (models
+           '((orcarouter/auto
+              :description "Smart routing: picks the best model for each request"
+              :capabilities (tool reasoning)
+              :context-window 1000)
+             (orcarouter/fusion
+              :description "Long-context flagship routed by OrcaRouter"
+              :capabilities (tool reasoning)
+              :context-window 1000)
+             (orcarouter/fusion-flash
+              :description "Fast long-context model routed by OrcaRouter"
+              :capabilities (tool reasoning)
+              :context-window 200)
+             (orcarouter/fusion-mini
+              :description "Efficient long-context model routed by OrcaRouter"
+              :capabilities (tool reasoning)
+              :context-window 1000))))
+  "Register an OrcaRouter backend for gptel with NAME.
+
+OrcaRouter is a gateway that routes requests to models from many
+providers through a single OpenAI-compatible API.
+
+For the meanings of the keyword arguments, see `gptel-make-openai'."
+  (declare (indent 1))
+  (let ((backend (gptel--make-orcarouter
+                  :name name
+                  :host host
+                  :header header
+                  :key key
+                  :models (gptel--process-models models)
+                  :protocol protocol
+                  :endpoint endpoint
+                  :stream stream
+                  :request-params request-params
+                  :curl-args curl-args
+                  :url (concat protocol "://" host endpoint))))
+    (setf (alist-get name gptel--known-backends nil nil #'equal) backend)
+    backend))
+
+
 (provide 'gptel-openai-extras)
 ;;; gptel-openai-extras.el ends here
 
