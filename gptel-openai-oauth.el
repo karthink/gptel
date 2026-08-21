@@ -23,6 +23,7 @@
 
 ;;; Code:
 (require 'cl-lib)
+(require 'gptel-openai)
 (require 'gptel-openai-responses)
 (require 'gptel-oauth)
 
@@ -402,6 +403,17 @@ before constructing the headers."
        ("Originator"    . "gptel"))
      (and account-id `(("ChatGPT-Account-Id" . ,account-id))))))
 
+(defconst gptel--openai-oauth-models
+  (mapcar (lambda (name) (or (assq name gptel--openai-models) name))
+          '( gpt-5.2 gpt-5.3-codex gpt-5.3-codex-spark gpt-5.4-mini
+             gpt-5.4 gpt-5.5 gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna))
+  "List of ChatGPT subscription models and their capabilities.
+
+Each model is looked up in `gptel--openai-models', so that the
+models served by the Codex endpoint carry the same specifications
+as their API counterparts.  A model absent from that table is
+included as a bare symbol, and has no known capabilities.")
+
 ;;;###autoload
 (cl-defun gptel-make-openai-oauth
     (name &key curl-args (stream t) request-params
@@ -409,9 +421,7 @@ before constructing the headers."
           (host "chatgpt.com")
           (protocol "https")
           (endpoint "/backend-api/codex/responses")
-          (models
-           '( gpt-5.2 gpt-5.3-codex gpt-5.3-codex-spark gpt-5.4-mini
-              gpt-5.4 gpt-5.5 gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna)))
+          (models gptel--openai-oauth-models))
   "Register a ChatGPT Plus/Pro OAuth backend for gptel with NAME.
 
 This backend uses ChatGPT OAuth tokens (not OpenAI API keys) and
