@@ -485,6 +485,7 @@ Media files, if present, are placed in `gptel-context'."
     (gemini-3.7-flash
      :description "Next generation reasoning model with customizable thinking configurations"
      :capabilities (tool-use json media audio video)
+     :reasoning-effort (member minimal low medium high)
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html"
                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
