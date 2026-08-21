@@ -7,7 +7,8 @@
 
 gptel is a simple Large Language Model chat client for Emacs, with support for multiple models and backends.  It works in the spirit of Emacs, available at any time and uniformly in any buffer.
 
-*General usage*: ([[https://www.youtube.com/watch?v=bsRnh_brggM][YouTube Demo]])
+*General usage*: ([[https://www.youtube.com/watch?v=bsRnh_brggM][YouTube Demo]], 18 min)
+*Advanced usage*: ([[undefined][YouTube Demo]], 28 min)
 
 https://user-images.githubusercontent.com/8607532/230516812-86510a09-a2fb-4cbd-b53f-cc2522d05a13.mp4
 
@@ -1860,6 +1861,8 @@ Other Emacs clients for LLMs prescribe the format of the interaction (a comint s
 #+html: </details>
 
 *** Option presets
+
+([[https://www.youtube.com/watch?v=xHEnWvKmSKM][YouTube demo]], 28 min)
 
 If you use several LLMs for different tasks with accompanying system prompts (instructions) and tool configurations, manually adjusting =gptel= settings each time can become tedious.  Presets are a bundle of gptel settings -- such as the model, backend, system message, and enabled tools -- that you can switch to at once.
 

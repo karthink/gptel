@@ -170,11 +170,11 @@ to send the output of shell commands to the LLM.
 
 Transform functions can be synchronous or asynchronous.
 
-Synchronous hook functions must accept zero or one argument: the INFO
-plist for the current request.
+Synchronous hook functions must accept zero or one argument: the state
+ machine (see `gptel-fsm') for the current request.
 
 Asynchronous hook functions must accept two arguments: a callback to
-call after the transformation is complete, and the INFO plist for the
+call after the transformation is complete, and the state machine for the
 current request.
 
 Note that while this set of handlers can certainly be set with a global
@@ -1920,16 +1920,17 @@ MACHINE is an instance of `gptel-fsm'"
   ;; Reset some flags in info.  This is necessary when reusing fsm's context for
   ;; a second network request: gptel tests for the presence of these flags to
   ;; handle state transitions.  (NOTE: Don't add :uuid to this.)
-  (let ((info (gptel-fsm-info fsm)))
+  (let ((req-info (gptel-fsm-info fsm)))
     (dolist (key '(:tool-result :tool-use :error :http-status :reasoning :tokens))
-      (when (plist-get info key)
-        (plist-put info key nil))))
-  (funcall
-   (if gptel-use-curl
-       #'gptel-curl-get-response
-     #'gptel--url-get-response)
-   fsm)
-  (run-hooks 'gptel-post-request-hook))
+      (when (plist-get req-info key)
+        (plist-put req-info key nil)))
+    (funcall
+     (if gptel-use-curl
+         #'gptel-curl-get-response
+       #'gptel--url-get-response)
+     fsm)
+    (with-current-buffer (plist-get req-info :buffer)
+      (run-hooks 'gptel-post-request-hook))))
 
 (defun gptel--process-tool-call (fsm tool-spec tool-call result)
   "Add tool RESULT to a TOOL-CALL and transition FSM if required.

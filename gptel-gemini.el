@@ -482,6 +482,17 @@ Media files, if present, are placed in `gptel-context'."
      :input-cost 0.10
      :output-cost 0.40
      :cutoff-date "2025-01")
+    (gemini-3.7-flash
+     :description "Next generation reasoning model with customizable thinking configurations"
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"
+                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 1048               ; 65536 output token limit
+     :input-cost 0.75                   ; 1.50 from 2027-01-01
+     :output-cost 3.75                  ; 7.50 from 2027-01-01
+     :cutoff-date "2026-03")
     (gemini-3.6-flash
      :description "Most intelligent Gemini model built for speed, combining frontier intelligence with superior search and grounding"
      :capabilities (tool-use json media audio video)
@@ -491,9 +502,9 @@ Media files, if present, are placed in `gptel-context'."
                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
      :context-window 1048
-     :input-cost 1.50
-     :output-cost 7.50
-     :cutoff-date "2026-07")
+     :input-cost 0.75                   ; 1.50 from 2027-01-01
+     :output-cost 3.75                  ; 7.50 from 2027-01-01
+     :cutoff-date "2026-03")
     (gemini-3.5-flash
      :description "Most intelligent Gemini model for sustained frontier performance in agentic and coding tasks"
      :capabilities (tool-use json media audio video)

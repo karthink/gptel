@@ -1697,6 +1697,7 @@ JSON query instead of the Lisp structure gptel uses."
     (with-current-buffer (get-buffer-create "*gptel-query*")
       (let* ((standard-output (current-buffer))
              (inhibit-read-only t)
+             (print-length nil)
              (request-data
               (plist-get (gptel-fsm-info request-fsm) :data)))
         (buffer-disable-undo)

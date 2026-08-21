@@ -69,12 +69,12 @@
 - Anthropic backend: Add support for =claude-sonnet-5=,
   =claude-opus-4-8=, =claude-opus-5= and =claude-fable-5=.
 
-- GitHub Copilot backend: Add support for =gemini-3.6-flash=,
-  =gemini-3.5-flash=, =gpt-5.6-sol=, =gpt-5.6-terra=, =gpt-5.6-luna=,
+- GitHub Copilot backend: Add support for =gemini-3.7-flash=,
+  =gemini-3.6-flash=, =gemini-3.5-flash=, =gpt-5.6-sol=, =gpt-5.6-terra=, =gpt-5.6-luna=,
   =claude-opus-4.8=, =claude-sonnet-5=, =claude-opus-5= and =claude-fable-5=.
 
-- Gemini backend: Add support for =gemini-3.6-flash=,
-  =gemini-3.5-flash=, =gemini-3.5-flash-lite=,
+- Gemini backend: Add support for =gemini-3.7-flash=,
+  =gemini-3.6-flash=, =gemini-3.5-flash=, =gemini-3.5-flash-lite=,
   =gemini-3.1-flash-lite= and deprecate the preview version.
 
 - OpenAI backend: Add support for =gpt-5.6-sol=, =gpt-5.6-terra= and
@@ -84,6 +84,13 @@
   =grok-4.5=.
 
 ** New features and UI changes
+
+- gptel-rewrite is now available as an (inline) preset in addition to a
+  command.  Using the =@gptel-rewrite= cookie in a prompt will cause the
+  prompt text before the cookie to be replaced with the response, with
+  the rewrite instructions read from the text following the cookie.
+  This is mostly useful when prompting from the minibuffer with a region
+  active.
 
 - The gptel tool's =:include= slot and the global option
   ~gptel-include-tool-results~ now also accept the symbol =call=: when
