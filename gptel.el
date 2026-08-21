@@ -808,11 +808,39 @@ send in queries.  (See `gptel--num-messages-to-send' for the last one.)"
   "Mark any change to an LLM response region as a response.
 
 Intended to be added to `after-change-functions' in gptel chat buffers,
-which see for BEG, END and PRE."
+which see for BEG, END and PRE.
+
+Text is only marked as part of a response if the character following
+the change is itself front-sticky for the `gptel' property.  This
+prevents the very last character of a completed response (whose
+stickiness is cleared by `gptel--seal-response') from marking
+subsequently-typed user text as an assistant continuation."
   (and (/= beg end) (< end (point-max))
-       (and-let* ((val (get-text-property end 'gptel)))
+       (and-let* ((val (get-text-property end 'gptel))
+                  ((or (eq (get-text-property end 'front-sticky) t)
+                       (memq 'gptel (ensure-list
+                                     (get-text-property end 'front-sticky))))))
          (add-text-properties
           beg end `(gptel ,val front-sticky (gptel))))))
+
+(defun gptel--seal-response (&optional pos)
+  "Remove front-stickiness of the `gptel' property at POS.
+
+POS defaults to the end of the last response in the buffer, i.e.
+the character at `point-max' if it is part of a response.
+
+The `gptel' text property is marked front-sticky while a response
+is being inserted, so that streamed chunks seamlessly continue the
+\"this is a response\" watermark.  Once the response is complete
+the trailing edge must not remain sticky: text typed immediately
+after the response is a new user turn, not a continuation of the
+assistant message.  Leaving it sticky causes such text to inherit
+the `gptel' response property and be sent to the backend as
+assistant message prefill, which models like Claude 4.6+ reject
+with a 400 error."
+  (let ((pos (or pos (point-max))))
+    (when (get-text-property (1- pos) 'gptel)
+      (remove-text-properties (1- pos) pos '(front-sticky)))))
 
 (defun gptel-markdown--annotate-links (beg end)
   "Annotate Markdown links whose sources will be sent with `gptel-send'.
@@ -1396,6 +1424,7 @@ No state transition here since that's handled by the process sentinels."
             (save-excursion (goto-char tracking-marker)
                             (insert gptel-response-separator
                                     (gptel-prompt-prefix-string))))
+          (gptel--seal-response tracking-marker)
           (gptel--update-status  " Ready" 'success)
           (gptel--update-token-usage (plist-get info :tokens)
                                      (plist-get info :tokens-full)))))
