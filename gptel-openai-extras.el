@@ -333,15 +333,21 @@ This method works by wrapping the main implementation, passing PROMPTS."
           (protocol "https")
           (endpoint "/v1/chat/completions")
           (models '((deepseek-v4-flash
-                     :capabilities (tool reasoning)
+                     :capabilities (tool-use reasoning)
                      :context-window 1000
                      :input-cost 0.14
                      :output-cost 0.28)
                     (deepseek-v4-pro
-                     :capabilities (tool reasoning)
+                     :capabilities (tool-use reasoning)
                      :context-window 1000
                      :input-cost 0.435
-                     :output-cost 0.87))))
+                     :output-cost 0.87)
+                    (deepseek-v4-flash-vision-exp
+                     :capabilities (media tool-use reasoning url)
+                     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+                     :context-window 1000
+                     :input-cost 0.14
+                     :output-cost 0.28))))
   "Register a DeepSeek backend for gptel with NAME.
 
 For the meanings of the keyword arguments, see `gptel-make-openai'."
