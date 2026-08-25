@@ -41,13 +41,13 @@
 ;; gptel-send still works there.  TODO: Insertion works, but insertion-in-place
 ;; is flaky and fails depending on how well Vterm's prompt tracking works, as
 ;; well as on the presence of "virtual text" in the prompt.
-(declare-function vterm-copy-mode "vterm")
-(declare-function vterm-delete-region "vterm")
-(declare-function vterm-goto-char "vterm")
-(declare-function vterm-reset-cursor-point "vterm")
-(declare-function vterm-cursor-in-command-buffer-p "vterm")
-(declare-function vterm-send-key "vterm")
-(declare-function vterm-insert "vterm")
+(declare-function vterm-copy-mode "ext:vterm")
+(declare-function vterm-delete-region "ext:vterm")
+(declare-function vterm-goto-char "ext:vterm")
+(declare-function vterm-reset-cursor-point "ext:vterm")
+(declare-function vterm-cursor-in-command-buffer-p "ext:vterm")
+(declare-function vterm-send-key "ext:vterm")
+(declare-function vterm-insert "ext:vterm")
 (defvar vterm-copy-mode)
 
 (defun gptel--vterm-delete ()
@@ -97,14 +97,14 @@ INFO is the query information for the active request."
                 90 t))))
 
 ;;;; MCP integration - requires the mcp package
-(declare-function mcp-hub-get-all-tool "mcp-hub")
-(declare-function mcp-hub-get-servers "mcp-hub")
-(declare-function mcp-hub-start-all-server "mcp-hub")
-(declare-function mcp-stop-server "mcp")
-(declare-function mcp-hub "mcp-hub")
-(declare-function mcp--status "mcp-hub")
-(declare-function mcp--tools "mcp-hub")
-(declare-function mcp-make-text-tool "mcp-hub")
+(declare-function mcp-hub-get-all-tool "ext:mcp-hub")
+(declare-function mcp-hub-get-servers "ext:mcp-hub")
+(declare-function mcp-hub-start-all-server "ext:mcp-hub")
+(declare-function mcp-stop-server "ext:mcp")
+(declare-function mcp-hub "ext:mcp-hub")
+(declare-function mcp--status "ext:mcp-hub")
+(declare-function mcp--tools "ext:mcp-hub")
+(declare-function mcp-make-text-tool "ext:mcp-hub")
 (defvar mcp-hub-servers)
 (defvar mcp-server-connections)
 
