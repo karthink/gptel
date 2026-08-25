@@ -25,7 +25,7 @@
 (require 'cl-generic)
 (require 'cl-lib)
 (require 'map)
-(eval-and-compile (require 'gptel-request))
+(require 'gptel-request)
 
 (defvar json-object-type)
 
@@ -564,118 +564,119 @@ Media files, if present, are placed in `gptel-context'."
 ;;         (plist-get (car (last prompts)) :content)))
 
 (defconst gptel--anthropic-models
-  '((claude-sonnet-5
-     :description "The best combination of speed and intelligence"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 1000
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2026-01")
-    (claude-sonnet-4-6
-     :description "The best combination of speed and intelligence"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 1000
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2025-08")
-    (claude-sonnet-4-5-20250929
-     :description "High-performance model with exceptional reasoning and efficiency"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2025-07")
-    (claude-haiku-4-5-20251001
-     :description "Near-frontier intelligence at blazing speeds with extended thinking"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 1
-     :output-cost 5
-     :cutoff-date "2025-02")
-    (claude-sonnet-4-20250514
-     :description "High-performance model with exceptional reasoning and efficiency"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 3
-     :output-cost 15
-     :cutoff-date "2025-03")
-    (claude-fable-5
-     :description "Most capable model for complex reasoning and advanced coding"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 1000
-     :input-cost 10
-     :output-cost 50
-     :cutoff-date "2026-01")
-    (claude-opus-5
-     :description "Complex agentic coding and enterprise work"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 1000
-     :input-cost 5
-     :output-cost 25
-     :cutoff-date "2026-05")
-    (claude-opus-4-9
-     :description "Most capable model for complex reasoning and advanced coding"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 1000
-     :input-cost 5
-     :output-cost 25
-     :cutoff-date "2026-01")
-    (claude-opus-4-8
-     :description "Most capable model for complex reasoning and advanced coding"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 1000
-     :input-cost 5
-     :output-cost 25
-     :cutoff-date "2026-01")
-    (claude-opus-4-7
-     :description "Most capable model for complex reasoning and advanced coding"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 1000
-     :input-cost 5
-     :output-cost 25
-     :cutoff-date "2026-01")
-    (claude-opus-4-6
-     :description "Most capable model for complex reasoning and advanced coding"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 5
-     :output-cost 25
-     :cutoff-date "2025-08")
-    (claude-opus-4-5-20251101
-     :description "Most capable model for complex reasoning and advanced coding"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 5
-     :output-cost 25
-     :cutoff-date "2025-03")
-    (claude-opus-4-1-20250805
-     :description "Most capable model for complex reasoning and advanced coding"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 15
-     :output-cost 75
-     :cutoff-date "2025-03")
-    (claude-opus-4-20250514
-     :description "Anthropic's previous flagship model"
-     :capabilities (media tool-use cache)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
-     :context-window 200
-     :input-cost 15
-     :output-cost 75
-     :cutoff-date "2025-03"))
+  (gptel--process-models
+   '((claude-sonnet-5
+      :description "The best combination of speed and intelligence"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 1000
+      :input-cost 3
+      :output-cost 15
+      :cutoff-date "2026-01")
+     (claude-sonnet-4-6
+      :description "The best combination of speed and intelligence"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 1000
+      :input-cost 3
+      :output-cost 15
+      :cutoff-date "2025-08")
+     (claude-sonnet-4-5-20250929
+      :description "High-performance model with exceptional reasoning and efficiency"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 200
+      :input-cost 3
+      :output-cost 15
+      :cutoff-date "2025-07")
+     (claude-haiku-4-5-20251001
+      :description "Near-frontier intelligence at blazing speeds with extended thinking"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 200
+      :input-cost 1
+      :output-cost 5
+      :cutoff-date "2025-02")
+     (claude-sonnet-4-20250514
+      :description "High-performance model with exceptional reasoning and efficiency"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 200
+      :input-cost 3
+      :output-cost 15
+      :cutoff-date "2025-03")
+     (claude-fable-5
+      :description "Most capable model for complex reasoning and advanced coding"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 1000
+      :input-cost 10
+      :output-cost 50
+      :cutoff-date "2026-01")
+     (claude-opus-5
+      :description "Complex agentic coding and enterprise work"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 1000
+      :input-cost 5
+      :output-cost 25
+      :cutoff-date "2026-05")
+     (claude-opus-4-9
+      :description "Most capable model for complex reasoning and advanced coding"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 1000
+      :input-cost 5
+      :output-cost 25
+      :cutoff-date "2026-01")
+     (claude-opus-4-8
+      :description "Most capable model for complex reasoning and advanced coding"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 1000
+      :input-cost 5
+      :output-cost 25
+      :cutoff-date "2026-01")
+     (claude-opus-4-7
+      :description "Most capable model for complex reasoning and advanced coding"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 1000
+      :input-cost 5
+      :output-cost 25
+      :cutoff-date "2026-01")
+     (claude-opus-4-6
+      :description "Most capable model for complex reasoning and advanced coding"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 200
+      :input-cost 5
+      :output-cost 25
+      :cutoff-date "2025-08")
+     (claude-opus-4-5-20251101
+      :description "Most capable model for complex reasoning and advanced coding"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 200
+      :input-cost 5
+      :output-cost 25
+      :cutoff-date "2025-03")
+     (claude-opus-4-1-20250805
+      :description "Most capable model for complex reasoning and advanced coding"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 200
+      :input-cost 15
+      :output-cost 75
+      :cutoff-date "2025-03")
+     (claude-opus-4-20250514
+      :description "Anthropic's previous flagship model"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 200
+      :input-cost 15
+      :output-cost 75
+      :cutoff-date "2025-03")))
 
   "List of available Anthropic models and associated properties.
 Keys:
