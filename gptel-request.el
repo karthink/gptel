@@ -528,7 +528,8 @@ examples.  Once registered, backends may be retrieved using
        ((listp val)
         (let* ((name (if (stringp (cadr val)) ;explicit and implicit :name specification
                          (cadr val) (plist-get (cdr val) :name)))
-               (args (if name (cddr val) (cdr val)))
+               (args (if (stringp (cadr val))
+                         (cddr val) (cdr val)))
                type)
           (cl-remf args :name)
           (if (memq (car val) '(gptel-gh gptel--gh))
