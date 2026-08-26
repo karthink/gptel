@@ -418,7 +418,9 @@ This backend uses ChatGPT OAuth tokens (not OpenAI API keys) and
 targets the Codex endpoint on chatgpt.com.  Run
 `gptel-openai-oauth-login' once to authenticate.
 
-For keyword argument meanings, see `gptel-make-openai'."
+The keyword arguments (CURL-ARGS, STREAM, REQUEST-PARAMS,
+HEADER, HOST, PROTOCOL, ENDPOINT and MODELS) are all optional;
+for their meanings, see `gptel-make-openai'."
   (declare (indent 1))
   (let ((backend (gptel--make-openai-oauth
                   :curl-args curl-args

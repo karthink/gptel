@@ -56,7 +56,7 @@ back to the LLM)."
           (output (or (plist-get usage :completion_tokens) 0))
           (cached (or (map-nested-elt
                        usage '(:prompt_tokens_details :cached_tokens))
-                      (plist-get usage :prompt_cache_hit_tokens) 
+                      (plist-get usage :prompt_cache_hit_tokens)
                       0)))
       ;; prompt_tokens includes the cached tokens, but we capture and display
       ;; the two exclusively in the UI.
@@ -158,7 +158,7 @@ information if the stream contains it."
                           (plist-put info :partial_json (list (plist-get func :arguments)))
                           ;; NOTE: Do NOT use `push' for this, it prepends and we lose the reference
                           (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
-                      ;; old tool block continues, so continue collecting arguments in :partial_json 
+                      ;; old tool block continues, so continue collecting arguments in :partial_json
                       (push (plist-get func :arguments) (plist-get info :partial_json)))))
                 ;; Check for reasoning blocks, currently only used by Openrouter
                 (unless (eq (plist-get info :reasoning-block) 'done)
@@ -215,7 +215,7 @@ Mutate state INFO with response metadata."
       content)))
 
 (cl-defmethod gptel--request-data ((backend gptel-openai) prompts)
-  "JSON encode PROMPTS for sending to ChatGPT."
+  "JSON encode PROMPTS for sending to ChatGPT with BACKEND."
   (when gptel-system-prompt
     (push (list :role "system"
                 :content gptel-system-prompt)
@@ -250,6 +250,7 @@ Mutate state INFO with response metadata."
      (gptel--model-request-params  gptel-model))))
 
 (cl-defmethod gptel--parse-schema ((_backend gptel-openai) schema)
+  "Convert SCHEMA to an OpenAI API response format spec."
   (list :type "json_schema"
         :json_schema
         (list :name (md5 (format "%s" (random)))
@@ -332,6 +333,7 @@ If the ID has the format used by a different backend, use as-is."
 ;; is handled by its defgeneric implementation
 
 (cl-defmethod gptel--parse-list ((backend gptel-openai) prompt-list)
+  "Parse PROMPT-LIST into a list of messages for BACKEND."
   (if (consp (car prompt-list))
       (let ((full-prompt))              ; Advanced format, list of lists
         (dolist (entry prompt-list)
@@ -363,6 +365,8 @@ If the ID has the format used by a different backend, use as-is."
              (list :role (if role "user" "assistant") :content text))))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-openai) &optional max-entries)
+  "Parse the current buffer into a list of messages for BACKEND.
+Include up to MAX-ENTRIES queries/responses."
   (let ((prompts) (prev-pt (point)))
     (if (or gptel-mode gptel-track-response)
         (while (and (or (not max-entries) (>= max-entries 0))

@@ -369,6 +369,7 @@ Then we need a session token."
       (gptel--gh-renew-token))))
 
 (cl-defmethod gptel-curl--parse-stream ((backend gptel--gh) info)
+  "Parse the response stream in INFO for BACKEND, deferring as needed."
   (let ((model (plist-get info :model)))
    (if (gptel--model-capable-p 'responses-api model)
        ;; Defer to gptel-openai-responses backend
@@ -377,6 +378,7 @@ Then we need a session token."
      (cl-call-next-method))))
 
 (cl-defmethod gptel--parse-response ((backend gptel--gh) response info)
+  "Parse RESPONSE for BACKEND, deferring as needed."
   (let ((model (plist-get info :model)))
     (if (gptel--model-capable-p 'responses-api model)
        ;; Defer to gptel-openai-responses backend
@@ -385,46 +387,57 @@ Then we need a session token."
      (cl-call-next-method))))
 
 (cl-defmethod gptel--request-data ((backend gptel--gh) prompts)
+  "Generate the request payload for BACKEND from PROMPTS, deferring as needed."
   (if (gptel--model-capable-p 'responses-api gptel-model)
       (gptel--request-data (gptel--gh-responses-backend backend) prompts)
     (cl-call-next-method)))
 
 (cl-defmethod gptel--parse-schema ((backend gptel--gh) schema)
+  "Convert SCHEMA to the GitHub Copilot API spec for BACKEND, deferring as needed."
   (if (gptel--model-capable-p 'responses-api gptel-model)
       (gptel--parse-schema (gptel--gh-responses-backend backend) schema)
     (cl-call-next-method)))
 
 (cl-defmethod gptel--parse-tools ((backend gptel--gh) tools)
+  "Convert TOOLS to the GitHub Copilot API spec for BACKEND, deferring as needed."
   (if (gptel--model-capable-p 'responses-api gptel-model)
       (gptel--parse-tools (gptel--gh-responses-backend backend) tools)
     (cl-call-next-method)))
 
 (cl-defmethod gptel--inject-tool-call ((backend gptel--gh) data tool-call new-call)
+  "Replace TOOL-CALL in DATA with NEW-CALL for BACKEND, deferring as needed."
   (if (gptel--model-capable-p 'responses-api gptel-model)
       (gptel--inject-tool-call (gptel--gh-responses-backend backend) data tool-call new-call)
     (cl-call-next-method)))
 
 (cl-defmethod gptel--parse-tool-results ((backend gptel--gh) tool-use)
+  "Convert TOOL-USE into tool results for BACKEND, deferring as needed."
   (if (gptel--model-capable-p 'responses-api gptel-model)
       (gptel--parse-tool-results (gptel--gh-responses-backend backend) tool-use)
     (cl-call-next-method)))
 
 (cl-defmethod gptel--inject-prompt ((backend gptel--gh) data new-prompt &optional position)
+  "Inject NEW-PROMPT into DATA at POSITION for BACKEND, deferring as needed."
   (if (gptel--model-capable-p 'responses-api gptel-model)
       (gptel--inject-prompt (gptel--gh-responses-backend backend) data new-prompt position)
     (cl-call-next-method)))
 
 (cl-defmethod gptel--parse-list ((backend gptel--gh) prompt-list)
+  "Parse PROMPT-LIST into a list of messages for BACKEND, deferring as needed."
   (if (gptel--model-capable-p 'responses-api gptel-model)
       (gptel--parse-list (gptel--gh-responses-backend backend) prompt-list)
     (cl-call-next-method)))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel--gh) &optional max-entries)
+  "Parse the current buffer into a list of messages for BACKEND.
+Include up to MAX-ENTRIES queries/responses.  Defer as needed."
   (if (gptel--model-capable-p 'responses-api gptel-model)
       (gptel--parse-buffer (gptel--gh-responses-backend backend) max-entries)
     (cl-call-next-method)))
 
 (cl-defmethod gptel--inject-media ((backend gptel--gh) prompts)
+  "Wrap the first prompt in PROMPTS with media files for BACKEND.
+Defer as needed."
   (if (gptel--model-capable-p 'responses-api gptel-model)
       (gptel--inject-media (gptel--gh-responses-backend backend) prompts)
     (cl-call-next-method)))
