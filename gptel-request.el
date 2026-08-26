@@ -531,6 +531,7 @@ examples.  Once registered, backends may be retrieved using
                (args (if (stringp (cadr val))
                          (cddr val) (cdr val)))
                type)
+          (setq args (copy-sequence args))
           (cl-remf args :name)
           (if (memq (car val) '(gptel-gh gptel--gh))
               (setq type 'gptel-gh-copilot)
