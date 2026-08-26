@@ -521,23 +521,24 @@ examples.  Once registered, backends may be retrieved using
                       if (and (readablep v) (not (null v)))
                       collect k and collect v))))
   :set
-  (lambda (sym val)
-    (cond
-     ((null val) (set-default-toplevel-value sym val))
-     ((listp val)
-      (let* ((name (if (stringp (cadr val)) ;explicit and implicit :name specification
-                       (cadr val) (plist-get (cdr val) :name)))
-             (args (if name (cddr val) (cdr val)))
-             type)
-        (cl-remf args :name)
-        (if (memq (car val) '(gptel-gh gptel--gh))
-            (setq type 'gptel-gh-copilot)
-          (setq type (car val)))
-        (set-default-toplevel-value
-         sym (apply (intern (concat "gptel-make-"
-                                    (substring (symbol-name type) 6)))
-                    name args))))
-     ((gptel-backend-p val) (set-default-toplevel-value sym val)))))
+  (lambda (sym val &optional buffer-local)
+    (let ((setter (if buffer-local #'set-local #'set-default-toplevel-value)))
+      (cond
+       ((null val) (funcall setter sym val))
+       ((listp val)
+        (let* ((name (if (stringp (cadr val)) ;explicit and implicit :name specification
+                         (cadr val) (plist-get (cdr val) :name)))
+               (args (if name (cddr val) (cdr val)))
+               type)
+          (cl-remf args :name)
+          (if (memq (car val) '(gptel-gh gptel--gh))
+              (setq type 'gptel-gh-copilot)
+            (setq type (car val)))
+          (funcall setter
+                   sym (apply (intern (concat "gptel-make-"
+                                              (substring (symbol-name type) 6)))
+                              name args))))
+       ((gptel-backend-p val) (funcall setter sym val))))))
 
 (defcustom gptel-model nil
   (concat
