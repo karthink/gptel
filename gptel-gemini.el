@@ -27,7 +27,7 @@
 (require 'cl-lib)
 (require 'gptel-request)
 
-(declare-function prop-match-value "text-property-search")
+(declare-function prop-match-value "text-property-search" nil t)
 (declare-function text-property-search-backward "text-property-search")
 (declare-function json-read "json")
 (declare-function gptel-context--wrap "gptel-context")
@@ -128,7 +128,7 @@ list."
      (and content-strs (apply #'concat content-strs)))))
 
 (cl-defmethod gptel--request-data ((backend gptel-gemini) prompts)
-  "JSON encode PROMPTS for sending to Gemini."
+  "JSON encode PROMPTS for sending to the Gemini BACKEND."
   (let ((prompts-plist
          (list :contents (vconcat prompts)
                :safetySettings [(:category "HARM_CATEGORY_HARASSMENT"
@@ -175,6 +175,7 @@ list."
      (gptel--model-request-params  gptel-model))))
 
 (cl-defmethod gptel--parse-schema ((_backend gptel-gemini) schema)
+  "Convert SCHEMA to a Gemini API response schema spec."
   (list :responseMimeType "application/json"
         :responseSchema (gptel--preprocess-schema
                          (gptel--dispatch-schema-type schema))))
@@ -310,6 +311,7 @@ for details.  This implementation handles the Gemini API."
              (truncate-string-to-width (prin1-to-string new-call) 50 nil nil t)))))
 
 (cl-defmethod gptel--parse-list ((backend gptel-gemini) prompt-list)
+  "Parse PROMPT-LIST into a list of messages for BACKEND."
   (if (consp (car prompt-list))
       (let ((full-prompt))              ; Advanced format, list of lists
         (dolist (entry prompt-list)
@@ -338,6 +340,8 @@ for details.  This implementation handles the Gemini API."
              finally return prompts)))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-gemini) &optional max-entries)
+  "Parse the current buffer into a list of messages for BACKEND.
+Include up to MAX-ENTRIES queries/responses."
   (let ((prompts) (prev-pt (point)))
     (if (or gptel-mode gptel-track-response)
         (while (and (or (not max-entries) (>= max-entries 0))

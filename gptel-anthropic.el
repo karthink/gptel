@@ -29,7 +29,7 @@
 
 (defvar json-object-type)
 
-(declare-function prop-match-value "text-property-search")
+(declare-function prop-match-value "text-property-search" nil t)
 (declare-function text-property-search-backward "text-property-search")
 (declare-function json-read "json" ())
 (declare-function gptel-context--wrap "gptel-context")
@@ -221,7 +221,7 @@ Mutate state INFO with response metadata."
    (and content-strs (apply #'concat content-strs))))
 
 (cl-defmethod gptel--request-data ((backend gptel-anthropic) prompts)
-  "JSON encode PROMPTS for sending to ChatGPT."
+  "JSON encode PROMPTS for sending to the Anthropic API for BACKEND."
   (let ((prompts-plist
          `( :model ,(gptel--model-name gptel-model)
             :stream ,(or gptel-stream :json-false)
@@ -269,8 +269,10 @@ Mutate state INFO with response metadata."
      (gptel--model-request-params  gptel-model))))
 
 (cl-defmethod gptel--parse-schema ((_backend gptel-anthropic) schema)
-  ;; Unlike the other backends, Anthropic generates JSON using a tool call.  We
-  ;; write the tool here, meant to be added to :tools.
+  "Return SCHEMA as a tool spec for the Anthropic API.
+
+Unlike the other backends, Anthropic generates JSON using a tool
+call.  This returns the tool spec, meant to be added to :tools."
   (list
    :name "response_json"
    :description "Record JSON output according to user prompt"
@@ -374,6 +376,8 @@ for details.  This implementation handles the Anthropic API."
 
 ;; TODO: Remove these functions (#792)
 (defun gptel--anthropic-format-tool-id (tool-id)
+  "Return TOOL-ID in the format expected by the Anthropic API.
+Generate a random ID if TOOL-ID is nil."
   (unless tool-id
     (setq tool-id (substring
                    (md5 (format "%s%s" (random) (float-time)))
@@ -384,11 +388,13 @@ for details.  This implementation handles the Anthropic API."
     (format "toolu_%s" tool-id)))
 
 (defun gptel--anthropic-unformat-tool-id (tool-id)
+  "Strip the Anthropic prefix from TOOL-ID, if any."
   (or (and (string-match "toolu_\\(.+\\)" tool-id)
            (match-string 1 tool-id))
       tool-id))
 
 (cl-defmethod gptel--parse-list ((backend gptel-anthropic) prompt-list)
+  "Parse PROMPT-LIST into a list of messages for BACKEND."
   (let ((full-prompt
          (if (consp (car prompt-list))
              (let ((prompts))
@@ -425,6 +431,8 @@ for details.  This implementation handles the Anthropic API."
     full-prompt))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-anthropic) &optional max-entries)
+  "Parse the current buffer into a list of messages for BACKEND.
+Include up to MAX-ENTRIES queries/responses."
   (let ((prompts) (prev-pt (point)))
     (if (or gptel-mode gptel-track-response)
         (while (and (or (not max-entries) (>= max-entries 0))
@@ -677,7 +685,6 @@ Media files, if present, are placed in `gptel-context'."
       :input-cost 15
       :output-cost 75
       :cutoff-date "2025-03")))
-
   "List of available Anthropic models and associated properties.
 Keys:
 
@@ -731,7 +738,7 @@ information, in the form
  (model-name . plist)
 
 For a list of currently recognized plist keys, see
-`gptel--anthropic-models'. An example of a model specification
+`gptel--anthropic-models'.  An example of a model specification
 including both kinds of specs:
 
 :models

@@ -190,10 +190,10 @@
 ;;; Code:
 (defconst gptel-version "0.9.9.5")
 
-(declare-function markdown-mode "markdown-mode")
-(declare-function gptel-menu "gptel-transient")
-(declare-function gptel-system-prompt "gptel-transient")
-(declare-function gptel-tools "gptel-transient")
+(declare-function markdown-mode "ext:markdown-mode")
+(declare-function gptel-menu "gptel-transient" nil t)
+(declare-function gptel-system-prompt "gptel-transient" nil t)
+(declare-function gptel-tools "gptel-transient" nil t)
 (declare-function gptel--vterm-pre-insert "gptel-integrations")
 (declare-function pulse-momentary-highlight-region "pulse")
 
@@ -209,7 +209,7 @@
 (define-obsolete-function-alias
   'gptel-set-topic 'gptel-org-set-topic "0.7.5")
 
-(declare-function markdown-link-at-pos "markdown-mode")
+(declare-function markdown-link-at-pos "ext:markdown-mode")
 
 (eval-when-compile
   (require 'subr-x))
