@@ -1261,6 +1261,13 @@ See `gptel-request--handlers' for details.")
 (defvar-local gptel--fsm-last nil
   "State machine for latest request in the buffer.")
 
+(defsubst gptel--fsm-live-p (&optional fsm)
+  "Check if FSM is a live (ongoing) request.
+Defaults to checking the variable `gptel--fsm-last'."
+  (unless fsm (setq fsm gptel--fsm-last))
+  (and fsm (not (memq (gptel-fsm-state gptel--fsm-last)
+                      '(ERRS ABRT DONE)))))
+
 (defun gptel--fsm-last (fsm)
     "Capture the latest request state FSM for introspection."
     (let ((info (gptel-fsm-info fsm)))
@@ -1628,8 +1635,10 @@ Perform UI updates and run post-response hooks."
   (gptel--fsm-transition fsm))
 
 (defun gptel--update-wait (fsm)
-  "Update gptel's status in FSM after sending a request."
+  "Update gptel's status in FSM after sending a request.
+Also record the FSM for introspection and other actions."
   (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
+    (setq gptel--fsm-last fsm)
     (when gptel-mode
       (gptel--update-status " Waiting..." 'warning))))
 

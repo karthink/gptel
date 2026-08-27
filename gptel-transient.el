@@ -899,7 +899,7 @@ Also format the value of OBJ in the transient menu."
      gptel-rewrite)]
    ["Tweak Response" :if gptel--in-response-p :pad-keys t
     ("SPC" "Mark" gptel--mark-response)
-    ("M-RET" "Regenerate" gptel--regenerate :if gptel--in-response-p)
+    ("S-RET" "Regenerate" gptel--regenerate :if gptel--in-response-p)
     ("P" "Previous variant" gptel--previous-variant
      :if gptel--at-response-history-p
      :transient t)
@@ -945,7 +945,8 @@ Also format the value of OBJ in the transient menu."
      (lambda () (interactive)
        (pop-to-buffer (get-buffer-create gptel--log-buffer-name)))
      :format "  %k %d")]]
-  [(gptel--suffix-send)]
+  [(gptel--suffix-steer)
+   (gptel--suffix-send)]
   (interactive)
   (gptel--sanitize-model)
   (when gptel-context        ;MAYBE: Move this to a dedicated sanitize function?
@@ -1860,6 +1861,39 @@ for details."
 
 ;; Allow calling from elisp
 (put 'gptel--suffix-send 'interactive-only nil)
+
+;; ** Suffix to steer ongoing response
+
+(transient-define-suffix gptel--suffix-steer ()
+  "Insert a steering message into the latest ongoing query.
+Prompt for instructions and queue them to be sent with the LLM's next
+tool call result."
+  :key "M-RET"
+  :description "Steer ongoing query"
+  :if (lambda () (and (gptel--fsm-live-p)
+                 (plist-get (gptel-fsm-info gptel--fsm-last) :tools)))
+  (interactive)
+  (when-let* ((msg (read-string "Steering instructions for ongoing query: "))
+              (info (gptel-fsm-info gptel--fsm-last)))
+    (plist-put info :steering-message (string-trim msg))
+    (when-let* ((tm (or (plist-get info :tracking-marker) ;end of ongoing response
+                        (plist-get info :position)))      ;end of prompt
+                (tbuf (marker-buffer tm))
+                ((buffer-live-p tbuf)))
+      (with-current-buffer tbuf
+        ;; Front and rear-advance to move it with the response
+        (letrec ((steer-ov (make-overlay tm tm nil t t))
+                 (clear-steer-ov
+                  (lambda (&rest _)
+                    (remove-hook 'gptel-post-tool-call-functions clear-steer-ov t)
+                    (remove-hook 'gptel-post-response-functions clear-steer-ov t)
+                    (when (overlay-buffer steer-ov) (delete-overlay steer-ov)))))
+          (overlay-put
+           steer-ov 'after-string
+           (concat "\n" (propertize "QUEUED" 'face '(:inherit shadow :box -1))
+                   (propertize (concat ": " msg) 'face 'shadow) "\n"))
+          (add-hook 'gptel-post-response-functions clear-steer-ov nil t)
+          (add-hook 'gptel-post-tool-call-functions clear-steer-ov nil t))))))
 
 ;; ** Suffix to regenerate response
 
