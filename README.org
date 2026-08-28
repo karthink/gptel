@@ -1299,13 +1299,13 @@ gptel provides a few powerful, general purpose and flexible commands.  You can d
    - to read the prompt from or redirect the response elsewhere,
    - or to replace the prompt with the response.
 
-#+html: <img src="https://github.com/karthink/gptel/assets/8607532/3562a6e2-7a5c-4f7e-8e57-bf3c11589c73" align="center" alt="Image showing gptel's menu with some of the available query options.">
+#+html: <img src="https://github.com/karthink/gptel/assets/8607532/3562a6e2-7a5c-4f7e-8e57-bf3c11589c73" align="center" alt="Emacs displays Julia source code in an upper buffer and gptel-menu below it.  The menu shows options for setting a system message or directive, adding the current region, a buffer, or a file as context, and configuring request parameters.  The selected model is Claude 3.5 Sonnet, the response length is automatic, previous responses are included, and context is included with the system message.  It also offers controls for taking the prompt from the minibuffer or kill ring, responding in place, and sending the response to the echo area, a gptel session, any buffer, or the kill ring.  Pressing RET sends the prompt, and a separate option invokes refactoring.  This illustrates how gptel exposes per-request context, model, prompt-source, response-destination, and editing controls directly in Emacs.">
 
 -----
 
 You can use =gptel-highlight-mode= to highlight LLM responses in different ways:
 
-#+html: <img width="1226" height="764" alt="Image" src="https://github.com/user-attachments/assets/1a3d5411-3cbc-41cf-b9fa-5089a1ffa096" />
+#+html: <img width="1226" height="764" alt="An Emacs Org-mode gptel conversation titled “Peripherals.nix fix.” The buffer indicates that Claude is ready and that media is being ignored. The user asks what the Nix code in ~/dotnix/modules/peripherals.nix does, including the string '@files' in the prompt. A visible read_file tool invocation shows gptel reading that path. Claude explains that the file configures an Elecom TrackBall and TrackPoint for Wayland and X11, creates hwdb and X11 configuration entries, maps buttons, and enables wheel emulation. The user then asks how to configure NixOS so the hwdb changes apply automatically after reboot instead of requiring “sudo systemd hwdb-update” and “sudo udevadm trigger.” This demonstrates the use of the '@preset' syntax in gptel prompts." src="https://github.com/user-attachments/assets/1a3d5411-3cbc-41cf-b9fa-5089a1ffa096" alt="" />
 
 You can also define a "preset" bundle of options that are applied together, see [[#option-presets][Option presets]] below.
 
@@ -1319,7 +1319,7 @@ You can also define a "preset" bundle of options that are applied together, see 
 
 3. Set chat parameters (LLM provider, model, system prompt etc) for the session by calling =gptel-send= with a prefix argument (=C-u C-c RET=):
    
-#+html: <img src="https://github.com/karthink/gptel/assets/8607532/eb4867e5-30ac-455f-999f-e17123afb810" align="center" alt="Image showing gptel's menu with some of the available query options.">
+#+html: <img src="https://github.com/karthink/gptel/assets/8607532/eb4867e5-30ac-455f-999f-e17123afb810" align="center" alt="An empty Emacs gptel conversation buffer for Claude.  The header shows Claude is ready, the prompt preset is “default,” and the selected model is Claude 3.5 Sonnet.  The gptel query menu is open below.  It lists options to set a system prompt, add a region, buffer or file as context, choose the model, set response length, include previous responses, and include or omit context.  Additional options select the prompt source: minibuffer, kill ring or respond-in-place, and the response destination: echo area, a gptel session, any buffer, or the kill ring.">
 
 That's it. You can go back and edit previous prompts and responses if you want.
 
@@ -1338,7 +1338,7 @@ gptel supports sending media in Markdown and Org chat buffers, but this feature 
 - You can enable it globally, for all models that support it, by setting =gptel-track-media=.  
 - Or you can set it locally, just for the chat buffer, via the header line or gptel's transient menu:
 
-#+html: <img src="https://github.com/user-attachments/assets/91f6aaab-2ea4-4806-9cc9-39b4b46a8e6c" align="center" alt="Image showing a gptel chat buffer's header line with the button to toggle media support">
+#+html: <img src="https://github.com/user-attachments/assets/91f6aaab-2ea4-4806-9cc9-39b4b46a8e6c" align="center" alt="Screenshot of a gptel chat buffer header line. It features a clickable underlined button reading '[Sending media]' enclosed in a red box, followed by '[Prompt: default]' and '[gpt-4o-mini]' model indicators. Below this, the prompt asks to describe an image, with an attached file path 'file:~/Pictures/Mx-butterfly.png' highlighted in blue.">
 
 -----
 
@@ -1395,10 +1395,10 @@ The second is globally via dedicated context commands: you can add a selected re
 This additional context is "live" and not a snapshot.  Once added, the regions, buffers or files are scanned and included at the time of each query.  When using multi-modal models, added files can be of any supported type -- typically images.
 
 You can examine the active context from the menu:
-#+html: <img src="https://github.com/karthink/gptel/assets/8607532/63cd7fc8-6b3e-42ae-b6ca-06ff935bae9c" align="center" alt="Image showing gptel's menu with the "inspect context" command.">
+#+html: <img src="https://github.com/karthink/gptel/assets/8607532/63cd7fc8-6b3e-42ae-b6ca-06ff935bae9c" align="center" alt="Screenshot of the gptel transient menu. A red box highlights the Inspect command under the Context section, which allows users to review all currently queued context before sending a prompt.  The text of the Inspect Transient option is: 'C Inspect (2 regions in 2 buffers, 1 file)'"inspect context" command.">
 
 And then browse through or remove context from the context buffer:
-#+html: <img src="https://github.com/karthink/gptel/assets/8607532/79a5ffe8-3d63-4bf7-9bf6-0457ab61bf2a" align="center" alt="Image showing gptel's context buffer.">
+#+html: <img src="https://github.com/karthink/gptel/assets/8607532/79a5ffe8-3d63-4bf7-9bf6-0457ab61bf2a" align="center" alt="Screenshot of gptel's context inspection buffer.  It displays marked deletions (highlighted in green) in a .gitignore file, and selected line ranges from a Julia source file ('base.jl', lines 26-31) that will be sent to the LLM.">
 
 By default, files in a version control system that are not project files ("gitignored" files) will not be added to the context.  To be able to add these files, set =gptel-context-restrict-to-project-files= to =nil=.  Note that remote files are always included, regardless of the value of =gptel-context-restrict-to-project-files=.
 
@@ -1481,7 +1481,7 @@ Tools can also be asynchronous, use optional arguments and arguments with more s
 #+html: </summary>
 Once defined, tools can be selected (globally, buffer-locally or for the next request only) from gptel's transient menu:
 
-#+html: <img src="https://github.com/user-attachments/assets/fd878596-b313-4385-b675-3d6546909d8b" align="center" alt="Image showing gptel's tool selection menu.">
+#+html: <img src="https://github.com/user-attachments/assets/fd878596-b313-4385-b675-3d6546909d8b" align="center" alt="Screenshot of gptel's tool selection menu. It displays global settings at the top and categories of available tools, including 'filesystem tools' (read_file, create_file, make_directory, list_directory), 'Web tools' (get_youtube_meta, read_url), 'Emacs tools' (modify_buffer, read_buffer, open_file_or_dir, append_to_buffer, search_local_db), and 'Misc tools' (record_summary).  None of the tools are selected.">
 
 From here you can also require confirmation for all tool calls, and decide if tool call results should be included in the LLM response.
 
@@ -1527,7 +1527,7 @@ gptel includes =gptel-integrations=, a small library to make this more convenien
 
 Once loaded, you can run the =gptel-mcp-connect= and =gptel-mcp-disconnect= commands to register and unregister MCP-provided tools in gptel.  These will also show up in the tools menu in gptel, accessed via =M-x gptel-menu= or =M-x gptel-tools=:
 
-#+html: <img src="https://github.com/user-attachments/assets/2cbbf8a0-49c7-49a5-ba24-514ad7e08799" align="center" alt="Image showing MCP tool registration commands in gptel's tool selection menu.">
+#+html: <img src="https://github.com/user-attachments/assets/2cbbf8a0-49c7-49a5-ba24-514ad7e08799" align="center" alt="Screenshot of gptel's tool selection menu highlighting Model Context Protocol (MCP) integration.  A red box points to commands 'M+ Add tools from MCP servers' and 'M- Remove tools from MCP servers' at the top right, allowing dynamic loading of external toolsets alongside standard gptel tools.  Some unselected filesystem tools are also visible.">
 
 MCP-provided tools can be used as normal with gptel.  Here is a screencast of the process.  (In this example the "github" MCP server is installed separately using npm.)
 
@@ -1540,6 +1540,13 @@ Here's an example of using these tools:
 #+html: <p align="center">
 https://github.com/user-attachments/assets/b48a6a24-a130-4da7-a2ee-6ea568e10c85
 #+html: </p>
+
+With =gptel-mcp-connect= you can register MCP servers and selectively activate MCP tools. It also auto-starts the MCP servers is those are not already started.
+
+#+begin_src emacs-lisp
+  (gptel-mcp-connect '("fetch" "youtube" ("filesystem" "list_directory" "get_file_info")))
+#+end_src
+
 
 #+html: </details>
 
@@ -1566,11 +1573,11 @@ If you would like one of these things to happen automatically, you can customize
 
 These options are also available from =gptel-rewrite=:
 
-#+html: <img src="https://github.com/user-attachments/assets/589785b9-aa3f-414a-98dd-d26b7509de08" align="center" />
+#+html: <img src="https://github.com/user-attachments/assets/589785b9-aa3f-414a-98dd-d26b7509de08" align="center" alt="Screenshot of an Emacs buffer containing a Bash script containing gptel-rewrite's output in an overlay.  The lower window is a Transient menu, showing gptel rewrite options, including the instructions ('Rewrite: Ensure that the history file stays sorted, without duplicates'), diff options, and commands to either diff or ediff the region rewritten by the LLM."/>
 
 And you can call them directly when the cursor is in the rewritten region:
 
-#+html: <img src="https://github.com/user-attachments/assets/f5b3ca47-e146-45fe-8584-f11035fa4dbc" align="center" />
+#+html: <img src="https://github.com/user-attachments/assets/f5b3ca47-e146-45fe-8584-f11035fa4dbc" align="center" alt="Screenshot of a Bash script buffer showing a pending gptel rewrite. A status bar at the top right reads '[ChatGPT:gpt-4o-mini] REFACTOR READY', and a red-bordered overlay at the bottom lists keyboard shortcuts (such as C-c C-a to accept, C-c C-k to clear, and C-c C-d for diff) to apply the generated rewrite."/>
 
 *** Extra Org mode conveniences
 
@@ -1604,7 +1611,7 @@ You can declare the gptel model, backend, temperature, system message and other 
 *** Introspection (examine, debug or modify requests)
 
 Set =gptel-expert-commands= to =t= to display additional options in gptel's transient menu.
-#+html: <img width="800" height="403" alt="Image" src="https://github.com/user-attachments/assets/636ff77c-73d9-449b-9d49-bb792d8abd45" align="center"/>
+#+html: <img width="800" height="403" alt="Screenshot of gptel's menu with two added sections connected by colored arrows: a red-bordered 'Examine prompt' section containing 'I Inspect query (Lisp)' and 'J Inspect query (JSON)' for dry runs, and a blue-bordered 'Examine response' section containing log level settings and log inspection commands." src="https://github.com/user-attachments/assets/636ff77c-73d9-449b-9d49-bb792d8abd45" align="center"/>
 
 *Examining prompts*: you can examine and edit gptel request payloads before sending them.
 
@@ -1676,11 +1683,11 @@ gptel does /not/ use any prefix or semantic/syntax element in the buffer (such a
 
 In every menu used to set options, gptel provides a "scope" option, bound to the ~=~ key:
 
-#+html: <img src="https://github.com/user-attachments/assets/f9904134-2905-4b1d-ad37-b64c777af8ac" align="center" />
+#+html: <img src="https://github.com/user-attachments/assets/f9904134-2905-4b1d-ad37-b64c777af8ac" align="center" alt="Screenshot of gptel's menu interface with a red box highlighting the '= Scope (global|buffer|oneshot)' option set to 'buffer'.  This option determines the 'scope' with which the other options in the column will be set.  Other options visible include model selection (ChatGPT:gpt-4.1-mini), response length, context inclusion, reasoning settings, and response destination buffers." />
 
-#+html: <img src="https://github.com/user-attachments/assets/c0950035-bf65-43ae-b649-8e3b651ce3f1" align="center" />
+#+html: <img src="https://github.com/user-attachments/assets/c0950035-bf65-43ae-b649-8e3b651ce3f1" align="center" alt="Screenshot of gptel's system prompt selection menu.  A red box highlights the scope option at the top with allowed values global/buffer/oneshot, followed by a list of available system prompts with the labels Default, Code-Infill, Programmer, Cliwhiz, Emacser, Explain, and Tutor, each with a brief description of its behavior." />
 
-#+html: <img src="https://github.com/user-attachments/assets/fa3b1246-e00f-4c5e-88c7-46557b3507ef" align="center" />
+#+html: <img src="https://github.com/user-attachments/assets/fa3b1246-e00f-4c5e-88c7-46557b3507ef" align="center" alt="Screenshot of gptel's preset configuration menu.  A red box highlights the scope option at the top with allowed values global/buffer/oneshot.  Below it, a list of saved configuration presets is displayed, with 'p prog' (Claude Sonnet configured for code generation) highlighted in green.  Other presets include sonar-gen, cliwiz, websearch, tutor, explain, pro, demo, and files." />
 
 You can flip this switch before setting the option to =buffer= or =oneshot=.  You only need to flip this switch once, it's a persistent setting.  =buffer= sets the option buffer-locally, =oneshot= will set it for the next gptel request only.  The default scope is global.
 
@@ -1691,11 +1698,11 @@ You can flip this switch before setting the option to =buffer= or =oneshot=.  Yo
 
 Any model options you set are saved according to the scope (see previous question).  But the redirection options in the menu are set for the next query only:
 
-#+html: <img src="https://github.com/karthink/gptel/assets/8607532/2ecc6be9-aa52-4287-a739-ba06e1369ec2" alt="https://github.com/karthink/gptel/assets/8607532/2ecc6be9-aa52-4287-a739-ba06e1369ec2">
+#+html: <img src="https://github.com/karthink/gptel/assets/8607532/2ecc6be9-aa52-4287-a739-ba06e1369ec2" alt="Screenshot of gptel's configuration menu focusing on prompt/response routing. A red box surrounds the 'Prompt:' section (offering minibuffer, kill-ring, and in-place options) and the 'Response to:' section (offering minibuffer, new session, existing session, and kill-ring destinations).">
 
 You can make them persistent across this Emacs session by pressing ~C-x C-s~:
 
-#+html: <img src="https://github.com/karthink/gptel/assets/8607532/b8bcb6ad-c974-41e1-9336-fdba0098a2fe" alt="https://github.com/karthink/gptel/assets/8607532/b8bcb6ad-c974-41e1-9336-fdba0098a2fe">
+#+html: <img src="https://github.com/karthink/gptel/assets/8607532/b8bcb6ad-c974-41e1-9336-fdba0098a2fe" alt="Screenshot of gptel's menu showing Transient's global commands. A red box highlights the 'Value commands' section, specifically the 'C-x C-s Save' command used for saving current transient option settings. Sticky commands and customization toggles are also visible.">
 
 (You can also cycle through presets you've saved with ~C-x p~ and ~C-x n~.)
 
@@ -1868,7 +1875,7 @@ If you use several LLMs for different tasks with accompanying system prompts (in
 
 Once defined, presets can be applied from gptel's transient menu:
 
-#+html: <img src="https://github.com/user-attachments/assets/e0cf6a32-d999-4138-8369-23512f5e9311" align="center" />
+#+html: <img src="https://github.com/user-attachments/assets/e0cf6a32-d999-4138-8369-23512f5e9311" align="center" alt="Screenshot of gptel's menu interface highlighting the gptel preset command. A red box highlights the '(@preset)' tag in the Request Parameters section, and a message at the very bottom of the Emacs echo area reads 'Applied gptel preset original', indicating that a saved preset (configuration profile) has been successfully activated."/>
 #+html: <br>
 
 To define a preset, use the =gptel-make-preset= function, which takes a name and keyword-value pairs of settings.

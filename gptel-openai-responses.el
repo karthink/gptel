@@ -220,7 +220,7 @@ Mutate state INFO with response metadata."
       (apply #'concat (nreverse content-strs)))))
 
 (cl-defmethod gptel--request-data ((backend gptel-openai-responses) prompts)
-  "JSON encode PROMPTS for sending to OpenAI Responses API."
+  "JSON encode PROMPTS for sending to the OpenAI Responses API with BACKEND."
   (let ((prompts-plist
          `( :model ,(gptel--model-name gptel-model)
             :input ,(vconcat prompts)
@@ -389,6 +389,7 @@ If POSITION is
                                        (substring prompts position)))))))
 
 (cl-defmethod gptel--parse-list ((backend gptel-openai-responses) prompt-list)
+  "Parse PROMPT-LIST into a list of messages for BACKEND."
   (if (consp (car prompt-list))
       (let ((full-prompt))              ; Advanced format, list of lists
         (dolist (entry prompt-list)
@@ -416,6 +417,8 @@ If POSITION is
              (list :role (if role "user" "assistant") :content text))))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-openai-responses) &optional max-entries)
+  "Parse the current buffer into a list of messages for BACKEND.
+Include up to MAX-ENTRIES queries/responses."
   (let ((prompts) (prev-pt (point)))
     (if (or gptel-mode gptel-track-response)
         (while (and (or (not max-entries) (>= max-entries 0))

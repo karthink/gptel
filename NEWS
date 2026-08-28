@@ -63,15 +63,18 @@
 
 ** New models and backends
 
-- Bedrock backend: Add support for =claude-opus-4-7= and
-  =claude-opus-4-8=.
+- Bedrock backend: Add support for =claude-opus-4-7=, =claude-opus-4-8=,
+  =claude-opus-4-9=, =claude-opus-5=, =claude-haiku-4-5= and
+  =claude-fable-5=.
 
 - Anthropic backend: Add support for =claude-sonnet-5=,
-  =claude-opus-4-8=, =claude-opus-5= and =claude-fable-5=.
+  =claude-opus-4-8=, =claude-opus-4-9=, =claude-opus-5= and
+  =claude-fable-5=.
 
 - GitHub Copilot backend: Add support for =gemini-3.7-flash=,
-  =gemini-3.6-flash=, =gemini-3.5-flash=, =gpt-5.6-sol=, =gpt-5.6-terra=, =gpt-5.6-luna=,
-  =claude-opus-4.8=, =claude-sonnet-5=, =claude-opus-5= and =claude-fable-5=.
+  =gemini-3.6-flash=, =gemini-3.5-flash=, =gpt-5.6-sol=,
+  =gpt-5.6-terra=, =gpt-5.6-luna=, =claude-opus-4.8=, =claude-sonnet-5=,
+  =claude-opus-5= and =claude-fable-5=.
 
 - Gemini backend: Add support for =gemini-3.7-flash=,
   =gemini-3.6-flash=, =gemini-3.5-flash=, =gemini-3.5-flash-lite=,
@@ -79,6 +82,8 @@
 
 - OpenAI backend: Add support for =gpt-5.6-sol=, =gpt-5.6-terra= and
   =gpt-5.6-luna=.
+
+- Deepseek backend: Add support for =deepseek-v4-flash-vision-exp=.
 
 - xAI backend: Add support for =grok-4.3=, =grok-build-0.1= and
   =grok-4.5=.
@@ -140,6 +145,10 @@
 - The Anthropic backend now supports tool calls and structured (JSON)
   outputs simultaenously in a request.  Previously the two were
   incompatible.
+
+- You can now specify (programmatically) which MCP tools to add when
+  starting MCP servers.  Previously all tools provided by an MCP server
+  would be added automatically.  See ~gptel-mcp-connect~ for details.
 
 ** Notable bug fixes
 
@@ -421,6 +430,9 @@
 
   Support for =gptel-send= in Term/Ansi-Term and Eat buffers is not
   yet available but planned.
+
+- =gptel-mcp-connect= now supports selective activation of tools for
+  each MCP server.
 
 ** Notable bug fixes
 

@@ -25,9 +25,9 @@
 (require 'cl-generic)
 (require 'map)
 (require 'cl-lib)
-(eval-and-compile (require 'gptel-request))
+(require 'gptel-request)
 
-(declare-function prop-match-value "text-property-search")
+(declare-function prop-match-value "text-property-search" nil t)
 (declare-function text-property-search-backward "text-property-search")
 (declare-function json-read "json")
 (declare-function gptel-context--wrap "gptel-context")
@@ -128,7 +128,7 @@ list."
      (and content-strs (apply #'concat content-strs)))))
 
 (cl-defmethod gptel--request-data ((backend gptel-gemini) prompts)
-  "JSON encode PROMPTS for sending to Gemini."
+  "JSON encode PROMPTS for sending to the Gemini BACKEND."
   (let ((prompts-plist
          (list :contents (vconcat prompts)
                :safetySettings [(:category "HARM_CATEGORY_HARASSMENT"
@@ -188,6 +188,7 @@ list."
      (gptel--model-request-params  gptel-model))))
 
 (cl-defmethod gptel--parse-schema ((_backend gptel-gemini) schema)
+  "Convert SCHEMA to a Gemini API response schema spec."
   (list :responseMimeType "application/json"
         :responseSchema (gptel--preprocess-schema
                          (gptel--dispatch-schema-type schema))))
@@ -323,6 +324,7 @@ for details.  This implementation handles the Gemini API."
              (truncate-string-to-width (prin1-to-string new-call) 50 nil nil t)))))
 
 (cl-defmethod gptel--parse-list ((backend gptel-gemini) prompt-list)
+  "Parse PROMPT-LIST into a list of messages for BACKEND."
   (if (consp (car prompt-list))
       (let ((full-prompt))              ; Advanced format, list of lists
         (dolist (entry prompt-list)
@@ -351,6 +353,8 @@ for details.  This implementation handles the Gemini API."
              finally return prompts)))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-gemini) &optional max-entries)
+  "Parse the current buffer into a list of messages for BACKEND.
+Include up to MAX-ENTRIES queries/responses."
   (let ((prompts) (prev-pt (point)))
     (if (or gptel-mode gptel-track-response)
         (while (and (or (not max-entries) (>= max-entries 0))
@@ -444,223 +448,224 @@ Media files, if present, are placed in `gptel-context'."
         (plist-get (car prompts) :parts))))
 
 (defconst gptel--gemini-models
-  '((gemini-pro-latest
-     :description "Most powerful Gemini thinking model, always points to latest version"
-     :capabilities (tool-use json media audio video)
-     :reasoning-effort (member low medium high)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 1048               ; 65536 output token limit
-     :input-cost 1.25                   ; 2.50 for >200k tokens
-     :output-cost 10.00                 ; 15 for >200k tokens
-     :cutoff-date "2025-01")
-    (gemini-flash-latest
-     :description "Best price / performance, always points to latest version"
-     :capabilities (tool-use json media audio video)
-     :reasoning-effort (member minimal low medium high)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 1048 ; 65536 output token limit
-     :input-cost 0.3
-     :output-cost 2.50
-     :cutoff-date "2025-01")
-    (gemini-flash-lite-latest
-     :description "Fastest, cheapest Gemini model, always points to latest version"
-     :capabilities (tool-use json media)
-     :reasoning-effort (member minimal low medium high)
-     :capabilities (tool-use json media audio video)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "application/pdf" "text/plain"
-                  "audio/x-aac" "audio/flac" "audio/mp3" "audio/m4a" "audio/mpeg"
-                  "audio/mpga" "audio/mp4" "audio/opus" "audio/pcm" "audio/wav" "audio/webm"
-                  "video/x-flv" "video/quicktime" "video/mpeg" "video/mp4"
-                  "video/webm" "video/wmv" "video/3gpp")
-     :context-window 1048 ; 64000 output token limit
-     :input-cost 0.10
-     :output-cost 0.40
-     :cutoff-date "2025-01")
-    (gemini-3.7-flash
-     :description "Next generation reasoning model with customizable thinking configurations"
-     :capabilities (tool-use json media audio video)
-     :reasoning-effort (member minimal low medium high)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 1048               ; 65536 output token limit
-     :input-cost 0.75                   ; 1.50 from 2027-01-01
-     :output-cost 3.75                  ; 7.50 from 2027-01-01
-     :cutoff-date "2026-03")
-    (gemini-3.6-flash
-     :description "Most intelligent Gemini model built for speed, combining frontier intelligence with superior search and grounding"
-     :capabilities (tool-use json media audio video)
-     :reasoning-effort (member minimal low medium high)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 1048
-     :input-cost 0.75                   ; 1.50 from 2027-01-01
-     :output-cost 3.75                  ; 7.50 from 2027-01-01
-     :cutoff-date "2026-03")
-    (gemini-3.5-flash
-     :description "Most intelligent Gemini model for sustained frontier performance in agentic and coding tasks"
-     :capabilities (tool-use json media audio video)
-     :reasoning-effort (member minimal low medium high)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 1048               ; 65536 output token limit
-     :input-cost 1.50
-     :output-cost 9.00
-     :cutoff-date "2025-01")
-    (gemini-3.5-flash-lite
-     :description "Most cost-efficient multimodal Gemini model, optimized for high-volume agentic tasks and simple data processing"
-     :capabilities (tool-use json media audio video)
-     :reasoning-effort (member minimal low medium high)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 1048
-     :input-cost 0.30
-     :output-cost 2.50
-     :cutoff-date "2026-07")
-    (gemini-3.1-pro-preview
-     :description "Most intelligent Gemini model with SOTA reasoning and multimodal understanding"
-     :capabilities (tool-use json media audio video)
-     :reasoning-effort (member low medium high)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 1048               ; 65536 output token limit
-     :input-cost 2.0                    ; 4.0 for >200k tokens
-     :output-cost 12.00                 ; 18.0 for >200k tokens
-     :cutoff-date "2025-01")
-    (gemini-3.1-flash-lite
-     :description "Most cost-efficient multimodal Gemini model, offering the fastest performance for high-frequency, lightweight tasks"
-     :capabilities (tool-use json media audio video)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 1048
-     :input-cost 0.25
-     :output-cost 1.50
-     :cutoff-date "2025-01")
-    (gemini-3-flash-preview
-     :description "Most intelligent Gemini model built for speed"
-     :capabilities (tool-use json media audio video)
-     :reasoning-effort (member minimal low medium high)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 1048               ; 65536 output token limit
-     :input-cost 0.50
-     :output-cost 3.00
-     :cutoff-date "2025-01")
-    (gemini-2.5-pro
-     :description "Most powerful Gemini thinking model with state-of-the-art performance"
-     :capabilities (tool-use json media audio video)
-     :reasoning-effort (or (member dynamic) (integer 128 32768))
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 1048               ; 65536 output token limit
-     :input-cost 1.25                   ; 2.50 for >200k tokens
-     :output-cost 10.00                 ; 15 for >200k tokens
-     :cutoff-date "2025-01")
-    (gemini-2.5-pro-preview-06-05
-     :description "Most powerful thinking model with state-of-the-art performance"
-     :capabilities (tool-use json media)
-     :reasoning-effort (or (member dynamic) (integer 128 32768))
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html")
-     :context-window 1048               ; 65536 output token limit
-     :input-cost 1.25                   ; 2.50 for >200k tokens
-     :output-cost 10.00                 ; 15 for >200k tokens
-     :cutoff-date "2025-01")
-    (gemini-2.5-flash
-     :description "Best in terms of price-performance, with well-rounded capabilities"
-     :capabilities (tool-use json media audio video)
-     :reasoning-effort (or (member dynamic) (integer 0 24576))
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html"
-                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
-                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
-     :context-window 1048               ; 65536 output token limit
-     :input-cost 0.3
-     :output-cost 2.50
-     :cutoff-date "2025-01")
-    (gemini-2.5-flash-preview-09-2025
-     :description "DEPRECATED: Please use gemini-2.5-flash instead"
-     :capabilities (tool-use json media)
-     :reasoning-effort (or (member dynamic) (integer 0 24576))
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html")
-     :context-window 1048               ; 65536 output token limit
-     :input-cost 0.15
-     :output-cost 0.60                  ; 3.50 for thinking
-     :cutoff-date "2025-01")
-    (gemini-2.5-flash-lite
-     :description "Fastest & cheapest 2.5 model, for high-volume, latency-sensitive tasks"
-     :capabilities (tool-use json media)
-     :capabilities (tool-use json media audio video)
-     :reasoning-effort (or (member dynamic) (integer 0 0) (integer 512 24576))
-     :mime-types ("image/png" "image/jpeg" "image/webp" "application/pdf" "text/plain"
-                  "audio/x-aac" "audio/flac" "audio/mp3" "audio/m4a" "audio/mpeg"
-                  "audio/mpga" "audio/mp4" "audio/opus" "audio/pcm" "audio/wav" "audio/webm"
-                  "video/x-flv" "video/quicktime" "video/mpeg" "video/mp4"
-                  "video/webm" "video/wmv" "video/3gpp")
-     :context-window 1048 ; 64000 output token limit
-     :input-cost 0.10
-     :output-cost 0.40
-     :cutoff-date "2025-01")
-    (gemini-2.5-flash-lite-preview-09-2025
-     :description "Fastest & cheapest 2.5 model, for high-volume, latency-sensitive tasks"
-     :capabilities (tool-use json media audio video)
-     :reasoning-effort (or (member dynamic) (integer 0 0) (integer 512 24576))
-     :mime-types ("image/png" "image/jpeg" "image/webp" "application/pdf" "text/plain"
-                  "audio/x-aac" "audio/flac" "audio/mp3" "audio/m4a" "audio/mpeg"
-                  "audio/mpga" "audio/mp4" "audio/opus" "audio/pcm" "audio/wav" "audio/webm"
-                  "video/x-flv" "video/quicktime" "video/mpeg" "video/mp4"
-                  "video/webm" "video/wmv" "video/3gpp")
-     :context-window 1048 ; 65536 output token limit
-     :input-cost 0.10
-     :output-cost 0.40
-     :cutoff-date "2025-01")
-    (gemini-2.0-flash
-     :description "Next gen, high speed, multimodal for a diverse variety of tasks"
-     :capabilities (tool-use json media)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html")
-     :context-window 1000
-     :input-cost 0.10
-     :output-cost 0.40
-     :cutoff-date "2024-08")
-    (gemini-2.0-flash-exp
-     :description "Next generation features, superior speed, native tool use"
-     :capabilities (tool-use json media)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html")
-     :context-window 1000
-     :input-cost 0.00
-     :output-cost 0.00)
-    (gemini-2.0-flash-thinking-exp
-     :description "DEPRECATED: Please use gemini-2.0-flash-thinking-exp-01-21 instead"
-     :capabilities (tool-use media)
-     :context-window 32
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "text/plain" "text/csv" "text/html")
-     :input-cost 0.00
-     :output-cost 0.00))
+  (gptel--process-models
+   '((gemini-pro-latest
+      :description "Most powerful Gemini thinking model, always points to latest version"
+      :capabilities (tool-use json media audio video)
+      :reasoning-effort (member low medium high)
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html"
+                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+      :context-window 1048               ; 65536 output token limit
+      :input-cost 1.25                   ; 2.50 for >200k tokens
+      :output-cost 10.00                 ; 15 for >200k tokens
+      :cutoff-date "2025-01")
+     (gemini-flash-latest
+      :description "Best price / performance, always points to latest version"
+      :capabilities (tool-use json media audio video)
+      :reasoning-effort (member minimal low medium high)
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html"
+                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+      :context-window 1048 ; 65536 output token limit
+      :input-cost 0.3
+      :output-cost 2.50
+      :cutoff-date "2025-01")
+     (gemini-flash-lite-latest
+      :description "Fastest, cheapest Gemini model, always points to latest version"
+      :capabilities (tool-use json media)
+      :reasoning-effort (member minimal low medium high)
+      :capabilities (tool-use json media audio video)
+      :mime-types ("image/png" "image/jpeg" "image/webp" "application/pdf" "text/plain"
+                   "audio/x-aac" "audio/flac" "audio/mp3" "audio/m4a" "audio/mpeg"
+                   "audio/mpga" "audio/mp4" "audio/opus" "audio/pcm" "audio/wav" "audio/webm"
+                   "video/x-flv" "video/quicktime" "video/mpeg" "video/mp4"
+                   "video/webm" "video/wmv" "video/3gpp")
+      :context-window 1048 ; 64000 output token limit
+      :input-cost 0.10
+      :output-cost 0.40
+      :cutoff-date "2025-01")
+     (gemini-3.7-flash
+      :description "Next generation reasoning model with customizable thinking configurations"
+      :capabilities (tool-use json media audio video)
+      :reasoning-effort (member minimal low medium high)
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html"
+                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+      :context-window 1048               ; 65536 output token limit
+      :input-cost 0.75                   ; 1.50 from 2027-01-01
+      :output-cost 3.75                  ; 7.50 from 2027-01-01
+      :cutoff-date "2026-03")
+     (gemini-3.6-flash
+      :description "Most intelligent Gemini model built for speed, combining frontier intelligence with superior search and grounding"
+      :capabilities (tool-use json media audio video)
+      :reasoning-effort (member minimal low medium high)
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html"
+                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+      :context-window 1048
+      :input-cost 0.75                   ; 1.50 from 2027-01-01
+      :output-cost 3.75                  ; 7.50 from 2027-01-01
+      :cutoff-date "2026-03")
+     (gemini-3.5-flash
+      :description "Most intelligent Gemini model for sustained frontier performance in agentic and coding tasks"
+      :capabilities (tool-use json media audio video)
+      :reasoning-effort (member minimal low medium high)
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html"
+                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+      :context-window 1048               ; 65536 output token limit
+      :input-cost 1.50
+      :output-cost 9.00
+      :cutoff-date "2025-01")
+     (gemini-3.5-flash-lite
+      :description "Most cost-efficient multimodal Gemini model, optimized for high-volume agentic tasks and simple data processing"
+      :capabilities (tool-use json media audio video)
+      :reasoning-effort (member minimal low medium high)
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html"
+                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+      :context-window 1048
+      :input-cost 0.30
+      :output-cost 2.50
+      :cutoff-date "2026-07")
+     (gemini-3.1-pro-preview
+      :description "Most intelligent Gemini model with SOTA reasoning and multimodal understanding"
+      :capabilities (tool-use json media audio video)
+      :reasoning-effort (member low medium high)
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html"
+                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+      :context-window 1048               ; 65536 output token limit
+      :input-cost 2.0                    ; 4.0 for >200k tokens
+      :output-cost 12.00                 ; 18.0 for >200k tokens
+      :cutoff-date "2025-01")
+     (gemini-3.1-flash-lite
+      :description "Most cost-efficient multimodal Gemini model, offering the fastest performance for high-frequency, lightweight tasks"
+      :capabilities (tool-use json media audio video)
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html"
+                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+      :context-window 1048
+      :input-cost 0.25
+      :output-cost 1.50
+      :cutoff-date "2025-01")
+     (gemini-3-flash-preview
+      :description "Most intelligent Gemini model built for speed"
+      :capabilities (tool-use json media audio video)
+      :reasoning-effort (member minimal low medium high)
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html"
+                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+      :context-window 1048               ; 65536 output token limit
+      :input-cost 0.50
+      :output-cost 3.00
+      :cutoff-date "2025-01")
+     (gemini-2.5-pro
+      :description "Most powerful Gemini thinking model with state-of-the-art performance"
+      :capabilities (tool-use json media audio video)
+      :reasoning-effort (or (member dynamic) (integer 128 32768))
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html"
+                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+      :context-window 1048               ; 65536 output token limit
+      :input-cost 1.25                   ; 2.50 for >200k tokens
+      :output-cost 10.00                 ; 15 for >200k tokens
+      :cutoff-date "2025-01")
+     (gemini-2.5-pro-preview-06-05
+      :description "Most powerful thinking model with state-of-the-art performance"
+      :capabilities (tool-use json media)
+      :reasoning-effort (or (member dynamic) (integer 128 32768))
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html")
+      :context-window 1048               ; 65536 output token limit
+      :input-cost 1.25                   ; 2.50 for >200k tokens
+      :output-cost 10.00                 ; 15 for >200k tokens
+      :cutoff-date "2025-01")
+     (gemini-2.5-flash
+      :description "Best in terms of price-performance, with well-rounded capabilities"
+      :capabilities (tool-use json media audio video)
+      :reasoning-effort (or (member dynamic) (integer 0 24576))
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html"
+                   "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                   "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+      :context-window 1048               ; 65536 output token limit
+      :input-cost 0.3
+      :output-cost 2.50
+      :cutoff-date "2025-01")
+     (gemini-2.5-flash-preview-09-2025
+      :description "DEPRECATED: Please use gemini-2.5-flash instead"
+      :capabilities (tool-use json media)
+      :reasoning-effort (or (member dynamic) (integer 0 24576))
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html")
+      :context-window 1048               ; 65536 output token limit
+      :input-cost 0.15
+      :output-cost 0.60                  ; 3.50 for thinking
+      :cutoff-date "2025-01")
+     (gemini-2.5-flash-lite
+      :description "Fastest & cheapest 2.5 model, for high-volume, latency-sensitive tasks"
+      :capabilities (tool-use json media)
+      :capabilities (tool-use json media audio video)
+      :reasoning-effort (or (member dynamic) (integer 0 0) (integer 512 24576))
+      :mime-types ("image/png" "image/jpeg" "image/webp" "application/pdf" "text/plain"
+                   "audio/x-aac" "audio/flac" "audio/mp3" "audio/m4a" "audio/mpeg"
+                   "audio/mpga" "audio/mp4" "audio/opus" "audio/pcm" "audio/wav" "audio/webm"
+                   "video/x-flv" "video/quicktime" "video/mpeg" "video/mp4"
+                   "video/webm" "video/wmv" "video/3gpp")
+      :context-window 1048 ; 64000 output token limit
+      :input-cost 0.10
+      :output-cost 0.40
+      :cutoff-date "2025-01")
+     (gemini-2.5-flash-lite-preview-09-2025
+      :description "Fastest & cheapest 2.5 model, for high-volume, latency-sensitive tasks"
+      :capabilities (tool-use json media audio video)
+      :reasoning-effort (or (member dynamic) (integer 0 0) (integer 512 24576))
+      :mime-types ("image/png" "image/jpeg" "image/webp" "application/pdf" "text/plain"
+                   "audio/x-aac" "audio/flac" "audio/mp3" "audio/m4a" "audio/mpeg"
+                   "audio/mpga" "audio/mp4" "audio/opus" "audio/pcm" "audio/wav" "audio/webm"
+                   "video/x-flv" "video/quicktime" "video/mpeg" "video/mp4"
+                   "video/webm" "video/wmv" "video/3gpp")
+      :context-window 1048 ; 65536 output token limit
+      :input-cost 0.10
+      :output-cost 0.40
+      :cutoff-date "2025-01")
+     (gemini-2.0-flash
+      :description "Next gen, high speed, multimodal for a diverse variety of tasks"
+      :capabilities (tool-use json media)
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html")
+      :context-window 1000
+      :input-cost 0.10
+      :output-cost 0.40
+      :cutoff-date "2024-08")
+     (gemini-2.0-flash-exp
+      :description "Next generation features, superior speed, native tool use"
+      :capabilities (tool-use json media)
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "application/pdf" "text/plain" "text/csv" "text/html")
+      :context-window 1000
+      :input-cost 0.00
+      :output-cost 0.00)
+     (gemini-2.0-flash-thinking-exp
+      :description "DEPRECATED: Please use gemini-2.0-flash-thinking-exp-01-21 instead"
+      :capabilities (tool-use media)
+      :context-window 32
+      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                   "text/plain" "text/csv" "text/html")
+      :input-cost 0.00
+      :output-cost 0.00)))
   "List of available Gemini models and associated properties.
 Keys:
 

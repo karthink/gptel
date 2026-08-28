@@ -32,7 +32,7 @@
 
 (defvar json-object-type)
 
-(declare-function prop-match-value "text-property-search")
+(declare-function prop-match-value "text-property-search" nil t)
 (declare-function text-property-search-backward "text-property-search")
 (declare-function json-read "json" ())
 
@@ -45,6 +45,7 @@
   context sources)
 
 (defun gptel--privategpt-parse-sources (response)
+  "Extract sources from a PrivateGPT RESPONSE, as a display string."
   (cl-loop with source-alist
            for source across (map-nested-elt response '(:choices 0 :sources))
            for name = (map-nested-elt source '(:document :doc_metadata :file_name))
@@ -61,6 +62,7 @@
 
 ;; FIXME(tool) add tool use
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-privategpt) info)
+  "Parse the PrivateGPT response stream with request plist INFO."
   (let* ((content-strs))
     (condition-case nil
         (while (re-search-forward "^data:" nil t)
@@ -81,6 +83,8 @@
 
 ;; FIXME(tool) add tool use
 (cl-defmethod gptel--parse-response ((_backend gptel-privategpt) response info)
+  "Parse a PrivateGPT RESPONSE and return its text, with sources.
+Sources are included in INFO."
   (let ((response-string (map-nested-elt response '(:choices 0 :message :content)))
         (sources-string (and (gptel-privategpt-sources (plist-get info :backend))
                              (gptel--privategpt-parse-sources response))))
@@ -120,13 +124,13 @@
 	  (models '(private-gpt))
           (endpoint "/v1/chat/completions")
           (context t) (sources t))
-  "Register an Privategpt API-compatible backend for gptel with NAME.
+  "Register a PrivateGPT backend for gptel with NAME.
 
 Keyword arguments:
 
 CURL-ARGS (optional) is a list of additional Curl arguments.
 
-HOST (optional) is the API host, \"api.privategpt.com\" by default.
+HOST (optional) is the API host, \"localhost:8001\" by default.
 
 MODELS is a list of available model names.
 
@@ -139,9 +143,9 @@ ENDPOINT (optional) is the API endpoint for completions, defaults to
 \"/v1/messages\".
 
 HEADER (optional) is for additional headers to send with each
-request. It should be an alist or a function that retuns an
+request.  It should be an alist or a function that returns an
 alist, like:
-((\"Content-Type\" . \"application/json\"))
+ ((\"Content-Type\" . \"application/json\"))
 
 KEY is a variable whose value is the API key, or function that
 returns the key.
@@ -182,6 +186,7 @@ for."
 				(:include gptel-openai)))
 
 (defsubst gptel--perplexity-parse-citations (citations)
+  "Format CITATIONS as a display string for Perplexity responses."
   (let ((counter 0))
     (concat "\n\nCitations:\n"
             (mapconcat (lambda (url)
@@ -235,8 +240,6 @@ the response."
 
 Keyword arguments:
 
-CURL-ARGS (optional) is a list of additional Curl arguments.
-
 HOST (optional) is the API host, \"api.perplexity.ai\" by default.
 
 MODELS is a list of available model names.
@@ -248,14 +251,17 @@ PROTOCOL (optional) specifies the protocol, https by default.
 ENDPOINT (optional) is the API endpoint for completions.
 
 HEADER (optional) is for additional headers to send with each
-request. It should be an alist or a function that returns an
+request.  It should be an alist or a function that returns an
 alist.
 
 KEY is a variable whose value is the API key, or function that
 returns the key.
 
 REQUEST-PARAMS (optional) is a plist of additional HTTP request
-parameters."
+parameters.
+
+The remaining keyword arguments, including CURL-ARGS, are
+optional.  For their meanings see `gptel-make-openai'."
   (declare (indent 1))
   (let ((backend (gptel--make-perplexity
                   :curl-args curl-args
@@ -330,10 +336,12 @@ to either `high' or `max'."
         (plist-put plist :reasoning_effort (symbol-name gptel-reasoning-effort))))
     plist))
 
-(cl-defmethod gptel--request-data :around ((_backend gptel-deepseek) prompts)
-  "Modify how structured output JSON schema is specified.
+(cl-defmethod gptel--request-data :around ((_backend gptel-deepseek) _prompts)
+  "Modify how structured output JSON schema is specified for Deepseek.
 
-This method works by wrapping the main implementation, passing PROMPTS."
+This method wraps the main `gptel--request-data' implementation
+to move the JSON schema from the response format to the system
+message."
   (let ((prompts-plist (cl-call-next-method)))
     (when gptel--schema
       (let ((response-format
@@ -356,20 +364,28 @@ This method works by wrapping the main implementation, passing PROMPTS."
           (protocol "https")
           (endpoint "/v1/chat/completions")
           (models '((deepseek-v4-flash
-                     :capabilities (tool reasoning)
+                     :capabilities (tool-use reasoning)
                      :reasoning-effort (member disabled high max)
                      :context-window 1000
                      :input-cost 0.14
                      :output-cost 0.28)
                     (deepseek-v4-pro
-                     :capabilities (tool reasoning)
+                     :capabilities (tool-use reasoning)
                      :reasoning-effort (member disabled high max)
                      :context-window 1000
                      :input-cost 0.435
-                     :output-cost 0.87))))
+                     :output-cost 0.87)
+                    (deepseek-v4-flash-vision-exp
+                     :capabilities (media tool-use reasoning url)
+                     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+                     :context-window 1000
+                     :input-cost 0.14
+                     :output-cost 0.28))))
   "Register a DeepSeek backend for gptel with NAME.
 
-For the meanings of the keyword arguments, see `gptel-make-openai'."
+CURL-ARGS, STREAM, KEY, REQUEST-PARAMS, HEADER, HOST, PROTOCOL,
+ENDPOINT and MODELS are all optional; for their meanings, see
+`gptel-make-openai'."
   (declare (indent 1))
   (let ((backend (gptel--make-deepseek
                   :name name
@@ -430,8 +446,9 @@ returns the key.
 STREAM is a boolean to toggle streaming responses, defaults to
 false.
 
-The other keyword arguments are all optional.  For their meanings
-see `gptel-make-openai'."
+The remaining keyword arguments (CURL-ARGS, REQUEST-PARAMS,
+HEADER, HOST, PROTOCOL, ENDPOINT and MODELS) are optional; for
+their meanings see `gptel-make-openai'."
   (declare (indent 1))
   (let ((backend (gptel--make-deepseek
                   :name name

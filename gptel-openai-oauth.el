@@ -410,15 +410,30 @@ before constructing the headers."
           (protocol "https")
           (endpoint "/backend-api/codex/responses")
           (models
-           '( gpt-5.2 gpt-5.3-codex gpt-5.3-codex-spark gpt-5.4-mini
-              gpt-5.4 gpt-5.5 gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna)))
+           '( gpt-5.2
+              (gpt-5.3-codex
+               :description "Agentic coding model"
+               :capabilities (media tool-use json url responses-api)
+               :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+               :context-window 400
+               :input-cost 1.75
+               :output-cost 14
+               :cutoff-date "2025-08")
+              (gpt-5.3-codex-spark
+               :description "Low-latency version of GPT-5.3-Codex, text only"
+               :capabilities (tool-use json responses-api)
+               :context-window 128)
+              gpt-5.4-mini gpt-5.4 gpt-5.5 gpt-5.6-sol gpt-5.6-terra
+              gpt-5.6-luna)))
   "Register a ChatGPT Plus/Pro OAuth backend for gptel with NAME.
 
 This backend uses ChatGPT OAuth tokens (not OpenAI API keys) and
 targets the Codex endpoint on chatgpt.com.  Run
 `gptel-openai-oauth-login' once to authenticate.
 
-For keyword argument meanings, see `gptel-make-openai'."
+The keyword arguments (CURL-ARGS, STREAM, REQUEST-PARAMS,
+HEADER, HOST, PROTOCOL, ENDPOINT and MODELS) are all optional;
+for their meanings, see `gptel-make-openai'."
   (declare (indent 1))
   (let ((backend (gptel--make-openai-oauth
                   :curl-args curl-args

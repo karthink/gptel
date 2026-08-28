@@ -25,7 +25,7 @@
 (require 'cl-generic)
 (eval-when-compile (require 'cl-lib))
 (require 'map)
-(eval-and-compile (require 'gptel-request))
+(require 'gptel-request)
 
 (defvar json-object-type)
 (defvar gptel-mode)
@@ -56,7 +56,7 @@ back to the LLM)."
           (output (or (plist-get usage :completion_tokens) 0))
           (cached (or (map-nested-elt
                        usage '(:prompt_tokens_details :cached_tokens))
-                      (plist-get usage :prompt_cache_hit_tokens) 
+                      (plist-get usage :prompt_cache_hit_tokens)
                       0)))
       ;; prompt_tokens includes the cached tokens, but we capture and display
       ;; the two exclusively in the UI.
@@ -158,7 +158,7 @@ information if the stream contains it."
                           (plist-put info :partial_json (list (plist-get func :arguments)))
                           ;; NOTE: Do NOT use `push' for this, it prepends and we lose the reference
                           (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
-                      ;; old tool block continues, so continue collecting arguments in :partial_json 
+                      ;; old tool block continues, so continue collecting arguments in :partial_json
                       (push (plist-get func :arguments) (plist-get info :partial_json)))))
                 ;; Check for reasoning blocks, currently only used by Openrouter
                 (unless (eq (plist-get info :reasoning-block) 'done)
@@ -215,7 +215,7 @@ Mutate state INFO with response metadata."
       content)))
 
 (cl-defmethod gptel--request-data ((backend gptel-openai) prompts)
-  "JSON encode PROMPTS for sending to ChatGPT."
+  "JSON encode PROMPTS for sending to ChatGPT with BACKEND."
   (when gptel-system-prompt
     (push (list :role "system"
                 :content gptel-system-prompt)
@@ -253,6 +253,7 @@ Mutate state INFO with response metadata."
      (gptel--model-request-params  gptel-model))))
 
 (cl-defmethod gptel--parse-schema ((_backend gptel-openai) schema)
+  "Convert SCHEMA to an OpenAI API response format spec."
   (list :type "json_schema"
         :json_schema
         (list :name (md5 (format "%s" (random)))
@@ -335,6 +336,7 @@ If the ID has the format used by a different backend, use as-is."
 ;; is handled by its defgeneric implementation
 
 (cl-defmethod gptel--parse-list ((backend gptel-openai) prompt-list)
+  "Parse PROMPT-LIST into a list of messages for BACKEND."
   (if (consp (car prompt-list))
       (let ((full-prompt))              ; Advanced format, list of lists
         (dolist (entry prompt-list)
@@ -366,6 +368,8 @@ If the ID has the format used by a different backend, use as-is."
              (list :role (if role "user" "assistant") :content text))))
 
 (cl-defmethod gptel--parse-buffer ((backend gptel-openai) &optional max-entries)
+  "Parse the current buffer into a list of messages for BACKEND.
+Include up to MAX-ENTRIES queries/responses."
   (let ((prompts) (prev-pt (point)))
     (if (or gptel-mode gptel-track-response)
         (while (and (or (not max-entries) (>= max-entries 0))
@@ -474,258 +478,259 @@ Media files, if present, are placed in `gptel-context'."
         (plist-get (car prompts) :content))))
 
 (defconst gptel--openai-models
-  '((gpt-5.4-mini
-     :description "Faster, more cost-efficient version of GPT-5.4"
-     :capabilities (media tool-use json url responses-api)
-     :reasoning-effort (member none low medium high xhigh)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 0.75
-     :output-cost 4.50
-     :cutoff-date "2025-08")
-    (gpt-5.4-nano
-     :description "Fastest, cheapest version of GPT-5.4"
-     :capabilities (media tool-use json url responses-api)
-     :reasoning-effort (member none low medium high xhigh)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 0.20
-     :output-cost 1.25
-     :cutoff-date "2025-08")
-    (gpt-5.4
-     :description "The best model for coding and agentic tasks"
-     :capabilities (media tool-use json url responses-api)
-     :reasoning-effort (member none low medium high xhigh)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1050
-     :input-cost 2.50
-     :output-cost 15
-     :cutoff-date "2025-08")
-    (gpt-5.4-pro
-     :description "Maximum performance model for reasoning tasks"
-     :capabilities (media tool-use json url responses-api)
-     ;; The pro version of the model does not support none and low.
-     :reasoning-effort (member medium high xhigh)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1050
-     :input-cost 30
-     :output-cost 180
-     :cutoff-date "2025-08")
-    (gpt-5.6-sol
-     :description "The best model for coding and agentic tasks"
-     :capabilities (media tool-use json url responses-api)
-     :reasoning-effort (member none low medium high xhigh max)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1050
-     :input-cost 5
-     :output-cost 30
-     :cutoff-date "2026-02")
-    (gpt-5.6-terra
-     :description "Faster, more cost-efficient version of GPT-5.6"
-     :capabilities (media tool-use json url responses-api)
-     :reasoning-effort (member none low medium high xhigh max)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1050
-     :input-cost 2
-     :output-cost 12
-     :cutoff-date "2026-02")
-    (gpt-5.6-luna
-     :description "Fastest, cheapest version of GPT-5.6"
-     :capabilities (media tool-use json url responses-api)
-     :reasoning-effort (member none low medium high xhigh max)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1050
-     :input-cost 0.20
-     :output-cost 1.20
-     :cutoff-date "2026-02")
-    (gpt-5.5
-     :description "The best model for coding and agentic tasks"
-     :capabilities (media tool-use json url responses-api)
-     :reasoning-effort (member none low medium high xhigh)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1050
-     :input-cost 5
-     :output-cost 30
-     :cutoff-date "2025-12")
-    (gpt-5.5-pro
-     :description "Maximum performance model for reasoning tasks"
-     :capabilities (media tool-use json url responses-api)
-     ;; The pro version of the model does not support none and low.
-     :reasoning-effort (member medium high xhigh)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1050
-     :input-cost 30
-     :output-cost 180
-     :cutoff-date "2025-12")
-    (gpt-5.3-chat-latest
-     :description "Answers right away"
-     :capabilities (media tool-use json url responses-api)
-     :reasoning-effort (member medium)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 1.75
-     :output-cost 14
-     :cutoff-date "2025-08")
-    (gpt-5.2
-     :description "The best model for coding and agentic tasks"
-     :capabilities (media tool-use json url responses-api)
-     :reasoning-effort (member none low medium high xhigh)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 1.75
-     :output-cost 14
-     :cutoff-date "2025-08")
-    (gpt-5.1
-     :description "The best model for coding and agentic tasks"
-     :capabilities (media tool-use json url responses-api)
-     :reasoning-effort (member none low medium high)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 1.25
-     :output-cost 10
-     :cutoff-date "2024-09")
-    (gpt-5-mini
-     :description "Faster, more cost-efficient version of GPT-5"
-     :capabilities (media tool-use json url responses-api)
-     :reasoning-effort (member minimal low medium high)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 0.25
-     :output-cost 2.0
-     :cutoff-date "2024-09")
-    (gpt-5-nano
-     :description "Fastest, cheapest version of GPT-5"
-     :capabilities (media tool-use json url responses-api)
-     :reasoning-effort (member minimal low medium high)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 0.05
-     :output-cost 0.40
-     :cutoff-date "2024-09")
-    (gpt-5
-     :description "Flagship model for coding, reasoning, and agentic tasks across domains"
-     :capabilities (media tool-use json url responses-api)
-     :reasoning-effort (member minimal low medium high)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 400
-     :input-cost 1.25
-     :output-cost 10
-     :cutoff-date "2024-09")
-    (gpt-4.1-mini
-     :description "Balance between intelligence, speed and cost"
-     :capabilities (media tool-use json url responses-api)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1024
-     :input-cost 0.4
-     :output-cost 1.6)
-    (gpt-4.1-nano
-     :description "Fastest, most cost-effective GPT-4.1 model"
-     :capabilities (media tool-use json url responses-api)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1024
-     :input-cost 0.10
-     :output-cost 0.40
-     :cutoff-date "2024-05")
-    (gpt-4.1
-     :description "Flagship model for complex tasks"
-     :capabilities (media tool-use json url responses-api)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 1024
-     :input-cost 2.0
-     :output-cost 8.0
-     :cutoff-date "2024-05")
-    (gpt-4o-mini
-     :description "Cheap model for fast tasks; cheaper & more capable than GPT-3.5 Turbo"
-     :capabilities (media tool-use json url responses-api)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 0.15
-     :output-cost 0.60
-     :cutoff-date "2023-10")
-    (gpt-4o
-     :description "Advanced model for complex tasks; cheaper & faster than GPT-Turbo"
-     :capabilities (media tool-use json url responses-api)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 2.50
-     :output-cost 10
-     :cutoff-date "2023-10")
-    (gpt-4.5-preview
-     :description "DEPRECATED: Use gpt-4.1 instead"
-     :capabilities (media tool-use url responses-api)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 75
-     :output-cost 150
-     :cutoff-date "2023-10")
-    (gpt-4-turbo
-     :description "Previous high-intelligence model"
-     :capabilities (media tool-use url responses-api)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 128
-     :input-cost 10
-     :output-cost 30
-     :cutoff-date "2023-11")
-    (gpt-4
-     :description "GPT-4 snapshot from June 2023 with improved function calling support"
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :capabilities (media url responses-api)
-     :context-window 8.192
-     :input-cost 30
-     :output-cost 60
-     :cutoff-date "2023-11")
-    (o4-mini
-     :description "Fast, effective reasoning with efficient performance in coding and visual tasks"
-     :capabilities (reasoning media tool-use json url responses-api)
-     :reasoning-effort (member low medium high)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 200
-     :input-cost 1.10
-     :output-cost 4.40
-     :cutoff-date "2024-05")
-    (o3-mini
-     :description "High intelligence at the same cost and latency targets of o1-mini"
-     :reasoning-effort (member low medium high)
-     :context-window 200
-     :input-cost 1.10
-     :output-cost 4.40
-     :cutoff-date "2023-10"
-     :capabilities (reasoning tool-use json responses-api))
-    (o3
-     :description "Well-rounded and powerful model across domains"
-     :capabilities (reasoning media tool-use json url responses-api)
-     :reasoning-effort (member low medium high)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 200
-     :input-cost 2
-     :output-cost 8
-     :cutoff-date "2024-05")
-    (o3-pro
-     :description "Maximum performance model for reasoning tasks"
-     :capabilities (reasoning media tool-use json url responses-api)
-     :reasoning-effort (member low medium high)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 200
-     :input-cost 20
-     :output-cost 80
-     :cutoff-date "2024-05")
-    (o1-mini
-     :description "Faster and cheaper reasoning model good at coding, math, and science"
-     :reasoning-effort (member low medium high)
-     :context-window 128
-     :input-cost 1.10
-     :output-cost 4.40
-     :cutoff-date "2023-10"
-     :capabilities (nosystem reasoning responses-api))
-    (o1
-     :description "Reasoning model designed to solve hard problems across domains"
-     :capabilities (media reasoning responses-api)
-     :reasoning-effort (member low medium high)
-     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
-     :context-window 200
-     :input-cost 15
-     :output-cost 60
-     :cutoff-date "2023-10"))
+  (gptel--process-models
+   '((gpt-5.4-mini
+      :description "Faster, more cost-efficient version of GPT-5.4"
+      :capabilities (media tool-use json url responses-api)
+      :reasoning-effort (member none low medium high xhigh)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 400
+      :input-cost 0.75
+      :output-cost 4.50
+      :cutoff-date "2025-08")
+     (gpt-5.4-nano
+      :description "Fastest, cheapest version of GPT-5.4"
+      :capabilities (media tool-use json url responses-api)
+      :reasoning-effort (member none low medium high xhigh)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 400
+      :input-cost 0.20
+      :output-cost 1.25
+      :cutoff-date "2025-08")
+     (gpt-5.4
+      :description "The best model for coding and agentic tasks"
+      :capabilities (media tool-use json url responses-api)
+      :reasoning-effort (member none low medium high xhigh)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 1050
+      :input-cost 2.50
+      :output-cost 15
+      :cutoff-date "2025-08")
+     (gpt-5.4-pro
+      :description "Maximum performance model for reasoning tasks"
+      :capabilities (media tool-use json url responses-api)
+      ;; The pro version of the model does not support none and low.
+      :reasoning-effort (member medium high xhigh)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 1050
+      :input-cost 30
+      :output-cost 180
+      :cutoff-date "2025-08")
+     (gpt-5.6-sol
+      :description "The best model for coding and agentic tasks"
+      :capabilities (media tool-use json url responses-api)
+      :reasoning-effort (member none low medium high xhigh max)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 1050
+      :input-cost 5
+      :output-cost 30
+      :cutoff-date "2026-02")
+     (gpt-5.6-terra
+      :description "Faster, more cost-efficient version of GPT-5.6"
+      :capabilities (media tool-use json url responses-api)
+      :reasoning-effort (member none low medium high xhigh max)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 1050
+      :input-cost 2
+      :output-cost 12
+      :cutoff-date "2026-02")
+     (gpt-5.6-luna
+      :description "Fastest, cheapest version of GPT-5.6"
+      :capabilities (media tool-use json url responses-api)
+      :reasoning-effort (member none low medium high xhigh max)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 1050
+      :input-cost 0.20
+      :output-cost 1.20
+      :cutoff-date "2026-02")
+     (gpt-5.5
+      :description "The best model for coding and agentic tasks"
+      :capabilities (media tool-use json url responses-api)
+      :reasoning-effort (member none low medium high xhigh)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 1050
+      :input-cost 5
+      :output-cost 30
+      :cutoff-date "2025-12")
+     (gpt-5.5-pro
+      :description "Maximum performance model for reasoning tasks"
+      :capabilities (media tool-use json url responses-api)
+      ;; The pro version of the model does not support none and low.
+      :reasoning-effort (member medium high xhigh)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 1050
+      :input-cost 30
+      :output-cost 180
+      :cutoff-date "2025-12")
+     (gpt-5.3-chat-latest
+      :description "Answers right away"
+      :capabilities (media tool-use json url responses-api)
+      :reasoning-effort (member medium)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 400
+      :input-cost 1.75
+      :output-cost 14
+      :cutoff-date "2025-08")
+     (gpt-5.2
+      :description "The best model for coding and agentic tasks"
+      :capabilities (media tool-use json url responses-api)
+      :reasoning-effort (member none low medium high xhigh)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 400
+      :input-cost 1.75
+      :output-cost 14
+      :cutoff-date "2025-08")
+     (gpt-5.1
+      :description "The best model for coding and agentic tasks"
+      :capabilities (media tool-use json url responses-api)
+      :reasoning-effort (member none low medium high)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 400
+      :input-cost 1.25
+      :output-cost 10
+      :cutoff-date "2024-09")
+     (gpt-5-mini
+      :description "Faster, more cost-efficient version of GPT-5"
+      :capabilities (media tool-use json url responses-api)
+      :reasoning-effort (member minimal low medium high)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 400
+      :input-cost 0.25
+      :output-cost 2.0
+      :cutoff-date "2024-09")
+     (gpt-5-nano
+      :description "Fastest, cheapest version of GPT-5"
+      :capabilities (media tool-use json url responses-api)
+      :reasoning-effort (member minimal low medium high)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 400
+      :input-cost 0.05
+      :output-cost 0.40
+      :cutoff-date "2024-09")
+     (gpt-5
+      :description "Flagship model for coding, reasoning, and agentic tasks across domains"
+      :capabilities (media tool-use json url responses-api)
+      :reasoning-effort (member minimal low medium high)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 400
+      :input-cost 1.25
+      :output-cost 10
+      :cutoff-date "2024-09")
+     (gpt-4.1-mini
+      :description "Balance between intelligence, speed and cost"
+      :capabilities (media tool-use json url responses-api)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 1024
+      :input-cost 0.4
+      :output-cost 1.6)
+     (gpt-4.1-nano
+      :description "Fastest, most cost-effective GPT-4.1 model"
+      :capabilities (media tool-use json url responses-api)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 1024
+      :input-cost 0.10
+      :output-cost 0.40
+      :cutoff-date "2024-05")
+     (gpt-4.1
+      :description "Flagship model for complex tasks"
+      :capabilities (media tool-use json url responses-api)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 1024
+      :input-cost 2.0
+      :output-cost 8.0
+      :cutoff-date "2024-05")
+     (gpt-4o-mini
+      :description "Cheap model for fast tasks; cheaper & more capable than GPT-3.5 Turbo"
+      :capabilities (media tool-use json url responses-api)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 128
+      :input-cost 0.15
+      :output-cost 0.60
+      :cutoff-date "2023-10")
+     (gpt-4o
+      :description "Advanced model for complex tasks; cheaper & faster than GPT-Turbo"
+      :capabilities (media tool-use json url responses-api)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 128
+      :input-cost 2.50
+      :output-cost 10
+      :cutoff-date "2023-10")
+     (gpt-4.5-preview
+      :description "DEPRECATED: Use gpt-4.1 instead"
+      :capabilities (media tool-use url responses-api)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 128
+      :input-cost 75
+      :output-cost 150
+      :cutoff-date "2023-10")
+     (gpt-4-turbo
+      :description "Previous high-intelligence model"
+      :capabilities (media tool-use url responses-api)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 128
+      :input-cost 10
+      :output-cost 30
+      :cutoff-date "2023-11")
+     (gpt-4
+      :description "GPT-4 snapshot from June 2023 with improved function calling support"
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :capabilities (media url responses-api)
+      :context-window 8.192
+      :input-cost 30
+      :output-cost 60
+      :cutoff-date "2023-11")
+     (o4-mini
+      :description "Fast, effective reasoning with efficient performance in coding and visual tasks"
+      :capabilities (reasoning media tool-use json url responses-api)
+      :reasoning-effort (member low medium high)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 200
+      :input-cost 1.10
+      :output-cost 4.40
+      :cutoff-date "2024-05")
+     (o3-mini
+      :description "High intelligence at the same cost and latency targets of o1-mini"
+      :reasoning-effort (member low medium high)
+      :context-window 200
+      :input-cost 1.10
+      :output-cost 4.40
+      :cutoff-date "2023-10"
+      :capabilities (reasoning tool-use json responses-api))
+     (o3
+      :description "Well-rounded and powerful model across domains"
+      :capabilities (reasoning media tool-use json url responses-api)
+      :reasoning-effort (member low medium high)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 200
+      :input-cost 2
+      :output-cost 8
+      :cutoff-date "2024-05")
+     (o3-pro
+      :description "Maximum performance model for reasoning tasks"
+      :capabilities (reasoning media tool-use json url responses-api)
+      :reasoning-effort (member low medium high)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 200
+      :input-cost 20
+      :output-cost 80
+      :cutoff-date "2024-05")
+     (o1-mini
+      :description "Faster and cheaper reasoning model good at coding, math, and science"
+      :reasoning-effort (member low medium high)
+      :context-window 128
+      :input-cost 1.10
+      :output-cost 4.40
+      :cutoff-date "2023-10"
+      :capabilities (nosystem reasoning responses-api))
+     (o1
+      :description "Reasoning model designed to solve hard problems across domains"
+      :capabilities (media reasoning responses-api)
+      :reasoning-effort (member low medium high)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 200
+      :input-cost 15
+      :output-cost 60
+      :cutoff-date "2023-10")))
   "List of available OpenAI models and associated properties.
 
 Each model symbol is associated with the following keys, all optional:

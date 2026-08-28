@@ -35,6 +35,8 @@
                             (:include gptel-backend)))
 
 (cl-defmethod gptel--parse-response ((_backend gptel-kagi) response info)
+  "Extract the response text from a Kagi API RESPONSE.
+Record token usage in INFO."
   (let* ((data (plist-get response :data))
          (output (plist-get data :output))
          (references (plist-get data :references))
@@ -84,6 +86,7 @@
      `(,@prompts :engine ,(substring model 10)))))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-kagi) &optional _max-entries)
+  "Parse the current buffer into a Kagi API query."
   (let ((url (or (thing-at-point 'url)
                  (get-text-property (point) 'shr-url)
                  (get-text-property (point) 'image-url)))

@@ -30,7 +30,7 @@
 (require 'transient)
 
 (declare-function ediff-regions-internal "ediff")
-(declare-function ediff-make-cloned-buffer "ediff-utils")
+(declare-function ediff-make-cloned-buffer "ediff-util")
 (declare-function org-escape-code-in-string "org-src")
 (declare-function gptel--vterm-delete "gptel-integrations")
 
@@ -578,6 +578,7 @@ If evil-mode is not in use, this function is a no-op and calls FN directly."
   "Lisp variables that show :display-nil instead of nil.")
 
 (cl-defmethod transient-format-value ((obj gptel-lisp-variable))
+  "Format the value of OBJ for display in the transient menu."
   (let ((display-value
          (with-slots (value display-nil display-map) obj
            (cond ((null value) display-nil)
@@ -588,6 +589,7 @@ If evil-mode is not in use, this function is a no-op and calls FN directly."
      'face 'transient-value)))
 
 (cl-defmethod transient-infix-set ((obj gptel-lisp-variable) value)
+  "Set OBJ's variable to VALUE, possibly scoped buffer-locally."
   (funcall (oref obj set-value)
            (oref obj variable)
            (oset obj value value)
@@ -626,6 +628,7 @@ It is a list of the category and argument, e.g.
 Their own value is ignored")
 
 (cl-defmethod transient-format-value ((obj gptel--switch-category))
+  "Format the value of OBJ as a count of selected tools in its category."
   (let* ((category (oref obj category))
          (active-count
           (cl-count-if (lambda (tl) (equal (car tl) category))
@@ -684,6 +687,7 @@ Their own value is ignored")
   (not (oref obj value)))
 
 (cl-defmethod transient-format-value ((obj gptel--switches))
+  "Format the value of OBJ as a three-way switch."
   (with-slots (value display-if-true display-if-false) obj
       (format
        (propertize "(%s)" 'face 'transient-delimiter)
@@ -713,6 +717,7 @@ This is used only for setting this variable via `gptel-menu'.")
     (pcase value ('t 1) ('nil t) (1 nil))))
 
 (cl-defmethod transient-format-value ((obj gptel--scope))
+  "Format the value of OBJ, a scope switch, for the transient menu."
   (with-slots (value display-if-true display-if-false) obj
       (format
        (propertize "(%s)" 'face 'transient-delimiter)
@@ -727,6 +732,7 @@ This is used only for setting this variable via `gptel-menu'.")
                     (if (eql value 1) 'transient-value 'transient-inactive-value))))))
 
 (cl-defmethod transient-infix-set ((obj gptel--scope) value)
+  "Set the value of OBJ to VALUE."
   (funcall (oref obj set-value)
            (oref obj variable)
            (oset obj value value)))
@@ -741,6 +747,7 @@ This is used only for setting this variable via `gptel-menu'.")
   "Class used for gptel-backends.")
 
 (cl-defmethod transient-format-value ((obj gptel-provider-variable))
+  "Format the value of OBJ as backend and model names."
   (propertize (concat
                (gptel-backend-name
                 (buffer-local-value (oref obj backend) transient--original-buffer)) ":"
@@ -748,6 +755,7 @@ This is used only for setting this variable via `gptel-menu'.")
               'face 'transient-value))
 
 (cl-defmethod transient-infix-set ((obj gptel-provider-variable) value)
+  "Set OBJ's value to VALUE, a cons of backend and model."
   (pcase-let ((`(,backend-value ,model-value) value))
     (funcall (oref obj set-value)
              (oref obj variable)
