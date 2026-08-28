@@ -722,10 +722,18 @@ START and END signify the region delimiters."
     (cl-remove-if-not (lambda (ov) (overlay-get ov 'gptel-context))
                       (overlays-in start end))))
 
-(defun gptel-context--at-point ()
-  "Return the context overlay at point, if any."
-  (cl-find-if (lambda (ov) (overlay-get ov 'gptel-context))
-              (overlays-at (point))))
+(defun gptel-context--at-point (&optional before)
+  "Return the context overlay at point, if any.
+
+If BEFORE is non-nil, also consider a context overlay whose end is
+at point, which occurs after adding a region context with point at
+the end of the region."
+  (or (cl-find-if (lambda (ov) (overlay-get ov 'gptel-context))
+                  (overlays-at (point)))
+      (and before
+           (> (point) (point-min))
+           (cl-find-if (lambda (ov) (overlay-get ov 'gptel-context))
+                       (overlays-at (1- (point)))))))
 
 ;;;###autoload
 (defun gptel-context--normalize (&optional context-alist)
@@ -1170,7 +1178,7 @@ nil), prompt for a buffer to add, defaulting to the DWIM target."
 
 When ACTION is `dwim', act in a context-aware manner:
 - If a region is active, remove all context overlays in it.
-- If point is on a context overlay, remove it.
+- If point is on or immediately before a context overlay, remove it.
 - In IBuffer, remove marked buffers or the buffer at point.
 - Otherwise, take no action (return nil).
 
@@ -1185,8 +1193,8 @@ remove, defaulting to the DWIM target."
                           (current-buffer) (region-beginning) (region-end))))
               (cl-loop for ctx in contexts do (gptel-context-remove ctx))
               t))
-           ((gptel-context--at-point)
-            (gptel-context-remove (gptel-context--at-point))
+           ((gptel-context--at-point t)
+            (gptel-context-remove (gptel-context--at-point t))
             t)
            ((derived-mode-p 'ibuffer-mode)
             (let ((buffers (or (ibuffer-get-marked-buffers)
