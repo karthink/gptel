@@ -154,7 +154,7 @@ included in the authorization request and checked in the callback."
    (url-build-query-string
     `(("response_type" "code")
       ("client_id" ,gptel--openai-oauth-client-id)
-      ("redirect_uri" ,(url-hexify-string redirect-uri))
+      ("redirect_uri" ,redirect-uri)
       ("scope" "openid profile email offline_access")
       ("code_challenge" ,(gptel-oauth--generate-code-challenge verifier))
       ("code_challenge_method" "S256")
@@ -285,7 +285,7 @@ If your browser does not open automatically, browse to %s: "
                      ("client_id" ,gptel--openai-oauth-client-id)
                      ("code" ,code)
                      ("code_verifier" ,verifier)
-                     ("redirect_uri" ,(url-hexify-string redirect-uri))))
+                     ("redirect_uri" ,redirect-uri)))
             :content-type "application/x-www-form-urlencoded")))
     (gptel--openai-oauth-persist backend token-plist)))
 
