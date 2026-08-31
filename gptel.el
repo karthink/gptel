@@ -1685,28 +1685,82 @@ are sent.  If the region is active, its contents are sent
 instead.
 
 The response from the LLM is inserted below the cursor position
-at the time of sending.  To change this behavior or model
-parameters, use prefix arg ARG activate a transient menu with
-more options instead.
+at the time of sending.
+
+To change this behavior, model parameters, or interact with a query
+already in progress, use prefix arg ARG:
+
+- Use a prefix arg of \\[universal-argument] to bring up a menu with
+  more options.
+
+- Use a prefix arg of 0 to add more instructions to a request already in
+  progress.  The instructions are read from the active region, or from
+  text entered below an ongoing response.  This is sent when the LLM
+  next makes tool calls, so if no tools are provided or called the
+  additional instructions are ignored.
 
 This command is asynchronous, you can continue to use Emacs while
 waiting for the response."
   (interactive "P")
-  (if (and arg (require 'gptel-transient nil t))
-      (call-interactively #'gptel-menu)
-    (gptel--sanitize-model)
-    (let ((fsm (gptel-make-fsm :table gptel-send--transitions
-                               :handlers gptel-send--handlers)))
-      (gptel-request nil
-        :stream gptel-stream
-        :transforms gptel-prompt-transform-functions
-        :fsm fsm)
-      (message "Querying %s..."
-               (thread-first (gptel-fsm-info fsm)
-                             (plist-get :backend)
-                             (or gptel-backend)
-                             (gptel-backend-name))))
-    (gptel--update-status " Waiting..." 'warning)))
+  (pcase arg
+    (0 (gptel-send--steer))
+    ('(4) (require 'gptel-transient nil t) (call-interactively #'gptel-menu))
+    (_
+     (let ((fsm (gptel-make-fsm :table gptel-send--transitions
+                                :handlers gptel-send--handlers)))
+       (gptel-request nil
+         :stream gptel-stream
+         :transforms gptel-prompt-transform-functions
+         :fsm fsm)
+       (message "Querying %s..."
+                (thread-first (gptel-fsm-info fsm)
+                              (plist-get :backend)
+                              (or gptel-backend)
+                              (gptel-backend-name))))
+     (gptel--update-status " Waiting..." 'warning))))
+
+(defun gptel-send--steer ()
+  "Mark active region or text following a response as a steering message."
+  (unless (gptel--fsm-live-p)
+    (user-error "No active gptel request in this buffer; nothing to steer"))
+  ;; Find the starting bounds of the steering prompt
+  (let* ((info (gptel-fsm-info gptel--fsm-last))
+         (tm (plist-get info :tracking-marker))
+         (sm (plist-get info :position))
+         (bounds
+          (cond
+           ((use-region-p) (car-safe (region-bounds)))
+           ((and tm (> (point) tm))
+            (cons (save-excursion (goto-char tm) (skip-chars-forward " \r\t\n")
+                                  (point))
+                  (point)))
+           ((and sm (> (point) sm))
+            (cons (save-excursion (goto-char sm) (skip-chars-forward " \r\t\n")
+                                  (point))
+                  (point))))))
+    (unless (and bounds (> (cdr bounds) (car bounds)))
+      (user-error "No steering message at point"))
+    (letrec ((steer-ov (make-overlay (car bounds) (cdr bounds) nil t t))
+             (clear-steer-ov
+              (lambda (&rest _)
+                (remove-hook 'gptel-post-tool-call-functions clear-steer-ov t)
+                (remove-hook 'gptel-post-response-functions clear-steer-ov t)
+                (when-let* ((obuf (overlay-buffer steer-ov))
+                            (beg (overlay-start steer-ov))
+                            (end (overlay-end steer-ov)))
+                  (plist-put info :steering-message
+                             (buffer-substring-no-properties beg end))
+                  (with-current-buffer obuf
+                    (delete-region beg end)
+                    (delete-overlay steer-ov))))))
+      (overlay-put steer-ov 'evaporate t)
+      (overlay-put steer-ov 'face 'warning)
+      (overlay-put
+       steer-ov 'before-string
+       (concat "\n" (propertize "QUEUED" 'face '(:inherit shadow :box -1))
+               (propertize ": " 'face 'shadow)))
+      (add-hook 'gptel-post-response-functions clear-steer-ov nil t)
+      (add-hook 'gptel-post-tool-call-functions clear-steer-ov nil t))))
 
 (declare-function json-pretty-print-buffer "json")
 (defun gptel--inspect-query (&optional request-fsm format)
