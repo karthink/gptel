@@ -1723,44 +1723,58 @@ waiting for the response."
   "Mark active region or text following a response as a steering message."
   (unless (gptel--fsm-live-p)
     (user-error "No active gptel request in this buffer; nothing to steer"))
-  ;; Find the starting bounds of the steering prompt
-  (let* ((info (gptel-fsm-info gptel--fsm-last))
-         (tm (plist-get info :tracking-marker))
-         (sm (plist-get info :position))
-         (bounds
-          (cond
-           ((use-region-p) (car-safe (region-bounds)))
-           ((and tm (> (point) tm))
-            (cons (save-excursion (goto-char tm) (skip-chars-forward " \r\t\n")
-                                  (point))
-                  (point)))
-           ((and sm (> (point) sm))
-            (cons (save-excursion (goto-char sm) (skip-chars-forward " \r\t\n")
-                                  (point))
-                  (point))))))
-    (unless (and bounds (> (cdr bounds) (car bounds)))
-      (user-error "No steering message at point"))
-    (letrec ((steer-ov (make-overlay (car bounds) (cdr bounds) nil t t))
-             (clear-steer-ov
-              (lambda (&rest _)
-                (remove-hook 'gptel-post-tool-call-functions clear-steer-ov t)
-                (remove-hook 'gptel-post-response-functions clear-steer-ov t)
-                (when-let* ((obuf (overlay-buffer steer-ov))
-                            (beg (overlay-start steer-ov))
-                            (end (overlay-end steer-ov)))
-                  (plist-put info :steering-message
-                             (buffer-substring-no-properties beg end))
-                  (with-current-buffer obuf
-                    (delete-region beg end)
-                    (delete-overlay steer-ov))))))
-      (overlay-put steer-ov 'evaporate t)
-      (overlay-put steer-ov 'face 'warning)
-      (overlay-put
-       steer-ov 'before-string
-       (concat "\n" (propertize "QUEUED" 'face '(:inherit shadow :box -1))
-               (propertize ": " 'face 'shadow)))
-      (add-hook 'gptel-post-response-functions clear-steer-ov nil t)
-      (add-hook 'gptel-post-tool-call-functions clear-steer-ov nil t))))
+  (if-let* (((eq (get-pos-property (point) 'gptel) 'steer))
+            (ov (or (cdr (get-char-property-and-overlay (point) 'gptel))
+                    (cdr (get-char-property-and-overlay (1- (point)) 'gptel)))))
+      ;; Cancel pending steering message
+      (progn (delete-overlay ov) (message "Steering message canceled"))
+    (let* ((info (gptel-fsm-info gptel--fsm-last))
+           (sm (plist-get info :position))
+           (tracking-marker (plist-get info :tracking-marker))
+           (bounds                      ;Find the bounds of the steering prompt
+            (cond
+             ((use-region-p) (deactivate-mark) (car-safe (region-bounds)))
+             ((and tracking-marker (> (point) tracking-marker))
+              (cons (save-excursion
+                      (goto-char tracking-marker) (skip-chars-forward " \t\n")
+                      (point))
+                    (point)))
+             ((and (>= (point) sm) (not (get-text-property (point) 'gptel)))
+              (cons (save-excursion
+                      (goto-char        ;Go to start of steering message
+                       (max (previous-single-property-change ;below response
+                             (point) 'gptel nil (or sm (point-min)))
+                            (previous-single-property-change ;below pending tool call
+                             (point) 'read-only nil (or sm (point-min)))))
+                      (skip-chars-forward " \r\t\n") (point))
+                    (point))))))
+      (unless (and bounds (> (cdr bounds) (car bounds)))
+        (user-error "No steering message at point"))
+      (letrec ((steer-ov (make-overlay (car bounds) (cdr bounds) nil t t))
+               (clear-steer-ov
+                (lambda (&rest _)
+                  (remove-hook 'gptel-post-tool-call-functions clear-steer-ov t)
+                  (remove-hook 'gptel-post-response-functions clear-steer-ov t)
+                  (when-let* ((obuf (overlay-buffer steer-ov))
+                              (beg (overlay-start steer-ov))
+                              (end (overlay-end steer-ov))
+                              (msg (buffer-substring-no-properties beg end)))
+                    (if (string-blank-p msg)
+                        (message "Buffer \"%s\": steering message is blank, canceling"
+                                 (buffer-name obuf))
+                      (plist-put info :steering-message msg))
+                    (with-current-buffer obuf
+                      (delete-region beg end)
+                      (delete-overlay steer-ov))))))
+        (overlay-put steer-ov 'gptel 'steer)
+        (overlay-put steer-ov 'evaporate t)
+        (overlay-put steer-ov 'face 'warning)
+        (overlay-put
+         steer-ov 'before-string
+         (concat (propertize "QUEUED" 'face '(:inherit shadow :box -1))
+                 (propertize ": " 'face 'shadow)))
+        (add-hook 'gptel-post-response-functions clear-steer-ov nil t)
+        (add-hook 'gptel-post-tool-call-functions clear-steer-ov nil t)))))
 
 (declare-function json-pretty-print-buffer "json")
 (defun gptel--inspect-query (&optional request-fsm format)
