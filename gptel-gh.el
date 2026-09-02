@@ -233,7 +233,18 @@
      :context-window 1000
      :input-cost 0.75
      :output-cost 3.75
-     :cutoff-date "2026-03")))
+     :cutoff-date "2026-03")
+    (gemini-3.8-flash
+     :description "Gemini model for long-horizon software engineering, autonomous agents and critical reasoning"
+     :capabilities (tool-use json media audio video)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"
+                  "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
+                  "video/mp4" "video/mpeg" "video/avi" "video/quicktime" "video/webm")
+     :context-window 1000
+     :input-cost 0.75
+     :output-cost 3.75
+     :cutoff-date "2026-09")))
 
 (cl-defstruct (gptel--gh (:include gptel-openai)
                          (:copier nil)
