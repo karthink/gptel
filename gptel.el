@@ -607,6 +607,25 @@ Link failed to validate, see `gptel-markdown-validate-link' or `gptel-org-valida
          (lambda (o) (overlay-get o 'gptel-track-media))
          (overlays-in (or beg (point-min)) (or end (point-max))))))
 
+(defun gptel-send--steer-relocate (req-info)
+  "Move an unsent steering message in REQ-INFO to the next prompt."
+  (when-let* ((msg (plist-get req-info :steering-message)))
+    (plist-put req-info :steering-message nil) ;consume and move to next prompt
+    (if-let* ((tm (plist-get req-info :tracking-marker))
+              (tbuf (marker-buffer tm))
+              ((and (not (plist-get req-info :in-place)) (buffer-live-p tbuf))))
+        (with-current-buffer tbuf ;Insert steering prompt at start of next prompt
+          (save-excursion
+            (save-restriction
+              (goto-char tm)
+              (dolist (elem (list gptel-response-separator (gptel-prompt-prefix-string)))
+                (when (looking-at (regexp-quote elem)) (goto-char (match-end 0))))
+              (if (or buffer-read-only (get-char-property (point) 'read-only))
+                  (message "Cannot insert steering message, buffer read-only: \"%s\"" msg)
+                (message "Could not send steering message, moving to next prompt")
+                (insert msg)))))
+      (message "Could not send steering message: \"%s\"" msg))))
+
 ;;;; Response text recognition
 
 (defun gptel--get-buffer-bounds ()
@@ -1754,18 +1773,22 @@ waiting for the response."
                (clear-steer-ov
                 (lambda (&rest _)
                   (remove-hook 'gptel-post-tool-call-functions clear-steer-ov t)
-                  (remove-hook 'gptel-post-response-functions clear-steer-ov t)
+                  (plist-put info :post (delete move-steer-msg (plist-get info :post)))
                   (when-let* ((obuf (overlay-buffer steer-ov))
                               (beg (overlay-start steer-ov))
                               (end (overlay-end steer-ov))
-                              (msg (buffer-substring-no-properties beg end)))
+                              (msg (string-trim-right
+                                    (buffer-substring-no-properties beg end))))
+                    (with-current-buffer obuf
+                      (delete-region beg end) (delete-overlay steer-ov))
                     (if (string-blank-p msg)
                         (message "Buffer \"%s\": steering message is blank, canceling"
                                  (buffer-name obuf))
-                      (plist-put info :steering-message msg))
-                    (with-current-buffer obuf
-                      (delete-region beg end)
-                      (delete-overlay steer-ov))))))
+                      (plist-put info :steering-message msg)))
+                  nil)) ;Return nil so `gptel-post-tool-call-functions' doesn't complain
+               (move-steer-msg (lambda (req-info)
+                                 (funcall clear-steer-ov)
+                                 (gptel-send--steer-relocate req-info))))
         (overlay-put steer-ov 'gptel 'steer)
         (overlay-put steer-ov 'evaporate t)
         (overlay-put steer-ov 'face 'warning)
@@ -1773,7 +1796,9 @@ waiting for the response."
          steer-ov 'before-string
          (concat (propertize "QUEUED" 'face '(:inherit shadow :box -1))
                  (propertize ": " 'face 'shadow)))
-        (add-hook 'gptel-post-response-functions clear-steer-ov nil t)
+        (plist-put info :post (cons move-steer-msg (plist-get info :post)))
+        ;; TODO(steer) This should be request-specific, otherwise it may fail
+        ;; when there are multiple tool-calling requests in the buffer.
         (add-hook 'gptel-post-tool-call-functions clear-steer-ov nil t)))))
 
 (declare-function json-pretty-print-buffer "json")
