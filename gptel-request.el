@@ -973,19 +973,25 @@ and \"apikey\" as USER."
 
 Tool results may contain non-UTF-8 bytes (e.g. from reading a binary
 file), which `json-serialize' rejects.  Returns S unchanged if clean;
-otherwise mutates a single fresh copy in place (O(N), one allocation)."
+otherwise returns a cleaned copy.  Legitimate Unicode is preserved."
   (if (not (memq 'eight-bit (find-charset-string s)))
       s
-    ;; Allocate exactly once, then mutate in place with `aset'.
-    (let* ((s (if (multibyte-string-p s)
-                  (copy-sequence s)
-                (string-to-multibyte s)))
-           (end (length s))
-           (pos (unencodable-char-position 0 end 'utf-8 nil s)))
-      (while pos
-        (aset s pos ??)
-        (setq pos (unencodable-char-position (1+ pos) end 'utf-8 nil s)))
-      s)))
+    ;; NOTE: Raw bytes are stored as codepoints in the #x3FFF80..#x3FFFFF
+    ;; range, which have no valid UTF-8 encoding.  They cannot be replaced in
+    ;; place: Emacs forbids overwriting a non-ASCII char with an ASCII one in a
+    ;; multibyte string, as that would change the string's byte length.  So
+    ;; rewrite the string in a buffer instead, where such edits are allowed.
+    (let ((s (if (multibyte-string-p s) s (string-to-multibyte s))))
+      (with-temp-buffer
+        (set-buffer-multibyte t)
+        (insert s)
+        (goto-char (point-min))
+        (let ((pos (point-min)))
+          (while (setq pos (unencodable-char-position pos (point-max) 'utf-8))
+            (goto-char pos)
+            (delete-char 1)
+            (insert ??)))
+        (buffer-string)))))
 
 (defsubst gptel--intern (s)
   "Intern S, if possible."
