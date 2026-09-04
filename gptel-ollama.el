@@ -407,6 +407,23 @@ Example:
                        nil nil #'equal)
                   backend))))
 
+;; llmman
+;;;###autoload
+(cl-defun gptel-make-llmman
+    (name &rest args &key (host "localhost:17434") &allow-other-keys)
+  "Register an llmman backend for gptel with NAME.
+
+llmman (https://github.com/llmmanorg/llmman) serves the Ollama API on
+port 17434, so this is `gptel-make-ollama' with HOST defaulting to
+localhost:17434.  See it for the remaining keyword ARGS.
+
+Example:
+-------
+
+ (gptel-make-llmman \"llmman\" :models \\='(gemma4) :stream t)"
+  (declare (indent 1))
+  (apply #'gptel-make-ollama name :host host args))
+
 (provide 'gptel-ollama)
 ;;; gptel-ollama.el ends here
 
