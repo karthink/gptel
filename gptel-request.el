@@ -968,6 +968,31 @@ and \"apikey\" as USER."
     (string s)
     (otherwise (prin1-to-string s))))
 
+(defun gptel--sanitize-raw-bytes (s)
+  "Replace raw bytes in string S with \"?\" so it is JSON-serializable.
+
+Tool results may contain non-UTF-8 bytes (e.g. from reading a binary
+file), which `json-serialize' rejects.  Returns S unchanged if clean;
+otherwise returns a cleaned copy.  Legitimate Unicode is preserved."
+  (if (not (memq 'eight-bit (find-charset-string s)))
+      s
+    ;; NOTE: Raw bytes are stored as codepoints in the #x3FFF80..#x3FFFFF
+    ;; range, which have no valid UTF-8 encoding.  They cannot be replaced in
+    ;; place: Emacs forbids overwriting a non-ASCII char with an ASCII one in a
+    ;; multibyte string, as that would change the string's byte length.  So
+    ;; rewrite the string in a buffer instead, where such edits are allowed.
+    (let ((s (if (multibyte-string-p s) s (string-to-multibyte s))))
+      (with-temp-buffer
+        (set-buffer-multibyte t)
+        (insert s)
+        (goto-char (point-min))
+        (let ((pos (point-min)))
+          (while (setq pos (unencodable-char-position pos (point-max) 'utf-8))
+            (goto-char pos)
+            (delete-char 1)
+            (insert ??)))
+        (buffer-string)))))
+
 (defsubst gptel--intern (s)
   "Intern S, if possible."
   (cl-etypecase s
@@ -1918,7 +1943,7 @@ injects the results into the prompt data and transitions the FSM."
          ;; MAYBE(tool-hooks): Use plist-member for valid nil :result?
          (remaining (cl-loop for call in (plist-get info :tool-use)
                              count (not (plist-get call :result)))))
-    (let ((result (gptel--to-string result)))
+    (let ((result (gptel--sanitize-raw-bytes (gptel--to-string result))))
       ;; FIXME(tool-hooks): If a hook has changed the tool that was called
       ;; tool-spec needs to be updated.
       (push (list tool-spec (plist-get tool-call :args) result)
