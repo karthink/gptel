@@ -450,6 +450,7 @@ constructor functions:
 - `gptel-make-anthropic'
 - `gptel-make-gemini'
 - `gptel-make-ollama'
+- `gptel-make-llmman'
 - `gptel-make-azure'
 - `gptel-make-gpt4all'
 - `gptel-make-kagi'
