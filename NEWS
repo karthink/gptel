@@ -94,12 +94,36 @@
 
 ** New features and UI changes
 
+- =gptel-send= now supports sending additional messages to the LLM while
+  it is generating a response.  This process, called "steering", only
+  works when the LLM is provided with tools and makes tool calls; the
+  steering message is queued and sent to the LLM along with the next
+  tool call result.
+
+  To steer an LLM query, you can
+  - use gptel-menu when during an ongoing response, or
+  - select any text region/type below the response, and call
+    =gptel-send= with a prefix argument of 0.
+
+  In its present implementation steering has a couple of limitations:
+  - If there are multiple active LLM requests in a buffer, only the latest
+    issued request can be steered.
+  - Only one steering message can be issued at a time.
+
+- When tool calls require confirmation, you can now choose to reject
+  them and continue the conversation instead of suspending them
+  entirely.  Choosing "steer" reports a failure to the LLM for each tool
+  call along with your steering instructions, allowing the model to
+  adapt and proceed without running the tools.
+
+  This option is available in the tool call dispatch overlay (~C-c C-r~),
+  the minibuffer confirmation prompt (=r=), and the tool call inspection
+  buffer (~C-c C-r~ or the "Steer" button in the header line).
+
 - gptel-rewrite is now available as an (inline) preset in addition to a
   command.  Using the =@gptel-rewrite= cookie in a prompt will cause the
   prompt text before the cookie to be replaced with the response, with
   the rewrite instructions read from the text following the cookie.
-  This is mostly useful when prompting from the minibuffer with a region
-  active.
 
 - The gptel tool's =:include= slot and the global option
   ~gptel-include-tool-results~ now also accept the symbol =call=: when
@@ -153,16 +177,6 @@
 - You can now specify (programmatically) which MCP tools to add when
   starting MCP servers.  Previously all tools provided by an MCP server
   would be added automatically.  See ~gptel-mcp-connect~ for details.
-
-- When tool calls require confirmation, you can now choose to reject
-  them and continue the conversation instead of stopping it entirely.
-  Choosing "Reject (continue)" feeds a rejection message back to the
-  LLM for each tool call, allowing the model to adapt and proceed
-  without running the tools.
-
-  This option is available in the tool call dispatch overlay (~C-c C-r~),
-  the minibuffer confirmation prompt (=r=), and the tool call inspection
-  buffer (~C-c C-r~ or the "Reject" button in the header line).
 
 ** Notable bug fixes
 
