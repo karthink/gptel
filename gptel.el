@@ -1777,9 +1777,9 @@ waiting for the response."
         (user-error "No steering message at point"))
       (letrec ((steer-ov (make-overlay (car bounds) (cdr bounds) nil t t))
                (clear-steer-ov
-                (lambda (&rest _)
-                  (remove-hook 'gptel-post-tool-call-functions clear-steer-ov t)
-                  (plist-put info :post (delete move-steer-msg (plist-get info :post)))
+                (lambda (req-info)
+                  (plist-put req-info :post
+                             (delete move-steer-msg (plist-get req-info :post)))
                   (when-let* ((obuf (overlay-buffer steer-ov))
                               (beg (overlay-start steer-ov))
                               (end (overlay-end steer-ov))
@@ -1790,10 +1790,9 @@ waiting for the response."
                     (if (string-blank-p msg)
                         (message "Buffer \"%s\": steering message is blank, canceling"
                                  (buffer-name obuf))
-                      (plist-put info :steering-message msg)))
-                  nil)) ;Return nil so `gptel-post-tool-call-functions' doesn't complain
+                      (plist-put req-info :steering-message msg)))))
                (move-steer-msg (lambda (req-info)
-                                 (funcall clear-steer-ov)
+                                 (funcall clear-steer-ov req-info)
                                  (gptel-send--steer-relocate req-info))))
         (overlay-put steer-ov 'gptel 'steer)
         (overlay-put steer-ov 'evaporate t)
@@ -1803,9 +1802,8 @@ waiting for the response."
          (concat (propertize "QUEUED" 'face '(:inherit shadow :box -1))
                  (propertize ": " 'face 'shadow)))
         (plist-put info :post (cons move-steer-msg (plist-get info :post)))
-        ;; TODO(steer) This should be request-specific, otherwise it may fail
-        ;; when there are multiple tool-calling requests in the buffer.
-        (add-hook 'gptel-post-tool-call-functions clear-steer-ov nil t)))))
+        (plist-put info :post-tool
+                   (cons clear-steer-ov (plist-get info :post-tool)))))))
 
 (declare-function json-pretty-print-buffer "json")
 (defun gptel--inspect-query (&optional request-fsm format)

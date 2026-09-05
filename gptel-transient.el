@@ -1884,21 +1884,20 @@ tool call result."
         ;; Front and rear-advance to move it with the response
         (letrec ((steer-ov (make-overlay tm tm nil t t))
                  (clear-steer-ov
-                  (lambda (&rest _)
-                    (remove-hook 'gptel-post-tool-call-functions clear-steer-ov t)
-                    (plist-put info :post (delete move-steer-msg (plist-get info :post)))
+                  (lambda (req-info)
+                    (plist-put req-info :post
+                               (delete move-steer-msg (plist-get req-info :post)))
                     (when (overlay-buffer steer-ov) (delete-overlay steer-ov))))
                  (move-steer-msg (lambda (req-info)
-                                   (funcall clear-steer-ov)
+                                   (funcall clear-steer-ov req-info)
                                    (gptel-send--steer-relocate req-info))))
           (overlay-put
            steer-ov 'after-string
            (concat "\n" (propertize "QUEUED" 'face '(:inherit shadow :box -1))
                    (propertize (concat ": " msg) 'face 'shadow) "\n"))
           (plist-put info :post (cons move-steer-msg (plist-get info :post)))
-          ;; TODO(steer) This should be request-specific, otherwise it may fail
-          ;; when there are multiple tool-calling requests in the buffer.
-          (add-hook 'gptel-post-tool-call-functions clear-steer-ov nil t))))))
+          (plist-put info :post-tool
+                     (cons clear-steer-ov (plist-get info :post-tool))))))))
 
 ;; ** Suffix to regenerate response
 
