@@ -1578,9 +1578,12 @@ Perform UI updates and run post-response hooks."
                           tool-call result))))))))))))))
 
 (defun gptel--handle-post-tool (fsm)
-  "Run `gptel-post-tool-call-functions for FSM."
+  "Run `gptel-post-tool-call-functions' for FSM.
+
+Also run the request-local :post-tool functions."
   (let* ((info (gptel-fsm-info fsm))
-         (buffer (plist-get info :buffer)))
+         (buffer (plist-get info :buffer))
+         (post-tool (plist-get info :post-tool)))
     (when (buffer-local-value 'gptel-post-tool-call-functions buffer)
       (let ((hook-func-args (list :buffer (buffer-name buffer)
                                   :backend (plist-get info :backend)
@@ -1631,7 +1634,10 @@ Perform UI updates and run post-response hooks."
                            '(gptel tools)
                            (format "Tool %s: Could not replace tool results" name)))
                          ;; Update results sent to LLM
-                         (plist-put tool-call :result result))))))))))))))
+                         (plist-put tool-call :result result))))))))))))
+    (when post-tool
+      (mapc (lambda (f) (funcall f info)) (plist-get info :post-tool))
+      (plist-put info :post-tool nil))))
 
 (defun gptel--handle-tool-steer (fsm)
   "Handle steering messages during tool use for FSM."
