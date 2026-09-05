@@ -2034,6 +2034,7 @@ Note: This tool call preview API is currently experimental.")
   "<mouse-1>" #'gptel--dispatch-tool-calls
   "C-c C-c" #'gptel--accept-tool-calls
   "C-c C-k" #'gptel--reject-tool-calls
+  "C-c C-r" #'gptel--reject-tool-calls-and-continue
   "C-c C-i" #'gptel--inspect-tool-calls)
 
 (defun gptel--display-tool-calls (tool-calls info &optional use-minibuffer)
@@ -2068,20 +2069,23 @@ USE-MINIBUFFER is non-nil)."
                                  backend-name len (if (> len 1) "calls" "call")
                                  tool-call-names))
                  (choices '((?y "Run tools") (?n "Cancel (resumable)")
-                            (?i "Inspect or edit")))
+                            (?r "Reject (continue)") (?i "Inspect or edit")))
                  (choice (read-multiple-choice prompt choices)))
             (pcase (car choice)
               (?y (gptel--accept-tool-calls tool-calls))
               (?n (gptel--reject-tool-calls))
+              (?r (gptel--reject-tool-calls-and-continue tool-calls))
               (?i (gptel--inspect-tool-calls tool-calls info))))
         ;; Prompt for confirmation from the response buffer
         (let* ((backend-name (gptel-backend-name (plist-get info :backend)))
                (actions-string
                 (concat (propertize "Run tools: " 'face 'font-lock-string-face)
                         (propertize "C-c C-c" 'face 'help-key-binding)
-                        (propertize ", Cancel request: " 'face 'font-lock-string-face)
+                        (propertize ", Cancel: " 'face 'font-lock-string-face)
                         (propertize "C-c C-k" 'face 'help-key-binding)
-                        (propertize ", Inspect or Edit: " 'face 'font-lock-string-face)
+                        (propertize ", Reject: " 'face 'font-lock-string-face)
+                        (propertize "C-c C-r" 'face 'help-key-binding)
+                        (propertize ", Inspect: " 'face 'font-lock-string-face)
                         (propertize "C-c C-i" 'face 'help-key-binding)))
                (confirm-strings)
                ;; FIXME(tool) use a wrapper instead of a manual text-property search,
@@ -2335,16 +2339,46 @@ OV is the tool call dispatch overlay."
                          (overlay-end prompt-ov)))))
     (delete-overlay ov)))
 
+(defun gptel--reject-tool-calls-and-continue (&optional tool-calls ov)
+  "Reject pending TOOL-CALLS and continue the request chain.
+
+Feed a rejection message to the LLM for each tool call so the
+conversation can proceed.  OV is the tool call dispatch overlay."
+  (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
+                                           (point) 'gptel-tool)))
+                 (list resp o)))
+  (gptel--update-status " Tools rejected" 'error)
+  (when tool-calls
+    (let* ((default "Tool call rejected by user.")
+           (msg (read-string
+                 (format-prompt "Rejection message: " default)
+                 nil nil default)))
+      (cl-loop for (_tool-spec _arg-plist process-tool-result) in tool-calls
+               do (funcall process-tool-result msg))))
+  (when (and (overlayp ov) (overlay-buffer ov))
+    (with-current-buffer (overlay-buffer ov)
+      (when-let* ((preview-handles (overlay-get ov 'previews)))
+        (dolist (func-to-handle preview-handles)
+          (when (car func-to-handle) (apply func-to-handle))))
+      (dolist (prompt-ov (overlay-get ov 'prompt))
+        (when-let* (((overlay-buffer prompt-ov))
+                    (inhibit-read-only t))
+          (delete-region (overlay-start prompt-ov)
+                         (overlay-end prompt-ov)))))
+    (delete-overlay ov)))
+
 (defun gptel--dispatch-tool-calls (choice)
   "Dispatch on tool-calls with CHOICE."
   (interactive
    (list
     (let ((choices '((?y "yes") (?n "do nothing")
-                     (?k "cancel request") (?i "inspect call(s)"))))
+                     (?k "cancel request") (?r "reject (continue)")
+                     (?i "inspect call(s)"))))
       (read-multiple-choice "Run tool calls? " choices))))
   (pcase (car choice)
     (?y (call-interactively #'gptel--accept-tool-calls))
     (?k (call-interactively #'gptel--reject-tool-calls))
+    (?r (call-interactively #'gptel--reject-tool-calls-and-continue))
     (?i (call-interactively #'gptel--inspect-tool-calls))))
 
 ;;;; Tool call inspection UI
@@ -2352,6 +2386,7 @@ OV is the tool call dispatch overlay."
   :doc "Actions in the gptel tool inspection buffer."
   "C-c C-c" #'gptel--inspect-accept-tool-calls
   "C-c C-k" #'gptel--inspect-reject-tool-calls
+  "C-c C-r" #'gptel--inspect-reject-tool-calls-and-continue
   "C-c C-i" #'gptel--inspect-quit-tool-calls)
 
 (defun gptel--inspect-accept-tool-calls (&optional _)
@@ -2414,8 +2449,18 @@ This is a bug, please report it!"))))
   "Cancel tool-calls and return to query buffer."
   (interactive)
   (apply #'gptel--reject-tool-calls
-   (thread-first (gptel-fsm-info gptel--fsm-last)
-                 (plist-get :tool-display)))
+         (thread-first (gptel-fsm-info gptel--fsm-last)
+                       (plist-get :tool-display)))
+  (quit-window t))
+
+(defun gptel--inspect-reject-tool-calls-and-continue (&optional _)
+  "Reject tool-calls from the inspection buffer and continue the chain.
+
+Feed a rejection message to the LLM for each tool call and clean up."
+  (interactive)
+  (apply #'gptel--reject-tool-calls-and-continue
+         (thread-first (gptel-fsm-info gptel--fsm-last)
+                       (plist-get :tool-display)))
   (quit-window t))
 
 (defun gptel--inspect-quit-tool-calls (&optional _)
@@ -2499,6 +2544,8 @@ query buffer."
               " \\[gptel--inspect-accept-tool-calls], "
               (buttonize "Cancel" #'gptel--inspect-reject-tool-calls)
               " \\[gptel--inspect-reject-tool-calls], "
+              (buttonize "Reject" #'gptel--inspect-reject-tool-calls-and-continue)
+              " \\[gptel--inspect-reject-tool-calls-and-continue], "
               (buttonize "Return" #'gptel--inspect-quit-tool-calls)
               " \\[gptel--inspect-quit-tool-calls], "
               (buttonize "Edit" (lambda (_) (read-only-mode 'toggle)))
