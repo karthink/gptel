@@ -1301,7 +1301,12 @@ responses."
                                           backend model))
              into models-alist
              with completion-extra-properties =
-             `(:annotation-function
+             `(:group-function
+               ,(lambda (cand transform)
+                  (if transform
+                      cand
+                    (gptel-backend-name (nth 1 (assoc cand models-alist)))))
+               :annotation-function
                ,(lambda (comp)
 		  (let* ((model (nth 2 (assoc comp models-alist)))
 			 (desc (get model :description))

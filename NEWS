@@ -25,9 +25,12 @@
   removed from the default list of Anthropic models.  These models are
   either deprecated or no longer available.
 
-- The models =gemini-3.1-flash-lite-preview= and =gemini-3-pro-preview=
-  have been removed from the default list of Gemini models.  These
-  models are no longer available.
+- The models =gemini-3.1-flash-lite-preview=, =gemini-3-pro-preview=,
+  =gemini-2.5-pro-preview-06-05=, =gemini-2.5-flash-preview-09-2025=,
+  =gemini-2.5-flash-lite-preview-09-2025=, =gemini-2.0-flash=,
+  =gemini-2.0-flash-exp= and =gemini-2.0-flash-thinking-exp= have been
+  removed from the default list of Gemini models.  These models are no
+  longer available.
 
 - The minimum required version of the =transient= package is now 0.7.8.
 
@@ -71,14 +74,15 @@
   =claude-opus-4-8=, =claude-opus-4-9=, =claude-opus-5= and
   =claude-fable-5=.
 
-- GitHub Copilot backend: Add support for =gemini-3.7-flash=,
-  =gemini-3.6-flash=, =gemini-3.5-flash=, =gpt-5.6-sol=,
-  =gpt-5.6-terra=, =gpt-5.6-luna=, =claude-opus-4.8=, =claude-sonnet-5=,
-  =claude-opus-5= and =claude-fable-5=.
+- GitHub Copilot backend: Add support for =gemini-3.8-flash=,
+  =gemini-3.7-flash=, =gemini-3.6-flash=, =gemini-3.5-flash=,
+  =gpt-5.6-sol=, =gpt-5.6-terra=, =gpt-5.6-luna=, =claude-opus-4.8=,
+  =claude-sonnet-5=, =claude-opus-5= and =claude-fable-5=.
 
-- Gemini backend: Add support for =gemini-3.7-flash=,
-  =gemini-3.6-flash=, =gemini-3.5-flash=, =gemini-3.5-flash-lite=,
-  =gemini-3.1-flash-lite= and deprecate the preview version.
+- Gemini backend: Add support for =gemini-3.8-flash=,
+  =gemini-3.7-flash=, =gemini-3.6-flash=, =gemini-3.5-flash=,
+  =gemini-3.5-flash-lite= and =gemini-3.1-flash-lite=.  Add deprecation
+  notices for =gemini-3.1-flash-lite= and =gemini-3-flash-preview=.
 
 - OpenAI backend: Add support for =gpt-5.6-sol=, =gpt-5.6-terra= and
   =gpt-5.6-luna=.

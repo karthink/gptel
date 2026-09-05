@@ -1777,6 +1777,7 @@ Optional RAW disables text properties and transformation."
       ((pred stringp)                ;Response text
        (with-current-buffer gptel-buffer
          (when tracking-marker           ;separate from previous response
+           (set-marker-insertion-type tracking-marker t)
            (setq response (concat gptel-response-separator response)))
          (save-excursion
            (with-current-buffer (marker-buffer start-marker)
@@ -1795,8 +1796,8 @@ Optional RAW disables text properties and transformation."
                 0 (length response) '(gptel response front-sticky (gptel)) response))
              (insert response)
              (plist-put info :tracking-marker (setq tracking-marker (point-marker)))
-             ;; for uniformity with streaming responses
-             (set-marker-insertion-type tracking-marker t)))))
+             ;; "Lock" the tracking marker after inserting the response
+             (set-marker-insertion-type tracking-marker nil)))))
       (`(reasoning . ,text)
        (when-let* ((include (plist-get info :include-reasoning)))
          (if (stringp include)
@@ -1862,8 +1863,11 @@ Optional RAW disables text properties and transformation."
                  (insert (gptel-response-prefix-string)))
                (move-marker start-marker (point)))
              (setq tracking-marker (set-marker (make-marker) (point)))
-             (set-marker-insertion-type tracking-marker t)
+             ;; Ensure that you can type below the response while it's streaming
+             (if (eobp) (insert "\n"))
              (plist-put info :tracking-marker tracking-marker))
+           ;; "Unlock" the tracking marker before inserting the response chunk
+           (set-marker-insertion-type tracking-marker t)
            (goto-char tracking-marker)
            (unless raw
              (when transformer
@@ -1873,7 +1877,9 @@ Optional RAW disables text properties and transformation."
               response))
            ;; (run-hooks 'gptel-pre-stream-hook)
            (insert response)
-           (run-hooks 'gptel-post-stream-hook)))))
+           (run-hooks 'gptel-post-stream-hook)
+           ;; "Lock" the tracking marker again
+           (set-marker-insertion-type tracking-marker nil)))))
     (`(reasoning . ,text)
      (gptel--display-reasoning-stream text info))
     (`(tool-call . ,tool-calls)
@@ -2091,8 +2097,10 @@ USE-MINIBUFFER is non-nil)."
                                      nil nil nil)))
                (arg-values)
                (prompt-ov))
-          ;; If the cursor is at the overlay-end, it ends up outside, so move it back
-          (unless tracking-marker
+          (if tracking-marker
+              ;; "Unlock" the tracking marker before inserting tool call previews
+              (set-marker-insertion-type tracking-marker t)
+            ;; If the cursor is at the overlay-end, it ends up outside, so move it back
             (when (= (point) start-marker) (ignore-errors (backward-char))))
           (save-excursion
             (goto-char (overlay-end ov))
@@ -2110,6 +2118,8 @@ USE-MINIBUFFER is non-nil)."
             (and confirm-strings (apply #'insert (nreverse confirm-strings)))
             (add-text-properties (overlay-end ov) (1- (point))
                                  '(read-only t font-lock-fontified t))
+            ;; "Lock" the tracking marker again
+            (when tracking-marker (set-marker-insertion-type tracking-marker nil))
             (setq prompt-ov (make-overlay (overlay-end ov) (point) nil t))
             (overlay-put
              prompt-ov 'before-string
