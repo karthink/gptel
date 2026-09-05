@@ -1863,6 +1863,8 @@ Optional RAW disables text properties and transformation."
                  (insert (gptel-response-prefix-string)))
                (move-marker start-marker (point)))
              (setq tracking-marker (set-marker (make-marker) (point)))
+             ;; Ensure that you can type below the response while it's streaming
+             (if (eobp) (insert "\n"))
              (plist-put info :tracking-marker tracking-marker))
            ;; "Unlock" the tracking marker before inserting the response chunk
            (set-marker-insertion-type tracking-marker t)
