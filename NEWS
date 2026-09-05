@@ -71,8 +71,8 @@
   =claude-fable-5=.
 
 - Anthropic backend: Add support for =claude-sonnet-5=,
-  =claude-opus-4-8=, =claude-opus-4-9=, =claude-opus-5= and
-  =claude-fable-5=.
+  =claude-opus-4-8=, =claude-opus-4-9=, =claude-opus-5=,
+  =claude-fable-5= and =claude-fable-5-1=.
 
 - GitHub Copilot backend: Add support for =gemini-3.8-flash=,
   =gemini-3.7-flash=, =gemini-3.6-flash=, =gemini-3.5-flash=,
