@@ -424,7 +424,7 @@ before constructing the headers."
                :capabilities (tool-use json responses-api)
                :context-window 128)
               gpt-5.4-mini gpt-5.4 gpt-5.5 gpt-5.6-sol gpt-5.6-terra
-              gpt-5.6-luna)))
+              gpt-5.6-luna gpt-6-astra)))
   "Register a ChatGPT Plus/Pro OAuth backend for gptel with NAME.
 
 This backend uses ChatGPT OAuth tokens (not OpenAI API keys) and
