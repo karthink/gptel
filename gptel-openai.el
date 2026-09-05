@@ -508,6 +508,14 @@ Media files, if present, are placed in `gptel-context'."
       :input-cost 30
       :output-cost 180
       :cutoff-date "2025-08")
+     (gpt-6-astra
+      :description "The best model for coding and agentic tasks"
+      :capabilities (media tool-use json url responses-api)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 1050
+      :input-cost 10
+      :output-cost 50
+      :cutoff-date "2026-04")
      (gpt-5.6-sol
       :description "The best model for coding and agentic tasks"
       :capabilities (media tool-use json url responses-api)
