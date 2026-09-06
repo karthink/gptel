@@ -1865,9 +1865,11 @@ for details."
 ;; ** Suffix to steer ongoing response
 
 (transient-define-suffix gptel--suffix-steer ()
-  "Insert a steering message into the latest ongoing query.
+  "Inject a steering message into the latest ongoing gptel query.
 Prompt for instructions and queue them to be sent with the LLM's next
-tool call result."
+tool call result.
+
+To cancel a queued message, provide an empty prompt instead."
   :key "M-RET"
   :description "Steer ongoing query"
   :if (lambda () (and (gptel--fsm-live-p)
@@ -1875,29 +1877,40 @@ tool call result."
   (interactive)
   (when-let* ((msg (read-string "Steering instructions for ongoing query: "))
               (info (gptel-fsm-info gptel--fsm-last)))
-    (plist-put info :steering-message (string-trim msg))
+    (if (string-blank-p msg)
+        (progn (message "Buffer \"%s\": steering message is blank, canceling"
+                        (buffer-name (plist-get info :buffer)))
+               (plist-put info :steering-message nil))
+      (plist-put info :steering-message (string-trim msg)))
     (when-let* ((tm (or (plist-get info :tracking-marker) ;end of ongoing response
                         (plist-get info :position)))      ;end of prompt
                 (tbuf (marker-buffer tm))
                 ((buffer-live-p tbuf)))
       (with-current-buffer tbuf
-        ;; Front and rear-advance to move it with the response
-        (letrec ((steer-ov (make-overlay tm tm nil t t))
-                 (clear-steer-ov
-                  (lambda (req-info)
-                    (plist-put req-info :post
-                               (delete move-steer-msg (plist-get req-info :post)))
-                    (when (overlay-buffer steer-ov) (delete-overlay steer-ov))))
-                 (move-steer-msg (lambda (req-info)
-                                   (funcall clear-steer-ov req-info)
-                                   (gptel-send--steer-relocate req-info))))
-          (overlay-put
-           steer-ov 'after-string
-           (concat "\n" (propertize "QUEUED" 'face '(:inherit shadow :box -1))
-                   (propertize (concat ": " msg) 'face 'shadow) "\n"))
-          (plist-put info :post (cons move-steer-msg (plist-get info :post)))
-          (plist-put info :post-tool
-                     (cons clear-steer-ov (plist-get info :post-tool))))))))
+        (let ((existing-steer-ov
+               (cl-find-if (lambda (o) (eq (overlay-get o 'gptel) 'steer))
+                           (overlays-in (1- tm) (min (1+ tm) (point-max))))))
+          (if (string-blank-p msg)      ;Delete any existing overlay
+              (and existing-steer-ov (delete-overlay existing-steer-ov))
+            (letrec ((steer-ov    ;Find or create a steering msg display overlay
+                      ;; Front and rear-advance to move it with the response
+                      (or existing-steer-ov (make-overlay tm tm nil t t)))
+                     (clear-steer-ov
+                      (lambda (req-info)
+                        (plist-put req-info :post
+                                   (delete move-steer-msg (plist-get req-info :post)))
+                        (when (overlay-buffer steer-ov) (delete-overlay steer-ov))))
+                     (move-steer-msg (lambda (req-info)
+                                       (funcall clear-steer-ov req-info)
+                                       (gptel-send--steer-relocate req-info))))
+              (overlay-put steer-ov 'gptel 'steer)
+              (overlay-put
+               steer-ov 'after-string
+               (concat "\n" (propertize "QUEUED" 'face '(:inherit shadow :box -1))
+                       (propertize (concat ": " msg) 'face 'shadow) "\n"))
+              (plist-put info :post (cons move-steer-msg (plist-get info :post)))
+              (plist-put info :post-tool
+                         (cons clear-steer-ov (plist-get info :post-tool))))))))))
 
 ;; ** Suffix to regenerate response
 
