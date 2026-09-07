@@ -1410,6 +1410,26 @@ Return nil if no error occurred."
         (display-warning '(gptel reasoning-effort)
                          (format "%S was not found in `gptel-reasoning-effort-alist'" effort))
         nil))
+     ;; Fallback to available reasoning effort symbols when effort is missing
+     ;; from the alist.
+     ((and (symbolp effort)
+           (not (eq effort 'disabled))
+           (remq 'disabled choices)
+           (assoc effort gptel-reasoning-effort-alist)
+           (not (memq effort choices)))
+      (display-warning '(gptel reasoning-effort)
+                       (format "The model %S does not support %S for reasoning effort. Falling back to the next lowest level." gptel-model effort))
+      (or (car (cl-find-if (lambda (effort2)
+                             (memq effort2 choices))
+                           gptel-reasoning-effort-alist
+                           :key #'car
+                           :end (cl-position effort
+                                             gptel-reasoning-effort-alist
+                                             :key #'car)
+                           :from-end t))
+          ;; When there is no lower reasoning effort level to fallback to,
+          ;; disable reasoning effort.
+          'disabled))
      (t
       effort))))
 
