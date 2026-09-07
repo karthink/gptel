@@ -236,9 +236,8 @@ Mutate state INFO with response metadata."
     (when (and gptel-temperature (not o-model-p))
       (plist-put prompts-plist :temperature gptel-temperature))
     ;; Reasoning effort
-    (when gptel-reasoning-effort
-      (plist-put prompts-plist :reasoning
-                 (list :effort (symbol-name gptel-reasoning-effort))))
+    (when-let* ((effort (gptel--reasoning-effort-normalize gptel-reasoning-effort '(none))))
+      (plist-put prompts-plist :reasoning (list :effort (symbol-name effort))))
     ;; Max tokens
     (when gptel-max-tokens
       (plist-put prompts-plist :max_output_tokens gptel-max-tokens))
