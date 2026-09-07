@@ -132,13 +132,13 @@ list."
   (let ((prompts-plist
          (list :contents (vconcat prompts)
                :safetySettings [(:category "HARM_CATEGORY_HARASSMENT"
-                                 :threshold "BLOCK_NONE")
+                                           :threshold "BLOCK_NONE")
                                 (:category "HARM_CATEGORY_SEXUALLY_EXPLICIT"
-                                 :threshold "BLOCK_NONE")
+                                           :threshold "BLOCK_NONE")
                                 (:category "HARM_CATEGORY_DANGEROUS_CONTENT"
-                                 :threshold "BLOCK_NONE")
+                                           :threshold "BLOCK_NONE")
                                 (:category "HARM_CATEGORY_HATE_SPEECH"
-                                 :threshold "BLOCK_NONE")]))
+                                           :threshold "BLOCK_NONE")]))
         params)
     (if gptel-system-prompt
         (plist-put prompts-plist :systemInstruction
@@ -154,17 +154,17 @@ list."
       (setq params
             (plist-put params
                        :temperature (max 0.0 gptel-temperature))))
-    (when gptel-reasoning-effort
+    (when-let* ((effort (gptel--reasoning-effort-normalize gptel-reasoning-effort)))
       (setq params
-            (if (and (symbolp gptel-reasoning-effort)
-                     (not (eq gptel-reasoning-effort 'dynamic)))
+            (if (and (symbolp effort)
+                     (not (eq effort 'dynamic)))
                 (plist-put params
                            :thinkingConfig
-                           (list :thinkingLevel (symbol-name gptel-reasoning-effort)))
+                           (list :thinkingLevel (symbol-name effort)))
               (plist-put params
-                         :thinkingConfig (list :thinkingBudget (if (eq gptel-reasoning-effort 'dynamic)
+                         :thinkingConfig (list :thinkingBudget (if (eq effort 'dynamic)
                                                                    -1
-                                                                 gptel-reasoning-effort))))))
+                                                                 effort))))))
     (when gptel-max-tokens
       (setq params
             (plist-put params
