@@ -1406,8 +1406,12 @@ documention.  Return nil if user does not provide a number, for default."
                                         table
                                         nil
                                         (lambda (result)
-                                          (or (equal result "default")
-                                              (cl-typep (read result) effort-type))))))
+                                          (setq result (read result))
+                                          (or (equal result 'default)
+                                              (cl-typep result effort-type)
+                                              (and (or effort-ranges)
+                                                   (floatp result)
+                                                   (<= 0.0 result 1.0)))))))
           ;; Allow the user to restore the value to nil.
           (and (not (string= effort "default"))
                (read effort))))
