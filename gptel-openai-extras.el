@@ -326,14 +326,14 @@ to either `high' or `max'."
   ;; different than what Deepseek accepts
   (let ((plist (let ((gptel-reasoning-effort nil))
                  (cl-call-next-method))))
-    (when gptel-reasoning-effort
+    (when-let* ((effort (gptel--reasoning-effort-normalize gptel-reasoning-effort)))
       (plist-put plist
                  :thinking (list :type
-                                 (if (eq gptel-reasoning-effort 'disabled)
+                                 (if (eq effort 'disabled)
                                      "disabled"
                                    "enabled")))
-      (unless (eq gptel-reasoning-effort 'disabled)
-        (plist-put plist :reasoning_effort (symbol-name gptel-reasoning-effort))))
+      (unless (eq effort 'disabled)
+        (plist-put plist :reasoning_effort (symbol-name effort))))
     plist))
 
 (cl-defmethod gptel--request-data :around ((_backend gptel-deepseek) _prompts)
@@ -377,6 +377,7 @@ message."
                      :output-cost 0.87)
                     (deepseek-v4-flash-vision-exp
                      :capabilities (media tool-use reasoning url)
+                     :reasoning-effort (member disabled high max)
                      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
                      :context-window 1000
                      :input-cost 0.14
