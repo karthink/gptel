@@ -1,9 +1,9 @@
 ;;; gptel.el --- Interact with ChatGPT or other LLMs     -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023-2025  Karthik Chikmagalur
+;; Copyright (C) 2023-2026  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
-;; Version: 0.9.9.5
+;; Version: 0.9.9.6
 ;; Package-Requires: ((emacs "27.1") (transient "0.7.8") (compat "30.1.0.0"))
 ;; Keywords: convenience, tools
 ;; URL: https://github.com/karthink/gptel
@@ -188,7 +188,7 @@
 ;; usage.
 
 ;;; Code:
-(defconst gptel-version "0.9.9.5")
+(defconst gptel-version "0.9.9.6")
 
 (declare-function markdown-mode "ext:markdown-mode")
 (declare-function gptel-menu "gptel-transient" nil t)
@@ -606,6 +606,25 @@ Link failed to validate, see `gptel-markdown-validate-link' or `gptel-org-valida
         (cl-delete-if-not
          (lambda (o) (overlay-get o 'gptel-track-media))
          (overlays-in (or beg (point-min)) (or end (point-max))))))
+
+(defun gptel-send--steer-relocate (req-info)
+  "Move an unsent steering message in REQ-INFO to the next prompt."
+  (when-let* ((msg (plist-get req-info :steering-message)))
+    (plist-put req-info :steering-message nil) ;consume and move to next prompt
+    (if-let* ((tm (plist-get req-info :tracking-marker))
+              (tbuf (marker-buffer tm))
+              ((and (not (plist-get req-info :in-place)) (buffer-live-p tbuf))))
+        (with-current-buffer tbuf ;Insert steering prompt at start of next prompt
+          (save-excursion
+            (save-restriction
+              (goto-char tm)
+              (dolist (elem (list gptel-response-separator (gptel-prompt-prefix-string)))
+                (when (looking-at (regexp-quote elem)) (goto-char (match-end 0))))
+              (if (or buffer-read-only (get-char-property (point) 'read-only))
+                  (message "Cannot insert steering message, buffer read-only: \"%s\"" msg)
+                (message "Could not send steering message, moving to next prompt")
+                (insert msg)))))
+      (message "Could not send steering message: \"%s\"" msg))))
 
 ;;;; Response text recognition
 
@@ -1233,7 +1252,10 @@ buffers."
              (t                       . TOOL)))
     (TOOL . ((t                       . TRET)))
     (TRET . ((,#'gptel--error-p       . ERRS)
+             (,#'gptel--tool-steer-p  . TSTR)
              (,#'gptel--tool-result-p . WAIT)
+             (t                       . DONE)))
+    (TSTR . ((,#'gptel--tool-result-p . WAIT)
              (t                       . DONE))))
   "Alist specifying state transitions for `gptel-send'.
 
@@ -1248,6 +1270,7 @@ See `gptel-request--transitions' for details.")
     (TOOL ,#'gptel--update-tool-call ,#'gptel--handle-tool-use
           ,#'gptel--update-tool-ask)
     (TRET ,#'gptel--handle-post-tool ,#'gptel--handle-tool-result)
+    (TSTR ,#'gptel--handle-tool-steer)
     (DONE ,#'gptel--handle-post-insert ,#'gptel--fsm-last)
     (ABRT ,#'gptel--handle-abort))
   "Alist specifying handlers for `gptel-send' state transitions.
@@ -1256,6 +1279,12 @@ See `gptel-request--handlers' for details.")
 
 (defvar-local gptel--fsm-last nil
   "State machine for latest request in the buffer.")
+
+(defsubst gptel--fsm-live-p (&optional fsm)
+  "Check if FSM is a live (ongoing) request.
+Defaults to checking the variable `gptel--fsm-last'."
+  (unless fsm (setq fsm gptel--fsm-last))
+  (and fsm (not (memq (gptel-fsm-state fsm) '(ERRS ABRT DONE)))))
 
 (defun gptel--fsm-last (fsm)
     "Capture the latest request state FSM for introspection."
@@ -1549,9 +1578,12 @@ Perform UI updates and run post-response hooks."
                           tool-call result))))))))))))))
 
 (defun gptel--handle-post-tool (fsm)
-  "Run `gptel-post-tool-call-functions for FSM."
+  "Run `gptel-post-tool-call-functions' for FSM.
+
+Also run the request-local :post-tool functions."
   (let* ((info (gptel-fsm-info fsm))
-         (buffer (plist-get info :buffer)))
+         (buffer (plist-get info :buffer))
+         (post-tool (plist-get info :post-tool)))
     (when (buffer-local-value 'gptel-post-tool-call-functions buffer)
       (let ((hook-func-args (list :buffer (buffer-name buffer)
                                   :backend (plist-get info :backend)
@@ -1602,11 +1634,35 @@ Perform UI updates and run post-response hooks."
                            '(gptel tools)
                            (format "Tool %s: Could not replace tool results" name)))
                          ;; Update results sent to LLM
-                         (plist-put tool-call :result result))))))))))))))
+                         (plist-put tool-call :result result))))))))))))
+    (when post-tool
+      (mapc (lambda (f) (funcall f info)) (plist-get info :post-tool))
+      (plist-put info :post-tool nil))))
+
+(defun gptel--handle-tool-steer (fsm)
+  "Handle steering messages during tool use for FSM."
+  (when-let* ((info (gptel-fsm-info fsm))
+              (steer-list (plist-get info :steering-message))
+              ;; TODO(steer) We support multiple steering messages but there is
+              ;; no support for it in the UI yet (in-buffer or from the menu)
+              (steer (apply #'concat (ensure-list steer-list))))
+    ;; Inject the steering message into the messages array as a user message
+    (gptel--inject-prompt
+     (plist-get info :backend) (plist-get info :data)
+     (gptel--parse-list (plist-get info :backend) (list steer)))
+    ;; Close reasoning block if required
+    (when (eq (plist-get info :reasoning-block) 'in)
+      (funcall (plist-get info :callback) '(reasoning . t) info))
+    ;; Insert the steering message response buffer
+    (funcall (plist-get info :callback) (concat steer "\n\n") info 'raw)
+    (plist-put info :steering-message nil))
+  (gptel--fsm-transition fsm))
 
 (defun gptel--update-wait (fsm)
-  "Update gptel's status in FSM after sending a request."
+  "Update gptel's status in FSM after sending a request.
+Also record the FSM for introspection and other actions."
   (with-current-buffer (plist-get (gptel-fsm-info fsm) :buffer)
+    (setq gptel--fsm-last fsm)
     (when gptel-mode
       (gptel--update-status " Waiting..." 'warning))))
 
@@ -1639,6 +1695,10 @@ Perform UI updates and run post-response hooks."
         (when gptel-mode
           (gptel--update-status " Run tools?" 'mode-line-emphasis))))))
 
+(defun gptel--tool-steer-p (info)
+  "Check if INFO contains any steering messages."
+  (plist-get info :steering-message))
+
 
 ;;; Send queries, handle responses
 ;;;###autoload
@@ -1650,28 +1710,100 @@ are sent.  If the region is active, its contents are sent
 instead.
 
 The response from the LLM is inserted below the cursor position
-at the time of sending.  To change this behavior or model
-parameters, use prefix arg ARG activate a transient menu with
-more options instead.
+at the time of sending.
+
+To change this behavior, model parameters, or interact with a query
+already in progress, use prefix arg ARG:
+
+- Use a prefix arg of \\[universal-argument] to bring up a menu with
+  more options.
+
+- Use a prefix arg of 0 to add more instructions to a request already in
+  progress.  The instructions are read from the active region, or from
+  text entered below an ongoing response.  This is sent when the LLM
+  next makes tool calls, so if no tools are provided or called the
+  additional instructions are ignored.
 
 This command is asynchronous, you can continue to use Emacs while
 waiting for the response."
   (interactive "P")
-  (if (and arg (require 'gptel-transient nil t))
-      (call-interactively #'gptel-menu)
-    (gptel--sanitize-model)
-    (let ((fsm (gptel-make-fsm :table gptel-send--transitions
-                               :handlers gptel-send--handlers)))
-      (gptel-request nil
-        :stream gptel-stream
-        :transforms gptel-prompt-transform-functions
-        :fsm fsm)
-      (message "Querying %s..."
-               (thread-first (gptel-fsm-info fsm)
-                             (plist-get :backend)
-                             (or gptel-backend)
-                             (gptel-backend-name))))
-    (gptel--update-status " Waiting..." 'warning)))
+  (pcase arg
+    (0 (gptel-send--steer))
+    ('(4) (require 'gptel-transient nil t) (call-interactively #'gptel-menu))
+    (_
+     (let ((fsm (gptel-make-fsm :table gptel-send--transitions
+                                :handlers gptel-send--handlers)))
+       (gptel-request nil
+         :stream gptel-stream
+         :transforms gptel-prompt-transform-functions
+         :fsm fsm)
+       (message "Querying %s..."
+                (thread-first (gptel-fsm-info fsm)
+                              (plist-get :backend)
+                              (or gptel-backend)
+                              (gptel-backend-name))))
+     (gptel--update-status " Waiting..." 'warning))))
+
+(defun gptel-send--steer ()
+  "Mark active region or text following a response as a steering message."
+  (unless (gptel--fsm-live-p)
+    (user-error "No active gptel request in this buffer; nothing to steer"))
+  (if-let* (((eq (get-pos-property (point) 'gptel) 'steer))
+            (ov (or (cdr (get-char-property-and-overlay (point) 'gptel))
+                    (cdr (get-char-property-and-overlay (1- (point)) 'gptel)))))
+      ;; Cancel pending steering message
+      (progn (delete-overlay ov) (message "Steering message canceled"))
+    (let* ((info (gptel-fsm-info gptel--fsm-last))
+           (sm (plist-get info :position))
+           (tracking-marker (plist-get info :tracking-marker))
+           (bounds                      ;Find the bounds of the steering prompt
+            (cond
+             ((use-region-p) (deactivate-mark) (car-safe (region-bounds)))
+             ((and tracking-marker (> (point) tracking-marker))
+              (cons (save-excursion
+                      (goto-char tracking-marker) (skip-chars-forward " \t\n")
+                      (point))
+                    (point)))
+             ((and (>= (point) sm) (not (get-text-property (point) 'gptel)))
+              (cons (save-excursion
+                      (goto-char        ;Go to start of steering message
+                       (max (previous-single-property-change ;below response
+                             (point) 'gptel nil (or sm (point-min)))
+                            (previous-single-property-change ;below pending tool call
+                             (point) 'read-only nil (or sm (point-min)))))
+                      (skip-chars-forward " \r\t\n") (point))
+                    (point))))))
+      (unless (and bounds (> (cdr bounds) (car bounds)))
+        (user-error "No steering message at point"))
+      (letrec ((steer-ov (make-overlay (car bounds) (cdr bounds) nil t t))
+               (clear-steer-ov
+                (lambda (req-info)
+                  (plist-put req-info :post
+                             (delete move-steer-msg (plist-get req-info :post)))
+                  (when-let* ((obuf (overlay-buffer steer-ov))
+                              (beg (overlay-start steer-ov))
+                              (end (overlay-end steer-ov))
+                              (msg (string-trim-right
+                                    (buffer-substring-no-properties beg end))))
+                    (with-current-buffer obuf
+                      (delete-region beg end) (delete-overlay steer-ov))
+                    (if (string-blank-p msg)
+                        (message "Buffer \"%s\": steering message is blank, canceling"
+                                 (buffer-name obuf))
+                      (plist-put req-info :steering-message msg)))))
+               (move-steer-msg (lambda (req-info)
+                                 (funcall clear-steer-ov req-info)
+                                 (gptel-send--steer-relocate req-info))))
+        (overlay-put steer-ov 'gptel 'steer)
+        (overlay-put steer-ov 'evaporate t)
+        (overlay-put steer-ov 'face 'warning)
+        (overlay-put
+         steer-ov 'before-string
+         (concat (propertize "QUEUED" 'face '(:inherit shadow :box -1))
+                 (propertize ": " 'face 'shadow)))
+        (plist-put info :post (cons move-steer-msg (plist-get info :post)))
+        (plist-put info :post-tool
+                   (cons clear-steer-ov (plist-get info :post-tool)))))))
 
 (declare-function json-pretty-print-buffer "json")
 (defun gptel--inspect-query (&optional request-fsm format)
@@ -2034,6 +2166,7 @@ Note: This tool call preview API is currently experimental.")
   "<mouse-1>" #'gptel--dispatch-tool-calls
   "C-c C-c" #'gptel--accept-tool-calls
   "C-c C-k" #'gptel--reject-tool-calls
+  "C-c C-r" #'gptel--steer-tool-calls
   "C-c C-i" #'gptel--inspect-tool-calls)
 
 (defun gptel--display-tool-calls (tool-calls info &optional use-minibuffer)
@@ -2068,20 +2201,23 @@ USE-MINIBUFFER is non-nil)."
                                  backend-name len (if (> len 1) "calls" "call")
                                  tool-call-names))
                  (choices '((?y "Run tools") (?n "Cancel (resumable)")
-                            (?i "Inspect or edit")))
+                            (?r "Steer") (?i "Inspect or edit")))
                  (choice (read-multiple-choice prompt choices)))
             (pcase (car choice)
               (?y (gptel--accept-tool-calls tool-calls))
               (?n (gptel--reject-tool-calls))
+              (?r (gptel--steer-tool-calls tool-calls nil info))
               (?i (gptel--inspect-tool-calls tool-calls info))))
         ;; Prompt for confirmation from the response buffer
         (let* ((backend-name (gptel-backend-name (plist-get info :backend)))
                (actions-string
                 (concat (propertize "Run tools: " 'face 'font-lock-string-face)
                         (propertize "C-c C-c" 'face 'help-key-binding)
-                        (propertize ", Cancel request: " 'face 'font-lock-string-face)
+                        (propertize ", Cancel: " 'face 'font-lock-string-face)
                         (propertize "C-c C-k" 'face 'help-key-binding)
-                        (propertize ", Inspect or Edit: " 'face 'font-lock-string-face)
+                        (propertize ", Steer: " 'face 'font-lock-string-face)
+                        (propertize "C-c C-r" 'face 'help-key-binding)
+                        (propertize ", Inspect: " 'face 'font-lock-string-face)
                         (propertize "C-c C-i" 'face 'help-key-binding)))
                (confirm-strings)
                ;; FIXME(tool) use a wrapper instead of a manual text-property search,
@@ -2335,16 +2471,48 @@ OV is the tool call dispatch overlay."
                          (overlay-end prompt-ov)))))
     (delete-overlay ov)))
 
+(defun gptel--steer-tool-calls (&optional tool-calls ov info)
+  "Reject pending TOOL-CALLS and continue the request chain.
+
+Feed a rejection message to the LLM for each tool call so the
+conversation can proceed.  OV is the tool call dispatch overlay, INFO is
+the request state plist."
+  (interactive (pcase-let ((`(,resp . ,o) (get-char-property-and-overlay
+                                           (point) 'gptel-tool)))
+                 (list resp o (and (overlayp o) (overlay-get o 'info)))))
+  (setq info (or info (and (overlayp ov) (overlay-get ov 'info))))
+  (when (and tool-calls info)
+    (gptel--update-status " Tools rejected" 'error)
+    (let* ((tool-result "Tool call rejected by user.")
+           (msg (read-string "Reject with instructions: "
+                             nil nil tool-result)))
+      (plist-put info :steering-message msg)
+      (cl-loop for (_tool-spec _arg-plist process-tool-result) in tool-calls
+               do (funcall process-tool-result tool-result))))
+  (when (and (overlayp ov) (overlay-buffer ov))
+    (with-current-buffer (overlay-buffer ov)
+      (when-let* ((preview-handles (overlay-get ov 'previews)))
+        (dolist (func-to-handle preview-handles)
+          (when (car func-to-handle) (apply func-to-handle))))
+      (dolist (prompt-ov (overlay-get ov 'prompt))
+        (when-let* (((overlay-buffer prompt-ov))
+                    (inhibit-read-only t))
+          (delete-region (overlay-start prompt-ov)
+                         (overlay-end prompt-ov)))))
+    (delete-overlay ov)))
+
 (defun gptel--dispatch-tool-calls (choice)
   "Dispatch on tool-calls with CHOICE."
   (interactive
    (list
     (let ((choices '((?y "yes") (?n "do nothing")
-                     (?k "cancel request") (?i "inspect call(s)"))))
+                     (?k "cancel request") (?r "reject (continue)")
+                     (?i "inspect call(s)"))))
       (read-multiple-choice "Run tool calls? " choices))))
   (pcase (car choice)
     (?y (call-interactively #'gptel--accept-tool-calls))
     (?k (call-interactively #'gptel--reject-tool-calls))
+    (?r (call-interactively #'gptel--steer-tool-calls))
     (?i (call-interactively #'gptel--inspect-tool-calls))))
 
 ;;;; Tool call inspection UI
@@ -2352,6 +2520,7 @@ OV is the tool call dispatch overlay."
   :doc "Actions in the gptel tool inspection buffer."
   "C-c C-c" #'gptel--inspect-accept-tool-calls
   "C-c C-k" #'gptel--inspect-reject-tool-calls
+  "C-c C-r" #'gptel--inspect-steer-tool-calls
   "C-c C-i" #'gptel--inspect-quit-tool-calls)
 
 (defun gptel--inspect-accept-tool-calls (&optional _)
@@ -2414,8 +2583,20 @@ This is a bug, please report it!"))))
   "Cancel tool-calls and return to query buffer."
   (interactive)
   (apply #'gptel--reject-tool-calls
-   (thread-first (gptel-fsm-info gptel--fsm-last)
-                 (plist-get :tool-display)))
+         (thread-first (gptel-fsm-info gptel--fsm-last)
+                       (plist-get :tool-display)))
+  (quit-window t))
+
+(defun gptel--inspect-steer-tool-calls (&optional _)
+  "Reject tool-calls from the inspection buffer and continue the chain.
+
+Feed a rejection message to the LLM for each tool call and clean up."
+  (interactive)
+  (apply #'gptel--steer-tool-calls
+         (append                        ;(tool-calls overlay info)
+          (thread-first (gptel-fsm-info gptel--fsm-last)
+                        (plist-get :tool-display))
+          (list (gptel-fsm-info gptel--fsm-last))))
   (quit-window t))
 
 (defun gptel--inspect-quit-tool-calls (&optional _)
@@ -2499,6 +2680,8 @@ query buffer."
               " \\[gptel--inspect-accept-tool-calls], "
               (buttonize "Cancel" #'gptel--inspect-reject-tool-calls)
               " \\[gptel--inspect-reject-tool-calls], "
+              (buttonize "Steer" #'gptel--inspect-steer-tool-calls)
+              " \\[gptel--inspect-steer-tool-calls], "
               (buttonize "Return" #'gptel--inspect-quit-tool-calls)
               " \\[gptel--inspect-quit-tool-calls], "
               (buttonize "Edit" (lambda (_) (read-only-mode 'toggle)))
