@@ -1654,7 +1654,7 @@ Also run the request-local :post-tool functions."
     (when (eq (plist-get info :reasoning-block) 'in)
       (funcall (plist-get info :callback) '(reasoning . t) info))
     ;; Insert the steering message response buffer
-    (funcall (plist-get info :callback) (concat steer "\n\n") info 'raw)
+    (funcall (plist-get info :callback) (concat "\n" steer "\n") info 'raw)
     (plist-put info :steering-message nil))
   (gptel--fsm-transition fsm))
 
