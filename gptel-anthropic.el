@@ -223,10 +223,10 @@ Mutate state INFO with response metadata."
 (cl-defmethod gptel--request-data ((backend gptel-anthropic) prompts)
   "JSON encode PROMPTS for sending to the Anthropic API for BACKEND."
   (let ((prompts-plist
-         `( :model ,(gptel--model-name gptel-model)
-            :stream ,(or gptel-stream :json-false)
-            :max_tokens ,(or gptel-max-tokens 4096)
-            :messages [,@prompts]))
+         (list :model (gptel--model-name gptel-model)
+               :stream (or gptel-stream :json-false)
+               :max_tokens (or gptel-max-tokens 64000)
+               :messages `[,@prompts]))
         (cachep (and (or (eq gptel-cache t) (memq 'system gptel-cache))
                      (gptel--model-capable-p 'cache))))
     (when gptel-system-prompt
