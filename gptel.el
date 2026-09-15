@@ -387,8 +387,8 @@ Window' for details."
   :group 'gptel)
 
 (defcustom gptel-crowdsourced-prompts-file
-  (let ((cache-dir (or (eval-when-compile
-			 (require 'xdg)
+  (let ((cache-dir (or (progn
+                         (require 'xdg)
 			 (xdg-cache-home))
                        user-emacs-directory)))
     (expand-file-name "gptel-crowdsourced-prompts.csv" cache-dir))
