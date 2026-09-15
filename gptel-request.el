@@ -849,7 +849,9 @@ when including context from these major modes.")
 
 (defmacro gptel--json-encode (object)
   "Serialize OBJECT as JSON."
-  (if (fboundp 'json-serialize)
+  ;; non unicode chars break json-serialize, disable it to avoid inference failures
+  ;; (json-serialize "\222") fails (json-encode "\222") works
+  (if (and nil (fboundp 'json-serialize))
       `(json-serialize ,object
         :null-object :null
         :false-object :json-false)
