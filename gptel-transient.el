@@ -30,7 +30,7 @@
 (require 'transient)
 
 (declare-function ediff-regions-internal "ediff")
-(declare-function ediff-make-cloned-buffer "ediff-utils")
+(declare-function ediff-make-cloned-buffer "ediff-util")
 (declare-function org-escape-code-in-string "org-src")
 (declare-function gptel--vterm-delete "gptel-integrations")
 
@@ -578,6 +578,7 @@ If evil-mode is not in use, this function is a no-op and calls FN directly."
   "Lisp variables that show :display-nil instead of nil.")
 
 (cl-defmethod transient-format-value ((obj gptel-lisp-variable))
+  "Format the value of OBJ for display in the transient menu."
   (let ((display-value
          (with-slots (value display-nil display-map) obj
            (cond ((null value) display-nil)
@@ -588,6 +589,7 @@ If evil-mode is not in use, this function is a no-op and calls FN directly."
      'face 'transient-value)))
 
 (cl-defmethod transient-infix-set ((obj gptel-lisp-variable) value)
+  "Set OBJ's variable to VALUE, possibly scoped buffer-locally."
   (funcall (oref obj set-value)
            (oref obj variable)
            (oset obj value value)
@@ -626,6 +628,7 @@ It is a list of the category and argument, e.g.
 Their own value is ignored")
 
 (cl-defmethod transient-format-value ((obj gptel--switch-category))
+  "Format the value of OBJ as a count of selected tools in its category."
   (let* ((category (oref obj category))
          (active-count
           (cl-count-if (lambda (tl) (equal (car tl) category))
@@ -684,6 +687,7 @@ Their own value is ignored")
   (not (oref obj value)))
 
 (cl-defmethod transient-format-value ((obj gptel--switches))
+  "Format the value of OBJ as a three-way switch."
   (with-slots (value display-if-true display-if-false) obj
       (format
        (propertize "(%s)" 'face 'transient-delimiter)
@@ -713,6 +717,7 @@ This is used only for setting this variable via `gptel-menu'.")
     (pcase value ('t 1) ('nil t) (1 nil))))
 
 (cl-defmethod transient-format-value ((obj gptel--scope))
+  "Format the value of OBJ, a scope switch, for the transient menu."
   (with-slots (value display-if-true display-if-false) obj
       (format
        (propertize "(%s)" 'face 'transient-delimiter)
@@ -727,6 +732,7 @@ This is used only for setting this variable via `gptel-menu'.")
                     (if (eql value 1) 'transient-value 'transient-inactive-value))))))
 
 (cl-defmethod transient-infix-set ((obj gptel--scope) value)
+  "Set the value of OBJ to VALUE."
   (funcall (oref obj set-value)
            (oref obj variable)
            (oset obj value value)))
@@ -741,6 +747,7 @@ This is used only for setting this variable via `gptel-menu'.")
   "Class used for gptel-backends.")
 
 (cl-defmethod transient-format-value ((obj gptel-provider-variable))
+  "Format the value of OBJ as backend and model names."
   (propertize (concat
                (gptel-backend-name
                 (buffer-local-value (oref obj backend) transient--original-buffer)) ":"
@@ -748,6 +755,7 @@ This is used only for setting this variable via `gptel-menu'.")
               'face 'transient-value))
 
 (cl-defmethod transient-infix-set ((obj gptel-provider-variable) value)
+  "Set OBJ's value to VALUE, a cons of backend and model."
   (pcase-let ((`(,backend-value ,model-value) value))
     (funcall (oref obj set-value)
              (oref obj variable)
@@ -891,7 +899,7 @@ Also format the value of OBJ in the transient menu."
      gptel-rewrite)]
    ["Tweak Response" :if gptel--in-response-p :pad-keys t
     ("SPC" "Mark" gptel--mark-response)
-    ("M-RET" "Regenerate" gptel--regenerate :if gptel--in-response-p)
+    ("S-RET" "Regenerate" gptel--regenerate :if gptel--in-response-p)
     ("P" "Previous variant" gptel--previous-variant
      :if gptel--at-response-history-p
      :transient t)
@@ -937,7 +945,8 @@ Also format the value of OBJ in the transient menu."
      (lambda () (interactive)
        (pop-to-buffer (get-buffer-create gptel--log-buffer-name)))
      :format "  %k %d")]]
-  [(gptel--suffix-send)]
+  [(gptel--suffix-steer)
+   (gptel--suffix-send)]
   (interactive)
   (gptel--sanitize-model)
   (when gptel-context        ;MAYBE: Move this to a dedicated sanitize function?
@@ -1292,7 +1301,12 @@ responses."
                                           backend model))
              into models-alist
              with completion-extra-properties =
-             `(:annotation-function
+             `(:group-function
+               ,(lambda (cand transform)
+                  (if transform
+                      cand
+                    (gptel-backend-name (nth 1 (assoc cand models-alist)))))
+               :annotation-function
                ,(lambda (comp)
 		  (let* ((model (nth 2 (assoc comp models-alist)))
 			 (desc (get model :description))
@@ -1847,6 +1861,56 @@ for details."
 
 ;; Allow calling from elisp
 (put 'gptel--suffix-send 'interactive-only nil)
+
+;; ** Suffix to steer ongoing response
+
+(transient-define-suffix gptel--suffix-steer ()
+  "Inject a steering message into the latest ongoing gptel query.
+Prompt for instructions and queue them to be sent with the LLM's next
+tool call result.
+
+To cancel a queued message, provide an empty prompt instead."
+  :key "M-RET"
+  :description "Steer ongoing query"
+  :if (lambda () (and (gptel--fsm-live-p)
+                 (plist-get (gptel-fsm-info gptel--fsm-last) :tools)))
+  (interactive)
+  (when-let* ((msg (read-string "Steering instructions for ongoing query: "))
+              (info (gptel-fsm-info gptel--fsm-last)))
+    (if (string-blank-p msg)
+        (progn (message "Buffer \"%s\": steering message is blank, canceling"
+                        (buffer-name (plist-get info :buffer)))
+               (plist-put info :steering-message nil))
+      (plist-put info :steering-message (string-trim msg)))
+    (when-let* ((tm (or (plist-get info :tracking-marker) ;end of ongoing response
+                        (plist-get info :position)))      ;end of prompt
+                (tbuf (marker-buffer tm))
+                ((buffer-live-p tbuf)))
+      (with-current-buffer tbuf
+        (let ((existing-steer-ov
+               (cl-find-if (lambda (o) (eq (overlay-get o 'gptel) 'steer))
+                           (overlays-in (1- tm) (min (1+ tm) (point-max))))))
+          (if (string-blank-p msg)      ;Delete any existing overlay
+              (and existing-steer-ov (delete-overlay existing-steer-ov))
+            (letrec ((steer-ov    ;Find or create a steering msg display overlay
+                      ;; Front and rear-advance to move it with the response
+                      (or existing-steer-ov (make-overlay tm tm nil t t)))
+                     (clear-steer-ov
+                      (lambda (req-info)
+                        (plist-put req-info :post
+                                   (delete move-steer-msg (plist-get req-info :post)))
+                        (when (overlay-buffer steer-ov) (delete-overlay steer-ov))))
+                     (move-steer-msg (lambda (req-info)
+                                       (funcall clear-steer-ov req-info)
+                                       (gptel-send--steer-relocate req-info))))
+              (overlay-put steer-ov 'gptel 'steer)
+              (overlay-put
+               steer-ov 'after-string
+               (concat "\n" (propertize "QUEUED" 'face '(:inherit shadow :box -1))
+                       (propertize (concat ": " msg) 'face 'shadow) "\n"))
+              (plist-put info :post (cons move-steer-msg (plist-get info :post)))
+              (plist-put info :post-tool
+                         (cons clear-steer-ov (plist-get info :post-tool))))))))))
 
 ;; ** Suffix to regenerate response
 

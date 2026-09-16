@@ -883,7 +883,7 @@ I will generate only the final replacement.\n")))
           (setf (gptel-fsm-handlers fsm) gptel--rewrite-handlers)
           (plist-put info :callback #'gptel--rewrite-callback)
           (plist-put info :context (gptel--rewrite-request-context
-                                    (plist-get info :bufferr)))))))
+                                    (plist-get info :buffer)))))))
   :system gptel--rewrite-directive)
 
 (provide 'gptel-rewrite)

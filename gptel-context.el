@@ -31,7 +31,7 @@
 (require 'cl-lib)
 (require 'project)
 
-(declare-function gptel-menu "gptel-transient")
+(declare-function gptel-menu "gptel-transient" nil t)
 (declare-function dired-get-marked-files "dired")
 (declare-function ibuffer-get-marked-buffers "ibuffer")
 (declare-function ibuffer-current-buffer "ibuffer")
