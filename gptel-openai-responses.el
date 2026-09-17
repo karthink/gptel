@@ -136,15 +136,36 @@ information if the stream contains it."
                     (plist-get resp :usage) info)))
                 ;; Errors in streaming responses show up as data events with
                 ;; HTTP status 200, so we have to catch them here
-                ("error" (when-let* ((err (plist-get data :error)))
+                ;; The error can be nested, or the event itself
+                ("error" (when-let* ((err (or (plist-get data :error)
+                                              (and (plist-get data :message)
+                                                   data))))
                            (plist-put info :error err)))))))
       (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
 
+(defsubst gptel--openai-responses-array (value)
+  "Return VALUE if it is a non-empty array, nil otherwise.
+
+Array-valued fields of a response can be JSON null, which
+`gptel--json-read' decodes as the symbol :null."
+  (and (arrayp value) (not (length= value 0)) value))
+
+(cl-defmethod gptel--parse-response :around ((_backend gptel-openai-responses) response info)
+  "Check an OpenAI Responses API RESPONSE for errors before parsing it.
+
+Errors are reported with HTTP status 200, so they have to be caught
+here.  Record the error in state INFO and return nil, the caller
+reports it."
+  (if-let* ((err (plist-get response :error))
+            ((not (eq err :null))))
+      (progn (plist-put info :error err) nil)
+    (cl-call-next-method)))
+
 (cl-defmethod gptel--parse-response ((_backend gptel-openai-responses) response info)
   "Parse an OpenAI Responses API RESPONSE and return response text.
 Mutate state INFO with response metadata."
-  (let ((output-items (plist-get response :output))
+  (let ((output-items (gptel--openai-responses-array (plist-get response :output)))
         (content-strs) (tool-use) (tool-calls))
     ;; Store usage info
     (plist-put info :stop-reason (plist-get response :status))
@@ -177,13 +198,15 @@ Mutate state INFO with response metadata."
               tool-use))
        ;; Reasoning summary
        ("reasoning"
-        (cl-loop with summary = (plist-get item :summary)
-                 with content = (plist-get item :content)
-                 for s across
-                 (if (length= content 0) summary content)
+        (cl-loop with summary = (gptel--openai-responses-array
+                                 (plist-get item :summary))
+                 with content = (gptel--openai-responses-array
+                                 (plist-get item :content))
+                 for s across (or content summary)
                  collect (plist-get s :text) into reasoning
-                 finally do
-                 (plist-put info :reasoning (apply #'concat reasoning))))
+                 finally do          ;don't record an empty reasoning block
+                 (when reasoning
+                   (plist-put info :reasoning (apply #'concat reasoning)))))
        ;; Web search results (server-side tool)
        ("web_search_call"
         (when-let* ((status (plist-get item :status))

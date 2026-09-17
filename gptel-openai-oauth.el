@@ -58,8 +58,13 @@ Device Authorization Grant."
 (cl-defmethod gptel--request-data ((_backend gptel-openai-oauth) _prompts)
   "Return request data for the OpenAI OAuth backend.
 
-Removes unsupported temperature settings from the payload."
+Removes unsupported temperature and max_output_tokens settings from
+the payload, and always requests a streaming response."
   (let ((prompts-plist (cl-call-next-method)))
+    ;; The Codex endpoint rejects requests with "stream": false (HTTP 400
+    ;; "Stream must be set to true").  When gptel is not streaming, the
+    ;; server-sent event body is read whole by `gptel--read-response-body'.
+    (plist-put prompts-plist :stream t)
     (when (plist-member prompts-plist :temperature)
       (display-warning
        '(gptel gptel-openai-oauth)
@@ -71,6 +76,55 @@ Removes unsupported temperature settings from the payload."
        "Codex models do not support setting request max_output_tokens, ignoring `gptel-max-tokens'")
       (cl-remf prompts-plist :max_output_tokens))
     prompts-plist))
+
+(defun gptel--openai-oauth-read-sse ()
+  "Read a server-sent event stream from point and return a response plist.
+
+The Codex endpoint replies with an event stream even when gptel is
+not streaming the response.  Collect the completed output items and
+return the response object of the terminal event, with its output
+items filled in when the terminal event carries none.  If the stream
+ends without a terminal event, return a plist reporting that the
+response is incomplete.
+
+Only the events required to reconstruct the response are parsed,
+the (possibly thousands of) delta events are skipped."
+  (let (items response)
+    (while (re-search-forward "^event: *\\(.+\\)" nil t)
+      (let ((event-type (match-string 1)))
+        (when (member event-type
+                      '("response.output_item.done" "response.completed"
+                        "response.incomplete" "response.failed" "error"))
+          (forward-line 1)
+          (when (looking-at "data:" t)
+            (forward-char 5)
+            (let ((data (gptel--json-read)))
+              (pcase event-type
+                ("response.output_item.done"
+                 (when-let* ((item (plist-get data :item)))
+                   (push item items)))
+                ;; Errors are reported with HTTP status 200, pass them on in
+                ;; the shape of a response object
+                ("error" (setq response (list :error data)))
+                (_ (setq response (plist-get data :response)))))))))
+    (if (null response)
+        (list :error "Response incomplete: the event stream ended \
+before the response did")
+      ;; The terminal event does not repeat the output items, fill them in
+      (when (and items (plist-member response :output))
+        (let ((output (plist-get response :output)))
+          (when (or (not (arrayp output)) (length= output 0))
+            (setq response (plist-put response :output (vconcat (nreverse items)))))))
+      response)))
+
+(cl-defmethod gptel--read-response-body ((_backend gptel-openai-oauth))
+  "Read a response body from the Codex endpoint.
+
+The body is an event stream when the request succeeded, and plain
+JSON otherwise."
+  (if (looking-at "[[:space:]]*event: " t)
+      (gptel--openai-oauth-read-sse)
+    (cl-call-next-method)))
 
 ;;;; OpenAI OAuth methods
 ;;;;; OpenAI device-based Oauth
@@ -418,7 +472,10 @@ targets the Codex endpoint on chatgpt.com.  Run
 
 The keyword arguments (CURL-ARGS, STREAM, REQUEST-PARAMS,
 HEADER, HOST, PROTOCOL, ENDPOINT and MODELS) are all optional;
-for their meanings, see `gptel-make-openai'."
+for their meanings, see `gptel-make-openai'.  Note that STREAM
+only controls whether gptel inserts the response incrementally:
+the Codex endpoint always replies with an event stream, so
+requests are always sent with \"stream\": true."
   (declare (indent 1))
   (let ((backend (gptel--make-openai-oauth
                   :curl-args curl-args
