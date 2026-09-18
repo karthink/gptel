@@ -2536,15 +2536,15 @@ first nil value in REST is guaranteed to be correct."
                              (file-remote-p path)
                              (file-readable-p path)))
               (mime-valid
-               (and (or (eq resource-type 'url)
-                        (with-memoization
-                            (alist-get (expand-file-name path)
-                                       gptel--link-type-cache
-                                       nil nil #'string=)
-                          (and (gptel--file-binary-p path) t)))
-                    (setq mime (mailcap-file-name-to-mime-type path))
-                    (and mime (gptel--model-mime-capable-p mime))
-                    t)))
+               (if (or (eq resource-type 'url)
+                       (with-memoization
+                           (alist-get (expand-file-name path)
+                                      gptel--link-type-cache
+                                      nil nil #'string=)
+                         (gptel--file-binary-p path)))
+                   (progn (setq mime (mailcap-file-name-to-mime-type path))
+                          (gptel--model-mime-capable-p mime))
+                 t)))
         (list t link-type path resource-type user-check readablep mime-valid mime)
       (list nil link-type path resource-type user-check readablep mime-valid mime))))
 
