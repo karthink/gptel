@@ -2531,20 +2531,20 @@ first nil value in REST is guaranteed to be correct."
                    (and (gptel--model-capable-p 'url)
                         (member link-type '("http" "https" "ftp")) 'url)))
               (user-check (funcall gptel-markdown-validate-link link))
-              (readablep (or (member link-type '("http" "https" "ftp"))
+              (readablep (or (eq resource-type 'url) ;Assume URLs are reachable
                              (file-remote-p default-directory)
                              (file-remote-p path)
                              (file-readable-p path)))
               (mime-valid
-               (or (eq resource-type 'url)
-                   (and (with-memoization
+               (and (or (eq resource-type 'url)
+                        (with-memoization
                             (alist-get (expand-file-name path)
                                        gptel--link-type-cache
                                        nil nil #'string=)
-                          (if (gptel--file-binary-p path) t))
-                        (setq mime (mailcap-file-name-to-mime-type path))
-                        (gptel--model-mime-capable-p mime))
-                   t)))
+                          (and (gptel--file-binary-p path) t)))
+                    (setq mime (mailcap-file-name-to-mime-type path))
+                    (and mime (gptel--model-mime-capable-p mime))
+                    t)))
         (list t link-type path resource-type user-check readablep mime-valid mime)
       (list nil link-type path resource-type user-check readablep mime-valid mime))))
 
