@@ -229,7 +229,8 @@ the response."
           (header
            (lambda (_info)
              (when-let* ((key (gptel--get-api-key)))
-               `(("Authorization" . ,(concat "Bearer " key))))))
+               `(("Authorization" . ,(concat "Bearer " key))
+                 ("X-Pplx-Integration" . "gptel")))))
           (host "api.perplexity.ai")
           (protocol "https")
           ;; https://docs.perplexity.ai/guides/model-cards
