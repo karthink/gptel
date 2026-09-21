@@ -662,9 +662,9 @@ Link failed to validate, see `gptel-markdown-validate-link' or `gptel-org-valida
           (cons (prop-match-beginning prop)
                 (prop-match-end prop)))))))
 
-(defun gptel--in-response-p (&optional pt)
-  "Check if position PT is inside a gptel response."
-  (eq (get-char-property (or pt (point)) 'gptel) 'response))
+(defsubst gptel--in-response-p (&optional pt)
+  "Check if position PT is not a user prompt."
+  (get-char-property (or pt (point)) 'gptel))
 
 (defun gptel--at-response-history-p (&optional pt)
   "Check if gptel response at position PT has variants."

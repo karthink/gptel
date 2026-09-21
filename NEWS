@@ -9,6 +9,9 @@
 
 - OpenAI backend: Add support for =gpt-6-astra=.
 
+- Deepseek backend: Add support for =deepseek-flash=, and deprecate
+  =deepseek-v4-flash= and =deepseek-v4-flash-vision-exp=.
+
 ** New features and UI changes
 ** Notable bug fixes
 
