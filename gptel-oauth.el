@@ -121,6 +121,103 @@ If your browser does not open automatically, browse to %s: "
        (format "(One-time code %s copied) Press ENTER after authorizing: "
                user-code)))))
 
+(defun gptel-oauth--read-code (authorization-url redirect-path state port timeout)
+  "Open AUTHORIZATION-URL and return an OAuth authorization code.
+
+REDIRECT-PATH and STATE validate the callback.  PORT specifies the
+loopback callback server and TIMEOUT is the maximum wait in seconds.
+When running over SSH, prompt for the callback URL after authorization
+instead of starting a local server."
+  (cl-labels
+      ((callback-code (target)
+         (let* ((query-start (string-search "?" target))
+                (path (if query-start (substring target 0 query-start) target))
+                (query (and query-start
+                            (url-parse-query-string
+                             (substring target (1+ query-start)))))
+                (callback-state (cadr (assoc "state" query)))
+                (callback-code (cadr (assoc "code" query)))
+                (callback-error (cadr (assoc "error" query)))
+                (callback-error-description
+                 (cadr (assoc "error_description" query))))
+           (cond
+            ((not (equal path redirect-path))
+             (user-error "This is not an OAuth callback"))
+            (callback-error
+             (user-error "%s" (or callback-error-description callback-error)))
+            ((not (equal callback-state state))
+             (user-error "OAuth state did not match"))
+            (callback-code)
+            (t (user-error "OAuth callback did not include a code")))))
+       (send-response (process status title body)
+         (let ((payload (format "<!doctype html><meta charset=\"utf-8\"><title>%s</title><p>%s</p>"
+                                title body)))
+           (process-send-string
+            process
+            (format "HTTP/1.1 %s %s\r\nContent-Type: text/html; \\
+charset=utf-8\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s"
+                    status title (string-bytes payload) payload)))))
+    (if (or (getenv "SSH_CLIENT")
+            (getenv "SSH_CONNECTION")
+            (getenv "SSH_TTY"))
+        (progn
+          (message "OAuth authorization URL: %s" authorization-url)
+          (ignore-errors (gui-set-selection 'CLIPBOARD authorization-url))
+          (callback-code
+           (url-filename
+            (url-generic-parse-url
+             (read-from-minibuffer
+              "OAuth URL copied to clipboard.  Open it in your local browser \
+and authorize, then paste the callback URL from the browser's address bar: ")))))
+      (let ((deadline (+ (float-time) timeout))
+            code error server)
+        (cl-labels
+            ((finish (process status title body &optional result failure)
+               (send-response process status title body)
+               (when result (setq code result))
+               (when failure (setq error failure))
+               (delete-process process))
+             (filter (process string)
+               (let ((request (concat (or (process-get process :gptel-request) "")
+                                      string)))
+                 (process-put process :gptel-request request)
+                 (when (string-match-p "\r\n\r\n" request)
+                   (condition-case err
+                       (finish process "200" "OAuth Complete"
+                               "OAuth authorization succeeded.  You may close this tab."
+                               (and (string-match "\\`GET \\([^ ]+\\) HTTP/" request)
+                                    (callback-code (match-string 1 request))))
+                     (user-error
+                      (finish process "400" "OAuth Error"
+                              "OAuth authorization failed.  You may close this tab."
+                              nil (error-message-string err))))))))
+          (unwind-protect
+              (progn
+                (setq server
+                      (make-network-process
+                       :name "gptel-oauth-callback"
+                       :server t
+                       :host "localhost"
+                       :service port
+                       :filter #'filter
+                       :noquery t))
+                (message "OAuth authorization URL: %s" authorization-url)
+                (ignore-errors (gui-set-selection 'CLIPBOARD authorization-url))
+                (read-from-minibuffer
+                 (format "OAuth URL copied to clipboard.  \
+Press ENTER to open the authorization page.  \
+If your browser does not open automatically, browse to %s: "
+                         authorization-url))
+                (browse-url authorization-url)
+                (while (and (not code) (not error) (< (float-time) deadline))
+                  (accept-process-output nil 1))
+                (cond
+                 (code code)
+                 (error (user-error "%s" error))
+                 (t (user-error "Timed out waiting for OAuth callback"))))
+            (when (process-live-p server)
+              (delete-process server))))))))
+
 ;;; URL / JWT helpers
 
 (defun gptel-oauth--jwt-payload (jwt-string)
