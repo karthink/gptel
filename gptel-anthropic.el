@@ -167,7 +167,14 @@ information if the stream contains it.  Not my best work, I know."
               (plist-put info :stop-reason
                          (map-nested-elt response '(:delta :stop_reason)))
               ;; Capture token usage
-              (gptel--anthropic-update-tokens (plist-get response :usage) info)))))
+              (gptel--anthropic-update-tokens (plist-get response :usage) info)))
+           ;; In-band error event: HTTP 200 but the stream signals failure
+           ;; (e.g. `overloaded_error').  Treat it like an HTTP-level error.
+           ((looking-at "error")
+            (forward-line 1) (forward-char 5)
+            (when-let* ((err (plist-get (gptel--json-read) :error))
+                        ((not (eq err :null))))
+              (plist-put info :error err)))))
       (error (goto-char pt)))
     (let ((response-text (apply #'concat (nreverse content-strs))))
       (unless (string-empty-p response-text)
