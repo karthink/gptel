@@ -1037,11 +1037,20 @@ MODE-SYM is typically a major-mode symbol."
                          (symbol-name mode-sym)
                          (string-remove-suffix "-mode")
                          (string-remove-suffix "-ts"))))
-        ;; NOTE: The advertised calling convention of provided-mode-derived-p
-        ;; has changed in Emacs 30, this needs to be updated eventually
-        (if (provided-mode-derived-p
-             mode-sym 'prog-mode 'text-mode 'tex-mode)
-            mode-name ""))))
+        ;; On Emacs < 30.1:  (provided-mode-derived-p (mode &rest modes))
+        ;; On Emacs ≥ 30.1:  (provided-mode-derived-p (mode modes))
+        ;; Allow dynamically selected form to compile without complaining
+        ;; about the form this Emacs version does not support.
+        (with-suppressed-warnings ((callargs provided-mode-derived-p))
+          (if (< emacs-major-version 30)
+              (if (provided-mode-derived-p mode-sym
+                                         'prog-mode 'text-mode 'tex-mode)
+                mode-name
+              "")
+            (if (provided-mode-derived-p mode-sym
+                                           '(prog-mode text-mode tex-mode))
+                  mode-name
+                ""))))))
 
 (defvar url-http-end-of-headers)
 (defvar url-http-response-status)
