@@ -648,6 +648,7 @@ Convenient to use with `cl-multiple-value-bind'"
     (claude-opus-4-8             . "anthropic.claude-opus-4-8")
     (claude-opus-4-9             . "anthropic.claude-opus-4-9")
     (claude-opus-5               . "anthropic.claude-opus-5")
+    (claude-opus-5-5             . "anthropic.claude-opus-5-5")
     (claude-fable-5              . "anthropic.claude-fable-5")
     (claude-haiku-4-5            . "anthropic.claude-haiku-4-5")
     (claude-sonnet-4-5-20250929  . "anthropic.claude-sonnet-4-5-20250929-v1:0")

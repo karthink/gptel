@@ -2988,13 +2988,13 @@ PROCESS and _STATUS are process parameters."
       (cond
        ;; Curl exited with a non-zero status: connection-level failure
        ((not (zerop exit-status))
-        ;; MAYBE: This transition should happen in the process filter, but it's
-        ;; not clear how to reliably detect Curl failure there.
-        (gptel--fsm-transition fsm)     ;Curl failed, WAIT -> TYPE
         (plist-put info :error
                    (format "Curl failed with exit code %d. See Curl manpage for details."
                            exit-status))
         (plist-put info :status "Curl failure")
+        ;; MAYBE: This transition should happen in the process filter, but it's
+        ;; not clear how to reliably detect Curl failure there.
+        (gptel--fsm-transition fsm)     ;Curl failed, WAIT -> TYPE
         (with-demoted-errors "gptel callback error: %S"
           (funcall (plist-get info :callback) nil info)))
        ;; Finish handling a successful streaming response
