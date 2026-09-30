@@ -13,8 +13,8 @@
 - Anthropic backend: Add support for =claude-fable-5-1= and
   =claude-opus-5-5=.
 
-- OpenAI backend: Add support for =gpt-6-astra=, =gpt-6-sol= and
-  =gpt-6-luna=.
+- OpenAI backend: Add support for =gpt-6-astra=, =gpt-6.1-sol=,
+  =gpt-6-sol= and =gpt-6-luna=.
 
 - Bedrock backend: Add support for =claude-opus-5-5=.
 
