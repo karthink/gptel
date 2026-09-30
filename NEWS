@@ -3,13 +3,20 @@
 * 0.9.9.7-pre
 
 ** Breaking changes
+
+- The Codex models =gpt-5.2=, =gpt-5.3-codex= and =gpt-5.3-codex-spark=
+  have been removed from the list of default models for
+  =gptel-openai-oauth=.  These models are no longer served by OpenAI.
+
 ** New models and backends
 
-- Anthropic backend: Add support for =claude-opus-5-5= and
-  =claude-fable-5-1=.
+- Anthropic backend: Add support for =claude-fable-5-1= and
+  =claude-opus-5-5=.
 
-- OpenAI backend: Add support for =gpt-6-astra=, =gpt-6-sol= and
-  =gpt-6-luna=.
+- OpenAI backend: Add support for =gpt-6-astra=, =gpt-6.1-sol=,
+  =gpt-6-sol= and =gpt-6-luna=.
+
+- Bedrock backend: Add support for =claude-opus-5-5=.
 
 - Deepseek backend: Add support for =deepseek-flash=, and deprecate
   =deepseek-v4-flash= and =deepseek-v4-flash-vision-exp=.
