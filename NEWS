@@ -10,13 +10,14 @@
 
 ** New models and backends
 
-- Anthropic backend: Add support for =claude-fable-5-1= and
-  =claude-opus-5-5=.
+- Anthropic backend: Add support for =claude-fable-5-1=,
+  =claude-opus-5-5= and =claude-sonnet-5-5=.
 
 - OpenAI backend: Add support for =gpt-6-astra=, =gpt-6.1-sol=,
   =gpt-6-sol= and =gpt-6-luna=.
 
-- Bedrock backend: Add support for =claude-opus-5-5=.
+- Bedrock backend: Add support for =claude-opus-5-5= and
+  =claude-sonnet-5-5=.
 
 - Deepseek backend: Add support for =deepseek-flash=, and deprecate
   =deepseek-v4-flash= and =deepseek-v4-flash-vision-exp=.
@@ -96,8 +97,8 @@
   =claude-fable-5=.
 
 - Anthropic backend: Add support for =claude-sonnet-5=,
-  =claude-opus-4-8=, =claude-opus-4-9=, =claude-opus-5= and
-  =claude-fable-5=.
+  =claude-opus-4-8=, =claude-opus-4-9=, =claude-opus-5=,
+  =claude-fable-5= and =claude-fable-5-1=.
 
 - GitHub Copilot backend: Add support for =gemini-3.8-flash=,
   =gemini-3.7-flash=, =gemini-3.6-flash=, =gemini-3.5-flash=,
@@ -109,8 +110,8 @@
   =gemini-3.5-flash-lite= and =gemini-3.1-flash-lite=.  Add deprecation
   notices for =gemini-3.1-flash-lite= and =gemini-3-flash-preview=.
 
-- OpenAI backend: Add support for =gpt-5.6-sol=, =gpt-5.6-terra= and
-  =gpt-5.6-luna=.
+- OpenAI backend: Add support for =gpt-6-astra=, =gpt-5.6-sol=,
+  =gpt-5.6-terra= and =gpt-5.6-luna=.
 
 - Deepseek backend: Add support for =deepseek-v4-flash-vision-exp=.
 

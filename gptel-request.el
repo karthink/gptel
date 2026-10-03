@@ -330,6 +330,55 @@ To set the temperature for a chat session interactively call
   :type '(choice (number :tag "Temperature value")
                  (const :tag "Use default" nil)))
 
+(defcustom gptel-reasoning-effort nil
+  "Reasoning effort of the LLM response.
+
+This controls how hard the LLM will \"think\" before generating
+the final response.  Not all models support reasoning effort. The
+valid values vary depending on the model and the LLM
+provider.
+
+When this value is nil, the model's default reasoning effort will
+be used.  When the special symbol `disabled' is used, reasoning
+will be disabled entirely if the model supports that.
+
+Symbols as well, natural numbers (which are interpreted as token
+budgets) and floating point numbers (fractions of the maximum
+token budget) are supported.  `gptel-reasoning-effort-alist' is
+used when a symbol or number is used that is not supported by the
+model."
+  :safe (lambda (v) (or (null v)
+                        (symbolp v)
+                        (natnump v)
+                        (floatp v)))
+  :type '(choice (symbol :tag "Reasoning effort level")
+                 (natnum :tag "Max reasoning tokens")
+                 (float :tag "Fraction of max reasoning tokens")
+                 (const :tag "Use default" nil)))
+
+(defcustom gptel-reasoning-effort-alist
+  '((low    . 256)
+    (medium . 1024)
+    (high   . 4096)
+    (xhigh  . 16384))
+  "Mapping from reasoning effort levels to reasoning token budgets.
+
+gptel supports specifying reasoning effort (via
+`gptel-reasoning-effort') as discrete levels (low, medium etc),
+natural numbers (reasoning token budgets) or floating point
+numbers (fractions of the maximum token budget).
+
+If the LLM expects reasoning effort to be provided as token
+budgets instead, this mapping is used to specify the
+corresponding token counts.  Conversely, when the LLM expects the
+reasoning effort to be a symbol but a natural number is provided,
+a reverse lookup will be preformed to find the symbol in the
+alist with the reasoning budget that is closest to the specified
+value.  A similar process is followed when the budgets are
+floating point numbers."
+  :type '(alist :key-type symbol :value-type (choice natnum float))
+  :group 'gptel)
+
 (defcustom gptel-cache nil
   "Whether the LLM should cache request content.
 
@@ -1115,7 +1164,8 @@ For BUF, START, END and BODY-THUNK see `gptel--with-buffer-copy'."
                       gptel-use-tools gptel-tools gptel-use-curl gptel--schema
                       gptel-use-context gptel-context gptel--num-messages-to-send
                       gptel-stream gptel-include-reasoning gptel--request-params
-                      gptel-temperature gptel-max-tokens gptel-cache))
+                      gptel-temperature gptel-reasoning-effort gptel-max-tokens
+                      gptel-cache))
         (set (make-local-variable sym) (buffer-local-value sym buf)))
       (when (and start end) (insert-buffer-substring buf start end))
       (setq major-mode (buffer-local-value 'major-mode buf))
@@ -1272,6 +1322,143 @@ Return nil if no error occurred."
   (cond ((plistp response) (gptel--parse-response-plist-error response))
         ((arrayp response)
          (cl-some #'gptel--parse-response-plist-error response))))
+
+;;;; Reasoning effort
+(defun gptel--reasoning-closest (token-budget effort-alist &optional max-effort)
+  (when max-effort
+    (setq effort-alist (map-values-apply (lambda (effort)
+                                           (if (floatp effort)
+                                               (* effort max-effort)
+                                             effort)))))
+  (caar (sort gptel-reasoning-effort-alist
+              :key (lambda (cell)
+                     (abs (- (cdr cell) token-budget))))))
+
+(cl-defun gptel--reasoning-effort-options (type target-type &optional (fun #'identity))
+  (let ((allowed-types '(or member integer)))
+    (cond
+     ((eq (car type) 'or)
+      (remq
+       nil
+       (mapcan (lambda (type2)
+                 (copy-sequence (gptel--reasoning-effort-options type2 target-type fun)))
+               (cdr type))))
+     ((eq (car type) target-type)
+      (funcall fun type))
+     ((memq (car type) allowed-types)
+      nil)
+     (t
+      (error "Unknown reasoning effort type %S" type)))))
+
+(defun gptel--reasoning-effort-choices (type)
+  (when type
+    (gptel--reasoning-effort-options type 'member #'cdr)))
+
+(defun gptel--reasoning-effort-ranges (type)
+  (when type
+    (sort (gptel--reasoning-effort-options type
+                                           'integer
+                                           (lambda (type2)
+                                             (list (cdr type2))))
+          :key #'cadr)))
+
+(defun gptel--reasoning-effort-coerce (effort)
+  (let* ((effort-type (get gptel-model :reasoning-effort))
+         (ranges (gptel--reasoning-effort-ranges effort-type))
+         (choices (gptel--reasoning-effort-choices effort-type))
+         (max-effort (and ranges (apply #'max (apply #'append ranges)))))
+    ;; Convert to a natural number if necessary.
+    (when (floatp effort)
+      (if ranges
+          (progn
+            (setq effort (round (* effort max-effort)))
+            ;; If necessary, round to the nearest interval.
+            (unless (cl-some (lambda (range)
+                               (<= (car range) effort (cadr range)))
+                             ranges)
+              (when-let* ((k (cl-position-if (lambda (range)
+                                               (< effort (car range)))
+                                             ranges)))
+                (if (> k 0)
+                    (let ((lower (cadr (elt ranges (1- k))))
+                          (upper (car (elt ranges k))))
+                      (if (<= (- effort lower) (- upper effort))
+                          upper
+                        lower))
+                  (car (elt ranges k))))))
+        (display-warning '(gptel reasoning-effort)
+                         (format "The float %f was specified as the reasoning effort but reasoning token budgets are not supported for %S" effort gptel-model))
+        (setq effort nil)))
+    (cond
+     ;; If effort is already valid for the model then we don't need to do
+     ;; anything.
+     ((cl-typep effort effort-type)
+      effort)
+     ;; If effort is an integer but only symbols are supported, convert it to a
+     ;; symbol. The symbol 'disabled is ignored in choices as it is handled by
+     ;; `gptel--maybe-disable-effort' and the backend.
+     ((and (integerp effort) (not ranges) (remq 'disabled choices))
+      (gptel--reasoning-closest effort gptel-reasoning-effort-alist max-effort))
+     ;; If effort is a symbol but only natural numbers are supported, try to
+     ;; convert it to a natural number.
+     ((and (symbolp effort) (not (eq effort 'disabled)) ranges (not (remq 'disabled choices)))
+      ;; If effort is not found in the alist then emit a warning and use the
+      ;; model's default (i.e. nil).
+      (if-let* ((effort2 (map-elt gptel-reasoning-effort-alist effort)))
+          effort2
+        (display-warning '(gptel reasoning-effort)
+                         (format "%S was not found in `gptel-reasoning-effort-alist'" effort))
+        nil))
+     ;; Fallback to available reasoning effort symbols when effort is missing
+     ;; from the alist.
+     ((and (symbolp effort)
+           (not (eq effort 'disabled))
+           (remq 'disabled choices)
+           (assoc effort gptel-reasoning-effort-alist)
+           (not (memq effort choices)))
+      (display-warning '(gptel reasoning-effort)
+                       (format "The model %S does not support %S for reasoning effort. Falling back to the next lowest level." gptel-model effort))
+      (or (car (cl-find-if (lambda (effort2)
+                             (memq effort2 choices))
+                           gptel-reasoning-effort-alist
+                           :key #'car
+                           :end (cl-position effort
+                                             gptel-reasoning-effort-alist
+                                             :key #'car)
+                           :from-end t))
+          ;; When there is no lower reasoning effort level to fallback to,
+          ;; disable reasoning effort.
+          'disabled))
+     (t
+      effort))))
+
+(defun gptel--maybe-disable-effort (effort &optional disabled-symbols)
+  (let* ((effort-type (get gptel-model :reasoning-effort))
+         (choices (gptel--reasoning-effort-choices effort-type))
+         (ranges (gptel--reasoning-effort-ranges effort-type)))
+    ;; When 'disabled is in choices, it means that the API supports disabling
+    ;; the reasoning effort by means other than a specific symbol such as 'none
+    ;; or setting the reasoning budget to 0. In this case, 'disabled is handled
+    ;; directly by the backend for the model's API.
+    (if (and (eq effort 'disabled) (not (memq 'disabled choices)))
+        (cond
+         ((car (cl-intersection choices disabled-symbols)))
+         ((cl-some (lambda (range)
+                     (<= (car range) 0 (cadr range)))
+                   ranges)
+          0)
+         (t
+          (display-warning '(gptel reasoning-effort)
+                           (format "Reasoning effort was disabled but %S does not support that. The lowest possible reasoning level will be used." gptel-model))
+          (cond
+           (choices
+            (car choices))
+           (ranges
+            (caar ranges)))))
+      effort)))
+
+(defun gptel--reasoning-effort-normalize (effort &optional disabled-symbols)
+  (gptel--maybe-disable-effort (gptel--reasoning-effort-coerce effort) disabled-symbols))
 
 ;;; Logging
 
@@ -2216,8 +2403,8 @@ Note:
 
 1. This function is not fully self-contained.  Consider
 let-binding the parameters `gptel-backend', `gptel-model',
-`gptel-use-tools' and `gptel-use-context' around calls to it as
-required.
+`gptel-use-tools', `gptel-use-context' and
+`gptel-reasoning-effort' around calls to it as required.
 
 2. The return value of this function is a state machine that may
 be used to rerun or continue the request at a later time."
