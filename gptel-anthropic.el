@@ -249,7 +249,12 @@ Mutate state INFO with response metadata."
     (when-let* ((effort (gptel--reasoning-effort-normalize gptel-reasoning-effort)))
       (cond
        ((eq effort 'disabled)
-        (plist-put prompts-plist :thinking (list :type "disabled")))
+        (plist-put prompts-plist
+                   ;; Older models use the thinking type "disabled" to turn off
+                   ;; reasoning while newer ones use "between_tools".
+                   :thinking (list :type (or (symbol-name (plist-get (get gptel-model :provider)
+                                                                     :anthropic-disabled-reasoning-effort))
+                                             "disabled"))))
        ((symbolp effort)
         ;; Adaptive thinking is recommended by Anthropic and is the default
         ;; for newer models. Some older models don't support it so it is not
@@ -591,7 +596,8 @@ Media files, if present, are placed in `gptel-context'."
    '((claude-sonnet-5-5
       :description "The best combination of speed and intelligence"
       :capabilities (media tool-use cache)
-      :reasoning-effort (member low medium high xhigh max)
+      :provider (:anthropic-disabled-reasoning-effort between_tools)
+      :reasoning-effort (member disabled low medium high xhigh max)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 1000
       :input-cost 2
