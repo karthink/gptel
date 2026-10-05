@@ -115,6 +115,7 @@ information if the stream contains it."
                 ;; - collect tool calls (formatted differently) into (INFO -> :tool-use)
                 ;; - Clear any reasoning content chunks we've captured
                 (progn
+                  (gptel-mistral--log-dev "In the `DONE` handler...\n")
                   (when-let* ((tool-use (plist-get info :tool-use))
                               (args (apply #'concat (nreverse (plist-get info :partial_json))))
                               (func (plist-get (car tool-use) :function)))
@@ -135,6 +136,8 @@ information if the stream contains it."
                                                          (plist-get spec :arguments))))
                      into call-specs
                      finally (plist-put info :tool-use call-specs)))
+                  (when (eq (plist-get info :reasoning-block) 'done)
+                    (plist-put info :reasoning-block nil))
                   ;; Update token usage if present
                   (when-let* ((last-resp (save-excursion
                                            (forward-line -1)
