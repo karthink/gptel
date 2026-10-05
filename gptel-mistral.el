@@ -1,6 +1,7 @@
 ;;; gptel-mistral.el ---  Mistral suppport for gptel  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2023-2026  Karthik Chikmagalur
+;; Copyright (C) 2026  Andrei Mochalov
 
 ;; Author: Andrei Mochalov <factyy@gmail.com>
 
