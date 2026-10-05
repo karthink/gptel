@@ -220,8 +220,33 @@ information if the stream contains it."
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
       :context-window 256
       :input-cost 1.50
-      :output-cost 7.50
-      :cutoff-date "2026-01")
+      :output-cost 7.50)
+     (mistral-large-2512
+      :description "Mistral Large 3, is a state-of-the-art, open-weight, general-purpose multimodal model with a granular Mixture-of-Experts architecture. It features 41B active parameters and 675B total parameters."
+      :capabilities (media tool-use json url responses-api)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 256
+      :input-cost 0.50
+      :output-cost 1.50)
+     (mistral-small-2603
+      :description "Our powerful hybrid model unifying instruct, reasoning, and coding capabilities in a single model. 119B parameters with 6.5B active."
+      :capabilities (media tool-use json url responses-api)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 256
+      :input-cost 0.15
+      :output-cost 0.60)
+     (zai-glm-5-3
+      :description "A third-party open weight text model from Z.ai, hosted by Mistral for long-context coding and agentic workflows. The model is served without Mistral modifications."
+      :capabilities (tool-use json url responses-api)
+      :context-window 1024
+      :input-cost 1.4
+      :output-cost 4.4)
+     (zai-glm-5-2
+      :description "A third-party open weight text model from Z.ai, hosted by Mistral for long-context coding and agentic workflows. The model is served without Mistral modifications."
+      :capabilities (tool-use json url responses-api)
+      :context-window 1024
+      :input-cost 1.4
+      :output-cost 4.4)
      ))
   "List of available Mistral models and associated properties.
 
