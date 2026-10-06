@@ -40,10 +40,11 @@
                             (:include gptel-openai)))
 
 (defun gptel-mistral--log-dev (format-string &rest args)
-  (with-current-buffer (get-buffer-create "*gptel-dev*")
-    (goto-char (point-max))
-    (not (insert (apply #'format format-string args)))))
-
+  (if (eq gptel-log-level 'debug)
+      (with-current-buffer (get-buffer-create "*gptel-dev*")
+        (goto-char (point-max))
+        (not (insert (apply #'format format-string args))))
+    't))
 
 (defun gptel-mistral--extract-text-content (delta)
   (if-let* ((content (plist-get delta :content))
