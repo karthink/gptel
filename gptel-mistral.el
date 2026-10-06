@@ -20,7 +20,7 @@
 
 ;;; Commentary:
 
-;; This file adds support for the ChatGPT API to gptel
+;; This file adds support for the Mistral API to gptel (handles the differences between Mistral API and ChatGPT API)
 
 ;;; Code:
 (require 'cl-generic)
@@ -217,7 +217,14 @@ information if the stream contains it."
 
 (defconst gptel--mistral-models
   (gptel--process-models
-   '((mistral-medium-3.5
+   '((mistral-large-4-0
+      :description "Mistral Large 4 is a state-of-the-art, open-weight, general-purpose multimodal model with a granular Mixture-of-Experts architecture. It features 52B active parameters and 1.05T total parameters, and a 1.6B vision encoder."
+      :capabilities (media tool-use json url responses-api)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :context-window 1024
+      :input-cost 1.36
+      :output-cost 4.18)
+     (mistral-medium-3.5
       :description "Our frontier-class multimodal model optimized for agentic and coding use cases."
       :capabilities (media tool-use json url responses-api)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
