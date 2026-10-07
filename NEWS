@@ -28,6 +28,18 @@
 ** New features and UI changes
 ** Notable bug fixes
 
+- The OpenAI OAuth (Codex) backend now works when gptel is not
+  streaming the response, such as when ~gptel-stream~ is turned off,
+  Curl is unavailable, ~gptel-menu~ is used to send the response to the
+  echo area or the kill-ring, or ~gptel-request~ is called without
+  =:stream=.  The Codex endpoint rejects requests that ask for a
+  non-streaming response, so gptel now always requests a stream from it
+  and reads the event stream in one go when not streaming.
+
+- Errors returned by the OpenAI Responses API backends inside an
+  otherwise successful HTTP response are now reported, instead of
+  producing an empty response.
+
 
 * 0.9.9.6 2026-09-05
 
