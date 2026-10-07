@@ -605,6 +605,14 @@ Media files, if present, are placed in `gptel-context'."
       :input-cost 3
       :output-cost 15
       :cutoff-date "2025-07")
+     (claude-haiku-5-5
+      :description "High-volume, latency-sensitive tasks such as classification, extraction, and routing"
+      :capabilities (media tool-use cache)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 1000
+      :input-cost 0.10
+      :output-cost 0.50
+      :cutoff-date "2026-06")
      (claude-haiku-4-5-20251001
       :description "Near-frontier intelligence at blazing speeds with extended thinking"
       :capabilities (media tool-use cache)
