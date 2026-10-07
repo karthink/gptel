@@ -92,7 +92,7 @@
 
 ;; How the following function works:
 ;;
-;; The Mistral API (OpenAI compatible for own models and partially compatible for 3rd party ones)
+;; The Mistral API (OpenAI compatible but default implementation failing with 3rd party models)
 ;; returns a stream of data chunks.  Each data chunk has a
 ;; component that can be parsed as JSON.  Besides metadata, each chunk has
 ;; either some text or part of a tool call.
@@ -299,7 +299,7 @@ sources:
           (host "api.mistral.ai")
           (protocol "https")
           (endpoint "/v1/chat/completions"))
-  "Register an OpenAI API-compatible backend for gptel with NAME.
+  "Register a Mistral API (OpenAI)-compatible backend for gptel with NAME.
 
 Keyword arguments:
 
