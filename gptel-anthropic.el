@@ -636,6 +636,7 @@ Media files, if present, are placed in `gptel-context'."
      (claude-haiku-5-5
       :description "Near-frontier intelligence at blazing speeds with extended thinking"
       :capabilities (media tool-use cache)
+      :reasoning-effort (member disabled low medium high xhigh max)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 1000
       :input-cost 0.10                  ; 0.50 for >100k tokens
