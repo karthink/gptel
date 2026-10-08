@@ -65,7 +65,7 @@ When set, this function is called with BACKEND-TYPE and ACCOUNT-HINT
 and should return the token or nil.  BACKEND-TYPE is a symbol
 indicating which OAuth backend (e.g., 'gptel-gh, 'gptel-openai-oauth).
 Backends can customize this before use."
-  :type '(or null function)
+  :type 'function
   :group 'gptel)
 
 (defcustom gptel-oauth-token-save-function nil
@@ -74,7 +74,7 @@ Default is nil, meaning use backend-specific defaults.
 When set, this function is called with BACKEND-TYPE, ACCOUNT-HINT and TOKEN.
 BACKEND-TYPE is a symbol indicating which OAuth backend (e.g., 'gptel-gh,
 'gptel-openai-oauth)."
-  :type '(or null function)
+  :type 'function
   :group 'gptel)
 
 ;;; PKCE Implementation
