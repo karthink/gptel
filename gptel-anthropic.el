@@ -252,8 +252,8 @@ Mutate state INFO with response metadata."
         (plist-put prompts-plist
                    ;; Older models use the thinking type "disabled" to turn off
                    ;; reasoning while newer ones use "between_tools".
-                   :thinking (list :type (or (symbol-name (plist-get (get gptel-model :provider)
-                                                                     :anthropic-disabled-reasoning-effort))
+                   :thinking (list :type (or (plist-get (get gptel-model :provider)
+                                                        :anthropic-disabled-reasoning-effort)
                                              "disabled"))))
        ((symbolp effort)
         ;; Adaptive thinking is recommended by Anthropic and is the default
