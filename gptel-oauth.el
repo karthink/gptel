@@ -63,7 +63,7 @@ Returns nil if FILE does not exist or cannot be read."
 Default is nil, meaning use backend-specific defaults.
 When set, this function is called with BACKEND-TYPE and ACCOUNT-HINT
 and should return the token or nil.  BACKEND-TYPE is a symbol
-indicating which OAuth backend (e.g., 'gptel-gh, 'gptel-openai-oauth).
+indicating which OAuth backend (e.g., \\='gptel-gh, \\='gptel-openai-oauth).
 Backends can customize this before use."
   :type 'function
   :group 'gptel)
@@ -72,8 +72,8 @@ Backends can customize this before use."
   "Function to save OAuth tokens.
 Default is nil, meaning use backend-specific defaults.
 When set, this function is called with BACKEND-TYPE, ACCOUNT-HINT and TOKEN.
-BACKEND-TYPE is a symbol indicating which OAuth backend (e.g., 'gptel-gh,
-'gptel-openai-oauth)."
+BACKEND-TYPE is a symbol indicating which OAuth backend (e.g., \\='gptel-gh,
+\\='gptel-openai-oauth)."
   :type 'function
   :group 'gptel)
 
@@ -152,8 +152,8 @@ If your browser does not open automatically, browse to %s: "
 
 An empty string is considered valid for representing a default account.
 
-Valid account hints may contain alphanumeric characters, hyphens, and underscores,
-but cannot begin or end with a hyphen or underscore."
+Valid account hints may contain alphanumeric characters, hyphens, and
+underscores, but cannot begin or end with a hyphen or underscore."
   (cond
    ;; Ensure that the account-hint is a string
    ((not (stringp account-hint)) (user-error "Provided account hint is not a string"))
@@ -168,11 +168,12 @@ but cannot begin or end with a hyphen or underscore."
 ;;; Backend and token management helpers
 
 (defun gptel-oauth--get-backends-by (predicate account-hint-accessor account-hint)
-  "Get backends matching PREDICATE with ACCOUNT-HINT-ACCESSOR equal to ACCOUNT-HINT.
+  "Get backends matching PREDICATE with ACCOUNT-HINT-ACCESSOR equal to
+ACCOUNT-HINT.
 
 PREDICATE is a function that takes a backend and returns t if it matches.
-ACCOUNT-HINT-ACCESSOR is a function that takes a backend and returns its account hint.
-ACCOUNT-HINT is the account hint string to match against."
+ACCOUNT-HINT-ACCESSOR is a function that takes a backend and returns its
+account hint. ACCOUNT-HINT is the account hint string to match against."
   (seq-filter (lambda (b) (and (funcall predicate b)
                                (string= (funcall account-hint-accessor b) account-hint)))
               (mapcar #'cdr gptel--known-backends)))
@@ -197,7 +198,8 @@ Otherwise, returns BASE-FILE with '_' and ACCOUNT-HINT appended."
 PREDICATE is a function to identify backend type.
 ACCOUNT-HINT-ACCESSOR extracts account hint from a backend.
 TOKEN-GETTER is a function that takes a backend and returns its token.
-TOKEN-SETTER is a function that takes a backend and a token and sets the backend's token.
+TOKEN-SETTER is a function that takes a backend and a token and sets the
+backend's token.
 LOAD-FUNCTION is the customizable function to load token from storage.
 ACCOUNT-HINT is the account hint for this load operation.
 
@@ -220,8 +222,9 @@ matching PREDICATE and ACCOUNT-HINT."
 
 PREDICATE is a function to identify backend type.
 ACCOUNT-HINT-ACCESSOR extracts account hint from a backend.
-TOKEN-SETTER is a function that takes a backend and a token and sets the backend's token.
-SAVE-FUNCTION is the customizable function to save token to storage.
+TOKEN-SETTER is a function that takes a backend and a token and sets the
+backend's token. SAVE-FUNCTION is the customizable function to save token
+to storage.
 ACCOUNT-HINT is the account hint to save token for.
 TOKEN is the token to save.
 
@@ -235,11 +238,12 @@ then calls SAVE-FUNCTION."
   "Get list of registered account hints from backends matching PREDICATE.
 
 PREDICATE is a function that takes a backend and returns t if it matches.
-ACCOUNT-HINT-ACCESSOR is a function that extracts the account hint from a backend.
+ACCOUNT-HINT-ACCESSOR is a function that extracts the account hint from
+a backend.
 DEFAULT-PLACEHOLDER is the string to use for backends with empty account hints.
 
-Returns a list of unique account hint strings, or nil if no matching backends exist.
-Empty account hints are replaced with DEFAULT-PLACEHOLDER."
+Returns a list of unique account hint strings, or nil if no matching backends
+exist. Empty account hints are replaced with DEFAULT-PLACEHOLDER."
   (when-let* ((backends (seq-filter predicate (mapcar #'cdr gptel--known-backends)))
               (account-hints (mapcar
                               (lambda (b)
@@ -257,7 +261,8 @@ PREDICATE is a function to identify backend type.
 ACCOUNT-HINT-ACCESSOR extracts account hint from a backend.
 PROMPT-TEXT is the text to display when prompting user to choose.
 DEFAULT-PLACEHOLDER is the string used to represent the default account.
-ERROR-MSG is an optional error message to display when no backends are registered.
+ERROR-MSG is an optional error message to display when no backends are
+registered.
 
 Returns the selected account hint as a string, with DEFAULT-PLACEHOLDER
 converted to empty string."
