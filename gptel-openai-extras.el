@@ -397,8 +397,24 @@ ENDPOINT and MODELS are all optional; for their meanings, see
           (protocol "https")
           (endpoint "/v1/chat/completions")
           (models
-           '((grok-4.5
-              :description "Most advanced flagship model, leading in agentic tool calling and instruction following capabilities."
+           '((grok-4.7
+              :description "Frontier model for coding, agentic tasks, and knowledge work. The most capable Grok model."
+              :capabilities (tool-use json media reasoning)
+              :mime-types ("image/jpeg" "image/png")
+              :context-window 500
+              :input-cost 2
+              :output-cost 6)
+
+             (grok-4.6
+              :description "Previous frontier model for coding, agentic tasks, and knowledge work."
+              :capabilities (tool-use json media reasoning)
+              :mime-types ("image/jpeg" "image/png")
+              :context-window 500
+              :input-cost 2
+              :output-cost 6)
+
+             (grok-4.5
+              :description "Coding model for agentic software, engineering, and workflow tasks."
               :capabilities (tool-use json media reasoning)
               :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
               :context-window 500
@@ -406,15 +422,39 @@ ENDPOINT and MODELS are all optional; for their meanings, see
               :output-cost 6)
 
              (grok-4.3
-              :description "Advanced flagship model, leading in agentic tool calling and instruction following capabilities."
+              :description "Fast, lower-cost model with strong tool calling and instruction following. 1M context."
               :capabilities (tool-use json media reasoning)
               :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
               :context-window 1000
               :input-cost 1.25
               :output-cost 2.5)
 
+             (grok-4.20
+              :description "Fast agentic model with strict prompt adherence."
+              :capabilities (tool-use json media reasoning)
+              :mime-types ("image/jpeg" "image/png")
+              :context-window 1000
+              :input-cost 1.25
+              :output-cost 2.5)
+
+             (grok-4.20-non-reasoning
+              :description "Non-reasoning variant of Grok 4.20, optimized for speed and prompt adherence."
+              :capabilities (tool-use json media)
+              :mime-types ("image/jpeg" "image/png")
+              :context-window 1000
+              :input-cost 1.25
+              :output-cost 2.5)
+
+             (grok-4.20-multi-agent
+              :description "Multi-agent variant of Grok 4.20; agents collaborate in parallel on deep research."
+              :capabilities (tool-use json media reasoning)
+              :mime-types ("image/jpeg" "image/png")
+              :context-window 1000
+              :input-cost 1.25
+              :output-cost 2.5)
+
              (grok-build-0.1
-              :description "xAI's fast coding model trained specifically for agentic coding. Currently in early access."
+              :description "Coding model for agentic software, engineering, and workflow tasks. 256k context."
               :capabilities (tool-use json media reasoning)
               :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
               :context-window 256

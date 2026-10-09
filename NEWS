@@ -25,6 +25,9 @@
 - Deepseek backend: Add support for =deepseek-flash=, and deprecate
   =deepseek-v4-flash= and =deepseek-v4-flash-vision-exp=.
 
+- xAI backend: Add support for =grok-4.7=, =grok-4.6=, =grok-4.20=,
+  =grok-4.20-non-reasoning= and =grok-4.20-multi-agent=.
+
 ** New features and UI changes
 ** Notable bug fixes
 
