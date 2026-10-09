@@ -1066,7 +1066,7 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
 
 #+begin_src emacs-lisp
-(setq gptel-model 'grok-3-latest
+(setq gptel-model 'grok-4.7
       gptel-backend
       (gptel-make-xai "xAI"               ; Any name you want
         :key "your-api-key" ; can be a function that returns the key
