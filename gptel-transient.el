@@ -1424,7 +1424,7 @@ documention.  Return nil if user does not provide a number, for default."
   :class 'gptel-lisp-variable
   :variable 'gptel-reasoning-effort
   :set-value #'gptel--set-with-scope
-  :key "-r"
+  :key "-e"
   :prompt "Reasoning effort controls how hard the LLM \"thinks\": "
   :reader 'gptel--transient-read-reasoning-effort)
 
