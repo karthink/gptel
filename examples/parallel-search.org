@@ -1,0 +1,23 @@
+#+title: Parallel Search MCP with gptel
+
+Install =gptel= and =mcp= with =M-x package-install= after adding MELPA to =package-archives=, as described in [[https://github.com/karthink/gptel#installation][gptel's installation instructions]].  This example requires Emacs 30.1 or newer for =mcp=.  Evaluate the Emacs Lisp blocks below in order.
+
+[[https://docs.parallel.ai/integrations/mcp/search-mcp][Parallel Search MCP]] provides free web search and page fetching without an account or API key.  Search uses Fast mode; the anonymous service has rate limits.  Add its remote HTTP server to your configuration:
+
+#+begin_src emacs-lisp
+;; Add Parallel without replacing your other MCP servers.
+(require 'mcp-hub)
+(require 'gptel-integrations)
+(add-to-list 'mcp-hub-servers
+             '("parallel-search"
+               . (:url "https://search.parallel.ai/mcp"
+                  :headers (("User-Agent" . "gptel (https://github.com/karthink/gptel)")))))
+#+end_src
+
+Then evaluate the following to connect and activate its two tools for gptel:
+
+#+begin_src emacs-lisp
+(gptel-mcp-connect '(("parallel-search" "web_search" "web_fetch")))
+#+end_src
+
+Once the connection is ready, use a tool-capable model and ask gptel to search the web or read a URL.  You can inspect the active tools with =M-x gptel-tools=.  To remove these tools, run =(gptel-mcp-disconnect '("parallel-search"))=.
