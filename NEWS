@@ -31,6 +31,10 @@
 ** New features and UI changes
 ** Notable bug fixes
 
+- Non UTF-8 characters or raw bytes in tool call results are replaced
+  with a readable placeholder, ensuring that the tool call loop can
+  continue uninterrupted.
+
 
 * 0.9.9.6 2026-09-05
 
