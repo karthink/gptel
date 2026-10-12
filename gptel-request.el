@@ -1021,19 +1021,42 @@ All values must be numeric or nil.  Returns a new plist."
                                       (or v 0))))))
     rtn))
 
+(defconst gptel--binary-sniff-bytes 8000
+  "Number of leading bytes examined to detect binary files.
+Matches Git's NUL-detection window.")
+
+(defvar gptel--binary-sniff-buffer nil
+  "Reusable unibyte buffer used by `gptel--file-binary-p'.")
+
 (defun gptel--file-binary-p (path)
-  "Check if file at PATH is readable and binary."
-  ;; HACK Image files with ICC color profiles are characterized as ASCII
-  ;; (#1223), so until we find a better solution we just match these files by
-  ;; extension.
-  (or (string-match-p "\\.\\(jpe?g\\|png\\|gif\\|webp\\)\\'" path)
+  "Check if file at PATH is readable and binary.
+
+Return nil if PATH is missing, unreadable or a directory."
+  (or (let ((case-fold-search t))
+        (string-match-p                 ;Fast heuristic for images (JPEGs etc)
+         "\\.\\(jpe?g\\|png\\|gif\\|webp\\)\\'" path))
       (condition-case nil
-          (with-temp-buffer
-            (insert-file-contents path nil 1 512 'replace)
-            (memq buffer-file-coding-system
-                  '(no-conversion no-conversion-multibyte)))
-        (file-missing (message "File \"%s\" is not readable." path)
-                      nil))))
+          (progn
+            (unless (buffer-live-p gptel--binary-sniff-buffer)
+              (setq gptel--binary-sniff-buffer
+                    (gptel--temp-buffer " *gptel-sniff*"))
+              (with-current-buffer gptel--binary-sniff-buffer
+                (set-buffer-multibyte nil)))
+            (with-current-buffer gptel--binary-sniff-buffer
+              (insert-file-contents-literally ;raw bytes, byte 0 included
+               path nil 0 gptel--binary-sniff-bytes 'replace) ;replace buffer contents
+              (goto-char (point-min))
+              (skip-chars-forward "^\0") ;C-level scan for first NUL
+              (and (not (eobp))          ;NUL found, but...
+                   ;; ...not UTF-16 text: exempt a UTF-16 BOM in the
+                   ;; first two bytes
+                   (not (and (>= (buffer-size) 2)
+                             (let ((b0 (char-after (point-min)))
+                                   (b1 (char-after (+ (point-min) 1))))
+                               (or (and (= b0 #xFF) (= b1 #xFE))
+                                   (and (= b0 #xFE) (= b1 #xFF)))))))))
+        (file-missing (message "File \"%s\" is not readable." path) nil)
+        (file-error nil))))            ;directory, permissions => not binary
 
 (defun gptel--insert-file-string (path)
   "Insert at point the contents of the file at PATH as context."
