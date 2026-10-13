@@ -490,6 +490,7 @@ Media files, if present, are placed in `gptel-context'."
      (gemini-4-argon
       :description "Most intelligent Gemini model with SOTA reasoning and multimodal understanding"
       :capabilities (tool-use json media audio video)
+      :reasoning-effort (member low medium high)
       :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                    "application/pdf" "text/plain" "text/csv" "text/html"
                    "audio/mpeg" "audio/wav" "audio/ogg" "audio/flac" "audio/aac" "audio/mp3"
