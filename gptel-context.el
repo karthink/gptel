@@ -108,6 +108,15 @@ context."
 (defvar gptel-context--reset-cache nil
   "Whether a project files cache-buster has been scheduled.")
 
+(defcustom gptel-insert-context-position 'begin
+  "Where to insert context into the system prompt.
+
+This only matters if `gptel-use-context' is `system'."
+  :group 'gptel
+  :type '(choice
+          (const :tag "Beginning" begin)
+          (const :tag "End" end)))
+
 ;;; Commands
 
 (defun gptel-context-add-current-kill (&optional arg)
@@ -413,7 +422,9 @@ This modifies the buffer."
              (cl-etypecase gptel-system-prompt
                (string
                 (setq gptel-system-prompt
-                      (concat context-string "\n\n" gptel-system-prompt)))
+                      (if (eq gptel-insert-context-position 'end)
+                          (concat gptel-system-prompt "\n\n" context-string)
+                        (concat context-string "\n\n" gptel-system-prompt))))
                (function
                 ;; FIXME: This parses the directive in the prompt construction
                 ;; buffer, which is wrong.  Wrap in a function instead.
@@ -422,7 +433,9 @@ This modifies the buffer."
                 (gptel-context--wrap-in-buffer context-string))
                (list
                 (setq gptel-system-prompt ;cons a new list to avoid mutation
-                      (cons (concat context-string "\n\n" (car gptel-system-prompt))
+                      (cons (if (eq gptel-insert-context-position 'end)
+                                (concat (car gptel-system-prompt) "\n\n" context-string)
+                              (concat context-string "\n\n" (car gptel-system-prompt)))
                             (cdr gptel-system-prompt)))))
            (setq gptel-system-prompt context-string))))
       ('user
