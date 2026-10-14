@@ -229,7 +229,7 @@ Mutate state INFO with response metadata."
     (when gptel-temperature
       (plist-put prompts-plist :temperature gptel-temperature))
     (when-let* ((effort (gptel--reasoning-effort-normalize gptel-reasoning-effort)))
-      (plist-put prompts-plist (list :reasoning_effort (symbol-name effort))))
+      (plist-put prompts-plist :reasoning_effort (symbol-name effort)))
     (when gptel-use-tools
       (when (eq gptel-use-tools 'force)
         (plist-put prompts-plist :tool_choice "required"))
