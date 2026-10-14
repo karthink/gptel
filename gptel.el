@@ -36,8 +36,8 @@
 ;;
 ;; - The services ChatGPT, Azure, Gemini, Anthropic AI, Together.ai, Perplexity,
 ;;   AI/ML API, Anyscale, OpenRouter, Groq, PrivateGPT, DeepSeek, Cerebras,
-;;   GitHub Copilot chat, AWS Bedrock, Novita AI, xAI, Sambanova, Mistral Le
-;;   Chat and Kagi (FastGPT & Summarizer).
+;;   GitHub Copilot chat, AWS Bedrock, Novita AI, xAI, OrcaRouter, Sambanova,
+;;   Mistral Le Chat and Kagi (FastGPT & Summarizer).
 ;; - Local models via Ollama, Llama.cpp, Llamafiles or GPT4All
 ;;
 ;; Additionally, any LLM service (local or remote) that provides an
@@ -76,6 +76,7 @@
 ;; - For PrivateGPT: define a backend with `gptel-make-privategpt'.
 ;; - For Perplexity: define a backend with `gptel-make-perplexity'.
 ;; - For Deepseek: define a backend with `gptel-make-deepseek'.
+;; - For OrcaRouter: define a backend with `gptel-make-orcarouter'.
 ;; - For Kagi: define a gptel-backend with `gptel-make-kagi'.
 ;;
 ;; For local models using Ollama, Llama.cpp or GPT4All:
