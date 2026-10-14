@@ -222,6 +222,16 @@ context."
 ;;;###autoload (autoload 'gptel-add "gptel-context" "Add/remove regions or buffers from gptel's context." t)
 (defalias 'gptel-add #'gptel-context-add)
 
+(defun gptel-context--get-path (path)
+  "Check if PATH is already in gptel-context."
+  (cl-loop
+   with path = (file-truename path)
+   for entry in gptel-context
+   for source = (or (car-safe entry) entry)
+   when (and (stringp source)
+             (string= path (file-truename source)))
+   return entry))
+
 (defun gptel-context--add-buffer (buffer)
   "Add BUFFER to context."
   (with-current-buffer buffer
@@ -230,7 +240,8 @@ context."
 
 (defun gptel-context--add-text-file (path)
   "Add text file at PATH to context."
-  (cl-pushnew (list path) gptel-context :test #'equal)
+  (unless (gptel-context--get-path path)
+    (cl-pushnew (list path) gptel-context :test #'equal))
   (message "File \"%s\" added to context." path)
   path)
 
@@ -240,9 +251,10 @@ Return PATH if added, nil if ignored."
   (if-let* (((gptel--model-capable-p 'media))
             (mime (mailcap-file-name-to-mime-type path))
             ((gptel--model-mime-capable-p mime)))
-      (prog1 path
-        (cl-pushnew (list path :mime mime)
-                    gptel-context :test #'equal)
+      (unless (gptel-context--get-path path)
+        (prog1 path
+          (cl-pushnew (list path :mime mime)
+                      gptel-context :test #'equal))
         (message "File \"%s\" added to context." path))
     (message "Ignoring unsupported binary file \"%s\"." path)
     nil))
