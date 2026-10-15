@@ -95,6 +95,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#github-copilotchat][GitHub CopilotChat]]
       - [[#aws-bedrock][AWS Bedrock]]
       - [[#moonshot-kimi][Moonshot (Kimi)]]
+      - [[#phoenix-grove][Phoenix Grove]]
   - [[#usage][Usage]]
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
@@ -229,6 +230,7 @@ gptel supports a number of LLM providers:
 | GitHub CopilotChat   | GitHub account             |
 | Bedrock              | AWS credentials            |
 | Moonshot (Kimi)      | API key ([[https://platform.moonshot.cn/console][CN]] or [[https://platform.moonshot.ai/console][Global]])     |
+| Phoenix Grove        | [[https://api.pgsgrove.com][API key]]                    |
 #+html: </div>
 
 *** OpenAI
@@ -1244,6 +1246,25 @@ Then you also need to add the tool declaration via =:request-params= because it 
 #+end_src
 
 Now the chat should be able to automatically use search. Try "what's new today" and you should expect the up-to-date news in response.
+
+#+html: </details>
+#+html: <details><summary>
+**** Phoenix Grove
+#+html: </summary>
+
+Register a backend with
+
+#+begin_src emacs-lisp
+;; Phoenix Grove offers an OpenAI compatible API
+(gptel-make-openai "PhoenixGrove"       ;Any name you want
+  :host "api.pgsgrove.com"
+  :endpoint "/v1/chat/completions"
+  :stream t
+  :key "your-pgs-api-key"               ;can be a function that returns the key
+  :models '(glm-5.3-flash deepseek-v4.1-flash kimi-k2.6 mimo-v2.6-pro))
+#+end_src
+
+You can pick this backend from the menu when using gptel (see [[#usage][Usage]]).
 
 #+html: </details>
 ** Usage
