@@ -420,7 +420,6 @@ which see."
 	      (forward-line 1)))))
     gptel--crowdsourced-prompts))
 
-;; FIXME(targeted-context): This does not handle :bounds and :lines.
 (defun gptel--describe-infix-context ()
   "Return a count of the number of context chunks."
   (if (null gptel-context) "Context"
@@ -431,7 +430,23 @@ which see."
               (cl-loop for entry in gptel-context
                        for (buf-file . spec) = (ensure-list entry)
                        if (bufferp buf-file)
-                       sum (max (length (plist-get spec :overlays)) 1)
+                       sum (let* ((spec-pairs (plist-get spec :overlays))
+                                  (n-overlays (length spec-pairs))
+                                  (lines (plist-get spec :lines))
+                                  (n-lines
+                                   (if lines
+                                       (if (consp (car lines))
+                                           (length lines)
+                                         1)
+                                     0))
+                                  (bounds (plist-get spec :bounds))
+                                  (n-bounds
+                                   (if bounds
+                                       (if (consp (car bounds))
+                                           (length bounds)
+                                         1)
+                                     0)))
+                             (max (+ n-overlays n-lines n-bounds) 1))
                        into ov-count
                        else count (stringp buf-file) into file-count
                        finally return (list file-count ov-count))
