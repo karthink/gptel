@@ -31,6 +31,25 @@
   =grok-4.20-non-reasoning= and =grok-4.20-multi-agent=.
 
 ** New features and UI changes
+
+- gptel's context system has been reworked around a new context-type
+  architecture.  Context sources are now described by
+  ~gptel-context-type~ structs, and the built-in types are
+  =buffer-region=, =file=, =file-media=, =directory= and =kill-ring=.
+
+- The context system is now extensible.  Third-party packages can define
+  new context types with ~gptel-context-register-type~, specifying how
+  entries of each type are recognized, formatted into the prompt, and
+  displayed in the inspection buffer.  Types that provide an add-fn are
+  automatically added to gptel's transient menu (and the rewrite menu).
+
+- gptel's context add/remove dispatch is now driven by two abnormal
+  hooks, ~gptel-context-add-dwim-functions~ and
+  ~gptel-context-remove-dwim-functions~.  These are populated
+  automatically when a context type is registered, and each function is
+  tried in turn by ~gptel-add~ and ~gptel-context-remove~ until one of
+  them handles the request.
+
 ** Notable bug fixes
 
 - Non UTF-8 characters or raw bytes in tool call results are replaced
