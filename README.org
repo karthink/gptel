@@ -95,6 +95,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#github-copilotchat][GitHub CopilotChat]]
       - [[#aws-bedrock][AWS Bedrock]]
       - [[#moonshot-kimi][Moonshot (Kimi)]]
+      - [[#upstage-solar][Upstage (Solar)]]
   - [[#usage][Usage]]
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
@@ -229,6 +230,7 @@ gptel supports a number of LLM providers:
 | GitHub CopilotChat   | GitHub account             |
 | Bedrock              | AWS credentials            |
 | Moonshot (Kimi)      | API key ([[https://platform.moonshot.cn/console][CN]] or [[https://platform.moonshot.ai/console][Global]])     |
+| Upstage (Solar)      | [[https://console.upstage.ai/api-keys][API key]]                    |
 #+html: </div>
 
 *** OpenAI
@@ -1244,6 +1246,38 @@ Then you also need to add the tool declaration via =:request-params= because it 
 #+end_src
 
 Now the chat should be able to automatically use search. Try "what's new today" and you should expect the up-to-date news in response.
+
+#+html: </details>
+#+html: <details><summary>
+**** Upstage (Solar)
+#+html: </summary>
+
+Register a backend with
+
+#+begin_src emacs-lisp
+;; Upstage offers an OpenAI compatible API
+(gptel-make-openai "Upstage"
+  :host "api.upstage.ai"
+  :endpoint "/v1/chat/completions"
+  :stream t
+  :key "your-api-key"                   ;can be a function that returns the key
+  :models '((solar-pro4
+             :description "Upstage's flagship Solar model for agentic use"
+             :capabilities (tool-use json reasoning)
+             :context-window 512
+             :input-cost 0.30
+             :output-cost 1.20)
+            (solar-mini4
+             :description "Smaller, cheaper Solar model"
+             :capabilities (tool-use json reasoning)
+             :context-window 512
+             :input-cost 0.10
+             :output-cost 0.40)))
+#+end_src
+
+Solar models think when =reasoning_effort= is one of =low=, =medium=, =high=, =xhigh= or =max=, and do not when it is =none= or =minimal=.  To pick a level, add it to the backend (or to a single model) with =:request-params=, e.g. =:request-params '(:reasoning_effort "medium")=.
+
+See the [[https://console.upstage.ai/docs/models][Upstage model list]] for the available models.
 
 #+html: </details>
 ** Usage
