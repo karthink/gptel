@@ -668,47 +668,72 @@ reasoning text will be inserted at the end of that buffer."
 (defcustom gptel-context nil
   "List of gptel's context sources.
 
-The items in this list (file names or buffers) are included with gptel
-queries as additional context.
+The items in this list are included with gptel queries as additional
+context.  Each entry can take one of two forms:
 
-Each entry can be a file path (string) or a buffer (object, not buffer
-name):
+  SOURCE                  -- any Lisp object; for built-in types this is a
+                              buffer object or file path (string)
+  (SOURCE . SPEC)         -- a cons where SPEC is a plist
 
- \\='(\"~/path/to/file1\"
-   \"./file2\"
-   #<buffer *scratch*>
-   ...)
+In the simple form, gptel detects the context type automatically using
+each registered type's predicate.  For example:
 
-The above covers the most common cases.  You can also specify context
-sources in a more targeted way, with entries of the form
+  \\='(#<buffer *scratch*>
+    \"~/notes.org\"
+    \"~/path/to/directory\")
 
-  (<buffer> . spec)
-  (\"/path/to/file\" . spec)
+In the cons form, SPEC is a plist that includes a :type key and,
+optionally, parameters specific to that type (region bounds, MIME
+type, etc.).  You can set :type explicitly or let gptel infer it:
 
-where spec is a plist declaring specific parts of the buffer/file to
-include instead of the entire text.
+  ;; Explicit :type
+  (#<buffer foo.el> :type buffer-region)
+  ;; Implicit :type (inferred by predicate)
+  (\"~/notes.org\" :lines ((10 . 20)))
 
-For buffers, you can specify regions to include using buffer spans and
-line number ranges as conses, and overlays as a list:
+Each context type defines how its entries are collected, formatted for
+the LLM prompt, and displayed in the context inspection buffer.  See
+the file header of gptel-context.el for a full description of the
+architecture and how to define new types.
+
+Built-in context types
+
+  buffer-region  Buffer contents: full buffer or specific regions
+                 (overlays, position bounds, line ranges).
+  file           A text file on disk.
+  file-media     A binary or media file (image, audio, etc.).
+  directory      A directory, expanded recursively to file and
+                 file-media entries at collect time.
+  kill-ring      Contents of the kill ring, stored internally as a
+                 buffer-region entry.
+
+Specifying which parts to include
+
+For buffer-region and file entries, SPEC can include region selectors
+to include only parts of the source instead of the whole thing.
+
+Buffer entries:
 
   (<buffer> :bounds ((start1 . end1) (start2 . end2) ...)
             :lines  ((from1 . to1) (from2 . end2) ...)
             :overlays (ov1 ov2 ...))
 
-For files, spec can include buffer spans and line number ranges, as well as
-the MIME type of the file:
+File entries:
 
   (\"/path/to/file\" :bounds ((start1 . end1) (start2 . end2) ...)
                    :lines  ((from1 . to1) (from2 . end2) ...)
                    :mime \"image/png\")
 
-gptel tries to guess file MIME types, but is not always successful, so
-it is recommended to provide it with non-text files.
+gptel guesses file MIME types automatically, but providing :mime
+explicitly is recommended for non-text files.
 
-Usage of context commands (such as `gptel-add' and `gptel-add-file')
-will modify this variable.  You can also set this variable
-buffer-locally, or let-bind it around calls to gptel queries, or via
-gptel presets with the :context key."
+Usage
+
+Context commands like `gptel-add' and `gptel-add-file' modify this
+variable.  You can set it buffer-locally, let-bind it around gptel
+queries, or specify it in gptel presets with the :context key.
+
+To define new context types, see `gptel-context-register-type'."
   :type '(repeat string))
 
 (defcustom gptel-markdown-validate-link #'always
@@ -847,19 +872,60 @@ when including context from these major modes.")
     `(let ((json-object-type 'plist))
       (json-read-from-string ,str))))
 
+(defun gptel--sanitize-string (str)
+  "Replace eight-bit raw byte characters in STR with \\xNN hex escapes.
+
+Eight-bit characters are Emacs' internal representation of bytes
+that could not be decoded from a multibyte encoding.  They occupy
+character codes #x3FFF80 through #x3FFFFF and prevent valid
+UTF-8 JSON serialization."
+  (if (stringp str)
+      (replace-regexp-in-string
+       "[\x3FFF80-\x3FFFFF]"
+       (lambda (c)
+         (let ((byte (- (string-to-char c) #x3FFF80)))
+           (if (= byte 0)
+               "\\0"
+             (format "\\x%02x" byte))))
+       str
+       t t)
+    str))
+
+(defun gptel--sanitize-for-json (obj)
+  "Recursively sanitize strings in OBJ for JSON encoding.
+
+Walks nested plists, vectors, and lists, replacing eight-bit raw
+byte characters with \\xNN hex escapes in every string."
+  (cond
+   ((stringp obj) (gptel--sanitize-string obj))
+   ((consp obj)
+    (let ((tail obj))
+      (while (consp tail)
+        (setcar tail (gptel--sanitize-for-json (car tail)))
+        (setq tail (cdr tail))))
+    obj)
+   ((vectorp obj)
+    (cl-loop for i below (length obj)
+             do (aset obj i (gptel--sanitize-for-json (aref obj i))))
+    obj)
+   (t obj)))
+
 (defmacro gptel--json-encode (object)
-  "Serialize OBJECT as JSON."
+  "Sanitize and serialize OBJECT as JSON.
+
+Eight-bit raw byte characters are replaced with \\xNN hex
+escapes before encoding, preventing UTF-8 serialization errors."
   (if (fboundp 'json-serialize)
-      `(json-serialize ,object
-        :null-object :null
-        :false-object :json-false)
+      `( json-serialize (gptel--sanitize-for-json ,object)
+         :null-object :null
+         :false-object :json-false)
     (require 'json)
     (defvar json-false)
     (defvar json-null)
     (declare-function json-encode "json" (object))
     `(let ((json-false :json-false)
            (json-null  :null))
-      (json-encode ,object))))
+       (json-encode (gptel--sanitize-for-json ,object)))))
 
 (defmacro gptel--maybe-funcall (func-or-sym &rest args)
   "If FUNC-OR-SYM is a function, call it with ARGS.

@@ -28,6 +28,7 @@
 (require 'cl-lib)
 (require 'gptel)
 (require 'transient)
+(require 'gptel-context)
 
 (declare-function ediff-regions-internal "ediff")
 (declare-function ediff-make-cloned-buffer "ediff-util")
@@ -419,7 +420,6 @@ which see."
 	      (forward-line 1)))))
     gptel--crowdsourced-prompts))
 
-;; FIXME(targeted-context): This does not handle :bounds and :lines.
 (defun gptel--describe-infix-context ()
   "Return a count of the number of context chunks."
   (if (null gptel-context) "Context"
@@ -430,7 +430,23 @@ which see."
               (cl-loop for entry in gptel-context
                        for (buf-file . spec) = (ensure-list entry)
                        if (bufferp buf-file)
-                       sum (max (length (plist-get spec :overlays)) 1)
+                       sum (let* ((spec-pairs (plist-get spec :overlays))
+                                  (n-overlays (length spec-pairs))
+                                  (lines (plist-get spec :lines))
+                                  (n-lines
+                                   (if lines
+                                       (if (consp (car lines))
+                                           (length lines)
+                                         1)
+                                     0))
+                                  (bounds (plist-get spec :bounds))
+                                  (n-bounds
+                                   (if bounds
+                                       (if (consp (car bounds))
+                                           (length bounds)
+                                         1)
+                                     0)))
+                             (max (+ n-overlays n-lines n-bounds) 1))
                        into ov-count
                        else count (stringp buf-file) into file-count
                        finally return (list file-count ov-count))
@@ -810,38 +826,41 @@ Also format the value of OBJ in the transient menu."
   :incompatible '(("m" "y" "i") ("e" "g" "b" "k"))
   :environment #'gptel--transient-fix-evil-visual
   ;; :value (list (concat "b" (buffer-name)))
-  [:description gptel-system-prompt--format
-   [""
-    :if (lambda () (not (gptel--model-capable-p 'nosystem)))
-    "Instructions"
-    ("s" "Set system message" gptel-system-prompt :transient t)
-    (gptel--infix-add-directive)]
-   [:pad-keys t ""
-    (:info #'gptel--describe-infix-context
-     :face transient-heading :format "%d")
-    (gptel--infix-context-add-current-kill)
-    (gptel--infix-context-add-region)
-    (gptel--infix-context-add-buffer)
-    (gptel--infix-context-add-file)
-    (gptel--infix-context-remove-all)
-    (gptel--suffix-context-buffer)]
-   [:pad-keys t
-    :if (lambda () (and gptel-use-tools
-                   (or gptel--known-tools (featurep 'gptel-integrations))))
-    "" (:info
-        (lambda ()
-          (concat
-           "Tools" (and gptel-tools
-                        (concat " (" (propertize (format "%d selected"
-                                                         (length gptel-tools))
-                                                 'face 'warning)
-                                ")"))))
-        :format "%d" :face transient-heading)
-    ("t" "Select tools" gptel-tools :transient t)
-    ("T" "Continue tool calls"
-     (lambda () (interactive) (gptel--handle-tool-use gptel--fsm-last))
-     :if (lambda () (and gptel--fsm-last
-                    (eq (gptel-fsm-state gptel--fsm-last) 'TOOL))))]]
+  [ :description gptel-system-prompt--format
+    [""
+     :if (lambda () (not (gptel--model-capable-p 'nosystem)))
+     "Instructions"
+     ("s" "Set system message" gptel-system-prompt :transient t)
+     (gptel--infix-add-directive)]
+    [ :class transient-column
+      :pad-keys t
+      :setup-children
+      (lambda (_)
+        (transient-parse-suffixes
+         'gptel-menu
+         (append
+          (list (list :info (function #'gptel--describe-infix-context)
+                      :face 'transient-heading
+                      :format "%d"))
+          (gptel--context-add-suffixes)
+          (gptel--context-static-suffixes))))]
+    [ :pad-keys t
+      :if (lambda () (and gptel-use-tools
+                     (or gptel--known-tools (featurep 'gptel-integrations))))
+      "" (:info
+          (lambda ()
+            (concat
+             "Tools" (and gptel-tools
+                          (concat " (" (propertize (format "%d selected"
+                                                           (length gptel-tools))
+                                                   'face 'warning)
+                                  ")"))))
+          :format "%d" :face transient-heading)
+      ("t" "Select tools" gptel-tools :transient t)
+      ("T" "Continue tool calls"
+       (lambda () (interactive) (gptel--handle-tool-use gptel--fsm-last))
+       :if (lambda () (and gptel--fsm-last
+                      (eq (gptel-fsm-state gptel--fsm-last) 'TOOL))))]]
   [[(gptel-preset
      :transient t
      :key "@" :format "%d"
@@ -1389,71 +1408,94 @@ supports.  See `gptel-track-media' for more information."
       (run-hooks 'gptel-refresh-buffer-hook)
     (gptel--annotate-link-clear)))
 
-;; ** Infixes for adding and removing context
+;; ** Dynamic context add/remove suffixes
 
-(declare-function gptel-context--at-point "gptel-context")
-(declare-function gptel-add "gptel-context")
-(declare-function gptel-context-add-current-kill "gptel-context")
+(defmacro gptel--with-transient-refresh (&rest body)
+  "Return an interactive lambda that executes BODY and refreshes the transient."
+  `(lambda () (interactive) ,@body (transient-setup)))
 
-(transient-define-suffix gptel--infix-context-add-current-kill (&optional arg)
-  "Add current kill to gptel's context."
-  :transient 'transient--do-stay
-  :key "C-y"
-  :if (lambda () gptel-expert-commands)
-  :description
-  "Yank to context"
-  (interactive "P")
-  (require 'gptel-context)
-  (gptel-context-add-current-kill arg)
-  (transient-setup))
+(defun gptel--context-add-suffixes ()
+  "Return dynamic transient suffix specs for registered context types.
 
-(transient-define-suffix gptel--infix-context-add-region ()
-  "Add current region to gptel's context."
-  :transient 'transient--do-stay
-  :key "-r"
-  :if (lambda () (or (use-region-p)
-                (and (fboundp 'gptel-context--at-point)
-                     (gptel-context--at-point))))
-  :description
-  (lambda ()
-    (if (and (fboundp 'gptel-context--at-point)
-             (gptel-context--at-point))
-        "Remove context at point"
-      "Add region to context"))
-  (interactive)
-  (gptel-add)
-  (transient-setup))
+Includes a DWIM-add suffix, a DWIM-remove suffix, and one suffix
+per registered context type with a non-nil `add-fn'.
 
-(transient-define-suffix gptel--infix-context-add-buffer ()
-  "Add a buffer to gptel's context."
-  :transient 'transient--do-stay
-  :key "-b"
-  :description "Add a buffer to context"
-  (interactive)
-  (gptel-add '(4))
-  (transient-setup))
+The transient key, description, and :if condition for each type are
+taken from the type's `transient-spec' plist."
+  (let ((keys-used '("-d" " C" "-a" "-k"))
+        (specs))
+    (dolist (pair gptel-context--type-registry)
+      (when-let* ((type (cdr pair))
+                  (add-fn (gptel-context-type-add-fn type))
+                  (tspec (gptel-context-type-transient-spec type)))
+        (let* ((key (or (plist-get tspec :key)
+                        (let ((k (gptel--context-unused-key
+                                  (gptel-context-type-name type) keys-used)))
+                          (push k keys-used)
+                          k)))
+               (desc (plist-get tspec :description))
+               (desc-val (or desc (gptel-context-type-description type)))
+               (desc-fn-p (functionp desc-val))
+               (if-cond (plist-get tspec :if)))
+          (push (nconc (if desc-fn-p
+                           (list key
+                                 (gptel--with-transient-refresh
+                                  (call-interactively add-fn))
+                                 :description desc-val
+                                 :transient 'transient--do-stay
+                                 :format " %k %d")
+                         (list key desc-val
+                               (gptel--with-transient-refresh
+                                (call-interactively add-fn))
+                               :transient 'transient--do-stay
+                               :format " %k %d"))
+                       (and if-cond (list :if if-cond)))
+                specs))))
+    ;; DWIM-add suffix
+    (push (list "-a" "Add/remove context (DWIM)"
+                (gptel--with-transient-refresh (gptel-context-add))
+                :transient 'transient--do-stay
+                :format " %k %d")
+          specs)
+    ;; DWIM-remove suffix
+    (push (list "-k" "Remove context"
+                (gptel--with-transient-refresh
+                 (gptel-context-remove))
+                :transient 'transient--do-stay
+                :if (lambda () gptel-context)
+                :format " %k %d")
+          specs)
+    (nreverse specs)))
 
-(declare-function gptel-add-file "gptel-context")
-(declare-function gptel-context-remove-all "gptel-context")
+(defun gptel--context-static-suffixes ()
+  "Return suffix specs for \"Remove all\" and \"Inspect context\".
 
-(transient-define-suffix gptel--infix-context-add-file ()
-  "Add a file to gptel's context."
-  :transient 'transient--do-stay
-  :key "-f"
-  :description "Add a file to context"
-  (interactive)
-  (call-interactively #'gptel-add-file)
-  (transient-setup))
+These are shared between the main gptel menu and the rewrite menu."
+  (list
+   (list "-d" "Remove all"
+         (lambda () (interactive)
+           (gptel-context-remove-all t)
+           (transient-setup))
+         :transient 'transient--do-stay
+         :if (lambda () gptel-context)
+         :format " %k %d")
+   (list " C" "Inspect context"
+         (lambda () (interactive)
+           (gptel-context--buffer-setup nil nil gptel-context))
+         :transient 'transient--do-exit
+         :if (lambda () gptel-context)
+         :format " %k %d")))
 
-(transient-define-suffix gptel--infix-context-remove-all ()
-  "Clear gptel's context."
-  :if (lambda () gptel-context)
-  :transient 'transient--do-stay
-  :key "-d"
-  :description "Remove all"
-  (interactive)
-  (gptel-context-remove-all t)
-  (transient-setup))
+(defun gptel--context-unused-key (name used)
+  "Return an unused transient key for a context type named NAME.
+USED is a list of keys already taken."
+  (let ((candidates
+         (cons (concat "-" (substring (symbol-name name) 0 1))
+               (cl-loop for c from ?a to ?z
+                        for key = (concat "-" (char-to-string c))
+                        unless (member key used)
+                        collect key))))
+    (cl-find-if (lambda (k) (not (member k used))) candidates)))
 
 ;; ** Infix for additional directive
 
@@ -2071,19 +2113,6 @@ whether the action is confirmed/cancelled."
                         (funcall quit-to-menu)
                         (when (functionp callback) (funcall callback nil))))
           text-mode-map))))))
-
-;; ** Suffix for displaying and removing context
-(declare-function gptel-context--buffer-setup "gptel-context")
-(declare-function gptel-context--collect "gptel-context")
-
-(transient-define-suffix gptel--suffix-context-buffer ()
-  "Display all contexts from all buffers & files."
-  :transient 'transient--do-exit
-  :key " C"
-  :if (lambda () gptel-context)
-  :description "Inspect context"
-  (interactive)
-  (gptel-context--buffer-setup nil nil gptel-context))
 
 (provide 'gptel-transient)
 ;;; gptel-transient.el ends here
