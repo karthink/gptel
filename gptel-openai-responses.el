@@ -50,95 +50,118 @@ USAGE is part of the response, INFO is the request plist."
                    (gptel--sum-plists (plist-get info :tokens-full)
                                       tokens))))))
 
+(defun gptel--openai-responses-next-event ()
+  "Read a complete SSE event at point, or return nil if incomplete.
+Return (TYPE . DATA), allowing TYPE in either the event header or JSON
+payload.  Leave point at the start of an incomplete event so that the
+next stream chunk can complete it.  Empty events and [DONE] return
+(nil), allowing callers to skip them and continue reading."
+  (let ((start (point)))
+    (if (not (re-search-forward "\r?\n\r?\n" nil t))
+        (progn (goto-char start) nil)
+      (let ((end (point)) (data-end (match-beginning 0)))
+        (prog1
+            (save-restriction
+              (narrow-to-region start data-end)
+              (goto-char start)
+              (let (event-type lines)
+                (when (re-search-forward "^event:[ \t]*\\([^\r\n]*\\)" nil t)
+                  (setq event-type (string-trim (match-string 1))))
+                (goto-char start)
+                (while (re-search-forward "^data: ?\\([^\r\n]*\\)" nil t)
+                  (push (match-string 1) lines))
+                (let* ((payload (mapconcat #'identity (nreverse lines) "\n"))
+                       (data (unless (or (string-empty-p payload)
+                                         (equal payload "[DONE]"))
+                               (gptel--json-read-string payload))))
+                  (cons (or event-type (plist-get data :type)) data))))
+          (goto-char end))))))
+
 (cl-defmethod gptel-curl--parse-stream ((_backend gptel-openai-responses) info)
   "Parse an OpenAI Responses API data stream.
 
 Return the text response accumulated since the last call to this
 function.  Additionally, mutate state INFO to add tool-use
 information if the stream contains it."
-  (let ((content-strs) wait)
+  (let ((content-strs) event start)
     (condition-case nil
-        (while (and (not wait) (re-search-forward "^event: *\\(.+\\)" nil t))
-          (let ((event-type (match-string 1)) data)
-            (forward-line 1)
-            (if (not (looking-at "data:" t))
-                (progn (goto-char (match-beginning 0)) ;not enough data, reset
-                       (setq wait t))
-              (forward-char 5)
-              (setq data (gptel--json-read))
-              (pcase event-type
-                ;; Text content delta
-                ("response.output_text.delta"
-                 (when-let* ((delta (plist-get data :delta))
-                             ((not (string-empty-p delta))))
-                   (push delta content-strs)))
-                ;; Function call arguments delta
-                ("response.function_call_arguments.delta"
-                 (when-let* ((delta (plist-get data :delta)))
-                   (plist-put info :partial_json
-                              (cons delta (plist-get info :partial_json)))))
-                ;; Function call completed (user-defined tools)
-                ("response.output_item.done"
-                 (when-let* ((item (plist-get data :item))
-                             ((equal (plist-get item :type) "function_call"))
-                             (tool-call
-                              (list :id (plist-get item :call_id)
-                                    :name (plist-get item :name)
-                                    :args (ignore-errors
-                                            (gptel--json-read-string
-                                             (plist-get item :arguments))))))
-                   (plist-put info :tool-use
-                              (cons tool-call (plist-get info :tool-use)))
-                   (plist-put info :partial_json nil)))
-                ;; Reasoning content
-                ((or "response.reasoning_summary_text.delta"
-                     "response.reasoning.delta")
-                 (when-let* ((delta (plist-get data :delta)))
-                   (plist-put info :reasoning
-                              (concat (plist-get info :reasoning) delta))))
-                ((or "response.reasoning_summary_text.done"
-                     "response.reasoning.done")
-                 (plist-put info :reasoning-block t))
-                ;; NOTE: backend tools are not supported in gptel yet, this
-                ;; parsing is for the future
-                ;; Web search completed (server-side tool)
-                ("response.web_search_call.completed"
-                 (push "\n[Web search completed]" content-strs))
-                ;; Code interpreter output (server-side tool)
-                ("response.code_interpreter_call.completed"
-                 (when-let* ((item (plist-get data :item))
-                             (results (plist-get item :results)))
-                   (cl-loop
-                    for result across results
-                    if (equal (plist-get result :type) "logs")
-                    do (push (format "\n```\n%s\n```" (plist-get result :logs))
-                             content-strs))))
-                ;; Response completed
-                ("response.completed"
-                 (when-let* ((tool-use (plist-get info :tool-use)))
-                   ;; Inject tool calls into prompt data for continuation
-                   ;; TODO(responses-api) Avoid re-encoding these tool calls,
-                   ;; especially :arguments
-                   (gptel--inject-prompt
-                    (plist-get info :backend) (plist-get info :data)
-                    (mapcar (lambda (tc)
-                              (list :type "function_call"
-                                    :call_id (plist-get tc :id)
-                                    :name (plist-get tc :name)
-                                    :arguments
-                                    (decode-coding-string
-                                     (gptel--json-encode (plist-get tc :args))
-                                     'utf-8 t)))
-                            tool-use)))
-                 (when-let* ((resp (plist-get data :response)))
-                   (plist-put info :stop-reason (plist-get resp :status))
-                   (gptel--openai-responses-update-tokens
-                    (plist-get resp :usage) info)))
-                ;; Errors in streaming responses show up as data events with
-                ;; HTTP status 200, so we have to catch them here
-                ("error" (when-let* ((err (plist-get data :error)))
-                           (plist-put info :error err)))))))
-      (error (goto-char (match-beginning 0))))
+        (while (progn
+                 (setq start (point))
+                 (setq event (gptel--openai-responses-next-event)))
+          (let ((event-type (car event)) (data (cdr event)))
+            (pcase event-type
+              ;; Text content delta
+              ("response.output_text.delta"
+               (when-let* ((delta (plist-get data :delta))
+                           ((not (string-empty-p delta))))
+                 (push delta content-strs)))
+              ;; Function call arguments delta
+              ("response.function_call_arguments.delta"
+               (when-let* ((delta (plist-get data :delta)))
+                 (plist-put info :partial_json
+                            (cons delta (plist-get info :partial_json)))))
+              ;; Function call completed (user-defined tools)
+              ("response.output_item.done"
+               (when-let* ((item (plist-get data :item))
+                           ((equal (plist-get item :type) "function_call"))
+                           (tool-call
+                            (list :id (plist-get item :call_id)
+                                  :name (plist-get item :name)
+                                  :args (ignore-errors
+                                          (gptel--json-read-string
+                                           (plist-get item :arguments))))))
+                 (plist-put info :tool-use
+                            (cons tool-call (plist-get info :tool-use)))
+                 (plist-put info :partial_json nil)))
+              ;; Reasoning content
+              ((or "response.reasoning_summary_text.delta"
+                   "response.reasoning.delta")
+               (when-let* ((delta (plist-get data :delta)))
+                 (plist-put info :reasoning
+                            (concat (plist-get info :reasoning) delta))))
+              ((or "response.reasoning_summary_text.done"
+                   "response.reasoning.done")
+               (plist-put info :reasoning-block t))
+              ;; NOTE: backend tools are not supported in gptel yet, this
+              ;; parsing is for the future
+              ;; Web search completed (server-side tool)
+              ("response.web_search_call.completed"
+               (push "\n[Web search completed]" content-strs))
+              ;; Code interpreter output (server-side tool)
+              ("response.code_interpreter_call.completed"
+               (when-let* ((item (plist-get data :item))
+                           (results (plist-get item :results)))
+                 (cl-loop
+                  for result across results
+                  if (equal (plist-get result :type) "logs")
+                  do (push (format "\n```\n%s\n```" (plist-get result :logs))
+                           content-strs))))
+              ;; Response completed
+              ("response.completed"
+               (when-let* ((tool-use (plist-get info :tool-use)))
+                 ;; Inject tool calls into prompt data for continuation
+                 ;; TODO(responses-api) Avoid re-encoding these tool calls,
+                 ;; especially :arguments
+                 (gptel--inject-prompt
+                  (plist-get info :backend) (plist-get info :data)
+                  (mapcar (lambda (tc)
+                            (list :type "function_call"
+                                  :call_id (plist-get tc :id)
+                                  :name (plist-get tc :name)
+                                  :arguments
+                                  (decode-coding-string
+                                   (gptel--json-encode (plist-get tc :args))
+                                   'utf-8 t)))
+                          tool-use)))
+               (when-let* ((resp (plist-get data :response)))
+                 (plist-put info :stop-reason (plist-get resp :status))
+                 (gptel--openai-responses-update-tokens
+                  (plist-get resp :usage) info)))
+              ;; Errors in streaming responses show up as data events with
+              ;; HTTP status 200, so we have to catch them here
+              ("error" (when-let* ((err (plist-get data :error)))
+                         (plist-put info :error err))))))
+      (error (goto-char start)))
     (apply #'concat (nreverse content-strs))))
 
 (cl-defmethod gptel--parse-response ((_backend gptel-openai-responses) response info)
