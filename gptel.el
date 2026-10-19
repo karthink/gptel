@@ -1784,7 +1784,8 @@ waiting for the response."
                               (beg (overlay-start steer-ov))
                               (end (overlay-end steer-ov))
                               (msg (string-trim-right
-                                    (buffer-substring-no-properties beg end))))
+                                    (with-current-buffer obuf
+                                      (buffer-substring-no-properties beg end)))))
                     (with-current-buffer obuf
                       (delete-region beg end) (delete-overlay steer-ov))
                     (if (string-blank-p msg)

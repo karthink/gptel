@@ -158,6 +158,14 @@
      :input-cost 5
      :output-cost 25
      :cutoff-date "2026-05")
+    (claude-opus-5.5
+     :description "Long-running agentic coding and knowledge work"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 1000
+     :input-cost 4
+     :output-cost 20
+     :cutoff-date "2026-06")
     (claude-fable-5
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
@@ -190,6 +198,14 @@
      :input-cost 2
      :output-cost 10
      :cutoff-date "2026-01")
+    (claude-sonnet-5.5
+     :description "The best combination of speed and intelligence"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 1000
+     :input-cost 2
+     :output-cost 10
+     :cutoff-date "2026-06")
     (gemini-3.1-pro-preview
      :description "Most intelligent Gemini model with SOTA reasoning and multimodal understanding"
      :capabilities (tool-use json media audio video)

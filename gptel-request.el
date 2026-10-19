@@ -968,6 +968,23 @@ and \"apikey\" as USER."
     (string s)
     (otherwise (prin1-to-string s))))
 
+(defun gptel--sanitize-raw-bytes (s)
+  "Return string S if it is UTF-8 encodable, else a sanitized copy.
+
+Tool results may contain raw bytes that are not valid UTF-8 (e.g. from
+reading a binary file), which `json-serialize' rejects.  Decode UTF-8
+sequences that arrived undecoded, and replace any remaining raw bytes
+with the Unicode replacement character."
+  (if (not (memq 'eight-bit (find-charset-string s)))
+      s
+    ;; Flatten S to bytes and decode it, recovering valid UTF-8 sequences.
+    (let ((s (decode-coding-string (encode-coding-string s 'utf-8 'nocopy)
+                                   'utf-8 'nocopy)))
+      ;; Raw bytes are left as codepoints in the #x3FFF80..#x3FFFFF range.
+      (if (unencodable-char-position 0 nil 'utf-8 nil s)
+          (replace-regexp-in-string "[\x3FFF80-\x3FFFFF]" "\ufffd" s t t)
+        s))))
+
 (defsubst gptel--intern (s)
   "Intern S, if possible."
   (cl-etypecase s
@@ -1004,19 +1021,51 @@ All values must be numeric or nil.  Returns a new plist."
                                       (or v 0))))))
     rtn))
 
+;; NOTE: Remove after we drop Emacs 27.1 (#724)
+(defmacro gptel--temp-buffer (buf)
+  "Generate a temp buffer BUF.
+
+Compatibility macro for Emacs 27.1."
+  (if (< emacs-major-version 28)
+      `(generate-new-buffer ,buf)
+    `(generate-new-buffer ,buf t)))
+
+(defconst gptel--binary-sniff-bytes 8000
+  "Number of leading bytes examined to detect binary files.
+Matches Git's NUL-detection window.")
+
+(defvar gptel--binary-sniff-buffer nil
+  "Reusable unibyte buffer used by `gptel--file-binary-p'.")
+
 (defun gptel--file-binary-p (path)
-  "Check if file at PATH is readable and binary."
-  ;; HACK Image files with ICC color profiles are characterized as ASCII
-  ;; (#1223), so until we find a better solution we just match these files by
-  ;; extension.
-  (or (string-match-p "\\.\\(jpe?g\\|png\\|gif\\|webp\\)\\'" path)
+  "Check if file at PATH is readable and binary.
+
+Return nil if PATH is missing, unreadable or a directory."
+  (or (let ((case-fold-search t))
+        (string-match-p                 ;Fast heuristic for images (JPEGs etc)
+         "\\.\\(jpe?g\\|png\\|gif\\|webp\\)\\'" path))
       (condition-case nil
-          (with-temp-buffer
-            (insert-file-contents path nil 1 512 'replace)
-            (memq buffer-file-coding-system
-                  '(no-conversion no-conversion-multibyte)))
-        (file-missing (message "File \"%s\" is not readable." path)
-                      nil))))
+          (progn
+            (unless (buffer-live-p gptel--binary-sniff-buffer)
+              (setq gptel--binary-sniff-buffer
+                    (gptel--temp-buffer " *gptel-sniff*"))
+              (with-current-buffer gptel--binary-sniff-buffer
+                (set-buffer-multibyte nil)))
+            (with-current-buffer gptel--binary-sniff-buffer
+              (insert-file-contents-literally ;raw bytes, byte 0 included
+               path nil 0 gptel--binary-sniff-bytes 'replace) ;replace buffer contents
+              (goto-char (point-min))
+              (skip-chars-forward "^\0") ;C-level scan for first NUL
+              (and (not (eobp))          ;NUL found, but...
+                   ;; ...not UTF-16 text: exempt a UTF-16 BOM in the
+                   ;; first two bytes
+                   (not (and (>= (buffer-size) 2)
+                             (let ((b0 (char-after (point-min)))
+                                   (b1 (char-after (+ (point-min) 1))))
+                               (or (and (= b0 #xFF) (= b1 #xFE))
+                                   (and (= b0 #xFE) (= b1 #xFF)))))))))
+        (file-missing (message "File \"%s\" is not readable." path) nil)
+        (file-error nil))))            ;directory, permissions => not binary
 
 (defun gptel--insert-file-string (path)
   "Insert at point the contents of the file at PATH as context."
@@ -1083,15 +1132,6 @@ defaults to \"application/json\"."
   `(save-excursion
      (skip-syntax-forward "w.")
      ,(macroexp-progn body)))
-
-;; NOTE: Remove after we drop Emacs 27.1 (#724)
-(defmacro gptel--temp-buffer (buf)
-  "Generate a temp buffer BUF.
-
-Compatibility macro for Emacs 27.1."
-  (if (< emacs-major-version 28)
-      `(generate-new-buffer ,buf)
-    `(generate-new-buffer ,buf t)))
 
 ;; This is defined in gptel, but we define it here as well as it's required by
 ;; `gptel--with-buffer-copy'.
@@ -1918,7 +1958,7 @@ injects the results into the prompt data and transitions the FSM."
          ;; MAYBE(tool-hooks): Use plist-member for valid nil :result?
          (remaining (cl-loop for call in (plist-get info :tool-use)
                              count (not (plist-get call :result)))))
-    (let ((result (gptel--to-string result)))
+    (let ((result (gptel--sanitize-raw-bytes (gptel--to-string result))))
       ;; FIXME(tool-hooks): If a hook has changed the tool that was called
       ;; tool-spec needs to be updated.
       (push (list tool-spec (plist-get tool-call :args) result)

@@ -8,7 +8,7 @@
 gptel is a simple Large Language Model chat client for Emacs, with support for multiple models and backends.  It works in the spirit of Emacs, available at any time and uniformly in any buffer.
 
 *General usage*: ([[https://www.youtube.com/watch?v=bsRnh_brggM][YouTube Demo]], 18 min)
-*Advanced usage*: ([[undefined][YouTube Demo]], 28 min)
+*Advanced usage*: ([[https://www.youtube.com/watch?v=xHEnWvKmSKM][YouTube Demo]], 28 min)
 
 https://user-images.githubusercontent.com/8607532/230516812-86510a09-a2fb-4cbd-b53f-cc2522d05a13.mp4
 
@@ -1066,7 +1066,7 @@ You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
 
 #+begin_src emacs-lisp
-(setq gptel-model 'grok-3-latest
+(setq gptel-model 'grok-4.7
       gptel-backend
       (gptel-make-xai "xAI"               ; Any name you want
         :key "your-api-key" ; can be a function that returns the key

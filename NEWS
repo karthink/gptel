@@ -10,19 +10,32 @@
 
 ** New models and backends
 
-- Anthropic backend: Add support for =claude-fable-5-1= and
-  =claude-opus-5-5=.
+- Gemini backend: Add support for =gemini-4-argon=.
 
-- OpenAI backend: Add support for =gpt-6-astra=, =gpt-6-sol= and
-  =gpt-6-luna=.
+- Anthropic backend: Add support for =claude-fable-5-1=,
+  =claude-opus-5-5=, =claude-sonnet-5-5= and =claude-haiku-5-5=.
 
-- Bedrock backend: Add support for =claude-opus-5-5=.
+- OpenAI backend: Add support for =gpt-6-astra=, =gpt-6.1-sol=,
+  =gpt-6-sol= and =gpt-6-luna=.
+
+- Bedrock backend: Add support for =claude-opus-5-5=,
+  =claude-sonnet-5-5= and =claude-haiku-5-5=.
+
+- GitHub Copilot backend: Add support for =claude-sonnet-5.5= and
+  =claude-opus-5.5=.
 
 - Deepseek backend: Add support for =deepseek-flash=, and deprecate
   =deepseek-v4-flash= and =deepseek-v4-flash-vision-exp=.
 
+- xAI backend: Add support for =grok-4.7=, =grok-4.6=, =grok-4.20=,
+  =grok-4.20-non-reasoning= and =grok-4.20-multi-agent=.
+
 ** New features and UI changes
 ** Notable bug fixes
+
+- Non UTF-8 characters or raw bytes in tool call results are replaced
+  with a readable placeholder, ensuring that the tool call loop can
+  continue uninterrupted.
 
 
 * 0.9.9.6 2026-09-05
