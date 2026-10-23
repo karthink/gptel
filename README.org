@@ -816,7 +816,7 @@ The above code makes the backend available to select.  If you want it to be the 
 ;; OPTIONAL configuration
 (setq gptel-model   'mistral-small
       gptel-backend
-      (gptel-make-openai "MistralLeChat"  ;Any name you want
+      (gptel-make-mistral "MistralLeChat"  ;Any name you want
         :host "api.mistral.ai"
         :endpoint "/v1/chat/completions"
         :protocol "https"
