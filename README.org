@@ -1250,7 +1250,7 @@ Now the chat should be able to automatically use search. Try "what's new today" 
 **** TopxAI
 #+html: </summary>
 
-TopxAI offers OpenAI- and Anthropic-compatible endpoints for Claude, GPT, Grok, GLM, Kimi, DeepSeek and Jev models with one key.  Register an OpenAI-style backend with
+TopxAI offers an OpenAI-compatible chat endpoint for Claude, GPT, Grok, GLM, Kimi and DeepSeek models with one key.  Register an OpenAI-style backend with
 
 #+begin_src emacs-lisp
 ;; TopxAI: one key, OpenAI-compatible endpoint
@@ -1264,8 +1264,8 @@ TopxAI offers OpenAI- and Anthropic-compatible endpoints for Claude, GPT, Grok, 
             gpt-6.1-sol
             gpt-6-astra
             grok-4.7
-            kimi-k3
-            deepseek-v4-pro))
+            kimi-k3.1-pro
+            deepseek-flash-Abliterated))
 #+end_src
 
 The Claude models are also served on an Anthropic Messages endpoint, so you can register them as an Anthropic backend instead:
@@ -1278,7 +1278,7 @@ The Claude models are also served on an Anthropic Messages endpoint, so you can 
   :models '(claude-sonnet-5-5 claude-opus-5-5 claude-fable-5-1))
 #+end_src
 
-See [[https://ai.topxea.com/pricing][TopxAI's price list]] for the current models and [[https://ai.topxea.com/docs/api-reference][its API reference]] for the endpoints.
+See [[https://ai.topxea.com/pricing][TopxAI's price list]] for the current models and [[https://ai.topxea.com/docs/api-reference][its API reference]] for the endpoints.  Jev uses a separate System One API and is not supported by these configurations.
 
 #+html: </details>
 ** Usage
