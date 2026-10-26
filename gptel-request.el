@@ -1070,6 +1070,15 @@ All values must be numeric or nil.  Returns a new plist."
                                       (or v 0))))))
     rtn))
 
+;; NOTE: Remove after we drop Emacs 27.1 (#724)
+(defmacro gptel--temp-buffer (buf)
+  "Generate a temp buffer BUF.
+
+Compatibility macro for Emacs 27.1."
+  (if (< emacs-major-version 28)
+      `(generate-new-buffer ,buf)
+    `(generate-new-buffer ,buf t)))
+
 (defconst gptel--binary-sniff-bytes 8000
   "Number of leading bytes examined to detect binary files.
 Matches Git's NUL-detection window.")
@@ -1172,15 +1181,6 @@ defaults to \"application/json\"."
   `(save-excursion
      (skip-syntax-forward "w.")
      ,(macroexp-progn body)))
-
-;; NOTE: Remove after we drop Emacs 27.1 (#724)
-(defmacro gptel--temp-buffer (buf)
-  "Generate a temp buffer BUF.
-
-Compatibility macro for Emacs 27.1."
-  (if (< emacs-major-version 28)
-      `(generate-new-buffer ,buf)
-    `(generate-new-buffer ,buf t)))
 
 ;; This is defined in gptel, but we define it here as well as it's required by
 ;; `gptel--with-buffer-copy'.
