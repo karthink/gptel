@@ -314,6 +314,29 @@ The Deepseek API requires strictly alternating roles (user/assistant) in message
               (setcdr index (cdr rest))))
           (setq index (cdr index)))))))
 
+(cl-defmethod gptel--request-data ((_backend gptel-deepseek) _prompts)
+  "Handle reasoning effort using Deepseek's special conventions.
+
+The Deepseek API handles reasoning effort differently than
+OpenAI. Instead of using a single reasoning_effort parameter,
+there is a thinking parameter that can be used to disable or
+enable thinking. When it is enabled, reasoning_effort can be set
+to either `high' or `max'."
+  ;; Disable reasoning effort when calling the gptel-openai backend's version of
+  ;; this method. It uses OpenAI conventions for the reasoning effort which are
+  ;; different than what Deepseek accepts
+  (let ((plist (let ((gptel-reasoning-effort nil))
+                 (cl-call-next-method))))
+    (when-let* ((effort (gptel--reasoning-effort-normalize gptel-reasoning-effort)))
+      (plist-put plist
+                 :thinking (list :type
+                                 (if (eq effort 'disabled)
+                                     "disabled"
+                                   "enabled")))
+      (unless (eq effort 'disabled)
+        (plist-put plist :reasoning_effort (symbol-name effort))))
+    plist))
+
 (cl-defmethod gptel--request-data :around ((_backend gptel-deepseek) _prompts)
   "Modify how structured output JSON schema is specified for Deepseek.
 
@@ -343,24 +366,28 @@ message."
           (endpoint "/v1/chat/completions")
           (models '((deepseek-flash
                      :capabilities (media tool-use reasoning url)
+                     :reasoning-effort (member disabled high max)
                      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
                      :context-window 1000
                      :input-cost 0.15
                      :output-cost 0.6)
                     (deepseek-v4-pro
                      :capabilities (tool-use reasoning)
+                     :reasoning-effort (member disabled high max)
                      :context-window 1000
                      :input-cost 0.66
                      :output-cost 1.98)
                     (deepseek-v4-flash
                      :description "DEPRECATED: Use deepseek-flash instead."
                      :capabilities (tool-use reasoning)
+                     :reasoning-effort (member disabled high max)
                      :context-window 1000
                      :input-cost 0.15
                      :output-cost 0.6)
                     (deepseek-v4-flash-vision-exp
                      :description "DEPRECATED: Use deepseek-flash instead."
                      :capabilities (media tool-use reasoning url)
+                     :reasoning-effort (member disabled high max)
                      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
                      :context-window 1000
                      :input-cost 0.15
