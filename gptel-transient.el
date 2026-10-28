@@ -28,6 +28,7 @@
 (require 'cl-lib)
 (require 'gptel)
 (require 'transient)
+(eval-when-compile (require 'gptel-macros)) ; use: `gptel--provided-mode-derived-p'
 
 (declare-function ediff-regions-internal "ediff")
 (declare-function ediff-make-cloned-buffer "ediff-util")
@@ -1722,7 +1723,7 @@ The possible values are:
                 gptel-default-mode)))
         ;; Add code fences or Org src markers around the reduced-prompt
         (cond ((and (stringp prompt) (eq major-mode gptel-buffer-mode)))
-              ((provided-mode-derived-p gptel-buffer-mode 'org-mode)
+              ((gptel--provided-mode-derived-p gptel-buffer-mode 'org-mode)
                (setq reduced-prompt
                      (if (consp reduced-prompt);either (region . prompt) or prompt
                          (concat (and (car reduced-prompt)

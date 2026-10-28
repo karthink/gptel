@@ -50,6 +50,7 @@
 (require 'cl-generic)
 (require 'map)
 (require 'mailcap)                    ;FIXME Avoid this somehow
+(eval-when-compile (require 'gptel-macros)) ; use: `gptel--provided-mode-derived-p'
 
 (declare-function json-read "json" ())
 (defvar json-object-type)
@@ -1037,20 +1038,9 @@ MODE-SYM is typically a major-mode symbol."
                          (symbol-name mode-sym)
                          (string-remove-suffix "-mode")
                          (string-remove-suffix "-ts"))))
-        ;; On Emacs < 30.1:  (provided-mode-derived-p (mode &rest modes))
-        ;; On Emacs ≥ 30.1:  (provided-mode-derived-p (mode modes))
-        ;; Allow dynamically selected form to compile without complaining
-        ;; about the form this Emacs version does not support.
-        (with-suppressed-warnings ((callargs provided-mode-derived-p))
-          (if (< emacs-major-version 30)
-              (if (provided-mode-derived-p mode-sym
-                                         'prog-mode 'text-mode 'tex-mode)
-                mode-name
-              "")
-            (if (provided-mode-derived-p mode-sym
-                                           '(prog-mode text-mode tex-mode))
-                  mode-name
-                ""))))))
+        (if (gptel--provided-mode-derived-p mode-sym
+                                            'prog-mode 'text-mode 'tex-mode)
+            mode-name ""))))
 
 (defvar url-http-end-of-headers)
 (defvar url-http-response-status)
