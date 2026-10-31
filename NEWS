@@ -4,6 +4,10 @@
 
 ** Breaking changes
 
+- Bedrock now defaults to Global cross-Region inference when the model
+  has a documented Global profile.  Set =:model-region= to a geographic
+  region or =nil= to retain explicit geographic or base-model routing.
+
 - The Codex models =gpt-5.2=, =gpt-5.3-codex= and =gpt-5.3-codex-spark=
   have been removed from the list of default models for
   =gptel-openai-oauth=.  These models are no longer served by OpenAI.
@@ -23,8 +27,12 @@
 - OpenAI backend: Add support for =gpt-6-astra=, =gpt-6.1-sol=,
   =gpt-6-sol= =gpt-6.1-terra= and =gpt-6-luna=.
 
-- Bedrock backend: Add support for =claude-opus-5-5=,
-  =claude-sonnet-5-5= and =claude-haiku-5-5=.
+- Bedrock backend: Preserve the existing models and add missing Active
+  runtime models, including Claude Fable 5.1 and Mythos 5.1, Nova
+  Lite/Micro/Pro, GPT-6 and GPT-5.6 families, GPT OSS, Kimi K3 and K2.5,
+  Grok 4.6/4.7, GLM 5/5.3, and additional Mistral, MiniMax, NVIDIA, Qwen
+  and Writer models.  The catalog records native IDs, API support and
+  Global profile availability in =gptel-bedrock--model-specs=.
 
 - GitHub Copilot backend: Add support for =claude-sonnet-5.5= and
   =claude-opus-5.5=.
@@ -36,7 +44,19 @@
   =grok-4.20-non-reasoning= and =grok-4.20-multi-agent=.
 
 ** New features and UI changes
+
+- Bedrock selects Responses for models that support it on
+  =bedrock-runtime=, reusing the OpenAI Responses backend.  Other models,
+  including Claude, continue using Converse/ConverseStream.  Override the
+  automatic choice with =:api 'converse= or =:api 'responses=.  GPT-6.1
+  Sol Ultrafast uses =:request-params '(:service_tier "ultrafast")=.
+
 ** Notable bug fixes
+
+- Responses backend: Parse streams whose event types appear only in
+  the JSON data, as returned by Bedrock.  This fixes missing responses
+  despite successful HTTP requests.  Partial SSE events are retained
+  until the next network chunk arrives.
 
 - Non UTF-8 characters or raw bytes in tool call results are replaced
   with a readable placeholder, ensuring that the tool call loop can
