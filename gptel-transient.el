@@ -1138,9 +1138,10 @@ only (\"oneshot\")."
        (interactive (list (plist-get (transient-scope 'gptel-tools) :tools)))
        (gptel--set-with-scope
         'gptel-tools
-        (mapcar (lambda (category-and-name)
-                  (map-nested-elt gptel--known-tools category-and-name))
-                (cl-delete-if-not #'consp tools))
+        (delq nil                       ;Ignore deregistered (unfindable) tools
+              (mapcar (lambda (category-and-name)
+                        (map-nested-elt gptel--known-tools category-and-name))
+                      (cl-delete-if-not #'consp tools)))
         gptel--set-buffer-locally))
      :transient transient--do-return)
     ("q" "Cancel" transient-quit-one)]]

@@ -8,6 +8,11 @@
   have been removed from the list of default models for
   =gptel-openai-oauth=.  These models are no longer served by OpenAI.
 
+- The behavior of the MCP integration function ~gptel-mcp-connect~ has
+  changed.  It now calls its (optional) callback with the list of gptel
+  tools to be added.  Additionally, it can now connect to MCP servers
+  without adding any gptel tools.
+
 ** New models and backends
 
 - Gemini backend: Add support for =gemini-4-argon=.
