@@ -219,6 +219,7 @@ gptel supports a number of LLM providers:
 | OpenRouter           | [[https://openrouter.ai/keys][API key]]                    |
 | AI/ML API            | [[https://aimlapi.com/app/?utm_source=gptel&utm_medium=github&utm_campaign=integration][API key]]                    |
 | together.ai          | [[https://api.together.xyz/settings/api-keys][API key]]                    |
+| Fikra API            | [[https://fikraapi.co.ke][API key]]                    |
 | Anyscale             | [[https://docs.endpoints.anyscale.com/][API key]]                    |
 | PrivateGPT           | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
 | DeepSeek             | [[https://platform.deepseek.com/api_keys][API key]]                    |
@@ -638,6 +639,30 @@ The above code makes the backend available to select.  If you want it to be the 
              codellama/CodeLlama-13b-Instruct-hf
              codellama/CodeLlama-34b-Instruct-hf)))
 #+end_src
+
+#+html: </details>
+#+html: <details><summary>
+**** Fikra API
+#+html: </summary>
+
+Register a backend with
+
+#+begin_src emacs-lisp
+;; Fikra API (https://fikraapi.co.ke) offers an OpenAI compatible API
+(gptel-make-openai "Fikra"              ;Any name you want
+  :host "fikraapi.co.ke"
+  :endpoint "/v1/chat/completions"
+  :key "your-api-key"                   ;can be a function that returns the key
+  :stream t
+  :models '(;; has many more, check fikraapi.co.ke or /v1/models
+            deepseek-v4.1-flash          ;$0.045 input / $0.09 output per 1M, 1M context
+            glm-5.3                      ;$1.05 / $3.35 per 1M
+            glm-5.2                      ;$0.75 / $1.65 per 1M
+            kimi-k3                      ;$2.10 / $10.50 per 1M
+            qwen3.8-27b))                ;$0.045 / $0.35 per 1M
+#+end_src
+
+You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
 
 #+html: </details>
 #+html: <details><summary>
