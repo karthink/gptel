@@ -95,6 +95,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#github-copilotchat][GitHub CopilotChat]]
       - [[#aws-bedrock][AWS Bedrock]]
       - [[#moonshot-kimi][Moonshot (Kimi)]]
+      - [[#wally][Wally]]
   - [[#usage][Usage]]
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
@@ -229,6 +230,7 @@ gptel supports a number of LLM providers:
 | GitHub CopilotChat   | GitHub account             |
 | Bedrock              | AWS credentials            |
 | Moonshot (Kimi)      | API key ([[https://platform.moonshot.cn/console][CN]] or [[https://platform.moonshot.ai/console][Global]])     |
+| Wally                | [[https://console.runanywhere.ai][API key]]                    |
 #+html: </div>
 
 *** OpenAI
@@ -1244,6 +1246,24 @@ Then you also need to add the tool declaration via =:request-params= because it 
 #+end_src
 
 Now the chat should be able to automatically use search. Try "what's new today" and you should expect the up-to-date news in response.
+
+#+html: </details>
+#+html: <details><summary>
+**** Wally
+#+html: </summary>
+
+Register a backend with
+
+#+begin_src emacs-lisp
+;; Wally offers an OpenAI compatible API
+(gptel-make-openai "Wally"              ;Any name you want
+  :host "inference.runanywhere.ai"
+  :key "your-api-key"                   ;can be a function that returns the key
+  :stream t
+  :models '(glm-5.3-flash deepseek-v4.1-flash))
+#+end_src
+
+See the [[https://docs.runanywhere.ai/wally-cloud/api][Wally API docs]] for a complete list of models.
 
 #+html: </details>
 ** Usage
