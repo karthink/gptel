@@ -258,6 +258,12 @@ information if the stream contains it."
       :context-window 1024
       :input-cost 0.15
       :output-cost 0.5)
+     (deepseek-v4-1-flash-1017
+      :description "DeepSeek V4.1 Flash 1017 is a third-party open weight model from DeepSeek, hosted by Mistral, with support for text and image inputs. Ideal for long-context coding and agentic workflows. The model is served without Mistral modifications."
+      :capabilities (tool-use json url responses-api)
+      :context-window 1024
+      :input-cost 0.3
+      :output-cost 1.2)
      ))
   "List of available Mistral models and associated properties.
 
