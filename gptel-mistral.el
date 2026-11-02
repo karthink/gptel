@@ -252,6 +252,12 @@ information if the stream contains it."
       :context-window 1024
       :input-cost 1.4
       :output-cost 4.4)
+     (zai-glm-5-3-flash
+      :description "Z.AI's GLM 5.3 Flash is a multimodal 320B-parameter (18B active) Mixture-of-Experts model. Built for developer agent workflows, visual coding, and complex tool-use tasks. The model is served without Mistral modifications."
+      :capabilities (tool-use json url responses-api)
+      :context-window 1024
+      :input-cost 0.15
+      :output-cost 0.5)
      ))
   "List of available Mistral models and associated properties.
 
