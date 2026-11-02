@@ -252,12 +252,6 @@ information if the stream contains it."
       :context-window 1024
       :input-cost 1.4
       :output-cost 4.4)
-     (zai-glm-5-2
-      :description "A third-party open weight text model from Z.ai, hosted by Mistral for long-context coding and agentic workflows. The model is served without Mistral modifications."
-      :capabilities (tool-use json url responses-api)
-      :context-window 1024
-      :input-cost 1.4
-      :output-cost 4.4)
      ))
   "List of available Mistral models and associated properties.
 
