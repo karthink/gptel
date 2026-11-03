@@ -120,6 +120,7 @@ information if the stream contains it."
                   (when-let* ((tool-use (plist-get info :tool-use))
                               (args (apply #'concat (nreverse (plist-get info :partial_json))))
                               (func (plist-get (car tool-use) :function)))
+                    (gptel-mistral--log-dev "tool use: %S, args: %S, func: %S\n\n" tool-use args func)
                     (plist-put func :arguments args) ;Update arguments for last recorded tool
                     (gptel--inject-prompt
                      (plist-get info :backend) (plist-get info :data)
@@ -223,8 +224,8 @@ information if the stream contains it."
       :capabilities (media tool-use json url responses-api)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
       :context-window 1024
-      :input-cost 1.36
-      :output-cost 4.18)
+      :input-cost 0.7
+      :output-cost 2.1)
      (mistral-medium-3.5
       :description "Our frontier-class multimodal model optimized for agentic and coding use cases."
       :capabilities (media tool-use json url responses-api)
@@ -378,3 +379,24 @@ for."
 ;; Local Variables:
 ;; byte-compile-warnings: (not docstrings)
 ;; End:
+
+
+(setq gptel-model 'mistral-large-4-0
+      gptel-backend (gptel-make-mistral "Mistral"
+                        :host "api.mistral.ai"
+                        :endpoint "/v1/chat/completions"
+                        :protocol "https"
+                        :key gptel-api-key
+                        :stream t
+                        :models '("codestral-2508"
+                                  "devstral-2512"
+                                  "ministral-14b-2512"
+                                  "mistral-medium-2508"
+                                  "mistral-large-2512"
+                                  "mistral-small-2603"
+                                  "mistral-medium-3.5"
+                                  "zai-glm-5-3"
+                                  "zai-glm-5-3-flash"
+                                  "deepseek-v4-1-flash-1017"
+                                  "mistral-large-4-0")
+                        :request-params '(:reasoning_effort "low" :parallel_tool_calls "false")))
