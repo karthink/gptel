@@ -2285,6 +2285,14 @@ be used to rerun or continue the request at a later time."
               (insert prompt)
               (setq major-mode 'fundamental-mode) ;Avoid mode-specific behavior
               (current-buffer)))
+           ((and (plistp prompt) (keywordp (car prompt))) ;Elisp-encoded JSON, send as-is
+            (gptel--with-buffer-copy buffer nil nil
+              ;; FIXME(systemone): gptel-request unfortunately requires a :data
+              ;; buffer.  Find a way to avoid this prin1/read round trip.
+              (let ((print-level nil) (print-length nil))
+                (prin1 prompt (current-buffer)))
+              (setq major-mode 'lisp-data-mode) ;For the parser to distinguish type
+              (current-buffer)))
            ((consp prompt)
             ;; (gptel--parse-list gptel-backend prompt)
             (gptel--with-buffer-copy buffer nil nil
