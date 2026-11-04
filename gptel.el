@@ -1971,7 +1971,12 @@ Optional RAW disables text properties and transformation."
       (`(tool-call . ,tool-calls)
        (gptel--display-tool-calls tool-calls info))
       (`(tool-result . ,tool-results)
-       (gptel--display-tool-results tool-results info)))))
+       (gptel--display-tool-results tool-results info))
+      (`(decisions . ,answers)
+       (gptel--insert-response
+        (let ((print-level nil) (print-length nil))
+          (pp-to-string answers))
+        info)))))
 
 (defun gptel-curl--stream-insert-response (response info &optional raw)
   "Insert streaming RESPONSE from an LLM into the gptel buffer.
