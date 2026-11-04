@@ -379,24 +379,3 @@ for."
 ;; Local Variables:
 ;; byte-compile-warnings: (not docstrings)
 ;; End:
-
-
-(setq gptel-model 'mistral-large-4-0
-      gptel-backend (gptel-make-mistral "Mistral"
-                        :host "api.mistral.ai"
-                        :endpoint "/v1/chat/completions"
-                        :protocol "https"
-                        :key gptel-api-key
-                        :stream t
-                        :models '("codestral-2508"
-                                  "devstral-2512"
-                                  "ministral-14b-2512"
-                                  "mistral-medium-2508"
-                                  "mistral-large-2512"
-                                  "mistral-small-2603"
-                                  "mistral-medium-3.5"
-                                  "zai-glm-5-3"
-                                  "zai-glm-5-3-flash"
-                                  "deepseek-v4-1-flash-1017"
-                                  "mistral-large-4-0")
-                        :request-params '(:reasoning_effort "low" :parallel_tool_calls "false")))
