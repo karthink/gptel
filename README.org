@@ -199,36 +199,36 @@ In your =.spacemacs= file, add =llm-client= to =dotspacemacs-configuration-layer
 gptel supports a number of LLM providers:
 
 #+html: <div align="center">
-| LLM Backend          | Requires                   |
-|----------------------+----------------------------|
-| OpenAI               | [[https://platform.openai.com/account/api-keys][API key]]                    |
-| OpenAI subscription  | ChatGPT plus/pro sub       |
-| Anthropic (Claude)   | [[https://www.anthropic.com/api][API key]]                    |
-| Gemini               | [[https://makersuite.google.com/app/apikey][API key]]                    |
-| Ollama               | [[https://ollama.ai/][Ollama running locally]]     |
-| Open WebUI           | [[https://openwebui.com/][Open WebUI running locally]] |
-| Llama.cpp            | [[https://github.com/ggml-org/llama.cpp/tree/master/tools/server#quick-start][Llama.cpp running locally]]  |
-| Llamafile            | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
-| GPT4All              | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
-| Kagi FastGPT         | [[https://kagi.com/settings?p=api][API key]]                    |
-| Kagi Summarizer      | [[https://kagi.com/settings?p=api][API key]]                    |
-| Azure                | Deployment and API key     |
-| Groq                 | [[https://console.groq.com/keys][API key]]                    |
-| Mistral Le Chat      | [[https://console.mistral.ai/api-keys][API key]]                    |
-| Perplexity           | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
-| OpenRouter           | [[https://openrouter.ai/keys][API key]]                    |
-| AI/ML API            | [[https://aimlapi.com/app/?utm_source=gptel&utm_medium=github&utm_campaign=integration][API key]]                    |
-| together.ai          | [[https://api.together.xyz/settings/api-keys][API key]]                    |
-| Anyscale             | [[https://docs.endpoints.anyscale.com/][API key]]                    |
-| PrivateGPT           | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
-| DeepSeek             | [[https://platform.deepseek.com/api_keys][API key]]                    |
-| Sambanova (Deepseek) | [[https://cloud.sambanova.ai/apis][API key]]                    |
-| Cerebras             | [[https://cloud.cerebras.ai/][API key]]                    |
-| Novita AI            | [[https://novita.ai/model-api/product/llm-api?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][Token]]                      |
-| xAI                  | [[https://console.x.ai?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][API key]]                    |
-| GitHub CopilotChat   | GitHub account             |
-| Bedrock              | AWS credentials            |
-| Moonshot (Kimi)      | API key ([[https://platform.moonshot.cn/console][CN]] or [[https://platform.moonshot.ai/console][Global]])     |
+| LLM Backend            | Requires                   |
+|------------------------+----------------------------|
+| OpenAI                 | [[https://platform.openai.com/account/api-keys][API key]]                    |
+| OpenAI subscription    | ChatGPT plus/pro sub       |
+| Anthropic (Claude)     | [[https://www.anthropic.com/api][API key]]                    |
+| Gemini                 | [[https://makersuite.google.com/app/apikey][API key]]                    |
+| Ollama                 | [[https://ollama.ai/][Ollama running locally]]     |
+| Open WebUI             | [[https://openwebui.com/][Open WebUI running locally]] |
+| Llama.cpp              | [[https://github.com/ggml-org/llama.cpp/tree/master/tools/server#quick-start][Llama.cpp running locally]]  |
+| Llamafile              | [[https://github.com/Mozilla-Ocho/llamafile#quickstart][Local Llamafile server]]     |
+| GPT4All                | [[https://gpt4all.io/index.html][GPT4All running locally]]    |
+| Kagi FastGPT           | [[https://kagi.com/settings?p=api][API key]]                    |
+| Kagi Summarizer        | [[https://kagi.com/settings?p=api][API key]]                    |
+| Azure                  | Deployment and API key     |
+| Groq                   | [[https://console.groq.com/keys][API key]]                    |
+| Mistral Vibe (Le Chat) | [[https://console.mistral.ai/api-keys][API key]]                    |
+| Perplexity             | [[https://docs.perplexity.ai/docs/getting-started][API key]]                    |
+| OpenRouter             | [[https://openrouter.ai/keys][API key]]                    |
+| AI/ML API              | [[https://aimlapi.com/app/?utm_source=gptel&utm_medium=github&utm_campaign=integration][API key]]                    |
+| together.ai            | [[https://api.together.xyz/settings/api-keys][API key]]                    |
+| Anyscale               | [[https://docs.endpoints.anyscale.com/][API key]]                    |
+| PrivateGPT             | [[https://github.com/zylon-ai/private-gpt#-documentation][PrivateGPT running locally]] |
+| DeepSeek               | [[https://platform.deepseek.com/api_keys][API key]]                    |
+| Sambanova (Deepseek)   | [[https://cloud.sambanova.ai/apis][API key]]                    |
+| Cerebras               | [[https://cloud.cerebras.ai/][API key]]                    |
+| Novita AI              | [[https://novita.ai/model-api/product/llm-api?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][Token]]                      |
+| xAI                    | [[https://console.x.ai?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][API key]]                    |
+| GitHub CopilotChat     | GitHub account             |
+| Bedrock                | AWS credentials            |
+| Moonshot (Kimi)        | API key ([[https://platform.moonshot.cn/console][CN]] or [[https://platform.moonshot.ai/console][Global]])     |
 #+html: </div>
 
 *** OpenAI
@@ -791,14 +791,14 @@ The above code makes the backend available to select.  If you want it to be the 
 
 #+html: </details>
 #+html: <details><summary>
-**** Mistral Le Chat
+**** Mistral Vibe (Le Chat)
 #+html: </summary>
 
 Register a backend with
 
 #+begin_src emacs-lisp
-;; Mistral offers an OpenAI compatible API
-(gptel-make-openai "MistralLeChat"  ;Any name you want
+;; Mistral offers a partially OpenAI compatible API so use a patched adapter
+(gptel-make-mistral "Mistral"  ;Any name you want
   :host "api.mistral.ai"
   :endpoint "/v1/chat/completions"
   :protocol "https"
@@ -816,7 +816,7 @@ The above code makes the backend available to select.  If you want it to be the 
 ;; OPTIONAL configuration
 (setq gptel-model   'mistral-small
       gptel-backend
-      (gptel-make-openai "MistralLeChat"  ;Any name you want
+      (gptel-make-mistral "MistralLeChat"  ;Any name you want
         :host "api.mistral.ai"
         :endpoint "/v1/chat/completions"
         :protocol "https"
