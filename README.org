@@ -1150,53 +1150,93 @@ The above code makes the backend available to select.  If you want it to be the 
 **** AWS Bedrock
 #+html: </summary>
 
-Register a backend with
+Register a backend with:
 
 #+begin_src emacs-lisp
 (gptel-make-bedrock "AWS"
-  ;; optionally enable streaming
-  :stream t
-  :region "ap-northeast-1"
-  ;; subset of gptel--bedrock-models
-  :models '(claude-sonnet-4-20250514)
-  ;; Model region for cross-region inference profiles. Required for models such
-  ;; as Claude without on-demand throughput support. One of 'apac, 'eu or 'us.
-  ;; https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-use.html
-  :model-region 'apac)
+  :region "us-east-1"
+  :stream t)
 #+end_src
 
-AWS has numerous credential provisions; we follow this order precedence,
+The backend chooses the API for each request.  Models with Responses API
+support on =bedrock-runtime= use the existing OpenAI Responses backend.
+Anthropic and the other Converse-only models use Converse/ConverseStream.
+You can switch models within the same backend.  Set =:api 'converse= or
+=:api 'responses= to explicitly select an API; the default is =auto=.
+
+The model declarations in =gptel-bedrock--model-specs= include API support,
+model IDs, Global profile availability and model properties.  The catalog
+retains the original aliases and adds missing models whose AWS model
+cards list their lifecycle as Active.  See [[https://docs.aws.amazon.com/bedrock/latest/userguide/models-api-compatibility.html][AWS API compatibility]] and each
+model's endpoint-specific API table.
+
+Responses is preferred for GPT-6.1 Sol, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna,
+GPT-5.6 Sol/Terra/Luna, GPT-5.5, GPT-5.4, Kimi K3, Grok 4.7, Grok 4.6,
+and GLM 5.3.  GPT OSS uses Converse: its Responses support is limited to
+=bedrock-mantle=.
+
+Model selection uses the familiar aliases, for example
+=:models '(claude-sonnet-5-5 gpt-6.1-sol)=.  Global cross-Region inference
+is preferred when the model has a documented Global profile; other models
+use their base ID.  This is controlled by =:model-region 'auto=, the
+default.  Set =:model-region 'us=, ='eu=, ='apac=, ='au=, ='jp=, ='in=,
+='ca= or ='us-gov= for a geographic profile, ='global= to explicitly
+request Global inference, or =nil= for the base model ID.  The selected
+profile must be available for that model and source region.
+
+Full model IDs are also accepted in =:models=.  Explicit profile IDs are
+used verbatim, for example =:models '(us.openai.gpt-6.1-sol)=.  The AWS
+source region is set independently by =:region=.  =:endpoint= remains an
+optional proxy path prefix, prepended to either API's runtime route.
+
+AWS credentials are selected in this order:
+
 - (argument) ~:aws-bearer-token~
-- (env. variable) ~AWS_BEARER_TOKEN_BEDROCK~
+- (environment variable) ~AWS_BEARER_TOKEN_BEDROCK~
 - (argument) ~:aws-profile~
-  If this option is specified, the Bedrock-backend uses the shared AWS config and credentials files to obtain credentials based on the AWS Profile selected. If ~:aws-profile~ is set to the keyword ~:static~, the IAM credentials are imported without a profile argument.
-- (env. varible) ~AWS_PROFILE~
-- (env. varible) ~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~ and ~AWS_SESSION_TOKEN~
+- (environment variable) ~AWS_PROFILE~
+- (environment variables) ~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~,
+  and optionally ~AWS_SESSION_TOKEN~
 
-*NOTE:* The Bedrock backend requires ~gptel-use-curl~ to be set to ~t~.  When authenticating with an AWS profile or IAM credentials, =curl= computes a SigV4 signature and version 8.10 or newer is required (see [[https://github.com/curl/curl/issues/11794][curl issue #11794]]). Bearer token authentication does not have this requirement.
+The ~:aws-profile~ option uses the AWS CLI to export the selected
+profile's credentials.  Use ~:aws-profile :static~ to export the default
+AWS CLI credentials.  AWS profile or IAM authentication requires
+~gptel-use-curl~; use Curl 8.10 or newer for SigV4 signing.  Bearer tokens
+are sent as HTTP headers with either API.
 
-You can pick this backend from the menu when using gptel (see [[#usage][Usage]]).
+***** GPT-6.1 Sol Ultrafast
+
+#+begin_src emacs-lisp
+(gptel-make-bedrock "AWS Ultrafast"
+  :region "us-east-1"
+  :models '(gpt-6.1-sol)
+  :stream t
+  :request-params '(:service_tier "ultrafast"))
+#+end_src
+
+This automatically uses Responses with =global.openai.gpt-6.1-sol=.
+Global inference has lower pricing than US inference for this model; see
+the [[https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html][AWS model documentation]].  Omit =:request-params= to use the standard
+tier.  To enable Ultrafast for this model in a backend that also includes
+Claude, use model-specific parameters after loading the Bedrock backend:
+
+#+begin_src emacs-lisp
+(require 'gptel-bedrock)
+(put 'gpt-6.1-sol :request-params '(:service_tier "ultrafast"))
+#+end_src
+
+This applies the mode whenever that model is selected.  Keep parameters
+that only apply to a particular model out of the whole backend's
+=:request-params= when mixing APIs.
 
 ***** (Optional) Set as the default gptel backend
 
-The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
-
 #+begin_src emacs-lisp
-;; OPTIONAL configuration
-(setq gptel-model   'claude-sonnet-4-20250514
+(setq gptel-model 'claude-sonnet-5-5
       gptel-backend
       (gptel-make-bedrock "AWS"
-        ;; optionally enable streaming
-        :stream t
-        ;; optionally specify the aws profile
-        ;; :profile
-        :region "ap-northeast-1"
-        ;; subset of gptel--bedrock-models
-        :models '(claude-sonnet-4-20250514)
-        ;; Model region for cross-region inference profiles. Required for models such
-        ;; as Claude without on-demand throughput support. One of 'apac, 'eu or 'us.
-        ;; https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-use.html
-        :model-region 'apac))
+        :region "us-east-1"
+        :stream t))
 #+end_src
 
 #+html: </details>
