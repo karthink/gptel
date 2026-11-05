@@ -488,9 +488,14 @@ format."
    and if text
    collect `(:type "input_text" :text ,text) into parts-array end
    else if media collect
-   `(:type "input_image"
-           :image_url ,(concat "data:" (plist-get part :mime)
-                               ";base64," (gptel--base64-encode media)))
+   (if (equal (plist-get part :mime) "application/pdf")
+       `(:type "input_file"
+               :filename ,(file-name-nondirectory media)
+               :file_data ,(concat "data:application/pdf;base64,"
+                                   (gptel--base64-encode media)))
+     `(:type "input_image"
+             :image_url ,(concat "data:" (plist-get part :mime)
+                                 ";base64," (gptel--base64-encode media))))
    into parts-array
    else if (plist-get part :textfile) collect
    `(:type "input_text"
