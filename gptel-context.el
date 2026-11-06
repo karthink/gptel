@@ -22,8 +22,52 @@
 
 ;;; Commentary:
 
-;; The context allows you to conveniently create contexts which can be fed
-;; to gptel.
+;; The context system manages additional sources of information sent
+;; with gptel queries.  Each kind of source is defined as a
+;; `gptel-context-type' struct and registered with
+;; `gptel-context-register-type'.
+
+;; Context entries
+;;
+;; Context entries are cons cells (SOURCE . SPEC) in the buffer-local
+;; variable `gptel-context'.  SPEC is a plist that must include a :type
+;; key.  Entries without :type are resolved at collect time by testing
+;; each registered type's predicate.
+
+;;   (buffer-object :type buffer-region)
+;;   ("/path/to/file" :type file)
+;;   ("/path/to/image.png" :type file-media :mime "image/png")
+;;   ("/path/to/dir" :type directory)
+
+;; Step-by-step process of adding context to LLM query:
+;;
+;; 1. Entries are placed in `gptel-context' by user commands or code.
+;; 2. `gptel-context--normalize' attaches :type via
+;;    predicates, then dispatches to each type's normalize-fn (filtering
+;;    dead entries, upgrading file->file-media, expanding directories).
+;;    Type changes are re-normalized recursively.
+;; 3. Entries with a format-fn produce annotated text via
+;;    `gptel-context--string'.  Entries without (file-media) are
+;;    collected by `gptel-context--collect-media' for separate injection.
+;; 4. The formatted string is inserted into the request buffer
+;;    according to `gptel-use-context'.
+
+;; Defining new context types
+;;
+;; Use `gptel-context-register-type' with a `gptel-context-type' struct.
+;; See the slot docstrings on `gptel-context-type' for details.
+
+;;   (gptel-context-register-type
+;;    (make-gptel-context-type
+;;     :name 'my-type
+;;     :description "..."
+;;     :predicate (lambda (e) ...)
+;;     :normalize-fn #'my-normalize
+;;     :format-fn #'my-format
+;;     :display-fn #'my-display
+;;     :add-fn #'my-add
+;;     :remove-fn #'my-remove)
+;;    :add-dwim -90 :remove-dwim -90)
 
 ;;; Code:
 
@@ -33,6 +77,7 @@
 
 (declare-function gptel-menu "gptel-transient" nil t)
 (declare-function dired-get-marked-files "dired")
+(declare-function dired-get-filename "dired")
 (declare-function ibuffer-get-marked-buffers "ibuffer")
 (declare-function ibuffer-current-buffer "ibuffer")
 (declare-function image-file-name-regexp "image-file")
@@ -72,26 +117,56 @@ This is used in gptel context buffers."
 This function can be synchronous or asynchronous, and receives one or
 two arguments respectively.
 
-Synchronous: An alist of contexts with buffers or files (the context
-alist).
-Asynchronous: A callback to call with the result, and the context alist.
+Synchronous: an alist of normalized context entries.
+Asynchronous: a callback to call with the resulting string, and the
+  context alist.
 
-Entries in the context alist can have one of these forms:
+Each normalized entry is a cons (SOURCE . SPEC-PLIST).  SPEC-PLIST
+always includes at least a :type key naming a `gptel-context-type'.
 
- (buffer1 overlay1 overlay2 ...)             ;text overlays in a buffer
- (buffer2)                                   ;a buffer object
- (\"/path/to/file\")                         ;a text file
- (\"/path/to/file\" :mime \"text/markdown\") ;with explicit mime type
- (\"/path/to/image\" :mime \"image/jpeg\")   ;media file
+To format an entry, retrieve its type struct with
+`gptel-context-entry-type', then call its format-fn:
 
-Each overlay covers a buffer region containing the
-context chunk.  This is accessible as, for example:
+  (when-let* ((type (gptel-context-entry-type entry))
+              (format-fn (gptel-context-type-format-fn type)))
+    (funcall format-fn source spec))
 
- (with-current-buffer buffer1
-   (buffer-substring (overlay-start overlay1)
-                     (overlay-end   overlay1)))"
+Format-fn receives SOURCE and SPEC-PLIST and inserts the formatted
+text at point.  Entries of type `file-media' are additionally
+collected by `gptel-context--collect-media' and injected as media.
+
+Common entry forms from built-in types:
+
+  (buf . (:type buffer-region :overlay ov1 ov2 ...))
+  (buf . (:type buffer-region))               ;entire buffer
+  (\"/path/to/file\" . (:type file))
+  (\"/path/to/file\" . (:type file-media :mime \"image/jpeg\"))
+  (\"/path/to/dir\" . (:type directory))
+
+New context types can be registered with `gptel-context-register-type'.
+See `gptel-context--string' for the default implementation."
   :group 'gptel
   :type 'function)
+
+(defvar gptel-context-add-dwim-functions nil
+  "Abnormal hook for adding context in a DWIM fashion.
+
+Each function is called with the argument `dwim'.  It should return
+non-nil if it successfully handled the DWIM add request, which stops
+the hook from running further functions.
+
+Functions are added automatically by `gptel-context-register-type'
+for types that have an `add-fn'.")
+
+(defvar gptel-context-remove-dwim-functions nil
+  "Abnormal hook for removing context in a DWIM fashion.
+
+Each function is called with the argument `dwim'.  It should return
+non-nil if it successfully handled the DWIM remove request, which
+stops the hook from running further functions.
+
+Functions are added automatically by `gptel-context-register-type'
+for types that have a `remove-fn'.")
 
 (defcustom gptel-context-restrict-to-project-files t
   "Restrict files eligible to be added to the context to project files.
@@ -108,7 +183,183 @@ context."
 (defvar gptel-context--reset-cache nil
   "Whether a project files cache-buster has been scheduled.")
 
+;;; Context sources
+
+(cl-defstruct (gptel-context-type (:copier nil))
+  "A type of context source for gptel queries.
+
+Each type defines how gptel context entries are normalized, formatted,
+and displayed.  A context entry is a cons cell (SOURCE . SPEC) stored
+in `gptel-context', where SPEC is a plist that always includes a :type
+key.  The value of :type is a symbol matching the `name' slot of a
+`gptel-context-type' struct.  SPEC may also carry type-specific keys
+like :overlays, :lines, :bounds, or :mime.
+
+See `gptel-context' for the full entry format and the built-in
+type registrations below for examples of recognized SPEC
+keys.  Custom types can define additional keys."
+  ( name nil :type symbol :read-only t
+    :documentation
+    "A symbol identifying this context type.
+Used as the :type property value for matching entries in
+`gptel-context'.")
+  ( description "" :type string :read-only t
+    :documentation
+    "A human-readable description shown in menus and help buffers.")
+  ( predicate nil :type function
+    :documentation
+    "A function called with a raw `gptel-context' entry.
+Must return non-nil if the entry belongs to this type.
+Used by `gptel-context--normalize-entry' to attach :type to
+entries lacking an explicit one.")
+  ( normalize-fn nil :type function :read-only t
+    :documentation
+    "A function called with a `gptel-context' entry.
+Must return a list of entries for the final context alist.  Called
+recursively by `gptel-context--normalize': if an entry's normalize-fn
+returns entries of other types, those are normalized in turn.")
+  ( format-fn nil :type function
+    :documentation
+    "Function that inserts prompt-formatted text at point, or nil.
+It receives two arguments: source (any Lisp object; for built-in
+types a buffer or file path) and spec (a plist -- see the struct
+docstring and individual type registrations for recognized keys).
+If nil, the entry is handled separately (e.g., by normalizing to other
+context types).")
+  ( display-fn nil :type function
+    :documentation
+    "Function that inserts a human-readable representation for the inspection buffer.
+It receives two mandatory arguments: source, spec (see `format-fn'),
+and an optional LABEL-P flag.  When LABEL-P is non-nil, the function
+should return a short label string instead of inserting.  When
+inserting, it should create overlays with `gptel-context' and
+`gptel-overlay' properties for navigation, via
+`gptel-context-make-display-overlay'.")
+  ( transient-spec nil :type plist
+    :documentation
+    "Plist specifying the transient menu suffix for this type, or nil.
+Recognized keys:
+  :key -- string (e.g. \"-b\") or nil for auto-assignment.
+  :description -- string or function of no arguments returning a string.
+  :if -- function or nil to conditionally show the suffix.")
+  ( add-fn nil :type function
+    :documentation
+    "Command to add entries of this type, or nil.
+Called to add entries to `gptel-context'.
+It may be called with an optional ACTION argument:
+- `dwim': act in a context-aware manner and return non-nil if
+  it handled the request.
+- nil or omitted: query the user interactively.  The DWIM target,
+  if any, should be offered as the default value.
+
+If nil, the type cannot be added manually.")
+  ( remove-fn nil :type function
+    :documentation
+    "Command to remove entries of this type, or nil.
+Called to remove entries from `gptel-context'.
+It may be called with an optional ACTION argument:
+- `dwim': act in a context-aware manner and return non-nil if
+  it handled the request.
+- nil or omitted: query the user interactively.  The DWIM target,
+  if any, should be offered as the default value.
+
+If nil, the type has no DWIM removal support."))
+
+(defvar gptel-context--type-registry nil
+  "Alist of (NAME . gptel-context-type) for registered context types.")
+
+;;;###autoload
+(cl-defun gptel-context-register-type
+    (context-type &key (add-dwim t) (remove-dwim t))
+  "Register a new gptel CONTEXT-TYPE in `gptel-context--type-registry'.
+
+CONTEXT-TYPE must be a `gptel-context-type' struct.  Its name
+\\\\(symbol) is used as the key in the registry.
+
+Unless ADD-DWIM is nil, the type's `add-fn' is added to
+`gptel-context-add-dwim-functions'.  When ADD-DWIM is a number, it is
+used as the DEPTH argument to `add-hook'.  When ADD-DWIM is t
+\\\\(the default), the function is added at depth 0.
+
+Unless REMOVE-DWIM is nil, the type's `remove-fn' is added to
+`gptel-context-remove-dwim-functions'.  When REMOVE-DWIM is a
+number, it is used as the DEPTH argument to `add-hook'.  When
+REMOVE-DWIM is t \\(the default), the function is added at depth 0."
+  (setf (alist-get (gptel-context-type-name context-type)
+                   gptel-context--type-registry)
+        context-type)
+  (when-let* ((add-dwim)
+              (add-fn (gptel-context-type-add-fn context-type)))
+    (add-hook 'gptel-context-add-dwim-functions
+              add-fn (if (numberp add-dwim) add-dwim 0)))
+  (when-let* ((remove-dwim)
+              (remove-fn (gptel-context-type-remove-fn context-type)))
+    (add-hook 'gptel-context-remove-dwim-functions
+              remove-fn (if (numberp remove-dwim) remove-dwim 0))))
+
+;;;###autoload
+(defun gptel-context-unregister-type (context-type)
+  "Unregister CONTEXT-TYPE from `gptel-context--type-registry'.
+
+CONTEXT-TYPE can be a `gptel-context-type' struct or a symbol
+naming a registered type.  Removes the type from the registry
+and removes its add-fn and remove-fn from the DWIM hooks."
+  (when-let* ((name (if (gptel-context-type-p context-type)
+                        (gptel-context-type-name context-type)
+                      context-type))
+              (type (alist-get name gptel-context--type-registry)))
+    (when-let* ((add-fn (gptel-context-type-add-fn type)))
+      (remove-hook 'gptel-context-add-dwim-functions add-fn))
+    (when-let* ((remove-fn (gptel-context-type-remove-fn type)))
+      (remove-hook 'gptel-context-remove-dwim-functions remove-fn))
+    (setf (alist-get name gptel-context--type-registry nil 'remove) nil)))
+
+(defun gptel-context-entry-type (context-entry)
+  "Return the context type struct for CONTEXT-ENTRY, or nil.
+
+CONTEXT-ENTRY should be a normalized context entry with a :type
+property."
+  (when-let* ((spec (cdr-safe context-entry))
+              (type-name (and (consp spec) (plist-get spec :type))))
+    (alist-get type-name gptel-context--type-registry)))
+
+(defun gptel-context--normalize-entry (context-entry)
+  "Normalize CONTEXT-ENTRY by attaching :type via predicate matching.
+
+If CONTEXT-ENTRY already carries an explicit :type property, return it
+unchanged.  Otherwise test each registered type's predicate and attach
+the matching :type.  Signals an error if no registered predicate
+matches."
+  (if (and (consp context-entry) (consp (cdr context-entry))
+           (plist-get (cdr context-entry) :type))
+      context-entry
+    (catch 'found
+      (dolist (pair gptel-context--type-registry)
+        (when-let* ((type (cdr pair))
+                    (pred (gptel-context-type-predicate type)))
+          (when (funcall pred context-entry)
+            (throw 'found
+                   (if (consp context-entry)
+                       (cons (car context-entry)
+                             (plist-put (cdr context-entry)
+                                        :type (gptel-context-type-name type)))
+                     (list context-entry :type (gptel-context-type-name type)))))))
+      (error "Unrecognized gptel context entry: %S" context-entry))))
+
 ;;; Commands
+
+(defun gptel-context--remove-dwim (&optional confirm)
+  "Remove context in a DWIM fashion.
+Tries each function in `gptel-context-remove-dwim-functions' in order.
+If CONFIRM is non-nil and no specific target is found, offer to
+remove all contexts as a last resort."
+  (or (run-hook-with-args-until-success
+       'gptel-context-remove-dwim-functions 'dwim)
+      (when confirm
+        (when (and gptel-context
+                   (y-or-n-p "Remove all contexts from this buffer? "))
+          (gptel-context-remove-all)
+          t))))
 
 (defun gptel-context-add-current-kill (&optional arg)
   "Add current kill to gptel, accumulating if ARG is non-nil."
@@ -126,122 +377,71 @@ context."
       (message "*current-kill* has been added as context."))))
 
 (defun gptel-context-add (&optional arg confirm)
-  "Add context to gptel in a DWIM fashion.
+  "Add or remove context to gptel in a DWIM fashion.
 
-- If a region is selected, add the selected region to the
-  context.  If there is already a gptel context at point, remove it
-  instead.
+Without prefix ARG (or zero ARG), first attempt to remove context
+at point via `gptel-context-remove-dwim-functions'.  If nothing is
+removed, add context via `gptel-context-add-dwim-functions'.
 
-- If in Dired, add marked files or file at point to the context.  If
-  the selection includes directories, add all their files recursively,
-  prompting the user for confirmation if called interactively or
-  CONFIRM is non-nil.  With negative prefix ARG, remove all files from
-  the context instead.
+With positive prefix ARG, prompt for a buffer to add.
+With negative prefix ARG, remove context in a DWIM fashion.
 
-- If in IBuffer, add marked buffers or buffer at point to the context.
-  With negative prefix ARG, remove buffers from the context instead.
-
-- Otherwise add the current buffer to the context.  With positive
-  prefix ARG, prompt for a buffer name and add it to the context.
-
-- With negative prefix ARG, remove all gptel contexts from the current
-  buffer, prompting the user for confirmation if called interactively
-  or CONFIRM is non-nil."
+When CONFIRM is nil (non-interactive calls), confirmation prompts
+in the negative-ARG path are suppressed."
   (interactive "P\np")
   (cond
-   ;; A region is selected.
-   ((use-region-p)
-    (gptel-context--add-region (current-buffer)
-                               (region-beginning)
-                               (region-end))
-    (deactivate-mark)
-    (message "Current region added as context."))
-   ;; If in dired
-   ((derived-mode-p 'dired-mode)
-    (let* ((files (dired-get-marked-files))
-           (dirs (cl-remove-if-not #'file-directory-p files))
-           (remove-p (< (prefix-numeric-value arg) 0))
-	   (action-fn (if remove-p
-			  #'gptel-context-remove
-			#'gptel-context-add-file)))
-      (when (or remove-p (null dirs) (null confirm)
-		(y-or-n-p (format "Recursively add files from %d director%s? "
-				  (length dirs)
-				  (if (= (length dirs) 1) "y" "ies"))))
-	(mapc action-fn files))))
-   ;; If in ibuffer
-   ((derived-mode-p 'ibuffer-mode)
-    (let* ((buffers (or (ibuffer-get-marked-buffers)
-                        (list (ibuffer-current-buffer))))
-           (remove-p (< (prefix-numeric-value arg) 0))
-	   (action-fn (if remove-p
-			  #'gptel-context-remove
-			#'gptel-context--add-buffer)))
-      (mapc action-fn buffers)))
-   ;; If in an image buffer
-   ((and (derived-mode-p 'image-mode)
-	 (gptel--model-capable-p 'media)
-	 (buffer-file-name)
-	 (not (gptel-context--skip-p (buffer-file-name))))
-    (funcall (if (and arg (< (prefix-numeric-value arg) 0))
-                 #'gptel-context-remove
-               #'gptel-context-add-file)
-             (buffer-file-name)))
-   ;; No region is selected, and ARG is positive.
+   ;; Positive ARG: prompt for a buffer to add
    ((and arg (> (prefix-numeric-value arg) 0))
-    (let* ((buffer-name (read-buffer "Choose buffer to add as context: "
-                                     (current-buffer) t))
-           (start (with-current-buffer buffer-name (point-min)))
-           (end (with-current-buffer buffer-name (point-max))))
-      (gptel-context--add-region
-       (get-buffer buffer-name) start end t)
-      (message "Buffer '%s' added as context." buffer-name)))
-   ;; No region is selected, and ARG is negative.
+    (let ((buf (read-buffer "Choose buffer to add as context: "
+                            (current-buffer) t)))
+      (gptel-context--add-buffer (get-buffer buf))))
+   ;; Negative ARG: remove context in DWIM fashion
    ((and arg (< (prefix-numeric-value arg) 0))
-    (when (or (null confirm)
-	      (y-or-n-p "Remove all contexts from this buffer? "))
-      (let ((removed-contexts 0))
-        (cl-loop for cov in
-                 (gptel-context--in-region (current-buffer) (point-min) (point-max))
-                 do (progn
-                      (cl-incf removed-contexts)
-                      (gptel-context-remove cov)))
-        (message (format "%d context%s removed from current buffer."
-                         removed-contexts
-                         (if (= removed-contexts 1) "" "s"))))))
-   (t ; Default behavior
-    (if (gptel-context--at-point)
-        (progn
-          (gptel-context-remove
-           (car (gptel-context--in-region (current-buffer)
-                                          (max (point-min) (1- (point)))
-                                          (point))))
-          (message "Context under point has been removed."))
-      (gptel-context--add-buffer (current-buffer))))))
+    (gptel-context--remove-dwim confirm))
+   ;; DWIM: try removal first, then addition
+   (t
+    (or (run-hook-with-args-until-success
+         'gptel-context-remove-dwim-functions 'dwim)
+        (run-hook-with-args-until-success
+         'gptel-context-add-dwim-functions 'dwim)))))
 
 ;;;###autoload (autoload 'gptel-add "gptel-context" "Add/remove regions or buffers from gptel's context." t)
 (defalias 'gptel-add #'gptel-context-add)
 
 (defun gptel-context--add-buffer (buffer)
-  "Add BUFFER to context."
-  (with-current-buffer buffer
-    (gptel-context--add-region (current-buffer) (point-min) (point-max) t))
+  "Add BUFFER to context as a full-buffer entry.
+
+Creates a typed context entry with :type `buffer-region'.
+
+Any existing context entries for BUFFER are removed first, since a
+full-buffer entry supersedes them.
+
+Also places an overlay spanning the whole buffer as a visual indicator."
+  (gptel-context-remove buffer)
+  (push (list buffer :type 'buffer-region) gptel-context)
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (gptel-context--make-overlay (point-min) (point-max))))
   (message "Buffer \"%s\" added to context." (buffer-name buffer)))
 
 (defun gptel-context--add-text-file (path)
-  "Add text file at PATH to context."
-  (cl-pushnew (list path) gptel-context :test #'equal)
+  "Add text file at PATH to context.
+
+Creates a typed context entry with :type `file'."
+  (cl-pushnew (list path :type 'file) gptel-context :test #'equal)
   (message "File \"%s\" added to context." path)
   path)
 
 (defun gptel-context--add-binary-file (path)
   "Add binary file at PATH to context if supported.
-Return PATH if added, nil if ignored."
+Return PATH if added, nil if ignored.
+
+Creates a typed context entry with :type `file-media'."
   (if-let* (((gptel--model-capable-p 'media))
             (mime (mailcap-file-name-to-mime-type path))
             ((gptel--model-mime-capable-p mime)))
       (prog1 path
-        (cl-pushnew (list path :mime mime)
+        (cl-pushnew (list path :type 'file-media :mime mime)
                     gptel-context :test #'equal)
         (message "File \"%s\" added to context." path))
     (message "Ignoring unsupported binary file \"%s\"." path)
@@ -315,19 +515,24 @@ readable as text."
 (defun gptel-context-remove (&optional context)
   "Remove the CONTEXT overlay from the contexts list.
 
-If CONTEXT is nil, removes the context at point.
-If selection is active, removes all contexts within selection.
+If CONTEXT is nil and selection is active, removes all contexts
+within the selection via DWIM dispatch.
+If CONTEXT is nil and point is on a context overlay, removes it.
 If CONTEXT is a directory, recursively removes all files in it."
+  (interactive)
   (cond
    ((overlayp context)                  ;Overlay in buffer
     (when-let* ((buf (overlay-buffer context)))
       (delete-overlay context)
       ;; FIXME: Quadratic cost when clearing a bunch of contexts at once
       (unless
-          (cl-loop
-           for ov in
-           (plist-get (alist-get buf gptel-context) :overlays)
-           thereis (overlay-start ov))
+          (or (cl-loop
+               for ov in
+               (plist-get (alist-get buf gptel-context) :overlays)
+               thereis (overlay-start ov))
+              (when-let* ((spec (alist-get buf gptel-context)))
+                (or (plist-get spec :lines)
+                    (plist-get spec :bounds))))
         (setf (alist-get buf gptel-context nil 'remove) nil))))
    ((bufferp context)                   ;Full buffer
     (setf (alist-get context gptel-context nil 'remove) nil)
@@ -340,14 +545,52 @@ If CONTEXT is a directory, recursively removes all files in it."
         (gptel-context--add-directory context 'remove)
       (setf (alist-get context gptel-context nil 'remove #'equal) nil)
       (message "File \"%s\" removed from context." context)))
-   ((region-active-p)                   ;Overlays in region
-    (when-let* ((contexts (gptel-context--in-region (current-buffer)
-                                                    (region-beginning)
-                                                    (region-end))))
-      (cl-loop for ctx in contexts do (delete-overlay ctx))))
-   (t                                   ;Anything at point
-    (when-let* ((ctx (gptel-context--at-point)))
-      (delete-overlay ctx)))))
+   (t                                   ;DWIM dispatch
+    (or (gptel-context--remove-dwim)
+        (gptel-context--prompt-remove)))))
+
+(defun gptel-context--prompt-remove ()
+  "Prompt the user to select a context entry to remove.
+
+Uses each context type's `display-fn' with LABEL-P non-nil
+to produce prompt-friendly labels.  For types without a
+display-fn, uses the type name as the label.
+
+Returns t if an entry was removed, nil otherwise."
+  (when-let* ((entries gptel-context))
+    (let* ((alist
+            (mapcar
+             (lambda (entry)
+               (let* ((norm (gptel-context--normalize-entry entry))
+                      (source (car norm))
+                      (spec (cdr norm))
+                      (type (gptel-context-entry-type norm))
+                      (display-fn (and type
+                                       (gptel-context-type-display-fn type)))
+                      (label
+                       (if display-fn
+                           (funcall display-fn source spec t)
+                         (format "%s: %s"
+                                 (or (and type
+                                          (gptel-context-type-name type))
+                                     "unknown")
+                                 (cond
+                                  ((bufferp source)
+                                   (buffer-name source))
+                                  ((stringp source)
+                                   (abbreviate-file-name source))
+                                  (t (format "%s" source)))))))
+                 (cons label entry)))
+             entries))
+           (choice (completing-read "Remove context: " alist nil t)))
+      (when-let* ((entry (cdr (assoc choice alist))))
+        (let ((source (if (consp entry) (car entry) entry)))
+          (when (buffer-live-p source)
+            (with-current-buffer source
+              (remove-overlays nil nil 'gptel-context t))))
+        (setq gptel-context (delete entry gptel-context))
+        (message "Context removed.")
+        t))))
 
 (defun gptel-context-remove-all (&optional verbose)
   "Remove all gptel context.
@@ -382,6 +625,18 @@ ADVANCE controls the overlay boundary behavior."
                      (cons overlay (plist-get buf-entry :overlays))))
     overlay))
 
+(defun gptel-context-make-display-overlay (beg end source)
+  "Create an inspection-buffer overlay from BEG to END for SOURCE.
+
+Tag the overlay with a `gptel-context' property holding SOURCE and
+a `gptel-overlay' property, so that navigation commands in the
+gptel context inspection buffer can locate it.  Return the overlay."
+  (let ((ov (make-overlay beg end)))
+    (overlay-put ov 'gptel-context source)
+    (overlay-put ov 'gptel-overlay t)
+    (overlay-put ov 'evaporate t)
+    ov))
+
 ;;;###autoload
 (defun gptel-context--wrap (callback data-buf)
   "Add request context to DATA-BUF and run CALLBACK.
@@ -390,11 +645,11 @@ DATA-BUF is the buffer where the request prompt is constructed."
   (if (= (car (func-arity gptel-context-string-function)) 2)
       (funcall gptel-context-string-function
                (lambda (c) (with-current-buffer data-buf
-                             (gptel-context--wrap-in-buffer c))
+                        (gptel-context--wrap-in-buffer c))
                  (funcall callback))
-               (gptel-context--collect))
+               (gptel-context--normalize))
     (with-current-buffer data-buf
-      (thread-last (gptel-context--collect)
+      (thread-last (gptel-context--normalize)
                    (funcall gptel-context-string-function)
                    (gptel-context--wrap-in-buffer)))
     (funcall callback)))
@@ -437,15 +692,16 @@ This modifies the buffer."
             (delete-region (match-beginning 0) (match-end 0)))
        (insert "\n" context-string "\n\n")))))
 
-(defun gptel-context--collect-media (&optional contexts)
-  "Collect media CONTEXTS.
+(defun gptel-context--collect-media (&optional context-entries)
+  "Collect media context entries for base64 encoding.
 
-CONTEXTS, which are typically paths to binary files, are
+CONTEXT-ENTRIES, which are typically paths to binary files, are
 base64-encoded and prepended to the first user prompt."
-  (cl-loop for context in (or contexts gptel-context)
-           for (path . props) = (ensure-list context)
-           when (and (stringp path) (plist-get props :mime))
-           collect (cons :media context)))
+  (cl-loop for context-entry in (or context-entries gptel-context)
+           for normalized = (gptel-context--normalize-entry context-entry)
+           for (path . props) = (ensure-list normalized)
+           when (eq (plist-get props :type) 'file-media)
+           collect (list :media path :mime (plist-get props :mime))))
 
 (cl-defun gptel-context--add-region (buffer region-beginning region-end &optional advance)
   "Add region delimited by REGION-BEGINNING, REGION-END in BUFFER as context.
@@ -466,52 +722,51 @@ START and END signify the region delimiters."
     (cl-remove-if-not (lambda (ov) (overlay-get ov 'gptel-context))
                       (overlays-in start end))))
 
-(defun gptel-context--at-point ()
-  "Return the context overlay at point, if any."
-  (cl-find-if (lambda (ov) (overlay-get ov 'gptel-context))
-              (overlays-at (point))))
+(defun gptel-context--at-point (&optional before)
+  "Return the context overlay at point, if any.
+
+If BEFORE is non-nil, also consider a context overlay whose end is
+at point, which occurs after adding a region context with point at
+the end of the region."
+  (or (cl-find-if (lambda (ov) (overlay-get ov 'gptel-context))
+                  (overlays-at (point)))
+      (and before
+           (> (point) (point-min))
+           (cl-find-if (lambda (ov) (overlay-get ov 'gptel-context))
+                       (overlays-at (1- (point)))))))
 
 ;;;###autoload
-(defun gptel-context--collect (&optional context-alist)
-  "Get the list of all active context sources from CONTEXT-ALIST.
+(defun gptel-context--normalize (&optional context-alist)
+  "Normalize all context entries in CONTEXT-ALIST recursively.
 
 CONTEXT-ALIST defaults to the current value of `gptel-context'.
 
-Ignore overlays, buffers and files that are not live or readable."
-  ;; Get only the non-degenerate overlays, collect them, and update the overlays variable.
-  (let ((res))
-    (dolist (entry (or context-alist gptel-context))
-      (pcase entry                      ;Context entry is:
-        (`(,buf . ,data)
-         (cond
-          ((buffer-live-p buf)
-           ;; (<buf> :overlays ... :lines ... :bounds ...)
-           (when-let* ((ovs (plist-get data :overlays))) ;Clear dead overlays
-             (plist-put data :overlays (cl-remove-if-not #'overlay-start ovs)))
-           (push (cons buf data) res))
-          ((and (stringp buf) (file-readable-p buf))
-           ;; ("/file/path" :mime ... :bounds ... :line ...)
-           (push (cons buf data) res))))
+Each entry is first normalized via `gptel-context--normalize-entry'
+\\(attaching a :type if absent).  It is then dispatched to its context
+type's normalize function.  If the normalize function returns entries
+of a different type, those are normalized in turn.  Entries without a
+registered type signal an error.
 
-        ((and (pred stringp) (pred file-readable-p)) ;Just a file, figure out mimetype
-         (if (file-directory-p entry)
-             (progn
-               (unless gptel-context--reset-cache
-                 (setq gptel-context--reset-cache t)
-                 (run-at-time
-                  0 nil
-                  (lambda () (setq gptel-context--reset-cache nil
-                              gptel-context--project-files nil))))
-               (dolist (f (directory-files-recursively entry "."))
-                 (unless (gptel-context--skip-p f)
-                   (push `(,f ,@(and (gptel--file-binary-p f)
-                                     (list :mime (mailcap-file-name-to-mime-type entry))))
-                         res))))
-           (push `(,entry ,@(and (gptel--file-binary-p entry)
-                                 (list :mime (mailcap-file-name-to-mime-type entry))))
-                 res)))
-        ((pred buffer-live-p) (push (list entry) res)))) ;Just a buffer
-    res))
+Ignore overlays, buffers and files that are not live or readable."
+  (let ((queue (copy-sequence (or context-alist gptel-context)))
+        (res))
+    (while queue
+      (let* ((context-entry (pop queue))
+             (normalized (gptel-context--normalize-entry context-entry)))
+        (if-let* ((type (gptel-context-entry-type normalized))
+                  (normalize-fn (gptel-context-type-normalize-fn type)))
+            (let ((type-name (gptel-context-type-name type)))
+              (dolist (sub (funcall normalize-fn normalized))
+                (if-let* ((sub-type (gptel-context-entry-type sub))
+                          ((not (eq (gptel-context-type-name sub-type) type-name))))
+                    ;; Type changed -- push back for further normalization
+                    (push sub queue)
+                  ;; Same type -- terminal
+                  (push sub res))))
+          ;; No registered type handler -- should not happen if
+          ;; normalize-entry succeeded
+          (push normalized res))))
+    (nreverse res)))
 
 (defun gptel-context--collect-regions (buffer context-data)
   "Collect BUFFER regions from CONTEXT-DATA specification.
@@ -551,7 +806,10 @@ CONTEXT-DATA is a plist with keys :overlays, :lines and :bounds to
 include specific overlays, line ranges or position bounds instead of the
 entire buffer.  See `gptel-context'.
 
-HEADER is an optional header to insert before the contents."
+HEADER is an optional header to insert before the contents.
+
+This is a shared helper used by built-in context types for prompt
+formatting."
   (let ((is-top-snippet t)
         (previous-line 1)
         (regions (gptel-context--collect-regions buffer context-data)))
@@ -612,16 +870,19 @@ of the entire file.  See `gptel-context' for details."
   "Format the aggregated gptel context as annotated markdown fragments.
 
 Returns a string.  CONTEXT-ALIST is a structure containing
-context overlays, see `gptel-context'."
+context entries as produced by `gptel-context--normalize'.
+
+Each context entry is dispatched to its context type's format
+function.  Entries whose type has no format function (e.g., media
+files) are skipped -- they are handled separately by media injection."
   (with-temp-buffer
-    (cl-loop for entry in context-alist
-             for (source . spec) = (ensure-list entry)
-             if (bufferp source)
-             do (gptel-context--insert-buffer-string source spec)
-             else if (or (not (plist-get spec :mime))
-                         (string-match-p "^text/" (plist-get spec :mime)))
-             do (gptel-context--insert-file-string source spec) end
-             do (insert "\n\n")
+    (cl-loop for context-entry in context-alist
+             for (source . spec) = (ensure-list context-entry)
+             for type = (gptel-context-entry-type context-entry)
+             for format-fn = (and type (gptel-context-type-format-fn type))
+             if (and format-fn source)
+             do (funcall format-fn source spec)
+             and do (insert "\n\n")
              finally do
              (skip-chars-backward "\n\t\r ")
              (delete-region (point) (point-max))
@@ -648,12 +909,13 @@ context overlays, see `gptel-context'."
             nil t)
   (setq-local revert-buffer-function #'gptel-context--buffer-setup))
 
-;; FIXME(targeted-context): This does not handle :bounds and :lines.  Reuse
-;; `gptel-context--insert-buffer-string'?
 (defun gptel-context--buffer-setup (&optional _ignore-auto _noconfirm context-alist)
   "Set up the gptel context buffer.
 
-CONTEXT-ALIST is the alist of contexts to use to populate the buffer."
+CONTEXT-ALIST is the alist of contexts to use to populate the buffer.
+
+All context entries are normalized via `gptel-context--normalize-entry'
+before being dispatched to their type's display function."
   (with-current-buffer (get-buffer-create "*gptel-context*")
     (gptel-context-buffer-mode)
     (let ((inhibit-read-only t))
@@ -668,59 +930,16 @@ CONTEXT-ALIST is the alist of contexts to use to populate the buffer."
               "\\[gptel-context-quit]: cancel, "
               "\\[quit-window]: quit")))
       (save-excursion
-        (let ((contexts (gptel-context--collect context-alist)))
+        (let ((contexts (gptel-context--normalize context-alist)))
           (if (length= contexts 0)
               (insert "There are no active gptel contexts.")
-            (let (beg ov l1 l2)
-              (pcase-dolist (`(,buf . ,spec) contexts)
-                (cond
-                 ((bufferp buf)
-                  (if (not spec)      ;BUF is a full buffer, not specific ranges
-                      (progn
-                        (insert (propertize (format "In buffer %s:\n\n"
-                                                    (buffer-name buf))
-                                            'face 'bold))
-                        (setq beg (point))
-                        (insert-buffer-substring buf)
-                        (insert "\n")
-                        (setq ov (make-overlay beg (point))))
-                    (dolist (source-ov (plist-get spec :overlays)) ;BUF is a buffer with some overlay(s)
-                      (with-current-buffer buf
-                        (setq l1 (line-number-at-pos (overlay-start source-ov))
-                              l2 (line-number-at-pos (overlay-end source-ov))))
-                      (insert (propertize (format "In buffer %s (lines %d-%d):\n\n"
-                                                  (buffer-name buf) l1 l2)
-                                          'face 'bold))
-                      (setq beg (point))
-                      (insert-buffer-substring
-                       buf (overlay-start source-ov) (overlay-end source-ov))
-                      (insert "\n")
-                      (setq ov (make-overlay beg (point)))
-                      (overlay-put ov 'gptel-context source-ov)
-                      (overlay-put ov 'gptel-overlay t)
-                      (overlay-put ov 'evaporate t)))
-                  (insert "\n" (make-separator-line) "\n"))
-                 (t                     ;BUF is a file path, not a buffer
-                  (insert (propertize (format "In file %s:\n\n" (file-name-nondirectory buf))
-                                      'face 'bold))
-                  (setq beg (point))
-                  (if-let* ((mime (plist-get spec :mime))
-                            ((not (string-match-p "^text/" mime)))) ;BUF is a binary file
-                      (if-let* (((string-match-p (image-file-name-regexp) buf))
-                                (img (create-image buf)))
-                          (insert-image img "*") ; Can be displayed
-                        (insert
-                         buf " " (propertize "(No preview for binary file)"
-                                             'face '(:inherit shadow :slant italic))))
-                    (insert-file-contents buf))
-                  (goto-char (point-max))
-                  (insert "\n")
-                  (setq ov (make-overlay beg (point)))
-                  (overlay-put ov 'gptel-context buf)
-                  (overlay-put ov 'gptel-overlay t)
-                  (overlay-put ov 'evaporate t)
+            (pcase-dolist (`(,source . ,spec) contexts)
+              (let* ((type-name (plist-get spec :type))
+                     (type (alist-get type-name gptel-context--type-registry)))
+                (when-let* ((display-fn (and type (gptel-context-type-display-fn type))))
+                  (funcall display-fn source spec)
                   (insert "\n" (make-separator-line) "\n"))))
-              (goto-char (point-min)))))))
+            (goto-char (point-min))))))
     (display-buffer (current-buffer)
                     `((display-buffer-reuse-window
                        display-buffer-reuse-mode-window
@@ -829,18 +1048,447 @@ If non-nil, indicates backward movement.")
   ;; Delete all the context overlays that have been marked for deletion.
   (when-let* ((deletion-marks
                (delq nil (mapcar
-                          (lambda (ov)
-                            (and
-                             (overlay-get ov 'gptel-context-deletion-mark)
-                             (overlay-get ov 'gptel-context)))
-                          (overlays-in (point-min) (point-max))))))
+                        (lambda (ov)
+                          (and
+                           (overlay-get ov 'gptel-context-deletion-mark)
+                           (overlay-get ov 'gptel-context)))
+                        (overlays-in (point-min) (point-max))))))
     (mapc #'gptel-context-remove deletion-marks)
     (revert-buffer))
   ;; FIXME(context): This should run in the buffer from which the context
   ;; inspection buffer was visited.
   ;; Update contexts and revert buffer (#482)
-  (setq gptel-context (nreverse (gptel-context--collect)))
+  (setq gptel-context (gptel-context--normalize))
   (gptel-context-quit))
+
+;;; Built-in context type definitions
+
+;;; Buffer-region context type
+(defun gptel-context--normalize-buffer-region (context-entry)
+  "Normalize a buffer-region CONTEXT-ENTRY.
+Clean dead overlays and return a list with the normalized entry.
+Return nil when specified buffer is not live."
+  (let* ((buf (car context-entry))
+         (spec (cdr context-entry)))
+    (if (not (buffer-live-p buf))
+        nil
+      ;; Backward compatibility: the pre-type context format stored
+      ;; overlays directly after the buffer, as in
+      ;; (BUFFER OVERLAY1 OVERLAY2 ...).  Convert these to the plist
+      ;; format, with overlays under the :overlays key.
+      ;; Note that (BUFFER :overlays (OV1 OV2) ...) will not match.
+      (when (and spec (cl-some #'overlayp spec))
+        (setq spec (list :overlays (cl-remove-if-not #'overlayp spec)
+                         :type 'buffer-region)))
+      (when-let* ((ovs (plist-get spec :overlays)))
+        (plist-put spec :overlays
+                   (seq-filter (lambda (ov) (eq buf (overlay-buffer ov)))
+                               ovs)))
+      (list (cons buf (plist-put spec :type 'buffer-region))))))
+
+(defun gptel-context--format-buffer-region (source spec)
+  "Format buffer-region context SOURCE at point for the LLM prompt.
+SPEC is a plist of the context entry."
+  (gptel-context--insert-buffer-string source spec))
+
+(defun gptel-context--display-buffer-region (source spec &optional label-p)
+  "Insert buffer-region SOURCE with SPEC in the inspection buffer.
+
+When SPEC has :overlays, :lines, or :bounds, insert each covered
+region with line numbers.  Otherwise, insert the entire buffer
+SOURCE.
+
+When optional LABEL-P is non-nil, return a short one-line label
+string instead of inserting into the buffer."
+  (if label-p
+      (if (or (plist-get spec :overlays)
+              (plist-get spec :lines)
+              (plist-get spec :bounds))
+          (format "Buffer region: %s" (buffer-name source))
+        (format "Buffer: %s" (buffer-name source)))
+    (let ((region-pairs (gptel-context--collect-regions source spec))
+          (overlay-alist nil))
+      ;; Map overlay start -> overlay for navigation reuse
+      (dolist (ov (plist-get spec :overlays))
+        (when (overlay-start ov)
+          (push (cons (overlay-start ov) ov) overlay-alist)))
+      (if region-pairs
+          (dolist (pair region-pairs)
+            (let* ((start (car pair))
+                   (end (cdr pair))
+                   ;; Prefer the original source overlay so
+                   ;; gptel-context-visit can navigate to the exact
+                   ;; position.  Fall back to storing the source
+                   ;; buffer itself (visit will go to point-min).
+                   (source-ref (or (cdr (assq start overlay-alist))
+                                   source))
+                   (l1 (with-current-buffer source
+                         (line-number-at-pos start)))
+                   (l2 (with-current-buffer source
+                         (line-number-at-pos end))))
+              (insert (propertize (format "In buffer %s (lines %d-%d):\n\n"
+					  (buffer-name source) l1 l2)
+				  'face 'bold))
+              (let ((beg (point)))
+                (insert-buffer-substring source start end)
+                (insert "\n")
+                (gptel-context-make-display-overlay beg (point) source-ref))))
+        ;; Full buffer display
+        (insert (propertize (format "In buffer %s:\n\n" (buffer-name source))
+                            'face 'bold))
+        (let ((beg (point)))
+	  (insert-buffer-substring source)
+	  (insert "\n")
+	  (gptel-context-make-display-overlay beg (point) source))))))
+
+(defun gptel-context--buffer-region-add (&optional action)
+  "Add buffer-region context entries.
+
+When a region is active, add it as a context region.
+
+Otherwise, when ACTION is `dwim', add the current buffer (or
+marked buffers in IBuffer).  When called interactively (ACTION
+nil), prompt for a buffer to add, defaulting to the DWIM target."
+  (interactive)
+  (cond ((use-region-p)
+         (gptel-context--add-region (current-buffer)
+                                    (region-beginning) (region-end))
+         (deactivate-mark)
+         (message "Current region added as context.")
+         t)
+        ((eq action 'dwim)
+         (let ((dwim-buffers
+                (cond ((derived-mode-p 'ibuffer-mode)
+                       (or (ibuffer-get-marked-buffers)
+                           (list (ibuffer-current-buffer))))
+                      (t (list (current-buffer))))))
+           (mapc #'gptel-context--add-buffer dwim-buffers)
+           t))
+        (t
+         (let ((default (cond ((derived-mode-p 'ibuffer-mode)
+                               (or (car (ibuffer-get-marked-buffers))
+                                   (ibuffer-current-buffer)))
+                              (t (current-buffer)))))
+           (gptel-context--add-buffer
+            (get-buffer
+             (read-buffer "Choose buffer to add as context: " default t)))))))
+
+(defun gptel-context--buffer-region-remove (&optional action)
+  "Remove buffer-region context entries.
+
+When ACTION is `dwim', act in a context-aware manner:
+- If a region is active, remove all context overlays in it.
+- If point is on or immediately before a context overlay, remove it.
+- In IBuffer, remove marked buffers or the buffer at point.
+- Otherwise, take no action (return nil).
+
+When called interactively (ACTION nil), prompt for a buffer to
+remove, defaulting to the DWIM target."
+  (interactive)
+  (pcase action
+    ('dwim
+     (cond ((region-active-p)
+            (when-let* ((contexts
+                         (gptel-context--in-region
+                          (current-buffer) (region-beginning) (region-end))))
+              (cl-loop for ctx in contexts do (gptel-context-remove ctx))
+              t))
+           ((gptel-context--at-point t)
+            (gptel-context-remove (gptel-context--at-point t))
+            t)
+           ((derived-mode-p 'ibuffer-mode)
+            (let ((buffers (or (ibuffer-get-marked-buffers)
+                               (list (ibuffer-current-buffer)))))
+              (mapc #'gptel-context-remove buffers)
+              t))
+           (t nil)))
+    (_
+     ;; Interactive query with DWIM default
+     (let ((default (cond ((derived-mode-p 'ibuffer-mode)
+                           (or (car (ibuffer-get-marked-buffers))
+                               (ibuffer-current-buffer)))
+                          (t (current-buffer)))))
+       (gptel-context-remove
+        (read-buffer "Remove buffer from context: " default t))))))
+
+;; Recognized SPEC keys:
+;;   :overlays -- list of overlay objects covering context regions
+;;   :lines    -- list of (BEG . END) line-number pairs
+;;   :bounds   -- list of (BEG . END) buffer-position pairs
+(gptel-context-register-type
+ (make-gptel-context-type
+  :name 'buffer-region
+  :description "Buffer contents (full buffer or specific regions)."
+  :predicate
+  (lambda (context-entry)
+    (or (bufferp context-entry)
+        (and (consp context-entry) (bufferp (car context-entry)))))
+  :normalize-fn #'gptel-context--normalize-buffer-region
+  :format-fn #'gptel-context--format-buffer-region
+  :display-fn #'gptel-context--display-buffer-region
+  :transient-spec (list :key "-b"
+                        :description "Add buffer/region to context")
+  :add-fn #'gptel-context--buffer-region-add
+  :remove-fn #'gptel-context--buffer-region-remove)
+ :add-dwim -90 :remove-dwim -90)
+
+;;; File context type (text files)
+(defun gptel-context--normalize-file (context-entry)
+  "Normalize a file CONTEXT-ENTRY.
+Returns the entry, upgrading to file-media if the file is binary,
+preserving all spec keys."
+  (let* ((path (car context-entry))
+         (spec (cdr context-entry)))
+    (if (file-readable-p path)
+        (if (gptel--file-binary-p path)
+            (list (cons path
+                        (plist-put
+                         (plist-put spec :type 'file-media)
+                         :mime (or (plist-get spec :mime)
+                                   (mailcap-file-name-to-mime-type path)))))
+          (list (cons path (plist-put spec :type 'file))))
+      nil)))
+
+(defun gptel-context--format-file (source spec)
+  "Format file context SOURCE at point for the LLM prompt.
+SPEC is a plist of the context entry."
+  (gptel-context--insert-file-string source spec))
+
+(defun gptel-context--display-file (source spec &optional label-p)
+  "Display file context SOURCE at point in the inspection buffer.
+
+When SPEC has :lines or :bounds, display only those regions with
+line numbers.  Otherwise display the entire file.
+
+When optional LABEL-P is non-nil, return a short one-line label
+string instead of inserting into the buffer."
+  (if label-p
+      (format "File: %s" (abbreviate-file-name source))
+    (if (not (and spec (or (plist-get spec :lines)
+                         (plist-get spec :bounds))))
+        ;; Whole file
+        (progn
+          (insert (propertize (format "In file %s:\n\n"
+                                      (file-name-nondirectory source))
+                              'face 'bold))
+          (let ((beg (point)))
+            (insert-file-contents source)
+            (goto-char (point-max))
+            (insert "\n")
+            (gptel-context-make-display-overlay beg (point) source)))
+      ;; Regions from :lines or :bounds
+      (let* ((visiting-buf (find-buffer-visiting
+                            source (lambda (b) (not (buffer-modified-p b)))))
+             (file-buf (or visiting-buf
+                           (gptel--temp-buffer " *gptel-file-context*"))))
+        (unless visiting-buf
+          (with-current-buffer file-buf (insert-file-contents source)))
+        (let ((region-pairs (gptel-context--collect-regions
+                             file-buf spec)))
+          (dolist (pair region-pairs)
+            (let* ((start (car pair)) (end (cdr pair))
+                   (l1 (with-current-buffer file-buf
+                         (line-number-at-pos start)))
+                   (l2 (with-current-buffer file-buf
+                         (line-number-at-pos end))))
+              (insert (propertize (format "In file %s (lines %d-%d):\n\n"
+                                          (file-name-nondirectory source)
+                                          l1 l2)
+                                  'face 'bold))
+              (let ((beg (point)))
+                (insert-buffer-substring file-buf start end)
+                (insert "\n")
+                (gptel-context-make-display-overlay beg (point) source)))))
+        (unless visiting-buf (kill-buffer file-buf))))))
+
+(defun gptel-context--file-add (&optional action)
+  "Add file context entries.
+
+When ACTION is `dwim', act in a context-aware manner:
+- In Dired, add marked files (with confirmation for directories).
+- In Image mode, add the image file if the model supports media.
+- Otherwise, take no action (return nil).
+
+When called interactively (ACTION nil), query the user for a file
+to add, defaulting to the DWIM target."
+  (interactive)
+  (let ((dwim-files
+         (cond ((derived-mode-p 'dired-mode)
+                (dired-get-marked-files))
+               ((and (derived-mode-p 'image-mode)
+                     (gptel--model-capable-p 'media)
+                     (buffer-file-name)
+                     (not (gptel-context--skip-p (buffer-file-name))))
+                (list (buffer-file-name))))))
+    (if (eq action 'dwim)
+        (when dwim-files
+          (let ((dirs (cl-remove-if-not #'file-directory-p dwim-files)))
+            (when (or (null dirs)
+                      (y-or-n-p
+                       (format "Recursively add files from %d director%s? "
+                               (length dirs)
+                               (if (= (length dirs) 1) "y" "ies"))))
+              (mapc #'gptel-context-add-file dwim-files)))
+          t)
+      ;; Interactive query with DWIM default
+      (let ((default (or (car dwim-files) (buffer-file-name))))
+        (if default
+            (gptel-context-add-file
+             (read-file-name "Choose file to add to context: "
+                             nil default t))
+          (call-interactively #'gptel-add-file))))))
+
+(defun gptel-context--file-remove (&optional action)
+"Remove file context entries.
+When ACTION is `dwim', act in a context-aware manner:
+- In Dired, remove marked files.
+- Otherwise, take no action (return nil).
+
+When called interactively (ACTION nil), query the user for a file
+to remove, defaulting to the DWIM target."
+(interactive)
+(pcase action
+  ('dwim
+   (cond ((derived-mode-p 'dired-mode)
+          (let ((files (dired-get-marked-files)))
+            (mapc #'gptel-context-remove files)
+            t))
+         (t nil)))
+  (_
+   ;; Interactive query with DWIM default
+   (let ((default (cond ((derived-mode-p 'dired-mode)
+                         (dired-get-filename nil t))
+                        ((buffer-file-name) (buffer-file-name))
+                        (t default-directory))))
+     (gptel-context-remove
+      (read-file-name "Remove file from context: " nil default t))))))
+
+;; Recognized SPEC keys:
+;;   :lines  -- list of (BEG . END) line-number pairs
+;;   :bounds -- list of (BEG . END) position pairs
+;;   :mime   -- MIME type string (set when normalized to file-media)
+(gptel-context-register-type
+ (make-gptel-context-type
+  :name 'file
+  :description "A file on disk."
+  :predicate
+  (lambda (context-entry)
+    (let ((path (if (consp context-entry) (car context-entry) context-entry)))
+      (and (stringp path) (not (file-directory-p path))
+           (file-readable-p path) (not (gptel--file-binary-p path)))))
+  :normalize-fn #'gptel-context--normalize-file
+  :format-fn #'gptel-context--format-file
+  :display-fn #'gptel-context--display-file
+  :transient-spec (list :key "-f" :description "Add a file to context")
+  :add-fn #'gptel-context--file-add
+  :remove-fn #'gptel-context--file-remove)
+ :add-dwim -80 :remove-dwim -80)
+
+;;; File-media context type (binary/media files)
+(defun gptel-context--display-file-media (source spec &optional label-p)
+  "Display media file SOURCE at point in the inspection buffer.
+SPEC is a plist of the context entry.
+
+When optional LABEL-P is non-nil, return a short one-line label
+string instead of inserting into the buffer."
+  (if label-p
+      (format "Media: %s" (abbreviate-file-name source))
+    (insert (propertize (format "In file %s:\n\n" (file-name-nondirectory source))
+                        'face 'bold))
+    (let ((beg (point)))
+      (if-let* ((mime (plist-get spec :mime))
+                ((not (string-match-p "^text/" mime)))
+                ((string-match-p (image-file-name-regexp) source))
+                (img (create-image source)))
+          (insert-image img "*")
+        (insert source " "
+                (propertize "(No preview for binary file)"
+                            'face '(:inherit shadow :slant italic))))
+      (goto-char (point-max))
+      (insert "\n")
+      (gptel-context-make-display-overlay beg (point) source))))
+
+;; Recognized SPEC keys:
+;;   :mime -- MIME type string (e.g. "image/png")
+(gptel-context-register-type
+ (make-gptel-context-type
+  :name 'file-media
+  :description "A binary or media file."
+  :predicate
+  (lambda (context-entry)
+    (let ((path (if (consp context-entry) (car context-entry) context-entry)))
+      (and (stringp path) (not (file-directory-p path))
+           (file-readable-p path) (gptel--file-binary-p path))))
+  ;; Format and normalization are handled by media injection, although
+  ;; one could modify these slots, say, to add media metadata into the
+  ;; context.
+  :normalize-fn nil
+  :format-fn nil
+  :display-fn #'gptel-context--display-file-media
+  :transient-spec nil))
+
+;;; Directory context type
+(defun gptel-context--normalize-directory (context-entry)
+"Normalize a directory context entry by expanding to file entries.
+CONTEXT-ENTRY is a normalized entry of type `directory'."
+(let* ((dir (car context-entry))
+       (res))
+  (unless gptel-context--reset-cache
+    (setq gptel-context--reset-cache t)
+    (run-at-time 0 nil
+                 (lambda ()
+                   (setq gptel-context--reset-cache nil
+                         gptel-context--project-files nil))))
+  (dolist (f (directory-files-recursively dir "."))
+    (unless (gptel-context--skip-p f)
+      (push (list f :type (if (gptel--file-binary-p f) 'file-media 'file)
+                  :mime (and (gptel--file-binary-p f)
+                             (mailcap-file-name-to-mime-type f)))
+            res)))
+  res))
+
+;; No type-specific SPEC keys.
+;; Expands to file and file-media entries at normalize time.
+(gptel-context-register-type
+ (make-gptel-context-type
+  :name 'directory
+  :description "A directory (expanded to file entries at collect time)."
+  :predicate
+  (lambda (context-entry)
+    (let ((path (if (consp context-entry) (car context-entry) context-entry)))
+      (and (stringp path) (file-directory-p path))))
+  :normalize-fn #'gptel-context--normalize-directory
+  :format-fn nil                    ; expands into individual file entries
+  :display-fn nil                   ; no direct display
+  :transient-spec nil))
+
+(defun gptel-context--kill-ring-add (&optional _action)
+  "Add the current kill to context as a `kill-ring' entry.
+
+When called interactively, call `gptel-context-add-current-kill'.
+
+ACTION is accepted for compatibility with the gptel context type
+protocol but is unused (the `kill-ring' type is not on the DWIM hook)."
+  (interactive)
+  (call-interactively #'gptel-context-add-current-kill))
+
+;;; Kill-ring context type
+;; Stored internally as a buffer-region entry.  See buffer-region for
+;; recognized SPEC keys.
+(gptel-context-register-type
+(make-gptel-context-type
+ :name 'kill-ring
+ :description "Contents of the kill ring (stored as a buffer region)."
+ :predicate (lambda (_context-entry) nil) ; Never matched by predicate; only created via add-fn
+ ;; normalize/format/display-fn deliberately omitted:
+ ;; entries produced by :add-fn are typed as `buffer-region' by
+ ;; predicate matching, so the buffer-region functions handle
+ ;; normalization, formatting, and display.
+ :transient-spec (list :key "C-y" :description "Yank to context"
+                       :if (lambda () gptel-expert-commands))
+ :add-fn #'gptel-context--kill-ring-add
+ :remove-fn nil)
+:add-dwim nil :remove-dwim nil)
 
 (provide 'gptel-context)
 ;;; gptel-context.el ends here.

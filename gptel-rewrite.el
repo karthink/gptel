@@ -689,12 +689,13 @@ By default, gptel uses the directive associated with the `rewrite'
                (gptel--format-preset-string))))
     ("s" "Set full directive" gptel--rewrite-directive-menu)
     (gptel--infix-rewrite-extra)]]
-  ;; FIXME: We are requiring `gptel-transient' because of this suffix, perhaps
-  ;; we can get find some way around that?
   [:description "Context for rewrite"
-   :if use-region-p
-   (gptel--infix-context-remove-all :key "-d")
-   (gptel--suffix-context-buffer :key "C" :format "  %k %d")]
+                :if use-region-p
+                :setup-children
+                (lambda (_)
+                  (transient-parse-suffixes
+                   'gptel-rewrite
+                   (gptel--context-static-suffixes)))]
   [[:description "Diff Options"
     :if (lambda () gptel--rewrite-overlays)
     ("-b" "Ignore whitespace changes"      ("-b" "--ignore-space-change"))
