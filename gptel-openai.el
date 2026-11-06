@@ -146,7 +146,11 @@ information if the stream contains it."
                               (func (plist-get tool-call :function)))
                     (if (and-let* ((func-name (plist-get func :name)) ((not (eq func-name :null))))
                           ;; TEMP: This check is for litellm compatibility, should be removed
-                          (not (equal func-name "null"))) ; new tool block begins
+                          (not (equal func-name "null"))
+                          ;; Some openai-compatible models (GLM/Qwen) may send tool delta with empty name "" in streaming chunks.
+                          ;; Skip this to avoid tool-call with empty name.
+                          (not (equal func-name ""))
+			  ) ; new tool block begins
                         (progn
                           (when-let* ((partial (plist-get info :partial_json)))
                             (let* ((prev-tool-call (car (plist-get info :tool-use)))
