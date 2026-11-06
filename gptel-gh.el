@@ -397,21 +397,22 @@ Then we need a session token."
 
 (cl-defmethod gptel-curl--parse-stream ((backend gptel--gh) info)
   "Parse the response stream in INFO for BACKEND, deferring as needed."
-  (let ((model (plist-get info :model)))
-   (if (gptel--model-capable-p 'responses-api model)
-       ;; Defer to gptel-openai-responses backend
-       (gptel-curl--parse-stream
-        (gptel--gh-responses-backend backend) info)
-     (cl-call-next-method))))
+  ;; Parsing can inject tool calls, which must use the request's API too.
+  (let ((gptel-model (plist-get info :model)))
+    (if (gptel--model-capable-p 'responses-api gptel-model)
+        ;; Defer to gptel-openai-responses backend
+        (gptel-curl--parse-stream
+         (gptel--gh-responses-backend backend) info)
+      (cl-call-next-method))))
 
 (cl-defmethod gptel--parse-response ((backend gptel--gh) response info)
   "Parse RESPONSE for BACKEND, deferring as needed."
-  (let ((model (plist-get info :model)))
-    (if (gptel--model-capable-p 'responses-api model)
-       ;; Defer to gptel-openai-responses backend
-       (gptel--parse-response
-        (gptel--gh-responses-backend backend) response info)
-     (cl-call-next-method))))
+  (let ((gptel-model (plist-get info :model)))
+    (if (gptel--model-capable-p 'responses-api gptel-model)
+        ;; Defer to gptel-openai-responses backend
+        (gptel--parse-response
+         (gptel--gh-responses-backend backend) response info)
+      (cl-call-next-method))))
 
 (cl-defmethod gptel--request-data ((backend gptel--gh) prompts)
   "Generate the request payload for BACKEND from PROMPTS, deferring as needed."

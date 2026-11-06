@@ -2046,7 +2046,9 @@ call.  The argument list is suitable for supplying to the tool function."
 
 Inject tool results into into the prompt data (for the LLM), run the
 callback (for the user), and transition the request state."
-  (let ((info (gptel-fsm-info fsm)))
+  ;; Asynchronous tools can finish outside the request buffer.
+  (let* ((info (gptel-fsm-info fsm))
+         (gptel-model (plist-get info :model)))
     (gptel--inject-prompt
      (plist-get info :backend) (plist-get info :data)
      (gptel--parse-tool-results (plist-get info :backend)
