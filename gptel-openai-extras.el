@@ -386,6 +386,262 @@ ENDPOINT and MODELS are all optional; for their meanings, see
     (setf (alist-get name gptel--known-backends nil nil #'equal) backend)
     backend))
 
+;;; OpenCode
+(cl-defstruct (gptel-opencode (:include gptel-openai)
+                              (:copier nil)
+                              (:constructor gptel--make-opencode)))
+
+(defvar-local gptel--opencode-session nil
+  "OpenCode session ID for the current gptel conversation.
+
+OpenCode Go uses this ID, sent in the `x-opencode-session' header,
+to route requests from the same conversation consistently.")
+
+(defun gptel--opencode-session-id (info)
+  "Return the OpenCode session ID for the request described by INFO.
+
+The ID is generated once per gptel buffer, so all requests in a
+conversation share it."
+  (with-current-buffer (plist-get info :buffer)
+    (or gptel--opencode-session
+        (setq gptel--opencode-session
+              (format "ses_%s" (md5 (format "%s%s%s"
+                                            (buffer-name)
+                                            (float-time)
+                                            (random))))))))
+
+(defun gptel--opencode-default-header (info)
+  "Return the default HTTP headers for an OpenCode request.
+INFO is the request info plist."
+  (let ((headers `(("x-opencode-session"
+                    . ,(gptel--opencode-session-id info)))))
+    (if-let* ((key (gptel--get-api-key)))
+        (cons `("Authorization" . ,(concat "Bearer " key)) headers)
+      headers)))
+
+(defconst gptel--opencode-models
+  '((deepseek-v4.1-flash
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1000
+     :input-cost 0.15
+     :output-cost 0.6)
+    (deepseek-v4-pro
+     :capabilities (tool-use json reasoning)
+     :context-window 1000
+     :input-cost 0.66
+     :output-cost 1.98)
+    (glm-5.2
+     :capabilities (tool-use json reasoning)
+     :context-window 1000
+     :input-cost 1.4
+     :output-cost 4.4)
+    (glm-5.3
+     :capabilities (tool-use json reasoning)
+     :context-window 1000
+     :input-cost 1.4
+     :output-cost 4.4)
+    (grok-4.7
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png")
+     :context-window 500
+     :input-cost 2
+     :output-cost 6)
+    (muse-spark-1.2-contributor
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1049
+     :input-cost 0.1
+     :output-cost 0.2)
+    (muse-spark-1.3-contributor
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1049
+     :input-cost 0.1
+     :output-cost 0.2)
+    (glm-5.3-flash
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png")
+     :context-window 1000
+     :input-cost 0.15
+     :output-cost 0.5)
+    (gpt-5.6-luna
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 0.2
+     :output-cost 1.2)
+    (gpt-6-luna
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1050
+     :input-cost 0.1
+     :output-cost 0.5)
+    (claude-haiku-5-5
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1000
+     :input-cost 0.1
+     :output-cost 0.5)
+    (hy3
+     :capabilities (tool-use reasoning)
+     :context-window 256
+     :input-cost 0.14
+     :output-cost 0.58)
+    (hy4-preview
+     :capabilities (tool-use reasoning)
+     :context-window 1024
+     :input-cost 0.834
+     :output-cost 2.501)
+    (kimi-k2.7-code
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "image/bmp" "image/heic" "image/heif")
+     :context-window 262
+     :input-cost 0.95
+     :output-cost 4)
+    (kimi-k3
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "image/bmp" "image/heic" "image/heif")
+     :context-window 1049
+     :input-cost 3
+     :output-cost 15)
+    (mimo-v2.6-flash
+     :capabilities (media tool-use reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "image/bmp")
+     :context-window 1049
+     :input-cost 0.14
+     :output-cost 0.28)
+    (mimo-v2.6-pro
+     :capabilities (media tool-use reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "image/bmp")
+     :context-window 1049
+     :input-cost 0.435
+     :output-cost 0.87)
+    (minimax-m3
+     :capabilities (media tool-use reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1000
+     :input-cost 0.3
+     :output-cost 1.2)
+    (minimax-m3.1-flash
+     :capabilities (media tool-use reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1000
+     :input-cost 0.15
+     :output-cost 0.6)
+    (longcat-2.0
+     :capabilities (tool-use reasoning)
+     :context-window 1000
+     :input-cost 0.3
+     :output-cost 1.2)
+    (step-5-preview
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1000
+     :input-cost 1
+     :output-cost 2.7)
+    (beam-free
+     :capabilities (tool-use json reasoning)
+     :context-window 1049
+     :input-cost 0
+     :output-cost 0)
+    (qwen3.8-max
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/webp" "image/bmp" "image/tiff" "image/heic")
+     :context-window 1000
+     :input-cost 2
+     :output-cost 6)
+    (qwen3.8-flash
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/webp" "image/bmp" "image/tiff" "image/heic")
+     :context-window 1000
+     :input-cost 0.15
+     :output-cost 0.47)
+    (qwen3.7-plus
+     :capabilities (media tool-use reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/webp" "image/bmp" "image/tiff" "image/heic")
+     :context-window 1000
+     :input-cost 0.4
+     :output-cost 1.6)
+    (kimi-k3.1-pro
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "image/bmp" "image/heic" "image/heif")
+     :context-window 1049
+     :input-cost 2
+     :output-cost 10)
+    (iceman-contributor-free
+     :capabilities (tool-use reasoning)
+     :context-window 262
+     :input-cost 0
+     :output-cost 0)
+    (gemini-4-argon
+     :capabilities (media tool-use json reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/webp" "image/heic" "image/heif")
+     :context-window 1049
+     :input-cost 2
+     :output-cost 10)
+    (hy4
+     :capabilities (media tool-use reasoning)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+     :context-window 1049
+     :input-cost 0.834
+     :output-cost 2.501)
+    (longcat-2.5-free
+     :capabilities (tool-use reasoning)
+     :context-window 1000
+     :input-cost 0
+     :output-cost 0))
+  "List of models available through OpenCode Go.
+
+Model metadata is taken from <https://opencode.ai/inference/go/v1/models>.
+For the keys and their meanings, see `gptel--openai-models'.")
+
+;;;###autoload
+(cl-defun gptel-make-opencode
+    (name &key curl-args stream key request-params
+          (header #'gptel--opencode-default-header)
+          (host "opencode.ai")
+          (protocol "https")
+          (endpoint "/inference/go/openai/v1/chat/completions")
+          (models gptel--opencode-models))
+  "Register an OpenCode backend for gptel with NAME.
+
+This provides access to OpenCode Go and OpenCode Console
+(pay-as-you-go) models through the OpenAI Chat Completions API.
+Requests include the `x-opencode-session' header required by
+OpenCode Go, with a stable session ID for each gptel buffer.
+
+Keyword arguments:
+
+KEY is a variable whose value is the API key, or function that
+returns the key.
+
+STREAM is a boolean to toggle streaming responses, defaults to
+false.
+
+ENDPOINT (optional) defaults to the OpenCode Go chat-completions
+endpoint.  For pay-as-you-go, use
+\"/inference/openai/v1/chat/completions\".
+
+The remaining keyword arguments (CURL-ARGS, REQUEST-PARAMS,
+HEADER, HOST, PROTOCOL and MODELS) are optional; for their
+meanings see `gptel-make-openai'."
+  (declare (indent 1))
+  (let ((backend (gptel--make-opencode
+                  :name name
+                  :host host
+                  :header header
+                  :key key
+                  :models (gptel--process-models models)
+                  :protocol protocol
+                  :endpoint endpoint
+                  :stream stream
+                  :request-params request-params
+                  :curl-args curl-args
+                  :url (concat protocol "://" host endpoint))))
+    (setf (alist-get name gptel--known-backends nil nil #'equal) backend)
+    backend))
+
 ;;; xAI
 ;;;###autoload
 (cl-defun gptel-make-xai
