@@ -249,6 +249,7 @@ charset=utf-8\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s"
                    :host "localhost"
                    :service gptel--openai-oauth-redirect-port
                    :filter #'filter
+                   :coding 'no-conversion
                    :noquery t))
             (message "OpenAI OAuth authorization URL: %s" authorization-url)
             (ignore-errors (gui-set-selection 'CLIPBOARD authorization-url))

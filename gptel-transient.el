@@ -1058,6 +1058,7 @@ existing preset, as well."
                     (concat (propertize " " 'display '(space :align-to 25))
                             (truncate-string-to-width str (- (frame-width) 40)
                                                       nil nil t)))))))
+     (oset scope-obj value gptel--set-buffer-locally)
      (cl-flet* ((key-hint-ov ()
                   (or (cdr-safe (get-char-property-and-overlay (point-min) 'gptel))
                       (let ((ov (make-overlay (point-min) (minibuffer-prompt-end))))
@@ -1139,9 +1140,10 @@ only (\"oneshot\")."
        (interactive (list (plist-get (transient-scope 'gptel-tools) :tools)))
        (gptel--set-with-scope
         'gptel-tools
-        (mapcar (lambda (category-and-name)
-                  (map-nested-elt gptel--known-tools category-and-name))
-                (cl-delete-if-not #'consp tools))
+        (delq nil                       ;Ignore deregistered (unfindable) tools
+              (mapcar (lambda (category-and-name)
+                        (map-nested-elt gptel--known-tools category-and-name))
+                      (cl-delete-if-not #'consp tools)))
         gptel--set-buffer-locally))
      :transient transient--do-return)
     ("q" "Cancel" transient-quit-one)]]

@@ -651,6 +651,16 @@ Media files, if present, are placed in `gptel-context'."
       :input-cost 1
       :output-cost 5
       :cutoff-date "2025-02")
+     (claude-fable-5-2
+      :description "Most capable model for complex reasoning and advanced coding"
+      :capabilities (media tool-use cache)
+      ;; Fable 5.2 does not support disabling reasoning.
+      :reasoning-effort (member low medium high xhigh max)
+      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+      :context-window 1000
+      :input-cost 8
+      :output-cost 40
+      :cutoff-date "2026-06")
      (claude-fable-5-1
       :description "Most capable model for complex reasoning and advanced coding"
       :capabilities (media tool-use cache)

@@ -2926,11 +2926,16 @@ example) apply the preset buffer-locally."
                                            tool-spec))
                           collect tool))))
           (funcall setter 'gptel-tools (cl-delete-duplicates tools :test #'eq))))
-       ((and (let sym (or (intern-soft
-                           (concat "gptel-" (substring (symbol-name key) 1)))
-                          (intern-soft
-                           (concat "gptel--" (substring (symbol-name key) 1)))))
-             (guard (and sym (boundp sym))))
+       ((and (let sym
+               (or (and-let* ((s (intern-soft
+                                  (concat "gptel-" (substring (symbol-name key) 1))))
+                              ((boundp s)))
+                     s)
+                   (and-let* ((s (intern-soft
+                                  (concat "gptel--" (substring (symbol-name key) 1))))
+                              (boundp s))
+                     s)))
+             (guard sym))
         (funcall setter sym (if (consp val)
                                 (gptel--modify-value (symbol-value sym) val)
                               val)))

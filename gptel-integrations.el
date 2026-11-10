@@ -108,7 +108,7 @@ INFO is the query information for the active request."
 (defvar mcp-hub-servers)
 (defvar mcp-server-connections)
 
-(defun gptel-mcp-connect (&optional servers server-callback interactive)
+(defun gptel-mcp-connect (&optional servers server-callback connect-only interactive)
   "Add gptel tools from MCP servers using the mcp package.
 
 MCP servers are started if required.  SERVERS is a list of server specs
@@ -121,11 +121,15 @@ spec in the list can be one of the following forms:
   - list of the form (\"server-name\" \"tool1\" \"tool2\" ...).  In this
     case only the listed tools are activated.
 
+If CONNECT-ONLY is non-nil, start servers as required but do not
+activate any tools.
+
 If INTERACTIVE is non-nil (or called interactively), guide the user
 through setting up mcp, and query for servers to retrieve tools from.
 
-Call SERVER-CALLBACK after starting MCP servers.  If SERVER-CALLBACK is
-not a function and non-nil, start SERVERS synchronously."
+Call SERVER-CALLBACK with the list of new gptel-tools after starting MCP
+servers.  If SERVER-CALLBACK is not a function and non-nil, start
+SERVERS synchronously."
   (interactive (list nil nil t))
   (if (locate-library "mcp-hub")
       (unless (require 'mcp-hub nil t)
@@ -141,7 +145,7 @@ not a function and non-nil, start SERVERS synchronously."
                                     (assoc sname mcp-hub-servers)))
                                 servers)
                       mcp-hub-servers))
-           (unregistered-servers        ;Available servers minus servers already registered with gptel
+           (unregistered-servers ;Available servers minus servers already registered with gptel
             (cl-loop for server in servers
                      with registered-names =
                      (cl-loop for (cat . _tools) in gptel--known-tools
@@ -150,7 +154,8 @@ not a function and non-nil, start SERVERS synchronously."
                      unless (member (car server) registered-names)
                      collect server)))
       (if unregistered-servers
-          (let* ((servers
+          (let* ((buf (current-buffer))
+                 (servers
                   (if interactive
                       (let ((picks
                              (completing-read-multiple
@@ -168,11 +173,12 @@ not a function and non-nil, start SERVERS synchronously."
                  (add-all-tools
                   (lambda (&optional server-names)
                     "Register and add tools from servers.  Report failures."
-                    (let ((tools (gptel-mcp--get-tools
-                                  (or server-names (mapcar #'car servers))))
-                          (now-active (cl-remove-if-not server-active-p mcp-hub-servers)))
-                      (mapc (lambda (tool) (apply #'gptel-make-tool tool)) tools)
-                      (gptel-mcp--activate-tools tools tool-filter-spec)
+                    (let ((tool-specs (gptel-mcp--get-tools
+                                       (or server-names (mapcar #'car servers))))
+                          (now-active (cl-remove-if-not server-active-p mcp-hub-servers))
+                          tools)
+                      ;; Register all tool specs with gptel
+                      (mapc (lambda (tool) (apply #'gptel-make-tool tool)) tool-specs)
                       (if-let* ((failed (cl-set-difference inactive-servers now-active
                                                            :test #'equal)))
                           (progn
@@ -182,12 +188,24 @@ not a function and non-nil, start SERVERS synchronously."
                                      (length failed) (length inactive-servers)
                                      (if (= (length failed) 1) "" "s")
                                      (mapconcat #'car failed ", ")))
-                        (let ((added (or server-names (mapcar #'car now-active))))
-                          (message "Added %d tools from %d MCP server%s: %s"
-                                   (length tools) (length added)
-                                   (if (= (length added) 1) "" "s")
-                                   (mapconcat #'identity added ", "))))
-                      (when (functionp server-callback) (funcall server-callback))))))
+                        (unless connect-only
+                          (let ((added (or server-names (mapcar #'car now-active))))
+                            (message "Added %d tools from %d MCP server%s: %s"
+                                     (length tool-specs) (length added)
+                                     (if (= (length added) 1) "" "s")
+                                     (mapconcat #'identity added ", ")))))
+                      (when tool-filter-spec ;Filter out tools to not activate
+                        (setq tool-specs (gptel-mcp--filter-tools tool-specs tool-filter-spec)))
+                      (setq tools (mapcar (lambda (tool-spec)
+                                            (gptel-get-tool (list (plist-get tool-spec :category)
+                                                                  (plist-get tool-spec :name))))
+                                          tool-specs))
+                      (if (not (buffer-live-p buf))
+                          (user-error "Buffer %s has been killed, aborting `gptel-mcp-connect'"
+                                      (buffer-name buf))
+                        (with-current-buffer buf
+                          (unless connect-only (setq gptel-tools (cl-union gptel-tools tools)))
+                          (when (functionp server-callback) (funcall server-callback tools))))))))
 
             (if inactive-servers        ;start servers
                 (let ((syncp (and server-callback (not (functionp server-callback)) t)))
@@ -195,7 +213,7 @@ not a function and non-nil, start SERVERS synchronously."
                    add-all-tools (mapcar #'car inactive-servers) syncp))
               (funcall add-all-tools (mapcar #'car servers))))
         (when interactive (message "All MCP tools are already available to gptel!"))
-        (when (functionp server-callback) (funcall server-callback))))))
+        (when (functionp server-callback) (funcall server-callback nil))))))
 
 (defun gptel-mcp-disconnect (&optional servers interactive)
   "Unregister gptel tools provided by MCP servers using the mcp package.
@@ -270,30 +288,24 @@ from all connected servers if it is nil."
                    tool-names))))
      server-names servers)))
 
-(defun gptel-mcp--activate-tools (tools &optional filter-spec)
-  "Activate tools from TOOLS according to FILTER-SPEC.
+(defun gptel-mcp--filter-tools (tool-specs tool-filter-spec)
+  "Filter TOOL-SPECS according to TOOL-FILTER-SPEC.
 
-If the alist FILTER-SPEC is present, activate only those tools in
-FILTER-SPEC.  Each spec in FILTER-SPEC can be one of the following
-forms:
+Return a new filtered list.  TOOL-SPECS is a plist spec of gptel tools.
+Each spec in TOOL-FILTER-SPEC can be one of the following forms:
 
-- NIL or a cons of the form (\"server-name\" . t), to activate all
-  tools provided by \"server-name\".
+- NIL to retain all TOOL-SPECS.
+- A cons of the form (\"server-name\" . t), to retain all tools provided
+  by \"server-name\".
 - list of the form (\"server-name\" \"tool1\" \"tool2\" ...).  In this
-  case only the listed tools are activated."
-  (when filter-spec
-    (setq tools
-          (cl-remove-if-not
-           (lambda (tool)
-             (let* ((tool-name (plist-get tool :name))
-                    (serv-name (substring (plist-get tool :category) 4))
-                    (act-tools (alist-get serv-name filter-spec nil nil #'equal)))
-               (or (eq act-tools t) (member tool-name act-tools))))
-           tools)))
-  (dolist (tool tools)
-    (cl-pushnew (gptel-get-tool (list (plist-get tool :category)
-                                      (plist-get tool :name)))
-                gptel-tools)))
+  case only the listed tools are retained."
+  (cl-remove-if-not
+   (lambda (tool)
+     (let* ((tool-name (plist-get tool :name))
+            (serv-name (substring (plist-get tool :category) 4))
+            (act-tools (alist-get serv-name tool-filter-spec nil nil #'equal)))
+       (or (eq act-tools t) (member tool-name act-tools))))
+   tool-specs))
 
 (with-eval-after-load 'gptel-transient
   (transient-define-suffix gptel--suffix-mcp-connect ()
@@ -306,19 +318,20 @@ forms:
     ;; update it with the newly selected tools.  Then set up gptel-tools.
     (condition-case err
         (gptel-mcp-connect
-         nil (lambda () (when-let* ((transient--prefix)
-                               ((eq (oref transient--prefix command)
-                                    'gptel-tools)))
-                     (let ((state (transient-scope 'gptel-tools)))
-                       (plist-put state :tools
-                                  (delete-dups
-                                   (nconc (mapcar (lambda (tool)
-                                                    (list (gptel-tool-category tool)
-                                                          (gptel-tool-name tool)))
-                                                  gptel-tools)
-                                          (plist-get state :tools))))
-                       (transient-setup 'gptel-tools nil nil :scope state))))
-         t)
+         nil (lambda (tools)
+               (when-let* ((transient--prefix)
+                           ((eq (oref transient--prefix command)
+                                'gptel-tools)))
+                 (let ((state (transient-scope 'gptel-tools)))
+                   (plist-put state :tools
+                              (delete-dups
+                               (nconc (mapcar (lambda (tool)
+                                                (list (gptel-tool-category tool)
+                                                      (gptel-tool-name tool)))
+                                              (nconc tools gptel-tools))
+                                      (plist-get state :tools))))
+                   (transient-setup 'gptel-tools nil nil :scope state))))
+         t t)
       (user-error (message "%s" (cadr err)))))
 
   (transient-define-suffix gptel--suffix-mcp-disconnect ()
