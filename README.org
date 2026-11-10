@@ -540,8 +540,8 @@ Register a backend with
 (gptel-make-openai "llama-cpp"          ;Any name
   :stream t                             ;Stream responses
   :protocol "http"
-  :host "localhost:8000"                ;Llama.cpp server location
-  :models '(test))                    ;Any names, doesn't matter for Llama
+  :host "localhost:9931"                ;Server location (llama.cpp defaults to 9931, llamafile to 8080)
+  :models '(test))                      ;Any names, doesn't matter for Llama
 #+end_src
 
 These are the required parameters, refer to the documentation of =gptel-make-openai= for more.
@@ -559,7 +559,7 @@ The above code makes the backend available to select.  If you want it to be the 
  gptel-backend (gptel-make-openai "llama-cpp"
                  :stream t
                  :protocol "http"
-                 :host "localhost:8000"
+                 :host "localhost:9931"
                  :models '(test)))
 #+end_src
 
@@ -1497,8 +1497,9 @@ Alternatively, you can add/remove tools via
 
 The following repositories provide collections of tools written by gptel users.
 
-- [[https://github.com/skissue/llm-tool-collection][llm-tool-collection]] :: A community collection of tools for use with LLM clients in Emacs.  Includes LLM tools for interacting with files, Emacs buffers and running system commands.
 - [[https://github.com/karthink/gptel-agent][gptel-agent]] :: A collection of tools meant for agentic LLM use.  Includes tools for filesystem access and manipulation, running Bash commands, Emacs introspection and Elisp evaluation, web search and YouTube.
+- [[https://github.com/skissue/llm-tool-collection][llm-tool-collection]] :: A community collection of tools for use with LLM clients in Emacs.  Includes LLM tools for interacting with files, Emacs buffers and running system commands.
+- [[https://github.com/iamtoaster/gptel-yatools][gptel-yatools]] :: A set of tools for general agentic LLM use. Has filesystem tools, shell access, works over TRAMP, PlantUML diagrams.
 - [[https://github.com/ultronozm/codel.el][codel.el]] :: A collection of code editing tools.
 - [[https://codeberg.org/bajsicki/gptel-org-tools][gptel-org-tools]] :: Tools for interacting with Org files.
 - [[https://github.com/positron-solutions/ragmacs][ragmacs]] :: A collection of tools for Emacs introspection.
@@ -1993,6 +1994,7 @@ These differ from full "agentic" use in that the interactions are "one-shot", no
 
 - [[https://github.com/kmontag/macher][Macher]]: Project-aware multi-file LLM editing for Emacs.
 - [[https://github.com/karthink/gptel-agent][gptel-agent]]: Tools, presets and configuration for general agentic LLM use.
+- [[https://github.com/iamtoaster/gptel-yatools][gptel-yatools]]: A set of tools for general agentic LLM use.
 
 *Text completion*
 
