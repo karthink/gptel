@@ -738,6 +738,16 @@ line by themselves, separated from surrounding text."
 Each entry has the form (PROCESS . (FSM ABORT-CLOSURE))
 If the ABORT-CLOSURE is called, it must abort the PROCESS.")
 
+(defun gptel--request-forget (process fsm)
+  "Remove PROCESS from `gptel--request-alist' when its request ends.
+
+FSM is the state machine of the request.  If FSM is still running
+tools, keep the entry so that `gptel-abort' can find the request.
+The process is dead at this point, so the abort closure does nothing."
+  (if (and fsm (memq (gptel-fsm-state fsm) '(TOOL TRET)))
+      (setf (alist-get process gptel--request-alist) (cons fsm #'ignore))
+    (setf (alist-get process gptel--request-alist nil 'remove) nil)))
+
 (defvar gptel--request-params nil
   "Extra parameters sent with each gptel request.
 
@@ -2762,7 +2772,7 @@ the response is inserted into the current buffer after point."
                                (with-demoted-errors "gptel callback error: %S"
                                  (funcall callback response info)))
                              (gptel--fsm-transition fsm) ;TYPE -> next
-                             (setf (alist-get buf gptel--request-alist nil 'remove) nil)
+                             (gptel--request-forget buf fsm)
                              (kill-buffer buf)))
                          nil t nil)))
       ;; TODO: Add transformer here.
@@ -3061,8 +3071,8 @@ PROCESS and _STATUS are process parameters."
                (t (plist-put info :error "Could not parse HTTP response."))))))
         (with-demoted-errors "gptel callback error: %S"
           (funcall (plist-get info :callback) nil info))))
-      (gptel--fsm-transition fsm))      ; Move to next state
-    (setf (alist-get process gptel--request-alist nil 'remove) nil)
+      (gptel--fsm-transition fsm)       ; Move to next state
+      (gptel--request-forget process fsm))
     (kill-buffer proc-buf)))
 
 (defun gptel-curl--stream-filter (process output)
@@ -3213,7 +3223,7 @@ PROCESS and _STATUS are process parameters."
           (with-demoted-errors "gptel callback error: %S"
             (funcall proc-callback nil proc-info))))
       (gptel--fsm-transition fsm))      ;TYPE -> next
-    (setf (alist-get process gptel--request-alist nil 'remove) nil)
+    (gptel--request-forget process (car (alist-get process gptel--request-alist)))
     (kill-buffer proc-buf)))
 
 (defun gptel-curl--parse-response (proc-info)
