@@ -80,9 +80,9 @@
       thinking-text))
 
 
-(defun gptel-mistral--extract-tool-content (delta)
-  (map-nested-elt delta '(:tool_calls 0)))
-
+(defun gptel-mistral--extract-tools-content (delta)
+  (gptel-mistral--log-dev "In the tools extraction code, delta: %S\n" delta)
+  (plist-get delta :tool_calls))
 
 
 ;; Mistral Responses Backend
@@ -117,82 +117,105 @@ information if the stream contains it."
                 ;; - Clear any reasoning content chunks we've captured
                 (progn
                   (gptel-mistral--log-dev "In the `DONE` handler...\n")
-                  (when-let* ((tool-use (plist-get info :tool-use))
-                              (args (apply #'concat (nreverse (plist-get info :partial_json))))
-                              (func (plist-get (car tool-use) :function)))
-                    (gptel-mistral--log-dev "tool use: %S, args: %S, func: %S\n\n" tool-use args func)
-                    (plist-put func :arguments args) ;Update arguments for last recorded tool
+                  (when-let ((in-process-tool-calls (plist-get info :tool-use)))
+                    (gptel-mistral--log-dev "In-process tool calls: %S\n" in-process-tool-calls)
+                    (cl-loop
+                     for tool-call in-ref in-process-tool-calls
+                     do (progn (gptel-mistral--log-dev "Handling tool call: %S\n" tool-call)
+                               (when-let* ((tool-call-function (plist-get tool-call :function))
+                                           (partial-json (plist-get tool-call :partial_json)))
+                                 (gptel-mistral--log-dev "finalizing tool call: %S, function: %S\n\n" tool-call tool-call-function)
+                                 (plist-put tool-call-function :arguments (apply #'concat (nreverse partial-json))))
+                               (gptel-mistral--log-dev "Before removing partial json: %S\n" tool-call)
+                               (cl-remf tool-call :partial_json)
+                               (gptel-mistral--log-dev "After removing partial json: %S\n" tool-call)))
+                    (gptel-mistral--log-dev "before injecting the prompt\n\n")
+                    (gptel-mistral--log-dev "tool calls content to inject: %S\n\n" `( :role "assistant" :content :null :tool_calls ,(vconcat in-process-tool-calls)))
                     (gptel--inject-prompt
                      (plist-get info :backend) (plist-get info :data)
-                     `( :role "assistant" :content :null :tool_calls ,(vconcat tool-use) ; :refusal :null
+                     `( :role "assistant" :content :null :tool_calls ,(vconcat in-process-tool-calls) ; :refusal :null
                         ;; Return reasoning if available
                         ,@(and-let* ((chunks (nreverse (plist-get info :reasoning-chunks)))
                                      (reasoning-field (pop chunks))) ;chunks is (:reasoning.* "chunk1" "chunk2" ...)
                             (list reasoning-field (apply #'concat chunks)))))
+                    (gptel-mistral--log-dev "after injecting the prompt\n\n")
                     (cl-loop
-                     for tool-call in tool-use ; Construct the call specs for running the function calls
+                     for tool-call in in-process-tool-calls ; Construct the call specs for running the function calls
                      for spec = (plist-get tool-call :function)
                      collect (list :id (plist-get tool-call :id)
                                    :name (plist-get spec :name)
                                    :args (ignore-errors (gptel--json-read-string
                                                          (plist-get spec :arguments))))
                      into call-specs
-                     finally (plist-put info :tool-use call-specs)))
-                  (when (eq (plist-get info :reasoning-block) 'done)
-                    (plist-put info :reasoning-block nil))
-                  ;; Update token usage if present
-                  (when-let* ((last-resp (save-excursion
-                                           (forward-line -1)
-                                           (and (re-search-backward "^data:" nil t)
-                                                (goto-char (match-end 0))
-                                                (ignore-errors (gptel--json-read)))))
-                              (usage (plist-get last-resp :usage)))
-                    (gptel--openai-update-tokens usage info))
-                  (when (plist-member info :reasoning-chunks) (plist-put info :reasoning-chunks nil)))
+                     finally (progn (gptel-mistral--log-dev "Finalized call specs: %S\n" call-specs)
+                                    (plist-put info :tool-use call-specs)))
+                    (when (eq (plist-get info :reasoning-block) 'done)
+                      (plist-put info :reasoning-block nil))
+                    ;; Update token usage if present
+                    (when-let* ((last-resp (save-excursion
+                                             (forward-line -1)
+                                             (and (re-search-backward "^data:" nil t)
+                                                  (goto-char (match-end 0))
+                                                  (ignore-errors (gptel--json-read)))))
+                                (usage (plist-get last-resp :usage)))
+                      (gptel--openai-update-tokens usage info))
+                    (when (plist-member info :reasoning-chunks) (plist-put info :reasoning-chunks nil))))
               (when-let* ((response (gptel--json-read))
                           (delta (map-nested-elt response '(:choices 0 :delta))))
                 (gptel-mistral--log-dev "\n\nresponse: %S, delta: %S, content: %S, content is a vector: %S\n\n" response delta (plist-get delta :content) (vectorp (plist-get delta :content)))
                 (let ((text-content (gptel-mistral--extract-text-content delta))
                       (thinking-text-content (gptel-mistral--extract-thinking-text-content delta))
-                      (tool-content (gptel-mistral--extract-tool-content delta)))
+                      (tools-content (gptel-mistral--extract-tools-content delta)))
+                  (gptel-mistral--log-dev "\n\ntext-content: %S, thinking-text-content: %S, tools-content: %S\n\n" text-content thinking-text-content tools-content)
                   (if-let* ((content text-content))
                       (progn
                         (gptel-mistral--log-dev "adding content: %S\n\n" content)
                         (push content content-strs))
                     ;; No text content, so look for tool calls
                     (gptel-mistral--log-dev "probable tool chunk: %S\ndelta: %S\n\n" response delta)
-                    (when-let* ((tool-call tool-content)
-                                (func (plist-get tool-call :function))
-                                (tool-index (plist-get tool-call :index)))
-                      (gptel-mistral--log-dev "tool call: %S\nfunc: %S\nindex: %S\n" tool-call func tool-index)
-                      (gptel-mistral--log-dev "prev tool call: %S\n" (car (plist-get info :tool-use)))
-                      (if (and-let* ((func-name (plist-get func :name))
-                                     ((not (eq func-name :null))))
-                            (not (string-empty-p func-name)))
-                          (progn
-                            (when-let* ((partial-json (plist-get info :partial_json)))
-                              (let* ((prev-tool-call (car (plist-get info :tool-use)))
-                                     (prev-tool-index (plist-get prev-tool-call :index))
-                                     (prev-tool-func (plist-get prev-tool-call :function)))
-                                (gptel-mistral--log-dev "partial json: %S\nprev tool call: %S\nprev func: %S\n" partial-json prev-tool-call prev-tool-func)
-                                (gptel-mistral--log-dev "partial json concat: %S\n" (apply #'concat (nreverse (plist-get info :partial_json))))
-                                (plist-put prev-tool-func :arguments ;update args for old tool block
-                                           (apply #'concat (nreverse (plist-get info :partial_json))))
-                                (gptel-mistral--log-dev "after patching arguments partial json prev function arguments: %S\n" (plist-get prev-tool-call :argument)))
-                              (plist-put info :partial_json nil) ;clear out finished chain of partial args
-                              (gptel-mistral--log-dev "nillified partial json: %S\n\n" (plist-get info :partial_json)))
-                            ;; Start new chain of partial argument strings
-                            (gptel-mistral--log-dev "starting a new function call, placing arguments: %S\n" (plist-get func :arguments))
-                            (plist-put info :partial_json (list (plist-get func :arguments)))
-                            (gptel-mistral--log-dev "after placing arguments: %S\n" (plist-get info :partial_json))
-                            ;; NOTE: Do NOT use `push' for this, it prepends and we lose the reference
-                            (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
-                        ;; old tool block continues, so continue collecting arguments in :partial_json
-                        (let* ((prev-tool-call (car (plist-get info :tool-use)))
-                               (prev-tool-index (plist-get prev-tool-call :index)))
-                          (when (eq prev-tool-index tool-index)
-                            (gptel-mistral--log-dev "pushing the partial json: %S into the arguments: %S\n\n" (plist-get info :partial_json) (plist-get func :arguments))
-                            (push (plist-get func :arguments) (plist-get info :partial_json)))))))
+                    (if (and tools-content (vectorp tools-content) (not (= 0 (length tools-content))))
+                        (cl-loop
+                         for tool-content across tools-content
+                         do (when-let* ((tool-call tool-content)
+                                        (func (plist-get tool-call :function))
+                                        (tool-index (plist-get tool-call :index)))
+                              (gptel-mistral--log-dev "tool call: %S\nfunc: %S\nindex: %S\n" tool-call func tool-index)
+                              (gptel-mistral--log-dev "in-process tool calls: %S\n" (plist-get info :tool-use))
+                              (if (and-let* ((func-name (plist-get func :name))
+                                             ((not (eq func-name :null))))
+                                    (not (string-empty-p func-name)))
+                                    (if-let* ((in-process-tool-calls (plist-get info :tool-use))
+                                                (index-matched-tool-call
+                                                 (seq-find (lambda (in-process-tool-call)
+                                                             (progn (gptel-mistral--log-dev "looking at the in-process tool call: %S\n" in-process-tool-call)
+                                                                    (equal (plist-get in-process-tool-call :index) tool-index)))
+                                                           in-process-tool-calls))
+                                                (index-matched-tool-func (plist-get index-matched-tool-call :function))
+                                                (index-matched-tool-partial-json (plist-get index-matched-tool-call :partial_json)))
+                                        (progn
+                                          (gptel-mistral--log-dev "partial json: %S\nprev tool call: %S\nprev func: %S\n" index-matched-partial-json index-matched-tool-call index-matched-tool-func)
+                                          (gptel-mistral--log-dev "partial json concat: %S\n" (apply #'concat (nreverse index-matched-partial-json)))
+                                          (plist-put index-matched-tool-func :arguments ;update args for old tool block
+                                                     (apply #'concat (nreverse index-matched-partial-json)))
+                                          (gptel-mistral--log-dev "after patching arguments partial json prev function arguments: %S\n" (plist-get index-matched-tool-call :arguments))
+                                          (plist-put index-matched-tool-call :partial_json nil) ;clear out finished chain of partial args
+                                          (gptel-mistral--log-dev "nillified partial json: %S\n\n" (plist-get index-matched-tool-call :partial_json)))
+                                      ;; Start new chain of partial argument strings
+                                      (gptel-mistral--log-dev "starting a new function call, placing arguments: %S\n" (plist-get func :arguments))
+                                      (plist-put tool-call :partial_json (list (plist-get func :arguments)))
+                                      (gptel-mistral--log-dev "after placing arguments: %S\n" (plist-get tool-call :partial_json))
+                                      ;; NOTE: Do NOT use `push' for this, it prepends and we lose the reference
+                                      (plist-put info :tool-use (cons tool-call (plist-get info :tool-use))))
+                                ;; old tool block continues, so continue collecting arguments in :partial_json
+                                (when-let* ((in-process-tool-calls (plist-get info :tool-use))
+                                            (index-matched-tool-call
+                                             (seq-find (lambda (in-process-tool-call)
+                                                         (progn (gptel-mistral--log-dev "looking at the in-process tool call: %S\n" in-process-tool-call)
+                                                                (equal (plist-get in-process-tool-call :index) tool-index)))
+                                                       in-process-tool-calls))
+                                            (index-matched-tool-func (plist-get index-matched-tool-call :function)))
+                                  (gptel-mistral--log-dev "pushing the partial json: %S into the arguments: %S\n\n" (plist-get index-matched-tool-call :partial_json) (plist-get func :arguments))
+                                  (push (plist-get func :arguments) (plist-get index-matched-tool-call :partial_json))))))))
                   ;; Check for reasoning blocks
                   (gptel-mistral--log-dev "before reasoning handler, delta: %S, reasoning: %S\n\n" delta (plist-get info :reasoning-block))
                   (unless (eq (plist-get info :reasoning-block) 'done)
@@ -211,7 +234,7 @@ information if the stream contains it."
                     ;; Done with reasoning if we get non-empty content
                     (when (plist-member info :reasoning)
                       (when (or (and (stringp text-content) (not (string-blank-p text-content))) ;; Started receiving text content?
-                                (not (null tool-content)))                                       ;; Started receiving tool call content?
+                                (not (null tools-content)))                                       ;; Started receiving tool call content?
                         (plist-put info :reasoning-block t))))))))) ;Signal end of reasoning block
       (error (goto-char (match-beginning 0))))
     (apply #'concat (nreverse content-strs))))
