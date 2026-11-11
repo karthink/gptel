@@ -2432,32 +2432,34 @@ Initiate the request when done."
     fsm))
 
 (defun gptel-abort (buf)
-  "Stop any active gptel process associated with buffer BUF.
+  "Stop all active gptel requests associated with buffer BUF.
 
 BUF defaults to the current buffer."
   (interactive (list (current-buffer)))
-  (when-let* ((proc-attrs
-               (cl-find-if
+  (when-let* ((entries
+               (cl-remove-if-not
                 (lambda (entry)
                   ;; each entry has the form (PROC . (FSM ABORT-FN))
                   (eq (thread-first (cadr entry) ; FSM
                                     (gptel-fsm-info)
                                     (plist-get :buffer))
                       buf))
-                gptel--request-alist))
-              (proc (car proc-attrs))
-              (fsm (cadr proc-attrs))
-              (info (gptel-fsm-info fsm))
-              (abort-fn (cddr proc-attrs)))
-    ;; Run :callback with abort signal
-    (with-demoted-errors "Callback error: %S"
-      (and-let* ((cb (plist-get info :callback))
-                 ((functionp cb)))
-        (funcall cb 'abort info)))
-    (funcall abort-fn)
-    (setf (alist-get proc gptel--request-alist nil 'remove) nil)
-    (gptel--fsm-transition fsm 'ABRT)
-    (message "Stopped gptel request in buffer %S" (buffer-name buf))))
+                gptel--request-alist)))
+    (dolist (proc-attrs entries)
+      (let* ((proc (car proc-attrs))
+             (fsm (cadr proc-attrs))
+             (info (gptel-fsm-info fsm))
+             (abort-fn (cddr proc-attrs)))
+        ;; Run :callback with abort signal
+        (with-demoted-errors "Callback error: %S"
+          (and-let* ((cb (plist-get info :callback))
+                     ((functionp cb)))
+            (funcall cb 'abort info)))
+        (funcall abort-fn)
+        (setf (alist-get proc gptel--request-alist nil 'remove) nil)
+        (gptel--fsm-transition fsm 'ABRT)))
+    (message "Stopped %d gptel request(s) in buffer %S"
+             (length entries) (buffer-name buf))))
 
 
 ;;; Prompt creation
