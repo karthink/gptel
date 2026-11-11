@@ -1968,23 +1968,24 @@ TOOL-SPEC is the `gptel-tool' object, and FSM is the request state.
 
 If all pending tool calls in the current request have finished, it
 injects the results into the prompt data and transitions the FSM."
-  (let* ((info (gptel-fsm-info fsm))
-         (tool-result-alist (plist-get info :tool-result))
-         ;; MAYBE(tool-hooks): Use plist-member for valid nil :result?
-         (remaining (cl-loop for call in (plist-get info :tool-use)
-                             count (not (plist-get call :result)))))
-    (let ((result (gptel--sanitize-raw-bytes (gptel--to-string result))))
-      ;; FIXME(tool-hooks): If a hook has changed the tool that was called
-      ;; tool-spec needs to be updated.
-      (push (list tool-spec (plist-get tool-call :args) result)
-            tool-result-alist)
-      (plist-put info :tool-result tool-result-alist) ;for the callback
-      ;; NOTE: tool-call is a member of (plist-get info :tool-use), so :tool-use
-      ;; is modified by side effect.
-      ;; FIXME: Make the implicit addition to :tool-use explicit
-      (plist-put tool-call :result result)) ;for the LLM
-    ;; All tools have run
-    (when (<= (cl-decf remaining) 0) (gptel--fsm-transition fsm))))
+  (unless (eq (gptel-fsm-state fsm) 'ABRT) ;Ignore tools that finish after an abort
+    (let* ((info (gptel-fsm-info fsm))
+           (tool-result-alist (plist-get info :tool-result))
+           ;; MAYBE(tool-hooks): Use plist-member for valid nil :result?
+           (remaining (cl-loop for call in (plist-get info :tool-use)
+                               count (not (plist-get call :result)))))
+      (let ((result (gptel--sanitize-raw-bytes (gptel--to-string result))))
+        ;; FIXME(tool-hooks): If a hook has changed the tool that was called
+        ;; tool-spec needs to be updated.
+        (push (list tool-spec (plist-get tool-call :args) result)
+              tool-result-alist)
+        (plist-put info :tool-result tool-result-alist) ;for the callback
+        ;; NOTE: tool-call is a member of (plist-get info :tool-use), so :tool-use
+        ;; is modified by side effect.
+        ;; FIXME: Make the implicit addition to :tool-use explicit
+        (plist-put tool-call :result result)) ;for the LLM
+      ;; All tools have run
+      (when (<= (cl-decf remaining) 0) (gptel--fsm-transition fsm)))))
 
 (defun gptel--handle-tool-use (fsm)
   "Run tool calls captured in FSM, and advance the state machine with the results."
