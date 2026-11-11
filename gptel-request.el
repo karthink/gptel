@@ -1947,6 +1947,11 @@ MACHINE is an instance of `gptel-fsm'"
     (dolist (key '(:tool-result :tool-use :error :http-status :reasoning :tokens))
       (when (plist-get req-info key)
         (plist-put req-info key nil)))
+    ;; Remove the entry of the previous request of this FSM.  Its process is
+    ;; dead, and the new request adds a new entry.
+    (setq gptel--request-alist
+          (cl-remove-if (lambda (entry) (eq (cadr entry) fsm))
+                        gptel--request-alist))
     (funcall
      (if gptel-use-curl
          #'gptel-curl-get-response
