@@ -2753,35 +2753,36 @@ the response is inserted into the current buffer after point."
            (url-retrieve (let ((backend-url (gptel-backend-url gptel-backend)))
                            (gptel--maybe-funcall backend-url info))
                          (lambda (_)
-                           (set-buffer-multibyte t)
-                           (set-buffer-file-coding-system 'utf-8-unix)
-                           (pcase-let ((`(,response ,http-status ,http-msg ,error)
-                                        (gptel--url-parse-response
-                                         (plist-get info :backend) info))
-                                       (buf (current-buffer)))
-                             (plist-put info :http-status http-status)
-                             (plist-put info :status http-msg)
-                             (gptel--fsm-transition fsm) ;WAIT -> TYPE
-                             (when error (plist-put info :error error))
-                             (when response ;Look for a reasoning block
-                               (if (string-match-p "^\\s-*<think>" response)
-                                   (when-let* ((idx (string-search "</think>" response)))
-                                     (with-demoted-errors "gptel callback error: %S"
-                                       (funcall callback
-                                                (cons 'reasoning
-                                                      (substring response nil (+ idx 8)))
-                                                info))
-                                     (setq response (string-trim-left
-                                                     (substring response (+ idx 8)))))
-                                 (when-let* ((reasoning (plist-get info :reasoning))
-                                             ((stringp reasoning)))
-                                   (funcall callback (cons 'reasoning reasoning) info))))
-                             (when (or response (not (member http-status '("200" "100"))))
-                               (with-demoted-errors "gptel callback error: %S"
-                                 (funcall callback response info)))
-                             (gptel--fsm-transition fsm) ;TYPE -> next
-                             (gptel--request-forget buf fsm)
-                             (kill-buffer buf)))
+                           (let ((callback (plist-get info :callback)))
+                             (set-buffer-multibyte t)
+                             (set-buffer-file-coding-system 'utf-8-unix)
+                             (pcase-let ((`(,response ,http-status ,http-msg ,error)
+                                          (gptel--url-parse-response
+                                           (plist-get info :backend) info))
+                                         (buf (current-buffer)))
+                               (plist-put info :http-status http-status)
+                               (plist-put info :status http-msg)
+                               (gptel--fsm-transition fsm) ;WAIT -> TYPE
+                               (when error (plist-put info :error error))
+                               (when response ;Look for a reasoning block
+                                 (if (string-match-p "^\\s-*<think>" response)
+                                     (when-let* ((idx (string-search "</think>" response)))
+                                       (with-demoted-errors "gptel callback error: %S"
+                                         (funcall callback
+                                                  (cons 'reasoning
+                                                        (substring response nil (+ idx 8)))
+                                                  info))
+                                       (setq response (string-trim-left
+                                                       (substring response (+ idx 8)))))
+                                   (when-let* ((reasoning (plist-get info :reasoning))
+                                               ((stringp reasoning)))
+                                     (funcall callback (cons 'reasoning reasoning) info))))
+                               (when (or response (not (member http-status '("200" "100"))))
+                                 (with-demoted-errors "gptel callback error: %S"
+                                   (funcall callback response info)))
+                               (gptel--fsm-transition fsm) ;TYPE -> next
+                               (gptel--request-forget buf fsm)
+                               (kill-buffer buf))))
                          nil t nil)))
       ;; TODO: Add transformer here.
       (setf (alist-get proc-buf gptel--request-alist)
