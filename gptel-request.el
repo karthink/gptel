@@ -738,6 +738,16 @@ line by themselves, separated from surrounding text."
 Each entry has the form (PROCESS . (FSM ABORT-CLOSURE))
 If the ABORT-CLOSURE is called, it must abort the PROCESS.")
 
+(defun gptel--request-forget (process fsm)
+  "Remove PROCESS from `gptel--request-alist' when its request ends.
+
+FSM is the state machine of the request.  If FSM is still running
+tools, keep the entry so that `gptel-abort' can find the request.
+The process is dead at this point, so the abort closure does nothing."
+  (if (and fsm (memq (gptel-fsm-state fsm) '(TOOL TRET)))
+      (setf (alist-get process gptel--request-alist) (cons fsm #'ignore))
+    (setf (alist-get process gptel--request-alist nil 'remove) nil)))
+
 (defvar gptel--request-params nil
   "Extra parameters sent with each gptel request.
 
@@ -1937,6 +1947,11 @@ MACHINE is an instance of `gptel-fsm'"
     (dolist (key '(:tool-result :tool-use :error :http-status :reasoning :tokens))
       (when (plist-get req-info key)
         (plist-put req-info key nil)))
+    ;; Remove the entry of the previous request of this FSM.  Its process is
+    ;; dead, and the new request adds a new entry.
+    (setq gptel--request-alist
+          (cl-remove-if (lambda (entry) (eq (cadr entry) fsm))
+                        gptel--request-alist))
     (funcall
      (if gptel-use-curl
          #'gptel-curl-get-response
@@ -1953,23 +1968,24 @@ TOOL-SPEC is the `gptel-tool' object, and FSM is the request state.
 
 If all pending tool calls in the current request have finished, it
 injects the results into the prompt data and transitions the FSM."
-  (let* ((info (gptel-fsm-info fsm))
-         (tool-result-alist (plist-get info :tool-result))
-         ;; MAYBE(tool-hooks): Use plist-member for valid nil :result?
-         (remaining (cl-loop for call in (plist-get info :tool-use)
-                             count (not (plist-get call :result)))))
-    (let ((result (gptel--sanitize-raw-bytes (gptel--to-string result))))
-      ;; FIXME(tool-hooks): If a hook has changed the tool that was called
-      ;; tool-spec needs to be updated.
-      (push (list tool-spec (plist-get tool-call :args) result)
-            tool-result-alist)
-      (plist-put info :tool-result tool-result-alist) ;for the callback
-      ;; NOTE: tool-call is a member of (plist-get info :tool-use), so :tool-use
-      ;; is modified by side effect.
-      ;; FIXME: Make the implicit addition to :tool-use explicit
-      (plist-put tool-call :result result)) ;for the LLM
-    ;; All tools have run
-    (when (<= (cl-decf remaining) 0) (gptel--fsm-transition fsm))))
+  (unless (eq (gptel-fsm-state fsm) 'ABRT) ;Ignore tools that finish after an abort
+    (let* ((info (gptel-fsm-info fsm))
+           (tool-result-alist (plist-get info :tool-result))
+           ;; MAYBE(tool-hooks): Use plist-member for valid nil :result?
+           (remaining (cl-loop for call in (plist-get info :tool-use)
+                               count (not (plist-get call :result)))))
+      (let ((result (gptel--sanitize-raw-bytes (gptel--to-string result))))
+        ;; FIXME(tool-hooks): If a hook has changed the tool that was called
+        ;; tool-spec needs to be updated.
+        (push (list tool-spec (plist-get tool-call :args) result)
+              tool-result-alist)
+        (plist-put info :tool-result tool-result-alist) ;for the callback
+        ;; NOTE: tool-call is a member of (plist-get info :tool-use), so :tool-use
+        ;; is modified by side effect.
+        ;; FIXME: Make the implicit addition to :tool-use explicit
+        (plist-put tool-call :result result)) ;for the LLM
+      ;; All tools have run
+      (when (<= (cl-decf remaining) 0) (gptel--fsm-transition fsm)))))
 
 (defun gptel--handle-tool-use (fsm)
   "Run tool calls captured in FSM, and advance the state machine with the results."
@@ -2416,32 +2432,34 @@ Initiate the request when done."
     fsm))
 
 (defun gptel-abort (buf)
-  "Stop any active gptel process associated with buffer BUF.
+  "Stop all active gptel requests associated with buffer BUF.
 
 BUF defaults to the current buffer."
   (interactive (list (current-buffer)))
-  (when-let* ((proc-attrs
-               (cl-find-if
+  (when-let* ((entries
+               (cl-remove-if-not
                 (lambda (entry)
                   ;; each entry has the form (PROC . (FSM ABORT-FN))
                   (eq (thread-first (cadr entry) ; FSM
                                     (gptel-fsm-info)
                                     (plist-get :buffer))
                       buf))
-                gptel--request-alist))
-              (proc (car proc-attrs))
-              (fsm (cadr proc-attrs))
-              (info (gptel-fsm-info fsm))
-              (abort-fn (cddr proc-attrs)))
-    ;; Run :callback with abort signal
-    (with-demoted-errors "Callback error: %S"
-      (and-let* ((cb (plist-get info :callback))
-                 ((functionp cb)))
-        (funcall cb 'abort info)))
-    (funcall abort-fn)
-    (setf (alist-get proc gptel--request-alist nil 'remove) nil)
-    (gptel--fsm-transition fsm 'ABRT)
-    (message "Stopped gptel request in buffer %S" (buffer-name buf))))
+                gptel--request-alist)))
+    (dolist (proc-attrs entries)
+      (let* ((proc (car proc-attrs))
+             (fsm (cadr proc-attrs))
+             (info (gptel-fsm-info fsm))
+             (abort-fn (cddr proc-attrs)))
+        ;; Run :callback with abort signal
+        (with-demoted-errors "Callback error: %S"
+          (and-let* ((cb (plist-get info :callback))
+                     ((functionp cb)))
+            (funcall cb 'abort info)))
+        (funcall abort-fn)
+        (setf (alist-get proc gptel--request-alist nil 'remove) nil)
+        (gptel--fsm-transition fsm 'ABRT)))
+    (message "Stopped %d gptel request(s) in buffer %S"
+             (length entries) (buffer-name buf))))
 
 
 ;;; Prompt creation
@@ -2735,35 +2753,36 @@ the response is inserted into the current buffer after point."
            (url-retrieve (let ((backend-url (gptel-backend-url gptel-backend)))
                            (gptel--maybe-funcall backend-url info))
                          (lambda (_)
-                           (set-buffer-multibyte t)
-                           (set-buffer-file-coding-system 'utf-8-unix)
-                           (pcase-let ((`(,response ,http-status ,http-msg ,error)
-                                        (gptel--url-parse-response
-                                         (plist-get info :backend) info))
-                                       (buf (current-buffer)))
-                             (plist-put info :http-status http-status)
-                             (plist-put info :status http-msg)
-                             (gptel--fsm-transition fsm) ;WAIT -> TYPE
-                             (when error (plist-put info :error error))
-                             (when response ;Look for a reasoning block
-                               (if (string-match-p "^\\s-*<think>" response)
-                                   (when-let* ((idx (string-search "</think>" response)))
-                                     (with-demoted-errors "gptel callback error: %S"
-                                       (funcall callback
-                                                (cons 'reasoning
-                                                      (substring response nil (+ idx 8)))
-                                                info))
-                                     (setq response (string-trim-left
-                                                     (substring response (+ idx 8)))))
-                                 (when-let* ((reasoning (plist-get info :reasoning))
-                                             ((stringp reasoning)))
-                                   (funcall callback (cons 'reasoning reasoning) info))))
-                             (when (or response (not (member http-status '("200" "100"))))
-                               (with-demoted-errors "gptel callback error: %S"
-                                 (funcall callback response info)))
-                             (gptel--fsm-transition fsm) ;TYPE -> next
-                             (setf (alist-get buf gptel--request-alist nil 'remove) nil)
-                             (kill-buffer buf)))
+                           (let ((callback (plist-get info :callback)))
+                             (set-buffer-multibyte t)
+                             (set-buffer-file-coding-system 'utf-8-unix)
+                             (pcase-let ((`(,response ,http-status ,http-msg ,error)
+                                          (gptel--url-parse-response
+                                           (plist-get info :backend) info))
+                                         (buf (current-buffer)))
+                               (plist-put info :http-status http-status)
+                               (plist-put info :status http-msg)
+                               (gptel--fsm-transition fsm) ;WAIT -> TYPE
+                               (when error (plist-put info :error error))
+                               (when response ;Look for a reasoning block
+                                 (if (string-match-p "^\\s-*<think>" response)
+                                     (when-let* ((idx (string-search "</think>" response)))
+                                       (with-demoted-errors "gptel callback error: %S"
+                                         (funcall callback
+                                                  (cons 'reasoning
+                                                        (substring response nil (+ idx 8)))
+                                                  info))
+                                       (setq response (string-trim-left
+                                                       (substring response (+ idx 8)))))
+                                   (when-let* ((reasoning (plist-get info :reasoning))
+                                               ((stringp reasoning)))
+                                     (funcall callback (cons 'reasoning reasoning) info))))
+                               (when (or response (not (member http-status '("200" "100"))))
+                                 (with-demoted-errors "gptel callback error: %S"
+                                   (funcall callback response info)))
+                               (gptel--fsm-transition fsm) ;TYPE -> next
+                               (gptel--request-forget buf fsm)
+                               (kill-buffer buf))))
                          nil t nil)))
       ;; TODO: Add transformer here.
       (setf (alist-get proc-buf gptel--request-alist)
@@ -3061,8 +3080,8 @@ PROCESS and _STATUS are process parameters."
                (t (plist-put info :error "Could not parse HTTP response."))))))
         (with-demoted-errors "gptel callback error: %S"
           (funcall (plist-get info :callback) nil info))))
-      (gptel--fsm-transition fsm))      ; Move to next state
-    (setf (alist-get process gptel--request-alist nil 'remove) nil)
+      (gptel--fsm-transition fsm)       ; Move to next state
+      (gptel--request-forget process fsm))
     (kill-buffer proc-buf)))
 
 (defun gptel-curl--stream-filter (process output)
@@ -3213,7 +3232,7 @@ PROCESS and _STATUS are process parameters."
           (with-demoted-errors "gptel callback error: %S"
             (funcall proc-callback nil proc-info))))
       (gptel--fsm-transition fsm))      ;TYPE -> next
-    (setf (alist-get process gptel--request-alist nil 'remove) nil)
+    (gptel--request-forget process (car (alist-get process gptel--request-alist)))
     (kill-buffer proc-buf)))
 
 (defun gptel-curl--parse-response (proc-info)
