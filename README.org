@@ -1255,7 +1255,7 @@ TopxAI offers an OpenAI-compatible chat endpoint for Claude, GPT, Grok, GLM, Kim
 #+begin_src emacs-lisp
 ;; TopxAI: one key, OpenAI-compatible endpoint
 (gptel-make-openai "TopxAI"
-  :host "ai.topxea.com"
+  :host "api.topxai.xyz"
   :endpoint "/v1/chat/completions"
   :stream t
   :key "your-api-key"                   ;can be a function that returns the key
@@ -1272,13 +1272,13 @@ The Claude models are also served on an Anthropic Messages endpoint, so you can 
 
 #+begin_src emacs-lisp
 (gptel-make-anthropic "TopxAI Claude"
-  :host "ai.topxea.com"
+  :host "api.topxai.xyz"
   :stream t
   :key "your-api-key"
   :models '(claude-sonnet-5-5 claude-opus-5-5 claude-fable-5-1))
 #+end_src
 
-See [[https://ai.topxea.com/pricing][TopxAI's price list]] for the current models and [[https://ai.topxea.com/docs/api-reference][its API reference]] for the endpoints.  Jev uses a separate System One API and is not supported by these configurations.
+See [[https://api.topxai.xyz/pricing][TopxAI's price list]] for the current models and [[https://api.topxai.xyz/docs/api-reference][its API reference]] for the endpoints.  Jev uses a separate System One API and is not supported by these configurations.
 
 #+html: </details>
 ** Usage
