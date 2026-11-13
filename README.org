@@ -1275,7 +1275,7 @@ The Claude models are also served on an Anthropic Messages endpoint, so you can 
   :host "api.topxai.xyz"
   :stream t
   :key "your-api-key"
-  :models '(claude-sonnet-5-5 claude-opus-5-5 claude-fable-5-1))
+  :models '(claude-sonnet-5-5 claude-opus-5-5 claude-fable-5-2))
 #+end_src
 
 See [[https://api.topxai.xyz/pricing][TopxAI's price list]] for the current models and [[https://api.topxai.xyz/docs/api-reference][its API reference]] for the endpoints.  Jev uses a separate System One API and is not supported by these configurations.
