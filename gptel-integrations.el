@@ -30,6 +30,8 @@
 ;; - Run M-x `gptel-mcp-connect' and M-x `gptel-mcp-disconnect', OR
 ;; - Use gptel's tools menu, M-x `gptel-tools', OR
 ;; - Access tools from `gptel-menu'
+;;
+;; See examples/parallel-search.org for a remote HTTP search and fetch setup.
 
 ;;; Code:
 (require 'gptel)
