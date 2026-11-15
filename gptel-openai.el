@@ -430,8 +430,12 @@ The input is an alist of the form
   (:media \"/path/to/media.png\" :mime \"image/png\")
   (:text \"More text\")).
 
-The output is a vector of entries in a backend-appropriate
-format."
+The output is a vector of entries in a backend-appropriate format.
+
+The Completions API only accepts images and PDF files as
+multimodal input: parts with any other MIME type abort the
+request with an error.  Similarly, only image URLs are sent;
+URLs for other file types are not supported by the API."
   (cl-loop
    for part in parts
    for n upfrom 1
@@ -442,10 +446,22 @@ format."
    (and (or (= n 1) (= n last)) (setq text (gptel--trim-prefixes text)))
    and if text
    collect `(:type "text" :text ,text) into parts-array end
-   else if media collect
-   `(:type "image_url"
-     :image_url (:url ,(concat "data:" (plist-get part :mime)
-                        ";base64," (gptel--base64-encode media))))
+   else if media appending
+   (let ((mime (plist-get part :mime)))
+     (cond
+      ((string-prefix-p "image/" mime)
+       (list `(:type "image_url"
+               :image_url (:url ,(concat "data:" mime ";base64,"
+                                         (gptel--base64-encode media))))))
+      ((equal mime "application/pdf")
+       (list `(:type "file"
+               :file (:filename ,(file-name-nondirectory media)
+                      :file_data ,(concat "data:application/pdf;base64,"
+                                          (gptel--base64-encode media))))))
+      (t                              ;The Completions API only accepts
+       (user-error                    ;images and PDF files as file input
+        "Backend %s does not support files of MIME type \"%s\" (%s)"
+        (gptel-backend-name gptel-backend) mime media))))
    into parts-array
    else if (plist-get part :textfile) collect
    `(:type "text"
@@ -454,9 +470,15 @@ format."
               (buffer-string)))
    into parts-array end and
    if (plist-get part :url)
-   collect
-   `(:type "image_url"
-     :image_url (:url ,(plist-get part :url)))
+   appending
+   (if-let* ((mime (plist-get part :mime))
+             (url (plist-get part :url))
+             ((string-prefix-p "image/" mime)))
+       (list `(:type "image_url" :image_url (:url ,url)))
+     (user-error                  ;Non-image URLs are not supported here
+      "Backend %s does not support URL input for \"%s\".
+Attach the file locally or use a different backend"
+      (gptel-backend-name gptel-backend) url))
    into parts-array
    finally return (vconcat parts-array)))
 
