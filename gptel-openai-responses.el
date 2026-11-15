@@ -488,9 +488,13 @@ format."
    and if text
    collect `(:type "input_text" :text ,text) into parts-array end
    else if media collect
-   `(:type "input_image"
-           :image_url ,(concat "data:" (plist-get part :mime)
-                               ";base64," (gptel--base64-encode media)))
+   (if-let* ((mime (plist-get part :mime))
+             (filedata (concat "data:" mime ";base64,"
+                               (gptel--base64-encode media)))
+             ((string-prefix-p "image/" mime)))
+       `( :type "input_image" :image_url ,filedata)
+     `( :type "input_file" :filename ,(file-name-nondirectory media)
+        :file_data ,filedata))
    into parts-array
    else if (plist-get part :textfile) collect
    `(:type "input_text"
@@ -500,8 +504,10 @@ format."
    into parts-array end and
    if (plist-get part :url)
    collect
-   `(:type "input_image"
-           :image_url ,(plist-get part :url))
+   (if-let* ((mime (plist-get part :mime))
+             ((string-prefix-p "image/" mime)))
+       `(:type "input_image" :image_url ,(plist-get part :url))
+     `(:type "input_file" :file_url ,(plist-get part :url)))
    into parts-array
    finally return (vconcat parts-array)))
 

@@ -39,6 +39,12 @@
   =grok-4.20-non-reasoning= and =grok-4.20-multi-agent=.
 
 ** New features and UI changes
+
+- The OpenAI backend now supports sending PDFs, common Microsoft Office,
+  Apple and Open Office file formats.  As before, such files can be
+  included as Org/Markdown links in buffers or via ~gptel-add~. (This
+  support has existed in the OpenAI API for a while now.)
+
 ** Notable bug fixes
 
 - Non UTF-8 characters or raw bytes in tool call results are replaced

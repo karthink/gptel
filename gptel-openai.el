@@ -474,12 +474,37 @@ Media files, if present, are placed in `gptel-context'."
                    (t current))))
         (plist-get (car prompts) :content))))
 
+(defconst gptel--openai-media-mime-types
+  '("image/jpeg" "image/png" "image/gif" "image/webp"
+    "application/pdf"
+    ;; Rich documents
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    "application/msword"
+    "application/rtf" "text/rtf"
+    "application/vnd.oasis.opendocument.text"
+    "application/vnd.apple.pages" "application/vnd.apple.iwork"
+    "application/vnd.google-apps.document"
+    ;; Spreadsheets
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    "application/vnd.ms-excel"
+    "text/csv" "application/csv" "text/tsv"
+    "text/x-iif" "application/x-iif"
+    "application/vnd.google-apps.spreadsheet"
+    ;; Presentations
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    "application/vnd.ms-powerpoint"
+    "application/vnd.apple.keynote"
+    "application/vnd.google-apps.presentation")
+  "MIME types accepted by OpenAI models as multimodal input.
+NOTE: While the OpenAI Responses API supports all of these, the
+Completions API supports only images and PDF.")
+
 (defconst gptel--openai-models
   (gptel--process-models
-   '((gpt-5.4-mini
+   `((gpt-5.4-mini
       :description "Faster, more cost-efficient version of GPT-5.4"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 400
       :input-cost 0.75
       :output-cost 4.50
@@ -487,7 +512,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-5.4-nano
       :description "Fastest, cheapest version of GPT-5.4"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 400
       :input-cost 0.20
       :output-cost 1.25
@@ -495,7 +520,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-5.4
       :description "The best model for coding and agentic tasks"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1050
       :input-cost 2.50
       :output-cost 15
@@ -503,7 +528,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-5.4-pro
       :description "Maximum performance model for reasoning tasks"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1050
       :input-cost 30
       :output-cost 180
@@ -511,7 +536,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-6.1-sol
       :description "Faster, more cost-efficient version of GPT-6"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1050
       :input-cost 2
       :output-cost 10
@@ -519,7 +544,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-6.1-terra
       :description "Faster, more cost-efficient version of GPT-6.1-sol"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1050
       :input-cost 1
       :output-cost 5
@@ -527,7 +552,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-6-astra
       :description "The best model for coding and agentic tasks"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1050
       :input-cost 10
       :output-cost 50
@@ -535,7 +560,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-6-sol
       :description "Faster, more cost-efficient version of GPT-6"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1050
       :input-cost 2
       :output-cost 10
@@ -543,7 +568,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-6-luna
       :description "Fastest, cheapest version of GPT-6"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1050
       :input-cost 0.10
       :output-cost 0.50
@@ -551,7 +576,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-5.6-sol
       :description "The best model for coding and agentic tasks"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1050
       :input-cost 4
       :output-cost 20
@@ -559,7 +584,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-5.6-terra
       :description "Faster, more cost-efficient version of GPT-5.6"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1050
       :input-cost 2
       :output-cost 12
@@ -567,7 +592,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-5.6-luna
       :description "Fastest, cheapest version of GPT-5.6"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1050
       :input-cost 0.20
       :output-cost 1.20
@@ -575,7 +600,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-5.5
       :description "The best model for coding and agentic tasks"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1050
       :input-cost 5
       :output-cost 30
@@ -583,7 +608,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-5.5-pro
       :description "Maximum performance model for reasoning tasks"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1050
       :input-cost 30
       :output-cost 180
@@ -591,7 +616,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-5.3-chat-latest
       :description "Answers right away"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 400
       :input-cost 1.75
       :output-cost 14
@@ -599,7 +624,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-5.2
       :description "The best model for coding and agentic tasks"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 400
       :input-cost 1.75
       :output-cost 14
@@ -607,7 +632,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-5.1
       :description "The best model for coding and agentic tasks"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 400
       :input-cost 1.25
       :output-cost 10
@@ -615,7 +640,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-5-mini
       :description "Faster, more cost-efficient version of GPT-5"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 400
       :input-cost 0.25
       :output-cost 2.0
@@ -623,7 +648,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-5-nano
       :description "Fastest, cheapest version of GPT-5"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 400
       :input-cost 0.05
       :output-cost 0.40
@@ -631,7 +656,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-5
       :description "Flagship model for coding, reasoning, and agentic tasks across domains"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 400
       :input-cost 1.25
       :output-cost 10
@@ -639,14 +664,14 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-4.1-mini
       :description "Balance between intelligence, speed and cost"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1024
       :input-cost 0.4
       :output-cost 1.6)
      (gpt-4.1-nano
       :description "Fastest, most cost-effective GPT-4.1 model"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1024
       :input-cost 0.10
       :output-cost 0.40
@@ -654,7 +679,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-4.1
       :description "Flagship model for complex tasks"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 1024
       :input-cost 2.0
       :output-cost 8.0
@@ -662,7 +687,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-4o-mini
       :description "Cheap model for fast tasks; cheaper & more capable than GPT-3.5 Turbo"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 128
       :input-cost 0.15
       :output-cost 0.60
@@ -670,7 +695,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-4o
       :description "Advanced model for complex tasks; cheaper & faster than GPT-Turbo"
       :capabilities (media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 128
       :input-cost 2.50
       :output-cost 10
@@ -678,7 +703,7 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-4.5-preview
       :description "DEPRECATED: Use gpt-4.1 instead"
       :capabilities (media tool-use url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 128
       :input-cost 75
       :output-cost 150
@@ -686,14 +711,14 @@ Media files, if present, are placed in `gptel-context'."
      (gpt-4-turbo
       :description "Previous high-intelligence model"
       :capabilities (media tool-use url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 128
       :input-cost 10
       :output-cost 30
       :cutoff-date "2023-11")
      (gpt-4
       :description "GPT-4 snapshot from June 2023 with improved function calling support"
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :capabilities (media url responses-api)
       :context-window 8.192
       :input-cost 30
@@ -702,7 +727,7 @@ Media files, if present, are placed in `gptel-context'."
      (o4-mini
       :description "Fast, effective reasoning with efficient performance in coding and visual tasks"
       :capabilities (reasoning media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 200
       :input-cost 1.10
       :output-cost 4.40
@@ -717,7 +742,7 @@ Media files, if present, are placed in `gptel-context'."
      (o3
       :description "Well-rounded and powerful model across domains"
       :capabilities (reasoning media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 200
       :input-cost 2
       :output-cost 8
@@ -725,7 +750,7 @@ Media files, if present, are placed in `gptel-context'."
      (o3-pro
       :description "Maximum performance model for reasoning tasks"
       :capabilities (reasoning media tool-use json url responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 200
       :input-cost 20
       :output-cost 80
@@ -740,7 +765,7 @@ Media files, if present, are placed in `gptel-context'."
      (o1
       :description "Reasoning model designed to solve hard problems across domains"
       :capabilities (media reasoning responses-api)
-      :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp")
+      :mime-types ,gptel--openai-media-mime-types
       :context-window 200
       :input-cost 15
       :output-cost 60
@@ -810,7 +835,8 @@ including both kinds of specs:
    \"Affordable and intelligent small model for lightweight tasks\"
    :capabilities (media tool json url)
    :mime-types
-   (\"image/jpeg\" \"image/png\" \"image/gif\" \"image/webp\")))
+   (\"image/jpeg\" \"image/png\" \"image/gif\" \"image/webp\"
+    \"application/pdf\")))
 
 STREAM is a boolean to toggle streaming responses, defaults to
 false.
