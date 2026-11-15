@@ -2758,7 +2758,8 @@ the response is inserted into the current buffer after point."
                                  (when-let* ((reasoning (plist-get info :reasoning))
                                              ((stringp reasoning)))
                                    (funcall callback (cons 'reasoning reasoning) info))))
-                             (when (or response (not (member http-status '("200" "100"))))
+                             (when (or response (plist-get info :error)
+                                       (not (member http-status '("200" "100"))))
                                (with-demoted-errors "gptel callback error: %S"
                                  (funcall callback response info)))
                              (gptel--fsm-transition fsm) ;TYPE -> next
@@ -2784,6 +2785,15 @@ RESPONSE is the parsed JSON of the response, as a plist.
 PROC-INFO is a plist with process information and other context.
 See `gptel-curl--get-response' for its contents.")
 
+(cl-defgeneric gptel--read-response-body (backend)
+  "Read the response body of a request to BACKEND from point.
+
+Return the parsed response, typically a plist.  Backends that do
+not reply with a plain JSON object can override this method.
+Point is at the beginning of the response body."
+  (ignore backend)
+  (gptel--json-read))
+
 (defun gptel--url-parse-response (backend proc-info)
   "Parse response from BACKEND with PROC-INFO."
   (when gptel-log-level                 ;logging
@@ -2802,9 +2812,12 @@ See `gptel-curl--get-response' for its contents.")
                     (match-string 1 http-msg))))
             (response (progn (goto-char url-http-end-of-headers)
                              (condition-case nil
-                                 (gptel--json-read)
+                                 (gptel--read-response-body backend)
                                (error 'json-read-error)))))
       (cond
+       ;; The body could not be read, report this regardless of HTTP status
+       ((eq response 'json-read-error)
+        (list nil http-status (concat "(" http-msg ") Malformed JSON in response.") "json-read-error"))
        ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
        ((or (memq url-http-response-status '(200 100))
             (string-match-p "\\(?:1\\|2\\)00 OK" http-msg))
@@ -2814,8 +2827,6 @@ See `gptel-curl--get-response' for its contents.")
               http-status http-msg))
        ((and-let* ((error-data (gptel--parse-response-error response)))
           (list nil http-status http-msg error-data)))
-       ((eq response 'json-read-error)
-        (list nil http-status (concat "(" http-msg ") Malformed JSON in response.") "json-read-error"))
        (t (list nil http-status (concat "(" http-msg ") Could not parse HTTP response.")
                 "Could not parse HTTP response.")))
     (list nil (concat "(" http-msg ") Could not parse HTTP response.")
@@ -3050,7 +3061,9 @@ PROCESS and _STATUS are process parameters."
             (backward-char)
             (pcase-let* ((`(,_ . ,header-size) (read (current-buffer)))
                          (response (progn (goto-char header-size)
-                                          (condition-case nil (gptel--json-read)
+                                          (condition-case nil
+                                              (gptel--read-response-body
+                                               (plist-get info :backend))
                                             (error 'json-read-error))))
                          (error-data (gptel--parse-response-error response)))
               (cond
@@ -3201,7 +3214,8 @@ PROCESS and _STATUS are process parameters."
                             ((stringp reasoning)))
                   (funcall proc-callback (cons 'reasoning reasoning) proc-info)))
               ;; Call callback with response text
-              (when (or response (not (member http-status '("200" "100"))))
+              (when (or response (plist-get proc-info :error)
+                        (not (member http-status '("200" "100"))))
                 (with-demoted-errors "gptel callback error: %S"
                   (funcall proc-callback response proc-info))))
           ;; Curl exited with a non-zero status: connection-level failure
@@ -3236,9 +3250,14 @@ PROC-INFO is a plist with contextual information."
                           (match-string 1 http-msg))))
                   (response (progn (goto-char header-size)
                                    (condition-case nil
-                                       (gptel--json-read)
+                                       (gptel--read-response-body
+                                        (plist-get proc-info :backend))
                                      (error 'json-read-error)))))
             (cond
+             ;; The body could not be read, report this regardless of HTTP status
+             ((eq response 'json-read-error)
+              (list nil http-status (concat "(" http-msg ") Malformed JSON in response.")
+                    "Malformed JSON in response"))
              ;; FIXME Handle the case where HTTP 100 is followed by HTTP (not 200) BUG #194
              ((member http-status '("200" "100"))
               (list (and-let* ((resp (gptel--parse-response
@@ -3248,9 +3267,6 @@ PROC-INFO is a plist with contextual information."
                     http-status http-msg))
              ((and-let* ((error-data (gptel--parse-response-error response)))
                 (list nil http-status http-msg error-data)))
-             ((eq response 'json-read-error)
-              (list nil http-status (concat "(" http-msg ") Malformed JSON in response.")
-                    "Malformed JSON in response"))
              (t (list nil http-status (concat "(" http-msg ") Could not parse HTTP response.")
                       "Could not parse HTTP response.")))
           (list nil http-status (concat "(" http-msg ") Could not parse HTTP response.")
