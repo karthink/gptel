@@ -2370,6 +2370,9 @@ Initiate the request when done."
   (let ((info (gptel-fsm-info fsm)))
     (with-current-buffer (plist-get info :data)
       (let* ((directive (gptel--parse-directive gptel-system-prompt 'raw))
+             ;; Select the implementation before parsing prompts or deciding
+             ;; the stream encoding.  Keep it in INFO for all response/tool turns.
+             (gptel-backend (gptel--request-backend gptel-backend gptel-model))
              ;; DIRECTIVE contains both the system message and the template prompts
              (gptel-system-prompt
               (unless (gptel--model-capable-p 'nosystem) (car directive)))
@@ -2643,6 +2646,13 @@ BACKEND is the gptel backend in use."
    '(gptel context)
    (format "Context support not implemented for backend %s, ignoring context"
            (gptel-backend-name backend))))
+
+(cl-defgeneric gptel--request-backend (backend _model)
+  "Select the implementation of BACKEND for a request using MODEL.
+The default returns BACKEND.  Backends supporting multiple API formats
+may return a request-local backend with the selected format's methods.
+The result is stored in the request context for subsequent tool turns."
+  backend)
 
 (cl-defgeneric gptel--request-data (backend prompts)
   "Generate a plist of all data for an LLM query.

@@ -20,15 +20,18 @@
 ;;; Commentary:
 
 ;; This file adds support for AWS Bedrock to gptel.  Documentation for the request data and the
-;; response payloads can be found at these two links:
+;; response payloads can be found at these links:
+;; * https://docs.aws.amazon.com/bedrock/latest/userguide/inference-responses-api.html
 ;; * https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html
 ;; * https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseStream.html
+;; Models use Responses when supported and Converse otherwise.
 
 ;;; Code:
 (require 'cl-lib)
 (require 'map)
 (require 'mail-parse)
 (eval-and-compile (require 'gptel-request))
+(require 'gptel-openai-responses)
 
 (declare-function gptel-context--collect-media "gptel-context")
 (declare-function gptel-context--wrap "gptel-context")
@@ -36,7 +39,8 @@
 (cl-defstruct (gptel-bedrock (:constructor gptel--make-bedrock)
                              (:copier nil)
                              (:include gptel-backend))
-  model-region)
+  model-region
+  (api 'auto))
 
 (defun gptel--bedrock-update-tokens (usage info)
   "Update token usage information from USAGE.
@@ -638,69 +642,396 @@ Convenient to use with `cl-multiple-value-bind'"
       ((and key-id secret-key) (cl-values key-id secret-key token))
       (t (user-error "Missing AWS credentials; provide them either via environment variables or specify PROFILE when calling gptel-make-bedrock")))))
 
-(defvar gptel-bedrock--model-ids
-  ;; https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
-  ;; https://platform.claude.com/docs/en/build-with-claude/claude-in-amazon-bedrock#supported-models
-  '((claude-sonnet-4-6           . "anthropic.claude-sonnet-4-6")
-    (claude-sonnet-5             . "anthropic.claude-sonnet-5")
-    (claude-sonnet-5-5           . "anthropic.claude-sonnet-5-5")
-    (claude-opus-4-6             . "anthropic.claude-opus-4-6-v1")
-    (claude-opus-4-7             . "anthropic.claude-opus-4-7")
-    (claude-opus-4-8             . "anthropic.claude-opus-4-8")
-    (claude-opus-4-9             . "anthropic.claude-opus-4-9")
-    (claude-opus-5               . "anthropic.claude-opus-5")
-    (claude-opus-5-5             . "anthropic.claude-opus-5-5")
-    (claude-fable-5              . "anthropic.claude-fable-5")
-    (claude-haiku-4-5            . "anthropic.claude-haiku-4-5")
-    (claude-haiku-5-5            . "anthropic.claude-haiku-5-5")
-    (claude-sonnet-4-5-20250929  . "anthropic.claude-sonnet-4-5-20250929-v1:0")
-    (claude-haiku-4-5-20251001   . "anthropic.claude-haiku-4-5-20251001-v1:0")
-    (claude-opus-4-5-20251101    . "anthropic.claude-opus-4-5-20251101-v1:0")
-    (claude-opus-4-1-20250805    . "anthropic.claude-opus-4-1-20250805-v1:0")
-    (claude-sonnet-4-20250514    . "anthropic.claude-sonnet-4-20250514-v1:0")
-    (claude-opus-4-20250514      . "anthropic.claude-opus-4-20250514-v1:0")
-    (claude-3-7-sonnet-20250219  . "anthropic.claude-3-7-sonnet-20250219-v1:0")
-    (claude-3-5-sonnet-20241022  . "anthropic.claude-3-5-sonnet-20241022-v2:0")
-    (claude-3-5-sonnet-20240620  . "anthropic.claude-3-5-sonnet-20240620-v1:0")
-    (claude-3-5-haiku-20241022   . "anthropic.claude-3-5-haiku-20241022-v1:0")
-    (claude-3-opus-20240229      . "anthropic.claude-3-opus-20240229-v1:0")
-    (claude-3-haiku-20240307     . "anthropic.claude-3-haiku-20240307-v1:0")
-    (nova-2-lite-v1              . "amazon.nova-2-lite-v1:0")
-    (mistral-7b                  . "mistral.mistral-7b-instruct-v0:2")
-    (mistral-8x7b                . "mistral.mixtral-8x7b-instruct-v0:1")
-    (mistral-large-2402          . "mistral.mistral-large-2402-v1:0")
-    (mistral-large-2407          . "mistral.mistral-large-2407-v1:0")
-    (mistral-small-2402          . "mistral.mistral-small-2402-v1:0")
-    (llama-3-8b                  . "meta.llama3-8b-instruct-v1:0")
-    (llama-3-70b                 . "meta.llama3-70b-instruct-v1:0")
-    (llama-3-1-8b                . "meta.llama3-1-8b-instruct-v1:0")
-    (llama-3-1-70b               . "meta.llama3-1-70b-instruct-v1:0")
-    (llama-3-1-405b              . "meta.llama3-1-405b-instruct-v1:0")
-    (llama-3-2-1b                . "meta.llama3-2-1b-instruct-v1:0")
-    (llama-3-2-3b                . "meta.llama3-2-3b-instruct-v1:0")
-    (llama-3-2-11b               . "meta.llama3-2-11b-instruct-v1:0")
-    (llama-3-2-90b               . "meta.llama3-2-90b-instruct-v1:0")
-    (llama-3-3-70b               . "meta.llama3-3-70b-instruct-v1:0"))
-  "Map of model name to bedrock id.
+(defvar gptel-bedrock--model-specs
+  ;; Checked against AWS model cards on 2026-10-19.  Retain the original
+  ;; aliases and add all Active runtime models supporting either API.
+  ;; https://docs.aws.amazon.com/bedrock/latest/userguide/models-api-compatibility.html
+  ;; :api is Responses only when the runtime-specific table supports it.
+  ;; :global records an explicitly documented Global inference profile.
+  '((claude-sonnet-4-6 :id "anthropic.claude-sonnet-4-6" :global t
+                       :description "Claude Sonnet 4.6"
+                       :capabilities (media tool-use)
+                       :mime-types ("image/jpeg" "image/png")
+                       :context-window 1000)
+    (claude-sonnet-5 :id "anthropic.claude-sonnet-5" :global t
+                     :description "Claude Sonnet 5"
+                     :capabilities (media tool-use)
+                     :mime-types ("image/jpeg" "image/png")
+                     :context-window 1000)
+    (claude-sonnet-5-5 :id "anthropic.claude-sonnet-5-5" :global t
+                       :description "Claude Sonnet 5.5"
+                       :capabilities (media tool-use)
+                       :mime-types ("image/jpeg" "image/png")
+                       :context-window 1000)
+    (claude-opus-4-6 :id "anthropic.claude-opus-4-6-v1" :global t
+                     :description "Claude Opus 4.6"
+                     :capabilities (media tool-use)
+                     :mime-types ("image/jpeg" "image/png")
+                     :context-window 1000)
+    (claude-opus-4-7 :id "anthropic.claude-opus-4-7" :global t
+                     :description "Claude Opus 4.7"
+                     :capabilities (media tool-use)
+                     :mime-types ("image/jpeg" "image/png")
+                     :context-window 1000)
+    (claude-opus-4-8 :id "anthropic.claude-opus-4-8" :global t
+                     :description "Claude Opus 4.8"
+                     :capabilities (media tool-use)
+                     :mime-types ("image/jpeg" "image/png")
+                     :context-window 1000)
+    (claude-opus-4-9 :id "anthropic.claude-opus-4-9")
+    (claude-opus-5 :id "anthropic.claude-opus-5" :global t
+                   :description "Claude Opus 5"
+                   :capabilities (media tool-use)
+                   :mime-types ("image/jpeg" "image/png")
+                   :context-window 1000)
+    (claude-opus-5-5 :id "anthropic.claude-opus-5-5" :global t
+                     :description "Claude Opus 5.5"
+                     :capabilities (media tool-use)
+                     :mime-types ("image/jpeg" "image/png")
+                     :context-window 1000)
+    (claude-fable-5 :id "anthropic.claude-fable-5" :global t
+                    :description "Claude Fable 5"
+                    :capabilities (media tool-use)
+                    :mime-types ("image/jpeg" "image/png")
+                    :context-window 1000)
+    (claude-haiku-4-5 :id "anthropic.claude-haiku-4-5-20251001-v1:0" :global t
+                      :description "Claude Haiku 4.5"
+                      :capabilities (media tool-use)
+                      :mime-types ("image/jpeg" "image/png")
+                      :context-window 200)
+    (claude-haiku-5-5 :id "anthropic.claude-haiku-5-5" :global t
+                      :description "Claude Haiku 5.5"
+                      :capabilities (media tool-use)
+                      :mime-types ("image/jpeg" "image/png")
+                      :context-window 1000)
+    (claude-sonnet-4-5-20250929 :id "anthropic.claude-sonnet-4-5-20250929-v1:0" :global t)
+    (claude-haiku-4-5-20251001 :id "anthropic.claude-haiku-4-5-20251001-v1:0" :global t
+                               :description "Claude Haiku 4.5"
+                               :capabilities (media tool-use)
+                               :mime-types ("image/jpeg" "image/png")
+                               :context-window 200)
+    (claude-opus-4-5-20251101 :id "anthropic.claude-opus-4-5-20251101-v1:0" :global t
+                              :description "Claude Opus 4.5"
+                              :capabilities (media tool-use)
+                              :mime-types ("image/jpeg" "image/png")
+                              :context-window 200)
+    (claude-opus-4-1-20250805 :id "anthropic.claude-opus-4-1-20250805-v1:0")
+    (claude-sonnet-4-20250514 :id "anthropic.claude-sonnet-4-20250514-v1:0" :global t)
+    (claude-opus-4-20250514 :id "anthropic.claude-opus-4-20250514-v1:0")
+    (claude-3-7-sonnet-20250219 :id "anthropic.claude-3-7-sonnet-20250219-v1:0")
+    (claude-3-5-sonnet-20241022 :id "anthropic.claude-3-5-sonnet-20241022-v2:0")
+    (claude-3-5-sonnet-20240620 :id "anthropic.claude-3-5-sonnet-20240620-v1:0")
+    (claude-3-5-haiku-20241022 :id "anthropic.claude-3-5-haiku-20241022-v1:0")
+    (claude-3-opus-20240229 :id "anthropic.claude-3-opus-20240229-v1:0")
+    (claude-3-haiku-20240307 :id "anthropic.claude-3-haiku-20240307-v1:0")
+    (nova-2-lite-v1 :id "amazon.nova-2-lite-v1:0" :global t
+                    :description "Nova 2 Lite"
+                    :capabilities (media tool-use)
+                    :mime-types ("image/jpeg" "image/png")
+                    :context-window 1000)
+    (mistral-7b :id "mistral.mistral-7b-instruct-v0:2")
+    (mistral-8x7b :id "mistral.mixtral-8x7b-instruct-v0:1")
+    (mistral-large-2402 :id "mistral.mistral-large-2402-v1:0"
+                        :description "Mistral Large"
+                        :capabilities (tool-use)
+                        :context-window 32)
+    (mistral-large-2407 :id "mistral.mistral-large-2407-v1:0")
+    (mistral-small-2402 :id "mistral.mistral-small-2402-v1:0"
+                        :description "Mistral Small"
+                        :capabilities (tool-use)
+                        :context-window 32)
+    (llama-3-8b :id "meta.llama3-8b-instruct-v1:0")
+    (llama-3-70b :id "meta.llama3-70b-instruct-v1:0")
+    (llama-3-1-8b :id "meta.llama3-1-8b-instruct-v1:0")
+    (llama-3-1-70b :id "meta.llama3-1-70b-instruct-v1:0")
+    (llama-3-1-405b :id "meta.llama3-1-405b-instruct-v1:0")
+    (llama-3-2-1b :id "meta.llama3-2-1b-instruct-v1:0")
+    (llama-3-2-3b :id "meta.llama3-2-3b-instruct-v1:0")
+    (llama-3-2-11b :id "meta.llama3-2-11b-instruct-v1:0")
+    (llama-3-2-90b :id "meta.llama3-2-90b-instruct-v1:0")
+    (llama-3-3-70b :id "meta.llama3-3-70b-instruct-v1:0")
+    (nova-lite :id "amazon.nova-lite-v1:0"
+               :description "Nova Lite"
+               :capabilities (media tool-use)
+               :mime-types ("image/jpeg" "image/png")
+               :context-window 300)
+    (nova-micro :id "amazon.nova-micro-v1:0"
+                :description "Nova Micro"
+                :capabilities (tool-use)
+                :context-window 128)
+    (nova-pro :id "amazon.nova-pro-v1:0"
+              :description "Nova Pro"
+              :capabilities (media tool-use)
+              :mime-types ("image/jpeg" "image/png")
+              :context-window 300)
+    (claude-fable-5-1 :id "anthropic.claude-fable-5-1" :global t
+                      :description "Claude Fable 5.1"
+                      :capabilities (media tool-use)
+                      :mime-types ("image/jpeg" "image/png")
+                      :context-window 1000)
+    (claude-mythos-5-1 :id "anthropic.claude-mythos-5-1" :global t
+                       :description "Claude Mythos 5.1"
+                       :capabilities (media tool-use)
+                       :mime-types ("image/jpeg" "image/png")
+                       :context-window 1000)
+    (deepseek-v3.2 :id "deepseek.v3.2"
+                   :description "DeepSeek V3.2"
+                   :capabilities (tool-use)
+                   :context-window 164)
+    (magistral-small-2509 :id "mistral.magistral-small-2509"
+                          :description "Magistral Small 2509"
+                          :capabilities (media tool-use)
+                          :mime-types ("image/jpeg" "image/png")
+                          :context-window 128)
+    (ministral-3-14b-instruct :id "mistral.ministral-3-14b-instruct"
+                              :description "Ministral 14B 3.0"
+                              :capabilities (media tool-use)
+                              :mime-types ("image/jpeg" "image/png")
+                              :context-window 128)
+    (ministral-3-8b-instruct :id "mistral.ministral-3-8b-instruct"
+                             :description "Ministral 3 8B"
+                             :capabilities (media tool-use)
+                             :mime-types ("image/jpeg" "image/png")
+                             :context-window 128)
+    (ministral-3-3b-instruct :id "mistral.ministral-3-3b-instruct"
+                             :description "Ministral 3B"
+                             :capabilities (media tool-use)
+                             :mime-types ("image/jpeg" "image/png")
+                             :context-window 128)
+    (mistral-large-3-675b-instruct :id "mistral.mistral-large-3-675b-instruct"
+                                   :description "Mistral Large 3"
+                                   :capabilities (media tool-use)
+                                   :mime-types ("image/jpeg" "image/png")
+                                   :context-window 256)
+    (pixtral-large-2502 :id "mistral.pixtral-large-2502-v1:0"
+                        :description "Pixtral Large"
+                        :capabilities (media tool-use)
+                        :mime-types ("image/jpeg" "image/png")
+                        :context-window 128)
+    (kimi-k3 :id "moonshotai.kimi-k3" :global t :api responses
+             :description "Kimi K3"
+             :capabilities (media tool-use json responses-api)
+             :mime-types ("image/jpeg" "image/png")
+             :context-window 1000)
+    (kimi-k2.5 :id "moonshotai.kimi-k2.5"
+               :description "Kimi K2.5"
+               :capabilities (media tool-use)
+               :mime-types ("image/jpeg" "image/png")
+               :context-window 256)
+    (nemotron-nano-3-30b :id "nvidia.nemotron-nano-3-30b"
+                         :description "Nemotron Nano 3 30B"
+                         :capabilities (tool-use)
+                         :context-window 256)
+    (gpt-6.1-sol :id "openai.gpt-6.1-sol" :global t :api responses
+                 :description "GPT-6.1 Sol"
+                 :capabilities (media tool-use json responses-api)
+                 :mime-types ("image/jpeg" "image/png")
+                 :context-window 1000)
+    (gpt-6-astra :id "openai.gpt-6-astra" :global t :api responses
+                 :description "GPT-6 Astra"
+                 :capabilities (media tool-use json responses-api)
+                 :mime-types ("image/jpeg" "image/png")
+                 :context-window 1050)
+    (gpt-6-sol :id "openai.gpt-6-sol" :global t :api responses
+               :description "GPT-6 Sol"
+               :capabilities (media tool-use json responses-api)
+               :mime-types ("image/jpeg" "image/png")
+               :context-window 1050)
+    (gpt-6-luna :id "openai.gpt-6-luna" :global t :api responses
+                :description "GPT-6 Luna"
+                :capabilities (media tool-use json responses-api)
+                :mime-types ("image/jpeg" "image/png")
+                :context-window 1050)
+    (gpt-5.6-sol :id "openai.gpt-5.6-sol" :global t :api responses
+                 :description "GPT-5.6 Sol"
+                 :capabilities (media tool-use json responses-api)
+                 :mime-types ("image/jpeg" "image/png")
+                 :context-window 1050)
+    (gpt-5.6-terra :id "openai.gpt-5.6-terra" :global t :api responses
+                   :description "GPT-5.6 Terra"
+                   :capabilities (media tool-use json responses-api)
+                   :mime-types ("image/jpeg" "image/png")
+                   :context-window 1050)
+    (gpt-5.6-luna :id "openai.gpt-5.6-luna" :global t :api responses
+                  :description "GPT-5.6 Luna"
+                  :capabilities (media tool-use json responses-api)
+                  :mime-types ("image/jpeg" "image/png")
+                  :context-window 1050)
+    (gpt-5.5 :id "openai.gpt-5.5" :global t :api responses
+             :description "GPT-5.5"
+             :capabilities (media tool-use json responses-api)
+             :mime-types ("image/jpeg" "image/png")
+             :context-window 1050)
+    (gpt-5.4 :id "openai.gpt-5.4" :global t :api responses
+             :description "GPT-5.4"
+             :capabilities (media tool-use json responses-api)
+             :mime-types ("image/jpeg" "image/png")
+             :context-window 1050)
+    (gpt-oss-safeguard-120b :id "openai.gpt-oss-safeguard-120b"
+                            :description "GPT OSS Safeguard 120B"
+                            :context-window 128)
+    (gpt-oss-safeguard-20b :id "openai.gpt-oss-safeguard-20b"
+                           :description "GPT OSS Safeguard 20B"
+                           :context-window 128)
+    (gpt-oss-120b :id "openai.gpt-oss-120b-1:0"
+                  :description "gpt-oss-120b"
+                  :capabilities (tool-use)
+                  :context-window 128)
+    (gpt-oss-20b :id "openai.gpt-oss-20b-1:0"
+                 :description "gpt-oss-20b"
+                 :capabilities (tool-use)
+                 :context-window 128)
+    (qwen3-235b-a22b-2507 :id "qwen.qwen3-235b-a22b-2507-v1:0"
+                          :description "Qwen3 235B A22B 2507"
+                          :capabilities (tool-use)
+                          :context-window 256)
+    (qwen3-32b :id "qwen.qwen3-32b-v1:0"
+               :description "Qwen3 32B"
+               :capabilities (tool-use)
+               :context-window 32)
+    (qwen3-coder-next :id "qwen.qwen3-coder-next"
+                      :description "Qwen3 Coder Next"
+                      :capabilities (tool-use)
+                      :context-window 256)
+    (qwen3-next-80b-a3b :id "qwen.qwen3-next-80b-a3b"
+                        :description "Qwen3 Next 80B A3B"
+                        :capabilities (tool-use)
+                        :context-window 256)
+    (qwen3-vl-235b-a22b :id "qwen.qwen3-vl-235b-a22b"
+                        :description "Qwen3 VL 235B A22B"
+                        :capabilities (media tool-use)
+                        :mime-types ("image/jpeg" "image/png")
+                        :context-window 256)
+    (palmyra-x4 :id "writer.palmyra-x4-v1:0"
+                :description "Palmyra X4"
+                :capabilities (tool-use)
+                :context-window 128)
+    (palmyra-x5 :id "writer.palmyra-x5-v1:0"
+                :description "Palmyra X5"
+                :capabilities (tool-use)
+                :context-window 128)
+    (grok-4.7 :id "xai.grok-4.7" :global t :api responses
+              :description "Grok 4.7"
+              :capabilities (media tool-use json responses-api)
+              :mime-types ("image/jpeg" "image/png")
+              :context-window 524)
+    (grok-4.6 :id "xai.grok-4.6" :global t :api responses
+              :description "Grok 4.6"
+              :capabilities (media tool-use json responses-api)
+              :mime-types ("image/jpeg" "image/png")
+              :context-window 500)
+    (glm-5 :id "zai.glm-5"
+           :description "GLM 5"
+           :capabilities (tool-use)
+           :context-window 200)
+    (glm-5.3 :id "zai.glm-5.3" :global t :api responses
+             :description "GLM 5.3"
+             :capabilities (tool-use json responses-api)
+             :context-window 1000)
+    (minimax-m2.5 :id "minimax.minimax-m2.5"
+                  :description "MiniMax M2.5"
+                  :capabilities (tool-use)
+                  :context-window 196)
+    (nemotron-super-3-120b :id "nvidia.nemotron-super-3-120b"
+                           :description "NVIDIA Nemotron 3 Super 120B"
+                           :capabilities (tool-use)
+                           :context-window 256)
+    (palmyra-vision-7b :id "writer.palmyra-vision-7b"
+                       :description "Palmyra Vision 7B"
+                       :capabilities (media)
+                       :mime-types ("image/jpeg" "image/png")
+                       :context-window 4))
+  "Bedrock model declarations, API support and inference profile metadata.
 
-IDs can be added or replaced by calling
-\(push (model-name . \"model-id\") gptel-bedrock--model-ids).")
+Each entry has a model alias, its :id, optional :api (responses),
+optional :global flag and ordinary gptel model properties.
+An absent :api means Converse.  Existing aliases remain available.")
+
+(defvar gptel-bedrock--model-ids
+  (mapcar (lambda (spec) (cons (car spec) (plist-get (cdr spec) :id)))
+          gptel-bedrock--model-specs)
+  "Map of model aliases to Bedrock IDs.
+Add or override mappings with `push' or `setf'.")
 
 (defvar gptel--bedrock-models
-  (mapcar #'car gptel-bedrock--model-ids)
-  "List of available AWS Bedrock models and associated properties.")
+  (mapcar
+   (lambda (spec)
+     (let ((model (car spec)) (props (copy-tree (cdr spec))))
+       (dolist (key '(:id :api :global)) (cl-remf props key))
+       ;; Preserve model properties already registered by another backend.
+       (setf (symbol-plist model)
+             (gptel--merge-plists props (symbol-plist model)))
+       model))
+   gptel-bedrock--model-specs)
+  "Available Bedrock models, with properties on each model symbol.")
+
+(defconst gptel-bedrock--profile-prefix
+  "\\`\\(?:global\\|us\\|eu\\|apac\\|au\\|jp\\|in\\|ca\\|us-gov\\)\\."
+  "Regexp matching a Bedrock cross-Region inference profile prefix.")
+
+(defun gptel-bedrock--model-spec (model)
+  "Return the declaration for MODEL, an alias or a native model/profile ID."
+  (or (assq model gptel-bedrock--model-specs)
+      (let ((id (replace-regexp-in-string
+                 gptel-bedrock--profile-prefix "" (gptel--model-name model))))
+        (cl-find id gptel-bedrock--model-specs :test #'equal
+                 :key (lambda (spec) (plist-get (cdr spec) :id))))))
 
 (defun gptel-bedrock--get-model-id (model &optional region)
-  "Return the Bedrock model ID for MODEL.
+  "Return the native Bedrock ID for MODEL in model REGION.
+REGION is auto, global, apac, eu, us, au, jp, in, ca, us-gov or nil.
+Auto prefers a documented Global profile and otherwise uses the base ID.
+An explicitly supplied full profile ID is used verbatim."
+  (let* ((spec (gptel-bedrock--model-spec model))
+         (name (gptel--model-name model))
+         (id (or (alist-get model gptel-bedrock--model-ids)
+                 (and spec (plist-get (cdr spec) :id))
+                 (and (string-match-p "[.:/]" name) name)
+                 (error "Unknown Bedrock model: %s" model)))
+         (region (if (eq region 'auto)
+                     (and (plist-get (cdr spec) :global) 'global)
+                   region)))
+    (cond
+     ((string-match-p gptel-bedrock--profile-prefix name) name)
+     ((string-match-p gptel-bedrock--profile-prefix id) id)
+     ((null region) id)
+     ((memq region '(global apac eu us au jp in ca us-gov))
+      (concat (symbol-name region) "." id))
+     (t (error "Unknown Bedrock model region: %s" region)))))
 
-REGION is one of global, apac, eu or us."
-  (concat
-   (when region
-     (or (member region '(global apac eu us))
-	 (error "Unknown Bedrock region %s" region))
-     (concat (symbol-name region) "."))
-   (or (alist-get model gptel-bedrock--model-ids nil nil #'eq)
-       (error "Unknown Bedrock model: %s" model))))
+(cl-defmethod gptel--request-backend ((backend gptel-bedrock) model)
+  "Choose a request backend for Bedrock MODEL without changing BACKEND."
+  (let* ((spec (gptel-bedrock--model-spec model))
+         (api (gptel-bedrock-api backend))
+         (responses-p (or (eq api 'responses)
+                          (and (eq api 'auto)
+                               (eq (plist-get (cdr spec) :api) 'responses)))))
+    (if (not responses-p)
+        backend
+      (when (and spec (not (eq (plist-get (cdr spec) :api) 'responses)))
+        (user-error "Bedrock model %s does not support the runtime Responses API" model))
+      ;; Reuse the existing Responses implementation.  Freeze the API, URL,
+      ;; model ID and request parameters for this request and its tool turns.
+      (gptel--make-openai-responses
+       :name (gptel-backend-name backend)
+       :host (gptel-backend-host backend)
+       :protocol (gptel-backend-protocol backend)
+       :endpoint (concat (gptel-backend-endpoint backend) "/openai/v1/responses")
+       :models (gptel-backend-models backend)
+       :stream (gptel-backend-stream backend)
+       :header (gptel-backend-header backend)
+       :key (gptel-backend-key backend)
+       :curl-args (gptel-backend-curl-args backend)
+       :request-params
+       (gptel--merge-plists
+        (list :model (gptel-bedrock--get-model-id
+                      model (gptel-bedrock-model-region backend)))
+        (copy-tree (gptel-backend-request-params backend)))
+       :url (concat (gptel-bedrock--base-url
+                     (gptel-backend-protocol backend)
+                     (gptel-backend-host backend)
+                     (gptel-backend-endpoint backend))
+                    "/openai/v1/responses")))))
 
 (defun gptel-bedrock--curl-args (region profile bearer-token)
   "Generate the curl arguments to get a bedrock request signed for use in REGION.
@@ -750,10 +1081,11 @@ Bedrock's /model/... runtime route."
 ;;;###autoload
 (cl-defun gptel-make-bedrock
     (name &key
-          region
+          (region "us-east-1")
           host endpoint
+          (api 'auto)
           (models gptel--bedrock-models)
-          (model-region nil)
+          (model-region 'auto)
           stream curl-args request-params
           aws-profile aws-bearer-token
           (protocol "https"))
@@ -761,20 +1093,29 @@ Bedrock's /model/... runtime route."
 
 Keyword arguments:
 
-REGION - AWS region name (e.g. \"us-east-1\")
+REGION - AWS source region name, defaults to \"us-east-1\".
 HOST - API host, defaults to bedrock-runtime.REGION.amazonaws.com.
   This may include a scheme and path when using a proxy.
 ENDPOINT - optional path prefix prepended before Bedrock's /model/...
-  runtime route.
+  runtime route or /openai/v1/responses.
 MODELS - The list of models supported by this backend
-MODEL-REGION - one of apac, eu, us or nil
+API - auto (default), converse or responses.  Auto prefers Responses
+  for models with documented support on bedrock-runtime and otherwise
+  uses Converse.  Responses uses the existing OpenAI Responses backend.
+MODEL-REGION - auto (default) prefers a documented Global inference
+  profile.  Otherwise specify global, apac, eu, us, au, jp, in, ca,
+  us-gov or nil.  Explicit full profile IDs are used verbatim.
 AWS-PROFILE - the aws profile to use for aws configure export-credentials
 AWS-BEARER-TOKEN - the aws bearer-token for authenticating with AWS
 CURL-ARGS - additional curl args
 STREAM - Whether to use streaming responses or not.
 REQUEST-PARAMS - a plist of additional HTTP request
-parameters (as plist keys) and values supported by the API."
+parameters (as plist keys) and values supported by the selected API.
+For GPT-6.1 Sol Ultrafast, use :request-params with :service_tier set to
+\"ultrafast\".  Prefer model-specific parameters when mixing APIs."
   (declare (indent 1))
+  (unless (memq api '(auto converse responses))
+    (error "Unknown Bedrock API: %s" api))
   (unless (or aws-bearer-token (getenv "AWS_BEARER_TOKEN_BEDROCK"))
     (unless (and gptel-use-curl (version<= "8.9" (gptel-bedrock--curl-version)))
       (error (concat "Bedrock-backend requires curl >= 8.9, "
@@ -786,9 +1127,20 @@ parameters (as plist keys) and values supported by the API."
           (gptel--make-bedrock
            :name name
            :host host
-           :header nil           ; x-amz-security-token is set in curl-args if needed
-           :models (gptel--process-models models)
+           :header (lambda (_info)
+                     (when-let* ((token (or aws-bearer-token
+                                           (getenv "AWS_BEARER_TOKEN_BEDROCK"))))
+                       (list (cons "Authorization" (concat "Bearer " token)))))
+           :models
+           (let ((models (gptel--process-models models)))
+             (dolist (model models)
+               (unless (symbol-plist model)
+                 (when-let* ((spec (gptel-bedrock--model-spec model)))
+                   (setf (symbol-plist model)
+                         (copy-tree (symbol-plist (car spec)))))))
+             models)
            :model-region model-region
+           :api api
            :protocol protocol
            :endpoint (or endpoint "")
            :stream stream
@@ -796,8 +1148,9 @@ parameters (as plist keys) and values supported by the API."
            :curl-args
            (lambda ()
              (append curl-args
-                     (gptel-bedrock--curl-args
-                      region aws-profile aws-bearer-token)))
+                     (unless (or aws-bearer-token
+                                 (getenv "AWS_BEARER_TOKEN_BEDROCK"))
+                       (gptel-bedrock--curl-args region aws-profile nil))))
            :request-params request-params
            :url
            (lambda (info)
