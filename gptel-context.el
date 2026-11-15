@@ -228,24 +228,23 @@ context."
     (gptel-context--add-region (current-buffer) (point-min) (point-max) t))
   (message "Buffer \"%s\" added to context." (buffer-name buffer)))
 
-(defun gptel-context--add-text-file (path)
-  "Add text file at PATH to context."
-  (cl-pushnew (list path) gptel-context :test #'equal)
-  (message "File \"%s\" added to context." path)
-  path)
+(defun gptel-context--add-text-file (path context-alist &optional verbose)
+  "Add text file at PATH to CONTEXT-ALIST and return it.
+Issue a message if VERBOSE is non-nil."
+  (cl-pushnew (list path) context-alist :test #'equal)
+  (if verbose (message "File \"%s\" added to context." path))
+  context-alist)
 
-(defun gptel-context--add-binary-file (path)
-  "Add binary file at PATH to context if supported.
-Return PATH if added, nil if ignored."
+(defun gptel-context--add-binary-file (path context-alist &optional verbose)
+  "Add binary file at PATH to CONTEXT-ALIST (if supported) and return it.
+Issue a message if VERBOSE is non-nil."
   (if-let* (((gptel--model-capable-p 'media))
             (mime (mailcap-file-name-to-mime-type path))
             ((gptel--model-mime-capable-p mime)))
-      (prog1 path
-        (cl-pushnew (list path :mime mime)
-                    gptel-context :test #'equal)
-        (message "File \"%s\" added to context." path))
-    (message "Ignoring unsupported binary file \"%s\"." path)
-    nil))
+      (progn (cl-pushnew (list path :mime mime) context-alist :test #'equal)
+             (if verbose (message "File \"%s\" added to context." path)))
+    (message "Ignoring unsupported binary file \"%s\"." path))
+  context-alist)
 
 (defun gptel-context--add-directory (path action)
   "Process all files in directory at PATH according to ACTION.
@@ -276,8 +275,10 @@ readable as text."
   (cond ((file-directory-p path)
          (gptel-context--add-directory path 'add))
 	((gptel--file-binary-p path)
-         (gptel-context--add-binary-file path))
-	(t (gptel-context--add-text-file path))))
+         (setq gptel-context (gptel-context--add-binary-file
+                              path gptel-context t)))
+	(t (setq gptel-context (gptel-context--add-text-file
+                                path gptel-context t)))))
 
 ;;;###autoload (autoload 'gptel-add-file "gptel-context" "Add files to gptel's context." t)
 (defalias 'gptel-add-file #'gptel-context-add-file)
@@ -442,7 +443,7 @@ This modifies the buffer."
 
 CONTEXTS, which are typically paths to binary files, are
 base64-encoded and prepended to the first user prompt."
-  (cl-loop for context in (or contexts gptel-context)
+  (cl-loop for context in (gptel-context--collect (or contexts gptel-context))
            for (path . props) = (ensure-list context)
            when (and (stringp path) (plist-get props :mime))
            collect (cons :media context)))
@@ -504,12 +505,12 @@ Ignore overlays, buffers and files that are not live or readable."
                               gptel-context--project-files nil))))
                (dolist (f (directory-files-recursively entry "."))
                  (unless (gptel-context--skip-p f)
-                   (push `(,f ,@(and (gptel--file-binary-p f)
-                                     (list :mime (mailcap-file-name-to-mime-type entry))))
-                         res))))
-           (push `(,entry ,@(and (gptel--file-binary-p entry)
-                                 (list :mime (mailcap-file-name-to-mime-type entry))))
-                 res)))
+                   (setq res (if (gptel--file-binary-p f)
+                                 (gptel-context--add-binary-file f res)
+                               (gptel-context--add-text-file f res))))))
+           (setq res (if (gptel--file-binary-p entry)
+                         (gptel-context--add-binary-file entry res)
+                       (gptel-context--add-text-file entry res)))))
         ((pred buffer-live-p) (push (list entry) res)))) ;Just a buffer
     res))
 
