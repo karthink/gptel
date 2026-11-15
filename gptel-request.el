@@ -1052,8 +1052,9 @@ Return nil if PATH is missing, unreadable or a directory."
               (with-current-buffer gptel--binary-sniff-buffer
                 (set-buffer-multibyte nil)))
             (with-current-buffer gptel--binary-sniff-buffer
+              (erase-buffer)
               (insert-file-contents-literally ;raw bytes, byte 0 included
-               path nil 0 gptel--binary-sniff-bytes 'replace) ;replace buffer contents
+               path nil 0 gptel--binary-sniff-bytes)
               (goto-char (point-min))
               (skip-chars-forward "^\0") ;C-level scan for first NUL
               (and (not (eobp))          ;NUL found, but...
