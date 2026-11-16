@@ -364,6 +364,16 @@ If the ID has the format used by a different backend, use as-is."
              if text collect
              (list :role (if role "user" "assistant") :content text))))
 
+(defun gptel--openai-attach-reasoning (prompts text)
+  "Attach reasoning TEXT to PROMPTS in OpenAI chat format."
+  (if (equal (plist-get (car prompts) :role) "assistant")
+      (plist-put (car prompts) :reasoning_content
+                 (concat text (plist-get (car prompts) :reasoning_content)))
+    (push (list :role "assistant" :content :null
+                :reasoning_content text)
+          prompts))
+  prompts)
+
 (cl-defmethod gptel--parse-buffer ((backend gptel-openai) &optional max-entries)
   "Parse the current buffer into a list of messages for BACKEND.
 Include up to MAX-ENTRIES queries/responses."
@@ -378,6 +388,10 @@ Include up to MAX-ENTRIES queries/responses."
              (when-let* ((content (gptel--trim-prefixes
                                    (buffer-substring-no-properties (point) prev-pt))))
                (push (list :role "assistant" :content content) prompts)))
+            (`(reasoning . ,_)
+             (setq prompts
+                   (gptel--openai-attach-reasoning
+                    prompts (buffer-substring-no-properties (point) prev-pt))))
             (`(tool . ,id)
              (save-excursion
                (condition-case nil
