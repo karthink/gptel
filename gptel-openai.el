@@ -460,7 +460,7 @@ URLs for other file types are not supported by the API."
                                           (gptel--base64-encode media))))))
       (t                              ;The Completions API only accepts
        (user-error                    ;images and PDF files as file input
-        "Backend %s does not support files of MIME type \"%s\" (%s)"
+        "Request aborted: Backend %s does not support files of MIME type \"%s\" (%s)"
         (gptel-backend-name gptel-backend) mime media))))
    into parts-array
    else if (plist-get part :textfile) collect
@@ -476,7 +476,7 @@ URLs for other file types are not supported by the API."
              ((string-prefix-p "image/" mime)))
        (list `(:type "image_url" :image_url (:url ,url)))
      (user-error                  ;Non-image URLs are not supported here
-      "Backend %s does not support URL input for \"%s\".
+      "Request aborted: Backend %s does not support URL input for \"%s\".
 Attach the file locally or use a different backend"
       (gptel-backend-name gptel-backend) url))
    into parts-array

@@ -511,8 +511,8 @@ The input is an alist of the form
   (:media \"/path/to/media.png\" :mime \"image/png\")
   (:text \"More text\")).
 
-The output is a vector of entries in a backend-appropriate
-format."
+The output is a vector of entries in a backend-appropriate format.
+Throw an error if an unsupported format is encountered."
   (cl-loop
    for part in parts
    for n upfrom 1
@@ -527,17 +527,16 @@ format."
    collect `(:type "text" :text ,text) into parts-array end
    else if media
    do
-   (setq type (cond                     ;Currently supported: Images and PDFs
-               ((equal (substring mime 0 5) "image") "image")
-               ;; NOTE: Only Claude 3.5 Sonnet supports PDF documents:
+   (setq type (cond                   ;Currently supported: Only images and PDFs
+               ((string-prefix-p "image/" mime) "image")
                ((equal mime "application/pdf") "document")
-               (t (error (concat "(gptel-anthropic) Request aborted: "
-                                 "trying to send unsupported MIME type %s")
-                         mime))))
+               (t (user-error "Request aborted: Backend \"%s\" does not support \
+files of MIME type \"%s\" (%s)"
+                              (gptel-backend-name gptel-backend) mime media))))
    and collect
    `(:type ,type
      :source (:type "base64"
-              :media_type ,(plist-get part :mime)
+              :media_type ,mime
               :data ,(gptel--base64-encode media)))
    into parts-array
    else if (plist-get part :textfile) collect
@@ -545,6 +544,17 @@ format."
      :text ,(with-temp-buffer
               (gptel--insert-file-string (plist-get part :textfile))
               (buffer-string)))
+   into parts-array end and
+   if (plist-get part :url)
+   collect
+   (let ((url (plist-get part :url)))
+     ;; The API supports URL sources only for PDF documents.  It does
+     ;; not fetch remote images or other files.
+     (if (equal mime "application/pdf")
+         `( :type "document" :source (:type "url" :url ,url))
+       (user-error "Request aborted: Backend %s supports URL \
+input only for PDF files, not \"%s\" (%s)"
+                   (gptel-backend-name gptel-backend) (or mime "unknown") url)))
    into parts-array
    finally return (vconcat parts-array)))
 
@@ -575,7 +585,7 @@ Media files, if present, are placed in `gptel-context'."
   (gptel--process-models
    '((claude-sonnet-5-5
       :description "The best combination of speed and intelligence"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 1000
       :input-cost 2
@@ -583,7 +593,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2026-06")
      (claude-sonnet-5
       :description "The best combination of speed and intelligence"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 1000
       :input-cost 2
@@ -591,7 +601,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2026-01")
      (claude-sonnet-4-6
       :description "The best combination of speed and intelligence"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 1000
       :input-cost 3
@@ -599,7 +609,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2025-08")
      (claude-sonnet-4-5-20250929
       :description "High-performance model with exceptional reasoning and efficiency"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 200
       :input-cost 3
@@ -607,7 +617,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2025-07")
      (claude-haiku-5-5
       :description "High-volume, latency-sensitive tasks such as classification, extraction, and routing"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 1000
       :input-cost 0.10
@@ -615,7 +625,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2026-06")
      (claude-haiku-4-5-20251001
       :description "Near-frontier intelligence at blazing speeds with extended thinking"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 200
       :input-cost 1
@@ -623,7 +633,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2025-02")
      (claude-sonnet-4-20250514
       :description "High-performance model with exceptional reasoning and efficiency"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 200
       :input-cost 3
@@ -631,7 +641,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2025-03")
      (claude-fable-5-2
       :description "Most capable model for complex reasoning and advanced coding"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 1000
       :input-cost 8
@@ -639,7 +649,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2026-06")
      (claude-fable-5-1
       :description "Most capable model for complex reasoning and advanced coding"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 1000
       :input-cost 10
@@ -647,7 +657,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2026-06")
      (claude-fable-5
       :description "Most capable model for complex reasoning and advanced coding"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 1000
       :input-cost 10
@@ -655,7 +665,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2026-01")
      (claude-opus-5-5
       :description "Long-running agentic coding and knowledge work"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 1000
       :input-cost 4
@@ -663,7 +673,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2026-06")
      (claude-opus-5
       :description "Complex agentic coding and enterprise work"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 1000
       :input-cost 5
@@ -671,7 +681,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2026-05")
      (claude-opus-4-9
       :description "Most capable model for complex reasoning and advanced coding"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 1000
       :input-cost 5
@@ -679,7 +689,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2026-01")
      (claude-opus-4-8
       :description "Most capable model for complex reasoning and advanced coding"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 1000
       :input-cost 5
@@ -687,7 +697,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2026-01")
      (claude-opus-4-7
       :description "Most capable model for complex reasoning and advanced coding"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 1000
       :input-cost 5
@@ -695,7 +705,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2026-01")
      (claude-opus-4-6
       :description "Most capable model for complex reasoning and advanced coding"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 200
       :input-cost 5
@@ -703,7 +713,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2025-08")
      (claude-opus-4-5-20251101
       :description "Most capable model for complex reasoning and advanced coding"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 200
       :input-cost 5
@@ -711,7 +721,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2025-03")
      (claude-opus-4-1-20250805
       :description "Most capable model for complex reasoning and advanced coding"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 200
       :input-cost 15
@@ -719,7 +729,7 @@ Media files, if present, are placed in `gptel-context'."
       :cutoff-date "2025-03")
      (claude-opus-4-20250514
       :description "Anthropic's previous flagship model"
-      :capabilities (media tool-use cache)
+      :capabilities (media tool-use cache url)
       :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
       :context-window 200
       :input-cost 15
