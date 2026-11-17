@@ -1261,8 +1261,8 @@ TopxAI offers an OpenAI-compatible chat endpoint for Claude, GPT, Grok, GLM, Kim
   :key "your-api-key"                   ;can be a function that returns the key
   :models '(claude-sonnet-5-5
             claude-opus-5-5
-            gpt-6.1-sol
-            gpt-6-astra
+            gpt-6.2-sol
+            gpt-6.2-astra
             grok-4.7
             kimi-k3.1-pro
             deepseek-flash-Abliterated))
