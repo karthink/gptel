@@ -43,12 +43,15 @@
 
 - The OpenAI backend now supports sending PDFs, common Microsoft Office,
   Apple and Open Office file formats.  As before, such files can be
-  included as Org/Markdown file or web links in buffers or via
+  included as Org/Markdown file or web links in gptel buffers or via
   ~gptel-add~.
 
 - The Anthropic backend now supports sending PDFs.  As before, such
-  files can be included as Org/Markdown file links in buffers or via
-  ~gptel-add~.  PDFs can also be specified via web links in buffers.
+  files can be included as Org/Markdown file links in gptel buffers or
+  via ~gptel-add~.  PDFs can also be specified via web links in buffers.
+
+- The Gemini backend now supports sending files from web links in gptel
+  buffers for all supported MIME types.
 
 ** Notable bug fixes
 
