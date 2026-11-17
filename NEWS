@@ -8,21 +8,56 @@
   have been removed from the list of default models for
   =gptel-openai-oauth=.  These models are no longer served by OpenAI.
 
+- The behavior of the MCP integration function ~gptel-mcp-connect~ has
+  changed.  It now calls its (optional) callback with the list of gptel
+  tools to be added.  Additionally, it can now connect to MCP servers
+  without adding any gptel tools.
+
 ** New models and backends
 
-- Anthropic backend: Add support for =claude-fable-5-1= and
-  =claude-opus-5-5=.
+- GitHub Copilot backend: Add support for =gemini-4-argon=.
+
+- Gemini backend: Add support for =gemini-4-argon= and
+  =gemini-4-hydrogen=.
+
+- Anthropic backend: Add support for =claude-fable-5-2=,
+  =claude-fable-5-1=, =claude-opus-5-5=, =claude-sonnet-5-5= and
+  =claude-haiku-5-5=.
 
 - OpenAI backend: Add support for =gpt-6-astra=, =gpt-6.1-sol=,
-  =gpt-6-sol= and =gpt-6-luna=.
+  =gpt-6-sol= =gpt-6.1-terra= and =gpt-6-luna=.
 
-- Bedrock backend: Add support for =claude-opus-5-5=.
+- Bedrock backend: Add support for =claude-opus-5-5=,
+  =claude-sonnet-5-5= and =claude-haiku-5-5=.
+
+- GitHub Copilot backend: Add support for =claude-sonnet-5.5= and
+  =claude-opus-5.5=.
 
 - Deepseek backend: Add support for =deepseek-flash=, and deprecate
   =deepseek-v4-flash= and =deepseek-v4-flash-vision-exp=.
 
+- xAI backend: Add support for =grok-4.7=, =grok-4.6=, =grok-4.20=,
+  =grok-4.20-non-reasoning= and =grok-4.20-multi-agent=.
+
 ** New features and UI changes
+
+- The OpenAI backend now supports sending PDFs, common Microsoft Office,
+  Apple and Open Office file formats.  As before, such files can be
+  included as Org/Markdown file or web links in gptel buffers or via
+  ~gptel-add~.
+
+- The Anthropic backend now supports sending PDFs.  As before, such
+  files can be included as Org/Markdown file links in gptel buffers or
+  via ~gptel-add~.  PDFs can also be specified via web links in buffers.
+
+- The Gemini backend now supports sending files from web links in gptel
+  buffers for all supported MIME types.
+
 ** Notable bug fixes
+
+- Non UTF-8 characters or raw bytes in tool call results are replaced
+  with a readable placeholder, ensuring that the tool call loop can
+  continue uninterrupted.
 
 
 * 0.9.9.6 2026-09-05
