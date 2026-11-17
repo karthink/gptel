@@ -1718,6 +1718,38 @@ callback as its first argument, which it runs with the result:
            nil nil #'equal)
           tool)))
 
+(defun gptel--disambiguate-tool-names (tools)
+  "Return TOOLS with unique provider-facing names.
+
+Copies tools whose names collide and qualifies them by category.
+If a qualified name is already in use, append a numeric suffix.
+The original tool objects remain unchanged."
+  (let ((name-counts (make-hash-table :test #'equal))
+        (used-names (make-hash-table :test #'equal)))
+    (dolist (tool tools)
+      (let ((name (gptel-tool-name tool)))
+        (puthash name (1+ (gethash name name-counts 0)) name-counts)))
+    (dolist (tool tools)
+      (let ((name (gptel-tool-name tool)))
+        (when (= (gethash name name-counts) 1)
+          (puthash name t used-names))))
+    (mapcar
+     (lambda (tool)
+       (if (> (gethash (gptel-tool-name tool) name-counts) 1)
+           (let* ((copy (gptel--copy-tool tool))
+                  (base (concat (or (gptel-tool-category tool) "misc")
+                                "_" (gptel-tool-name tool)))
+                  (name base)
+                  (suffix 2))
+             (while (gethash name used-names)
+               (setq name (format "%s_%d" base suffix)
+                     suffix (1+ suffix)))
+             (puthash name t used-names)
+             (setf (gptel-tool-name copy) name)
+             copy)
+         tool))
+     tools)))
+
 (cl-defgeneric gptel--parse-tools (_backend tools)
   "Parse TOOLS and return a list of prompts.
 
@@ -2408,6 +2440,7 @@ Initiate the request when done."
         (when gptel-include-reasoning   ;Required for next-request-only scope
           (plist-put info :include-reasoning gptel-include-reasoning))
         (when (and gptel-use-tools gptel-tools)
+          (setq gptel-tools (gptel--disambiguate-tool-names gptel-tools))
           (plist-put info :tools gptel-tools))
         (plist-put info :data
                    (gptel--request-data gptel-backend full-prompt)))
