@@ -95,6 +95,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#github-copilotchat][GitHub CopilotChat]]
       - [[#aws-bedrock][AWS Bedrock]]
       - [[#moonshot-kimi][Moonshot (Kimi)]]
+      - [[#infer][Infer]]
   - [[#usage][Usage]]
     - [[#in-any-buffer][In any buffer:]]
     - [[#in-a-dedicated-chat-buffer][In a dedicated chat buffer:]]
@@ -1244,6 +1245,31 @@ Then you also need to add the tool declaration via =:request-params= because it 
 #+end_src
 
 Now the chat should be able to automatically use search. Try "what's new today" and you should expect the up-to-date news in response.
+
+#+html: </details>
+#+html: <details><summary>
+**** Infer
+#+html: </summary>
+
+Infer by Flow7 offers an OpenAI compatible API to models from Anthropic, OpenAI, Google, xAI and others.  The suffix of each model ID picks its route: =:low-cost=, =:balanced=, =:stable= or =:official=.
+
+Register a backend with
+
+#+begin_src emacs-lisp
+;; Infer offers an OpenAI compatible API
+(gptel-make-openai "Infer"            ;Any name you want
+  :host "infer.flow7.org"
+  :endpoint "/v1/chat/completions"
+  :stream t
+  :key "your-api-key"                 ;can be a function that returns the key
+  :models '(infer/claude-opus-5-5:low-cost
+            infer/claude-sonnet-5-5:low-cost
+            infer/gpt-6.1-sol:low-cost))
+#+end_src
+
+See the [[https://infer.flow7.org/models][Infer models page]] for every model ID with its prices and current availability.
+
+You can pick this backend from the menu when using gptel (see [[#usage][Usage]]).
 
 #+html: </details>
 ** Usage
