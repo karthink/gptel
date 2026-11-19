@@ -1264,7 +1264,7 @@ TopxAI offers an OpenAI-compatible chat endpoint for Claude, GPT, Grok, GLM, Kim
             gpt-6.2-sol
             gpt-6.2-astra
             grok-4.7
-            kimi-k3.1-pro
+            kimi-k3.1-pro-Abliterated
             deepseek-flash-Abliterated))
 #+end_src
 
