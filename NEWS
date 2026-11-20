@@ -33,8 +33,8 @@
 - Bedrock backend: Add support for =claude-opus-5-5=,
   =claude-sonnet-5-5= and =claude-haiku-5-5=.
 
-- GitHub Copilot backend: Add support for =claude-sonnet-5.5= and
-  =claude-opus-5.5=.
+- GitHub Copilot backend: Add support for =claude-sonnet-5.5=,
+  =claude-opus-5.5= and =claude-haiku-5.5=.
 
 - Deepseek backend: Add support for =deepseek-flash=, and deprecate
   =deepseek-v4-flash= and =deepseek-v4-flash-vision-exp=.

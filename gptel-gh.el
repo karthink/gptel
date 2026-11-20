@@ -118,6 +118,14 @@
      :input-cost 1
      :output-cost 5
      :cutoff-date "2025-02")
+    (claude-haiku-5.5
+     :description "High-volume, latency-sensitive tasks such as classification, extraction, and routing"
+     :capabilities (media tool-use cache)
+     :mime-types ("image/jpeg" "image/png" "image/gif" "image/webp" "application/pdf")
+     :context-window 1000
+     :input-cost 0.10
+     :output-cost 0.50
+     :cutoff-date "2026-06")
     (claude-opus-4.5
      :description "Most capable model for complex reasoning and advanced coding"
      :capabilities (media tool-use cache)
