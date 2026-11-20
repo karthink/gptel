@@ -90,6 +90,7 @@ gptel uses Curl if available, but falls back to the built-in url-retrieve to wor
       - [[#sambanova-deepseek][Sambanova (Deepseek)]]
       - [[#cerebras][Cerebras]]
       - [[#novita-ai][Novita AI]]
+      - [[#hubris][Hubris]]
       - [[#xai][xAI]]
       - [[#aiml-api][AI/ML API]]
       - [[#github-copilotchat][GitHub CopilotChat]]
@@ -226,6 +227,7 @@ gptel supports a number of LLM providers:
 | Cerebras             | [[https://cloud.cerebras.ai/][API key]]                    |
 | Novita AI            | [[https://novita.ai/model-api/product/llm-api?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][Token]]                      |
 | xAI                  | [[https://console.x.ai?utm_source=github_gptel&utm_medium=github_readme&utm_campaign=link][API key]]                    |
+| Hubris               | [[https://hubris.pw/keys][API key]]                    |
 | GitHub CopilotChat   | GitHub account             |
 | Bedrock              | AWS credentials            |
 | Moonshot (Kimi)      | API key ([[https://platform.moonshot.cn/console][CN]] or [[https://platform.moonshot.ai/console][Global]])     |
@@ -1044,6 +1046,52 @@ The above code makes the backend available to select.  If you want it to be the 
              mistralai/Mixtral-8x7B-Instruct-v0.1
              meta-llama/llama-3-70b-instruct
              meta-llama/llama-3.1-70b-instruct)))
+#+end_src
+
+#+html: </details>
+#+html: <details><summary>
+**** Hubris
+#+html: </summary>
+
+Register a backend with
+
+#+begin_src emacs-lisp
+;; Hubris offers an OpenAI compatible API to models from OpenAI, Anthropic,
+;; Google, DeepSeek, Qwen and others, billed in rubles
+(gptel-make-openai "Hubris"           ;Any name you want
+  :host "api.hubris.pw"
+  :endpoint "/v1/chat/completions"
+  :key "your-api-key"                 ;can be a function that returns the key
+  :stream t
+  :models '(;; has many more, check https://hubris.pw/models
+            anthropic/claude-sonnet-5
+            anthropic/claude-haiku-4.5
+            openai/gpt-5.6-luna
+            google/gemini-3.7-flash
+            deepseek/deepseek-v4-flash-0731))
+#+end_src
+
+You can pick this backend from the menu when using gptel (see [[#usage][Usage]])
+
+***** (Optional) Set as the default gptel backend
+
+The above code makes the backend available to select.  If you want it to be the default backend for gptel, you can set this as the value of =gptel-backend=.  Use this instead of the above.
+
+#+begin_src emacs-lisp
+;; OPTIONAL configuration
+(setq
+ gptel-model   'anthropic/claude-sonnet-5
+ gptel-backend
+ (gptel-make-openai "Hubris"
+   :host "api.hubris.pw"
+   :endpoint "/v1/chat/completions"
+   :key "your-api-key"
+   :stream t
+   :models '(anthropic/claude-sonnet-5
+             anthropic/claude-haiku-4.5
+             openai/gpt-5.6-luna
+             google/gemini-3.7-flash
+             deepseek/deepseek-v4-flash-0731)))
 #+end_src
 
 #+html: </details>
