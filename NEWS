@@ -15,6 +15,9 @@
 
 ** New models and backends
 
+- New backend ~gptel-systemone~ for decision models using the "System
+  One" API.  (Multiple providers, see "new features" below.)
+
 - GitHub Copilot backend: Add support for =gemini-4-argon=.
 
 - Gemini backend: Add support for =gemini-4-argon= and
@@ -40,6 +43,15 @@
   =grok-4.20-non-reasoning= and =grok-4.20-multi-agent=.
 
 ** New features and UI changes
+
+- gptel now supports the "System One" API used by decision models such
+  as Typesafe (Jev), Cloudflare (Clef) or Ollaya (various).  Decision
+  models respond with probabilities or choices and produce no output
+  tokens and are general-purpose classifiers.  Support is at the level
+  of ~gptel-request~ only since they are not suitable for chat, but they
+  are more predictable to use in scripting.
+
+  Create a new System One backend with ~gptel-make-systemone~.
 
 - The OpenAI backend now supports sending PDFs, common Microsoft Office,
   Apple and Open Office file formats.  As before, such files can be
