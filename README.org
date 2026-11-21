@@ -601,6 +601,33 @@ The alternatives to =fastgpt= include =summarize:cecil=, =summarize:agnes=, =sum
 
 #+html: </details>
 #+html: <details><summary>
+**** Tsubasa
+#+html: </summary>
+
+Use Tsubasa through the existing OpenAI-compatible backend. This
+configuration registers two text-only choices.
+
+Set =TSUBASA_API_KEY= in the environment inherited by Emacs, then evaluate:
+
+#+begin_src emacs-lisp
+(require 'gptel-openai)
+(gptel-make-openai "Tsubasa"
+  :host "api.tsubasa.sh"
+  :endpoint "/v1/chat/completions"
+  :key (lambda () (or (getenv "TSUBASA_API_KEY")
+                     (user-error "Set TSUBASA_API_KEY before using Tsubasa")))
+  :stream t
+  :request-params '(:max_tokens 4096)
+  :models '((tsubasa-fast :context-window 32.768 :capabilities nil)
+            (tsubasa-pro :context-window 32.768 :capabilities nil)))
+#+end_src
+
+Choose =Tsubasa= and either model from the gptel menu.  The context window
+is 32,768 tokens, shared between input and output; this example reserves
+4,096 output tokens.  The model metadata disables tools and images.
+
+#+html: </details>
+#+html: <details><summary>
 **** together.ai
 #+html: </summary>
 
