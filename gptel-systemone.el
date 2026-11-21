@@ -463,6 +463,214 @@ for."
                        nil nil #'equal)
             backend))))
 
+;;;; OpenAI decisions backend (inheriting from gptel-systemone)
+
+;; The OpenAI decisions backend piggybacks on the System One backend, since the
+;; API is similar except for minor differences in schema.
+
+(cl-defstruct (gptel-openai-decisions
+               (:constructor gptel--make-openai-decisions)
+               (:copier nil)
+               (:include gptel-systemone)))
+
+(defun gptel-openai-decisions--encode-questions (questions)
+  "Convert System One QUESTIONS to the OpenAI decisions API format.
+QUESTIONS is the canonical questions plist, as returned by
+`gptel--parse-schema' for a `gptel-systemone' backend.  Return a vector
+of question objects with :name, :type, :instructions and :choices or
+:levels keys, as required by the OpenAI Decisions API."
+  (cl-loop
+   for (id spec) on questions by #'cddr
+   for type = (gptel--to-string (plist-get spec :type))
+   when (equal type "box")
+   do (user-error "The OpenAI decisions API has no \"box\" question type")
+   collect
+   (append
+    (list :name (substring (symbol-name id) 1)
+          :type (if (equal type "noul") "predicate" type))
+    (when-let* ((instr (plist-get spec :instructions)))
+      (list :instructions instr))
+    (pcase type
+      ("choice"
+       (let ((crit (plist-get spec :criteria)))
+         (list :choices
+               (vconcat
+                (if (vectorp crit)      ;Plain values, no descriptions
+                    (mapcar (lambda (v) (list :value v)) crit)
+                  (cl-loop
+                   for (v d) on crit by #'cddr
+                   for value = (if (symbolp v)
+                                   (substring (symbol-name v) 1)
+                                 v)
+                   collect (append
+                            (list :value value)
+                            (unless (equal d value) ;Skip redundant descriptions
+                              (list :description d)))))))))
+      ("score"
+       (let ((crit (plist-get spec :criteria)))
+         (list :levels
+               (vconcat
+                (if (vectorp crit)      ;Plain labels, no descriptions
+                    (mapcar (lambda (l) (list :label l)) crit)
+                  ;; Plist of levels: labels with descriptions
+                  (cl-loop for (l d) on crit by #'cddr
+                           collect (append
+                                    (list :label (if (symbolp l)
+                                                     (substring (symbol-name l) 1)
+                                                   l))
+                                    (when (stringp d)
+                                      (list :description d)))))))))))
+   into qs
+   finally return (vconcat qs)))
+
+(defun gptel-openai-decisions--decode-answer (answer)
+  "Convert an OpenAI decision ANSWER to the System One answer format."
+  (pcase (plist-get answer :type)
+    ("predicate"
+     (list :type "noul" :noul (plist-get answer :probability)))
+    ("choice"
+     (list :type "choice"
+           :choice (plist-get answer :choice)
+           :confidence (plist-get answer :confidence)
+           :probabilities
+           (cl-loop for p across (plist-get answer :probabilities)
+                    for v = (plist-get p :value)
+                    nconc (list (if (stringp v)
+                                    (intern (concat ":" v))
+                                  v) ; booleans (only reachable via raw OpenAI JSON schemas)
+                                (plist-get p :probability)))))
+    ("score"
+     (list :type "score"
+           :score (plist-get answer :score)
+           :confidence (plist-get answer :confidence)
+           :legend
+           (cl-loop for p across (plist-get answer :probabilities)
+                    for key = (intern (concat ":" (number-to-string
+                                                   (plist-get p :value))))
+                    nconc (list key (plist-get p :label)))
+           :probabilities
+           (cl-loop for p across (plist-get answer :probabilities)
+                    for key = (intern (concat ":" (number-to-string
+                                                   (plist-get p :value))))
+                    nconc (list key (plist-get p :probability)))))
+    ("refusal" (list :type "refusal"))
+    ;; Pass unknown answer types through unchanged
+    (_ (list :type (plist-get answer :type)))))
+
+(defun gptel-openai-decisions--decode-answers (answers)
+  "Convert OpenAI ANSWERS to the System One answers format.
+ANSWERS is the vector of answer objects returned by the OpenAI decisions
+API.  Nameless refusals are keyed by `:refusal'."
+  (cl-loop for answer across (or answers [])
+           for name = (plist-get answer :name)
+           for key = (if (stringp name) (intern (concat ":" name)) :refusal)
+           nconc (list key (gptel-openai-decisions--decode-answer answer))))
+
+(cl-defmethod gptel--request-data ((backend gptel-openai-decisions) state)
+  "JSON encode STATE for sending to the OpenAI decisions BACKEND.
+STATE can be a string or a plist/array as accepted by
+`gptel-make-systemone'.  Image specs in STATE are extracted into
+\"input_image\" parts."
+  (unless gptel--schema
+    (user-error "Requests for backend %s require questions to be
+ specified via the `:schema' argument" (gptel-backend-name backend)))
+  (let ((assets-box (list nil)))
+    ;; Replace image specs in STATE with reference strings,
+    ;; collecting their base64 data in ASSETS-BOX
+    (gptel-systemone--sanitize-tree state assets-box)
+    (let ((input
+           (if (null (car assets-box))
+               (if (stringp state) state (gptel--json-encode state))
+             (vconcat
+              (list (list :type "input_text"
+                          :text (if (stringp state)
+                                    state
+                                  (gptel--json-encode state))))
+              (cl-loop for (_ref asset) on (car assets-box) by #'cddr
+                       collect (list :type "input_image"
+                                     :image_url
+                                     (concat "data:image/"
+                                             (plist-get asset :format)
+                                             ";base64,"
+                                             (plist-get asset :data_base64))))))))
+      (gptel--merge-plists
+       (list :model (gptel--model-name gptel-model)
+             :input input
+             :questions (gptel-openai-decisions--encode-questions
+                         (gptel--parse-schema backend gptel--schema)))
+       gptel--request-params
+       (gptel-backend-request-params gptel-backend)
+       (gptel--model-request-params gptel-model)))))
+
+(cl-defmethod gptel--parse-response ((backend gptel-openai-decisions) response info)
+  "Convert OpenAI decisions RESPONSE to System One form and record in INFO.
+The response is delegated to the `gptel-systemone' BACKEND response
+parser."
+  (cl-call-next-method
+   backend
+   (list :model (plist-get response :model)
+         :answers (gptel-openai-decisions--decode-answers
+                   (plist-get response :answers))
+         :usage (plist-get response :usage))
+   info))
+
+;;;###autoload
+(cl-defun gptel-make-openai-decisions
+    (name &key curl-args
+          key request-params
+          (header
+           (lambda (_info)
+             (when-let* ((key (gptel--get-api-key)))
+               `(("Authorization" . ,(concat "Bearer " key))))))
+          (host "api.openai.com")
+          (protocol "https")
+          (endpoint "/v1/decisions")
+          (models '(gpt-6-luna)))
+  "Register an OpenAI decisions API backend for gptel with NAME.
+
+Keyword arguments:
+
+CURL-ARGS (optional) is a list of additional Curl arguments.
+
+HOST (optional) is the API host, \"api.openai.com\" by default.
+
+MODELS (optional) is a list of available model names, as symbols.
+Only gpt-6-luna is currently available.
+
+PROTOCOL (optional) specifies the protocol, https by default.
+
+ENDPOINT (optional) is the API endpoint, \"v1/decisions\" by default.
+
+HEADER (optional) is for additional headers to send with each
+request.  It should be an alist or a function that returns an
+alist, like:
+  ((\"Content-Type\" . \"application/json\"))
+
+KEY (optional) is a variable whose value is the API key, or a
+function that returns the key.
+
+REQUEST-PARAMS (optional) is a plist of additional API parameters,
+such as \"safety_identifier\"."
+  (declare (indent 1))
+  (let ((backend
+         (gptel--make-openai-decisions
+          :name name
+          :curl-args curl-args
+          :host host
+          :header header
+          :key key
+          :models models
+          :protocol protocol
+          :endpoint endpoint
+          :request-params request-params
+          :url (if protocol
+                   (concat protocol "://" host endpoint)
+                 (concat host endpoint)))))
+    (prog1 backend
+      (setf (alist-get name gptel--known-backends
+                       nil nil #'equal)
+            backend))))
+
 (provide 'gptel-systemone)
 ;;; gptel-systemone.el ends here
 
